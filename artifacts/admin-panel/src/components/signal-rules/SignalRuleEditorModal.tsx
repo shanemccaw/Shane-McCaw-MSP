@@ -174,6 +174,13 @@ export interface RuleForm {
   description: string;
   sortOrder: string;
   intel: IntelForm;
+  // ── New-signal creation (create-only; only surfaces passing
+  // allowNewSignalCreation expose the UI). When true, `signalKey` is the brand-
+  // new key and newSignalLabel/newSignalDescription register its custom_signals
+  // catalog row atomically with the rule. See ruleFormToBody's `newSignal`. ──
+  createNewSignal: boolean;
+  newSignalLabel: string;
+  newSignalDescription: string;
 }
 
 export const emptyRuleForm = (signalKey = ""): RuleForm => ({
@@ -185,6 +192,9 @@ export const emptyRuleForm = (signalKey = ""): RuleForm => ({
   description: "",
   sortOrder: "0",
   intel: { ...EMPTY_INTEL },
+  createNewSignal: false,
+  newSignalLabel: "",
+  newSignalDescription: "",
 });
 
 /** Builds the edit-form state for an existing rule row. */
@@ -197,6 +207,9 @@ export const ruleFormFromRule = (rule: SignalRule): RuleForm => ({
   description: rule.description ?? "",
   sortOrder: String(rule.sortOrder),
   intel: intelFromRow(rule),
+  createNewSignal: false,
+  newSignalLabel: "",
+  newSignalDescription: "",
 });
 
 /**
@@ -206,7 +219,7 @@ export const ruleFormFromRule = (rule: SignalRule): RuleForm => ({
 export function ruleFormToBody(form: RuleForm, isEdit: boolean): Record<string, unknown> {
   const meta = ruleTypeMeta(form.ruleType);
   return {
-    signalKey: form.signalKey,
+    signalKey: form.signalKey.trim(),
     ruleType: form.ruleType,
     sourceKey: form.sourceKey.trim(),
     // For unrecognized rule types (e.g. seeded example:* rows) the key is
@@ -217,8 +230,38 @@ export function ruleFormToBody(form: RuleForm, isEdit: boolean): Record<string, 
     groupId: form.groupId ? Number(form.groupId) : null,
     sortOrder: Number(form.sortOrder) || 0,
     ...intelToBody(form.intel, { blankAsDefault: isEdit }),
+    // Register a brand-new catalog signal alongside the rule. The server
+    // creates the custom_signals row and the rule in one transaction; without
+    // this the rule would be an orphan invisible to real scoring, and the
+    // server rejects it. Only sent on create + when the operator chose to
+    // create a new signal.
+    ...(!isEdit && form.createNewSignal
+      ? { newSignal: { label: form.newSignalLabel.trim(), description: form.newSignalDescription.trim() } }
+      : {}),
   };
 }
+
+/**
+ * Client-side pre-validation shared by both call sites' save handlers. Returns
+ * a human error string, or null if the form may be submitted. The server
+ * enforces the same rules authoritatively (a direct API call can't bypass
+ * them); this only spares the operator a round-trip and gives a precise message.
+ */
+export function validateRuleForm(form: RuleForm, isEdit: boolean): string | null {
+  if (!form.signalKey.trim() || !form.ruleType || !form.sourceKey.trim()) {
+    return "Signal, rule type, and source key are required.";
+  }
+  if (!isEdit && form.createNewSignal) {
+    if (!form.newSignalLabel.trim() || !form.newSignalDescription.trim()) {
+      return "A new signal needs both a label and a description so it becomes a real, scored catalog entry — not just a bare key.";
+    }
+  }
+  return null;
+}
+
+// Sentinel value for the "create a new signal" dropdown choice — must not
+// collide with any real signal_key.
+const NEW_SIGNAL_OPTION = "__create_new_signal__";
 
 const inputCls =
   "w-full border border-border bg-background text-foreground rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60";
@@ -244,8 +287,15 @@ export function SignalRuleEditorModal({
   onClose,
   /** Optional banner explaining where this draft came from (e.g. an accepted suggestion). */
   contextNote,
-  /** Lets the trace surface offer a free-text signal key for a brand-new signal. */
-  allowFreeTextSignalKey = false,
+  /**
+   * Lets this surface create a brand-new catalogued signal inline (an extra
+   * "➕ Create a new signal…" choice that reveals key/label/description fields).
+   * Replaces the old free-text-key input, which let an operator type an
+   * arbitrary key and silently create a rule orphaned from real scoring. When
+   * false, only existing catalogued signals can be picked (the Signal Rules
+   * page's dropdown-only behaviour, unchanged).
+   */
+  allowNewSignalCreation = false,
 }: {
   open: boolean;
   form: RuleForm;
@@ -259,7 +309,7 @@ export function SignalRuleEditorModal({
   onSave: () => void;
   onClose: () => void;
   contextNote?: string;
-  allowFreeTextSignalKey?: boolean;
+  allowNewSignalCreation?: boolean;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -292,32 +342,34 @@ export function SignalRuleEditorModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-medium text-muted-foreground mb-1">Signal</label>
-            {allowFreeTextSignalKey && !editingRule ? (
-              <input
-                className={inputCls}
-                value={form.signalKey}
-                list="signal-rule-editor-signal-keys"
-                placeholder="e.g. security:mfa-gap"
-                onChange={e => onFormChange(f => ({ ...f, signalKey: e.target.value, groupId: "" }))}
-              />
-            ) : (
-              <select
-                className={selectCls}
-                value={form.signalKey}
-                disabled={!!editingRule}
-                onChange={e => onFormChange(f => ({ ...f, signalKey: e.target.value, groupId: "" }))}
-              >
-                <option value="">Select a signal…</option>
-                {signalKeys.map(k => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            )}
-            <datalist id="signal-rule-editor-signal-keys">
+            {/*
+              Create: a dropdown of REAL catalogued signals, plus (only where
+              allowNewSignalCreation is set) an explicit "create a new signal"
+              choice that reveals the label/description fields below. There is no
+              free-text-key path any more — an arbitrary key produced an orphan
+              rule invisible to real scoring. Edit: the signal is fixed.
+            */}
+            <select
+              className={selectCls}
+              value={form.createNewSignal ? NEW_SIGNAL_OPTION : form.signalKey}
+              disabled={!!editingRule}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === NEW_SIGNAL_OPTION) {
+                  onFormChange(f => ({ ...f, createNewSignal: true, signalKey: "", groupId: "" }));
+                } else {
+                  onFormChange(f => ({ ...f, createNewSignal: false, signalKey: v, groupId: "" }));
+                }
+              }}
+            >
+              <option value="">Select a signal…</option>
               {signalKeys.map(k => (
-                <option key={k} value={k} />
+                <option key={k} value={k}>{k}</option>
               ))}
-            </datalist>
+              {allowNewSignalCreation && !editingRule && (
+                <option value={NEW_SIGNAL_OPTION}>➕ Create a new signal…</option>
+              )}
+            </select>
           </div>
           <div>
             <label className="block text-[11px] font-medium text-muted-foreground mb-1">Rule group</label>
@@ -393,6 +445,50 @@ export function SignalRuleEditorModal({
               placeholder="Why this rule exists"
             />
           </div>
+
+          {/* New-signal registration — shown only when the operator chose to
+              create a new signal. The rule and this catalog entry are created
+              together server-side (one transaction); a rule can never be saved
+              against a bare key with no real signal behind it. */}
+          {form.createNewSignal && !editingRule && (
+            <div className="col-span-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="mb-2 text-[11px] font-semibold text-foreground/90">
+                New signal — registered in the catalog alongside this rule so it actually affects real scoring
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Signal key</label>
+                  <input
+                    className={inputCls}
+                    value={form.signalKey}
+                    placeholder="e.g. signal.security.mfa-gap"
+                    onChange={e => onFormChange(f => ({ ...f, signalKey: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Label</label>
+                  <input
+                    className={inputCls}
+                    value={form.newSignalLabel}
+                    placeholder="e.g. MFA enforcement gap"
+                    onChange={e => onFormChange(f => ({ ...f, newSignalLabel: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Description</label>
+                  <input
+                    className={inputCls}
+                    value={form.newSignalDescription}
+                    placeholder="What this signal means and why it matters"
+                    onChange={e => onFormChange(f => ({ ...f, newSignalDescription: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                Label and description are required — they make this a real, properly-catalogued signal rather than a bare key.
+              </p>
+            </div>
+          )}
 
           {/* Common intelligence fields, inline */}
           <div>

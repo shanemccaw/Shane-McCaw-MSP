@@ -528,21 +528,61 @@ router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Respo
 
 router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { signalKey, groupId, ruleType, sourceKey, compareValue, description, sortOrder, ...intelligenceBody } =
+    const { signalKey, groupId, ruleType, sourceKey, compareValue, description, sortOrder, newSignal, ...intelligenceBody } =
       (req.body ?? {}) as Record<string, unknown>;
     if (!signalKey || !ruleType || !sourceKey) {
       res.status(400).json({ error: "signalKey, ruleType, sourceKey are required" });
       return;
     }
+    const signalKeyStr = String(signalKey).trim();
     const { values: intel, error: intelError } = parseIntelligenceFields(intelligenceBody);
     if (intelError) { res.status(400).json({ error: intelError }); return; }
+
+    // ── Orphaned-signal guard (server-side, authoritative) ───────────────────
+    // Rule EVALUATION is naming-convention-agnostic and will happily fire a rule
+    // whose signal_key names nothing real — but real customer-facing dashboard
+    // scoring only aggregates rules whose signal_key has a registered
+    // custom_signals catalog row. A rule against an uncatalogued key therefore
+    // "works" in the simulator/trace yet is invisible to actual scoring: a
+    // silent orphan. Refuse to create one. Either the signal already exists in
+    // the catalog, OR the caller supplies newSignal { label, description } and
+    // we register it here, ATOMICALLY with the rule (never one without the
+    // other). This is enforced here rather than only in the UI so a direct API
+    // call cannot bypass it.
+    const catalogRes = await db.execute(
+      sql`SELECT 1 FROM custom_signals WHERE key = ${signalKeyStr} LIMIT 1`,
+    );
+    const signalExists = catalogRes.rows.length > 0;
+
+    const ns = (newSignal != null && typeof newSignal === "object") ? (newSignal as Record<string, unknown>) : null;
+    const newSignalLabel = ns ? String(ns.label ?? "").trim() : "";
+    const newSignalDescription = ns ? String(ns.description ?? "").trim() : "";
+    const newSignalExpectedImpact = ns ? String(ns.expectedImpact ?? "").trim() : "";
+    const newSignalIsAdjustment = ns ? Boolean(ns.isAdjustment) : false;
+
+    if (!signalExists) {
+      if (!ns) {
+        res.status(422).json({
+          error: `Signal "${signalKeyStr}" has no entry in the signal catalog. A rule created against it would fire in the trace but be invisible to real dashboard scoring. Select an existing signal, or include newSignal { label, description } to register it as a real signal in the same action.`,
+          code: "SIGNAL_NOT_IN_CATALOG",
+        });
+        return;
+      }
+      if (!newSignalLabel || !newSignalDescription) {
+        res.status(422).json({
+          error: `Creating the new signal "${signalKeyStr}" requires a non-empty label and description so it becomes a real, properly-catalogued signal — not a bare key. Both were not provided.`,
+          code: "NEW_SIGNAL_INCOMPLETE",
+        });
+        return;
+      }
+    }
 
     // Pre-check: simulate the post-insert rule list and detect conflicts before writing
     const existingRules = await getAllRules();
     const now = new Date();
     const proposedRule: SignalDerivationRule = {
       id: -1,
-      signalKey: signalKey as string,
+      signalKey: signalKeyStr,
       groupId: groupId != null ? Number(groupId) : null,
       ruleType: ruleType as SignalDerivationRule["ruleType"],
       sourceKey: sourceKey as string,
@@ -564,32 +604,53 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
       return;
     }
 
-    const result = await db.execute(sql`
-      INSERT INTO signal_derivation_rules (
-        signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
-        priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
-        governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
-        architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
-        severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
-        crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
-      )
-      VALUES (
-        ${signalKey as string}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
-        ${compareValue ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0},
-        ${intel.priority}, ${intel.weight}, ${intel.pricingImpact}, ${intel.priorityScoreContribution}, ${intel.pricingValueContribution},
-        ${intel.governanceImpact}, ${intel.securityImpact}, ${intel.complianceImpact}, ${intel.adoptionImpact}, ${intel.copilotImpact},
-        ${intel.architectureImpact}, ${intel.trendValue}, ${intel.trendDirection}, ${intel.decayRate}, ${intel.ttlDays}, ${intel.confidence},
-        ${intel.severity}, ${intel.category}, ${intel.pillar}, ${intel.crmFitContribution}, ${intel.crmPainContribution},
-        ${intel.crmMaturityContribution}, ${intel.crmIntentContribution}, ${intel.crmUrgencyContribution}
-      )
-      RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                source_key AS "sourceKey", compare_value AS "compareValue", description,
-                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
-                ${INTELLIGENCE_FIELDS_SELECT}
-    `);
-    const [created] = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule]);
+    // Atomic write: register the new catalog entry (if any) and the rule in ONE
+    // transaction, so a rule can never be committed without its backing signal.
+    let created!: SignalDerivationRule;
+    await db.transaction(async (tx) => {
+      if (!signalExists) {
+        await tx.execute(sql`
+          INSERT INTO custom_signals (key, label, description, expected_impact, is_adjustment)
+          VALUES (${signalKeyStr}, ${newSignalLabel}, ${newSignalDescription}, ${newSignalExpectedImpact}, ${newSignalIsAdjustment})
+          ON CONFLICT (key) DO NOTHING
+        `);
+      }
+      const result = await tx.execute(sql`
+        INSERT INTO signal_derivation_rules (
+          signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+          priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+          governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+          architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+          severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+          crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+        )
+        VALUES (
+          ${signalKeyStr}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
+          ${compareValue ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0},
+          ${intel.priority}, ${intel.weight}, ${intel.pricingImpact}, ${intel.priorityScoreContribution}, ${intel.pricingValueContribution},
+          ${intel.governanceImpact}, ${intel.securityImpact}, ${intel.complianceImpact}, ${intel.adoptionImpact}, ${intel.copilotImpact},
+          ${intel.architectureImpact}, ${intel.trendValue}, ${intel.trendDirection}, ${intel.decayRate}, ${intel.ttlDays}, ${intel.confidence},
+          ${intel.severity}, ${intel.category}, ${intel.pillar}, ${intel.crmFitContribution}, ${intel.crmPainContribution},
+          ${intel.crmMaturityContribution}, ${intel.crmIntentContribution}, ${intel.crmUrgencyContribution}
+        )
+        RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
+                  source_key AS "sourceKey", compare_value AS "compareValue", description,
+                  sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                  ${INTELLIGENCE_FIELDS_SELECT}
+      `);
+      created = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule])[0]!;
+    });
+
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
-    await appendAuditLog({ action: "create", signalKey: signalKey as string, ruleId: created.id, after: created, adminUserId: adminId });
+    if (!signalExists) {
+      await appendAuditLog({
+        action: "custom_signal_created",
+        signalKey: signalKeyStr,
+        adminUserId: adminId,
+        note: `Signal "${signalKeyStr}" registered inline while creating its first rule (label: "${newSignalLabel}")`,
+      });
+    }
+    await appendAuditLog({ action: "create", signalKey: signalKeyStr, ruleId: created.id, after: created, adminUserId: adminId });
     res.status(201).json(created);
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules failed");

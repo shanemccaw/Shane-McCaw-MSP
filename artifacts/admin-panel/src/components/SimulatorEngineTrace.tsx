@@ -57,6 +57,7 @@ import SignalRuleEditorModal, {
   emptyRuleForm,
   ruleFormFromRule,
   ruleFormToBody,
+  validateRuleForm,
   type RuleConflict,
   type RuleForm,
   type SignalGroupOption,
@@ -271,10 +272,26 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
     for (const [field, value] of Object.entries(s.pillarImpacts)) {
       form.intel[field] = String(value);
     }
+    // A suggestion may name a signal that isn't catalogued yet. If so, switch
+    // the form into new-signal mode and pre-fill a sensible label/description so
+    // creating it registers a real catalog entry — never a silent orphan.
+    const signalExists = signalKeys.includes(s.suggestedSignalKey);
+    if (!signalExists) {
+      form.createNewSignal = true;
+      form.newSignalLabel = s.suggestedSignalKey
+        .replace(/^signal\./, "")
+        .replace(/^adj:/, "")
+        .replace(/[.:_-]+/g, " ")
+        .replace(/\b\w/g, c => c.toUpperCase())
+        .trim();
+      form.newSignalDescription = `Signal for ${s.suggestedSignalKey}, first defined from a ${checkKey} simulator suggestion. ${s.rationale}`.trim();
+    }
     setEditingRule(null);
     setRuleForm(form);
     setModalNote(
-      `This is a SUGGESTED rule, pre-filled from the observed response — nothing has been created yet. Review the direction and thresholds, then press “Create Rule” to insert it. Rationale: ${s.rationale}`,
+      signalExists
+        ? `This is a SUGGESTED rule, pre-filled from the observed response — nothing has been created yet. Review the direction and thresholds, then press “Create Rule” to insert it. Rationale: ${s.rationale}`
+        : `This is a SUGGESTED rule for a NEW signal ("${s.suggestedSignalKey}") that isn't in the catalog yet — creating it will register the signal AND the rule together so it actually affects real scoring. Review the label/description below, then press “Create Rule”. Rationale: ${s.rationale}`,
     );
     setRuleError(null);
     setRuleConflicts(null);
@@ -282,8 +299,9 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
   };
 
   const handleRuleSave = async () => {
-    if (!ruleForm.signalKey || !ruleForm.ruleType || !ruleForm.sourceKey.trim()) {
-      setRuleError("Signal, rule type, and source key are required.");
+    const validationError = validateRuleForm(ruleForm, !!editingRule);
+    if (validationError) {
+      setRuleError(validationError);
       return;
     }
     setRuleSaving(true);
@@ -587,9 +605,12 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
         onClose={() => setRuleModalOpen(false)}
         contextNote={modalNote}
         // A suggestion can name a signal that doesn't exist yet, so the trace
-        // surface allows a free-text key on create (the page's dropdown-only
-        // behaviour is unchanged).
-        allowFreeTextSignalKey
+        // surface lets the operator create a new CATALOGUED signal inline (key +
+        // label + description, registered atomically with the rule). This
+        // replaces the old free-text-key input, which silently produced rules
+        // orphaned from real scoring. The page's dropdown-only behaviour is
+        // unchanged.
+        allowNewSignalCreation
       />
 
       {/* Plus-button affordance parity with the rules page: add a rule for this
