@@ -42,7 +42,7 @@ import {
   Flame,
   Network
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import { Tenant } from '../types';
 
 // ============================================================================
@@ -815,4 +815,5 @@ export const PortalNavigationShell: React.FC<PortalNavigationShellProps> = ({
     </div>
   );
 };
+
 
