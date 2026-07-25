@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-24 | ⏳ IN FLIGHT | RBD Liability Acceptance Module Integration | |
 | 2026-07-24 | ✅ DONE | DLQ Module Integration — Created Express router msp-dlq.ts and registered it in index.ts, created manual SQL seeding script, integrated DeadLetterQueueConsole frontend component with the new endpoints and dynamic tenants, and verified types project-wide. | 51317370 |
 | 2026-07-24 | ✅ DONE | SOP & Runbooks Module Integration — Added Drizzle schemas for mspSopsTable and mspSopRunsTable, created manual SQL migration script with seeding data, created Express router msp-sops.ts and registered it in index.ts, integrated StandardOperatingProceduresConsole frontend component to communicate with the backend API, and verified types project-wide. | e4162342 |
 | 2026-07-24 | ✅ DONE | Change Control Log Module Integration — Added Drizzle schema for mspChangeRequestsTable, created manual SQL migration script with seeding data, created Express router msp-changes.ts and registered it in index.ts, integrated ChangeManagementConsole frontend component to communicate with the backend API, and verified types project-wide. | 7c87babb |
