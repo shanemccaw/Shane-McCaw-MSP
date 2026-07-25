@@ -152,6 +152,7 @@ import portal404EventsRouter from "./portal-404-events";
 import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay";
 import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
 import adminAnalyticsAttributionRouter from "./admin-analytics-attribution";
+import mspChangesRouter from "./msp-changes";
 
 import pccRouter from "./pcc.js";
 
@@ -285,6 +286,7 @@ router.use(adminWriteActionsRouter);
 router.use(adminConfigPackRunRouter);
 router.use(mspReportsRouter);
 router.use(mspAlertsRouter);
+router.use(mspChangesRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);

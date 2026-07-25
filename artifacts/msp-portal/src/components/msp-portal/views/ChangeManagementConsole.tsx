@@ -1,5 +1,6 @@
 // @ts-nocheck
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import {
   GitCommit,
   GitPullRequest,
@@ -315,9 +316,12 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
   onExecuteWorkflow,
 }) => {
   // State
-  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>(INITIAL_CHANGE_REQUESTS);
+  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
   const [selectedCrId, setSelectedCrId] = useState<string>('CR-2026-104');
   const [activeTab, setActiveTab] = useState<'active' | 'calendar' | 'rollback'>('active');
+
+  const { fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(true);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -349,6 +353,33 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
   const selectedCr = useMemo(() => {
     return changeRequests.find((cr) => cr.id === selectedCrId) || changeRequests[0];
   }, [changeRequests, selectedCrId]);
+
+  // Load CRs
+  const loadChangeRequests = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/msp/change-requests');
+      if (res.ok) {
+        const data = await res.json();
+        setChangeRequests(data);
+        if (data.length > 0) {
+          setSelectedCrId((prev) => {
+            const exists = data.some((cr: any) => cr.id === prev);
+            return exists ? prev : data[0].id;
+          });
+        }
+      } else {
+        onShowToast?.('error', 'Failed to load change requests', 'Server returned error status');
+      }
+    } catch (error) {
+      onShowToast?.('error', 'Error loading change requests', 'Could not connect to the API');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, onShowToast]);
+
+  useEffect(() => {
+    loadChangeRequests();
+  }, [loadChangeRequests]);
 
   // KPI Metrics
   const metrics = useMemo(() => {
@@ -394,58 +425,97 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
   }, [changeRequests, tenantFilter, changeClassFilter, statusFilter, categoryFilter, searchQuery]);
 
   // Handlers
-  const handleApproveCr = (cr: ChangeRequest) => {
-    setChangeRequests((prev) =>
-      prev.map((c) =>
-        c.id === cr.id
-          ? {
-              ...c,
-              status: 'scheduled',
-              approvedBy: 'lead.architect@mspplatform.com',
-            }
-          : c
-      )
-    );
+  const openWizard = () => {
+    if (tenants && tenants.length > 0) {
+      setNewCrTenantId(tenants[0].id);
+    }
+    setIsWizardOpen(true);
+    setWizardStep(1);
+  };
+
+  const handleApproveCr = async (cr: ChangeRequest) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/change-requests/${cr.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'scheduled',
+          approvedBy: 'lead.architect@mspplatform.com',
+        }),
+      });
+
+      if (res.ok) {
+        onShowToast?.(
+          'success',
+          'Change Request Approved & Scheduled',
+          `Approved ${cr.id} for tenant ${cr.tenantName}. Queued for maintenance window.`
+        );
+        loadChangeRequests();
+      } else {
+        onShowToast?.('error', 'Approval failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Approval error', 'Could not save approval');
+    }
 
     onExecuteWorkflow?.('approve-change-request', {
       crId: cr.id,
       tenantId: cr.tenantId,
       scheduledFor: cr.scheduledFor,
     });
-
-    onShowToast?.(
-      'success',
-      'Change Request Approved & Scheduled',
-      `Approved ${cr.id} for tenant ${cr.tenantName}. Queued for maintenance window.`
-    );
   };
 
-  const handleRejectCr = (cr: ChangeRequest) => {
-    setChangeRequests((prev) =>
-      prev.map((c) => (c.id === cr.id ? { ...c, status: 'rejected' } : c))
-    );
+  const handleRejectCr = async (cr: ChangeRequest) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/change-requests/${cr.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'rejected',
+        }),
+      });
+
+      if (res.ok) {
+        onShowToast?.('warning', 'Change Request Rejected', `Marked ${cr.id} as rejected.`);
+        loadChangeRequests();
+      } else {
+        onShowToast?.('error', 'Rejection failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Rejection error', 'Could not save rejection');
+    }
 
     onExecuteWorkflow?.('reject-change-request', {
       crId: cr.id,
       tenantId: cr.tenantId,
     });
-
-    onShowToast?.('warning', 'Change Request Rejected', `Marked ${cr.id} as rejected.`);
   };
 
-  const handleExecuteNow = (cr: ChangeRequest) => {
-    setChangeRequests((prev) =>
-      prev.map((c) =>
-        c.id === cr.id
-          ? {
-              ...c,
-              status: 'completed',
-              executedAt: '2026-07-23 23:05 UTC',
-              approvedBy: 'lead.architect@mspplatform.com',
-            }
-          : c
-      )
-    );
+  const handleExecuteNow = async (cr: ChangeRequest) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/change-requests/${cr.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'completed',
+          executedAt: new Date().toISOString().replace('T', ' ').substring(0, 16) + ' UTC',
+          approvedBy: 'lead.architect@mspplatform.com',
+        }),
+      });
+
+      if (res.ok) {
+        onShowToast?.(
+          'success',
+          'Change Request Executed Live',
+          `Pushed Graph API payload for ${cr.id} to ${cr.tenantName}. Pre-change snapshot archived.`
+        );
+        loadChangeRequests();
+      } else {
+        onShowToast?.('error', 'Execution failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Execution error', 'Could not save execution state');
+    }
 
     onExecuteWorkflow?.('execute-m365-change-now', {
       crId: cr.id,
@@ -453,18 +523,31 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
       targetResource: cr.targetResource,
       payload: cr.proposedPayload,
     });
-
-    onShowToast?.(
-      'success',
-      'Change Request Executed Live',
-      `Pushed Graph API payload for ${cr.id} to ${cr.tenantName}. Pre-change snapshot archived.`
-    );
   };
 
-  const handleExecuteRollback = (cr: ChangeRequest) => {
-    setChangeRequests((prev) =>
-      prev.map((c) => (c.id === cr.id ? { ...c, status: 'rolled_back' } : c))
-    );
+  const handleExecuteRollback = async (cr: ChangeRequest) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/change-requests/${cr.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'rolled_back',
+        }),
+      });
+
+      if (res.ok) {
+        onShowToast?.(
+          'warning',
+          '1-Click Automated Rollback Dispatched',
+          `Restored ${cr.tenantName} Graph API state to pre-change snapshot for ${cr.id}.`
+        );
+        loadChangeRequests();
+      } else {
+        onShowToast?.('error', 'Rollback failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Rollback error', 'Could not save rollback state');
+    }
 
     onExecuteWorkflow?.('execute-1click-rollback', {
       crId: cr.id,
@@ -472,20 +555,12 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
       targetResource: cr.targetResource,
       preChangeSnapshot: cr.preChangeSnapshot,
     });
-
-    onShowToast?.(
-      'warning',
-      '1-Click Automated Rollback Dispatched',
-      `Restored ${cr.tenantName} Graph API state to pre-change snapshot for ${cr.id}.`
-    );
   };
 
-  const handleCreateCr = () => {
+  const handleCreateCr = async () => {
     const tenantObj = tenants.find((t) => t.id === newCrTenantId);
     const tenantName = tenantObj ? tenantObj.name : 'Contoso Corporation';
-    const primaryDomain = tenantObj ? tenantObj.domain : 'contoso.onmicrosoft.com';
-
-    const newId = `CR-2026-${Math.floor(105 + Math.random() * 800)}`;
+    const primaryDomain = tenantObj ? tenantObj.primaryDomain : 'contoso.onmicrosoft.com';
 
     let parsedPreJson = {};
     let parsedPropJson = {};
@@ -496,8 +571,7 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
       // fallback
     }
 
-    const createdCr: ChangeRequest = {
-      id: newId,
+    const payload = {
       tenantId: newCrTenantId,
       tenantName,
       primaryDomain,
@@ -508,33 +582,37 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
       category: newCrCategory,
       targetResource: newCrResource,
       psaTicketId: newCrPsaTicket || 'HaloPSA #TK-99201',
-      requestedBy: 'alex.vance@mspplatform.com',
-      requestedAt: '2026-07-23 23:02 UTC',
       scheduledFor: newCrSchedule,
       impactedUsersCount: newCrImpactedUsers,
-      status: 'pending_approval',
-      backupVerified: true,
-      backupHash: `SHA256:${Math.random().toString(16).substring(2, 14)}...`,
       preChangeSnapshot: parsedPreJson,
       proposedPayload: parsedPropJson,
       rollbackScriptSnippet: `PATCH ${newCrResource} -d @preChangeSnapshot.json`,
     };
 
-    setChangeRequests((prev) => [createdCr, ...prev]);
-    setSelectedCrId(newId);
-    setIsWizardOpen(false);
-    setWizardStep(1);
+    try {
+      const res = await fetchWithAuth('/api/msp/change-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    onExecuteWorkflow?.('submit-new-change-request', {
-      crId: newId,
-      tenantId: newCrTenantId,
-    });
-
-    onShowToast?.(
-      'success',
-      'Change Request Submitted',
-      `Created ${newId} for ${tenantName}. Pre-change state snapshot verified.`
-    );
+      if (res.ok) {
+        const data = await res.json();
+        onShowToast?.(
+          'success',
+          'Change Request Submitted',
+          `Created ${data.id} for ${tenantName}. Pre-change state snapshot verified.`
+        );
+        setIsWizardOpen(false);
+        setWizardStep(1);
+        loadChangeRequests();
+        setSelectedCrId(data.id);
+      } else {
+        onShowToast?.('error', 'Submission failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Submission error', 'Could not create change request');
+    }
   };
 
   return (
@@ -603,10 +681,7 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
             </button>
 
             <button
-              onClick={() => {
-                setIsWizardOpen(true);
-                setWizardStep(1);
-              }}
+              onClick={openWizard}
               className="px-3 py-1.5 bg-[#0078d4] hover:bg-[#0060ab] text-white rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -755,12 +830,11 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
             className="bg-[#181c22] border border-[#404752] text-[#e0e2ea] text-xs rounded px-2.5 py-1.5 outline-none focus:border-[#0078d4] cursor-pointer"
           >
             <option value="All">All Tenants</option>
-            <option value="contoso-01">Contoso Corp</option>
-            <option value="fabrikam-02">Fabrikam Inc</option>
-            <option value="woodgrove-04">Woodgrove Bank</option>
-            <option value="northwind-03">Northwind Traders</option>
-            <option value="adventure-05">AdventureWorks</option>
-            <option value="tailspin-06">Tailspin Toys</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
           </select>
 
           {/* Change Class */}
@@ -1358,10 +1432,11 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
                       onChange={(e) => setNewCrTenantId(e.target.value)}
                       className="w-full bg-[#101419] border border-[#404752] text-[#e0e2ea] p-2 rounded outline-none focus:border-[#0078d4]"
                     >
-                      <option value="contoso-01">Contoso Corporation</option>
-                      <option value="fabrikam-02">Fabrikam Inc</option>
-                      <option value="woodgrove-04">Woodgrove Bank</option>
-                      <option value="northwind-03">Northwind Traders</option>
+                      {tenants.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

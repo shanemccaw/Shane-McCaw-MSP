@@ -2766,3 +2766,45 @@ export const insertMspPartnerQbrSchema = createInsertSchema(mspPartnerQbrsTable)
 export type MspPartnerQbr = typeof mspPartnerQbrsTable.$inferSelect;
 export type InsertMspPartnerQbr = typeof mspPartnerQbrsTable.$inferInsert;
 
+// ── MSP Change Requests (Change Control Log) ──────────────────────────────────
+//
+// ITIL v4 Change Enablement record representing a scheduled, pending, or applied
+// configuration change for an end-customer tenant.
+
+export const mspChangeRequestsTable = pgTable("msp_change_requests", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  primaryDomain: text("primary_domain").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  changeClass: text("change_class", { enum: ["standard", "normal", "emergency"] }).notNull().default("normal"),
+  riskLevel: text("risk_level", { enum: ["critical", "high", "medium", "low"] }).notNull().default("medium"),
+  category: text("category", { enum: ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender"] }).notNull().default("Identity"),
+  targetResource: text("target_resource").notNull(),
+  psaTicketId: text("psa_ticket_id").notNull(),
+  requestedBy: text("requested_by").notNull(),
+  requestedAt: text("requested_at").notNull(),
+  scheduledFor: text("scheduled_for").notNull(),
+  impactedUsersCount: integer("impacted_users_count").notNull().default(0),
+  status: text("status", { enum: ["pending_approval", "scheduled", "in_progress", "completed", "rolled_back", "rejected"] }).notNull().default("pending_approval"),
+  backupVerified: boolean("backup_verified").notNull().default(true),
+  backupHash: text("backup_hash").notNull(),
+  preChangeSnapshot: jsonb("pre_change_snapshot").notNull().default({}),
+  proposedPayload: jsonb("proposed_payload").notNull().default({}),
+  rollbackScriptSnippet: text("rollback_script_snippet").notNull(),
+  executedAt: text("executed_at"),
+  approvedBy: text("approved_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_change_requests_msp_id_idx").on(t.mspId),
+  index("msp_change_requests_tenant_id_idx").on(t.tenantId),
+]);
+
+export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequestsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspChangeRequest = typeof mspChangeRequestsTable.$inferSelect;
+export type InsertMspChangeRequest = typeof mspChangeRequestsTable.$inferInsert;
+
+
