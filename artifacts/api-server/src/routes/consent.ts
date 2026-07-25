@@ -726,6 +726,70 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
   res.json({ consentUrl, expiresAt });
 });
 
+// ── POST /api/portal/consent/debug-write-reconsent-link ────────────────────────
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// Allows a testbed customer to self-serve the write-consent flow from the
+// msp-portal shell. Uses the exact same write-consent logic as the admin route.
+router.post("/portal/consent/debug-write-reconsent-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_WRITE_CLIENT_ID) {
+    res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
+    return;
+  }
+
+  const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
+  if (typeof customerId !== "number" || Number.isNaN(customerId)) {
+    res.status(403).json({ error: "No customer identity on token" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId, isTestbed: mspCustomersTable.isTestbed })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+  
+  if (!customer.isTestbed) {
+    res.status(403).json({ error: "Debug route is restricted to testbed customers" });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: customer.tenantId?.trim() || null,
+    customerId,
+    clientUserId: req.user!.id,
+    expiresAt,
+  });
+
+  const callbackUrl = `${getHostBase(req)}/api/admin/write-consent/callback`;
+  const tenantHint = customer.tenantId?.trim() || "common";
+  const consentUrl = buildAdminConsentUrl(
+    tenantHint,
+    signWriteConsentState(customerId, token),
+    callbackUrl,
+    process.env.MT_APP_WRITE_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "customer",
+    actorRole: "client",
+    actionType: "write_consent_invite_created",
+    entityType: "tenant_write_consent",
+    metadata: { tenantHint, customerId, expiresAt, debug: true },
+  });
+
+  res.json({ consentUrl, expiresAt });
+});
+
 // ── GET /api/admin/write-consent/callback ──────────────────────────────────────
 // Microsoft redirects here after the customer's admin approves or declines the
 // WRITE app. One FIXED URL for every customer (registered once in Azure);

@@ -44,6 +44,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { NotificationBell } from "@/components/notification-bell";
 import { ScanStatusIndicator } from "@/components/scan-status-indicator";
 import { ScanTriggerButton } from "@/components/scan-trigger-button";
+import { WriteConsentTriggerButton } from "@/components/write-consent-trigger-button";
 import {
   ProjectScopeIndicator,
   ServiceStatusIndicator,
@@ -1774,6 +1775,8 @@ export function AppShell({ children, title, actions }: AppShellProps) {
       {isCustomerUser && !collapsed && (
         <div className="px-3 pt-1 pb-1">
           <ScanTriggerButton />
+          {/* ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️ */}
+          <WriteConsentTriggerButton />
         </div>
       )}
 

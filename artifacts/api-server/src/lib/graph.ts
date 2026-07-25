@@ -873,6 +873,9 @@ export async function graphWriteForTenant(
 
     // Non-consent 400/403
     if (res.status === 403) {
+      // Evict the cached write token on a 403 as well, so if the admin recently
+      // granted new permissions, the next attempt fetches a fresh token.
+      tenantWriteTokenCache.delete(tenantId);
       return { success: false, status: 403, errorType: "insufficient_privilege", data: text };
     }
     return { success: false, status: 400, errorType: "bad_request", data: text };
