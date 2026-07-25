@@ -918,7 +918,7 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
                         </tr>
                       ) : (
                         filteredRequests.map((cr) => {
-                          const isSelected = cr.id === selectedCr.id;
+                          const isSelected = selectedCr && cr.id === selectedCr.id;
 
                           return (
                             <tr
@@ -1025,9 +1025,16 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
 
             {/* RIGHT PANE (40% Width): Deep Change Inspector & JSON Diff */}
             <div className="w-full lg:w-[40%] h-full overflow-y-auto bg-[#101419] p-4 lg:p-5 space-y-5">
-              
-              {/* Header Actions */}
-              <div className="bg-[#181c22] border border-[#404752] p-4 rounded-lg space-y-3 shadow-md">
+              {!selectedCr ? (
+                <div className="flex flex-col items-center justify-center h-full border border-dashed border-[#404752] rounded-lg text-[#8a919e] p-6 text-center">
+                  <GitCommit className="w-8 h-8 mb-2 opacity-50 text-[#0078d4]" />
+                  <div className="text-xs font-bold text-[#e0e2ea]">No Change Request Selected</div>
+                  <div className="text-[10px] mt-1 text-[#6b7280]">Select a change request from the log to view details.</div>
+                </div>
+              ) : (
+                <>
+                  {/* Header Actions */}
+                  <div className="bg-[#181c22] border border-[#404752] p-4 rounded-lg space-y-3 shadow-md">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[#0078d4]/20 text-[#a3c9ff] border border-[#0078d4]/40">
@@ -1193,6 +1200,8 @@ export const ChangeManagementConsole: React.FC<ChangeManagementConsoleProps> = (
                   </div>
                 </div>
               </div>
+              </>
+              )}
 
             </div>
 
