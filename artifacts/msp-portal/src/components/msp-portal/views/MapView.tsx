@@ -65,7 +65,7 @@ import {
   M365ActionItem,
   M365DomainCategory,
   SafetyLevel,
-} from '../../data/m365ActionRegistry';
+} from '../m365ActionRegistry';
 
 interface MapViewProps {
   tenants: Tenant[];
@@ -3035,4 +3035,5 @@ export const MapView: React.FC<MapViewProps> = ({
     </div>
   );
 };
+
 

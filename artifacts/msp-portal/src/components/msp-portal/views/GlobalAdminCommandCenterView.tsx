@@ -46,7 +46,7 @@ import {
   M365ActionItem,
   M365DomainCategory,
   SafetyLevel,
-} from '../../data/m365ActionRegistry';
+} from '../m365ActionRegistry';
 
 interface GlobalAdminCommandCenterViewProps {
   tenants: Tenant[];
@@ -832,4 +832,5 @@ export const GlobalAdminCommandCenterView: React.FC<GlobalAdminCommandCenterView
     </div>
   );
 };
+
 
