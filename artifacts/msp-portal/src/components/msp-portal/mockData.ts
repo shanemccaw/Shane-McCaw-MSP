@@ -1,4 +1,4 @@
-import { Tenant, ThreatFeedItem, PendingRemediation, AuditLogItem } from '../types';
+import { Tenant, ThreatFeedItem, PendingRemediation, AuditLogItem } from './types';
 
 export const INITIAL_TENANTS: Tenant[] = [
   {
@@ -364,3 +364,4 @@ export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
     details: 'Policy CA009 updated to block legacy authentication protocols across all clients.',
   },
 ];
+

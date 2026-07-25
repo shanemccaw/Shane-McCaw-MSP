@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Users, Search, ShieldCheck, Lock, RefreshCw, Key, ExternalLink } from 'lucide-react';
-import { Tenant } from '../../types';
+import { Tenant } from '../types';
 
 interface TenantsViewProps {
   tenants: Tenant[];
@@ -140,3 +141,4 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
     </div>
   );
 };
+

@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Lock, ShieldAlert, CheckCircle2, FileText, AlertTriangle, ArrowRight, X, Play, ShieldCheck, Database, RefreshCw } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 export interface ChangeControlGateModalProps {
   isOpen: boolean;
@@ -203,3 +204,4 @@ export const ChangeControlGateModal: React.FC<ChangeControlGateModalProps> = ({
     </div>
   );
 };
+

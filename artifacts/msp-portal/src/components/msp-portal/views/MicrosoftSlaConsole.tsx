@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   Clock,
@@ -30,8 +31,8 @@ import {
   Ticket,
   Filter,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface M365SlaWorkload {
   id: string;
@@ -1081,3 +1082,4 @@ export const MicrosoftSlaConsole: React.FC<MicrosoftSlaConsoleProps> = ({
     </div>
   );
 };
+

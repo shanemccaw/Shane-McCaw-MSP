@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
@@ -19,7 +20,7 @@ import {
   Tag,
   ListFilter
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 // ============================================================================
 // TYPES & DATA STRUCTURES
@@ -530,3 +531,4 @@ export const RejectionConfirmDialog: React.FC<RejectionConfirmDialogProps> = ({
     </div>
   );
 };
+

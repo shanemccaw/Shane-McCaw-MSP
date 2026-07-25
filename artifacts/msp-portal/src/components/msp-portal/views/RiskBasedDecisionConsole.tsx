@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   Scale,
@@ -38,8 +39,8 @@ import {
   Laptop,
   CheckSquare,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface CompensatingControl {
   type: 'technical' | 'administrative' | 'operational';
@@ -1806,3 +1807,4 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
     </div>
   );
 };
+

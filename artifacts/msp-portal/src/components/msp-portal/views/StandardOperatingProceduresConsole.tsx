@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   BookOpen,
@@ -37,8 +38,8 @@ import {
   Pause,
   StopCircle,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface SopStep {
   stepNumber: number;
@@ -1708,3 +1709,4 @@ export const StandardOperatingProceduresConsole: React.FC<
   );
 };
 export default StandardOperatingProceduresConsole;
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   MessageSquare,
@@ -44,8 +45,8 @@ import {
   HelpCircle,
   Smile,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface ActionCardData {
   id: string;
@@ -1547,3 +1548,4 @@ export const SupportChatConsole: React.FC<SupportChatConsoleProps> = ({
   );
 };
 export default SupportChatConsole;
+

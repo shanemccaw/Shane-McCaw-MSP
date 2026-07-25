@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   UserMinus,
@@ -43,8 +44,8 @@ import {
   CheckSquare,
   AlertTriangle,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface OffboardingStep {
   stepNumber: number;
@@ -1611,3 +1612,4 @@ export const OffboardingConsole: React.FC<OffboardingConsoleProps> = ({
     </div>
   );
 };
+

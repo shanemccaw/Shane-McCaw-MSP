@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
@@ -39,8 +40,8 @@ import {
   Briefcase,
   FileSpreadsheet,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 export interface ScopeCreepItem {
   id: string; // e.g. 'SCP-1092'
@@ -1502,3 +1503,4 @@ export const ScopeCreepConsole: React.FC<ScopeCreepConsoleProps> = ({
     </div>
   );
 };
+

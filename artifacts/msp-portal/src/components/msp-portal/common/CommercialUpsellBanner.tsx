@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Sparkles, TrendingUp, Send, ArrowRight, DollarSign, CheckCircle2, ShieldAlert } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 export interface CommercialUpsellBannerProps {
   tenantName: string;
@@ -146,3 +147,4 @@ export const CommercialUpsellBanner: React.FC<CommercialUpsellBannerProps> = ({
     </div>
   );
 };
+

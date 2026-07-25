@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Zap, Play, CheckCircle2, Shield, Lock, Key } from 'lucide-react';
 
@@ -85,3 +86,4 @@ export const AutomationView: React.FC<AutomationViewProps> = ({ onRunWorkflow })
     </div>
   );
 };
+

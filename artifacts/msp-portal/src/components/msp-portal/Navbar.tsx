@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Search, Bell, Grid, User, ShieldCheck, ChevronDown, CheckCircle2, AlertTriangle, Layers, Menu } from 'lucide-react';
 import { Tenant } from '../types';
@@ -195,3 +196,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+

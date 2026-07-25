@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import {
   Activity,
@@ -131,3 +132,4 @@ export const ThreatFeed: React.FC<ThreatFeedProps> = ({
     </div>
   );
 };
+

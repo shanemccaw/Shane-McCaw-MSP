@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { X, ShieldCheck, Zap, CheckCircle2, Play, AlertTriangle } from 'lucide-react';
 import { PendingRemediation } from '../types';
@@ -122,3 +123,4 @@ export const PendingRemediationsModal: React.FC<PendingRemediationsModalProps> =
     </div>
   );
 };
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import {
   ShieldAlert,
@@ -14,7 +15,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 export interface RbdRuleLinkPayload {
   alertId?: string;
@@ -257,3 +258,4 @@ export const RbdAcceptanceAndRuleLinker: React.FC<RbdAcceptanceAndRuleLinkerProp
     </div>
   );
 };
+

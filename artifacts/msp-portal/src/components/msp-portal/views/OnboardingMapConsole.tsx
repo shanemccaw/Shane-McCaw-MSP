@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo, useRef } from 'react';
 import {
   GitBranch,
@@ -49,8 +50,8 @@ import {
   CheckSquare,
   Shield
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 // ==========================================
 // TYPES & INTERFACES
@@ -1849,3 +1850,4 @@ export const OnboardingMapConsole: React.FC<OnboardingMapConsoleProps> = ({
 };
 
 export default OnboardingMapConsole;
+

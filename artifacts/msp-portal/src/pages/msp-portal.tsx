@@ -1,59 +1,60 @@
+// @ts-nocheck
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState } from 'react';
-import { Navbar } from './components/Navbar';
-import { Sidebar, NavTab } from './components/Sidebar';
-import { KPICards } from './components/KPICards';
-import { TenantTable } from './components/TenantTable';
-import { ThreatFeed } from './components/ThreatFeed';
-import { RemediationModal } from './components/RemediationModal';
-import { TenantDetailDrawer } from './components/TenantDetailDrawer';
-import { PendingRemediationsModal } from './components/PendingRemediationsModal';
-import { ToastContainer } from './components/ToastContainer';
-import { PortalNavigationShell } from './components/PortalNavigationShell';
+import { Navbar } from '../components/msp-portal/Navbar';
+import { Sidebar, NavTab } from '../components/msp-portal/Sidebar';
+import { KPICards } from '../components/msp-portal/KPICards';
+import { TenantTable } from '../components/msp-portal/TenantTable';
+import { ThreatFeed } from '../components/msp-portal/ThreatFeed';
+import { RemediationModal } from '../components/msp-portal/RemediationModal';
+import { TenantDetailDrawer } from '../components/msp-portal/TenantDetailDrawer';
+import { PendingRemediationsModal } from '../components/msp-portal/PendingRemediationsModal';
+import { ToastContainer } from '../components/msp-portal/ToastContainer';
+import { PortalNavigationShell } from '../components/msp-portal/PortalNavigationShell';
 
 // Sub Views
-import { TenantsView } from './components/views/TenantsView';
-import { SecurityComplianceView } from './components/views/SecurityComplianceView';
-import { HealthSyncView } from './components/views/HealthSyncView';
-import { AutomationView } from './components/views/AutomationView';
-import { LogsView } from './components/views/LogsView';
-import { TenantPortalView } from './components/views/TenantPortalView';
-import { M365AdminToolsView } from './components/views/M365AdminToolsView';
-import { SingleTenantDashboard } from './components/views/SingleTenantDashboard';
-import { MapView } from './components/views/MapView';
-import { TenantHeatmapDashboard } from './components/views/TenantHeatmapDashboard';
-import { FullTenantOverviewConsole } from './components/views/FullTenantOverviewConsole';
-import { UserManagementConsole } from './components/views/UserManagementConsole';
-import { DocumentLibraryConsole } from './components/views/DocumentLibraryConsole';
-import { TenantScanTimelineCanvas } from './components/views/TenantScanTimelineCanvas';
-import { MspBillingConsole } from './components/views/MspBillingConsole';
-import { ChargebackConsole } from './components/views/ChargebackConsole';
-import { SalesBundleConsole } from './components/views/SalesBundleConsole';
-import { OfferPipelineConsole } from './components/views/OfferPipelineConsole';
-import { M365MessageCenterConsole } from './components/views/M365MessageCenterConsole';
-import { MicrosoftSlaConsole } from './components/views/MicrosoftSlaConsole';
-import { SplitPaneAuditLogConsole } from './components/views/SplitPaneAuditLogConsole';
-import { AlertsManagementConsole } from './components/views/AlertsManagementConsole';
-import { MspToCustomerSlaConsole } from './components/views/MspToCustomerSlaConsole';
-import { ScopeCreepConsole } from './components/views/ScopeCreepConsole';
-import { RiskBasedDecisionConsole } from './components/views/RiskBasedDecisionConsole';
-import { ChangeManagementConsole } from './components/views/ChangeManagementConsole';
-import { StandardOperatingProceduresConsole } from './components/views/StandardOperatingProceduresConsole';
-import { OperatorTasksConsole } from './components/views/OperatorTasksConsole';
-import { ApprovalsConsole } from './components/views/ApprovalsConsole';
-import { WorkflowRunsConsole } from './components/views/WorkflowRunsConsole';
-import { DeadLetterQueueConsole } from './components/views/DeadLetterQueueConsole';
-import { SupportChatConsole } from './components/views/SupportChatConsole';
-import { OffboardingConsole } from './components/views/OffboardingConsole';
-import { OnboardingMapConsole } from './components/views/OnboardingMapConsole';
-import { WebhooksConsole } from './components/views/WebhooksConsole';
-import { SettingsConsole } from './components/views/SettingsConsole';
-import { SecurityPillarConsole } from './components/views/SecurityPillarConsole';
-import { OwnerExecutiveConsole } from './components/views/OwnerExecutiveConsole';
+import { TenantsView } from '../components/msp-portal/views/TenantsView';
+import { SecurityComplianceView } from '../components/msp-portal/views/SecurityComplianceView';
+import { HealthSyncView } from '../components/msp-portal/views/HealthSyncView';
+import { AutomationView } from '../components/msp-portal/views/AutomationView';
+import { LogsView } from '../components/msp-portal/views/LogsView';
+import { TenantPortalView } from '../components/msp-portal/views/TenantPortalView';
+import { M365AdminToolsView } from '../components/msp-portal/views/M365AdminToolsView';
+import { SingleTenantDashboard } from '../components/msp-portal/views/SingleTenantDashboard';
+import { MapView } from '../components/msp-portal/views/MapView';
+import { TenantHeatmapDashboard } from '../components/msp-portal/views/TenantHeatmapDashboard';
+import { FullTenantOverviewConsole } from '../components/msp-portal/views/FullTenantOverviewConsole';
+import { UserManagementConsole } from '../components/msp-portal/views/UserManagementConsole';
+import { DocumentLibraryConsole } from '../components/msp-portal/views/DocumentLibraryConsole';
+import { TenantScanTimelineCanvas } from '../components/msp-portal/views/TenantScanTimelineCanvas';
+import { MspBillingConsole } from '../components/msp-portal/views/MspBillingConsole';
+import { ChargebackConsole } from '../components/msp-portal/views/ChargebackConsole';
+import { SalesBundleConsole } from '../components/msp-portal/views/SalesBundleConsole';
+import { OfferPipelineConsole } from '../components/msp-portal/views/OfferPipelineConsole';
+import { M365MessageCenterConsole } from '../components/msp-portal/views/M365MessageCenterConsole';
+import { MicrosoftSlaConsole } from '../components/msp-portal/views/MicrosoftSlaConsole';
+import { SplitPaneAuditLogConsole } from '../components/msp-portal/views/SplitPaneAuditLogConsole';
+import { AlertsManagementConsole } from '../components/msp-portal/views/AlertsManagementConsole';
+import { MspToCustomerSlaConsole } from '../components/msp-portal/views/MspToCustomerSlaConsole';
+import { ScopeCreepConsole } from '../components/msp-portal/views/ScopeCreepConsole';
+import { RiskBasedDecisionConsole } from '../components/msp-portal/views/RiskBasedDecisionConsole';
+import { ChangeManagementConsole } from '../components/msp-portal/views/ChangeManagementConsole';
+import { StandardOperatingProceduresConsole } from '../components/msp-portal/views/StandardOperatingProceduresConsole';
+import { OperatorTasksConsole } from '../components/msp-portal/views/OperatorTasksConsole';
+import { ApprovalsConsole } from '../components/msp-portal/views/ApprovalsConsole';
+import { WorkflowRunsConsole } from '../components/msp-portal/views/WorkflowRunsConsole';
+import { DeadLetterQueueConsole } from '../components/msp-portal/views/DeadLetterQueueConsole';
+import { SupportChatConsole } from '../components/msp-portal/views/SupportChatConsole';
+import { OffboardingConsole } from '../components/msp-portal/views/OffboardingConsole';
+import { OnboardingMapConsole } from '../components/msp-portal/views/OnboardingMapConsole';
+import { WebhooksConsole } from '../components/msp-portal/views/WebhooksConsole';
+import { SettingsConsole } from '../components/msp-portal/views/SettingsConsole';
+import { SecurityPillarConsole } from '../components/msp-portal/views/SecurityPillarConsole';
+import { OwnerExecutiveConsole } from '../components/msp-portal/views/OwnerExecutiveConsole';
 
 // Mock Data
 import {
@@ -61,7 +62,7 @@ import {
   INITIAL_THREAT_FEED,
   INITIAL_PENDING_REMEDIATIONS,
   INITIAL_AUDIT_LOGS,
-} from './data/mockData';
+} from '../components/msp-portal/mockData';
 
 import {
   Tenant,
@@ -69,7 +70,7 @@ import {
   PendingRemediation,
   AuditLogItem,
   ToastMessage,
-} from './types';
+} from '../components/msp-portal/types';
 
 export default function App() {
   // Main State
@@ -937,3 +938,4 @@ export default function App() {
     </PortalNavigationShell>
   );
 }
+

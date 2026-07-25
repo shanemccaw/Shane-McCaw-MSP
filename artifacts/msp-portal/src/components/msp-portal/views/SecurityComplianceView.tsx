@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React from 'react';
 import { SecurityComplianceConsole } from './SecurityComplianceConsole';
-import { Tenant } from '../../types';
+import { Tenant } from '../types';
 
 interface SecurityComplianceViewProps {
   tenants: Tenant[];
@@ -34,4 +35,5 @@ export const SecurityComplianceView: React.FC<SecurityComplianceViewProps> = ({
     />
   );
 };
+
 

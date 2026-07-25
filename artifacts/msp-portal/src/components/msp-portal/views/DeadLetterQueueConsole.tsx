@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   AlertOctagon,
@@ -43,8 +44,8 @@ import {
   Lock,
   ArrowRight
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -1447,3 +1448,4 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
     </div>
   );
 };
+

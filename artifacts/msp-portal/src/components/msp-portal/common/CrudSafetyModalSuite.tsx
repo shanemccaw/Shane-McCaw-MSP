@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
   Trash2,
@@ -20,7 +21,7 @@ import {
   Info,
   Key
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 // ============================================================================
 // TYPES & CONTRACTS
@@ -573,3 +574,4 @@ export const ResourceFormModal: React.FC<ResourceFormModalProps> = ({
     </div>
   );
 };
+

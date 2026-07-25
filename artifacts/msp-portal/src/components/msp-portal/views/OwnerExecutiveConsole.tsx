@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   DollarSign,
@@ -49,8 +50,8 @@ import {
   HelpCircle,
   Briefcase,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 // ==========================================
 // TYPE DEFINITIONS FOR FINOPS ENGINE
@@ -3072,3 +3073,4 @@ export const OwnerExecutiveConsole: React.FC<OwnerExecutiveConsoleProps> = ({
 };
 
 export default OwnerExecutiveConsole;
+

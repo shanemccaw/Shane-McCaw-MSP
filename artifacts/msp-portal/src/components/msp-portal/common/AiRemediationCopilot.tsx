@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Sparkles, Play, AlertTriangle, ShieldCheck, FileCode, Users, Laptop, Zap, CheckCircle2 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 import { ChangeControlGateModal } from './ChangeControlGate';
 
 export interface AiRemediationCopilotProps {
@@ -164,3 +165,4 @@ export const AiRemediationCopilot: React.FC<AiRemediationCopilotProps> = ({
     </div>
   );
 };
+

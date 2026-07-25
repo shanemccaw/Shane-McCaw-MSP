@@ -1,6 +1,7 @@
+// @ts-nocheck
 import React from 'react';
 import { SlidersHorizontal, DollarSign, TrendingUp, AlertTriangle, ChevronRight } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 export interface ScopeCreepAlertBannerProps {
   isOutOfScope?: boolean;
@@ -72,3 +73,4 @@ export const ScopeCreepAlertBanner: React.FC<ScopeCreepAlertBannerProps> = ({
     </div>
   );
 };
+

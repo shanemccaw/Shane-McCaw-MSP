@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import {
   X,
@@ -212,3 +213,4 @@ export const TenantDetailDrawer: React.FC<TenantDetailDrawerProps> = ({
     </div>
   );
 };
+

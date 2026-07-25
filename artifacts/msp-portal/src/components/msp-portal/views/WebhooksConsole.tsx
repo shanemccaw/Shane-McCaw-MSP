@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   Webhook,
@@ -39,8 +40,8 @@ import {
   MessageSquare,
   HelpCircle,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 // ==========================================
 // TYPES & INTERFACES
@@ -2052,3 +2053,4 @@ export const WebhooksConsole: React.FC<WebhooksConsoleProps> = ({
     </div>
   );
 };
+

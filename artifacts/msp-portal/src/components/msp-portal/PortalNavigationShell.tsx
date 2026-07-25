@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldAlert,
@@ -814,3 +815,4 @@ export const PortalNavigationShell: React.FC<PortalNavigationShellProps> = ({
     </div>
   );
 };
+

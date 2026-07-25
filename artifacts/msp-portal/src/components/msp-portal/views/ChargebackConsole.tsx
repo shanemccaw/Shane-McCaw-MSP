@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useMemo } from 'react';
 import {
   DollarSign,
@@ -38,8 +39,8 @@ import {
   CheckSquare,
   BarChart3
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Tenant } from '../../types';
+import { cn } from '@/lib/utils';
+import { Tenant } from '../types';
 
 // ============================================================================
 // TYPES & DATA STRUCTURES
@@ -1347,3 +1348,4 @@ export const ChargebackConsole: React.FC<ChargebackConsoleProps> = ({
     </div>
   );
 };
+

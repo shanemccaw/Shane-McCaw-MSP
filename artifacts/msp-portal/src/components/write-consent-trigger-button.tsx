@@ -12,7 +12,7 @@ import { useCallback, useState } from "react";
 import { Loader2, Key } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "@/hooks/use-toast";
 
 export function WriteConsentTriggerButton() {
   const { fetchWithAuth } = useAuth();
@@ -64,3 +64,4 @@ export function WriteConsentTriggerButton() {
     </button>
   );
 }
+

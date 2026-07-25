@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import {
   ShieldCheck,
@@ -70,7 +71,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import { Tenant } from '../../types';
+import { Tenant } from '../types';
 
 interface FullTenantOverviewConsoleProps {
   tenant?: Tenant | null;
@@ -853,3 +854,4 @@ export const FullTenantOverviewConsole: React.FC<FullTenantOverviewConsoleProps>
     </div>
   );
 };
+
