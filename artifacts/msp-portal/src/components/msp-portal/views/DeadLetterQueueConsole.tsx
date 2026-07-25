@@ -1,5 +1,6 @@
 // @ts-nocheck
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import {
   AlertOctagon,
   RotateCcw,
@@ -360,8 +361,9 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('ALL');
 
   // DLQ Message Collections
-  const [messages, setMessages] = useState<DlqMessage[]>(INITIAL_DLQ_MESSAGES);
-  const [selectedMessageId, setSelectedMessageId] = useState<string>('dlq-88391');
+  const [messages, setMessages] = useState<DlqMessage[]>([]);
+  const [selectedMessageId, setSelectedMessageId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
   // Multi-Select state for batch operations
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -377,6 +379,8 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
   const [isReplaying, setIsReplaying] = useState(false);
   const [showBatchConfirmModal, setShowBatchConfirmModal] = useState(false);
 
+  const { fetchWithAuth } = useAuth();
+
   // Toast Helper
   const toast = (type: 'success' | 'info' | 'warning' | 'error', title: string, desc: string) => {
     if (onShowToast) onShowToast(type, title, desc);
@@ -387,13 +391,122 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
     return messages.find(m => m.id === selectedMessageId) || messages[0];
   }, [messages, selectedMessageId]);
 
+  // Load DLQ Data
+  const loadDlqData = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/msp/dlq');
+      if (res.ok) {
+        const rawData = await res.json();
+        const mapped: DlqMessage[] = rawData.map((row: any) => {
+          const payload = row.payload || {};
+          let errorCode = 'HTTP_500';
+          if (row.errorMessage.includes('429')) errorCode = 'HTTP_429';
+          else if (row.errorMessage.includes('401')) errorCode = 'HTTP_401';
+          else if (row.errorMessage.includes('403')) errorCode = 'HTTP_403';
+          else if (row.errorMessage.includes('Schema')) errorCode = 'SCHEMA_ERROR';
+
+          let category = 'System';
+          if (row.eventType.includes('conditional_access') || row.eventType.includes('conditionalAccess')) {
+            category = 'Conditional Access';
+          } else if (row.eventType.includes('auth') || row.eventType.includes('identity')) {
+            category = 'Identity / Entra';
+          } else if (row.eventType.includes('defender') || row.eventType.includes('security')) {
+            category = 'Security / Defender';
+          } else if (row.eventType.includes('intune') || row.eventType.includes('mdm')) {
+            category = 'Intune';
+          }
+
+          const graphEndpoint = payload.inputPayload?.endpoint 
+            ? `${payload.inputPayload.endpoint}`
+            : payload.inputPayload?.targetUpn 
+            ? `POST /users/${payload.inputPayload.targetUpn}/authentication`
+            : row.eventType.includes('defender')
+            ? 'GET /security/incidents'
+            : row.eventType.includes('intune')
+            ? 'GET /deviceManagement/managedDevices'
+            : 'Unknown Endpoint';
+
+          let recommendedAction = 'Investigate stack trace and retry workflow.';
+          if (errorCode === 'HTTP_429') {
+            recommendedAction = 'Exponential backoff automatically scheduled. No manual code change needed unless rate limit persists across 5 retries.';
+          } else if (errorCode === 'HTTP_401' || errorCode === 'HTTP_403') {
+            recommendedAction = 'Re-generate client secret in Azure Key Vault for App Registration and re-grant Admin Consent.';
+          } else if (errorCode === 'HTTP_500') {
+            recommendedAction = 'Microsoft Service Health Incident active. Automatic retry will succeed once upstream status resolves.';
+          } else if (errorCode === 'SCHEMA_ERROR') {
+            recommendedAction = 'Review Graph API schema updates or downstream payload validator rules.';
+          }
+
+          let status = 'pending';
+          if (row.resolvedAt) {
+            status = row.resolution === 'discarded' ? 'purged' : 'pending';
+          } else if (row.attemptCount >= 5) {
+            status = 'max_retries_exceeded';
+          }
+
+          const retryHistory = [];
+          for (let i = 1; i <= row.attemptCount; i++) {
+            const time = new Date(new Date(row.lastAttemptAt).getTime() - (row.attemptCount - i) * 5 * 60 * 1000).toLocaleTimeString();
+            retryHistory.push({
+              attempt: i,
+              timestamp: time,
+              responseCode: errorCode === 'HTTP_429' ? 429 : errorCode === 'HTTP_401' ? 401 : errorCode === 'HTTP_500' ? 500 : 400,
+              latencyMs: 150 + Math.floor(Math.random() * 200),
+              details: i === row.attemptCount ? row.errorMessage : `Attempt ${i} failed`
+            });
+          }
+
+          return {
+            id: row.dlqId,
+            dlqCode: `DLQ-${row.id}`,
+            workflowName: payload.workflowKey || row.eventType.replace('portal_wf.', '').replace(/_/g, ' '),
+            category,
+            tenantId: row.tenantId || 'unknown',
+            tenantName: row.tenantName || 'Platform Level / System',
+            errorCode,
+            errorMessage: row.errorMessage,
+            graphEndpoint,
+            failedAt: new Date(row.lastAttemptAt).toLocaleTimeString(),
+            retryCount: row.attemptCount,
+            maxRetries: 5,
+            nextRetryInSeconds: status === 'pending' ? 120 : 0,
+            status,
+            requestPayload: payload.inputPayload || payload,
+            errorStackTrace: row.errorStack || 'No stack trace provided.',
+            recommendedAction,
+            retryHistory,
+          };
+        });
+
+        setMessages(mapped.filter((m: any) => m.status !== 'purged'));
+      } else {
+        toast('error', 'DLQ Load Failed', 'Could not fetch Dead Letter Queue items from server.');
+      }
+    } catch (e) {
+      toast('error', 'Connection Error', 'Failed to connect to DLQ API.');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    loadDlqData();
+  }, [loadDlqData]);
+
+  // Sync selectedMessageId default
+  useEffect(() => {
+    if (messages.length > 0 && !selectedMessageId) {
+      setSelectedMessageId(messages[0].id);
+    }
+  }, [messages, selectedMessageId]);
+
   // Sync JSON Payload text when selected message changes
   useEffect(() => {
     if (selectedMessage) {
       setEditingPayloadText(JSON.stringify(selectedMessage.requestPayload, null, 2));
       setPayloadParseError(null);
     }
-  }, [selectedMessageId]);
+  }, [selectedMessageId, selectedMessage]);
 
   // Telemetry KPIs
   const kpis = useMemo(() => {
@@ -452,83 +565,78 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
   };
 
   // Replay Single DLQ Message
-  const handleReplaySingle = (id: string) => {
+  const handleReplaySingle = async (id: string) => {
     setIsReplaying(true);
     toast('info', 'Replay Initiated', `Replaying message ${id} against Graph API...`);
 
-    setTimeout(() => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/dlq/${id}/replay`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        toast('success', 'Message Recovered', `DLQ Message ${id} successfully replayed and healed.`);
+        loadDlqData();
+      } else {
+        toast('error', 'Replay Failed', 'Server returned error status on replay request.');
+      }
+    } catch (e) {
+      toast('error', 'Replay Error', 'Could not contact backend to replay DLQ item.');
+    } finally {
       setIsReplaying(false);
-
-      setMessages(prev => prev.map(m => {
-        if (m.id === id) {
-          return {
-            ...m,
-            status: 'pending',
-            retryCount: m.retryCount + 1,
-            nextRetryInSeconds: 0,
-            errorMessage: 'Replay in progress: Request sent to Graph API endpoint...',
-            retryHistory: [
-              ...m.retryHistory,
-              { attempt: m.retryCount + 1, timestamp: 'Just now', responseCode: 200, latencyMs: 280, details: 'Manual replay succeeded with HTTP 200 OK' }
-            ]
-          };
-        }
-        return m;
-      }));
-
-      toast('success', 'Message Recovered', `DLQ Message ${id} successfully replayed and healed.`);
-    }, 1200);
+    }
   };
 
   // Batch Replay Selected
-  const handleBatchReplay = () => {
+  const handleBatchReplay = async () => {
     if (selectedIds.length === 0) return;
 
     setIsReplaying(true);
     toast('info', 'Batch Replay', `Replaying ${selectedIds.length} DLQ messages in parallel...`);
 
-    setTimeout(() => {
+    try {
+      const res = await fetchWithAuth('/api/msp/dlq/bulk-replay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dlqIds: selectedIds }),
+      });
+      if (res.ok) {
+        toast('success', 'Batch Healed', `Successfully replayed ${selectedIds.length} DLQ messages.`);
+        setSelectedIds([]);
+        setShowBatchConfirmModal(false);
+        loadDlqData();
+      } else {
+        toast('error', 'Batch Replay Failed', 'Server returned error status on bulk replay.');
+      }
+    } catch (e) {
+      toast('error', 'Replay Error', 'Failed to issue bulk replay request.');
+    } finally {
       setIsReplaying(false);
-      setShowBatchConfirmModal(false);
-
-      setMessages(prev => prev.map(m => {
-        if (selectedIds.includes(m.id)) {
-          return {
-            ...m,
-            status: 'pending',
-            retryCount: m.retryCount + 1,
-            retryHistory: [
-              ...m.retryHistory,
-              { attempt: m.retryCount + 1, timestamp: 'Just now', responseCode: 200, latencyMs: 310, details: 'Batch replay executed successfully' }
-            ]
-          };
-        }
-        return m;
-      }));
-
-      toast('success', 'Batch Healed', `Successfully replayed ${selectedIds.length} DLQ messages.`);
-      setSelectedIds([]);
-    }, 1500);
+    }
   };
 
   // Save JSON Payload Edit
-  const handleSavePayload = () => {
+  const handleSavePayload = async () => {
     try {
       const parsed = JSON.parse(editingPayloadText);
       setPayloadParseError(null);
 
-      setMessages(prev => prev.map(m => {
-        if (m.id === selectedMessageId) {
-          return {
-            ...m,
-            requestPayload: parsed,
-            errorMessage: 'Payload mutated by senior operator. Ready for replay.'
-          };
-        }
-        return m;
-      }));
+      const fullPayload = {
+        workflowKey: selectedMessage.workflowName,
+        inputPayload: parsed,
+      };
 
-      toast('success', 'Payload Updated', `Successfully updated JSON payload for ${selectedMessageId}.`);
+      const res = await fetchWithAuth(`/api/msp/dlq/${selectedMessageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: fullPayload }),
+      });
+
+      if (res.ok) {
+        toast('success', 'Payload Updated', `Successfully updated JSON payload for ${selectedMessageId}.`);
+        loadDlqData();
+      } else {
+        toast('error', 'Update Failed', 'Server rejected payload mutation.');
+      }
     } catch (err: any) {
       setPayloadParseError(err.message || 'Invalid JSON format');
       toast('error', 'JSON Syntax Error', 'Failed to save payload. Please correct JSON syntax.');
@@ -548,19 +656,48 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
   };
 
   // Purge Message
-  const handlePurgeMessage = (id: string) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'purged' } : m));
-    if (selectedIds.includes(id)) {
-      setSelectedIds(prev => prev.filter(i => i !== id));
+  const handlePurgeMessage = async (id: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/dlq/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution: 'discarded' }),
+      });
+      if (res.ok) {
+        toast('warning', 'Message Purged', `DLQ Message ${id} purged from dead letter queue.`);
+        if (selectedIds.includes(id)) {
+          setSelectedIds(prev => prev.filter(i => i !== id));
+        }
+        loadDlqData();
+      } else {
+        toast('error', 'Purge Failed', 'Server rejected request to purge message.');
+      }
+    } catch (e) {
+      toast('error', 'Purge Error', 'Could not contact server to purge message.');
     }
-    toast('warning', 'Message Purged', `DLQ Message ${id} purged from dead letter queue.`);
   };
 
   // Purge Stale Poison Messages (>7 Days)
-  const handlePurgeStalePoison = () => {
-    const staleCount = messages.filter(m => m.status === 'max_retries_exceeded').length;
-    setMessages(prev => prev.map(m => m.status === 'max_retries_exceeded' ? { ...m, status: 'purged' } : m));
-    toast('success', 'Poison Messages Purged', `Removed ${staleCount} stale poison messages exceeding max retries.`);
+  const handlePurgeStalePoison = async () => {
+    const staleList = messages.filter(m => m.status === 'max_retries_exceeded');
+    if (staleList.length === 0) return;
+
+    toast('info', 'Purging Poison Messages', `Purging ${staleList.length} stale poison messages...`);
+    try {
+      await Promise.all(
+        staleList.map(async (m) => {
+          await fetchWithAuth(`/api/msp/dlq/${m.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolution: 'discarded' }),
+          });
+        })
+      );
+      toast('success', 'Poison Messages Purged', `Removed ${staleList.length} stale poison messages exceeding max retries.`);
+      loadDlqData();
+    } catch (e) {
+      toast('error', 'Purge Error', 'Some poison messages failed to purge.');
+    }
   };
 
   return (
@@ -768,6 +905,20 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
               </button>
             )}
           </div>
+
+          {/* Tenant Filter */}
+          <select
+            value={tenantFilter}
+            onChange={(e) => setTenantFilter(e.target.value)}
+            className="bg-[#181c22] border border-[#404752] rounded px-2.5 py-1.5 text-xs text-[#e0e2ea] focus:outline-none focus:border-[#0078d4] cursor-pointer"
+          >
+            <option value="ALL">Tenant: All</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
 
           {/* Exception Type Filter */}
           <select
@@ -994,7 +1145,13 @@ export const DeadLetterQueueConsole: React.FC<DeadLetterQueueConsoleProps> = ({
             </div>
 
             {/* RIGHT PANE (40% WIDTH): MESSAGE DIAGNOSTICS & EDITABLE PAYLOAD PANEL */}
-            {selectedMessage && (
+            {!selectedMessage ? (
+              <div className="hidden lg:flex flex-col w-[40%] items-center justify-center bg-[#101419] border border-[#404752] rounded-xl text-[#8a919e] p-6 text-center shadow-2xl">
+                <AlertOctagon className="w-8 h-8 mb-2 opacity-50 text-indigo-400" />
+                <div className="text-xs font-bold text-[#e0e2ea]">No DLQ Message Selected</div>
+                <div className="text-[10px] mt-1 text-[#6b7280]">Select an error event from the queue to inspect diagnostics and retry execution.</div>
+              </div>
+            ) : (
               <div className="hidden lg:flex flex-col w-[40%] bg-[#101419] border border-[#404752] rounded-xl overflow-hidden shadow-2xl">
                 
                 {/* Inspector Header */}

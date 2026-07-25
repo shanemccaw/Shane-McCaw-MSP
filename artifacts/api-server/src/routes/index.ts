@@ -154,6 +154,7 @@ import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
 import adminAnalyticsAttributionRouter from "./admin-analytics-attribution";
 import mspChangesRouter from "./msp-changes";
 import mspSopsRouter from "./msp-sops";
+import mspDlqRouter from "./msp-dlq";
 
 import pccRouter from "./pcc.js";
 
@@ -289,6 +290,7 @@ router.use(mspReportsRouter);
 router.use(mspAlertsRouter);
 router.use(mspChangesRouter);
 router.use(mspSopsRouter);
+router.use(mspDlqRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);
