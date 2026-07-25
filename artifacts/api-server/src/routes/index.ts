@@ -155,6 +155,7 @@ import adminAnalyticsAttributionRouter from "./admin-analytics-attribution";
 import mspChangesRouter from "./msp-changes";
 import mspSopsRouter from "./msp-sops";
 import mspDlqRouter from "./msp-dlq";
+import mspRbdRouter from "./msp-rbd";
 
 import pccRouter from "./pcc.js";
 
@@ -291,6 +292,7 @@ router.use(mspAlertsRouter);
 router.use(mspChangesRouter);
 router.use(mspSopsRouter);
 router.use(mspDlqRouter);
+router.use(mspRbdRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);

@@ -2876,5 +2876,65 @@ export const insertMspSopRunSchema = createInsertSchema(mspSopRunsTable).omit({ 
 export type MspSopRun = typeof mspSopRunsTable.$inferSelect;
 export type InsertMspSopRun = typeof mspSopRunsTable.$inferInsert;
 
+// ── MSP Risk-Based Decisions & Liability Acceptances ─────────────────────────
+//
+// Records of risk-based decisions (RBD) and liability acceptances (RAM)
+// by tenants, shifting liability for unmitigated security items.
+
+export interface CompensatingControl {
+  type: "technical" | "administrative" | "operational";
+  description: string;
+}
+
+export interface MspAssessor {
+  name: string;
+  upn: string;
+  timestamp: string;
+}
+
+export interface ClientApprover {
+  name: string;
+  title: string;
+  email: string;
+  signedAt: string | null;
+  ipAddress: string | null;
+  signatureHash: string | null;
+}
+
+export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  rbdId: text("rbd_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  primaryDomain: text("primary_domain").notNull(),
+  title: text("title").notNull(),
+  controlViolated: text("control_violated").notNull(),
+  framework: text("framework").notNull(),
+  rawRiskLevel: text("raw_risk_level").notNull(),
+  residualRiskLevel: text("residual_risk_level").notNull(),
+  rawRiskScore: integer("raw_risk_score").notNull(),
+  residualRiskScore: integer("residual_risk_score").notNull(),
+  liabilityValueUsd: integer("liability_value_usd").notNull(),
+  hazardDescription: text("hazard_description").notNull(),
+  graphEndpoint: text("graph_endpoint").notNull(),
+  compensatingControls: jsonb("compensating_controls").$type<CompensatingControl[]>().notNull().default([]),
+  mspAssessor: jsonb("msp_assessor").$type<MspAssessor>().notNull(),
+  clientApprover: jsonb("client_approver").$type<ClientApprover>().notNull(),
+  expirationDate: text("expiration_date").notNull(),
+  status: text("status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_risk_decisions_msp_id_idx").on(t.mspId),
+  index("msp_risk_decisions_tenant_id_idx").on(t.tenantId),
+  unique("msp_risk_decisions_msp_id_rbd_id_uidx").on(t.mspId, t.rbdId),
+]);
+
+export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspRiskDecision = typeof mspRiskDecisionsTable.$inferSelect;
+export type InsertMspRiskDecision = typeof mspRiskDecisionsTable.$inferInsert;
+
+
 
 

@@ -1,5 +1,6 @@
 // @ts-nocheck
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import {
   Scale,
   ShieldAlert,
@@ -371,9 +372,61 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
   onExecuteWorkflow,
 }) => {
   // State
-  const [rbdList, setRbdList] = useState<RiskBasedDecision[]>(INITIAL_RBDS);
-  const [selectedRbdId, setSelectedRbdId] = useState<string>('RBD-2026-089');
+  const [rbdList, setRbdList] = useState<RiskBasedDecision[]>([]);
+  const [selectedRbdId, setSelectedRbdId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'matrix' | 'pending' | 'expiration'>('matrix');
+  const [loading, setLoading] = useState(true);
+
+  const { fetchWithAuth } = useAuth();
+
+  const loadRbdData = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/msp/rbd');
+      if (res.ok) {
+        const rawData = await res.json();
+        const mapped = rawData.map((row: any) => ({
+          id: row.rbdId,
+          tenantId: row.tenantId,
+          tenantName: row.tenantName,
+          primaryDomain: row.primaryDomain,
+          title: row.title,
+          controlViolated: row.controlViolated,
+          framework: row.framework,
+          rawRiskLevel: row.rawRiskLevel,
+          residualRiskLevel: row.residualRiskLevel,
+          rawRiskScore: row.rawRiskScore,
+          residualRiskScore: row.residualRiskScore,
+          liabilityValueUsd: row.liabilityValueUsd,
+          hazardDescription: row.hazardDescription,
+          graphEndpoint: row.graphEndpoint,
+          compensatingControls: row.compensatingControls || [],
+          mspAssessor: row.mspAssessor,
+          clientApprover: row.clientApprover,
+          createdAt: row.createdAt ? new Date(row.createdAt).toISOString().substring(0, 10) : new Date().toISOString().substring(0, 10),
+          expirationDate: row.expirationDate,
+          status: row.status,
+        }));
+        setRbdList(mapped);
+      } else {
+        onShowToast?.('error', 'Load Failed', 'Could not retrieve Risk-Based Decisions from server.');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Connection Error', 'Failed to connect to RBD API.');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, onShowToast]);
+
+  useEffect(() => {
+    loadRbdData();
+  }, [loadRbdData]);
+
+  // Sync default selection
+  useEffect(() => {
+    if (rbdList.length > 0 && !selectedRbdId) {
+      setSelectedRbdId(rbdList[0].id);
+    }
+  }, [rbdList, selectedRbdId]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -488,15 +541,15 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
     setWizardControls((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCreateRbd = () => {
+  const handleCreateRbd = async () => {
     const tenantObj = tenants.find((t) => t.id === newRbdTenantId);
     const tenantName = tenantObj ? tenantObj.name : 'Contoso Corporation';
     const primaryDomain = tenantObj ? tenantObj.domain : 'contoso.onmicrosoft.com';
 
     const newId = `RBD-2026-${Math.floor(100 + Math.random() * 900)}`;
 
-    const createdRbd: RiskBasedDecision = {
-      id: newId,
+    const payload = {
+      rbdId: newId,
       tenantId: newRbdTenantId,
       tenantName,
       primaryDomain,
@@ -511,39 +564,38 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
       hazardDescription: newRbdHazard || 'Identified policy deviation requiring formal executive risk authorization.',
       graphEndpoint: 'GET /v1.0/identity/conditionalAccess/policies/custom-exemption',
       compensatingControls: wizardControls,
-      mspAssessor: {
-        name: 'Alex Vance',
-        upn: 'alex.vance@mspplatform.com',
-        timestamp: '2026-07-23 22:55 UTC',
-      },
       clientApprover: {
         name: approverName || 'Client Risk Officer',
         title: approverTitle || 'CIO',
         email: approverEmail || 'exec@clientdomain.com',
-        signedAt: null,
-        ipAddress: null,
-        signatureHash: null,
       },
-      createdAt: '2026-07-23',
-      expirationDate: '2027-07-23',
+      expirationDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().substring(0, 10),
       status: 'pending_signature',
     };
 
-    setRbdList((prev) => [createdRbd, ...prev]);
-    setSelectedRbdId(newId);
-    setIsWizardOpen(false);
-    setWizardStep(1);
+    try {
+      const res = await fetchWithAuth('/api/msp/rbd', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    onExecuteWorkflow?.('dispatch-rbd-digital-signature', {
-      rbdId: newId,
-      clientEmail: createdRbd.clientApprover.email,
-    });
-
-    onShowToast?.(
-      'success',
-      'Risk Acceptance Document Generated',
-      `Sent digital signature link for ${newId} to ${createdRbd.clientApprover.email}`
-    );
+      if (res.ok) {
+        onShowToast?.(
+          'success',
+          'Risk Acceptance Document Generated',
+          `Sent digital signature link for ${newId} to ${payload.clientApprover.email}`
+        );
+        setIsWizardOpen(false);
+        setWizardStep(1);
+        loadRbdData();
+        setSelectedRbdId(newId);
+      } else {
+        onShowToast?.('error', 'Creation Failed', 'Server rejected risk acceptance request.');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'API Error', 'Failed to publish new risk acceptance.');
+    }
   };
 
   const handleResendSignature = (rbd: RiskBasedDecision) => {
@@ -559,46 +611,59 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
     );
   };
 
-  const handleRevokeRbd = (rbd: RiskBasedDecision) => {
-    setRbdList((prev) =>
-      prev.map((r) => (r.id === rbd.id ? { ...r, status: 'revoked' } : r))
-    );
-
-    onExecuteWorkflow?.('revoke-risk-acceptance', {
-      rbdId: rbd.id,
-      tenantId: rbd.tenantId,
-    });
-
-    onShowToast?.(
-      'warning',
-      'Risk Acceptance Revoked',
-      `Revoked ${rbd.id}. M365 baseline enforcement triggered for ${rbd.tenantName}.`
-    );
+  const handleRevokeRbd = async (rbd: RiskBasedDecision) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/rbd/${rbd.id}/revoke`, {
+        method: 'PATCH',
+      });
+      if (res.ok) {
+        onShowToast?.(
+          'warning',
+          'Risk Acceptance Revoked',
+          `Revoked ${rbd.id}. M365 baseline enforcement triggered for ${rbd.tenantName}.`
+        );
+        onExecuteWorkflow?.('revoke-risk-acceptance', {
+          rbdId: rbd.id,
+          tenantId: rbd.tenantId,
+        });
+        loadRbdData();
+      } else {
+        onShowToast?.('error', 'Revocation Failed', 'Server rejected revocation request.');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'API Error', 'Failed to contact backend for revocation.');
+    }
   };
 
-  const handleSimulateClientSignOff = (rbd: RiskBasedDecision) => {
-    setRbdList((prev) =>
-      prev.map((r) =>
-        r.id === rbd.id
-          ? {
-              ...r,
-              status: 'active',
-              clientApprover: {
-                ...r.clientApprover,
-                signedAt: '2026-07-23 23:00 UTC',
-                ipAddress: '203.0.113.199',
-                signatureHash: `SHA256:${Math.random().toString(16).substring(2, 12)}...`,
-              },
-            }
-          : r
-      )
-    );
+  const handleSimulateClientSignOff = async (rbd: RiskBasedDecision) => {
+    const signaturePayload = {
+      name: rbd.clientApprover.name,
+      title: rbd.clientApprover.title,
+      email: rbd.clientApprover.email,
+      ipAddress: '203.0.113.199',
+      signatureHash: `SHA256:${Math.random().toString(16).substring(2, 12)}${Math.random().toString(16).substring(2, 12)}`,
+    };
 
-    onShowToast?.(
-      'success',
-      'Executive Digital Signature Verified',
-      `Client Executive ${rbd.clientApprover.name} signed ${rbd.id}. Risk acceptance active.`
-    );
+    try {
+      const res = await fetchWithAuth(`/api/msp/rbd/${rbd.id}/sign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(signaturePayload),
+      });
+
+      if (res.ok) {
+        onShowToast?.(
+          'success',
+          'Executive Digital Signature Verified',
+          `Client Executive ${rbd.clientApprover.name} signed ${rbd.id}. Risk acceptance active.`
+        );
+        loadRbdData();
+      } else {
+        onShowToast?.('error', 'Signature Failed', 'Server rejected signature verification.');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'API Error', 'Failed to contact signature API.');
+    }
   };
 
   return (
@@ -1022,7 +1087,14 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
             </div>
 
             {/* RIGHT PANE (40% Width): Complete RBD Document Inspector */}
-            <div className="w-full lg:w-[40%] h-full overflow-y-auto bg-[#101419] p-4 lg:p-5 space-y-5">
+            {!selectedRbd ? (
+              <div className="hidden lg:flex flex-col w-[40%] items-center justify-center bg-[#101419] border border-[#404752] rounded-xl text-[#8a919e] p-6 text-center shadow-2xl">
+                <ShieldAlert className="w-8 h-8 mb-2 opacity-50 text-amber-500" />
+                <div className="text-xs font-bold text-[#e0e2ea]">No Risk Decision Selected</div>
+                <div className="text-[10px] mt-1 text-[#6b7280]">Select a risk-based decision record from the table to view the legal memorandum and digital signatures.</div>
+              </div>
+            ) : (
+              <div className="w-full lg:w-[40%] h-full overflow-y-auto bg-[#101419] p-4 lg:p-5 space-y-5">
               
               {/* Document Header Controls */}
               <div className="bg-[#181c22] border border-[#404752] p-4 rounded-lg space-y-3 shadow-md">
@@ -1254,6 +1326,7 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
               </div>
 
             </div>
+            )}
 
           </div>
         )}
