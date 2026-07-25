@@ -153,6 +153,7 @@ import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay"
 import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
 import adminAnalyticsAttributionRouter from "./admin-analytics-attribution";
 import mspChangesRouter from "./msp-changes";
+import mspSopsRouter from "./msp-sops";
 
 import pccRouter from "./pcc.js";
 
@@ -287,6 +288,7 @@ router.use(adminConfigPackRunRouter);
 router.use(mspReportsRouter);
 router.use(mspAlertsRouter);
 router.use(mspChangesRouter);
+router.use(mspSopsRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);

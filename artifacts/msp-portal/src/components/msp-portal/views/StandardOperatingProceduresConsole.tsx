@@ -1,5 +1,6 @@
 // @ts-nocheck
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import {
   BookOpen,
   Play,
@@ -518,12 +519,15 @@ export const StandardOperatingProceduresConsole: React.FC<
   onExecuteWorkflow,
 }) => {
   // State
-  const [sops, setSops] = useState<StandardOperatingProcedure[]>(INITIAL_SOPS);
-  const [activeRuns, setActiveRuns] = useState<SopExecutionRun[]>(INITIAL_ACTIVE_RUNS);
-  const [auditLogs, setAuditLogs] = useState<SopExecutionRun[]>(INITIAL_AUDIT_LOGS);
+  const [sops, setSops] = useState<StandardOperatingProcedure[]>([]);
+  const [activeRuns, setActiveRuns] = useState<SopExecutionRun[]>([]);
+  const [auditLogs, setAuditLogs] = useState<SopExecutionRun[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [selectedSopId, setSelectedSopId] = useState<string>('SOP-SEC-004');
   const [activeTab, setActiveTab] = useState<'library' | 'queue' | 'audit'>('library');
+
+  const { fetchWithAuth } = useAuth();
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -576,9 +580,53 @@ export const StandardOperatingProceduresConsole: React.FC<
     return sops.find((s) => s.id === selectedSopId) || sops[0];
   }, [sops, selectedSopId]);
 
+  // Load SOPs & Runs
+  const loadSopsData = useCallback(async () => {
+    try {
+      const [sopsRes, runsRes] = await Promise.all([
+        fetchWithAuth('/api/msp/sops'),
+        fetchWithAuth('/api/msp/sop-runs'),
+      ]);
+
+      if (sopsRes.ok && runsRes.ok) {
+        const sopsData = await sopsRes.json();
+        const runsData = await runsRes.json();
+
+        setSops(sopsData);
+        setActiveRuns(runsData.filter((r: any) => r.status === 'In Progress' || r.status === 'Blocked'));
+        setAuditLogs(runsData.filter((r: any) => r.status === 'Completed' || r.status === 'Failed'));
+      } else {
+        onShowToast?.('error', 'Failed to load SOP data', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'Connection Error', 'Could not fetch SOP data from backend API');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, onShowToast]);
+
+  useEffect(() => {
+    loadSopsData();
+  }, [loadSopsData]);
+
+  // Sync runnerTenantId default
+  useEffect(() => {
+    if (tenants && tenants.length > 0 && runnerTenantId === 'contoso-01') {
+      setRunnerTenantId(tenants[0].id);
+    }
+  }, [tenants, runnerTenantId]);
+
   // Metrics
   const metrics = useMemo(() => {
     const totalSops = sops.length;
+    if (totalSops === 0) {
+      return {
+        totalSops: 0,
+        autoRatio: 0,
+        avgMins: 0,
+        monthlyExecutions: 142,
+      };
+    }
     const automatedCount = sops.filter((s) => s.automationType === 'automated' || s.automationType === 'hybrid').length;
     const autoRatio = Math.round((automatedCount / totalSops) * 100);
     const avgMins = Math.round(
@@ -656,62 +704,89 @@ export const StandardOperatingProceduresConsole: React.FC<
     }
   };
 
-  const handleExecuteAllSteps = () => {
+  const handleExecuteAllSteps = async () => {
+    if (!selectedSop) return;
     setIsExecutingAll(true);
-    setTerminalLogs((prev) => [
-      ...prev,
-      `[${new Date().toLocaleTimeString()}] INIT FULL AUTOMATED PIPELINE for ${selectedSop.code} on Tenant: ${runnerTenantId}...`,
-    ]);
+    const runId = `RUN-2026-${Math.floor(8820 + Math.random() * 500)}`;
+    const tenantName = tenants.find((t) => t.id === runnerTenantId)?.name || 'Contoso Corp';
+    const startedAt = new Date().toISOString().replace('T', ' ').substring(0, 16) + ' UTC';
+
+    const initialLog = `[${new Date().toLocaleTimeString()}] INIT FULL AUTOMATED PIPELINE for ${selectedSop.code} on Tenant: ${runnerTenantId}...`;
+    setTerminalLogs([initialLog]);
+
+    const initialRunPayload = {
+      runId,
+      sopId: selectedSop.id,
+      sopTitle: selectedSop.title,
+      tenantId: runnerTenantId,
+      tenantName,
+      targetEntity: runnerTargetEntity,
+      operator: 'alex.vance@mspplatform.com',
+      startedAt,
+      status: 'In Progress',
+      currentStepIndex: 0,
+      totalSteps: selectedSop.steps.length,
+      passedStepsCount: 0,
+      psaTicketId: 'HaloPSA #TK-99304',
+      logs: [initialLog],
+    };
+
+    try {
+      await fetchWithAuth('/api/msp/sop-runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(initialRunPayload),
+      });
+      loadSopsData();
+    } catch (e) {
+      // fail-safe logging
+    }
 
     let delay = 0;
+    const currentLogs = [initialLog];
     selectedSop.steps.forEach((step) => {
       setTimeout(() => {
         setCurrentStepStatuses((prev) => ({ ...prev, [step.stepNumber]: 'running' }));
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] Step ${step.stepNumber} Running: ${step.title}...`,
-        ]);
+        const runLog = `[${new Date().toLocaleTimeString()}] Step ${step.stepNumber} Running: ${step.title}...`;
+        setTerminalLogs((prev) => [...prev, runLog]);
+        currentLogs.push(runLog);
 
         setTimeout(() => {
           setCurrentStepStatuses((prev) => ({ ...prev, [step.stepNumber]: 'success' }));
           setManualCheckboxes((prev) => ({ ...prev, [step.stepNumber]: true }));
-          setTerminalLogs((prev) => [
-            ...prev,
-            `[${new Date().toLocaleTimeString()}] Step ${step.stepNumber} SUCCESS 🟢 (${step.type.toUpperCase()})`,
-          ]);
+          const successLog = `[${new Date().toLocaleTimeString()}] Step ${step.stepNumber} SUCCESS 🟢 (${step.type.toUpperCase()})`;
+          setTerminalLogs((prev) => [...prev, successLog]);
+          currentLogs.push(successLog);
         }, 600);
       }, delay);
 
       delay += 1200;
     });
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsExecutingAll(false);
-      setTerminalLogs((prev) => [
-        ...prev,
-        `[${new Date().toLocaleTimeString()}] FULL RUNBOOK COMPLETED 🟢 All ${selectedSop.steps.length} steps executed successfully.`,
-      ]);
+      const finalLog = `[${new Date().toLocaleTimeString()}] FULL RUNBOOK COMPLETED 🟢 All ${selectedSop.steps.length} steps executed successfully.`;
+      setTerminalLogs((prev) => [...prev, finalLog]);
+      currentLogs.push(finalLog);
 
-      // Add to audit logs
-      const newRun: SopExecutionRun = {
-        runId: `RUN-2026-${Math.floor(8820 + Math.random() * 500)}`,
-        sopId: selectedSop.id,
-        sopTitle: selectedSop.title,
-        tenantId: runnerTenantId,
-        tenantName: tenants.find((t) => t.id === runnerTenantId)?.name || 'Contoso Corp',
-        targetEntity: runnerTargetEntity,
-        operator: 'alex.vance@mspplatform.com',
-        startedAt: '2026-07-23 23:05 UTC',
-        completedAt: '2026-07-23 23:06 UTC',
-        status: 'Completed',
-        currentStepIndex: selectedSop.steps.length,
-        totalSteps: selectedSop.steps.length,
-        passedStepsCount: selectedSop.steps.length,
-        psaTicketId: 'HaloPSA #TK-99304',
-        logs: terminalLogs,
-      };
+      const completedAt = new Date().toISOString().replace('T', ' ').substring(0, 16) + ' UTC';
 
-      setAuditLogs((prev) => [newRun, ...prev]);
+      try {
+        await fetchWithAuth(`/api/msp/sop-runs/${runId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'Completed',
+            currentStepIndex: selectedSop.steps.length,
+            passedStepsCount: selectedSop.steps.length,
+            completedAt,
+            logs: currentLogs,
+          }),
+        });
+        loadSopsData();
+      } catch (e) {
+        // fail-safe
+      }
 
       onShowToast?.(
         'success',
@@ -721,11 +796,11 @@ export const StandardOperatingProceduresConsole: React.FC<
     }, delay + 800);
   };
 
-  const handleCreateSop = () => {
+  const handleCreateSop = async () => {
     const newId = `SOP-CUSTOM-${Math.floor(100 + Math.random() * 900)}`;
 
-    const createdSop: StandardOperatingProcedure = {
-      id: newId,
+    const createdSop = {
+      sopId: newId,
       code: newSopCode || 'SOP-NEW-01',
       title: newSopTitle || 'Custom Standard Operating Procedure',
       description: newSopDescription || 'New automated MSP runbook procedure.',
@@ -736,26 +811,37 @@ export const StandardOperatingProceduresConsole: React.FC<
       complianceTags: newSopCompliance.split(',').map((s) => s.trim()),
       workloadTags: ['Entra ID', 'Exchange'],
       versionStatus: 'Published / Active',
-      lastUpdatedBy: 'Arch. Shane McCaw',
-      lastUpdatedAt: '2026-07-23',
       steps: newSopSteps,
     };
 
-    setSops((prev) => [createdSop, ...prev]);
-    setSelectedSopId(newId);
-    setIsWizardOpen(false);
-    setWizardStep(1);
+    try {
+      const res = await fetchWithAuth('/api/msp/sops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createdSop),
+      });
+
+      if (res.ok) {
+        onShowToast?.(
+          'success',
+          'New SOP Published to Library',
+          `Published ${newSopCode} (${newSopTitle}) into global runbook index.`
+        );
+        setIsWizardOpen(false);
+        setWizardStep(1);
+        loadSopsData();
+        setSelectedSopId(newId);
+      } else {
+        onShowToast?.('error', 'SOP creation failed', 'Server returned error status');
+      }
+    } catch (e) {
+      onShowToast?.('error', 'SOP creation error', 'Could not create custom SOP template');
+    }
 
     onExecuteWorkflow?.('publish-new-sop', {
       sopId: newId,
       code: newSopCode,
     });
-
-    onShowToast?.(
-      'success',
-      'New SOP Published to Library',
-      `Published ${newSopCode} (${newSopTitle}) into global runbook index.`
-    );
   };
 
   return (
@@ -1035,7 +1121,7 @@ export const StandardOperatingProceduresConsole: React.FC<
                     </div>
                   ) : (
                     filteredSops.map((sop) => {
-                      const isSelected = sop.id === selectedSop.id;
+                      const isSelected = selectedSop && sop.id === selectedSop.id;
 
                       return (
                         <div
@@ -1117,9 +1203,16 @@ export const StandardOperatingProceduresConsole: React.FC<
 
             {/* RIGHT PANE (50% Width): Interactive Step-by-Step SOP Execution Console */}
             <div className="w-full lg:w-[50%] h-full overflow-y-auto bg-[#101419] p-4 lg:p-5 space-y-4">
-              
-              {/* Runner Header Controls */}
-              <div className="bg-[#181c22] border border-[#404752] p-4 rounded-lg space-y-3 shadow-md">
+              {!selectedSop ? (
+                <div className="flex flex-col items-center justify-center h-full border border-dashed border-[#404752] rounded-lg text-[#8a919e] p-6 text-center">
+                  <BookOpen className="w-8 h-8 mb-2 opacity-50 text-indigo-400" />
+                  <div className="text-xs font-bold text-[#e0e2ea]">No SOP Selected</div>
+                  <div className="text-[10px] mt-1 text-[#6b7280]">Select a standard operating procedure from the library to inspect and execute it.</div>
+                </div>
+              ) : (
+                <>
+                  {/* Runner Header Controls */}
+                  <div className="bg-[#181c22] border border-[#404752] p-4 rounded-lg space-y-3 shadow-md">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
@@ -1154,11 +1247,11 @@ export const StandardOperatingProceduresConsole: React.FC<
                       onChange={(e) => setRunnerTenantId(e.target.value)}
                       className="w-full bg-[#101419] border border-[#404752] text-[#e0e2ea] text-xs rounded px-2.5 py-1.5 outline-none focus:border-indigo-500 cursor-pointer"
                     >
-                      <option value="contoso-01">Contoso Corporation</option>
-                      <option value="fabrikam-02">Fabrikam Inc</option>
-                      <option value="woodgrove-04">Woodgrove Bank</option>
-                      <option value="northwind-03">Northwind Traders</option>
-                      <option value="adventure-05">AdventureWorks</option>
+                      {tenants.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -1291,6 +1384,8 @@ export const StandardOperatingProceduresConsole: React.FC<
                   ))}
                 </div>
               </div>
+              </>
+              )}
 
             </div>
 

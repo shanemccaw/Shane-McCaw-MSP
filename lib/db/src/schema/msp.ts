@@ -19,6 +19,7 @@ import {
   uuid,
   uniqueIndex,
   index,
+  unique,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -2806,5 +2807,74 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
 export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequestsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type MspChangeRequest = typeof mspChangeRequestsTable.$inferSelect;
 export type InsertMspChangeRequest = typeof mspChangeRequestsTable.$inferInsert;
+
+// ── MSP SOPs (Standard Operating Procedures) ─────────────────────────────────
+//
+// ITIL v4 Incident Response and Drift Remediation templates representing standard
+// operating procedures for M365 environments.
+
+export const mspSopsTable = pgTable("msp_sops", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  sopId: text("sop_id").notNull(),
+  code: text("code").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  version: text("version").notNull(),
+  automationType: text("automation_type").notNull(),
+  estimatedMinutes: integer("estimated_minutes").notNull().default(0),
+  complianceTags: jsonb("compliance_tags").notNull().default([]),
+  workloadTags: jsonb("workload_tags").notNull().default([]),
+  steps: jsonb("steps").notNull().default([]),
+  lastUpdatedBy: text("last_updated_by").notNull(),
+  lastUpdatedAt: text("last_updated_at").notNull(),
+  versionStatus: text("version_status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sops_msp_id_idx").on(t.mspId),
+  unique("msp_sops_msp_id_sop_id_uidx").on(t.mspId, t.sopId),
+]);
+
+export const insertMspSopSchema = createInsertSchema(mspSopsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspSop = typeof mspSopsTable.$inferSelect;
+export type InsertMspSop = typeof mspSopsTable.$inferInsert;
+
+// ── MSP SOP Execution Runs ──────────────────────────────────────────────────
+//
+// Records of execution runs and state tracking (step index, logs, status) for
+// a given SOP on a customer tenant.
+
+export const mspSopRunsTable = pgTable("msp_sop_runs", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  runId: text("run_id").notNull(),
+  sopId: text("sop_id").notNull(),
+  sopTitle: text("sop_title").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  targetEntity: text("target_entity").notNull(),
+  operator: text("operator").notNull(),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+  status: text("status").notNull(),
+  currentStepIndex: integer("current_step_index").notNull().default(0),
+  totalSteps: integer("total_steps").notNull().default(0),
+  passedStepsCount: integer("passed_steps_count").notNull().default(0),
+  psaTicketId: text("psa_ticket_id").notNull(),
+  logs: jsonb("logs").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sop_runs_msp_id_idx").on(t.mspId),
+  index("msp_sop_runs_tenant_id_idx").on(t.tenantId),
+  unique("msp_sop_runs_msp_id_run_id_uidx").on(t.mspId, t.runId),
+]);
+
+export const insertMspSopRunSchema = createInsertSchema(mspSopRunsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspSopRun = typeof mspSopRunsTable.$inferSelect;
+export type InsertMspSopRun = typeof mspSopRunsTable.$inferInsert;
+
 
 
