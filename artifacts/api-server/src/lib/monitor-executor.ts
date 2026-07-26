@@ -1023,10 +1023,16 @@ export async function executeMonitorCheck(opts: {
       return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
     }
 
+    let finalEndpoint = check.endpoint;
+    if (check.filterParams) {
+      const sep = finalEndpoint.includes("?") ? "&" : "?";
+      finalEndpoint += `${sep}$filter=${encodeURIComponent(check.filterParams)}`;
+    }
+
     // 1. Paginated Graph API fetch
     const { items, pageCount, rawResponse } = await graphFetchPaginated(
       tenantId,
-      check.endpoint,
+      finalEndpoint,
       check.method ?? "GET",
       check.requestBody as unknown,
     );

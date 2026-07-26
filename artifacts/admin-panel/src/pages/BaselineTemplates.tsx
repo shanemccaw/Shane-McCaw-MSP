@@ -595,6 +595,8 @@ function SortableTemplateLink({ link, allLinks, onToggleDepends, onRemove }: Sor
   );
 }
 
+import { ConfigPackWizardDialog } from "./ConfigPackWizardDialog";
+
 function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const { toast } = useToast();
   const [packs, setPacks] = useState<ConfigPack[]>([]);
@@ -602,6 +604,7 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
+  const [showWizardDialog, setShowWizardDialog] = useState(false);
   const [editingPack, setEditingPack] = useState<Partial<ConfigPack> | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedPackKey, setSelectedPackKey] = useState<string | null>(null);
@@ -754,8 +757,18 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
           <h2 className="text-xl font-semibold text-white">Config Packs</h2>
           <p className="text-sm text-gray-400 mt-1">Ordered groups of Baseline Action Templates, with per-pack dependency overrides</p>
         </div>
-        <Button onClick={openCreate} className="bg-primary hover:bg-[#006cbf] text-white">+ New Pack</Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setShowWizardDialog(true)} variant="outline" className="border-primary text-primary hover:bg-primary/10">+ Create Pipeline Wizard</Button>
+          <Button onClick={openCreate} className="bg-primary hover:bg-[#006cbf] text-white">+ New Pack</Button>
+        </div>
       </div>
+
+      <ConfigPackWizardDialog 
+        open={showWizardDialog} 
+        onOpenChange={setShowWizardDialog} 
+        fetchWithAuth={fetchWithAuth} 
+        onComplete={loadPacks} 
+      />
 
       <Input placeholder="Search packs…" value={search} onChange={e => setSearch(e.target.value)}
         className="max-w-sm bg-card border-border text-white" />

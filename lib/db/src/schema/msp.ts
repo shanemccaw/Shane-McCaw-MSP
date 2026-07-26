@@ -1453,6 +1453,7 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   method: text("method").notNull().default("GET"),
   requestBody: jsonb("request_body").$type<Record<string, unknown>>(),
   selectParams: text("select_params"),
+  filterParams: text("filter_params"),
   properties: jsonb("properties").$type<string[]>().notNull().default([]),
   mapping: jsonb("mapping").$type<Array<{ sourceField: string; targetField: string; transform?: string }>>().notNull().default([]),
   severityRules: jsonb("severity_rules").$type<Array<{ expression: string; severity: string; label?: string }>>().notNull().default([]),
@@ -2508,12 +2509,15 @@ export type InsertConfigPack = typeof configPacksTable.$inferInsert;
 export const configPackTemplatesTable = pgTable("config_pack_templates", {
   id: serial("id").primaryKey(),
   packId: integer("pack_id").notNull().references(() => configPacksTable.id, { onDelete: "cascade" }),
-  templateId: text("template_id").notNull().references(() => baselineActionTemplatesTable.templateId),
+  templateId: text("template_id").references(() => baselineActionTemplatesTable.templateId),
+  checkKey: text("check_key").references(() => monitorChecksTable.key),
+  parameterMapping: jsonb("parameter_mapping").$type<Record<string, string>>(),
   sortOrder: integer("sort_order").notNull(),
   dependsOnOverride: jsonb("depends_on_override").$type<string[]>(),
 }, (t) => [
   index("config_pack_templates_pack_id_idx").on(t.packId),
   index("config_pack_templates_template_id_idx").on(t.templateId),
+  index("config_pack_templates_check_key_idx").on(t.checkKey),
 ]);
 
 export const insertConfigPackTemplateSchema = createInsertSchema(configPackTemplatesTable).omit({ id: true });

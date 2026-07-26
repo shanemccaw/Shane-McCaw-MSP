@@ -8539,6 +8539,70 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Execute Monitor Check ───────────────────────────────────────────
+      case "execute_monitor_check": {
+        if (dryRun) {
+          output = { dryRun: true, skipped: true, reason: "execute_monitor_check does not support dry-run execution" };
+          break;
+        }
+
+        const emcCheckKey = interp(node.data.checkKey as string | undefined, payload);
+        if (!emcCheckKey) {
+          nodeError = true;
+          output = { error: "execute_monitor_check requires checkKey" };
+          break;
+        }
+
+        const emcCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
+        const emcCustomerId = emcCustomerIdRaw ? parseInt(emcCustomerIdRaw, 10) : NaN;
+        if (isNaN(emcCustomerId)) {
+          nodeError = true;
+          output = { error: "execute_monitor_check requires a valid customerId" };
+          break;
+        }
+
+        const [emcCustomerRow] = await db.select({ tenantId: mspCustomersTable.tenantId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, emcCustomerId)).limit(1);
+        if (!emcCustomerRow?.tenantId) {
+          nodeError = true;
+          output = { error: `execute_monitor_check: no tenant found for customerId ${emcCustomerId}` };
+          break;
+        }
+
+        try {
+          const { executeMonitorCheck } = await import("./monitor-executor");
+          const { monitorChecksTable } = await import("@workspace/db");
+          
+          const [checkRow] = await db.select().from(monitorChecksTable).where(eq(monitorChecksTable.key, emcCheckKey)).limit(1);
+          if (!checkRow) {
+            nodeError = true;
+            output = { error: `execute_monitor_check: check not found: ${emcCheckKey}` };
+            break;
+          }
+
+          const emcResult = await executeMonitorCheck({
+            check: checkRow,
+            tenantId: emcCustomerRow.tenantId,
+            triggerId: `wf_${runId}_${node.id}`,
+            skipIdempotency: true,
+          });
+
+          output = { 
+            success: emcResult.status === "ok",
+            status: emcResult.status,
+            itemCount: emcResult.itemCount,
+            extractedProperties: emcResult.extractedProperties 
+          };
+          
+          log.info({ runId, emcCheckKey, tenantId: emcCustomerRow.tenantId, status: emcResult.status }, "wf-executor: execute_monitor_check completed");
+        } catch (emcErr) {
+          nodeError = true;
+          const errMsg = emcErr instanceof Error ? emcErr.message : String(emcErr);
+          output = { error: errMsg, success: false };
+          log.error({ runId, emcErr, emcCheckKey }, "wf-executor: execute_monitor_check failed");
+        }
+        break;
+      }
+
       // ── Execute Baseline Template ─────────────────────────────────────────
       case "execute_baseline_template": {
         if (dryRun) {

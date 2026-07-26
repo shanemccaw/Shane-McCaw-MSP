@@ -54,8 +54,10 @@ export const MID_RUN_PROVIDED_VARIABLES = [
 ] as const;
 
 export interface PackTemplateResolved {
-  templateId: string;
-  label: string;
+  templateId: string | null;
+  checkKey: string | null;
+  parameterMapping: Record<string, string> | null;
+  label: string | null;
   sortOrder: number;
   /** depends_on_override (when non-null) REPLACES the template's own dependsOn. */
   effectiveDependsOn: string[];
@@ -218,50 +220,97 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
   let gatedTemplateId: string | null = null;
   const coalescedGateTemplateIds: string[] = [];
 
-  for (const t of ordered) {
-    const nodeId = templateNodeId(t.templateId);
-    nodes.push({
-      id: nodeId,
-      type: "execute_baseline_template",
-      position: nextPos(),
-      data: {
-        nodeType: "execute_baseline_template",
-        label: t.label,
-        templateId: t.templateId,
-        customerId: "{{customerId}}",
-      },
-    });
-    link(nodeId);
-    // execute_baseline_template routes outgoing edges via switchChosenHandle —
-    // the happy-path edge MUST carry sourceHandle "success" or it is skipped.
-    prev = { id: nodeId, sourceHandle: "success" };
+  for (let i = 0; i < ordered.length; i++) {
+    const t = ordered[i];
+    // We need a unique identifier for the node. 
+    // Fallback to checkKey or a sequential index if templateId is null.
+    const stepUniqueId = t.templateId ?? t.checkKey ?? `step-${i}`;
+    const nodeId = templateNodeId(stepUniqueId);
 
-    if (t.requiresVerificationGate && gatedTemplateId === null) {
-      gatedTemplateId = t.templateId;
-
-      // Map the created account's id (Graph response) from the step-output
-      // namespace into the FLAT payload keys the downstream templates'
-      // required variables and the gate's accountIdField read. Step outputs
-      // only surface as {{steps.<nodeId>.data.id}} — a flat {{breakglassUserId}}
-      // does not appear in the payload on its own.
-      const mapNodeId = `map-${t.templateId}-outputs`;
+    if (t.checkKey) {
+      // 1. Add Execute Monitor Check node
       nodes.push({
-        id: mapNodeId,
-        type: "action",
+        id: nodeId,
+        type: "execute_monitor_check",
         position: nextPos(),
         data: {
-          nodeType: "action",
-          actionType: "sql_query",
-          label: "Map Break-Glass Step Outputs",
-          query:
-            'SELECT $1::text AS "breakglassUserId", $1::text AS "principalId", $1::text AS "breakGlassAccountId"',
-          // WfNodeData types params as Record<string, unknown>, but the
-          // executor's sql_query branch reads it as a positional array.
-          params: [`{{steps.${nodeId}.data.id}}`] as unknown as WfNodeData["params"],
+          nodeType: "execute_monitor_check",
+          label: t.label ?? `Monitor Check: ${t.checkKey}`,
+          checkKey: t.checkKey,
+          customerId: "{{customerId}}",
         },
       });
-      link(mapNodeId);
-      prev = { id: mapNodeId };
+      link(nodeId);
+      prev = { id: nodeId }; // No 'success' handle enforced for monitor check yet, just sequential
+
+      // 2. Add Parameter Mapping node if mapping exists
+      if (t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
+        const mapNodeId = `map-${stepUniqueId}-outputs`;
+        const mapKeys = Object.keys(t.parameterMapping);
+        // E.g. SELECT $1::text AS "mappedKey" 
+        // using the first item's property from extractedProperties
+        const queryParts = mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`);
+        const query = `SELECT ${queryParts.join(", ")}`;
+        
+        // The values come from the monitor check's extracted properties
+        // We assume we take the first item's value if it's an array, or just the property itself.
+        // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
+        const params = mapKeys.map(k => `{{steps.${nodeId}.extractedProperties.0.${t.parameterMapping![k]} }}`);
+
+        nodes.push({
+          id: mapNodeId,
+          type: "action",
+          position: nextPos(),
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Map Monitor Check Outputs",
+            query,
+            params: params as unknown as WfNodeData["params"],
+          },
+        });
+        link(mapNodeId);
+        prev = { id: mapNodeId };
+      }
+    }
+
+    if (t.templateId) {
+      const tplNodeId = t.checkKey ? `tpl-${t.templateId}` : nodeId;
+      nodes.push({
+        id: tplNodeId,
+        type: "execute_baseline_template",
+        position: nextPos(),
+        data: {
+          nodeType: "execute_baseline_template",
+          label: t.label,
+          templateId: t.templateId,
+          customerId: "{{customerId}}",
+        },
+      });
+      link(tplNodeId);
+      // execute_baseline_template routes outgoing edges via switchChosenHandle —
+      // the happy-path edge MUST carry sourceHandle "success" or it is skipped.
+      prev = { id: tplNodeId, sourceHandle: "success" };
+
+      if (t.requiresVerificationGate && gatedTemplateId === null) {
+        gatedTemplateId = t.templateId;
+
+        const mapNodeId = `map-${t.templateId}-outputs`;
+        nodes.push({
+          id: mapNodeId,
+          type: "action",
+          position: nextPos(),
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Map Break-Glass Step Outputs",
+            query:
+              'SELECT $1::text AS "breakglassUserId", $1::text AS "principalId", $1::text AS "breakGlassAccountId"',
+            params: [`{{steps.${tplNodeId}.data.id}}`] as unknown as WfNodeData["params"],
+          },
+        });
+        link(mapNodeId);
+        prev = { id: mapNodeId };
 
       const gateNodeId = `gate-${t.templateId}`;
       nodes.push({

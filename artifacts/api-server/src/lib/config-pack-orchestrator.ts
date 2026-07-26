@@ -62,16 +62,19 @@ export async function loadConfigPack(packKey: string): Promise<{
   // membership is NOT filtered by template status here.
   const rows = await db
     .select({
+      id: configPackTemplatesTable.id,
       templateId: configPackTemplatesTable.templateId,
+      checkKey: configPackTemplatesTable.checkKey,
+      parameterMapping: configPackTemplatesTable.parameterMapping,
       sortOrder: configPackTemplatesTable.sortOrder,
       dependsOnOverride: configPackTemplatesTable.dependsOnOverride,
       baseDependsOn: baselineActionTemplatesTable.dependsOn,
       requiresVerificationGate: baselineActionTemplatesTable.requiresVerificationGate,
       requiredVariables: baselineActionTemplatesTable.requiredVariables,
-      label: baselineActionTemplatesTable.label,
+      templateLabel: baselineActionTemplatesTable.label,
     })
     .from(configPackTemplatesTable)
-    .innerJoin(
+    .leftJoin(
       baselineActionTemplatesTable,
       eq(configPackTemplatesTable.templateId, baselineActionTemplatesTable.templateId),
     )
@@ -84,10 +87,12 @@ export async function loadConfigPack(packKey: string): Promise<{
 
   const templates: PackTemplateResolved[] = rows.map((r) => ({
     templateId: r.templateId,
-    label: r.label,
+    checkKey: r.checkKey,
+    parameterMapping: r.parameterMapping ?? null,
+    label: r.templateLabel ?? r.checkKey ?? `step-${r.id}`,
     sortOrder: r.sortOrder,
     effectiveDependsOn: r.dependsOnOverride ?? r.baseDependsOn ?? [],
-    requiresVerificationGate: r.requiresVerificationGate,
+    requiresVerificationGate: r.requiresVerificationGate ?? false,
     requiredVariables: r.requiredVariables ?? [],
   }));
 

@@ -140,6 +140,7 @@ router.post("/admin/monitor-checks", requireAdmin, async (req: Request, res: Res
         method: body.method ? String(body.method) : "GET",
         requestBody: (body.requestBody as Record<string, unknown>) ?? null,
         selectParams: body.selectParams ? String(body.selectParams) : null,
+        filterParams: body.filterParams ? String(body.filterParams) : null,
         properties: (body.properties as string[]) ?? [],
         mapping: (body.mapping as MappingRule[]) ?? [],
         severityRules: (body.severityRules as SeverityRule[]) ?? [],
@@ -189,7 +190,7 @@ router.patch("/admin/monitor-checks/:key", requireAdmin, async (req: Request, re
       schemaVersion: newSchemaVersion,
     };
 
-    const allowedFields = ["label", "description", "endpoint", "method", "requestBody", "selectParams",
+    const allowedFields = ["label", "description", "endpoint", "method", "requestBody", "selectParams", "filterParams",
       "properties", "mapping", "severityRules", "outputSchema", "engines", "frequency", "requiresCustomerScript", "status"];
     for (const f of allowedFields) {
       if (body[f] !== undefined) updates[f] = body[f];

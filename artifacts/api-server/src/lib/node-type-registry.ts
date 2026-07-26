@@ -360,6 +360,16 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Executes a PowerShell script via Azure Automation — no AI",
   },
   {
+    nodeType: "execute_monitor_check",
+    isAIDependent: false,
+    description: "Executes a specified monitor check and extracts properties",
+  },
+  {
+    nodeType: "execute_baseline_template",
+    isAIDependent: false,
+    description: "Executes a template action with verification-gate halting",
+  },
+  {
     nodeType: "execute_runbook",
     isAIDependent: false,
     description: "Executes a PowerShell script via Azure — no AI",

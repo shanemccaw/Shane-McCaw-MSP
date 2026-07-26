@@ -26,6 +26,7 @@ interface MonitorCheck {
   description: string | null;
   endpoint: string;
   method: string;
+  filterParams?: string | null;
   properties: string[];
   mapping: Array<{ sourceField: string; targetField: string; transform?: string }>;
   severityRules: Array<{ expression: string; severity: string; label?: string }>;
@@ -427,13 +428,22 @@ export default function MonitorChecksPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-2">
                   <Label className="text-gray-400 text-xs">Graph API Endpoint *</Label>
                   <Input
                     value={editingCheck.endpoint ?? ""}
                     onChange={e => updateField("endpoint", e.target.value)}
                     placeholder="/users?$select=id,displayName,mfaRegistered"
+                    className="bg-background border-border text-white mt-1 font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">OData $filter</Label>
+                  <Input
+                    value={editingCheck.filterParams ?? ""}
+                    onChange={e => updateField("filterParams", e.target.value)}
+                    placeholder="userType eq 'Guest'"
                     className="bg-background border-border text-white mt-1 font-mono text-sm"
                   />
                 </div>
