@@ -335,6 +335,7 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       coalescedGateTemplateIds.push(t.templateId);
     }
   }
+  }
 
   nodes.push({ id: "end", type: "end", position: nextPos(), data: { nodeType: "end", label: "Pack Complete" } });
   link("end");
