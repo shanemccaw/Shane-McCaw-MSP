@@ -2372,7 +2372,7 @@ export interface WfNode {
     // Telemetry Retention
     | "platform_log_stream_prune"
     // MSP Baseline Actions
-    | "graph_write_operation" | "execute_baseline_template"
+    | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities
     | "comment";
   position: { x: number; y: number };

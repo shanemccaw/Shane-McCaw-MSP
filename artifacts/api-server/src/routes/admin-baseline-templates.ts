@@ -35,6 +35,7 @@ import {
   configPacksTable,
   configPackTemplatesTable,
   mspCustomersTable,
+  monitorChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -425,6 +426,15 @@ router.post("/admin/config-packs", requireAdmin, async (req: Request, res: Respo
         categories: (body.categories as string[]) ?? [],
         status: "active",
       })
+      .onConflictDoUpdate({
+        target: configPacksTable.packKey,
+        set: {
+          label: String(body.label),
+          description: body.description ? String(body.description) : null,
+          categories: (body.categories as string[]) ?? [],
+          status: "active",
+        }
+      })
       .returning();
 
     res.status(201).json({ pack });
@@ -510,7 +520,9 @@ router.get("/admin/config-packs/:packKey/templates", requireAdmin, async (req: R
 });
 
 interface PackTemplateOrderItem {
-  templateId: string;
+  templateId?: string | null;
+  checkKey?: string | null;
+  parameterMapping?: Record<string, string> | null;
   sortOrder: number;
   dependsOnOverride?: string[] | null;
 }
@@ -521,20 +533,33 @@ router.patch("/admin/config-packs/:packKey/templates/order", requireAdmin, async
     const body = req.body as { templates: PackTemplateOrderItem[] };
 
     if (!Array.isArray(body.templates)) {
-      return void res.status(400).json({ error: "templates must be an array of {templateId, sortOrder, dependsOnOverride?}" });
+      return void res.status(400).json({ error: "templates must be an array of {templateId, checkKey, sortOrder, dependsOnOverride?}" });
     }
 
     const [pack] = await db.select({ id: configPacksTable.id }).from(configPacksTable).where(eq(configPacksTable.packKey, packKey)).limit(1);
     if (!pack) return void res.status(404).json({ error: "Config pack not found" });
 
-    // Validate all template ids exist
     if (body.templates.length > 0) {
-      const ids = body.templates.map(t => t.templateId);
-      const existing = await db.select({ templateId: baselineActionTemplatesTable.templateId }).from(baselineActionTemplatesTable).where(inArray(baselineActionTemplatesTable.templateId, ids));
-      const found = new Set(existing.map(e => e.templateId));
-      const missing = ids.filter(id => !found.has(id));
-      if (missing.length > 0) {
-        return void res.status(400).json({ error: `Unknown template ids: ${missing.join(", ")}` });
+      // Validate all template ids exist
+      const templateIds = body.templates.map(t => t.templateId).filter(Boolean) as string[];
+      if (templateIds.length > 0) {
+        const existing = await db.select({ templateId: baselineActionTemplatesTable.templateId }).from(baselineActionTemplatesTable).where(inArray(baselineActionTemplatesTable.templateId, templateIds));
+        const found = new Set(existing.map(e => e.templateId));
+        const missing = templateIds.filter(id => !found.has(id));
+        if (missing.length > 0) {
+          return void res.status(400).json({ error: `Unknown template ids: ${missing.join(", ")}` });
+        }
+      }
+
+      // Validate all check keys exist
+      const checkKeys = body.templates.map(t => t.checkKey).filter(Boolean) as string[];
+      if (checkKeys.length > 0) {
+        const existingChecks = await db.select({ key: monitorChecksTable.key }).from(monitorChecksTable).where(inArray(monitorChecksTable.key, checkKeys));
+        const foundChecks = new Set(existingChecks.map(e => e.key));
+        const missingChecks = checkKeys.filter(key => !foundChecks.has(key));
+        if (missingChecks.length > 0) {
+          return void res.status(400).json({ error: `Unknown check keys: ${missingChecks.join(", ")}` });
+        }
       }
     }
 
@@ -547,9 +572,11 @@ router.patch("/admin/config-packs/:packKey/templates/order", requireAdmin, async
         await tx.insert(configPackTemplatesTable).values(
           body.templates.map(t => ({
             packId: pack.id,
-            templateId: t.templateId,
+            templateId: t.templateId || undefined,
+            checkKey: t.checkKey || undefined,
+            parameterMapping: t.parameterMapping || undefined,
             sortOrder: t.sortOrder,
-            dependsOnOverride: t.dependsOnOverride ?? null,
+            dependsOnOverride: t.dependsOnOverride ?? undefined,
           })),
         );
       }
