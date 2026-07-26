@@ -134,6 +134,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
   const [detailTab, setDetailTab] = useState<"details" | "testing">("details");
   const [bodyTemplateText, setBodyTemplateText] = useState("{}");
   const [successCriteriaText, setSuccessCriteriaText] = useState("{}");
+  const [requiredVarsStr, setRequiredVarsStr] = useState("");
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -154,6 +155,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     setEditing({ ...EMPTY_TEMPLATE });
     setBodyTemplateText("{}");
     setSuccessCriteriaText("{}");
+    setRequiredVarsStr("");
     setSelectedId(null);
     setDetailTab("details");
   };
@@ -162,6 +164,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     setEditing({ ...t });
     setBodyTemplateText(JSON.stringify(t.bodyTemplate ?? {}, null, 2));
     setSuccessCriteriaText(JSON.stringify(t.successCriteria ?? {}, null, 2));
+    setRequiredVarsStr((t.requiredVariables ?? []).join(", "));
     setSelectedId(t.templateId);
     setDetailTab("details");
   };
@@ -215,7 +218,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     if (!showArchived && t.status === "archived") return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return t.templateId.toLowerCase().includes(q) || t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
+    return t.templateId.toLowerCase().includes(q) || t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q) || (t.endpoint || "").toLowerCase().includes(q);
   }), [templates, showArchived, search]);
 
   const grouped = useMemo(() => {
@@ -360,8 +363,11 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   <div>
                     <Label className="text-gray-400 text-xs">Required variables (comma-separated)</Label>
                     <Input
-                      value={requiredVars.join(", ")}
-                      onChange={e => updateField("requiredVariables", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                      value={requiredVarsStr}
+                      onChange={e => {
+                        setRequiredVarsStr(e.target.value);
+                        updateField("requiredVariables", e.target.value.split(",").map(s => s.trim()).filter(Boolean));
+                      }}
                       placeholder="customerId, adminUpn" className="bg-background border-border text-white mt-1 font-mono text-sm" />
                     <p className="text-[10px] text-gray-500 mt-1">Declared here so they appear in the {"{{"} variables {"}}"} picker below.</p>
                   </div>
