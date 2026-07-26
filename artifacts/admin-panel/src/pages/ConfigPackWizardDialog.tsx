@@ -35,6 +35,70 @@ interface WizardStep {
   templateId: string | null;
   parameterMapping: Record<string, string>;
 }
+function ParameterMappingInput({ 
+  value, 
+  onChange, 
+  availableProps 
+}: { 
+  value: string, 
+  onChange: (v: string) => void, 
+  availableProps: string[] 
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const isStatic = value?.startsWith("static:");
+  const displayValue = isStatic ? value.slice(7) : value;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" className="flex-1 justify-between bg-background border-border h-8 text-xs px-3 font-normal overflow-hidden">
+          <span className="truncate">{displayValue || "Select or type static value..."}</span>
+          <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0 bg-background border-border" align="start">
+        <Command>
+          <CommandInput 
+            placeholder="Search upstream props or type static value..." 
+            className="text-white"
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {search ? (
+                <div 
+                  className="px-2 py-1.5 text-sm cursor-pointer hover:bg-white/10 flex items-center"
+                  onClick={() => { onChange(`static:${search}`); setOpen(false); setSearch(""); }}
+                >
+                  <span className="text-gray-400 mr-2">Use static value:</span> <strong>{search}</strong>
+                </div>
+              ) : "No properties found."}
+            </CommandEmpty>
+            <CommandGroup heading="Available Upstream Properties">
+              {availableProps.map((p) => (
+                <CommandItem key={p} value={p} onSelect={() => { onChange(p); setOpen(false); setSearch(""); }}>
+                  <Check className={cn("mr-2 h-4 w-4", value === p ? "opacity-100" : "opacity-0")} />
+                  {p}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {search && !availableProps.includes(search) && (
+              <CommandGroup heading="Manual Input">
+                <CommandItem value={`static:${search}`} onSelect={() => { onChange(`static:${search}`); setOpen(false); setSearch(""); }}>
+                  <Check className={cn("mr-2 h-4 w-4", value === `static:${search}` ? "opacity-100" : "opacity-0")} />
+                  <span className="text-gray-400 mr-2">Use static value:</span> <strong>{search}</strong>
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function ConfigPackWizardDialog({
   open,
@@ -314,20 +378,11 @@ export function ConfigPackWizardDialog({
                             <div key={rv} className="flex items-center gap-3">
                               <span className="font-mono text-xs w-1/3 text-gray-400">{rv}</span>
                               <ArrowRight className="w-4 h-4 text-gray-600" />
-                              <Select
+                              <ParameterMappingInput
                                 value={step.parameterMapping[rv] || ""}
-                                onValueChange={(v) => updateStep(step.id, { parameterMapping: { ...step.parameterMapping, [rv]: v } })}
-                              >
-                                <SelectTrigger className="bg-background border-border flex-1 h-8 text-xs">
-                                  <SelectValue placeholder="Map to..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableProps.map((p) => (
-                                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                                  ))}
-                                  {availableProps.length === 0 && <SelectItem value="_none" disabled>No upstream properties available</SelectItem>}
-                                </SelectContent>
-                              </Select>
+                                onChange={(v) => updateStep(step.id, { parameterMapping: { ...step.parameterMapping, [rv]: v } })}
+                                availableProps={availableProps}
+                              />
                             </div>
                           ))}
                         </div>

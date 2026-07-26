@@ -253,9 +253,14 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
         const query = `SELECT ${queryParts.join(", ")}`;
         
         // The values come from the monitor check's extracted properties
-        // We assume we take the first item's value if it's an array, or just the property itself.
         // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
-        const params = mapKeys.map(k => `{{steps.${nodeId}.extractedProperties.0.${t.parameterMapping![k]} }}`);
+        // If the mapping starts with "static:", we treat the rest as a literal value.
+        const params = mapKeys.map(k => {
+          const val = t.parameterMapping![k];
+          return val.startsWith("static:")
+            ? val.slice(7)
+            : `{{steps.${nodeId}.extractedProperties.0.${val} }}`;
+        });
 
         nodes.push({
           id: mapNodeId,
