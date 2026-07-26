@@ -8,19 +8,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, ArrowRight } from "lucide-react";
+import { Trash2, ArrowRight, ChevronsUpDown, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 interface MonitorCheck {
   key: string;
   label: string;
   properties: string[];
   filterParams?: string | null;
+  endpoint?: string;
 }
 
 interface BaselineTemplate {
   templateId: string;
   label: string;
   requiredVariables: string[];
+  endpoint?: string;
 }
 
 interface WizardStep {
@@ -222,16 +227,39 @@ export function ConfigPackWizardDialog({
                   {step.type === "monitor" && (
                     <div className="space-y-3">
                       <Label>Select Monitor Check</Label>
-                      <Select value={step.checkKey || ""} onValueChange={(v) => updateStep(step.id, { checkKey: v })}>
-                        <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Select a check..." /></SelectTrigger>
-                        <SelectContent>
-                          {monitorChecks.map((mc) => (
-                            <SelectItem key={mc.key} value={mc.key}>
-                              {mc.label} {mc.filterParams ? `(Filter: ${mc.filterParams})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" className="w-full justify-between bg-background border-border">
+                            {step.checkKey
+                              ? monitorChecks.find((mc) => mc.key === step.checkKey)?.label
+                              : "Select a check..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[400px] p-0 bg-background border-border">
+                          <Command>
+                            <CommandInput placeholder="Search checks or endpoints..." className="text-white" />
+                            <CommandList>
+                              <CommandEmpty>No checks found.</CommandEmpty>
+                              <CommandGroup>
+                                {monitorChecks.map((mc) => (
+                                  <CommandItem
+                                    key={mc.key}
+                                    value={`${mc.label} ${mc.key} ${mc.endpoint ?? ""}`}
+                                    onSelect={() => updateStep(step.id, { checkKey: mc.key })}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4", step.checkKey === mc.key ? "opacity-100" : "opacity-0")} />
+                                    <div className="flex flex-col">
+                                      <span>{mc.label}</span>
+                                      {mc.endpoint && <span className="text-xs text-muted-foreground font-mono">{mc.endpoint}</span>}
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   )}
 
@@ -239,16 +267,39 @@ export function ConfigPackWizardDialog({
                     <div className="space-y-4">
                       <div className="space-y-3">
                         <Label>Select Baseline Template</Label>
-                        <Select value={step.templateId || ""} onValueChange={(v) => updateStep(step.id, { templateId: v })}>
-                          <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Select a template..." /></SelectTrigger>
-                          <SelectContent>
-                            {templates.map((tpl) => (
-                              <SelectItem key={tpl.templateId} value={tpl.templateId}>
-                                {tpl.label} ({tpl.templateId})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" role="combobox" className="w-full justify-between bg-background border-border">
+                              {step.templateId
+                                ? templates.find((tpl) => tpl.templateId === step.templateId)?.label
+                                : "Select a template..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0 bg-background border-border">
+                            <Command>
+                              <CommandInput placeholder="Search templates or endpoints..." className="text-white" />
+                              <CommandList>
+                                <CommandEmpty>No templates found.</CommandEmpty>
+                                <CommandGroup>
+                                  {templates.map((tpl) => (
+                                    <CommandItem
+                                      key={tpl.templateId}
+                                      value={`${tpl.label} ${tpl.templateId} ${tpl.endpoint ?? ""}`}
+                                      onSelect={() => updateStep(step.id, { templateId: tpl.templateId })}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4", step.templateId === tpl.templateId ? "opacity-100" : "opacity-0")} />
+                                      <div className="flex flex-col">
+                                        <span>{tpl.label}</span>
+                                        <span className="text-xs text-muted-foreground font-mono">{tpl.templateId} {tpl.endpoint ? `· ${tpl.endpoint}` : ""}</span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <div className="text-right">
                           <Button variant="link" size="sm" onClick={() => setShowTemplateCreate(true)} className="text-primary p-0 h-auto">
                             + Create New Template
