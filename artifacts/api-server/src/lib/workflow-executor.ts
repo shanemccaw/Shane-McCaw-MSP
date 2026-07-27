@@ -2583,7 +2583,9 @@ async function executeNode(
             // 1) Assessment-tier discriminator — keeps paid monitoring subs untouched.
             //    CUSTOMER-scoped: the assessment purchase belongs to the customer,
             //    whichever linked login it was bought under. Also captures the
-            //    assessment serviceId (drives find_object "service").
+            //    assessment serviceId (drives find_object "service") — this query
+            //    always runs regardless of which trigger fired below, since the
+            //    serviceId capture is needed either way.
             const [gAssess] = await db
               .select({ serviceId: gClientSvc.serviceId })
               .from(gClientSvc)
@@ -2591,6 +2593,35 @@ async function executeNode(
               .where(and(inArray(gClientSvc.clientUserId, gScopeUserIds), eq(servicesTable.deliveryType, "assessment")))
               .orderBy(desc(gClientSvc.id))
               .limit(1);
+
+            // The two triggers that feed this gate need two different
+            // assessment-tier discriminators — they are not interchangeable:
+            //   - diagnostics.run_completed fires on EVERY scan, including
+            //     routine monitoring re-scans (5-min Live Activity Monitor
+            //     ticks, manual MSPOperator re-checks, SOW-expiry sweep
+            //     rescans). The service-history query above answers "does this
+            //     customer hold an assessment order at all", which stays true
+            //     forever once purchased — so for this trigger it must NOT be
+            //     used as the discriminator (that was the original bug: a
+            //     customer holding both an old Assessment purchase and a
+            //     current Monitoring subscription, e.g. customerId=4, had a
+            //     document set spuriously regenerated on every routine scan).
+            //     Instead this trigger uses the per-run `isAssessmentTriggered`
+            //     flag stated explicitly by the run's real caller (see
+            //     diagnostics-runner.ts) — fail closed when absent/non-true,
+            //     matching every legacy diagnostics.run_completed payload
+            //     emitted before this flag existed.
+            //   - portal.first_login fires exactly once per customer, with no
+            //     diagnostics run (and therefore no isAssessmentTriggered
+            //     field) behind it at all — the service-history query above IS
+            //     the correct and only available discriminator for this
+            //     trigger, and is safe here because it only ever fires once
+            //     per real login, not repeatedly per scan.
+            // emitWorkflowEvent stamps `_eventType` onto every payload it
+            // fires (see emitWorkflowEvent below), so it reliably survives
+            // into this node's payload as the record of which trigger fired.
+            const gFromDiagnosticsRun = payload._eventType === "diagnostics.run_completed";
+            const gDiagnosticsRunIsAssessment = payload.isAssessmentTriggered === true;
 
             // 2) Logged-in signal — a real standard user_sessions row from ANY of
             //    the customer's linked users ("has the customer engaged", not
@@ -2676,7 +2707,7 @@ async function executeNode(
               gCustomerName = gCustRow?.name ?? null;
             }
 
-            const gIsAssessment = gAssess != null;
+            const gIsAssessment = gFromDiagnosticsRun ? gDiagnosticsRunIsAssessment : gAssess != null;
             const gLoggedIn = gLogin != null;
             // A finished-but-insufficient scan is a distinct terminal state from a
             // still-in-flight scan: we must NOT generate documents, but we also
@@ -2684,7 +2715,10 @@ async function executeNode(
             const gScanFinished = gCoverage != null;
             const gScanInsufficient = gCoverage != null && !gCoverage.proceed;
             const gEligible = gIsAssessment && gLoggedIn && gScanDone && !gAlreadyDone;
-            const gReason = !gIsAssessment ? "not an assessment-tier order"
+            const gReason = !gIsAssessment
+              ? (gFromDiagnosticsRun
+                  ? "run not assessment-triggered — isAssessmentTriggered flag absent or false on this diagnostics.run_completed payload (routine scan, not an assessment order)"
+                  : "not an assessment-tier order")
               : !gLoggedIn ? "customer has not logged in yet — waiting for first login"
               : !gScanFinished ? "scan not completed yet — waiting for diagnostics.run_completed"
               : gScanInsufficient ? gCoverage!.reason

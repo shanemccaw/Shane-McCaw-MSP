@@ -810,13 +810,18 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // CIO-Report Narrative — fire as soon as the scan itself completes, well
     // before documents finish generating, so the wait between "scan done" and
     // "documents done" becomes the narrative's value-delivery moment. Gated on
-    // the SAME graded evaluable-check coverage as assessment_doc_gate (see
+    // isAssessmentScan (same opts.isAssessmentTriggered flag as the document
+    // gate above — see the block comment at its declaration) so this AI call
+    // fires only for genuine Assessment-flow runs, never on routine monitoring
+    // re-scans (5-min Live Activity Monitor ticks, manual MSPOperator re-checks,
+    // SOW-expiry sweep rescans, testbed debug-trigger scans), plus the SAME
+    // graded evaluable-check coverage as assessment_doc_gate (see
     // doc-gate-coverage.ts), so a partial-status run with real majority signal
     // still gets its narrative — and a near-dark scan does not get a narrative
     // written over mostly-absent data. Needs a known customer (benchmark/cost
     // lookups need customerId). Fire-and-forget — a narrative failure must never
     // fail or slow down the diagnostics run itself.
-    if (runCoverage.proceed && customerId != null) {
+    if (isAssessmentScan && runCoverage.proceed && customerId != null) {
       void generateCioNarrative({
         runId,
         customerId,
@@ -860,6 +865,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       coverageSufficient: runCoverage.proceed,
       coverageBand: runCoverage.band,
       coveragePct: runCoverage.coveragePct,
+      isAssessmentTriggered: opts.isAssessmentTriggered === true,
     });
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, checksLicenseGap, findingsCount, documentId };
@@ -902,6 +908,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       coverageSufficient: false,
       coverageBand: "no_data",
       coveragePct: 0,
+      isAssessmentTriggered: opts.isAssessmentTriggered === true,
     });
 
     throw err;
