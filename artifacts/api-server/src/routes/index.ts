@@ -156,6 +156,7 @@ import mspChangesRouter from "./msp-changes";
 import mspSopsRouter from "./msp-sops";
 import mspDlqRouter from "./msp-dlq";
 import mspRbdRouter from "./msp-rbd";
+import adminNavPinsRouter from "./admin-nav-pins";
 
 import pccRouter from "./pcc.js";
 
@@ -278,6 +279,7 @@ router.use(mspPlanSelfServiceRouter);
 router.use(mspPartnerRevenueRouter);
 router.use(mspAuditLogRouter);
 router.use(portalThemePreferenceRouter);
+router.use(adminNavPinsRouter);
 router.use(supportChatRouter);
 // Mounted before adminMonitorChecksRouter so the single-endpoint execution
 // routes (.../:key/run) are matched on their own terms rather than depending on

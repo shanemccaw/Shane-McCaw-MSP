@@ -1028,4 +1028,14 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: scope_creep_escalations.created_at column failed (non-fatal)");
   });
+
+  pool.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS pinned_nav_items JSONB NOT NULL DEFAULT '[]'::jsonb
+  `).then(() => {
+    logger.info("Migration: users.pinned_nav_items column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: users.pinned_nav_items column failed (non-fatal)");
+  });
 });
+

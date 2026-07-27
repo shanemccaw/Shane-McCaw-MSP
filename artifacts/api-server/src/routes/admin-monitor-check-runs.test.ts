@@ -579,6 +579,31 @@ describe("Full Response mode — per-run $select override never touches the cata
     const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
     expect(arg.check.endpoint).toMatch(/\$select=id,displayName/);
   });
+
+  it("passes filterParams override to executeMonitorCheck without modifying stored check", async () => {
+    const checkWithFilter = { ...CHECK, filterParams: "id eq 'old'" };
+    selectQueue = [[checkWithFilter], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: checkWithFilter.key,
+      status: "ok",
+      extractedProperties: {},
+      severityMatched: null,
+      itemCount: 1,
+      pageCount: 1,
+    });
+
+    const app = makeApp();
+    const res = await auth(request(app).post(`/api/admin/monitor-checks/${checkWithFilter.key}/run`)).send({
+      customerId: 42,
+      filterParams: "userType eq 'Guest'",
+    });
+    expect(res.status).toBe(202);
+    await waitForTerminal(app, res.body.runId);
+
+    const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
+    expect(arg.check.filterParams).toBe("userType eq 'Guest'");
+    expect(checkWithFilter.filterParams).toBe("id eq 'old'");
+  });
 });
 
 describe("GET /admin/monitor-check-runs/:runId/items — Full Response raw view", () => {

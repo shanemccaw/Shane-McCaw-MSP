@@ -128,7 +128,7 @@ export function ConfigPackWizardDialog({
   // Inline Template Creation
   const [showTemplateCreate, setShowTemplateCreate] = useState(false);
   const [newTemplate, setNewTemplate] = useState({
-    templateId: "", label: "", endpoint: "", method: "POST", bodyTemplate: "{}"
+    templateId: "", label: "", endpoint: "", method: "POST", bodyTemplate: "{}", requiredVariablesStr: ""
   });
 
   useEffect(() => {
@@ -188,6 +188,7 @@ export function ConfigPackWizardDialog({
           ...newTemplate,
           category: "Wizard Generated",
           bodyTemplate: JSON.parse(newTemplate.bodyTemplate),
+          requiredVariables: newTemplate.requiredVariablesStr.split(",").map(s => s.trim()).filter(Boolean),
           successCriteria: {},
           requiresVerificationGate: false,
           dependsOn: []
@@ -423,6 +424,7 @@ export function ConfigPackWizardDialog({
                   </div>
                   <div className="flex-1"><Label>Endpoint</Label><Input value={newTemplate.endpoint} onChange={e => setNewTemplate({...newTemplate, endpoint: e.target.value})} className="bg-background" /></div>
                 </div>
+                <div><Label>Required Variables (comma-separated)</Label><Input value={newTemplate.requiredVariablesStr} onChange={e => setNewTemplate({...newTemplate, requiredVariablesStr: e.target.value})} placeholder="customerId, adminUpn" className="bg-background font-mono text-sm" /></div>
                 <div><Label>Body (JSON)</Label><Textarea value={newTemplate.bodyTemplate} onChange={e => setNewTemplate({...newTemplate, bodyTemplate: e.target.value})} className="bg-background font-mono text-sm h-32" /></div>
               </div>
               <div className="flex justify-end gap-2 pt-4">

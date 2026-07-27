@@ -659,3 +659,47 @@ export function buildCmdKEntries(): CmdKEntry[] {
   }
   return entries;
 }
+
+/** Resolves a persisted pin key (workspace id, section key, or item id) into a renderable TreeItem. */
+export function resolvePinnedNode(key: string): TreeItem | null {
+  for (const ws of WORKSPACES) {
+    if (ws.id === key) {
+      return {
+        id: ws.id,
+        label: ws.label,
+        icon: ws.icon,
+        path: ws.defaultPath,
+        badgeKey: ws.badgeKey,
+      };
+    }
+    for (const section of ws.sections) {
+      const secKey = sectionNodeKey(ws.id, section.id);
+      if (secKey === key || section.id === key) {
+        return {
+          id: secKey,
+          label: `${ws.label}: ${section.label}`,
+          icon: ws.icon,
+          path: section.items[0]?.path || ws.defaultPath,
+        };
+      }
+      function findInItems(items: TreeItem[]): TreeItem | null {
+        for (const item of items) {
+          if (item.id === key) {
+            return {
+              ...item,
+              label: item.label,
+            };
+          }
+          if (item.children) {
+            const found = findInItems(item.children);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+      const foundItem = findInItems(section.items);
+      if (foundItem) return foundItem;
+    }
+  }
+  return null;
+}

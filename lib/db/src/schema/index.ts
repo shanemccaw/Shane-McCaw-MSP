@@ -33,6 +33,7 @@ export const usersTable = pgTable("users", {
   onboardingWizardCompletedAt: timestamp("onboarding_wizard_completed_at"),
   quickWinCompletedAt: timestamp("quick_win_completed_at"),
   linkedLeadId: integer("linked_lead_id"),
+  pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -135,6 +135,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
   const [bodyTemplateText, setBodyTemplateText] = useState("{}");
   const [successCriteriaText, setSuccessCriteriaText] = useState("{}");
   const [requiredVarsStr, setRequiredVarsStr] = useState("");
+  const [dependsOnStr, setDependsOnStr] = useState("");
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -156,6 +157,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     setBodyTemplateText("{}");
     setSuccessCriteriaText("{}");
     setRequiredVarsStr("");
+    setDependsOnStr("");
     setSelectedId(null);
     setDetailTab("details");
   };
@@ -165,6 +167,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     setBodyTemplateText(JSON.stringify(t.bodyTemplate ?? {}, null, 2));
     setSuccessCriteriaText(JSON.stringify(t.successCriteria ?? {}, null, 2));
     setRequiredVarsStr((t.requiredVariables ?? []).join(", "));
+    setDependsOnStr((t.dependsOn ?? []).join(", "));
     setSelectedId(t.templateId);
     setDetailTab("details");
   };
@@ -416,8 +419,11 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   <div>
                     <Label className="text-gray-400 text-xs">Depends on (other template IDs, comma-separated)</Label>
                     <Input
-                      value={(editing.dependsOn ?? []).join(", ")}
-                      onChange={e => updateField("dependsOn", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                      value={dependsOnStr}
+                      onChange={e => {
+                        setDependsOnStr(e.target.value);
+                        updateField("dependsOn", e.target.value.split(",").map(s => s.trim()).filter(Boolean));
+                      }}
                       placeholder="entra:create-admin-account" className="bg-background border-border text-white mt-1 font-mono text-sm" />
                   </div>
 
