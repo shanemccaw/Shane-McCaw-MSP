@@ -14,6 +14,10 @@ import {
   Users,
   Sparkles,
   ScanLine,
+  ClipboardList,
+  FileSearch,
+  FolderOpen,
+  type LucideIcon,
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -26,69 +30,42 @@ import { useServices, type PublicService } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useHealthPillars } from "@/hooks/usePersonalizationData";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { HEALTH_PILLAR_LABELS, PILLAR_TO_TOPIC_SLUG } from "@/data/solutionsTopics";
 import { trackEvent } from "@/lib/analytics";
 import { ZONES, type ZoneKey, getZoneForService } from "@/lib/assessmentZones";
 
-interface MonitoringTypeAttributes {
-  seatMin?: number;
-  seatMax?: number | null;
-  seatCountFloor?: number;
-  pricePerUserMonth?: string;
-  flatMonthlySurcharge?: string | null;
-  tenantTierLabel?: string;
-  includedEngines?: string[] | null;
-  includedFeatures?: string[] | null;
-}
-
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
-// Checklist copy for `typeAttributes.includedEngines` keys — confirmed against the real
-// Engine Registry (api-server/src/lib/engine-registry.ts, 12 keys total, same source the
-// admin Monitoring Tier editor's engine-picker reads from). Internal back-office engines
-// (priority, pricing, forecasting, crm, msp) are deliberately omitted — never named on the
-// public site (website-rebuild-reference-v2.md §6), so a tier row that happens to include
-// one of those keys simply drops it from the customer-facing checklist rather than leaking
-// the internal name.
-const ENGINE_CHECKLIST_LABELS: Record<string, string> = {
-  health: "Architecture Health scoring — governance, compliance, adoption, Copilot, and licensing",
-  security: "Security Engine — anonymous links, guest access, OAuth risk, and MFA gaps",
-  drift: "Drift Engine — every admin change fingerprinted against your baseline",
-  sla: "SLA Engine — support commitments tracked against the clock",
-  scope_creep: "Scope Creep Engine — live work checked against your signed SOW",
-  monitoring: "Scheduled tenant scans on a real schedule",
-  sales_offer: "Recommendation Engine — tells you what to fix next",
-};
-
-// Checklist copy for `typeAttributes.includedFeatures` keys — confirmed against the real
-// Plan Feature Registry (api-server/src/lib/msp-entitlement.ts PLAN_FEATURE_DEFS), the same
-// source the admin Monitoring Tier editor's feature-picker reads from. These keys are plain
-// snake_case identifiers, not pre-formatted customer copy, so unmapped keys fall back to a
-// humanized version of the raw key rather than being silently dropped.
-const FEATURE_CHECKLIST_LABELS: Record<string, string> = {
-  advanced_signals: "Advanced tenant signal rules and priority scoring",
-  custom_workflows: "Custom automation workflows",
-  sla_scope_creep_custom_rules: "MSP-authored SLA / Scope-Creep override rules",
-  sales_offers: "Sales Offer Engine recommendations",
-  custom_bundle_composition: "Custom multi-package monitoring bundles",
-};
-
-function humanizeFeatureKey(key: string): string {
-  return key
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-function buildTierChecklist(attrs: MonitoringTypeAttributes): string[] {
-  const engineItems = (attrs.includedEngines ?? [])
-    .map((key) => ENGINE_CHECKLIST_LABELS[key])
-    .filter((label): label is string => Boolean(label));
-  const featureItems = (attrs.includedFeatures ?? []).map(
-    (key) => FEATURE_CHECKLIST_LABELS[key] ?? humanizeFeatureKey(key),
-  );
-  return [...engineItems, ...featureItems];
-}
+// The funnel this site actually runs, in order — replaces the old Monitoring-first hero
+// pitch. Each stage links to where a visitor actually goes next.
+const FUNNEL_STAGES: { icon: LucideIcon; title: string; description: string; href: string }[] = [
+  {
+    icon: ClipboardList,
+    title: "Take the Quiz",
+    description: "A 3-question self-reported read on where your tenant likely stands — 60 seconds, no consent required.",
+    href: "/quiz",
+  },
+  {
+    icon: ScanLine,
+    title: "Free Assessment",
+    description: "A real, consent-gated Graph API scan of your live tenant — not a questionnaire.",
+    href: "/assessments?tab=free",
+  },
+  {
+    icon: FileSearch,
+    title: "Paid Assessment",
+    description: "Go deeper on the zone that matters most — identity, compliance, data, Copilot, cost, or the whole tenant.",
+    href: "/assessments",
+  },
+  {
+    icon: FolderOpen,
+    title: "Project SOW",
+    description: "A real gap becomes a scoped, priced engagement — not a self-checkout cart.",
+    href: "/projects",
+  },
+];
 
 // Tenant-facing engines only — the platform's full engine registry (12) also runs internal
 // business-ops engines (Pricing, CRM, MSP Portfolio, etc.) that don't watch a customer tenant,
@@ -153,8 +130,8 @@ const ENGINES = [
 ];
 
 // "What We Do" overview cards (Home §2) — deliberately category-level, not a re-listing of
-// the named engines below (§6/ENGINES): a cold visitor should understand the kind of
-// monitoring this is before meeting the specific engines that do it.
+// the named engines below (§6/ENGINES): a cold visitor should understand the kind of scan
+// this is before meeting the specific engines that do it.
 const WHAT_WE_DO = [
   {
     title: "Configuration & Drift Visibility",
@@ -195,7 +172,7 @@ const TELEMETRY_COMPARISON = {
   ],
   us: [
     "A live Graph API connection into your actual tenant",
-    "Scheduled re-checks — hourly to daily, with critical events flagged within minutes on Enhanced and Premium",
+    "A real-time scan of your live configuration — not a cached snapshot from a form",
     "Every score traceable to a real, inspectable signal rule against your real configuration",
     "Findings generated by engines reading your tenant, not a person reading your answers",
   ],
@@ -327,7 +304,7 @@ function AssessmentHealthOverview() {
             </div>
             {worst && worstSlug && (
               <Link
-                href={`/solutions/${worstSlug}`}
+                href={`/projects/${worstSlug}`}
                 className="shrink-0 px-6 py-3 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
@@ -365,8 +342,8 @@ function AssessmentHealthOverview() {
 export default function Home() {
   // {{db.services.all}}
   const { services, loading: servicesLoading, error: servicesError } = useServices();
+  const { projects, loading: projectsLoading } = useEngagementProjects();
 
-  const [seatCount, setSeatCount] = useState<number>(25);
   // Narrows the "Go deeper — paid assessments" grid by the same 6-zone taxonomy
   // Assessments.tsx uses for its full zone browsing — null = show every paid
   // assessment, unfiltered.
@@ -408,89 +385,6 @@ export default function Home() {
 
   const assessments = services.filter((s) => s.serviceType === "assessment");
   const retainers = services.filter((s) => s.serviceType === "retainer");
-  const monitoringRows = services.filter((s) => s.serviceType === "monitoring_tier");
-
-  // Group monitoring rows into packages (Basic/Enhanced/Premium) by their `tier` column, each
-  // package holding one row per tenant-size band (seatMin/seatMax in typeAttributes). Nothing here
-  // is hardcoded — package names, taglines, and pricing all resolve from the API payload.
-  const monitoringPackages = useMemo(() => {
-    const groups = new Map<string, PublicService[]>();
-    monitoringRows.forEach((row) => {
-      const key = row.tier ?? "standard";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(row);
-    });
-    return Array.from(groups.values())
-      .map((rows) => [...rows].sort((a, b) => a.sortOrder - b.sortOrder))
-      .sort((a, b) => a[0].sortOrder - b[0].sortOrder);
-  }, [monitoringRows]);
-
-  // Seat slider range + tier-boundary tick marks, derived entirely from the real
-  // seatMin/seatMax values on the fetched monitoring rows — never hardcoded, so this
-  // stays correct if pricing tiers change without a website deploy.
-  const seatSlider = useMemo(() => {
-    const mins: number[] = [];
-    const maxes: number[] = [];
-    let hasUnboundedBand = false;
-    monitoringRows.forEach((row) => {
-      const attrs = (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
-      const hasMin = typeof attrs.seatMin === "number";
-      if (hasMin) mins.push(attrs.seatMin as number);
-      if (typeof attrs.seatMax === "number") {
-        maxes.push(attrs.seatMax);
-      } else if (hasMin) {
-        // A band with a real seatMin but a null/absent seatMax is the unbounded
-        // "Enterprise" tier (seatMax: null in the catalog). The slider must extend
-        // PAST the highest finite seatMax or this band is never selectable — which
-        // is the real defect behind the seat slider capping at the last finite tier.
-        hasUnboundedBand = true;
-      }
-    });
-    const sliderMin = mins.length ? Math.min(...mins, 1) : 1;
-    const finiteCeiling = maxes.length ? Math.max(...maxes) : null;
-    const topMin = mins.length ? Math.max(...mins) : 1;
-    // When an unbounded Enterprise band exists, give the slider real headroom above
-    // both the highest finite seatMax and the Enterprise band's own seatMin so that
-    // band can actually be reached and priced (Enterprise still quotes higher via
-    // Contact for tenants beyond this range — the "+" suffix on the max label signals it).
-    const sliderMax = hasUnboundedBand
-      ? Math.max(finiteCeiling ?? 0, topMin) * 4
-      : (finiteCeiling ?? topMin * 4);
-    const markers = Array.from(new Set(mins.filter((m) => m > sliderMin && m < sliderMax))).sort(
-      (a, b) => a - b,
-    );
-    const presets = Array.from(new Set(mins.length ? mins : [sliderMin])).sort((a, b) => a - b);
-    return { sliderMin, sliderMax, markers, presets };
-  }, [monitoringRows]);
-
-  useEffect(() => {
-    if (monitoringRows.length === 0) return;
-    setSeatCount((prev) => Math.min(Math.max(prev, seatSlider.sliderMin), seatSlider.sliderMax));
-  }, [monitoringRows.length, seatSlider.sliderMin, seatSlider.sliderMax]);
-
-  const matchRowForSeats = (rows: PublicService[], seats: number): PublicService | null => {
-    return (
-      rows.find((r) => {
-        const attrs = (r.typeAttributes ?? {}) as MonitoringTypeAttributes;
-        const min = attrs.seatMin ?? 1;
-        const max = attrs.seatMax ?? Infinity;
-        return seats >= min && seats <= max;
-      }) ?? null
-    );
-  };
-
-  const computeMonthlyPrice = (row: PublicService, seats: number): number | null => {
-    const attrs = (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
-    if (!attrs.pricePerUserMonth) return null;
-    const perUser = parseFloat(attrs.pricePerUserMonth);
-    if (isNaN(perUser)) return null;
-    const floor = attrs.seatCountFloor ?? attrs.seatMin ?? 1;
-    const surcharge = attrs.flatMonthlySurcharge ? parseFloat(attrs.flatMonthlySurcharge) : 0;
-    const billableSeats = Math.max(seats, floor);
-    return billableSeats * perUser + surcharge;
-  };
-
-  const packageDisplayName = (row: PublicService): string => row.name.split("—")[0].trim();
 
   const renderProductGrid = (items: PublicService[]) => {
     if (servicesLoading) {
@@ -556,10 +450,9 @@ export default function Home() {
     );
   };
 
-  // Free stays understated/plain glass; Paid gets the gradient-bordered treatment — same
-  // gradient-wrap technique implied by the isHighlighted monitoring-tier card's accent
-  // border below, just carried to a full gradient ring since Free/Paid needs a starker split
-  // than "highlighted vs not" within a single tier grid.
+  // Free stays understated/plain glass; Paid gets the gradient-bordered treatment — a
+  // starker split than a plain "highlighted vs not" accent border would give within a
+  // single tier grid.
   const renderAssessmentCard = (item: PublicService, isPaid: boolean) => {
     const card = (
       <div
@@ -703,8 +596,8 @@ export default function Home() {
     );
   };
 
-  const renderMonitoringCalculator = () => {
-    if (servicesLoading) {
+  const renderProjectsShowcase = () => {
+    if (projectsLoading) {
       return (
         <div className="flex justify-center items-center py-20 w-full">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
@@ -712,163 +605,14 @@ export default function Home() {
       );
     }
 
-    if (servicesError || monitoringPackages.length === 0) {
-      return (
-        <div className="text-center py-12 text-text-secondary w-full border border-white/[0.08] rounded-2xl bg-charcoal-1">
-          No active monitoring packages found. Please contact support.
-        </div>
-      );
-    }
-
-    const clampedSeatCount = Math.min(Math.max(seatCount, seatSlider.sliderMin), seatSlider.sliderMax);
-    const sliderRange = seatSlider.sliderMax - seatSlider.sliderMin;
-    const sliderPct = sliderRange > 0 ? ((clampedSeatCount - seatSlider.sliderMin) / sliderRange) * 100 : 0;
+    const visible = projects.filter((p) => p.isVisible);
+    if (visible.length === 0) return null;
 
     return (
-      <div className="w-full">
-        <GlassPanel className="p-4 sm:p-5 mb-6 max-w-xl mx-auto">
-          <div className="flex items-center justify-between gap-3 mb-2.5">
-            <label htmlFor="seat-count" className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
-              <Users className="w-3.5 h-3.5 text-accent-blue" />
-              Licensed users
-            </label>
-            <div className="flex items-baseline gap-1">
-              <span className="gradient-text font-numeric text-2xl sm:text-3xl font-bold tabular-nums">
-                {clampedSeatCount.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-text-secondary uppercase tracking-wider">seats</span>
-            </div>
-          </div>
-
-          <div className="relative px-1 mb-1 pt-2.5">
-            {seatSlider.markers.map((m) => {
-              const markerPct = ((m - seatSlider.sliderMin) / sliderRange) * 100;
-              return (
-                <div
-                  key={m}
-                  className="absolute top-0 pointer-events-none w-[2px] h-3 bg-white/25 -translate-x-1/2"
-                  style={{ left: `${markerPct}%` }}
-                  title={`Tier boundary — ${m.toLocaleString()} seats`}
-                />
-              );
-            })}
-            <input
-              id="seat-count"
-              type="range"
-              min={seatSlider.sliderMin}
-              max={seatSlider.sliderMax}
-              value={clampedSeatCount}
-              onChange={(e) => setSeatCount(parseInt(e.target.value, 10))}
-              className="seat-slider w-full"
-              style={{
-                background: `linear-gradient(90deg, var(--accent-blue), var(--accent-violet) ${sliderPct}%, rgba(255,255,255,0.1) ${sliderPct}%, rgba(255,255,255,0.1) 100%)`,
-              }}
-            />
-          </div>
-          <div className="flex justify-between text-[10px] text-text-secondary font-numeric mb-3">
-            <span>{seatSlider.sliderMin.toLocaleString()}</span>
-            <span>{seatSlider.sliderMax.toLocaleString()}+</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap justify-center">
-            {seatSlider.presets.map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setSeatCount(preset)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                  clampedSeatCount === preset
-                    ? "text-white"
-                    : "bg-charcoal-1 text-text-secondary border border-white/[0.08] hover:text-text-primary hover:border-white/[0.16]"
-                }`}
-                style={clampedSeatCount === preset ? GRADIENT_BG : undefined}
-              >
-                {preset.toLocaleString()}
-              </button>
-            ))}
-          </div>
-        </GlassPanel>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {monitoringPackages.map((rows) => {
-            const matched = matchRowForSeats(rows, clampedSeatCount);
-            if (!matched) return null;
-
-            const attrs = (matched.typeAttributes ?? {}) as MonitoringTypeAttributes;
-            const price = computeMonthlyPrice(matched, clampedSeatCount);
-            const isHighlighted = matched.highlighted;
-            const checklist = buildTierChecklist(attrs);
-
-            return (
-              <div
-                key={matched.tier ?? matched.slug}
-                className={`flex flex-col rounded-2xl p-6 transition-all duration-200 relative ${
-                  isHighlighted
-                    ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
-                    : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
-                }`}
-              >
-                {isHighlighted && (
-                  <span
-                    className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 rounded-full text-white text-[10px] font-bold uppercase tracking-wider"
-                    style={GRADIENT_BG}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    Most Comprehensive
-                  </span>
-                )}
-
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-display text-xl font-bold text-text-primary">{packageDisplayName(matched)}</h3>
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] whitespace-nowrap">
-                    {attrs.tenantTierLabel ?? "Custom"}
-                  </span>
-                </div>
-
-                <p className="text-sm text-text-secondary mb-6">{matched.tagline}</p>
-
-                <div className="pt-2 pb-6 border-b border-white/[0.06] mb-6">
-                  {price !== null ? (
-                    <>
-                      <span className="font-numeric text-3xl font-medium text-text-primary">
-                        ${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                      <span className="text-sm text-text-secondary ml-1">/mo</span>
-                    </>
-                  ) : (
-                    <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
-                  )}
-                  <div className="text-xs text-text-secondary mt-1">For {clampedSeatCount.toLocaleString()} licensed users</div>
-                </div>
-
-                {checklist.length > 0 && (
-                  <ul className="space-y-2.5 mb-6 flex-grow">
-                    {checklist.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                        <CheckCircle2 className="w-4 h-4 text-accent-blue mt-0.5 shrink-0" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <Link
-                  // Carry the selected seat count into checkout. Without ?seats=, the
-                  // checkout + server default to 1 seat and charge pricePerUserMonth × 1
-                  // (≈ $7) instead of the real per-tenant price — the critical revenue bug.
-                  href={`/checkout/${matched.slug}?seats=${clampedSeatCount}`}
-                  className={`mt-auto px-4 py-3 rounded-xl text-sm font-bold text-center transition-all flex items-center justify-center gap-1 ${
-                    isHighlighted ? "text-white hover:opacity-90" : "bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]"
-                  }`}
-                  style={isHighlighted ? GRADIENT_BG : undefined}
-                  data-track="cta"
-                >
-                  <span>Start Continuous Monitoring</span>
-                  <ChevronRight className="w-4 h-4" />
-                </Link>
-              </div>
-            );
-          })}
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+        {visible.map((project, i) => (
+          <EngagementProjectCard key={project.id} project={project} index={i} />
+        ))}
       </div>
     );
   };
@@ -876,8 +620,8 @@ export default function Home() {
   return (
     <Layout>
       <SEOMeta
-        title="Shane McCaw Consulting | Microsoft 365 Monitoring & Assessments"
-        description="Continuous Microsoft 365 tenant monitoring plus a free, real Graph API assessment — built on the governance discipline Shane McCaw wrote for NASA."
+        title="Shane McCaw Consulting | Microsoft 365 Assessments & Projects"
+        description="A free, real Graph API assessment of your Microsoft 365 tenant, with a clear path to scoped projects — built on the governance discipline Shane McCaw wrote for NASA."
       />
 
       {/* HERO */}
@@ -920,33 +664,69 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-2xl mx-auto mb-14">
-            <a
-              href="#catalog"
+            <Link
+              href="/assessments?tab=free"
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-white shadow-lg shadow-accent-blue/20 transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-base whitespace-nowrap"
               style={GRADIENT_BG}
               data-track="cta"
             >
-              <span>See Monitoring Pricing</span>
+              <span>Start a Free Assessment</span>
               <ArrowRight className="w-5 h-5" />
-            </a>
+            </Link>
             <Link
-              href="/assessments?tab=free"
+              href="/quiz"
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base whitespace-nowrap"
               data-track="cta"
             >
-              Run a Free Assessment First
+              Take the 60-Second Quiz First
             </Link>
           </div>
 
           {/* Signature stat panel — verified platform facts only, no fabricated live numbers
               on the cold-visitor hero (personalized real tenant scores are Stage 4, website-rebuild-reference-v2.md §3/§5) */}
           <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-            Real infrastructure watching your tenant — not marketing numbers
+            Real infrastructure reading your tenant — not marketing numbers
           </p>
           <div className="flex flex-wrap items-stretch justify-center gap-4 max-w-4xl mx-auto">
             <StatPanel label="Platform engines" value="12" className="min-w-[180px]" />
-            <StatPanel label="Check cadence" value="Hourly–Daily" className="min-w-[220px]" />
-            <StatPanel label="Scan source" value="Live Graph API" className="min-w-[260px]" />
+            <StatPanel label="Scan source" value="Live Graph API" className="min-w-[220px]" />
+            <StatPanel label="Consent" value="Scoped, read-only" className="min-w-[260px]" />
+          </div>
+        </div>
+      </section>
+
+      {/* FUNNEL STRIP — Quiz → Free Assessment → Paid Assessment → Project SOW */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">How This Works</p>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+              From a <GradientText>60-second quiz</GradientText> to a scoped project
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {FUNNEL_STAGES.map((stage, i) => {
+              const Icon = stage.icon;
+              return (
+                <Link key={stage.title} href={stage.href} className="group relative" data-track="nav">
+                  <div className="h-full flex flex-col p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] group-hover:border-accent-blue/30 transition-all">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-blue shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <span className="font-numeric text-xs font-bold text-text-secondary">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <h3 className="font-display font-semibold text-text-primary mb-2">{stage.title}</h3>
+                    <p className="text-sm text-text-secondary leading-relaxed flex-grow">{stage.description}</p>
+                    <span className="mt-4 flex items-center gap-1.5 text-sm font-medium text-accent-blue group-hover:gap-2.5 transition-all">
+                      Go <ArrowRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -959,13 +739,12 @@ export default function Home() {
           <div className="text-center max-w-3xl mx-auto mb-16">
             <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">What We Do</p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Mission-Grade <GradientText>Monitoring for Microsoft 365</GradientText>
+              Mission-Grade <GradientText>Assessments for Microsoft 365</GradientText>
             </h2>
             <p className="text-text-secondary">
-              The same category of tool infrastructure teams run for servers and cloud teams
-              run for their cloud estate — Datadog, Wiz, New Relic — built specifically for
-              Microsoft 365. A real Graph API connection into your tenant, scored and tracked
-              on a real schedule, not a one-time PDF that goes stale the day it's delivered.
+              A real Graph API connection into your tenant — the same category of infrastructure
+              teams run for servers and cloud estates, built specifically for Microsoft 365 — scored
+              against your actual configuration, not a one-time PDF built from a questionnaire.
             </p>
           </div>
 
@@ -1079,10 +858,10 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-            Continuous Monitoring
+            The Scan Process
           </p>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-3">
-            How <GradientText>Continuous Monitoring</GradientText> Actually Works
+            How the <GradientText>Assessment</GradientText> Actually Works
           </h2>
           <p className="text-text-secondary mb-10 max-w-2xl">
             Five real steps, on a real schedule. No black box.
@@ -1141,59 +920,56 @@ export default function Home() {
               Commercial Tenant Pricing
             </p>
             <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
-              Mission-Grade Pricing for <GradientText>Commercial Tenants</GradientText>
+              From Free Assessment to <GradientText>Scoped Project</GradientText>
             </h2>
             <p className="text-text-secondary max-w-xl mx-auto">
-              Enter your seat count — pricing recalculates live from the real catalog, no
-              sales call required. This is commercial Microsoft 365 monitoring and
-              assessment pricing, not a federal compliance score or a government contract
-              vehicle.
+              Real catalog pricing, no sales call required. This is commercial Microsoft 365
+              assessment and project pricing, not a federal compliance score or a government
+              contract vehicle.
             </p>
           </div>
 
-          {/* Full-width stacked rows in priority order — Monitoring (the recurring hero
-              product) → Assessment (the free qualifying step) → Retainer (the upgrade path).
-              Replaces the old 3-way tab/path-card layout, where Monitoring's correct visual
-              weight left Assessment and Retainer squeezed with no room to present their offer.
-              Each row now owns a full-width band and reads cleanly top-to-bottom on mobile. */}
+          {/* Full-width stacked rows in funnel order — Assessment (the free qualifying step)
+              → Projects (the real engagements a gap turns into) → Retainer (the ongoing
+              upgrade path). Each row owns a full-width band and reads cleanly top-to-bottom
+              on mobile. */}
           <div className="space-y-16">
-            {/* ROW 1 — MONITORING (hero) */}
+            {/* ROW 1 — ASSESSMENT (free qualifying step) */}
             <div>
               <div className="text-center max-w-2xl mx-auto mb-8">
-                <span
-                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-3"
-                  style={GRADIENT_BG}
-                >
-                  <Sparkles className="w-3 h-3" />
-                  The Recurring Foundation
-                </span>
-                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-                  Tenant Telemetry &amp; <GradientText>Drift Enforcement</GradientText>
-                </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2">
-                  Scheduled Graph-based scans across governance, security, compliance, and
-                  adoption — the recurring foundation everything else feeds. Priced per licensed
-                  seat, live from the real catalog.
-                </p>
-              </div>
-              {renderMonitoringCalculator()}
-            </div>
-
-            {/* ROW 2 — ASSESSMENT (free qualifying step) */}
-            <div className="pt-12 border-t border-white/[0.06]">
-              <div className="mb-8">
                 <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
                   Start Here — Free
                 </span>
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
                   Mission Readiness <GradientText>Evaluation</GradientText>
                 </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                <p className="text-sm text-text-secondary leading-relaxed mt-2">
                   A real Graph API scan of your tenant — know exactly where you stand before you
                   commit to anything.
                 </p>
               </div>
               {renderAssessmentSplit()}
+            </div>
+
+            {/* ROW 2 — PROJECTS (what a real gap turns into) */}
+            <div className="pt-12 border-t border-white/[0.06]">
+              <div className="mb-8">
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-3"
+                  style={GRADIENT_BG}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Where An Assessment Leads
+                </span>
+                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+                  Scoped <GradientText>Projects</GradientText>
+                </h3>
+                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                  Once an assessment surfaces a real gap, this is the kind of scoped engagement
+                  it turns into — every project starts with a conversation, not a cart.
+                </p>
+              </div>
+              {renderProjectsShowcase()}
             </div>
 
             {/* ROW 3 — RETAINER / ADVISORY (upgrade path) */}
@@ -1206,8 +982,8 @@ export default function Home() {
                   Advisory <GradientText>Retainers</GradientText>
                 </h3>
                 <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
-                  Fractional M365 architecture guidance, best paired with tenants already under
-                  monitoring — but open to anyone ready to start.
+                  Fractional M365 architecture guidance, best paired with tenants already
+                  running projects — but open to anyone ready to start.
                 </p>
               </div>
               {renderProductGrid(retainers)}
@@ -1225,18 +1001,17 @@ export default function Home() {
             </h2>
             <p className="text-text-secondary max-w-xl mx-auto mb-8 text-sm sm:text-base">
               Start with a free Mission Readiness Evaluation to see where your tenant stands
-              today, or move straight to Tenant Telemetry &amp; Drift Enforcement — built on the
-              same discipline I bring to M365 governance at NASA.
+              today — built on the same discipline I bring to M365 governance at NASA.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4 max-w-xs sm:max-w-none mx-auto">
-              <a
-                href="#catalog"
+              <Link
+                href="/assessments?tab=free"
                 className="px-6 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
                 style={GRADIENT_BG}
                 data-track="cta"
               >
-                Start Continuous Monitoring
-              </a>
+                Start a Free Assessment
+              </Link>
               <ChatCTA
                 className="px-6 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
                 data-track="cta"

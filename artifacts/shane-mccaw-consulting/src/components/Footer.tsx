@@ -29,25 +29,24 @@ export function Footer() {
             </p>
           </div>
 
-          {/* Assessment + Solutions */}
+          {/* Assessment + Projects */}
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Get Started</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
               <li><Link href="/assessment" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Assessment</Link></li>
-              <li><Link href="/monitoring" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Monitoring</Link></li>
               <li><Link href={QUIZ_HUB_HREF} className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Free Quiz</Link></li>
             </ul>
 
-            <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Solutions</h4>
+            <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Projects</h4>
             <ul className="space-y-2 text-sm text-text-secondary">
-              <li><Link href="/solutions/copilot" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Copilot & AI</Link></li>
-              <li><Link href="/solutions/security-compliance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Security & Compliance</Link></li>
-              <li><Link href="/solutions/governance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Governance</Link></li>
-              <li><Link href="/solutions/sharepoint" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">SharePoint</Link></li>
-              <li><Link href="/solutions/power-platform" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Power Platform</Link></li>
-              <li><Link href="/solutions/teams" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Teams</Link></li>
-              <li><Link href="/solutions/migration" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Migration</Link></li>
-              <li><Link href="/solutions/m365-health" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">M365 Health</Link></li>
+              <li><Link href="/projects/copilot" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Copilot & AI</Link></li>
+              <li><Link href="/projects/security-compliance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Security & Compliance</Link></li>
+              <li><Link href="/projects/governance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Governance</Link></li>
+              <li><Link href="/projects/sharepoint" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">SharePoint</Link></li>
+              <li><Link href="/projects/power-platform" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Power Platform</Link></li>
+              <li><Link href="/projects/teams" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Teams</Link></li>
+              <li><Link href="/projects/migration" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Migration</Link></li>
+              <li><Link href="/projects/m365-health" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">M365 Health</Link></li>
             </ul>
           </div>
 
@@ -55,9 +54,7 @@ export function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Platform</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/platform/quick-start" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Quick-Start Packs</Link></li>
               <li><Link href="/platform/retainer" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Fractional Consulting</Link></li>
-              <li><Link href="/msp" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">MSP / Partners</Link></li>
               <li><Link href="/trust-security" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Trust & Security</Link></li>
               <li><Link href="/status" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">System Status</Link></li>
               <li><Link href="/resources" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Resources</Link></li>

@@ -313,7 +313,7 @@ const SHARED_CONSTRUCT: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Activity,
     title: 'Telemetry that carries forward',
-    body: 'The same scan engine behind continuous Monitoring — your results carry into your account if you move up later.',
+    body: 'A real Graph API scan of your live tenant, not a static questionnaire — your results carry into your account for whatever you do next.',
   },
 ];
 
@@ -326,6 +326,10 @@ interface WhyZoneCard {
   /** Real finding types, grounded in the zone's actual assessment deliverables
    *  (2026-07-20-assessment-detail-content.sql) — never invented capabilities. */
   finds: string[];
+  /** A real capability that isn't part of this zone's own deliverables yet —
+   *  rendered separately from `finds` so it's never mistaken for something the
+   *  zone's assessments already turn up. */
+  notYetAvailable?: string;
 }
 
 // One card per zone. Every "finds" line traces to a real deliverable on a real
@@ -351,11 +355,11 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'SOC 2 · NIST CSF · ISO 27001 · CMMC',
     hook: 'The worst time to learn where your tenant stands against a framework is when the auditor tells you.',
     body:
-      'Each mapping audit takes your real configuration and walks it control by control against the framework you’re actually facing — SOC 2’s trust services criteria, NIST CSF’s five core functions, ISO 27001’s Annex A controls, or CMMC Level 1-2 practices — so every gap is known, scoped, and closing on your schedule instead of surfacing as a formal finding.',
+      'Each mapping audit reads your real configuration against the framework you’re actually facing — SOC 2’s trust services criteria, NIST CSF’s five core functions, ISO 27001’s Annex A controls, or CMMC Level 1-2 practices — for a directional read on where you likely stand, so gaps surface on your schedule instead of an auditor’s.',
     // ids 18-21
     finds: [
       'Four frameworks covered as dedicated audits — SOC 2, NIST CSF, ISO 27001, and CMMC Level 1-2 — scoped to the one you’re actually facing, not a one-size-fits-all report',
-      'A control-by-control gap report against that framework’s real structure',
+      'A directional read on where your tenant likely stands against that framework’s structure',
       'Remediation guidance scoped to close each gap — not generic best practices',
       'A document you can hand straight to your compliance team or auditor',
     ],
@@ -380,12 +384,16 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     hook: 'Copilot will happily summarize whatever your permission model already exposes — for anyone who asks.',
     body:
       'Readiness isn’t a license count. It’s whether the content Copilot’s index can reach is content people should actually see, whether the seats you’re paying for will get used, and what’s standing between you and a safe rollout. The free Snapshot gives you that top-line score and your top 3 blockers; the full Assessment goes past it into every blocker across licensing, data, and governance, plus a phased rollout plan scoped to your tenant.',
-    // ids 14, 25, 26
+    // ids 14, 25
     finds: [
-      'Sensitive content Copilot could surface today, mapped by location and exposure type',
       'Licensing eligibility, plus every rollout blocker identified and ranked — not just the top 3',
       'A phased rollout plan scoped to your tenant — not a generic adoption deck',
     ],
+    // Sensitive-content exposure mapping is a real deliverable, but of the standalone
+    // Copilot Data Exposure Assessment (id 26, Data & Collaboration zone) — not this
+    // zone's own Readiness Snapshot/Assessment, so it's flagged separately rather than
+    // folded into what these two assessments themselves turn up.
+    notYetAvailable: 'Sensitive content Copilot could surface today, mapped by location and exposure type — covered by the separate Copilot Data Exposure Assessment, not this zone’s Readiness assessments',
   },
   {
     zone: 'cost',
@@ -422,7 +430,7 @@ export default function Assessments() {
   // {{db.assessments.list}}
   const { services, loading, error } = useServices({ category: 'assessment' });
 
-  // Retained only for backward-compatible link targets (Monitoring.tsx -> /assessments/start);
+  // Retained only for backward-compatible link targets (/assessments/start, /assessments/premium);
   // no visible tab bar — the filter narrows counts, tiles, search, and zone views alike.
   const tierFilter = location.includes('/start') ? 'free' : location.includes('/premium') ? 'paid' : 'all';
 
@@ -742,6 +750,14 @@ export default function Assessments() {
                   </li>
                 ))}
               </ul>
+              {why.notYetAvailable && (
+                <div className="mt-3 pt-3 border-t border-white/[0.06] flex items-start gap-2.5">
+                  <span className="mt-0.5 shrink-0 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/[0.06] text-text-secondary border border-white/[0.08]">
+                    Not in this zone yet
+                  </span>
+                  <span className="text-sm text-text-secondary/70 leading-relaxed">{why.notYetAvailable}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -851,7 +867,7 @@ export default function Assessments() {
         description={
           activeZoneDef
             ? `${activeZoneDef.blurb} Free and paid Microsoft 365 assessments in the ${activeZoneDef.label} zone — a real, consent-gated Graph API scan, not a questionnaire.`
-            : 'Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan, not a questionnaire, with the same scan depth as our continuous Monitoring service.'
+            : 'Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan of your live tenant, not a questionnaire.'
         }
       />
 
@@ -1274,6 +1290,14 @@ export default function Assessments() {
                             </li>
                           ))}
                         </ul>
+                        {card.notYetAvailable && (
+                          <div className="mt-3 pt-3 border-t border-white/[0.06] flex items-start gap-2.5">
+                            <span className="mt-0.5 shrink-0 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/[0.06] text-text-secondary border border-white/[0.08]">
+                              Not in this zone yet
+                            </span>
+                            <span className="text-sm text-text-secondary/70 leading-relaxed">{card.notYetAvailable}</span>
+                          </div>
+                        )}
                         <button
                           onClick={() => openZone(card.zone)}
                           className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
@@ -1300,7 +1324,7 @@ export default function Assessments() {
                 steps={[
                   { title: 'Pick a zone', description: "Browse by zone or answer 3 quick questions and we'll point you to the right one." },
                   { title: 'Grant scoped consent', description: 'Nothing runs against your tenant until you explicitly authorize it.' },
-                  { title: 'Real Graph-based scan', description: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
+                  { title: 'Real Graph-based scan', description: 'A live Microsoft Graph API scan reads your actual tenant configuration — not a self-reported checklist.' },
                   { title: 'Findings compiled', description: 'Results are ranked by real risk, not a generic severity label.' },
                   { title: 'Portal access', description: 'Create your account and track findings, results, and next steps going forward.' },
                 ]}

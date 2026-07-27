@@ -32,14 +32,6 @@ interface QuizResultsData {
   detectedSeats?: number | null;
 }
 
-interface MonitoringTierRow {
-  id: number;
-  slug: string | null;
-  name: string;
-  sortOrder: number;
-  typeAttributes: Record<string, unknown> | null;
-}
-
 // ─── Tier colours (semantic status) ───────────────────────────────────────────
 const TIER_COLOURS: Record<string, string> = {
   Beginner: "bg-red-500",
@@ -48,32 +40,6 @@ const TIER_COLOURS: Record<string, string> = {
   Advanced: "bg-accent-blue",
   Ready: "bg-teal-500",
 };
-
-// ─── Resolve monitoring CTA href from seat count ──────────────────────────────
-function resolveMonitoringHref(detectedSeats: number, tiers: MonitoringTierRow[]): string {
-  // Find all tiers whose seat range covers detectedSeats
-  const matching = tiers.filter((t) => {
-    const attrs = t.typeAttributes;
-    if (!attrs) return false;
-    const seatMin = typeof attrs.seatMin === "number" ? attrs.seatMin : null;
-    const seatMax = typeof attrs.seatMax === "number" ? attrs.seatMax : null;
-    return seatMin !== null && seatMax !== null && seatMin <= detectedSeats && detectedSeats <= seatMax;
-  });
-
-  if (matching.length === 0) return "/monitoring";
-
-  // Prefer a tier whose name contains "Enhanced" (case-insensitive)
-  let chosen = matching.find((t) => t.name.toLowerCase().includes("enhanced"));
-
-  // Fallback: pick the middle tier by sortOrder (the middle-of-road pack)
-  if (!chosen && matching.length > 0) {
-    const sorted = [...matching].sort((a, b) => a.sortOrder - b.sortOrder);
-    chosen = sorted[Math.floor(sorted.length / 2)];
-  }
-
-  if (!chosen?.slug) return "/monitoring";
-  return `/checkout/${encodeURIComponent(chosen.slug)}?seats=${detectedSeats}`;
-}
 
 // ─── Score bar ────────────────────────────────────────────────────────────────
 function ScoreBar({ score, label }: { score: number; label: string }) {
@@ -101,7 +67,6 @@ export default function QuizResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [monitoringHref, setMonitoringHref] = useState<string>("/monitoring");
 
   useEffect(() => {
     if (!leadId || !token) {
@@ -123,20 +88,6 @@ export default function QuizResultsPage() {
       .then((d) => {
         setData(d);
         import("@/lib/analytics").then(({ trackAssessmentCompleted }) => trackAssessmentCompleted({ quiz_type: d.quizType })).catch(() => {});
-
-        // Resolve monitoring CTA when detectedSeats is available (m365-health quiz)
-        if (d.quizType === "m365-health" && d.detectedSeats && d.detectedSeats > 0) {
-          const seats = d.detectedSeats;
-          fetch(`${base}/api/quiz/monitoring-tiers`)
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((tiers: MonitoringTierRow[]) => {
-              const href = resolveMonitoringHref(seats, tiers);
-              setMonitoringHref(href);
-            })
-            .catch(() => {
-              // Fall back to generic monitoring page on any error
-            });
-        }
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load results."))
       .finally(() => setLoading(false));
@@ -172,7 +123,6 @@ export default function QuizResultsPage() {
     ? data.recommendedService
     : "Book a Microsoft 365 Assessment";
   const primaryLabel = hasMatch ? `Explore ${data!.recommendedService}` : "Explore Microsoft 365 Assessments";
-  const showMonitoringCta = data?.quizType === "m365-health" && monitoringHref !== "/monitoring";
 
   return (
     <Layout>
@@ -300,14 +250,6 @@ export default function QuizResultsPage() {
                     Discuss my results
                   </ChatCTA>
                 </div>
-                {showMonitoringCta && (
-                  <a
-                    href={monitoringHref}
-                    className="block text-center pt-1 text-accent-blue hover:text-accent-violet text-sm font-medium transition-colors"
-                  >
-                    Keep this current — Start Monitoring →
-                  </a>
-                )}
               </GlassPanel>
 
               {/* ROI projection */}

@@ -33,12 +33,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier, type ConfigPackTier, type AssessmentOffer } from "@/hooks/useCatalog";
+import { useCatalog, type MonitoringTier, type RetainerTier, type ConfigPackTier, type AssessmentOffer } from "@/hooks/useCatalog";
 import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
-type AnyTier = MonitoringTier | RetainerTier | MspTier | ConfigPackTier | AssessmentOffer;
+type AnyTier = MonitoringTier | RetainerTier | ConfigPackTier | AssessmentOffer;
 
 function tierToService(t: AnyTier) {
   const isFree = "isFree" in t ? t.isFree : false;
@@ -252,7 +252,7 @@ export default function Checkout() {
   const seats = Math.max(1, parseInt(params.get("seats") ?? "1", 10) || 1);
 
   // Catalog data (all purchasable service types)
-  const { monitoringTiers, retainerTiers, mspTiers, configPackTiers, assessmentOffers, loading: catalogLoading, error: catalogError } = useCatalog();
+  const { monitoringTiers, retainerTiers, configPackTiers, assessmentOffers, loading: catalogLoading, error: catalogError } = useCatalog();
 
   const [step, setStep] = useState<Step>("loading");
   const [service, setService] = useState<ReturnType<typeof tierToService> | null>(null);
@@ -292,7 +292,7 @@ export default function Checkout() {
       return;
     }
 
-    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...mspTiers, ...configPackTiers, ...assessmentOffers];
+    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...configPackTiers, ...assessmentOffers];
     const found = allTiers.find((t) => t.slug === slug);
 
     if (!found) {
@@ -384,7 +384,7 @@ export default function Checkout() {
     setStep("guest-info");
   // checkoutStatus and sessionParam deliberately excluded so we only evaluate once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers, configPackTiers, assessmentOffers]);
+  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, configPackTiers, assessmentOffers]);
 
   // Fetch (or refetch) the admin-consent URL whenever the sessionId changes.
   // This ensures the URL carries the correct `state` parameter even when
@@ -686,7 +686,7 @@ export default function Checkout() {
                 the link may be incorrect.
               </p>
               <Link
-                href="/platform/quick-start"
+                href="/assessments"
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
               >
                 View all services

@@ -3,32 +3,30 @@ import { Link, useLocation } from "wouter";
 import {
   Menu, X, ChevronDown, ArrowRight, ShieldCheck,
   Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity,
-  Package, Compass, LogIn, Info, MessageCircle,
+  Compass, LogIn, Info, MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatCTA } from "./ChatCTA";
 
-// Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
+// Projects / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
 // Each is the personalization surface for its domain; generic domain marketing for a cold visitor.
-const SOLUTIONS = [
-  { href: "/solutions/copilot", label: "Copilot & AI", icon: Brain },
-  { href: "/solutions/security-compliance", label: "Security & Compliance", icon: Lock },
-  { href: "/solutions/governance", label: "Governance", icon: Shield },
-  { href: "/solutions/sharepoint", label: "SharePoint", icon: Share2 },
-  { href: "/solutions/power-platform", label: "Power Platform", icon: Zap },
-  { href: "/solutions/teams", label: "Teams", icon: Users },
-  { href: "/solutions/migration", label: "Migration", icon: GitMerge },
-  { href: "/solutions/m365-health", label: "M365 Health", icon: Activity },
+const PROJECTS = [
+  { href: "/projects/copilot", label: "Copilot & AI", icon: Brain },
+  { href: "/projects/security-compliance", label: "Security & Compliance", icon: Lock },
+  { href: "/projects/governance", label: "Governance", icon: Shield },
+  { href: "/projects/sharepoint", label: "SharePoint", icon: Share2 },
+  { href: "/projects/power-platform", label: "Power Platform", icon: Zap },
+  { href: "/projects/teams", label: "Teams", icon: Users },
+  { href: "/projects/migration", label: "Migration", icon: GitMerge },
+  { href: "/projects/m365-health", label: "M365 Health", icon: Activity },
 ];
 
 const PLATFORM_LINKS = [
-  { href: "/platform/quick-start", label: "Quick-Start Packs", desc: "Fixed-price tenant configuration packs.", icon: Package },
   { href: "/platform/retainer", label: "Fractional Consulting", desc: "Ongoing architect-level retainer support.", icon: Compass },
-  { href: "/msp", label: "MSP / Partners", desc: "Partner onboarding, white-glove or self-serve.", icon: Users },
   { href: "/trust-security", label: "Trust & Security", desc: "Tenant isolation, audit trail, exception tracking.", icon: ShieldCheck },
 ];
 
-type DropdownName = "solutions" | "platform" | "company" | null;
+type DropdownName = "projects" | "platform" | "company" | null;
 
 export function Header() {
   const [location] = useLocation();
@@ -89,19 +87,19 @@ export function Header() {
               Assessment
             </Link>
 
-            {/* Solutions dropdown */}
-            <div className="relative" onMouseEnter={() => openMenu("solutions")} onMouseLeave={closeMenu}>
+            {/* Projects dropdown */}
+            <div className="relative" onMouseEnter={() => openMenu("projects")} onMouseLeave={closeMenu}>
               <button
-                className={cn(navLinkClass(SOLUTIONS.some((s) => isActive(s.href))), "flex items-center gap-1.5")}
-                aria-expanded={openDropdown === "solutions"}
+                className={cn(navLinkClass(PROJECTS.some((s) => isActive(s.href))), "flex items-center gap-1.5")}
+                aria-expanded={openDropdown === "projects"}
               >
-                <span>Solutions</span>
-                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "solutions" && "rotate-180")} />
+                <span>Projects</span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "projects" && "rotate-180")} />
               </button>
-              {openDropdown === "solutions" && (
+              {openDropdown === "projects" && (
                 <div className="absolute top-full left-0 w-[420px] mt-1 menu-panel rounded-2xl p-2 z-50">
                   <div className="grid grid-cols-2 gap-0.5">
-                    {SOLUTIONS.map((s) => {
+                    {PROJECTS.map((s) => {
                       const Icon = s.icon;
                       return (
                         <Link
@@ -124,10 +122,6 @@ export function Header() {
                 </div>
               )}
             </div>
-
-            <Link href="/monitoring" className={navLinkClass(isActive("/monitoring"))} data-track="nav">
-              Monitoring
-            </Link>
 
             {/* Platform dropdown */}
             <div className="relative" onMouseEnter={() => openMenu("platform")} onMouseLeave={closeMenu}>
@@ -216,12 +210,12 @@ export function Header() {
               </ChatCTA>
             ) : (
               <Link
-                href="/msp"
+                href="/assessment"
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                <span>For MSPs</span>
+                <span>Start Assessment</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             )}
@@ -244,16 +238,15 @@ export function Header() {
       {mobileMenuOpen && (
         <div className="lg:hidden bg-charcoal-0 border-b border-white/[0.08] px-4 pt-2 pb-6 space-y-1 max-h-[80vh] overflow-y-auto">
           <Link href="/assessment" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Assessment</Link>
-          <Link href="/monitoring" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Monitoring</Link>
 
           <button
-            onClick={() => setMobileSection(mobileSection === "solutions" ? null : "solutions")}
+            onClick={() => setMobileSection(mobileSection === "projects" ? null : "projects")}
             className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-secondary tracking-widest"
           >
-            <span>Solutions</span>
-            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "solutions" && "rotate-180")} />
+            <span>Projects</span>
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "projects" && "rotate-180")} />
           </button>
-          {mobileSection === "solutions" && SOLUTIONS.map((s) => (
+          {mobileSection === "projects" && PROJECTS.map((s) => (
             <Link key={s.href} href={s.href} onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-white/[0.06]" data-track="nav">
               {s.label}
             </Link>
@@ -288,13 +281,13 @@ export function Header() {
               </ChatCTA>
             ) : (
               <Link
-                href="/msp"
+                href="/assessment"
                 onClick={closeMobileMenu}
                 className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                For MSPs
+                Start Assessment
               </Link>
             )}
           </div>
