@@ -22,14 +22,3 @@ This directory holds the plan files for multi-phase initiatives in this repo.
   on the repo.
 - `initiative:*` and `phase:*` labels are created per-initiative/phase as
   needed — not pre-seeded.
-
-> **Pending:** the `area:*` labels above have not yet been created on
-> `shanemccaw/Shane-McCaw-MSP` — the `gh` CLI is unavailable in this
-> environment. Create them with:
-> ```
-> gh label create area:billing-webhooks --repo shanemccaw/Shane-McCaw-MSP
-> gh label create area:admin-panel --repo shanemccaw/Shane-McCaw-MSP
-> gh label create area:msp-portal --repo shanemccaw/Shane-McCaw-MSP
-> gh label create area:public-website --repo shanemccaw/Shane-McCaw-MSP
-> gh label create area:backlog --repo shanemccaw/Shane-McCaw-MSP
-> ```
