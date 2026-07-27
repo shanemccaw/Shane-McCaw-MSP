@@ -2,8 +2,9 @@ import React from 'react';
 import { Archive } from 'lucide-react';
 import {
   ResolvedMetric,
+  MetricDirection,
   resolvedValue,
-  riskCountBand,
+  directionBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
 } from '@/components/health-suite/useTopicHealthLive';
@@ -21,7 +22,7 @@ interface RetentionCoverageCardProps {
   metrics: Record<string, ResolvedMetric>;
 }
 
-const RETENTION_METRICS: { key: string; label: string; caption: string }[] = [
+const RETENTION_METRICS: { key: string; label: string; caption: string; direction?: MetricDirection }[] = [
   {
     key: 'compliance.retentionDriftCount',
     label: 'Retention Policy Drift',
@@ -33,9 +34,13 @@ const RETENTION_METRICS: { key: string; label: string; caption: string }[] = [
     caption: 'Content locations without a retention tag',
   },
   {
+    // Open eDiscovery cases are legal-hold inventory, not a risk count — an org
+    // under legitimate litigation hold would otherwise be graded red for doing
+    // exactly the right thing.
     key: 'compliance.activeEdiscoveryCount',
     label: 'Active eDiscovery Cases',
     caption: 'Open cases in your tenant',
+    direction: 'neutral',
   },
 ];
 
@@ -58,7 +63,7 @@ export const RetentionCoverageCard: React.FC<RetentionCoverageCardProps> = ({ me
       {anyData ? (
         <div className="space-y-4 flex-grow">
           {rows.map(({ def, value }) => {
-            const band = value != null ? riskCountBand(value) : null;
+            const band = value != null ? directionBand(value, def.direction ?? 'risk') : null;
             return (
               <div key={def.key} className="space-y-1">
                 <div className="flex justify-between items-baseline">

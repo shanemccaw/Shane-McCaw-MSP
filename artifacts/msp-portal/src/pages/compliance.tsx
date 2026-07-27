@@ -186,7 +186,10 @@ export default function CompliancePage() {
                 { key: 'compliance.publicChannelCount', label: 'Public Channels', caption: 'Org-wide visible channels' },
                 { key: 'compliance.guestUserCount', label: 'Guest Users', caption: 'External identities' },
                 { key: 'compliance.externalInviteCount', label: 'External Invites', caption: 'Pending/recent invitations' },
-                { key: 'compliance.activeEdiscoveryCount', label: 'eDiscovery Cases', caption: 'Open cases' },
+                // Open eDiscovery cases are legal-hold inventory, not a risk
+                // count — an org under legitimate litigation hold would
+                // otherwise be graded red for doing the right thing.
+                { key: 'compliance.activeEdiscoveryCount', label: 'eDiscovery Cases', caption: 'Open cases', direction: 'neutral' },
               ]}
               metrics={live.metrics}
             />

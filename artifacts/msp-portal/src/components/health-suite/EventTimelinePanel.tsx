@@ -1,13 +1,33 @@
 import React from 'react';
 import { History } from 'lucide-react';
-import { ResolvedMetric, resolvedEvents } from './useTopicHealthLive';
+import {
+  ResolvedMetric,
+  resolvedEvents,
+  resolvedEventCount,
+  resolvedReason,
+  reasonCopy,
+  riskCountBand,
+  BAND_TEXT_CLASS,
+} from './useTopicHealthLive';
 
 /**
  * Real event timeline panel — renders the merged, newest-first event list from
  * one or more timeline-shaped registry metrics (drift.* watchers, audit
  * event-lists). Every row is a real collected event ({t, label} + passthrough
- * metadata from the resolver); an empty feed renders the honest "no events
- * collected yet" state. Nothing is synthesized.
+ * metadata from the resolver). Nothing is synthesized.
+ *
+ * IMPORTANT — the per-event list is frequently NOT served. These metrics are
+ * declared `shape: "timeline"` in the registry, but /api/dashboard/resolve
+ * reduces every `status: "available"` monitor_profile metric to its canonical
+ * numeric value (only `needs_aggregation` metrics get a shaping transform, and
+ * no timeline metric is marked that way). So a live, non-zero drift watcher
+ * arrives as `{ value: 3 }`, with no events array at all.
+ *
+ * This panel therefore renders in three genuinely distinct states rather than
+ * two: real events when they're served, the real COUNT when only the count is
+ * served (previously this rendered "your watched feeds are clean" over a
+ * non-zero count — an affirmatively false statement), and the honest
+ * awaiting-data state when nothing resolved.
  */
 
 export interface TimelineSourceDef {
@@ -48,6 +68,18 @@ export const EventTimelinePanel: React.FC<EventTimelinePanelProps> = ({
   // lets the footer say "watching N feeds" honestly.
   const liveSources = sources.filter((src) => metrics[src.key]?.status === 'ok');
 
+  // Per-source real counts. Used when the resolver served only the count (the
+  // usual case, see the header note) so a non-zero feed is never reported clean.
+  const counts = sources.map((src) => ({
+    src,
+    count: resolvedEventCount(metrics[src.key]),
+    reason: reasonCopy(resolvedReason(metrics[src.key])),
+  }));
+  const countedTotal = counts.reduce((sum, c) => sum + (c.count ?? 0), 0);
+  const anyCounted = counts.some((c) => c.count != null);
+  // Only the genuinely-measured-zero case may be described as clean.
+  const measuredClean = anyCounted && countedTotal === 0;
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
       <div className="flex justify-between items-center mb-3">
@@ -58,10 +90,39 @@ export const EventTimelinePanel: React.FC<EventTimelinePanelProps> = ({
         <span className="text-[10px] font-mono text-muted-foreground">{subtitle}</span>
       </div>
 
-      {merged.length === 0 ? (
+      {merged.length === 0 && anyCounted && !measuredClean ? (
+        /* The resolver served real counts but no per-event detail. Show the real
+           numbers rather than an empty list — and never call this "clean". */
+        <ul className="divide-y divide-border">
+          {counts.map(({ src, count, reason }) => (
+            <li key={src.key} className="py-2 flex items-center justify-between gap-3">
+              <span
+                className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 ${src.tagClass}`}
+              >
+                {src.tag}
+              </span>
+              <span className="text-[11px] text-secondary-foreground/90 flex-grow min-w-0 truncate">
+                {count != null ? 'events in the look-back window' : reason}
+              </span>
+              <span
+                className={`text-sm font-bold font-mono flex-shrink-0 ${
+                  count != null ? BAND_TEXT_CLASS[riskCountBand(count)] : 'text-muted-foreground'
+                }`}
+              >
+                {count != null ? count.toLocaleString() : '—'}
+              </span>
+            </li>
+          ))}
+          <li className="pt-2 text-[10px] text-muted-foreground leading-relaxed">
+            Your feeds reported these counts, but the per-event detail
+            (what changed, and when) isn&apos;t served by the metrics API yet —
+            these are the real totals, not an empty timeline.
+          </li>
+        </ul>
+      ) : merged.length === 0 ? (
         <div className="flex-1 flex items-center justify-center py-8 text-center px-4">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {liveSources.length > 0
+            {measuredClean
               ? 'No events in the look-back window — your watched feeds are clean.'
               : emptyCopy}
           </p>
@@ -94,7 +155,13 @@ export const EventTimelinePanel: React.FC<EventTimelinePanelProps> = ({
             ? `Watching ${liveSources.length} of ${sources.length} feeds`
             : 'Feeds activate with monitoring data'}
         </span>
-        <span>{merged.length > 0 ? `${merged.length} shown` : ''}</span>
+        <span>
+          {merged.length > 0
+            ? `${merged.length} shown`
+            : anyCounted
+              ? `${countedTotal.toLocaleString()} total`
+              : ''}
+        </span>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Grid3x3 } from 'lucide-react';
-import { ResolvedMetric } from './useTopicHealthLive';
+import { ResolvedMetric, resolvedReason, reasonCopy } from './useTopicHealthLive';
 
 /**
  * Real day×hour activity heatmap — renders the resolver's real heatmap cells
@@ -56,8 +56,15 @@ export const ActivityHeatmapPanel: React.FC<ActivityHeatmapPanelProps> = ({
       </div>
 
       {cells.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center py-10 text-center px-4">
+        <div className="flex-1 flex flex-col items-center justify-center py-10 text-center px-4 gap-1">
           <p className="text-[11px] text-muted-foreground leading-relaxed">{emptyCopy}</p>
+          {/* The resolver's real reason — so "this tenant hasn't collected raw
+              events yet" stays distinguishable from a wiring bug (the metric's
+              sourceKey naming a check that isn't in the catalog at all), which
+              would otherwise look identical forever. */}
+          <p className="text-[10px] font-mono text-muted-foreground/80">
+            {reasonCopy(resolvedReason(metrics[metricKey]))}
+          </p>
         </div>
       ) : (
         <>

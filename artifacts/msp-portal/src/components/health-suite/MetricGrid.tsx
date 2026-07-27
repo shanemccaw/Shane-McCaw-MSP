@@ -1,19 +1,26 @@
 import React from 'react';
 import {
   ResolvedMetric,
+  MetricDirection,
   resolvedValue,
-  riskCountBand,
+  resolvedReason,
+  reasonCopy,
+  directionBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
 } from './useTopicHealthLive';
 
 /**
- * Real metric tile grid — renders a set of resolved registry metrics as
- * band-colored count tiles. A metric that resolved not_available/error renders
- * the honest em-dash + "no data yet" caption; a real zero renders 0 in green
- * (measured-and-clean is a different fact from unmeasured). Same
- * red/amber/green semantics as the shared riskCountBand (registry
- * RISK_COUNT_BANDS thresholds).
+ * Real metric tile grid — renders a set of resolved registry metrics as count
+ * tiles. A metric that resolved not_available/error renders the honest em-dash
+ * plus the resolver's REAL reason (so "this tenant hasn't collected it yet" is
+ * visibly different from "this metric is wired to a check that doesn't exist");
+ * a real zero renders 0 (measured-and-clean is a different fact from
+ * unmeasured).
+ *
+ * Banding is per-tile directional (see MetricDirection): only lower-is-better
+ * risk counts get red/amber/green. Coverage counts (higher is better) and plain
+ * inventory counts render unbanded rather than banded backwards.
  */
 
 export interface MetricTileDef {
@@ -21,6 +28,12 @@ export interface MetricTileDef {
   label: string;
   /** Optional caption shown under the value when data exists. */
   caption?: string;
+  /**
+   * Which way is good for this metric. Defaults to "risk" (lower is better),
+   * which is right for the drift/violation/exposure counts that make up most
+   * tiles — but MUST be set for coverage or inventory metrics.
+   */
+  direction?: MetricDirection;
 }
 
 interface MetricGridProps {
@@ -59,15 +72,16 @@ export const MetricGrid: React.FC<MetricGridProps> = ({
       <div className={`grid grid-cols-1 ${colClass} gap-3`}>
         {tiles.map((tile) => {
           const value = resolvedValue(metrics[tile.key]);
-          const band = value != null ? riskCountBand(value) : null;
+          const band = value != null ? directionBand(value, tile.direction ?? 'risk') : null;
+          const reason = reasonCopy(resolvedReason(metrics[tile.key]));
           return (
             <div
               key={tile.key}
               className="p-3 rounded-lg border border-border bg-secondary/40 flex flex-col"
               title={
                 value != null
-                  ? `${tile.label}: ${value.toLocaleString()}`
-                  : `${tile.label}: no data collected yet`
+                  ? `${tile.label}: ${value.toLocaleString()} (${tile.key})`
+                  : `${tile.label} (${tile.key}) — ${reason}`
               }
             >
               <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">
@@ -80,8 +94,8 @@ export const MetricGrid: React.FC<MetricGridProps> = ({
               >
                 {value != null ? value.toLocaleString() : '—'}
               </span>
-              <span className="text-[10px] text-secondary-foreground/80 mt-0.5">
-                {value != null ? (tile.caption ?? ' ') : 'No data yet'}
+              <span className="text-[10px] text-secondary-foreground/80 mt-0.5 leading-tight">
+                {value != null ? (tile.caption ?? ' ') : reason}
               </span>
               {/* Band underline — color + width, never color alone */}
               <div className="h-1 bg-muted rounded-full overflow-hidden mt-2">

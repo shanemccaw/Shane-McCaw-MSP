@@ -4,6 +4,7 @@ import {
   ResolvedMetric,
   resolvedValue,
   resolvedEvents,
+  resolvedEventCount,
   riskCountBand,
   BAND_TEXT_CLASS,
 } from '@/components/health-suite/useTopicHealthLive';
@@ -36,6 +37,14 @@ export const ConditionalAccessMap: React.FC<ConditionalAccessMapProps> = ({ metr
   const watching =
     metrics['drift.caPolicyDriftCount']?.status === 'ok' ||
     metrics['drift.securityDefaultsDriftCount']?.status === 'ok';
+  // The drift watchers are timeline-shaped in the registry but the resolve
+  // endpoint serves them as plain counts (see EventTimelinePanel's header note),
+  // so an empty event list does NOT mean nothing changed. Only a measured zero
+  // may be described as stable.
+  const caDriftCount = resolvedEventCount(metrics['drift.caPolicyDriftCount']);
+  const defaultsDriftCount = resolvedEventCount(metrics['drift.securityDefaultsDriftCount']);
+  const driftTotal = (caDriftCount ?? 0) + (defaultsDriftCount ?? 0);
+  const anyDriftCount = caDriftCount != null || defaultsDriftCount != null;
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
@@ -88,10 +97,37 @@ export const ConditionalAccessMap: React.FC<ConditionalAccessMapProps> = ({ metr
             </li>
           ))}
         </ul>
+      ) : anyDriftCount && driftTotal > 0 ? (
+        <ul className="divide-y divide-border flex-grow">
+          {[
+            { tag: 'CA POLICY', count: caDriftCount },
+            { tag: 'SEC DEFAULTS', count: defaultsDriftCount },
+          ].map(({ tag, count }) => (
+            <li key={tag} className="py-2 flex items-center justify-between gap-3">
+              <span className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 bg-status-blue/15 text-status-blue border-status-blue/30">
+                {tag}
+              </span>
+              <span className="text-[11px] text-secondary-foreground/90 flex-grow min-w-0 truncate">
+                {count != null ? 'changes in the look-back window' : 'no data collected yet'}
+              </span>
+              <span
+                className={`text-sm font-bold font-mono flex-shrink-0 ${
+                  count != null ? BAND_TEXT_CLASS[riskCountBand(count)] : 'text-muted-foreground'
+                }`}
+              >
+                {count != null ? count.toLocaleString() : '—'}
+              </span>
+            </li>
+          ))}
+          <li className="pt-2 text-[10px] text-muted-foreground leading-relaxed">
+            Per-change detail isn&apos;t served by the metrics API yet — these are
+            the real change counts your watchers reported.
+          </li>
+        </ul>
       ) : (
         <div className="flex-grow flex items-center justify-center text-center px-4 py-6">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {watching
+            {anyDriftCount
               ? 'No CA policy changes in the look-back window — your policies are stable.'
               : 'CA drift events appear once the drift watchers have collected data for your tenant.'}
           </p>

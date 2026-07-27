@@ -38,6 +38,11 @@ export const AppRegistrationInventory: React.FC<AppRegistrationInventoryProps> =
     .sort((a, b) => (a.t < b.t ? 1 : -1))
     .slice(0, 8);
   const watching = counts.some((c) => metrics[c.key]?.status === 'ok');
+  // These watchers are timeline-shaped in the registry, but the resolve endpoint
+  // serves them as plain counts — an empty event list is NOT evidence that
+  // nothing changed. The count tiles above already carry the real numbers, so
+  // the note below must only claim "no changes" on a measured zero.
+  const changeTotal = counts.reduce((sum, c) => sum + (c.value ?? 0), 0);
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
@@ -92,9 +97,11 @@ export const AppRegistrationInventory: React.FC<AppRegistrationInventoryProps> =
       ) : (
         <div className="flex-grow flex items-center justify-center text-center px-4 py-6">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {watching
-              ? 'No app-registration changes in the look-back window.'
-              : 'App-registration drift events appear once the watchers have collected data for your tenant.'}
+            {!watching
+              ? 'App-registration drift events appear once the watchers have collected data for your tenant.'
+              : changeTotal > 0
+                ? `Your watchers reported ${changeTotal.toLocaleString()} change${changeTotal === 1 ? '' : 's'} in the look-back window (counts above). Per-change detail — which app, which credential — isn’t served by the metrics API yet.`
+                : 'No app-registration changes in the look-back window.'}
           </p>
         </div>
       )}

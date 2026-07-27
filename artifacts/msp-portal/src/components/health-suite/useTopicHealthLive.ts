@@ -179,6 +179,82 @@ export function resolvedEvents(
   );
 }
 
+/**
+ * The resolver's machine-stable reason a metric did NOT resolve, or null when it
+ * resolved ok. Deliberately surfaced in the UI (tooltips/captions) because the
+ * reasons mean genuinely different things and collapsing them all into one
+ * "no data yet" hides real wiring bugs from the operator forever:
+ *
+ *   no_data           — the check exists in monitor_checks; this tenant just has
+ *                       no collected row for it yet. Time/scan will fix it.
+ *   unknown_check_key — the registry's sourceKey names a check that is NOT in the
+ *                       monitor_checks catalog. A WIRING BUG: this metric can
+ *                       never resolve for any tenant until the catalog row exists
+ *                       or the registry sourceKey is corrected.
+ *   not_collected     — the platform genuinely does not collect this yet.
+ *   no_tenant_id      — the customer has no M365 tenant_id to key monitor data by.
+ *   unshaped          — data arrived but the expected fields weren't in it.
+ */
+export function resolvedReason(r: ResolvedMetric | undefined): string | null {
+  if (!r) return "not_requested";
+  if (r.status === "ok") return null;
+  if (r.status === "error") return "error";
+  return r.reason;
+}
+
+/** Short human sentence for a non-ok resolve reason — shown to the customer. */
+export function reasonCopy(reason: string | null): string {
+  switch (reason) {
+    case null:
+      return "";
+    case "no_data":
+      return "No data collected yet — appears after your next scan";
+    case "unknown_check_key":
+      return "Not wired: no matching check in the monitor catalog";
+    case "not_collected":
+      return "Not collected by the platform yet";
+    case "no_tenant_id":
+      return "No Microsoft 365 tenant linked to this customer";
+    case "unshaped":
+      return "Collected, but the expected fields weren't in the response";
+    case "no_snapshot":
+      return "No engine snapshot yet";
+    case "missing_customer_scope":
+      return "Requires a customer context";
+    case "not_requested":
+      return "Not requested by this page";
+    case "error":
+      return "The resolver returned an error for this metric";
+    default:
+      return `No data (${reason})`;
+  }
+}
+
+/**
+ * Timeline-shaped registry metrics (drift.* watchers, audit:* event feeds) are
+ * declared `shape: "timeline" / valueType: "event-list"`, but the resolve
+ * endpoint's monitor_profile path reduces every `status: "available"` check to
+ * its canonical numeric value — so these metrics genuinely arrive as
+ * `{ value: N }`, never as `{ events: [...] }`. Only `needs_aggregation` metrics
+ * get a shaping transform, and no timeline metric is marked that way.
+ *
+ * That means an events-only panel renders empty even when the check resolved a
+ * real, non-zero count — and, worse, reads that as "your feeds are clean".
+ * This helper returns the honest middle state: the real count the resolver DID
+ * serve, so a panel can say "3 changes in the window (per-event detail not
+ * served yet)" instead of claiming nothing happened.
+ *
+ * Returns null when the metric didn't resolve at all, and 0 for a genuine
+ * measured zero (which IS legitimately "clean").
+ */
+export function resolvedEventCount(r: ResolvedMetric | undefined): number | null {
+  if (!r || r.status !== "ok") return null;
+  const events = (r.data as { events?: unknown }).events;
+  if (Array.isArray(events)) return events.length;
+  const v = (r.data as { value?: unknown }).value;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 // ── The hook ──────────────────────────────────────────────────────────────────
 
 export interface TopicHealthLive {
@@ -349,6 +425,33 @@ export function riskCountBand(count: number): StatusBand {
   if (count <= 1) return "green";
   if (count <= 10) return "amber";
   return "red";
+}
+
+/**
+ * Which way is "good" for a displayed metric. The shared risk banding
+ * (riskCountBand: ≤1 green, ≤10 amber, else red) is only correct for
+ * lower-is-better RISK counts. Applying it to everything is an active
+ * misrepresentation:
+ *   • "coverage" metrics are higher-is-better (identity.mfaRegisteredCount /
+ *     identity.passwordlessUserCount carry the registry's COVERAGE_UP_BANDS
+ *     with target 100) — risk-banding them paints a well-covered tenant RED and
+ *     an unprotected one GREEN, exactly backwards.
+ *   • "neutral" metrics are plain inventory with no good/bad direction at all
+ *     (open eDiscovery cases, active entitlement assignments, disabled
+ *     accounts) — any traffic-light on them invents a judgement the data
+ *     doesn't support.
+ */
+export type MetricDirection = "risk" | "coverage" | "neutral";
+
+/**
+ * Band a value for display, honouring its direction. Coverage metrics resolve
+ * as bare counts (the registry declares them percentage-eligible but none of
+ * them sets a `denominatorMetric`, so no percentage is served) — with no real
+ * denominator there is no defensible threshold, so they render unbanded rather
+ * than banded backwards. Same for neutral inventory.
+ */
+export function directionBand(value: number, direction: MetricDirection): StatusBand | null {
+  return direction === "risk" ? riskCountBand(value) : null;
 }
 
 /** Status-token CSS color for a band (real design tokens, not mockup hex). */

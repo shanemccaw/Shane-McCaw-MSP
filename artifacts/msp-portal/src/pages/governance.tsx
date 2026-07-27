@@ -172,7 +172,9 @@ export default function GovernancePage() {
                 { key: 'governance.overdueAccessReviewCount', label: 'Overdue Access Reviews', caption: 'Past their review deadline' },
                 { key: 'governance.accessReviewDriftCount', label: 'Access Review Drift', caption: 'Reviews drifting from baseline' },
                 { key: 'governance.workflowFailureCount', label: 'Lifecycle Failures', caption: 'Failed lifecycle workflows' },
-                { key: 'governance.activeEntitlementAssignmentCount', label: 'Entitlement Assignments', caption: 'Active access-package grants' },
+                // Active entitlement grants are normal inventory, not risk —
+                // a healthy tenant running access packages properly has many.
+                { key: 'governance.activeEntitlementAssignmentCount', label: 'Entitlement Assignments', caption: 'Active access-package grants', direction: 'neutral' },
               ]}
               metrics={live.metrics}
             />

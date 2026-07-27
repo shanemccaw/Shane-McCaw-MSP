@@ -4,6 +4,7 @@ import {
   ResolvedMetric,
   resolvedValue,
   riskCountBand,
+  scoreBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
 } from '@/components/health-suite/useTopicHealthLive';
@@ -45,6 +46,18 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
       ? Math.round((oversharedSites / totalSites) * 1000) / 10
       : null;
 
+  /**
+   * The ratio bar's colour previously came from riskCountBand(oversharedSites) —
+   * banding the raw COUNT while the bar's width shows a PROPORTION. 12
+   * overshared sites out of 5,000 (0.2%) rendered a red bar 0.2% wide, which
+   * reads as an alarm the data doesn't support. Band it instead by the real
+   * SharePoint/Teams readiness indicator (copilot-readiness.ts — a genuine
+   * 0–100, higher-is-better score computed from this exact exposure), falling
+   * back to neutral when that indicator hasn't been computed.
+   */
+  const exposureScore = copilotReadiness?.sharePointTeams.score ?? null;
+  const ratioBand = exposureScore != null ? scoreBand(exposureScore) : null;
+
   const tiles: { label: string; value: number | null; caption: string }[] = [
     { label: 'Overshare Exposure Items', value: exposureItems, caption: 'From the Copilot exposure check' },
     { label: 'Overshared Sites', value: oversharedSites, caption: 'Broad-access SharePoint sites' },
@@ -75,15 +88,18 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
               className="h-full rounded-full transition-all duration-700"
               style={{
                 width: `${Math.min(ratio, 100)}%`,
-                backgroundColor:
-                  BAND_COLOR_VAR[riskCountBand(oversharedSites ?? 0)],
+                backgroundColor: ratioBand
+                  ? BAND_COLOR_VAR[ratioBand]
+                  : 'var(--color-status-blue)',
               }}
             />
           )}
         </div>
         <p className="text-[10px] font-mono text-muted-foreground mt-1">
           {ratio != null
-            ? 'Real overshared-vs-total site ratio — what Copilot could surface today'
+            ? exposureScore != null
+              ? `Real overshared-vs-total site ratio — what Copilot could surface today · exposure readiness ${exposureScore}%`
+              : 'Real overshared-vs-total site ratio — what Copilot could surface today'
             : 'The ratio appears once the SharePoint sharing checks have collected data.'}
         </p>
       </div>

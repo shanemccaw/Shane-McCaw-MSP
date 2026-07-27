@@ -4,6 +4,8 @@ import {
   ResolvedMetric,
   resolvedValue,
   resolvedHistory,
+  resolvedReason,
+  reasonCopy,
   riskCountBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
@@ -14,6 +16,15 @@ import {
  * duplicate assignments), replacing the mock per-department hygiene grid (a
  * department dimension isn't collected by any check). Both metrics carry real
  * history sparklines when the monitor has accumulated rows.
+ *
+ * The footer additionally surfaces two metrics the /licensing page has always
+ * requested from /api/dashboard/resolve but which no component rendered —
+ * `licensing.skuBreakdown` (the SKU-utilization check's real value) and
+ * `drift.licenseAssignmentDriftCount` (the license-assignment drift watcher).
+ * Both resolve as plain counts today (skuBreakdown is declared
+ * shape:"distribution" but the resolve endpoint serves available monitor
+ * metrics as scalars, so no per-SKU bucket list is served) — shown as the real
+ * numbers they are, with their resolve reason when they don't resolve.
  */
 
 interface AssignmentHygieneProps {
@@ -31,6 +42,12 @@ const HYGIENE_METRICS: { key: string; label: string; caption: string }[] = [
     label: 'Duplicate Licenses',
     caption: 'Overlapping assignments',
   },
+];
+
+/** Real resolved metrics the page already requests but nothing rendered before. */
+const SECONDARY_METRICS: { key: string; label: string }[] = [
+  { key: 'licensing.skuBreakdown', label: 'SKU utilization check' },
+  { key: 'drift.licenseAssignmentDriftCount', label: 'License assignment drift' },
 ];
 
 export const AssignmentHygiene: React.FC<AssignmentHygieneProps> = ({ metrics }) => {
@@ -107,7 +124,32 @@ export const AssignmentHygiene: React.FC<AssignmentHygieneProps> = ({ metrics })
         </div>
       )}
 
-      <div className="mt-4 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+      <ul className="mt-4 pt-3 border-t border-border space-y-1.5">
+        {SECONDARY_METRICS.map(({ key, label }) => {
+          const value = resolvedValue(metrics[key]);
+          const band = value != null ? riskCountBand(value) : null;
+          return (
+            <li
+              key={key}
+              className="flex justify-between items-center text-[11px] font-mono gap-2"
+              title={`${label} (${key})`}
+            >
+              <span className="text-muted-foreground truncate">{label}</span>
+              <span
+                className={`font-bold flex-shrink-0 ${
+                  band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'
+                }`}
+              >
+                {value != null
+                  ? value.toLocaleString()
+                  : reasonCopy(resolvedReason(metrics[key]))}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-3 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
         Per-department hygiene isn&apos;t collected — these are your real
         tenant-wide checks.
       </div>

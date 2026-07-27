@@ -120,9 +120,12 @@ export default function ArchitecturePage() {
 
   const heroStats: HeroStat[] = [
     {
-      label: 'Drift Engine Score',
+      label: 'Drift Points',
       value: driftScore != null ? String(Math.round(driftScore)) : null,
-      caption: 'Configuration drift posture',
+      // Raw drift-engine score = sum of impact over fired drift signals, so
+      // higher means MORE drift. Stated, since "score" normally implies the
+      // opposite. Left unbanded (accent blue) — it has no bounded scale.
+      caption: 'Accumulated configuration drift · lower is better',
       emptyCaption: 'No drift snapshot yet',
       accent: 'blue',
     },
@@ -177,20 +180,32 @@ export default function ArchitecturePage() {
               icon={Users}
               columns={2}
               tiles={[
-                { key: 'identity.globalAdminCount', label: 'Global Admins', caption: 'Role holders' },
+                // Global Admin count's healthy target is a small non-zero band
+                // (2–4 with break-glass), not 0 — the registry marks it
+                // smartEligible:false for exactly that reason, so risk-banding
+                // it here would grade a correctly-configured tenant as bad.
+                { key: 'identity.globalAdminCount', label: 'Global Admins', caption: 'Role holders · 2–4 with break-glass is healthy', direction: 'neutral' },
                 { key: 'identity.pimPermanentRoleCount', label: 'Standing Priv. Roles', caption: 'Permanent assignments' },
-                { key: 'identity.mfaRegisteredCount', label: 'MFA Registered', caption: 'Users with MFA methods' },
-                { key: 'identity.passwordlessUserCount', label: 'Passwordless Users', caption: 'Phishing-resistant auth' },
+                // Coverage metrics: HIGHER is better (registry COVERAGE_UP_BANDS,
+                // target 100). Never risk-band these.
+                { key: 'identity.mfaRegisteredCount', label: 'MFA Registered', caption: 'Users with MFA methods · higher is better', direction: 'coverage' },
+                { key: 'identity.passwordlessUserCount', label: 'Passwordless Users', caption: 'Phishing-resistant auth · higher is better', direction: 'coverage' },
                 { key: 'identity.staleAccountCount', label: 'Stale Accounts', caption: 'No recent sign-in' },
-                { key: 'identity.disabledAccountCount', label: 'Disabled Accounts', caption: 'Blocked from sign-in' },
+                // Disabled accounts are hygiene inventory, not risk — a tenant
+                // that correctly disables leavers would otherwise read red.
+                { key: 'identity.disabledAccountCount', label: 'Disabled Accounts', caption: 'Blocked from sign-in', direction: 'neutral' },
               ]}
               metrics={live.metrics}
             />
+            {/* Raw engine snapshot scores are risk-accumulation sums (see
+                ScoreOverview) — every series here reads "up = worse", so the
+                title and labels say so rather than leaving readers to assume
+                the usual higher-is-better score convention. */}
             <DailyTrendPanel
-              title="ENGINE SCORE TREND"
+              title="ENGINE RISK TREND (UP = WORSE)"
               seriesDefs={[
-                { key: 'engine.healthScore', label: 'Health', color: 'var(--color-primary)' },
-                { key: 'engine.securityScore', label: 'Security', color: 'var(--color-status-red)' },
+                { key: 'engine.healthScore', label: 'Health risk', color: 'var(--color-primary)' },
+                { key: 'engine.securityScore', label: 'Security risk', color: 'var(--color-status-red)' },
                 { key: 'engine.driftScore', label: 'Drift', color: 'var(--color-status-amber)' },
               ]}
               metrics={live.metrics}

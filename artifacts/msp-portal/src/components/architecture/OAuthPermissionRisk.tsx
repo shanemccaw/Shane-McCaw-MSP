@@ -4,6 +4,7 @@ import {
   ResolvedMetric,
   resolvedValue,
   resolvedEvents,
+  resolvedEventCount,
   riskCountBand,
   BAND_TEXT_CLASS,
 } from '@/components/health-suite/useTopicHealthLive';
@@ -44,6 +45,14 @@ export const OAuthPermissionRisk: React.FC<OAuthPermissionRiskProps> = ({ metric
   const watching =
     metrics['drift.permissionDriftCount']?.status === 'ok' ||
     metrics['dynamics.consentChangeCount']?.status === 'ok';
+  // Timeline-shaped in the registry, served as plain counts by the resolve
+  // endpoint — an empty event list is not evidence that nothing changed.
+  const changeCounts = [
+    { tag: 'GRAPH PERM', count: resolvedEventCount(metrics['drift.permissionDriftCount']) },
+    { tag: 'CONSENT', count: resolvedEventCount(metrics['dynamics.consentChangeCount']) },
+  ];
+  const changeTotal = changeCounts.reduce((sum, c) => sum + (c.count ?? 0), 0);
+  const anyChangeCount = changeCounts.some((c) => c.count != null);
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
@@ -97,10 +106,34 @@ export const OAuthPermissionRisk: React.FC<OAuthPermissionRiskProps> = ({ metric
             </li>
           ))}
         </ul>
+      ) : anyChangeCount && changeTotal > 0 ? (
+        <ul className="divide-y divide-border flex-grow">
+          {changeCounts.map(({ tag, count }) => (
+            <li key={tag} className="py-2 flex items-center justify-between gap-3">
+              <span className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 bg-status-amber/15 text-status-amber border-status-amber/30">
+                {tag}
+              </span>
+              <span className="text-[11px] text-secondary-foreground/90 flex-grow min-w-0 truncate">
+                {count != null ? 'changes in the look-back window' : 'no data collected yet'}
+              </span>
+              <span
+                className={`text-sm font-bold font-mono flex-shrink-0 ${
+                  count != null ? BAND_TEXT_CLASS[riskCountBand(count)] : 'text-muted-foreground'
+                }`}
+              >
+                {count != null ? count.toLocaleString() : '—'}
+              </span>
+            </li>
+          ))}
+          <li className="pt-2 text-[10px] text-muted-foreground leading-relaxed">
+            Per-change detail (which app, which scope) isn&apos;t served by the
+            metrics API yet — these are the real counts your watchers reported.
+          </li>
+        </ul>
       ) : (
         <div className="flex-grow flex items-center justify-center text-center px-4 py-6">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {watching
+            {anyChangeCount
               ? 'No permission or consent changes in the look-back window.'
               : 'Permission-change events appear once the watchers have collected data for your tenant.'}
           </p>
