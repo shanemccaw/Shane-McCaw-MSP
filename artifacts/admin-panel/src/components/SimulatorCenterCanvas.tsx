@@ -7,6 +7,10 @@ import {
   Loader2,
   Building2,
   RefreshCw,
+  X,
+  Terminal,
+  Play,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,35 @@ import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
 import { SimulatorConfigPackCanvas } from "./SimulatorConfigPackCanvas";
 import { SimulatorPillarMatrixCanvas, type PillarKey } from "./SimulatorPillarMatrixCanvas";
 import type { ConfigPackNode, WriteActionNode } from "./SimulatorLeftTree";
+
+export interface SimDocumentTab {
+  id: string;
+  type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration";
+  label: string;
+  data: any;
+}
+
+const LS_OPEN_DOCS_KEY = "simulator-open-documents-v1";
+const LS_ACTIVE_DOC_KEY = "simulator-active-doc-id-v1";
+
+function readOpenDocs(): SimDocumentTab[] {
+  try {
+    const raw = localStorage.getItem(LS_OPEN_DOCS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readActiveDocId(): string | null {
+  try {
+    return localStorage.getItem(LS_ACTIVE_DOC_KEY) || null;
+  } catch {
+    return null;
+  }
+}
 
 interface Msp {
   id: number;
@@ -86,6 +119,10 @@ export function SimulatorCenterCanvas({
   // folder in the Explorer tree.
   const [bulkRun, setBulkRun] = useState<BulkRunTarget | null>(null);
 
+  // Open Document Tabs state (persisted in localStorage)
+  const [openDocuments, setOpenDocuments] = useState<SimDocumentTab[]>(() => readOpenDocs());
+  const [activeDocId, setActiveDocId] = useState<string | null>(() => readActiveDocId());
+
   // Testbeds state
   const [msps, setMsps] = useState<Msp[]>([]);
   const [loadingTestbeds, setLoadingTestbeds] = useState(false);
@@ -94,57 +131,203 @@ export function SimulatorCenterCanvas({
   const [testbedCustomers, setTestbedCustomers] = useState<TestbedCustomer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
 
+  const openDoc = (doc: SimDocumentTab) => {
+    setOpenDocuments((prev) => {
+      const exists = prev.some((d) => d.id === doc.id);
+      const next = exists ? prev.map((d) => (d.id === doc.id ? doc : d)) : [...prev, doc];
+      try {
+        localStorage.setItem(LS_OPEN_DOCS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setActiveDocId(doc.id);
+    try {
+      localStorage.setItem(LS_ACTIVE_DOC_KEY, doc.id);
+    } catch {}
+  };
+
+  // Restore active document state on mount from persisted localStorage
   useEffect(() => {
-    // Saved scripts clicked (or run) in SimulatorLeftTree load into the SQL
-    // Query tab. SqlQueryCanvas owns the editor doc and listens for the same
-    // events; this listener just brings the tab forward (the canvas stays
-    // mounted while hidden, so its listener is always live).
-    const handleLoadScript = () => setActiveTab("sql");
-    // Selecting an M365 endpoint in the tree opens it in its own tab — same
-    // event-driven hand-off the saved-script rows use for the SQL tab.
+    const docs = readOpenDocs();
+    const activeId = readActiveDocId();
+    if (activeId && docs.length > 0) {
+      const doc = docs.find((d) => d.id === activeId);
+      if (doc) {
+        if (doc.type === "script" || doc.type === "migration") {
+          setActiveTab("sql");
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent(doc.type === "script" ? "simulator-load-script" : "simulator-run-migration", {
+                detail: doc.data,
+              })
+            );
+          }, 50);
+        } else if (doc.type === "endpoint") {
+          setSelectedEndpoint(doc.data);
+          setActiveTab("endpoint");
+        } else if (doc.type === "write-action") {
+          setSelectedWriteAction(doc.data);
+          setActiveTab("write-action");
+        } else if (doc.type === "config-pack") {
+          setSelectedConfigPack(doc.data);
+          setActiveTab("config-pack");
+        } else if (doc.type === "batch") {
+          setBulkRun(doc.data);
+          setActiveTab("batch");
+        } else if (doc.type === "pillar") {
+          if (doc.data?.pillar) setSelectedPillar(doc.data.pillar);
+          setActiveTab("pillar-matrix");
+        }
+      }
+    }
+  }, []);
+
+  const handleSelectDocument = (doc: SimDocumentTab) => {
+    setActiveDocId(doc.id);
+    try {
+      localStorage.setItem(LS_ACTIVE_DOC_KEY, doc.id);
+    } catch {}
+
+    if (doc.type === "script") {
+      setActiveTab("sql");
+      window.dispatchEvent(new CustomEvent("simulator-load-script", { detail: doc.data }));
+    } else if (doc.type === "migration") {
+      setActiveTab("sql");
+      window.dispatchEvent(new CustomEvent("simulator-run-migration", { detail: doc.data }));
+    } else if (doc.type === "endpoint") {
+      setSelectedEndpoint(doc.data);
+      setActiveTab("endpoint");
+    } else if (doc.type === "write-action") {
+      setSelectedWriteAction(doc.data);
+      setActiveTab("write-action");
+    } else if (doc.type === "config-pack") {
+      setSelectedConfigPack(doc.data);
+      setActiveTab("config-pack");
+    } else if (doc.type === "batch") {
+      setBulkRun(doc.data);
+      setActiveTab("batch");
+    } else if (doc.type === "pillar") {
+      if (doc.data?.pillar) setSelectedPillar(doc.data.pillar);
+      setActiveTab("pillar-matrix");
+    }
+  };
+
+  const handleCloseDocument = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOpenDocuments((prev) => {
+      const next = prev.filter((d) => d.id !== id);
+      try {
+        localStorage.setItem(LS_OPEN_DOCS_KEY, JSON.stringify(next));
+      } catch {}
+
+      if (activeDocId === id) {
+        if (next.length > 0) {
+          const closedIndex = prev.findIndex((d) => d.id === id);
+          const nextDoc = next[Math.min(closedIndex, next.length - 1)];
+          if (nextDoc) {
+            setTimeout(() => handleSelectDocument(nextDoc), 0);
+          }
+        } else {
+          setActiveDocId(null);
+          try {
+            localStorage.removeItem(LS_ACTIVE_DOC_KEY);
+          } catch {}
+          setActiveTab("sql");
+        }
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handleLoadScript = (e: Event) => {
+      const detail = (e as CustomEvent<any>).detail;
+      setActiveTab("sql");
+      if (detail && (detail.id || detail.name)) {
+        openDoc({
+          id: `script:${detail.id || detail.name}`,
+          type: "script",
+          label: detail.name || `Script ${detail.id}`,
+          data: detail,
+        });
+      }
+    };
+    const handleRunMigration = (e: Event) => {
+      const detail = (e as CustomEvent<any>).detail;
+      setActiveTab("sql");
+      if (detail && detail.filename) {
+        openDoc({
+          id: `migration:${detail.filename}`,
+          type: "migration",
+          label: detail.filename,
+          data: detail,
+        });
+      }
+    };
     const handleSelectEndpoint = (e: Event) => {
       const detail = (e as CustomEvent<MonitorCheckSummary>).detail;
       if (!detail) return;
       setSelectedEndpoint(detail);
       setActiveTab("endpoint");
+      openDoc({
+        id: `endpoint:${detail.key}`,
+        type: "endpoint",
+        label: detail.key,
+        data: detail,
+      });
     };
-    // "Run all" on a domain folder starts a real batch server-side; this tab
-    // just polls it. Same event-driven hand-off pattern as the two above.
     const handleBulkRun = (e: Event) => {
       const detail = (e as CustomEvent<BulkRunTarget>).detail;
       if (!detail) return;
       setBulkRun(detail);
       setActiveTab("batch");
+      openDoc({
+        id: `batch:${detail.batchId || detail.domain}`,
+        type: "batch",
+        label: `${detail.domain}:* run`,
+        data: detail,
+      });
     };
-    // Selecting a write-action in the tree opens its own tenant-MUTATING tab —
-    // deliberately a SEPARATE event from the read endpoint, so a write can never
-    // land in the read canvas (which has no confirmation flow).
     const handleSelectWriteAction = (e: Event) => {
       const detail = (e as CustomEvent<WriteActionNode>).detail;
       if (!detail) return;
       setSelectedWriteAction(detail);
       setActiveTab("write-action");
+      openDoc({
+        id: `write-action:${detail.templateId}`,
+        type: "write-action",
+        label: `⚡ ${detail.label}`,
+        data: detail,
+      });
     };
-    // Selecting a pillar in the tree opens the cross-signal Pillar Matrix tab —
-    // same event-driven hand-off pattern; the matrix is a read/edit surface, not
-    // a per-tenant run, so no testbed selection is involved.
     const handleSelectPillarMatrix = (e: Event) => {
       const detail = (e as CustomEvent<{ pillar: PillarKey }>).detail;
       if (detail?.pillar) setSelectedPillar(detail.pillar);
       setActiveTab("pillar-matrix");
+      if (detail?.pillar) {
+        openDoc({
+          id: `pillar:${detail.pillar}`,
+          type: "pillar",
+          label: `Pillar: ${detail.pillar}`,
+          data: detail,
+        });
+      }
     };
-    // Selecting a config pack in the tree opens the orchestrated-run tab. A pack
-    // run reuses the SAME testbed-only + confirmation posture as Write Actions;
-    // single steps within it hand off to the write-action tab (see below).
     const handleSelectConfigPack = (e: Event) => {
       const detail = (e as CustomEvent<ConfigPackNode>).detail;
       if (!detail) return;
       setSelectedConfigPack(detail);
       setActiveTab("config-pack");
+      openDoc({
+        id: `config-pack:${detail.packKey}`,
+        type: "config-pack",
+        label: `📦 ${detail.label}`,
+        data: detail,
+      });
     };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
-    window.addEventListener("simulator-run-migration", handleLoadScript);
+    window.addEventListener("simulator-run-migration", handleRunMigration);
     window.addEventListener("simulator-select-endpoint", handleSelectEndpoint);
     window.addEventListener("simulator-bulk-run", handleBulkRun);
     window.addEventListener("simulator-select-write-action", handleSelectWriteAction);
@@ -153,7 +336,7 @@ export function SimulatorCenterCanvas({
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
-      window.removeEventListener("simulator-run-migration", handleLoadScript);
+      window.removeEventListener("simulator-run-migration", handleRunMigration);
       window.removeEventListener("simulator-select-endpoint", handleSelectEndpoint);
       window.removeEventListener("simulator-bulk-run", handleBulkRun);
       window.removeEventListener("simulator-select-write-action", handleSelectWriteAction);
@@ -274,41 +457,79 @@ export function SimulatorCenterCanvas({
     { key: "engines", label: "Run Engines" },
     { key: "deploy", label: "Deploy Console" },
     { key: "pillar-matrix", label: "Pillar Matrix" },
-    // Only present once an endpoint has been picked in the Explorer tree —
-    // an empty "Endpoint" tab would be a dead tab with nothing to show.
-    ...(selectedEndpoint
-      ? [{ key: "endpoint" as typeof activeTab, label: selectedEndpoint.key }]
-      : []),
-    // Same rule as the Endpoint tab: only present once a bulk run exists.
-    ...(bulkRun ? [{ key: "batch" as typeof activeTab, label: `${bulkRun.domain}:* run` }] : []),
-    // Only present once a write-action has been picked in the Explorer tree.
-    ...(selectedWriteAction
-      ? [{ key: "write-action" as typeof activeTab, label: `⚡ ${selectedWriteAction.label}` }]
-      : []),
-    // Only present once a config pack has been picked in the Explorer tree.
-    ...(selectedConfigPack
-      ? [{ key: "config-pack" as typeof activeTab, label: `📦 ${selectedConfigPack.label}` }]
-      : []),
   ];
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-full bg-background font-sans">
-      {/* Editor-style tab strip */}
-      <div className="flex-shrink-0 flex items-end bg-card border-b border-border select-none">
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`relative h-9 px-3.5 text-xs border-r border-border transition-colors ${
-              activeTab === key
-                ? "bg-background text-foreground before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* Existing Top Tab Strip */}
+      <div className="flex-shrink-0 flex items-end bg-card border-b border-border select-none overflow-x-auto scrollbar-none">
+        {TABS.map(({ key, label }) => {
+          const isTopSelected = activeTab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => {
+                setActiveTab(key);
+              }}
+              className={`relative h-9 px-3.5 text-xs border-r border-border transition-colors shrink-0 ${
+                isTopSelected
+                  ? "bg-background text-foreground font-medium before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/80"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
+
+      {/* New VS Code / Antigravity Document Tabs Strip (persisted across refreshes) */}
+      {openDocuments.length > 0 && (
+        <div className="flex-shrink-0 flex items-center bg-muted/30 border-b border-border overflow-x-auto select-none min-h-[34px] px-1 gap-1 scrollbar-thin">
+          {openDocuments.map((doc) => {
+            const isDocActive =
+              activeDocId === doc.id &&
+              ((doc.type === "script" && activeTab === "sql") ||
+                (doc.type === "migration" && activeTab === "sql") ||
+                (doc.type === "endpoint" && activeTab === "endpoint") ||
+                (doc.type === "write-action" && activeTab === "write-action") ||
+                (doc.type === "config-pack" && activeTab === "config-pack") ||
+                (doc.type === "batch" && activeTab === "batch") ||
+                (doc.type === "pillar" && activeTab === "pillar-matrix"));
+
+            return (
+              <div
+                key={doc.id}
+                onClick={() => handleSelectDocument(doc)}
+                className={`group flex items-center gap-1.5 h-7 px-2.5 text-xs rounded-t border border-b-0 transition-all cursor-pointer shrink-0 max-w-[240px] ${
+                  isDocActive
+                    ? "bg-background text-foreground font-medium border-border shadow-sm relative after:absolute after:inset-x-0 after:-bottom-[1px] after:h-[2px] after:bg-background"
+                    : "bg-card/40 text-muted-foreground hover:bg-card hover:text-foreground border-transparent hover:border-border/60"
+                }`}
+              >
+                {doc.type === "script" && <Terminal className="w-3 h-3 text-sky-400 shrink-0" />}
+                {doc.type === "migration" && <RefreshCw className="w-3 h-3 text-emerald-400 shrink-0" />}
+                {doc.type === "endpoint" && <Building2 className="w-3 h-3 text-indigo-400 shrink-0" />}
+                {doc.type === "batch" && <Play className="w-3 h-3 text-amber-400 shrink-0" />}
+                {doc.type === "pillar" && <Layers className="w-3 h-3 text-purple-400 shrink-0" />}
+                <span className="truncate">{doc.label}</span>
+                <button
+                  type="button"
+                  onClick={(e) => handleCloseDocument(doc.id, e)}
+                  title="Close document"
+                  className={`w-4 h-4 rounded-sm flex items-center justify-center transition-colors shrink-0 ml-0.5 ${
+                    isDocActive
+                      ? "text-muted-foreground hover:bg-accent hover:text-foreground opacity-100"
+                      : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Workspace Area */}
       <div className="flex-1 flex flex-col min-h-0">
