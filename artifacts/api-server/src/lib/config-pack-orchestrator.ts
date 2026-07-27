@@ -36,6 +36,7 @@ import {
   GATE_SECRET_FIELD,
   GLOBAL_ADMIN_ROLE_DEFINITION_ID,
   MID_RUN_PROVIDED_VARIABLES,
+  getStepId,
   type PackTemplateResolved,
 } from "./config-pack-graph";
 
@@ -336,6 +337,6 @@ export async function runConfigPackForCustomer(opts: {
     versionId,
     reusedVersion,
     gated: gatedTemplateId !== null,
-    templateOrder: ordered.map((t) => t.templateId),
+    templateOrder: ordered.map((t) => getStepId(t)),
   };
 }

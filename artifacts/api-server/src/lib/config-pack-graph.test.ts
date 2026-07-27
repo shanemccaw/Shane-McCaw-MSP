@@ -15,6 +15,8 @@ const t = (
   overrides: Partial<PackTemplateResolved> = {},
 ): PackTemplateResolved => ({
   templateId,
+  checkKey: null,
+  parameterMapping: null,
   label: templateId,
   sortOrder,
   effectiveDependsOn: [],

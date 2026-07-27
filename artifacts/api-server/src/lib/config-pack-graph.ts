@@ -137,35 +137,40 @@ export function operatorRequiredVariables(ordered: PackTemplateResolved[]): stri
   return out;
 }
 
+export function getStepId(t: { templateId?: string | null; checkKey?: string | null }): string {
+  return t.templateId || t.checkKey || "unknown-step";
+}
+
 /** Kahn topological sort with sortOrder tie-break. Throws on unknown deps / cycles. */
 export function topologicalOrder(templates: PackTemplateResolved[]): PackTemplateResolved[] {
-  const byId = new Map(templates.map((t) => [t.templateId, t]));
+  const byId = new Map(templates.map((t) => [getStepId(t), t]));
 
   for (const t of templates) {
+    const stepId = getStepId(t);
     for (const dep of t.effectiveDependsOn) {
       if (!byId.has(dep)) {
         throw new ConfigPackError(
           "dependency_not_in_pack",
-          `Template '${t.templateId}' depends on '${dep}', which is not part of this pack`,
-          { templateId: t.templateId, missingDependency: dep },
+          `Template '${stepId}' depends on '${dep}', which is not part of this pack`,
+          { templateId: stepId, missingDependency: dep },
         );
       }
     }
   }
 
   const remainingDeps = new Map<string, Set<string>>(
-    templates.map((t) => [t.templateId, new Set(t.effectiveDependsOn)]),
+    templates.map((t) => [getStepId(t), new Set(t.effectiveDependsOn)]),
   );
   const orderedIds = new Set<string>();
   const ordered: PackTemplateResolved[] = [];
 
   while (ordered.length < templates.length) {
     const ready = templates
-      .filter((t) => !orderedIds.has(t.templateId) && (remainingDeps.get(t.templateId)?.size ?? 0) === 0)
+      .filter((t) => !orderedIds.has(getStepId(t)) && (remainingDeps.get(getStepId(t))?.size ?? 0) === 0)
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
     if (ready.length === 0) {
-      const stuck = templates.filter((t) => !orderedIds.has(t.templateId)).map((t) => t.templateId);
+      const stuck = templates.filter((t) => !orderedIds.has(getStepId(t))).map((t) => getStepId(t));
       throw new ConfigPackError(
         "dependency_cycle",
         `Dependency cycle among pack templates: ${stuck.join(", ")}`,
@@ -174,9 +179,10 @@ export function topologicalOrder(templates: PackTemplateResolved[]): PackTemplat
     }
 
     const next = ready[0]!;
+    const nextId = getStepId(next);
     ordered.push(next);
-    orderedIds.add(next.templateId);
-    for (const deps of remainingDeps.values()) deps.delete(next.templateId);
+    orderedIds.add(nextId);
+    for (const deps of remainingDeps.values()) deps.delete(nextId);
   }
 
   return ordered;
@@ -280,15 +286,16 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
     }
 
     if (t.templateId) {
-      const tplNodeId = t.checkKey ? `tpl-${t.templateId}` : nodeId;
+      const tplId = t.templateId;
+      const tplNodeId = t.checkKey ? `tpl-${tplId}` : nodeId;
       nodes.push({
         id: tplNodeId,
         type: "execute_baseline_template",
         position: nextPos(),
         data: {
           nodeType: "execute_baseline_template",
-          label: t.label,
-          templateId: t.templateId,
+          label: t.label ?? undefined,
+          templateId: tplId,
           customerId: "{{customerId}}",
         },
       });
@@ -298,9 +305,9 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       prev = { id: tplNodeId, sourceHandle: "success" };
 
       if (t.requiresVerificationGate && gatedTemplateId === null) {
-        gatedTemplateId = t.templateId;
+        gatedTemplateId = tplId;
 
-        const mapNodeId = `map-${t.templateId}-outputs`;
+        const mapNodeId = `map-${tplId}-outputs`;
         nodes.push({
           id: mapNodeId,
           type: "action",
@@ -317,7 +324,7 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
         link(mapNodeId);
         prev = { id: mapNodeId };
 
-      const gateNodeId = `gate-${t.templateId}`;
+      const gateNodeId = `gate-${tplId}`;
       nodes.push({
         id: gateNodeId,
         type: "break_glass_verification_gate",
@@ -337,7 +344,7 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       // Resume follows edges with no sourceHandle (treated as "approved").
       prev = { id: gateNodeId };
     } else if (t.requiresVerificationGate) {
-      coalescedGateTemplateIds.push(t.templateId);
+      coalescedGateTemplateIds.push(tplId);
     }
   }
   }

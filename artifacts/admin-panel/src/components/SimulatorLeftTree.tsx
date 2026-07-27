@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useModal } from "@/contexts/ModalContext";
@@ -29,6 +29,8 @@ import {
   Archive,
   LayoutGrid,
   Package,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -166,6 +168,24 @@ const PILLAR_MATRIX_PILLARS: Array<{ key: string; label: string }> = [
   { key: "licensing", label: "Licensing" },
 ];
 
+function itemMatchesSearch(query: string, fields: (string | null | undefined | string[] | number | boolean | Record<string, unknown>)[]): boolean {
+  if (!query) return true;
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  
+  const combined = fields
+    .map((f) => {
+      if (f == null) return "";
+      if (Array.isArray(f)) return f.join(" ");
+      if (typeof f === "object") return JSON.stringify(f);
+      return String(f);
+    })
+    .join(" ")
+    .toLowerCase();
+    
+  return terms.every((term) => combined.includes(term));
+}
+
 export function SimulatorLeftTree() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
@@ -260,9 +280,137 @@ export function SimulatorLeftTree() {
     expandedCats,
   ]);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const isSearching = searchQuery.trim().length > 0;
+
+  const filteredScenarios = useMemo(() => {
+    if (!isSearching) return scenarios;
+    return scenarios.filter((event) =>
+      itemMatchesSearch(searchQuery, [event.name, event.description, event.category, event.demoSpeakerNote, event.id])
+    );
+  }, [scenarios, searchQuery, isSearching]);
+
+  const filteredScripts = useMemo(() => {
+    if (!isSearching) return scripts;
+    return scripts.filter((script) =>
+      itemMatchesSearch(searchQuery, [script.name, script.category, script.query])
+    );
+  }, [scripts, searchQuery, isSearching]);
+
+  const filteredMigrationFiles = useMemo(() => {
+    if (!isSearching) return migrationFiles;
+    return migrationFiles.filter((filename) =>
+      itemMatchesSearch(searchQuery, [filename])
+    );
+  }, [migrationFiles, searchQuery, isSearching]);
+
+  const exceptionMatches = useMemo(() => {
+    if (!isSearching) return true;
+    return itemMatchesSearch(searchQuery, [
+      "Trigger Synthetic Exception",
+      "synthetic",
+      "exception",
+      "alert",
+      "error",
+      "testing",
+    ]);
+  }, [searchQuery, isSearching]);
+
+  const filteredSuites = useMemo(() => {
+    if (!isSearching) return suites;
+    return suites.filter((suite) =>
+      itemMatchesSearch(searchQuery, [
+        suite.name,
+        ...suite.steps.map((s) => s.type),
+      ])
+    );
+  }, [suites, searchQuery, isSearching]);
+
+  const filteredEngines = useMemo(() => {
+    if (!isSearching) return engines;
+    return engines.filter((engine) =>
+      itemMatchesSearch(searchQuery, [engine.key, engine.label, engine.description, engine.categoryPrefix])
+    );
+  }, [engines, searchQuery, isSearching]);
+
+  const filteredBusEventTypes = useMemo(() => {
+    if (!isSearching) return busEventTypes;
+    return busEventTypes.filter((t) =>
+      itemMatchesSearch(searchQuery, [t.eventType, t.group])
+    );
+  }, [busEventTypes, searchQuery, isSearching]);
+
+  const filteredMonitorChecks = useMemo(() => {
+    if (!isSearching) return monitorChecks;
+    return monitorChecks.filter((check) =>
+      itemMatchesSearch(searchQuery, [
+        check.key,
+        check.label,
+        check.description,
+        check.endpoint,
+        check.method,
+        check.selectParams,
+        ...(check.properties || []),
+        check.status,
+      ])
+    );
+  }, [monitorChecks, searchQuery, isSearching]);
+
+  const filteredWriteActions = useMemo(() => {
+    if (!isSearching) return writeActions;
+    return writeActions.filter((wa) =>
+      itemMatchesSearch(searchQuery, [
+        wa.templateId,
+        wa.label,
+        wa.description,
+        wa.category,
+        wa.endpoint,
+        wa.method,
+        ...(wa.requiredVariables || []),
+        ...(wa.dependsOn || []),
+        wa.status,
+        wa.catalog?.domain,
+        wa.catalog?.surface,
+        wa.catalog?.requiredPermission,
+      ])
+    );
+  }, [writeActions, searchQuery, isSearching]);
+
+  const filteredPillars = useMemo(() => {
+    if (!isSearching) return PILLAR_MATRIX_PILLARS;
+    return PILLAR_MATRIX_PILLARS.filter((p) =>
+      itemMatchesSearch(searchQuery, [p.key, p.label, "pillar", "matrix"])
+    );
+  }, [searchQuery, isSearching]);
+
+  const filteredConfigPacks = useMemo(() => {
+    if (!isSearching) return configPacks;
+    return configPacks.filter((pack) =>
+      itemMatchesSearch(searchQuery, [
+        pack.packKey,
+        pack.label,
+        pack.description,
+        ...(pack.categories || []),
+        pack.status,
+      ])
+    );
+  }, [configPacks, searchQuery, isSearching]);
+
+  const showScenarios = !isSearching || filteredScenarios.length > 0;
+  const showScripts = !isSearching || filteredScripts.length > 0;
+  const showMigrations = !isSearching || filteredMigrationFiles.length > 0;
+  const showExceptions = !isSearching || exceptionMatches;
+  const showSuites = !isSearching || filteredSuites.length > 0;
+  const showEngines = !isSearching || filteredEngines.length > 0;
+  const showBusEvents = !isSearching || filteredBusEventTypes.length > 0;
+  const showEndpoints = !isSearching || filteredMonitorChecks.length > 0;
+  const showWriteActions = !isSearching || filteredWriteActions.length > 0;
+  const showPillarMatrix = !isSearching || filteredPillars.length > 0;
+  const showConfigPacks = !isSearching || filteredConfigPacks.length > 0;
+
   // Group event types by dot-prefix; keys are namespaced ("evt:auth") so event
   // groups never collide with scenario/script categories in expandedCats.
-  const busEventsByGroup = busEventTypes.reduce(
+  const busEventsByGroup = filteredBusEventTypes.reduce(
     (acc, t) => {
       const group = t.group || "other";
       if (!acc[group]) acc[group] = [];
@@ -278,7 +426,7 @@ export function SimulatorLeftTree() {
   // there is no category column). Keys are namespaced ("ep:identity") so
   // endpoint groups never collide with scenario/script/event categories in
   // expandedCats — the same collision guard the event groups use.
-  const checksByDomain = monitorChecks.reduce(
+  const checksByDomain = filteredMonitorChecks.reduce(
     (acc, check) => {
       const domain = check.key.includes(":") ? check.key.split(":")[0]! : "other";
       if (!acc[domain]) acc[domain] = [];
@@ -292,7 +440,7 @@ export function SimulatorLeftTree() {
   // Licensing, Groups, Teams, SharePoint/OneDrive...). Keys are namespaced
   // ("wa:Users") so write-action groups never collide with endpoint/event/script
   // categories in expandedCats — the same collision guard the others use.
-  const writeActionsByCategory = writeActions.reduce(
+  const writeActionsByCategory = filteredWriteActions.reduce(
     (acc, wa) => {
       const cat = wa.category || "Other";
       if (!acc[cat]) acc[cat] = [];
@@ -441,7 +589,7 @@ export function SimulatorLeftTree() {
   }, []);
 
   // Group events by category
-  const scenariosByCategory = scenarios.reduce(
+  const scenariosByCategory = filteredScenarios.reduce(
     (acc, event) => {
       const cat = event.category || "crm";
       if (!acc[cat]) acc[cat] = [];
@@ -452,7 +600,7 @@ export function SimulatorLeftTree() {
   );
 
   // Group scripts by category
-  const scriptsByCategory = scripts.reduce(
+  const scriptsByCategory = filteredScripts.reduce(
     (acc, script) => {
       const cat = script.category || "Uncategorized";
       if (!acc[cat]) acc[cat] = [];
@@ -772,17 +920,65 @@ export function SimulatorLeftTree() {
         </div>
       </div>
 
+      {/* Explorer Search Box */}
+      <div className="shrink-0 border-b border-border bg-card/50 px-2 py-1.5">
+        <div className="relative flex items-center">
+          <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search endpoints, events, scripts, packs..."
+            className="w-full rounded border border-border bg-background py-1 pl-7 pr-6 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Clear search"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Tree content */}
       <ContextMenu>
       <ContextMenuTrigger asChild>
       <div className="flex-1 space-y-1 overflow-y-auto py-1">
+        {isSearching &&
+          !showScenarios &&
+          !showScripts &&
+          !showMigrations &&
+          !showExceptions &&
+          !showSuites &&
+          !showEngines &&
+          !showBusEvents &&
+          !showEndpoints &&
+          !showWriteActions &&
+          !showPillarMatrix &&
+          !showConfigPacks && (
+            <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
+              <Search className="mb-2 h-6 w-6 opacity-40" />
+              <p className="text-xs font-medium text-foreground/80">No results found</p>
+              <p className="mt-0.5 text-[10px]">No endpoints, events, or scripts match "{searchQuery}"</p>
+              <button
+                onClick={() => setSearchQuery("")}
+                className="mt-3 rounded bg-accent px-2 py-1 text-[10px] font-medium text-foreground hover:bg-accent/80"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
         {/* Section 1: Simulation Scenarios */}
+        {showScenarios && (
         <div>
           <div
             onClick={() => setScenariosOpen(!scenariosOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {scenariosOpen ? (
+            {isSearching || scenariosOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -790,7 +986,7 @@ export function SimulatorLeftTree() {
             <span className="truncate">Simulation Scenarios</span>
           </div>
 
-          {scenariosOpen && (
+          {(isSearching || scenariosOpen) && (
             <div>
               {Object.keys(scenariosByCategory).map((cat) => (
                 <div key={cat}>
@@ -798,12 +994,12 @@ export function SimulatorLeftTree() {
                     onClick={() => toggleCat(cat)}
                     className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                   >
-                    {expandedCats[cat] ? (
+                    {isSearching || expandedCats[cat] ? (
                       <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
                     ) : (
                       <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                     )}
-                    {expandedCats[cat] ? (
+                    {isSearching || expandedCats[cat] ? (
                       <FolderOpen className="h-3.5 w-3.5 text-primary" />
                     ) : (
                       <Folder className="h-3.5 w-3.5 text-primary" />
@@ -814,7 +1010,7 @@ export function SimulatorLeftTree() {
                     </span>
                   </div>
 
-                  {expandedCats[cat] && (
+                  {(isSearching || expandedCats[cat]) && (
                     <div className="ml-[22px] border-l border-accent">
                       {scenariosByCategory[cat].map((event) => (
                         <ContextMenu key={event.id}>
@@ -845,14 +1041,16 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 2: Saved SQL Scripts */}
+        {showScripts && (
         <div>
           <div
             onClick={() => setScriptsOpen(!scriptsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {scriptsOpen ? (
+            {isSearching || scriptsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -860,7 +1058,7 @@ export function SimulatorLeftTree() {
             <span className="truncate">Saved SQL Scripts</span>
           </div>
 
-          {scriptsOpen && (
+          {(isSearching || scriptsOpen) && (
             <div>
               {Object.keys(scriptsByCategory).length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No saved scripts</div>
@@ -871,7 +1069,7 @@ export function SimulatorLeftTree() {
                       onClick={() => toggleCat(cat)}
                       className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                     >
-                      {expandedCats[cat] ? (
+                      {isSearching || expandedCats[cat] ? (
                         <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
                       ) : (
                         <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
@@ -883,7 +1081,7 @@ export function SimulatorLeftTree() {
                       </span>
                     </div>
 
-                    {expandedCats[cat] && (
+                    {(isSearching || expandedCats[cat]) && (
                       <div className="ml-[22px] border-l border-accent">
                         {scriptsByCategory[cat].map((script) => (
                           <ContextMenu key={script.id}>
@@ -946,14 +1144,16 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 2b: Migrations (lib/db/migrations/manual/, server filesystem) */}
+        {showMigrations && (
         <div>
           <div
             onClick={() => setMigrationsOpen(!migrationsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {migrationsOpen ? (
+            {isSearching || migrationsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -961,12 +1161,12 @@ export function SimulatorLeftTree() {
             <span className="truncate">Migrations</span>
           </div>
 
-          {migrationsOpen && (
+          {(isSearching || migrationsOpen) && (
             <div className="ml-[22px] border-l border-accent">
-              {migrationFiles.length === 0 ? (
+              {filteredMigrationFiles.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No manual migration files</div>
               ) : (
-                migrationFiles.map((filename) => (
+                filteredMigrationFiles.map((filename) => (
                   <ContextMenu key={filename}>
                     <ContextMenuTrigger asChild>
                       <div
@@ -991,14 +1191,16 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 3: Exception Testing */}
+        {showExceptions && (
         <div>
           <div
             onClick={() => setExceptionsOpen(!exceptionsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {exceptionsOpen ? (
+            {isSearching || exceptionsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1006,7 +1208,7 @@ export function SimulatorLeftTree() {
             <span className="truncate">Exception Testing</span>
           </div>
 
-          {exceptionsOpen && (
+          {(isSearching || exceptionsOpen) && (
             <ContextMenu>
               <ContextMenuTrigger asChild>
                 <div
@@ -1043,14 +1245,16 @@ export function SimulatorLeftTree() {
             </ContextMenu>
           )}
         </div>
+        )}
 
         {/* Section 4: Test Suites */}
+        {showSuites && (
         <div>
           <div
             onClick={() => setSuitesOpen(!suitesOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {suitesOpen ? (
+            {isSearching || suitesOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1068,12 +1272,12 @@ export function SimulatorLeftTree() {
             </button>
           </div>
 
-          {suitesOpen && (
+          {(isSearching || suitesOpen) && (
             <div>
-              {suites.length === 0 ? (
+              {filteredSuites.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No test suites</div>
               ) : (
-                suites.map((suite) => {
+                filteredSuites.map((suite) => {
                   const isRunning = !!runningSuites[suite.id];
                   return (
                     <ContextMenu key={suite.id}>
@@ -1123,14 +1327,16 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 5: Engines */}
+        {showEngines && (
         <div>
           <div
             onClick={() => setEnginesOpen(!enginesOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {enginesOpen ? (
+            {isSearching || enginesOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1138,12 +1344,12 @@ export function SimulatorLeftTree() {
             <span className="truncate">Engines</span>
           </div>
 
-          {enginesOpen && (
+          {(isSearching || enginesOpen) && (
             <div>
-              {engines.length === 0 ? (
+              {filteredEngines.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No engines</div>
               ) : (
-                engines.map((engine) => {
+                filteredEngines.map((engine) => {
                   const isRunning = !!runningEngines[engine.key];
                   return (
                     <ContextMenu key={engine.key}>
@@ -1181,14 +1387,16 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 6: Events (canonical event bus) */}
+        {showBusEvents && (
         <div>
           <div
             onClick={() => setBusEventsOpen(!busEventsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {busEventsOpen ? (
+            {isSearching || busEventsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1196,9 +1404,9 @@ export function SimulatorLeftTree() {
             <span className="truncate">Events</span>
           </div>
 
-          {busEventsOpen && (
+          {(isSearching || busEventsOpen) && (
             <div>
-              {busEventTypes.length === 0 ? (
+              {filteredBusEventTypes.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No event types</div>
               ) : (
                 Object.keys(busEventsByGroup).map((group) => (
@@ -1207,12 +1415,12 @@ export function SimulatorLeftTree() {
                       onClick={() => toggleCat(`evt:${group}`)}
                       className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                     >
-                      {expandedCats[`evt:${group}`] ? (
+                      {isSearching || expandedCats[`evt:${group}`] ? (
                         <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
                       ) : (
                         <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                       )}
-                      {expandedCats[`evt:${group}`] ? (
+                      {isSearching || expandedCats[`evt:${group}`] ? (
                         <FolderOpen className="h-3.5 w-3.5 text-primary" />
                       ) : (
                         <Folder className="h-3.5 w-3.5 text-primary" />
@@ -1223,7 +1431,7 @@ export function SimulatorLeftTree() {
                       </span>
                     </div>
 
-                    {expandedCats[`evt:${group}`] && (
+                    {(isSearching || expandedCats[`evt:${group}`]) && (
                       <div className="ml-[22px] border-l border-accent">
                         {busEventsByGroup[group].map((t) => (
                           <ContextMenu key={t.eventType}>
@@ -1257,13 +1465,15 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
         {/* Section 7: M365 Endpoints (real monitor_checks catalog) */}
+        {showEndpoints && (
         <div>
           <div
             onClick={() => setEndpointsOpen(!endpointsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {endpointsOpen ? (
+            {isSearching || endpointsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1281,9 +1491,9 @@ export function SimulatorLeftTree() {
             </button>
           </div>
 
-          {endpointsOpen && (
+          {(isSearching || endpointsOpen) && (
             <div>
-              {monitorChecks.length === 0 ? (
+              {filteredMonitorChecks.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No monitor checks</div>
               ) : (
                 Object.keys(checksByDomain)
@@ -1294,12 +1504,12 @@ export function SimulatorLeftTree() {
                         onClick={() => toggleCat(`ep:${domain}`)}
                         className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                       >
-                        {expandedCats[`ep:${domain}`] ? (
+                        {isSearching || expandedCats[`ep:${domain}`] ? (
                           <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
                         ) : (
                           <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                         )}
-                        {expandedCats[`ep:${domain}`] ? (
+                        {isSearching || expandedCats[`ep:${domain}`] ? (
                           <FolderOpen className="h-3.5 w-3.5 text-primary" />
                         ) : (
                           <Folder className="h-3.5 w-3.5 text-primary" />
@@ -1332,7 +1542,7 @@ export function SimulatorLeftTree() {
                         </span>
                       </div>
 
-                      {expandedCats[`ep:${domain}`] && (
+                      {(isSearching || expandedCats[`ep:${domain}`]) && (
                         <div className="ml-[22px] border-l border-accent">
                           {checksByDomain[domain]!.map((check) => (
                             <ContextMenu key={check.key}>
@@ -1399,16 +1609,18 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 8: Write Actions (real baseline_action_templates catalog) —
             the tenant-MUTATING sibling of M365 Endpoints. Testbed-only; the
             confirmation + safety flow lives in the center canvas. */}
+        {showWriteActions && (
         <div>
           <div
             onClick={() => setWriteActionsOpen(!writeActionsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {writeActionsOpen ? (
+            {isSearching || writeActionsOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1423,9 +1635,9 @@ export function SimulatorLeftTree() {
             </span>
           </div>
 
-          {writeActionsOpen && (
+          {(isSearching || writeActionsOpen) && (
             <div>
-              {writeActions.length === 0 ? (
+              {filteredWriteActions.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No write-action templates</div>
               ) : (
                 Object.keys(writeActionsByCategory)
@@ -1436,12 +1648,12 @@ export function SimulatorLeftTree() {
                         onClick={() => toggleCat(`wa:${cat}`)}
                         className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                       >
-                        {expandedCats[`wa:${cat}`] ? (
+                        {isSearching || expandedCats[`wa:${cat}`] ? (
                           <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
                         ) : (
                           <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                         )}
-                        {expandedCats[`wa:${cat}`] ? (
+                        {isSearching || expandedCats[`wa:${cat}`] ? (
                           <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
                         ) : (
                           <Folder className="h-3.5 w-3.5 text-amber-400" />
@@ -1452,7 +1664,7 @@ export function SimulatorLeftTree() {
                         </span>
                       </div>
 
-                      {expandedCats[`wa:${cat}`] && (
+                      {(isSearching || expandedCats[`wa:${cat}`]) && (
                         <div className="ml-[22px] border-l border-accent">
                           {writeActionsByCategory[cat]!.map((wa) => (
                             <ContextMenu key={wa.templateId}>
@@ -1512,17 +1724,19 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 9: Pillar Matrix — cross-signal per-pillar impact tuning.
             Distinct from the per-endpoint Engine Trace: pick a pillar and edit
             every rule that contributes to it, across all signals, in one table.
             Each pillar row opens the matrix pre-selected to that pillar. */}
+        {showPillarMatrix && (
         <div>
           <div
             onClick={() => setPillarMatrixOpen(!pillarMatrixOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {pillarMatrixOpen ? (
+            {isSearching || pillarMatrixOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1531,9 +1745,9 @@ export function SimulatorLeftTree() {
             <span className="truncate">Pillar Matrix</span>
           </div>
 
-          {pillarMatrixOpen && (
+          {(isSearching || pillarMatrixOpen) && (
             <div className="ml-[22px] border-l border-accent">
-              {PILLAR_MATRIX_PILLARS.map((p) => (
+              {filteredPillars.map((p) => (
                 <div
                   key={p.key}
                   onClick={() => handlePillarSelect(p.key)}
@@ -1549,18 +1763,20 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
 
         {/* Section 10: Config Packs — orchestrated sequences of the real Write
             Actions, run whole (in dependency order) or one step at a time.
             Testbed-only; the confirmation + safety + progress flow lives in the
             center canvas. Create/modify the packs themselves in Baseline
             Templates (deep-linked — that CRUD editor is reused, not rebuilt). */}
+        {showConfigPacks && (
         <div>
           <div
             onClick={() => setConfigPacksOpen(!configPacksOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {configPacksOpen ? (
+            {isSearching || configPacksOpen ? (
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1579,14 +1795,14 @@ export function SimulatorLeftTree() {
             </button>
           </div>
 
-          {configPacksOpen && (
+          {(isSearching || configPacksOpen) && (
             <div className="ml-[22px] border-l border-accent">
-              {configPacks.length === 0 ? (
+              {filteredConfigPacks.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
                   No config packs — create one in Baseline Templates
                 </div>
               ) : (
-                configPacks.map((pack) => (
+                filteredConfigPacks.map((pack) => (
                   <ContextMenu key={pack.packKey}>
                     <ContextMenuTrigger asChild>
                       <div
@@ -1620,6 +1836,7 @@ export function SimulatorLeftTree() {
             </div>
           )}
         </div>
+        )}
       </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-44">

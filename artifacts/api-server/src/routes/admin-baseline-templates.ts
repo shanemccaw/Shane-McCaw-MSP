@@ -106,6 +106,7 @@ router.get("/admin/baseline-templates", requireAdmin, async (_req: Request, res:
     // Group pack links by templateId
     const packsByTemplate = new Map<string, Array<{ packKey: string; packLabel: string; sortOrder: number; totalInPack: number }>>();
     for (const link of packLinks) {
+      if (!link.templateId) continue;
       if (!packsByTemplate.has(link.templateId)) {
         packsByTemplate.set(link.templateId, []);
       }
@@ -394,13 +395,13 @@ router.get("/admin/config-packs/:packKey", requireAdmin, async (req: Request, re
       .where(eq(configPackTemplatesTable.packId, pack.id))
       .orderBy(configPackTemplatesTable.sortOrder);
 
-    const templateIds = links.map(l => l.templateId);
+    const templateIds = links.map(l => l.templateId).filter((id): id is string => Boolean(id));
     const templates = templateIds.length > 0
       ? await db.select().from(baselineActionTemplatesTable).where(inArray(baselineActionTemplatesTable.templateId, templateIds))
       : [];
 
     const templateMap = new Map(templates.map(t => [t.templateId, t]));
-    const orderedTemplates = links.map(l => ({ ...l, template: templateMap.get(l.templateId) }));
+    const orderedTemplates = links.map(l => ({ ...l, template: l.templateId ? templateMap.get(l.templateId) : undefined }));
 
     res.json({ pack, templates: orderedTemplates });
   } catch (err) {

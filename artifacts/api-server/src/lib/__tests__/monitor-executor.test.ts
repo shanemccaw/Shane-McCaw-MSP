@@ -636,6 +636,7 @@ describe("executeMonitorCheck", () => {
     method: "GET",
     requestBody: null,
     selectParams: null,
+    filterParams: null,
     properties: ["mfaRegistered"] as string[],
     mapping: [] as Array<{ sourceField: string; targetField: string; transform?: string }>,
     severityRules: [{ expression: "mfaRegistered_count == 0", severity: "critical" }] as Array<{ expression: string; severity: string; label?: string }>,
@@ -758,8 +759,8 @@ describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
     };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -818,8 +819,8 @@ describe("executeMonitoringPackage — license gap does not block completion", (
     const mockDb = db as unknown as { select: Mock; insert: Mock };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -895,6 +896,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     method: "GET",
     requestBody: null,
     selectParams: null,
+    filterParams: null,
     properties: [] as string[],
     mapping: [{ sourceField: "principalId", targetField: "eligibleAssignmentsTotal", transform: "count" }] as Array<{ sourceField: string; targetField: string; transform?: string }>,
     severityRules: [{ expression: "{{_fanOut.sourceItemsWithResults}} > 0", severity: "warning" }] as Array<{ expression: string; severity: string; label?: string }>,
