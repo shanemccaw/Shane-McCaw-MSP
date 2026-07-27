@@ -33,11 +33,28 @@ export interface GenerateSowParams {
   // below rather than hardcoded, so any pipeline_output type can reuse this path.
   docTypeKey: string;
   testMode?: boolean;
+  dryRun?: boolean;
 }
 
 export interface GenerateSowResult {
   documentId: number;
   htmlContent: string;
+}
+
+export interface DryRunSowResult {
+  dryRun: true;
+  docTypeKey: string;
+  assembledPrompt: string;
+  stylePrefix: string;
+  priorFindings: string[];
+  candidates: {
+    serviceId: number;
+    serviceName: string;
+    rationale: string;
+    adjustedPriceCents: number;
+    firedSignalKeys: string[];
+  }[];
+  promptKey: string;
 }
 
 // Intentionally duplicated from document-engine.ts's private, non-exported
@@ -53,7 +70,9 @@ async function resolveEngineCustomerId(clientUserId: number): Promise<number | n
   return row?.customerId ?? null;
 }
 
-export async function generateSowDocument(params: GenerateSowParams): Promise<GenerateSowResult> {
+export async function generateSowDocument(params: GenerateSowParams & { dryRun: true }): Promise<DryRunSowResult>;
+export async function generateSowDocument(params: GenerateSowParams & { dryRun?: false }): Promise<GenerateSowResult>;
+export async function generateSowDocument(params: GenerateSowParams): Promise<GenerateSowResult | DryRunSowResult> {
   const { clientUserId, projectId, docTypeKey, testMode = false } = params;
 
   let documentId: number | null = null;
@@ -63,6 +82,87 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     if (!docTypeRow) throw new Error(`document-engine-sow: unknown document type "${docTypeKey}"`);
     if (docTypeRow.pipelineCategory !== "pipeline_output") {
       throw new Error(`document-engine-sow: "${docTypeKey}" is not a pipeline_output document type — generateSowDocument() only handles pipeline_output types (e.g. SOW), not standalone types`);
+    }
+
+    if (params.dryRun) {
+      const mspCustomerIdDry = await resolveEngineCustomerId(clientUserId);
+      if (mspCustomerIdDry == null) {
+        throw new Error(`document-engine-sow: no msp_customers row found for clientUserId ${clientUserId}`);
+      }
+      const [customerRowDry] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerIdDry)).limit(1);
+      const resolvedMspIdDry = customerRowDry?.mspId ?? null;
+
+      const groundingOwnerUserIdsDry = await resolveSiblingUserIds(clientUserId);
+      const priorDocsDry = await db
+        .select({ generationInput: insightsGeneratedDocumentsTable.generationInput })
+        .from(insightsGeneratedDocumentsTable)
+        .innerJoin(documentTypesTable, eq(documentTypesTable.key, insightsGeneratedDocumentsTable.docType))
+        .where(and(
+          inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIdsDry),
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          eq(documentTypesTable.pipelineCategory, "standalone"),
+        ));
+
+      const seenFindingsDry = new Set<string>();
+      const priorFindingsDry: string[] = [];
+      outerDry: for (const doc of priorDocsDry) {
+        for (const finding of doc.generationInput?.scopedFindings ?? []) {
+          if (priorFindingsDry.length >= MAX_PRIOR_FINDINGS) break outerDry;
+          if (seenFindingsDry.has(finding)) continue;
+          seenFindingsDry.add(finding);
+          priorFindingsDry.push(finding);
+        }
+      }
+      const priorFindingsBlockDry = priorFindingsDry.length > 0
+        ? priorFindingsDry.map((f, i) => `${i + 1}. ${f}`).join("\n")
+        : "No prior documents have been generated for this client/project. Do NOT invent findings.";
+
+      const salesOfferOutputDry = await runSalesOfferEngineForTenant(mspCustomerIdDry, resolvedMspIdDry);
+      const candidatesDry = salesOfferOutputDry.candidates;
+
+      const candidatesBlockDry = candidatesDry.length > 0
+        ? candidatesDry.map((c, i) => `${i + 1}. ${c.title} — $${(c.adjustedPriceCents / 100).toFixed(2)}\n   Rationale: ${c.rationale}`).join("\n\n")
+        : "The Sales Offer Engine returned no candidate projects for this client. Do NOT invent projects or pricing.";
+
+      const pricingFormulaBlockDry = await getSowPricingFormulaBlock(
+        "Price each workstream at exactly the adjusted price provided by the Sales Offer Engine. Do not apply additional markup or discounting beyond what is shown. Present a pricing table listing each workstream and its price, summing to a total engagement price.",
+      );
+
+      let promptKeyDry = `insights-${docTypeRow.category}-${docTypeKey}`;
+      if (docTypeRow.aiPromptId != null) {
+        const [promptRowDry] = await db.select({ key: aiPromptsTable.key }).from(aiPromptsTable).where(eq(aiPromptsTable.id, docTypeRow.aiPromptId)).limit(1);
+        if (promptRowDry?.key) promptKeyDry = promptRowDry.key;
+      }
+      const rawTemplateDry = await getPrompt(
+        promptKeyDry,
+        "Generate a professional HTML Statement of Work titled \"{{docLabel}}\".\n\nGrounding findings from prior generated documents for this client (do NOT invent additional findings):\n{{priorFindings}}\n\nScoped projects and their engine-priced pricing — this is the sole source of truth for what to scope and what to charge; do NOT invent additional projects or adjust these prices:\n{{candidates}}\n\nPricing presentation rules:\n{{pricingFormula}}",
+      );
+
+      const assembledPromptDry = rawTemplateDry
+        .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
+        .replace(/\{\{priorFindings\}\}/g, priorFindingsBlockDry)
+        .replace(/\{\{candidates\}\}/g, candidatesBlockDry)
+        .replace(/\{\{pricingFormula\}\}/g, pricingFormulaBlockDry);
+
+      const stylePrefixDry = await getDocumentStylePrefix();
+
+      log.info({ clientUserId, projectId, docTypeKey }, "document-engine-sow: dry-run preview assembled (no AI call, no DB write)");
+
+      return {
+        dryRun: true,
+        docTypeKey,
+        assembledPrompt: assembledPromptDry,
+        stylePrefix: stylePrefixDry,
+        priorFindings: priorFindingsDry,
+        candidates: candidatesDry.map((c) => ({
+          serviceId: c.serviceId,
+          serviceName: c.serviceName,
+          rationale: c.rationale,
+          adjustedPriceCents: c.adjustedPriceCents,
+          firedSignalKeys: c.firedSignalKeys,
+        })),
+        promptKey: promptKeyDry,
+      };
     }
 
     const [placeholderRow] = await db.insert(insightsGeneratedDocumentsTable).values({
