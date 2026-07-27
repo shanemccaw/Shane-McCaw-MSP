@@ -2337,7 +2337,10 @@ async function executeNode(
                   }
                 }
 
-                if (priorDocId !== null) {
+                if (priorDocId !== null && !isPipelineOutput) {
+                  // Standalone documents only — generateSowDocument() now owns its own
+                  // prior-document supersede logic internally (respecting supersedeMode),
+                  // so the SOW path must not also delete here.
                   await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, priorDocId));
                 }
 
