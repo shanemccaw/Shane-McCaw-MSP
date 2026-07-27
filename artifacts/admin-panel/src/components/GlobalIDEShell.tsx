@@ -11,6 +11,7 @@ import {
   ChevronRight,
   LogOut,
   PanelRightOpen,
+  Pin,
   Search,
 } from "lucide-react";
 import {
@@ -32,6 +33,7 @@ import {
   findWorkspace,
   groupNodeKey,
   isItemActive,
+  resolvePinnedNode,
   resolveTabMeta,
   sectionNodeKey,
   type TreeItem,
@@ -68,11 +70,13 @@ function writeLs(key: string, value: string) {
 function readNavExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(LS_NAV_EXPANDED);
-    if (!raw) return new Set();
+    if (!raw) return new Set(["most-used"]);
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((x): x is string => typeof x === "string"));
-  } catch { return new Set(); }
+    if (!Array.isArray(parsed)) return new Set(["most-used"]);
+    const set = new Set(parsed.filter((x): x is string => typeof x === "string"));
+    if (!localStorage.getItem(LS_NAV_EXPANDED)) set.add("most-used");
+    return set;
+  } catch { return new Set(["most-used"]); }
 }
 
 function writeNavExpanded(set: Set<string>): void {
@@ -107,6 +111,8 @@ function NavItem({
   onToggle,
   onNavigate,
   unreadEmailCount,
+  pinnedKeys,
+  onTogglePin,
 }: {
   item: TreeItem;
   depth: number;
@@ -117,26 +123,45 @@ function NavItem({
   onToggle: (key: string) => void;
   onNavigate: (item: TreeItem) => void;
   unreadEmailCount: number;
+  pinnedKeys?: string[];
+  onTogglePin?: (key: string) => void;
 }) {
   const Icon = item.icon;
   const badge = item.badgeKey === "unreadEmail" ? unreadEmailCount : 0;
+  const isPinned = pinnedKeys?.includes(item.id) ?? false;
 
   if (item.children) {
     const key = groupNodeKey(parentKey, item.id);
     const open = isOpen(key);
     return (
       <div>
-        <button
-          onClick={() => onToggle(key)}
-          className="w-full flex items-center gap-1.5 pr-2 py-1 text-xs font-medium transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
-          style={{ paddingLeft: `${depth * 12 + 22}px` }}
-        >
-          <ChevronRight
-            className={`w-3 h-3 shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-          />
-          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
-          <span className="flex-1 truncate text-left">{item.label}</span>
-        </button>
+        <div className="group flex items-center w-full pr-2 hover:bg-accent/50 transition-colors">
+          <button
+            onClick={() => onToggle(key)}
+            className="flex-1 flex items-center gap-1.5 py-1 text-xs font-medium transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none min-w-0"
+            style={{ paddingLeft: `${depth * 12 + 22}px` }}
+          >
+            <ChevronRight
+              className={`w-3 h-3 shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+            />
+            {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+            <span className="flex-1 truncate text-left">{item.label}</span>
+          </button>
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onTogglePin(item.id); }}
+              title={isPinned ? "Unpin from Most Used" : "Pin to Most Used"}
+              className={`p-1 rounded transition-all shrink-0 ${
+                isPinned
+                  ? "text-amber-500 opacity-100 hover:bg-amber-500/10"
+                  : "text-muted-foreground/60 hover:text-amber-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-accent"
+              }`}
+            >
+              <Pin className={`w-3 h-3 ${isPinned ? "fill-amber-500" : ""}`} />
+            </button>
+          )}
+        </div>
         {open && item.children.map(child => (
           <NavItem
             key={child.id}
@@ -149,6 +174,8 @@ function NavItem({
             onToggle={onToggle}
             onNavigate={onNavigate}
             unreadEmailCount={unreadEmailCount}
+            pinnedKeys={pinnedKeys}
+            onTogglePin={onTogglePin}
           />
         ))}
       </div>
@@ -157,23 +184,41 @@ function NavItem({
 
   const active = isItemActive(item, pathname, search);
   return (
-    <button
-      onClick={() => onNavigate(item)}
-      className={`w-full flex items-center gap-2 pr-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${
+    <div
+      className={`group flex items-center w-full pr-2 transition-colors ${
         active
           ? "bg-primary/10 text-primary border-r-2 border-primary"
           : "text-muted-foreground hover:bg-accent hover:text-foreground border-r-2 border-transparent"
       }`}
-      style={{ paddingLeft: `${depth * 12 + 34}px` }}
     >
-      {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
-      <span className="flex-1 truncate text-left">{item.label}</span>
-      {badge > 0 && (
-        <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
-          {badge > 99 ? "99+" : badge}
-        </span>
+      <button
+        onClick={() => onNavigate(item)}
+        className="flex-1 flex items-center gap-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none min-w-0"
+        style={{ paddingLeft: `${depth * 12 + 34}px` }}
+      >
+        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+        <span className="flex-1 truncate text-left">{item.label}</span>
+        {badge > 0 && (
+          <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
+      </button>
+      {onTogglePin && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onTogglePin(item.id); }}
+          title={isPinned ? "Unpin from Most Used" : "Pin to Most Used"}
+          className={`p-1 rounded transition-all shrink-0 ${
+            isPinned
+              ? "text-amber-500 opacity-100 hover:bg-amber-500/10"
+              : "text-muted-foreground/60 hover:text-amber-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-accent/80"
+          }`}
+        >
+          <Pin className={`w-3 h-3 ${isPinned ? "fill-amber-500" : ""}`} />
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -185,6 +230,8 @@ function NavTree({
   onToggle,
   onNavigate,
   unreadEmailCount,
+  pinnedKeys = [],
+  onTogglePin,
 }: {
   pathname: string;
   search: string;
@@ -192,46 +239,136 @@ function NavTree({
   onToggle: (key: string) => void;
   onNavigate: (item: TreeItem) => void;
   unreadEmailCount: number;
+  pinnedKeys?: string[];
+  onTogglePin?: (key: string) => void;
 }) {
+  const mostUsedOpen = isOpen("most-used");
+
   return (
     <nav className="flex-1 overflow-y-auto py-1">
+      {/* Most Used Section */}
+      <div className="mb-2 pb-2 border-b border-border/60">
+        <div className="group flex items-center w-full pr-2 hover:bg-accent/60 transition-colors">
+          <button
+            onClick={() => onToggle("most-used")}
+            className="flex-1 flex items-center gap-1.5 pl-2 py-1.5 text-xs font-semibold text-foreground/90 hover:text-foreground transition-colors focus-visible:outline-none min-w-0"
+          >
+            <ChevronRight
+              className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${mostUsedOpen ? "rotate-90" : ""}`}
+            />
+            <Pin className="w-4 h-4 shrink-0 text-amber-500 fill-amber-500/20" />
+            <span className="flex-1 truncate text-left">Most Used</span>
+            {pinnedKeys.length > 0 && (
+              <span className="text-[10px] font-mono text-muted-foreground px-1.5 py-0.5 rounded bg-muted/60">
+                {pinnedKeys.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {mostUsedOpen && (
+          <div className="mt-0.5">
+            {pinnedKeys.length === 0 ? (
+              <div className="pl-6 pr-2 py-2 text-[11px] text-muted-foreground/70 italic flex items-center gap-1.5">
+                <span>Hover over any node below and click the pin icon to save here.</span>
+              </div>
+            ) : (
+              pinnedKeys.map(key => {
+                const resolved = resolvePinnedNode(key);
+                if (!resolved) return null;
+                return (
+                  <NavItem
+                    key={`pinned-${key}`}
+                    item={resolved}
+                    depth={0}
+                    parentKey="most-used"
+                    pathname={pathname}
+                    search={search}
+                    isOpen={isOpen}
+                    onToggle={onToggle}
+                    onNavigate={onNavigate}
+                    unreadEmailCount={unreadEmailCount}
+                    pinnedKeys={pinnedKeys}
+                    onTogglePin={onTogglePin}
+                  />
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
       {WORKSPACES.map(ws => {
         const WsIcon = ws.icon;
         const wsOpen = isOpen(ws.id);
         const wsBadge = ws.badgeKey === "unreadEmail" ? unreadEmailCount : 0;
+        const isWsPinned = pinnedKeys.includes(ws.id);
         return (
           <div key={ws.id} className="mb-0.5">
-            <button
-              onClick={() => onToggle(ws.id)}
-              className="w-full flex items-center gap-1.5 pl-2 pr-2 py-1.5 text-xs font-semibold text-foreground/90 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
-            >
-              <ChevronRight
-                className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${wsOpen ? "rotate-90" : ""}`}
-              />
-              <WsIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate text-left">{ws.label}</span>
-              {wsBadge > 0 && (
-                <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
-                  {wsBadge > 99 ? "99+" : wsBadge}
-                </span>
+            <div className="group flex items-center w-full pr-2 hover:bg-accent/60 transition-colors">
+              <button
+                onClick={() => onToggle(ws.id)}
+                className="flex-1 flex items-center gap-1.5 pl-2 py-1.5 text-xs font-semibold text-foreground/90 hover:text-foreground transition-colors focus-visible:outline-none min-w-0"
+              >
+                <ChevronRight
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${wsOpen ? "rotate-90" : ""}`}
+                />
+                <WsIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate text-left">{ws.label}</span>
+                {wsBadge > 0 && (
+                  <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
+                    {wsBadge > 99 ? "99+" : wsBadge}
+                  </span>
+                )}
+              </button>
+              {onTogglePin && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onTogglePin(ws.id); }}
+                  title={isWsPinned ? "Unpin from Most Used" : "Pin to Most Used"}
+                  className={`p-1 rounded transition-all shrink-0 ${
+                    isWsPinned
+                      ? "text-amber-500 opacity-100 hover:bg-amber-500/10"
+                      : "text-muted-foreground/60 hover:text-amber-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-accent"
+                  }`}
+                >
+                  <Pin className={`w-3 h-3 ${isWsPinned ? "fill-amber-500" : ""}`} />
+                </button>
               )}
-            </button>
+            </div>
 
             {wsOpen && ws.sections.map(section => {
               const secKey = sectionNodeKey(ws.id, section.id);
               const secOpen = isOpen(secKey);
+              const isSecPinned = pinnedKeys.includes(secKey) || pinnedKeys.includes(section.id);
               return (
                 <div key={section.id}>
-                  <button
-                    onClick={() => onToggle(secKey)}
-                    className="w-full flex items-center gap-1.5 py-1 pr-2 text-[10px] font-mono font-semibold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
-                    style={{ paddingLeft: "20px" }}
-                  >
-                    <ChevronRight
-                      className={`w-2.5 h-2.5 shrink-0 transition-transform duration-150 ${secOpen ? "rotate-90" : ""}`}
-                    />
-                    <span className="flex-1 truncate text-left">{section.label}</span>
-                  </button>
+                  <div className="group flex items-center w-full pr-2 hover:bg-accent/40 transition-colors">
+                    <button
+                      onClick={() => onToggle(secKey)}
+                      className="flex-1 flex items-center gap-1.5 py-1 text-[10px] font-mono font-semibold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors focus-visible:outline-none min-w-0"
+                      style={{ paddingLeft: "20px" }}
+                    >
+                      <ChevronRight
+                        className={`w-2.5 h-2.5 shrink-0 transition-transform duration-150 ${secOpen ? "rotate-90" : ""}`}
+                      />
+                      <span className="flex-1 truncate text-left">{section.label}</span>
+                    </button>
+                    {onTogglePin && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onTogglePin(secKey); }}
+                        title={isSecPinned ? "Unpin from Most Used" : "Pin to Most Used"}
+                        className={`p-1 rounded transition-all shrink-0 ${
+                          isSecPinned
+                            ? "text-amber-500 opacity-100 hover:bg-amber-500/10"
+                            : "text-muted-foreground/60 hover:text-amber-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-accent"
+                        }`}
+                      >
+                        <Pin className={`w-3 h-3 ${isSecPinned ? "fill-amber-500" : ""}`} />
+                      </button>
+                    )}
+                  </div>
                   {secOpen && section.items.map(item => (
                     <NavItem
                       key={item.id}
@@ -244,6 +381,8 @@ function NavTree({
                       onToggle={onToggle}
                       onNavigate={onNavigate}
                       unreadEmailCount={unreadEmailCount}
+                      pinnedKeys={pinnedKeys}
+                      onTogglePin={onTogglePin}
                     />
                   ))}
                 </div>
@@ -306,6 +445,49 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
   const handleNavigate = useCallback((path: string) => {
     navigate(path);
   }, [navigate]);
+
+  // ─── Pinned Navigation items ───────────────────────────────────────────────
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("admin_pinned_nav_v1");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    if (!accessToken) return;
+    fetchWithAuth("/api/admin/nav-pins")
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error("Failed to fetch nav pins");
+      })
+      .then((data: { pinned?: string[] }) => {
+        if (Array.isArray(data.pinned)) {
+          setPinnedKeys(data.pinned);
+          try { localStorage.setItem("admin_pinned_nav_v1", JSON.stringify(data.pinned)); } catch {}
+        }
+      })
+      .catch(err => {
+        log.warn({ err }, "Could not load admin nav pins from server (falling back to localStorage)");
+      });
+  }, [accessToken, fetchWithAuth]);
+
+  const togglePin = useCallback((key: string) => {
+    setPinnedKeys(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try { localStorage.setItem("admin_pinned_nav_v1", JSON.stringify(next)); } catch {}
+      if (accessToken) {
+        fetchWithAuth("/api/admin/nav-pins", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned: next }),
+        }).catch(err => {
+          log.warn({ err }, "Failed to persist nav pins to server");
+        });
+      }
+      return next;
+    });
+  }, [accessToken, fetchWithAuth]);
 
   // ─── Workspace switch logging ──────────────────────────────────────────────
   const prevWsRef = useRef<string | null>(null);
@@ -804,6 +986,8 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
                 onToggle={toggleNode}
                 onNavigate={handleNavItemClick}
                 unreadEmailCount={unreadEmailCount}
+                pinnedKeys={pinnedKeys}
+                onTogglePin={togglePin}
               />
 
               {/* Footer: user identity + sign out */}

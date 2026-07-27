@@ -225,6 +225,26 @@ export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string,
   return withItem.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
 }
 
+export function appendQueryParams(url: string, selectParams?: string | null, filterParams?: string | null): string {
+  let finalUrl = url;
+  if (selectParams) {
+    const trimmed = selectParams.trim();
+    if (trimmed && !finalUrl.includes("$select=")) {
+      const sep = finalUrl.includes("?") ? "&" : "?";
+      finalUrl += `${sep}${trimmed.replace(/^[?&]/, "")}`;
+    }
+  }
+  if (filterParams) {
+    const trimmed = filterParams.trim();
+    if (trimmed && !finalUrl.includes("$filter=")) {
+      const sep = finalUrl.includes("?") ? "&" : "?";
+      const cleanFilter = trimmed.replace(/^\$filter=/, "");
+      finalUrl += `${sep}$filter=${encodeURIComponent(cleanFilter)}`;
+    }
+  }
+  return finalUrl;
+}
+
 // ── Microsoft 365 usage-report (CSV) responses ────────────────────────────────
 // The /reports/getXxx(period='D7') family does NOT return JSON. Per Microsoft's
 // documented contract it returns 302 → a short-lived, pre-authenticated
@@ -798,7 +818,11 @@ async function runFanOutCheck(opts: {
       try {
         // Substitute {itemId} here; graphFetchPaginated still resolves the tenant
         // identity + date placeholders and prepends the Graph base.
-        const perItemEndpoint = resolveEndpointPlaceholders(check.endpoint, undefined, id);
+        const perItemEndpoint = appendQueryParams(
+          resolveEndpointPlaceholders(check.endpoint, undefined, id),
+          check.selectParams,
+          check.filterParams,
+        );
         const r = await graphFetchPaginated(
           tenantId,
           perItemEndpoint,
@@ -1023,11 +1047,7 @@ export async function executeMonitorCheck(opts: {
       return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
     }
 
-    let finalEndpoint = check.endpoint;
-    if (check.filterParams) {
-      const sep = finalEndpoint.includes("?") ? "&" : "?";
-      finalEndpoint += `${sep}$filter=${encodeURIComponent(check.filterParams)}`;
-    }
+    const finalEndpoint = appendQueryParams(check.endpoint, check.selectParams, check.filterParams);
 
     // 1. Paginated Graph API fetch
     const { items, pageCount, rawResponse } = await graphFetchPaginated(

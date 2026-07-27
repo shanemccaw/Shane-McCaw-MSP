@@ -544,6 +544,7 @@ describe("Full Response mode — per-run $select override never touches the cata
     const res = await auth(request(app).post(`/api/admin/monitor-checks/${checkWithSelectParams.key}/run`)).send({
       customerId: 42,
       endpoint: "/reports/authenticationMethods/userRegistrationDetails",
+      selectParams: null,
     });
     expect(res.status).toBe(202);
     await waitForTerminal(app, res.body.runId);
@@ -551,6 +552,7 @@ describe("Full Response mode — per-run $select override never touches the cata
     const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
     expect(arg.check.endpoint).not.toMatch(/\$select/i);
     expect(arg.check.endpoint).toBe("/reports/authenticationMethods/userRegistrationDetails");
+    expect(arg.check.selectParams).toBeNull();
 
     // The stored row's own selectParams is what the mock DB fixture still
     // holds — nothing on this path ever calls db.update on monitor_checks, so
@@ -580,11 +582,11 @@ describe("Full Response mode — per-run $select override never touches the cata
     expect(arg.check.endpoint).toMatch(/\$select=id,displayName/);
   });
 
-  it("passes filterParams override to executeMonitorCheck without modifying stored check", async () => {
-    const checkWithFilter = { ...CHECK, filterParams: "id eq 'old'" };
-    selectQueue = [[checkWithFilter], [CUSTOMER]];
+  it("passes both selectParams and filterParams overrides to executeMonitorCheck without modifying stored check", async () => {
+    const checkWithParams = { ...CHECK, selectParams: "$select=old", filterParams: "id eq 'old'" };
+    selectQueue = [[checkWithParams], [CUSTOMER]];
     executeMonitorCheck.mockResolvedValue({
-      checkKey: checkWithFilter.key,
+      checkKey: checkWithParams.key,
       status: "ok",
       extractedProperties: {},
       severityMatched: null,
@@ -593,16 +595,19 @@ describe("Full Response mode — per-run $select override never touches the cata
     });
 
     const app = makeApp();
-    const res = await auth(request(app).post(`/api/admin/monitor-checks/${checkWithFilter.key}/run`)).send({
+    const res = await auth(request(app).post(`/api/admin/monitor-checks/${checkWithParams.key}/run`)).send({
       customerId: 42,
+      selectParams: "$select=id,displayName",
       filterParams: "userType eq 'Guest'",
     });
     expect(res.status).toBe(202);
     await waitForTerminal(app, res.body.runId);
 
     const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
+    expect(arg.check.selectParams).toBe("$select=id,displayName");
     expect(arg.check.filterParams).toBe("userType eq 'Guest'");
-    expect(checkWithFilter.filterParams).toBe("id eq 'old'");
+    expect(checkWithParams.selectParams).toBe("$select=old");
+    expect(checkWithParams.filterParams).toBe("id eq 'old'");
   });
 });
 

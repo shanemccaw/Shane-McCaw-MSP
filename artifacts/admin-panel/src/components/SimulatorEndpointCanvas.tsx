@@ -193,15 +193,24 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
 
   const isRunning = run?.status === "pending" || run?.status === "running" || starting;
 
-  // select_params is stored separately from the endpoint, so the URL the operator
+  // select_params and filter_params are stored separately from the endpoint, so the URL the operator
   // reads has to show them joined the way the request will actually go out —
   // otherwise the "real URL" shown is not the real URL.
   const effectiveEndpoint = useMemo(() => {
-    const trimmed = selectParams.trim();
-    if (!trimmed) return endpoint;
-    const sep = endpoint.includes("?") ? "&" : "?";
-    return `${endpoint}${sep}${trimmed.replace(/^[?&]/, "")}`;
-  }, [endpoint, selectParams]);
+    let url = endpoint;
+    const trimmedSelect = selectParams.trim();
+    if (trimmedSelect && !url.includes("$select=")) {
+      const sep = url.includes("?") ? "&" : "?";
+      url = `${url}${sep}${trimmedSelect.replace(/^[?&]/, "")}`;
+    }
+    const trimmedFilter = filterParams.trim();
+    if (trimmedFilter && !url.includes("$filter=")) {
+      const sep = url.includes("?") ? "&" : "?";
+      const cleanFilter = trimmedFilter.replace(/^\$filter=/, "");
+      url = `${url}${sep}$filter=${encodeURIComponent(cleanFilter)}`;
+    }
+    return url;
+  }, [endpoint, selectParams, filterParams]);
 
   // FULL RESPONSE (Part A) — omits $select for this one execution ONLY. Strips
   // it from the effective URL right before it becomes the run's endpoint
@@ -293,9 +302,10 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId: selectedCustomerId,
-          endpoint: runEndpoint,
+          endpoint,
           method,
           requestBody: parsedBody.value,
+          selectParams: fullResponse ? null : (selectParams.trim() ? selectParams.trim() : null),
           filterParams: filterParams.trim() ? filterParams.trim() : null,
         }),
       });
