@@ -19,7 +19,7 @@
  *   - idle, never scanned      → red "NO SCAN" pill
  */
 
-import { useScanStatus, type ScanStatusPayload } from "@/lib/scan-status-context";
+import { useScanStatus, type ScanStatusPayload, type ScanCheckProgress } from "@/lib/scan-status-context";
 
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -34,7 +34,7 @@ function timeAgo(isoString: string): string {
 }
 
 export function ScanStatusIndicator({ collapsed = false }: { collapsed?: boolean }) {
-  const { data, triggerError } = useScanStatus();
+  const { data, triggerError, scanCheckProgress } = useScanStatus();
 
   if (collapsed) return null;
 
@@ -53,7 +53,7 @@ export function ScanStatusIndicator({ collapsed = false }: { collapsed?: boolean
       ) : !data ? (
         <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
       ) : data.active ? (
-        <ActiveScanProgress active={data.active} />
+        <ActiveScanProgress active={data.active} checkProgress={scanCheckProgress} />
       ) : data.everScanned ? (
         <span className="text-[11px] text-muted-foreground truncate">
           Last scan: {data.lastScanAt ? timeAgo(data.lastScanAt) : "unknown"}
@@ -67,9 +67,21 @@ export function ScanStatusIndicator({ collapsed = false }: { collapsed?: boolean
   );
 }
 
-function ActiveScanProgress({ active }: { active: NonNullable<ScanStatusPayload["active"]> }) {
+function ActiveScanProgress({
+  active,
+  checkProgress,
+}: {
+  active: NonNullable<ScanStatusPayload["active"]>;
+  checkProgress: ScanCheckProgress | null;
+}) {
   const evaluated = active.checksOk + active.checksError + active.checksLicenseGap;
   const pct = active.checksTotal > 0 ? Math.min(100, Math.round((evaluated / active.checksTotal) * 100)) : null;
+
+  // Real live per-check name from the diagnostics SSE stream when connected;
+  // falls back to the coarse poll-derived count so the text is never blank.
+  const statusText = checkProgress
+    ? `Scanning: ${checkProgress.checkLabel} (${checkProgress.index}/${checkProgress.total})`
+    : `Scanning… ${pct != null ? `${pct}% (${evaluated}/${active.checksTotal})` : "in progress"}`;
 
   return (
     <div className="w-full flex flex-col gap-0.5">
@@ -79,8 +91,8 @@ function ActiveScanProgress({ active }: { active: NonNullable<ScanStatusPayload[
           style={pct == null ? undefined : { width: `${pct}%` }}
         />
       </div>
-      <span className="text-[10px] text-muted-foreground truncate">
-        Scanning… {pct != null ? `${pct}% (${evaluated}/${active.checksTotal})` : "in progress"}
+      <span className="text-[10px] text-muted-foreground truncate" title={statusText}>
+        {statusText}
       </span>
     </div>
   );

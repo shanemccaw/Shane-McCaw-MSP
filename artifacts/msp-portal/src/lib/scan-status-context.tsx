@@ -28,6 +28,7 @@ export interface ScanStatusPayload {
   everScanned: boolean;
   lastScanAt: string | null;
   active: {
+    runId: string;
     status: string;
     checksOk: number;
     checksError: number;
@@ -56,6 +57,14 @@ export interface ScanStatusPayload {
   sharePointPermissionsStale: boolean;
 }
 
+/** Live per-check label from the real diagnostics-run SSE stream. */
+export interface ScanCheckProgress {
+  checkKey: string;
+  checkLabel: string;
+  index: number;
+  total: number;
+}
+
 interface ScanStatusContextValue {
   data: ScanStatusPayload | null;
   /** Set when the trigger request itself failed — distinct from a normal poll miss. */
@@ -64,6 +73,14 @@ interface ScanStatusContextValue {
   reportTriggerStarted: () => void;
   /** Called when the trigger POST itself fails (network error, non-2xx, etc). */
   reportTriggerError: (message: string) => void;
+  /**
+   * Live per-check name/index/total from the real diagnostics-run SSE stream
+   * (the same stream AssessmentWizard/AssessmentGeneratingScreen use) — null
+   * whenever no scan is active or the stream hasn't delivered its first event
+   * yet. The shell falls back to the coarse checksOk/Error/Total counts from
+   * `data.active` for the progress bar itself; this only drives the status text.
+   */
+  scanCheckProgress: ScanCheckProgress | null;
 }
 
 const ScanStatusContext = createContext<ScanStatusContextValue | null>(null);
@@ -71,10 +88,19 @@ const ScanStatusContext = createContext<ScanStatusContextValue | null>(null);
 const IDLE_POLL_MS = 45_000;
 const ACTIVE_POLL_MS = 3_000;
 
+// Live diagnostics SSE events — same discriminated union the assessment
+// wizard/generating-screen consume from this exact endpoint.
+type DiagnosticsSSEEvent =
+  | { type: "diagnostics_progress"; checkKey: string; checkLabel: string; status: string; index: number; total: number }
+  | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; findings: number }
+  | { type: "diagnostics_error"; message: string };
+
 export function ScanStatusProvider({ children }: { children: ReactNode }) {
-  const { accessToken, fetchWithAuth } = useAuth();
+  const { user, accessToken, fetchWithAuth } = useAuth();
+  const customerId = user?.customerId ?? null;
   const [data, setData] = useState<ScanStatusPayload | null>(null);
   const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [scanCheckProgress, setScanCheckProgress] = useState<ScanCheckProgress | null>(null);
   const fastUntilRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef = useRef<(() => Promise<void>) | null>(null);
@@ -134,8 +160,44 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
     setTriggerError(message);
   }, []);
 
+  // Live per-check status text — subscribes to the exact same real
+  // diagnostics-run SSE stream the assessment wizard uses, scoped to the
+  // active run's runId (only present once `data.active` is populated).
+  const activeRunId = data?.active?.runId ?? null;
+  useEffect(() => {
+    if (!activeRunId || customerId == null || !accessToken) {
+      setScanCheckProgress(null);
+      return;
+    }
+    const es = new EventSource(
+      `/api/msp/customers/${customerId}/diagnostics/runs/${activeRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+    );
+    es.onmessage = (event) => {
+      const parsed = JSON.parse(event.data) as DiagnosticsSSEEvent;
+      if (parsed.type === "diagnostics_progress") {
+        setScanCheckProgress({
+          checkKey: parsed.checkKey,
+          checkLabel: parsed.checkLabel,
+          index: parsed.index,
+          total: parsed.total,
+        });
+      } else if (parsed.type === "diagnostics_complete" || parsed.type === "diagnostics_error") {
+        es.close();
+        setScanCheckProgress(null);
+        void load();
+      }
+    };
+    es.onerror = () => es.close();
+    return () => {
+      es.close();
+      setScanCheckProgress(null);
+    };
+  }, [activeRunId, customerId, accessToken, load]);
+
   return (
-    <ScanStatusContext.Provider value={{ data, triggerError, reportTriggerStarted, reportTriggerError }}>
+    <ScanStatusContext.Provider
+      value={{ data, triggerError, reportTriggerStarted, reportTriggerError, scanCheckProgress }}
+    >
       {children}
     </ScanStatusContext.Provider>
   );

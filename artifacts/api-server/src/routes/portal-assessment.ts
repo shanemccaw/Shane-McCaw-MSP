@@ -578,6 +578,7 @@ router.get(
         lastScanAt: lastCompleted ? (lastCompleted.completedAt ?? lastCompleted.createdAt) : null,
         active: active
           ? {
+              runId: latestRun.runId,
               status: latestRun.status,
               checksOk: latestRun.checksOk ?? 0,
               checksError: latestRun.checksError ?? 0,
