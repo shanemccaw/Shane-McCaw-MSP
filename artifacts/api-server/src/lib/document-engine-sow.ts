@@ -34,6 +34,17 @@ export interface GenerateSowParams {
   docTypeKey: string;
   testMode?: boolean;
   dryRun?: boolean;
+  /** Narrows the Sales Offer Engine's candidate list to only these titles when provided.
+   *  Unknown titles are ignored. Null/undefined = full scope (default). */
+  selectedWorkstreamTitles?: string[] | null;
+  /** How to supersede the prior completed document of this type for this customer+project
+   *  on success. "delete" (default) hard-deletes it. "archive" sets its status to "archived"
+   *  instead, preserving it so a prior scope selection can be restored without a new AI call. */
+  supersedeMode?: "delete" | "archive";
+  /** Called synchronously right after the "generating" placeholder row is created, before
+   *  any real work begins — lets an HTTP caller respond immediately with the new document's
+   *  id while generation continues, matching the live-progress pattern used elsewhere. */
+  onRowCreated?: (documentId: number) => void;
 }
 
 export interface GenerateSowResult {
@@ -176,6 +187,26 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     }).returning({ id: insightsGeneratedDocumentsTable.id });
     documentId = placeholderRow.id;
 
+    params.onRowCreated?.(documentId);
+
+    // Find any prior completed document of this type for this customer+project, to
+    // supersede on success. Never matches the placeholder just created above (it has
+    // status "generating", not in this set).
+    let priorDocId: number | null = null;
+    {
+      const priorGroundingOwnerUserIds = await resolveSiblingUserIds(clientUserId);
+      const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          inArray(insightsGeneratedDocumentsTable.customerId, priorGroundingOwnerUserIds),
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          eq(insightsGeneratedDocumentsTable.docType, docTypeKey),
+          inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
+        ))
+        .limit(1);
+      priorDocId = prior[0]?.id ?? null;
+    }
+
     // docTypeRow.requiresSowHtml is out of scope here: this function only produces
     // the SOW itself. A downstream type like task_execution_guide that needs to read
     // the resulting SOW's pricing table back (requiresSowHtml === true) is separate
@@ -237,8 +268,12 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     const salesOfferOutput = await runSalesOfferEngineForTenant(mspCustomerId, resolvedMspId);
     const candidates = salesOfferOutput.candidates;
 
-    const candidatesBlock = candidates.length > 0
-      ? candidates
+    const scopedCandidates = params.selectedWorkstreamTitles && params.selectedWorkstreamTitles.length > 0
+      ? candidates.filter((c) => params.selectedWorkstreamTitles!.includes(c.title))
+      : candidates;
+
+    const candidatesBlock = scopedCandidates.length > 0
+      ? scopedCandidates
         .map((c, i) => `${i + 1}. ${c.title} — $${(c.adjustedPriceCents / 100).toFixed(2)}\n   Rationale: ${c.rationale}`)
         .join("\n\n")
       : "The Sales Offer Engine returned no candidate projects for this client. Do NOT invent projects or pricing.";
@@ -278,7 +313,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
 
     const htmlContent = extractAiHtml(aiResponse);
 
-    const sowPricingLines = candidates.map((c) => ({
+    const sowPricingLines = scopedCandidates.map((c) => ({
       title: c.serviceName,
       scope: c.rationale,
       priceUsd: c.adjustedPriceCents / 100,
@@ -295,7 +330,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         generationInput: {
           scopedProfile: {},
           scopedFindings: priorFindings,
-          salesOfferCandidates: candidates.map((c) => ({
+          salesOfferCandidates: scopedCandidates.map((c) => ({
             serviceId: c.serviceId,
             serviceName: c.serviceName,
             rationale: c.rationale,
@@ -308,6 +343,16 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         updatedAt: new Date(),
       })
       .where(eq(insightsGeneratedDocumentsTable.id, documentId));
+
+    if (priorDocId !== null) {
+      if ((params.supersedeMode ?? "delete") === "archive") {
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ status: "archived", updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, priorDocId));
+      } else {
+        await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, priorDocId));
+      }
+    }
 
     log.info(
       { clientUserId, projectId, documentId, docTypeKey, testMode },
