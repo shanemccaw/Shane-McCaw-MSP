@@ -33,7 +33,15 @@ import type { CopilotReadinessLive } from '@/components/assessment-test/types';
  *   • Copilot Readiness breakdown — the three real sub-indicators behind the
  *     hero's overall readiness figure (copilot-readiness.ts: SharePoint/Teams
  *     overshare, sensitivity labels, DLP — 50/30/20 weighting). Every score is
- *     real or renders the honest "no data" state.
+ *     real or renders the honest "no data" state. Two honesty rules are
+ *     enforced here, both from the backend module's own stated contract:
+ *       – a score is suffixed "%" ONLY when its `basis` is a true ratio;
+ *         risk-band scores render "N/100" with an explicit "not a coverage %"
+ *         caption, matching LabelCoverageCard.tsx / LabelAndDlpSection.tsx.
+ *       – the weight shown per indicator is the EFFECTIVE (renormalized)
+ *         weight the server actually used, since the overall renormalizes
+ *         across covered indicators only; uncovered ones read "excluded"
+ *         rather than showing a nominal weight that didn't apply.
  *   • Adoption — the real usage.* active-user counts per workload from the
  *     monitor check catalog (usage:teams-active etc.). Bars are relative to
  *     the busiest workload (a real ratio), labeled with the real counts — no
@@ -92,6 +100,27 @@ const READINESS_INDICATORS: {
   { key: 'dlp', label: 'Data loss prevention' },
 ];
 
+/**
+ * Render an indicator score honestly against its own `basis`.
+ *
+ * copilot-readiness.ts computes only ONE of the three indicators as a true
+ * ratio (SharePoint/Teams = overshared ÷ total sites). The other two are
+ * risk-BAND scores derived from bare counts for which the platform collects no
+ * denominator, and that module states the contract explicitly: "the UI must
+ * not present a band score as a coverage %". Suffixing every score with "%"
+ * broke that contract here — a band score of 85 read as "85% of your data is
+ * labelled", which is not what it measures. Same disclosure the sibling
+ * consumers of this exact payload already make (LabelCoverageCard.tsx,
+ * LabelAndDlpSection.tsx).
+ */
+const scoreText = (score: number, basis: 'ratio' | 'risk_bands' | null): string =>
+  basis === 'ratio' ? `${score}%` : `${score}/100`;
+
+const BASIS_NOTE: Record<'ratio' | 'risk_bands', string> = {
+  ratio: 'Real coverage ratio',
+  risk_bands: 'Risk-band score (not a coverage %)',
+};
+
 export const TrendsRow: React.FC<TrendsRowProps> = ({
   copilotReadiness,
   metrics,
@@ -111,6 +140,29 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
   const maxTrendValue = activeSeries
     ? Math.max(...activeSeries.buckets.map((b) => b.value), 1)
     : 1;
+
+  // Copilot readiness: the backend renormalizes the 50/30/20 weights across the
+  // sub-indicators that actually have data (copilot-readiness.ts — "the weights
+  // never launder a missing indicator into an implied 100 or 0"). The card
+  // previously printed the STATIC nominal weights next to that renormalized
+  // overall, so with only 2 of 3 covered the labels (50% / 20%) did not add up
+  // to, or explain, the score shown above them. Recompute the same effective
+  // weights the server used, from the server's own numbers — never re-hardcoded.
+  const crCovered = new Set(copilotReadiness?.overall.coveredIndicators ?? []);
+  const crWeightSum = READINESS_INDICATORS.reduce(
+    (sum, { key }) => sum + (crCovered.has(key) ? (copilotReadiness?.overall.weights[key] ?? 0) : 0),
+    0,
+  );
+  const effectiveWeight = (key: (typeof READINESS_INDICATORS)[number]['key']): number | null => {
+    if (!copilotReadiness || !crCovered.has(key) || crWeightSum <= 0) return null;
+    return copilotReadiness.overall.weights[key] / crWeightSum;
+  };
+  const crRenormalized = crCovered.size > 0 && crCovered.size < READINESS_INDICATORS.length;
+  const nominalWeightLabel = copilotReadiness
+    ? READINESS_INDICATORS.map(({ key }) =>
+        Math.round((copilotReadiness.overall.weights[key] ?? 0) * 100),
+      ).join(' / ')
+    : null;
 
   // Real adoption counts, bars relative to the busiest workload.
   const usageValues = USAGE_METRICS.map((def) => ({
@@ -221,16 +273,30 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
           <div className="space-y-4 my-auto">
             {READINESS_INDICATORS.map(({ key, label }) => {
               const indicator = copilotReadiness[key];
-              const weight = copilotReadiness.overall.weights[key];
+              const nominalWeight = copilotReadiness.overall.weights[key];
+              const effWeight = effectiveWeight(key);
               return (
                 <div key={key} className="space-y-1">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-secondary-foreground/90">
+                  <div className="flex justify-between text-xs font-mono gap-2">
+                    <span className="text-secondary-foreground/90 min-w-0 truncate">
                       {label}{' '}
-                      <span className="text-muted-foreground">({Math.round(weight * 100)}%)</span>
+                      <span
+                        className="text-muted-foreground"
+                        title={
+                          effWeight == null
+                            ? `No data collected — excluded from the overall score (nominal weight ${Math.round(nominalWeight * 100)}%)`
+                            : effWeight !== nominalWeight
+                              ? `Nominal weight ${Math.round(nominalWeight * 100)}%, renormalized to ${Math.round(effWeight * 100)}% across the covered indicators`
+                              : `Weight ${Math.round(nominalWeight * 100)}%`
+                        }
+                      >
+                        ({effWeight != null ? `${Math.round(effWeight * 100)}%` : 'excluded'})
+                      </span>
                     </span>
-                    <span className="font-bold text-foreground">
-                      {indicator.score != null ? `${indicator.score}%` : 'no data'}
+                    <span className="font-bold text-foreground flex-shrink-0">
+                      {indicator.score != null
+                        ? scoreText(indicator.score, indicator.basis)
+                        : 'no data'}
                     </span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -241,6 +307,11 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
                       />
                     )}
                   </div>
+                  {indicator.score != null && indicator.basis && (
+                    <p className="text-[9px] font-mono text-muted-foreground">
+                      {BASIS_NOTE[indicator.basis]}
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -254,11 +325,20 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
           </div>
         )}
 
-        <div className="pt-2 border-t border-border text-[10px] font-mono text-muted-foreground flex justify-between">
-          <span>Weighted 50 / 30 / 20</span>
-          <span>
+        <div className="pt-2 border-t border-border text-[10px] font-mono text-muted-foreground flex justify-between gap-2">
+          {/* Weights read from the payload, not re-hardcoded — and stated as
+              renormalized whenever the overall score was computed over fewer
+              than all three indicators. */}
+          <span className="min-w-0 truncate">
+            {nominalWeightLabel
+              ? crRenormalized
+                ? `Weighted ${nominalWeightLabel}, renormalized`
+                : `Weighted ${nominalWeightLabel}`
+              : '—'}
+          </span>
+          <span className="flex-shrink-0">
             {copilotReadiness
-              ? `${copilotReadiness.overall.coveredIndicators.length} of 3 indicators covered`
+              ? `${copilotReadiness.overall.coveredIndicators.length} of ${READINESS_INDICATORS.length} indicators covered`
               : '—'}
           </span>
         </div>
