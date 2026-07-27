@@ -202,8 +202,20 @@ export function resolvedReason(r: ResolvedMetric | undefined): string | null {
   return r.reason;
 }
 
-/** Short human sentence for a non-ok resolve reason — shown to the customer. */
-export function reasonCopy(reason: string | null): string {
+/** The resolver's `detail` string for a not_available metric — for `license_gap`
+ * this is the real, customer-safe sentence naming the missing M365 add-on
+ * (dashboard-resolvers.ts, sourced from diagnostics-runner.ts's licenseGapMessage).
+ * Null for every other reason / for ok/error results. */
+export function resolvedDetail(r: ResolvedMetric | undefined): string | null {
+  if (!r || r.status !== "not_available") return null;
+  return r.detail ?? null;
+}
+
+/** Short human sentence for a non-ok resolve reason — shown to the customer.
+ * `detail` is only consulted for `license_gap`, where the resolver already
+ * carries the real, specific "requires X" sentence — reused verbatim rather
+ * than replaced with generic copy. */
+export function reasonCopy(reason: string | null, detail?: string | null): string {
   switch (reason) {
     case null:
       return "";
@@ -225,6 +237,8 @@ export function reasonCopy(reason: string | null): string {
       return "Not requested by this page";
     case "error":
       return "The resolver returned an error for this metric";
+    case "license_gap":
+      return detail ?? "Requires a Microsoft 365 add-on license not present on this tenant";
     default:
       return `No data (${reason})`;
   }

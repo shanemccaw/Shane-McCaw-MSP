@@ -159,6 +159,9 @@ export function resolvedEmptyReason(r: ResolvedMetric | undefined): string {
     if (r.reason === "unknown_check_key") return "not wired to a real check yet";
     if (r.reason === "no_tenant_id") return "no M365 tenant linked";
     if (r.reason === "not_collected") return "not collected yet";
+    // Real license-gap detail (dashboard-resolvers.ts), same customer-safe
+    // sentence as the scan-summary banner / CIO narrative — reused, not reinvented.
+    if (r.reason === "license_gap") return r.detail ?? "requires a Microsoft 365 add-on license not present on this tenant";
     return "not in your scan package";
   }
   return "no data collected";

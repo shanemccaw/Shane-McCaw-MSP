@@ -348,4 +348,42 @@ describe("monitor_profile scalar field selection (risk heatmap correctness)", ()
     if (res.status !== "not_available") return;
     expect(res.reason).toBe("no_data");
   });
+
+  it("reports license_gap — not no_data — when the latest row is a real license-gap check, with the honest customer-safe detail sentence", async () => {
+    const riskyUsersDef = getMetric("identity.riskyUserCount")!;
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]); // resolveTenantId
+    mockResultQueue.push([
+      {
+        // monitor-executor.ts's real LicenseGapError persistence shape.
+        extractedProperties: { _licenseGap: true, _licenseGapFeature: "Microsoft Defender for Office 365" },
+        rawResponse: null,
+        collectedAt: new Date(),
+        status: "license_gap",
+      },
+    ]); // latestCheckProps
+    mockResultQueue.push([{ mapping: [{ targetField: "riskyUserCount" }] }]); // loadCheckMapping
+
+    const res = await resolveMetric(riskyUsersDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("license_gap");
+    expect(res.detail).toBe(
+      "We couldn't evaluate this because your Microsoft 365 tenant doesn't have Microsoft Defender for Office 365. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding Microsoft Defender for Office 365 would let us monitor and report on it.",
+    );
+  });
+
+  it("falls back to a generic feature name for license_gap when _licenseGapFeature is missing", async () => {
+    const riskyUsersDef = getMetric("identity.riskyUserCount")!;
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([
+      { extractedProperties: { _licenseGap: true }, rawResponse: null, collectedAt: new Date(), status: "license_gap" },
+    ]);
+    mockResultQueue.push([{ mapping: [{ targetField: "riskyUserCount" }] }]);
+
+    const res = await resolveMetric(riskyUsersDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("license_gap");
+    expect(res.detail).toContain("a required Microsoft 365 add-on");
+  });
 });

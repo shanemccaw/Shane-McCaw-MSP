@@ -4,6 +4,9 @@ import {
   ResolvedMetric,
   resolvedValue,
   resolvedHistory,
+  resolvedReason,
+  resolvedDetail,
+  reasonCopy,
   riskCountBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
@@ -32,7 +35,17 @@ export const DlpEffectivenessCard: React.FC<DlpEffectivenessCardProps> = ({
   copilotReadiness,
 }) => {
   const incidents = resolvedValue(metrics['compliance.dlpIncidentCount']);
+  const incidentsReason = resolvedReason(metrics['compliance.dlpIncidentCount']);
+  const incidentsCopy =
+    incidentsReason === 'license_gap'
+      ? reasonCopy(incidentsReason, resolvedDetail(metrics['compliance.dlpIncidentCount']))
+      : null;
   const weakPolicies = resolvedValue(metrics['compliance.weakDlpPolicyCount']);
+  const weakPoliciesReason = resolvedReason(metrics['compliance.weakDlpPolicyCount']);
+  const weakPoliciesCopy =
+    weakPoliciesReason === 'license_gap'
+      ? reasonCopy(weakPoliciesReason, resolvedDetail(metrics['compliance.weakDlpPolicyCount']))
+      : null;
   const weakHistory = resolvedHistory(metrics['compliance.weakDlpPolicyCount']);
   const indicator = copilotReadiness?.dlp ?? null;
   const score = indicator?.score ?? null;
@@ -70,8 +83,8 @@ export const DlpEffectivenessCard: React.FC<DlpEffectivenessCardProps> = ({
           >
             {incidents != null ? incidents.toLocaleString() : '—'}
           </p>
-          <p className="text-[10px] text-secondary-foreground/80 mt-0.5">
-            {incidents != null ? 'In the look-back window' : 'No data yet'}
+          <p className="text-[10px] text-secondary-foreground/80 mt-0.5" title={incidentsCopy ?? undefined}>
+            {incidents != null ? 'In the look-back window' : incidentsCopy ?? 'No data yet'}
           </p>
         </div>
         <div className="p-3 rounded-lg border border-border bg-secondary/40">
@@ -85,8 +98,8 @@ export const DlpEffectivenessCard: React.FC<DlpEffectivenessCardProps> = ({
           >
             {weakPolicies != null ? weakPolicies.toLocaleString() : '—'}
           </p>
-          <p className="text-[10px] text-secondary-foreground/80 mt-0.5">
-            {weakPolicies != null ? 'Policies below baseline strength' : 'No data yet'}
+          <p className="text-[10px] text-secondary-foreground/80 mt-0.5" title={weakPoliciesCopy ?? undefined}>
+            {weakPolicies != null ? 'Policies below baseline strength' : weakPoliciesCopy ?? 'No data yet'}
           </p>
         </div>
       </div>

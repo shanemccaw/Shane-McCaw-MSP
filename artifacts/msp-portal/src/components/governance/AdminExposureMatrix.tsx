@@ -3,6 +3,9 @@ import { Shield } from 'lucide-react';
 import {
   ResolvedMetric,
   resolvedValue,
+  resolvedReason,
+  resolvedDetail,
+  reasonCopy,
   riskCountBand,
   BAND_TEXT_CLASS,
   BAND_COLOR_VAR,
@@ -32,8 +35,16 @@ interface AdminExposureMatrixProps {
 }
 
 export const AdminExposureMatrix: React.FC<AdminExposureMatrixProps> = ({ metrics }) => {
-  const values = EXPOSURE_METRICS.map((def) => ({ def, value: resolvedValue(metrics[def.key]) }));
-  const anyData = values.some((v) => v.value != null);
+  const values = EXPOSURE_METRICS.map((def) => {
+    const reason = resolvedReason(metrics[def.key]);
+    return {
+      def,
+      value: resolvedValue(metrics[def.key]),
+      licenseGapCopy:
+        reason === 'license_gap' ? reasonCopy(reason, resolvedDetail(metrics[def.key])) : null,
+    };
+  });
+  const anyData = values.some((v) => v.value != null || v.licenseGapCopy != null);
 
   return (
     <div className="bg-card border border-border p-6 rounded-xl flex flex-col h-full">
@@ -49,7 +60,7 @@ export const AdminExposureMatrix: React.FC<AdminExposureMatrixProps> = ({ metric
 
       {anyData ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-grow">
-          {values.map(({ def, value }) => {
+          {values.map(({ def, value, licenseGapCopy }) => {
             const band = value != null ? riskCountBand(value) : null;
             return (
               <div
@@ -66,8 +77,8 @@ export const AdminExposureMatrix: React.FC<AdminExposureMatrixProps> = ({ metric
                 >
                   {value != null ? value.toLocaleString() : '—'}
                 </span>
-                <span className="text-[10px] text-secondary-foreground/80 mt-0.5">
-                  {value != null ? def.caption : 'No data collected yet'}
+                <span className="text-[10px] text-secondary-foreground/80 mt-0.5" title={licenseGapCopy ?? undefined}>
+                  {value != null ? def.caption : licenseGapCopy ?? 'No data collected yet'}
                 </span>
                 <div className="h-1 bg-muted rounded-full overflow-hidden mt-2">
                   {band && (

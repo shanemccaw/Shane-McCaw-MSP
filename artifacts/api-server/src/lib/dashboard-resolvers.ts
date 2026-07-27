@@ -451,6 +451,24 @@ export function pickMappedValueField(
   return best ?? numeric[0];
 }
 
+/** Same extraction diagnostics-runner.ts's licenseGapFeatureOf does over a full
+ * CheckResult, duplicated here (not imported) so this module never pulls in
+ * diagnostics-runner.ts's heavier dependency chain (cio-narrative-generator.ts →
+ * AI integration) just for a 3-line string helper. Keep the wording identical
+ * if either copy changes. */
+function licenseGapFeatureFromProps(props: Record<string, unknown> | undefined): string {
+  const f = props?.["_licenseGapFeature"];
+  return typeof f === "string" && f.trim() ? f : "a required Microsoft 365 add-on";
+}
+
+/** The one customer-safe license-gap sentence — same wording as
+ * diagnostics-runner.ts's buildFindingDescription license_gap branch (the scan
+ * summary / CIO narrative already show this exact text; never invent a second
+ * wording here). */
+function licenseGapMessage(feature: string): string {
+  return `We couldn't evaluate this because your Microsoft 365 tenant doesn't have ${feature}. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding ${feature} would let us monitor and report on it.`;
+}
+
 /** Where a resolved scalar's number came from — surfaced in meta, never guessed. */
 export type MonitorValueSource = `mapping:${string}` | "itemCount";
 
@@ -459,6 +477,10 @@ export interface MonitorScalarResult {
   valueSource: MonitorValueSource | null;
   /** False when `checkKey` has no monitor_checks row at all (a phantom sourceKey). */
   checkExists: boolean;
+  /** The latest profile row's real status (e.g. "license_gap"), when a row exists. */
+  status: string | null;
+  /** Only set when status === "license_gap" — the missing M365 feature/add-on, straight from monitor-executor's LicenseGapError. */
+  licenseGapFeature: string | null;
 }
 
 /**
@@ -480,20 +502,24 @@ async function monitorScalarForTenant(
     // look identical to every consumer otherwise, and the second is a wiring bug
     // that would otherwise stay invisible forever.
     const mapping = await loadCheckMapping(checkKey);
-    return { value: null, valueSource: null, checkExists: mapping != null };
+    return { value: null, valueSource: null, checkExists: mapping != null, status: null, licenseGapFeature: null };
   }
+  const status = typeof props.__status === "string" ? props.__status : null;
+  const licenseGapFeature = status === "license_gap" ? licenseGapFeatureFromProps(props) : null;
   const mapping = await loadCheckMapping(checkKey);
   const picked = mapping
     ? pickMappedValueField(metricKey, checkKey, mapping.targetFields, props)
     : null;
   if (picked) {
-    return { value: picked.value, valueSource: `mapping:${picked.field}`, checkExists: true };
+    return { value: picked.value, valueSource: `mapping:${picked.field}`, checkExists: true, status, licenseGapFeature };
   }
   const itemCount = toNumber(props["_itemCount"]);
   return {
     value: itemCount,
     valueSource: itemCount == null ? null : "itemCount",
     checkExists: mapping != null,
+    status,
+    licenseGapFeature,
   };
 }
 
@@ -571,6 +597,10 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
 
   const resolved = await monitorScalarForTenant(def.key, tenantId, def.sourceKey);
   if (resolved.value == null) {
+    if (resolved.status === "license_gap") {
+      const feature = resolved.licenseGapFeature ?? "a required Microsoft 365 add-on";
+      return notAvailable(def, "license_gap", licenseGapMessage(feature));
+    }
     return resolved.checkExists
       ? notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`)
       : notAvailable(
