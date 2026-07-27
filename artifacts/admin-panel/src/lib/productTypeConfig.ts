@@ -190,6 +190,14 @@ export const PRODUCT_TYPE_CONFIGS: Record<ProductTypeKey, ProductTypeConfig> = {
       },
       { key: "content", label: "Content", fields: CONTENT_FIELDS },
       { key: "fulfillment", label: "Fulfillment", fields: FULFILLMENT_FIELDS },
+      {
+        key: "scan", label: "Assessment Scan", fields: [
+          {
+            key: "packageKey", label: "Scan Package", kind: "select", target: "typeAttributes",
+            hint: "Monitoring package scanned when a customer purchases this assessment. Leave unset to fall back to the default core:security-baseline scan.",
+          },
+        ],
+      },
       { key: "catalog", label: "Catalog", fields: CATALOG_FIELDS },
     ],
   },
