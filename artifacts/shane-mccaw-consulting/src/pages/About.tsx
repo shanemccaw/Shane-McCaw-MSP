@@ -723,32 +723,32 @@ export default function About() {
               {
                 name: "Tenant Health Audit",
                 desc: "A structured assessment of your M365 environment — governance gaps, permissions sprawl, security posture, and configuration risk — with a prioritized remediation roadmap. The right starting point for any serious engagement.",
-                href: "/platform/quick-start",
+                href: "/projects",
               },
               {
                 name: "Governance Foundations",
                 desc: "A complete governance framework designed for your organization: data classification, access controls, retention policy, DLP, and Copilot guardrails. Built from the same principles Shane applies at NASA.",
-                href: "/platform/quick-start",
+                href: "/projects",
               },
               {
                 name: "Copilot Readiness Assessment",
                 desc: "A six-dimension evaluation of your tenant's readiness for Microsoft 365 Copilot — licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk. Tells you exactly what to fix before Copilot goes live.",
-                href: "/platform/quick-start",
+                href: "/projects",
               },
               {
                 name: "Migration Readiness",
                 desc: "A focused planning engagement to map your path from on-premises or legacy environments to M365 — sequencing, risk mitigation, and a clear migration architecture. Avoids the stalls and surprises that plague unplanned migrations.",
-                href: "/platform/quick-start",
+                href: "/projects",
               },
               {
                 name: "Power Platform Quick-Start",
                 desc: "Structured guidance to deploy Power Automate or Power Apps in a governed, secure way — including environment strategy, DLP policy design, and a working proof-of-concept tailored to your use case.",
-                href: "/platform/quick-start",
+                href: "/projects",
               },
               {
                 name: "Fractional Architect Retainer",
                 desc: "Ongoing senior M365 architecture support on a monthly basis — strategy calls, ad-hoc guidance, architecture reviews, and proactive tenant monitoring. The fractional architect model, without the enterprise overhead.",
-                href: "/solutions",
+                href: "/platform/retainer",
               },
             ].map((offer, i) => (
               <div
@@ -771,22 +771,22 @@ export default function About() {
             ))}
           </div>
           <div className="text-center">
-            <p className="text-text-secondary text-sm mb-4">Explore all service areas and fixed-price packages</p>
+            <p className="text-text-secondary text-sm mb-4">Explore all service areas and scoped projects</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
-                href="/solutions"
+                href="/projects"
                 className="inline-flex items-center justify-center gap-2 text-white font-semibold px-6 py-3 rounded-lg transition-opacity hover:opacity-90 text-sm"
                 style={GRADIENT_BG}
                 data-testid="about-services-link"
               >
-                View All Solutions <ArrowRight className="w-4 h-4" />
+                View All Projects <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/platform/quick-start"
+                href="/assessments"
                 className="inline-flex items-center justify-center gap-2 border border-white/[0.12] text-text-secondary hover:text-text-primary hover:border-white/[0.2] font-semibold px-6 py-3 rounded-lg transition-colors text-sm"
                 data-testid="about-micro-offers-link"
               >
-                View Quick-Start Packs <ArrowRight className="w-4 h-4" />
+                View Assessments <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           </div>

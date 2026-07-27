@@ -33,37 +33,37 @@ const PACKAGES: Record<Slug, { name: string; tagline: string; href: string }> = 
     name: "M365 Tenant Health Audit",
     tagline:
       "A deep-dive audit of your entire tenant — security posture, licensing efficiency, governance gaps, and a prioritised remediation roadmap.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
   "power-platform-quick-start": {
     name: "Power Platform Quick-Start",
     tagline:
       "Get your first Power Automate flow or Power App live in days — automating a real business process with a proven delivery framework.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
   "governance-foundations": {
     name: "Governance Foundations Package",
     tagline:
       "Establish policies, naming conventions, lifecycle rules, and a DLP framework that keeps your tenant compliant and manageable long-term.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
   "migration-readiness-assessment": {
     name: "Migration Readiness Assessment",
     tagline:
       "A structured pre-migration review covering your source environment, data risks, cutover plan, and the blockers most teams miss.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
   "copilot-readiness-assessment": {
     name: "Copilot for M365 Readiness Assessment",
     tagline:
       "Evaluate whether your tenant's data governance, identity, and adoption practices are ready for Copilot AI deployment.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
   "m365-training-enablement": {
     name: "Microsoft 365 Training & Enablement",
     tagline:
       "Targeted end-user and admin training that closes the adoption gap and unlocks the ROI already sitting inside your M365 licences.",
-    href: "/platform/quick-start",
+    href: "/projects",
   },
 };
 
@@ -491,8 +491,8 @@ export function QuickWinsSelectorQuiz() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-          <CTAButton href="/platform/quick-start" className="px-7 py-3 text-sm">
-            View All Quick Wins
+          <CTAButton href="/projects" className="px-7 py-3 text-sm">
+            View All Projects
           </CTAButton>
           <ChatCTA
             className="inline-flex items-center justify-center gap-2 text-[#0A2540] font-semibold hover:text-[#0078D4] transition-colors text-sm border border-border px-7 py-3 rounded-xl hover:border-[#0078D4]/40"

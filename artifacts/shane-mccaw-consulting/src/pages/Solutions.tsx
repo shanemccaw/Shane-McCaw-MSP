@@ -10,20 +10,19 @@ export default function Solutions() {
   return (
     <Layout>
       <SEOMeta
-        title="Solutions | Shane McCaw Consulting"
-        description="Eight Microsoft 365 domains, each scored and monitored — Copilot, Security & Compliance, Governance, SharePoint, Power Platform, Teams, Migration, and M365 Health."
+        title="Projects | Shane McCaw Consulting"
+        description="Eight Microsoft 365 domains, each with a real assessment and the scoped projects it can lead to — Copilot, Security & Compliance, Governance, SharePoint, Power Platform, Teams, Migration, and M365 Health."
       />
 
       <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Solutions</p>
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Projects</p>
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-6">
-            Every domain that <GradientText>matters</GradientText>, scored on its own
+            Every domain that <GradientText>matters</GradientText>, with a real path forward
           </h1>
           <p className="text-lg text-text-secondary leading-relaxed">
-            The same seven pillars the Architecture Health Engine tracks, broken out by domain. Each
-            page is where a recognized visitor sees their real number — pick the one closest to
-            what's keeping you up at night.
+            A real assessment for each domain, and the scoped projects a genuine gap actually leads
+            to — pick the one closest to what's keeping you up at night.
           </p>
         </div>
       </section>
@@ -33,7 +32,7 @@ export default function Solutions() {
           {SOLUTIONS_TOPICS.map((topic) => {
             const Icon = topic.icon;
             return (
-              <Link key={topic.slug} href={`/solutions/${topic.slug}`} data-track="nav">
+              <Link key={topic.slug} href={`/projects/${topic.slug}`} data-track="nav">
                 <GlassPanel className="p-6 h-full flex flex-col hover:bg-white/[0.09] transition-colors group">
                   <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-blue mb-4">
                     <Icon className="w-5 h-5" />

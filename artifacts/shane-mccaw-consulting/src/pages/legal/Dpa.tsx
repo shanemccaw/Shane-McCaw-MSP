@@ -6,18 +6,18 @@ const EFFECTIVE_DATE = "July 1, 2025";
 const CONTACT_EMAIL = "hello@shanemccawconsulting.com";
 
 /**
- * Data Processing Agreement — the DPA referenced by the MSA/DPA-gated MSP checkout
+ * Data Processing Agreement — the DPA referenced by the DPA-gated checkout flow
  * (website-rebuild-reference-v2.md §2/§5). Real Stage 3 legal copy, drafted to the same
  * completeness bar as /legal/terms and /legal/privacy. NOTE: this is drafted content, not
  * attorney-reviewed — flagged for legal review before being relied on as a binding DPA, since a
- * defective DPA is a real compliance exposure for both Shane McCaw Consulting and its Partners.
+ * defective DPA is a real compliance exposure for Shane McCaw Consulting.
  */
 export default function Dpa() {
   return (
     <Layout>
       <SEOMeta
         title="Data Processing Agreement | Shane McCaw Consulting"
-        description="Terms governing how Shane McCaw Consulting processes personal data and tenant data on behalf of MSP partners and their end customers."
+        description="Terms governing how Shane McCaw Consulting processes personal data and Microsoft 365 tenant data on behalf of direct clients."
       />
 
       <div className="bg-white pt-[130px] pb-20">
@@ -33,18 +33,14 @@ export default function Dpa() {
               <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">1. Purpose and Parties</h2>
               <p>
                 This Data Processing Agreement ("DPA") describes how Shane McCaw Consulting ("Processor,"
-                "we") processes personal data and Microsoft 365 tenant data on behalf of an MSP Partner or
-                direct customer ("Controller," "you") in connection with Monitoring, Assessment, and
-                platform services. It forms part of, and is incorporated by reference into, the{" "}
-                <Link href="/msp-terms" className="text-[#0078D4] hover:underline">
-                  MSP Partner Terms of Service
-                </Link>{" "}
-                and general{" "}
+                "we") processes personal data and Microsoft 365 tenant data on behalf of the client
+                ("Controller," "you") in connection with Assessment, monitoring, and other platform
+                services. It forms part of, and is incorporated by reference into, the general{" "}
                 <Link href="/terms" className="text-[#0078D4] hover:underline">
                   Terms of Service
                 </Link>
                 . The Controller determines the purposes and means of processing with respect to its own
-                end-customer tenants; the Processor processes data only on the Controller's documented
+                Microsoft 365 tenant; the Processor processes data only on the Controller's documented
                 instructions, as described in this DPA.
               </p>
             </section>

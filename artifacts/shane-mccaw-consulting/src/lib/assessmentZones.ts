@@ -64,3 +64,37 @@ for (const [zoneKey, names] of Object.entries(ZONE_ASSIGNMENTS) as [ZoneKey, str
 export function getZoneForService(service: PublicService): ZoneKey | null {
   return NAME_TO_ZONE[service.name.trim().toLowerCase()] ?? null;
 }
+
+// Real per-assessment → Solutions/Topic page slug (SOLUTIONS_TOPICS in
+// data/solutionsTopics.ts), for AssessmentDetail's "Projects this can lead to" surface
+// (FollowOnProjects). Matched by exact service name, same convention as
+// ZONE_ASSIGNMENTS above. Some assessments (Exchange Online, license/cost audits,
+// adoption snapshots) have no single-owner topic page and fall back to the composite
+// m365-health page — never invented as owning a topic they don't.
+export const ASSESSMENT_TOPIC_SLUGS: Record<string, string> = {
+  'Security Posture Assessment': 'security-compliance',
+  'Conditional Access Assessment': 'security-compliance',
+  'Entra ID / Identity Assessment': 'security-compliance',
+  'Intune / Device Management Assessment': 'security-compliance',
+  'Compliance Framework Mapping Audit — SOC 2': 'security-compliance',
+  'Compliance Framework Mapping Audit — NIST CSF': 'security-compliance',
+  'Compliance Framework Mapping Audit — ISO 27001': 'security-compliance',
+  'Compliance Framework Mapping Audit — CMMC Level 1-2': 'security-compliance',
+  'Data Governance Assessment': 'governance',
+  'Copilot Data Exposure Assessment': 'copilot',
+  'SharePoint Assessment': 'sharepoint',
+  'Teams Assessment': 'teams',
+  'Exchange Online Assessment': 'm365-health',
+  'Copilot Readiness Snapshot': 'copilot',
+  'Copilot Readiness Assessment': 'copilot',
+  'License Waste Audit': 'm365-health',
+  'License & Cost Optimization Assessment': 'm365-health',
+  'Tenant Governance Snapshot': 'governance',
+  'M365 Tenant Health Audit': 'm365-health',
+  'Migration Readiness Assessment': 'migration',
+  'Adoption & Change Management Maturity Assessment': 'm365-health',
+};
+
+export function getTopicSlugForAssessment(service: { name: string }): string | null {
+  return ASSESSMENT_TOPIC_SLUGS[service.name.trim()] ?? null;
+}
