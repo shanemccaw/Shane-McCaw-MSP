@@ -631,22 +631,25 @@ async function resolveMonitorProfileMspScope(def: MetricDef, ctx: ResolveContext
 // ── needs_aggregation transforms (monitor_profile) ────────────────────────────
 
 async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Promise<MetricResult> {
-  // License waste, priced: real per-SKU wasted-seat counts × real
-  // sku_price_reference list price, via cost-engine.ts. Counts with no price on
+  // License waste, priced: real per-SKU UNUSED SEATS (prepaidUnits.enabled −
+  // consumedUnits, computed from a stored /subscribedSkus Graph page) × real
+  // sku_price_reference list price, via cost-engine.ts. SKUs with no price on
   // file surface as meta.unknownSkus rather than a guessed dollar figure.
   //
   // Resolved BEFORE the generic latestCheckProps fetch below, because the seat
-  // counts are not necessarily on `def.sourceKey`: monitor check keys are DATA,
-  // and the live catalog's real wasted-seat check may be keyed differently than
-  // the registry's declared `cost:license-waste-estimate` (see
-  // license-waste-source.ts). meta.sourceCheckKey states which check was used.
+  // counts are NOT on `def.sourceKey`: the registry's declared
+  // `cost:license-waste-estimate` does not exist in the live catalog, and no
+  // check's extractedProperties carries a per-SKU seat count at all (see the
+  // catalog audit in license-waste-source.ts — the SKU-keyed maps that DO exist
+  // are one-row-per-SKU tallies that would price as fake waste).
+  // meta.sourceCheckKey states which check's response was used.
   if (def.key === "licensing.wasteEstimateBreakdown") {
     const source = await resolveLicenseWasteCounts(tenantId, def.sourceKey);
     if (!source) {
       return notAvailable(
         def,
         "no_data",
-        `no SKU-keyed seat data on "${def.sourceKey}" or any active cost:* waste check for this tenant`,
+        "no complete /subscribedSkus response with unused seats for this tenant (every seat assigned, or no such check collected)",
       );
     }
     const breakdown = await computeSkuCostBreakdown(source.counts);
@@ -661,8 +664,10 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
       totalAnnualDollars: centsToDollars(breakdown.totalAnnualCents),
       unknownSkus: breakdown.unknownSkus,
       sourceCheckKey: source.checkKey,
-      sourceField: source.field,
       sourceIsFallbackCheck: source.fallback,
+      // The arithmetic behind every bucket — bought vs assigned per SKU.
+      seatLines: source.lines,
+      totalEnabledSeats: source.totalEnabledSeats,
     });
   }
 

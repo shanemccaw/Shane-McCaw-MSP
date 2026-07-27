@@ -1,19 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * Unit tests for license-waste-source.ts — the resolution step that finds WHICH
- * real monitor check holds a tenant's per-SKU wasted-seat counts.
+ * Unit tests for license-waste-source.ts — computing a tenant's REAL per-SKU
+ * unused seats so cost-engine.ts has something honest to price.
  *
- * This is the exact chain that was broken: the Cost Engine's inputs both existed
- * (real sku_price_reference pricing, real per-SKU seat counts on a cost check)
- * but the code only ever looked at the single hardcoded key
- * `cost:license-waste-estimate`, so the dollar figure came back null.
+ * These tests are written against the LIVE catalog audited 2026-07-26:
+ *   * `cost:license-waste-estimate` (the registry's declared sourceKey) does not
+ *     exist at all.
+ *   * `cost:unused-unassigned-licenses` maps `count` over `consumedUnits`, so
+ *     its `unusedLicenseCount` is a count of SKU ROWS, not of wasted seats.
+ *   * Every `groupByCount(skuPartNumber)` over /subscribedSkus yields one row
+ *     per SKU (`{ENTERPRISEPACK: 1}`) — SKU-keyed and numeric, and therefore a
+ *     perfect trap: pricing it reports waste that does not exist.
+ * The regression these lock down is that NONE of those is treated as a seat
+ * count; the figure comes from prepaidUnits.enabled − consumedUnits.
  *
- * DB is mocked with a FIFO queue (same convention as dashboard-resolvers.test.ts).
- * Query order per resolveLicenseWasteCounts call:
- *   1. sku_price_reference   (every priceable SKU)
- *   2. monitor_checks        (active cost:* keys)
- *   3. tenant_monitor_profiles, once per candidate key, in candidate order
+ * DB is mocked with a FIFO queue. Query order per resolveLicenseWasteCounts:
+ *   1. monitor_checks (active) — filtered in JS to /subscribedSkus endpoints
+ *   2. tenant_monitor_profiles, once per candidate key in order
  */
 
 let mockResultQueue: any[][] = [];
@@ -33,50 +37,74 @@ vi.mock("@workspace/db", () => {
   const tbl = (cols: string[]) => Object.fromEntries(cols.map((c) => [c, c]));
   return {
     db: { select: vi.fn(() => makeChain()) },
-    monitorChecksTable: tbl(["key", "status", "mapping"]),
-    skuPriceReferenceTable: tbl(["skuPartNumber", "displayName", "monthlyPriceCents"]),
-    tenantMonitorProfilesTable: tbl(["tenantId", "checkKey", "extractedProperties", "collectedAt", "status"]),
+    monitorChecksTable: tbl(["key", "status", "endpoint"]),
+    tenantMonitorProfilesTable: tbl(["tenantId", "checkKey", "rawResponse", "collectedAt", "status"]),
   };
 });
 
-import {
-  resolveLicenseWasteCounts,
-  extractCountMaps,
-  DEFAULT_LICENSE_WASTE_CHECK_KEY,
-} from "./license-waste-source.ts";
+import { resolveLicenseWasteCounts, unusedSeatsFromSubscribedSkus } from "./license-waste-source.ts";
 
-/** The real seeded SKUs relevant to these tests (2026-07-19-sku-price-reference.sql). */
-const PRICED_SKUS = [
-  { sku: "ENTERPRISEPACK" },
-  { sku: "SPE_E3" },
-  { sku: "SPB" },
+/** The real /subscribedSkus shape, as Graph returns it. */
+function skuPage(items: unknown[], nextLink?: string) {
+  return { value: items, ...(nextLink ? { "@odata.nextLink": nextLink } : {}) };
+}
+const sku = (skuPartNumber: string, enabled: number, consumed: number) => ({
+  skuId: `id-${skuPartNumber}`,
+  skuPartNumber,
+  consumedUnits: consumed,
+  prepaidUnits: { enabled, suspended: 0, warning: 0 },
+});
+
+/** The live catalog's four /subscribedSkus checks. */
+const SUBSCRIBED_SKU_CHECKS = [
+  { key: "cost:entra-license-tier-distribution", endpoint: "/subscribedSkus" },
+  { key: "cost:license-count-by-sku", endpoint: "/subscribedSkus" },
+  { key: "cost:unused-unassigned-licenses", endpoint: "/subscribedSkus" },
+  { key: "cost:utilization-by-sku", endpoint: "/subscribedSkus" },
+];
+/** Real non-/subscribedSkus cost checks that must never be candidates. */
+const OTHER_COST_CHECKS = [
+  { key: "cost:duplicate-assignments", endpoint: "/users" },
+  { key: "cost:group-based-licensing-adoption", endpoint: "/groups" },
+  { key: "cost:underutilized-premium", endpoint: "/users" },
 ];
 
-const collectedAt = new Date("2026-07-26T02:00:00.000Z");
+const collectedAt = new Date("2026-07-27T03:00:45.924Z");
 
-function queueSkusAndChecks(costCheckKeys: string[]) {
-  mockResultQueue.push(PRICED_SKUS);
-  mockResultQueue.push(costCheckKeys.map((key) => ({ key })));
-}
-
-describe("extractCountMaps", () => {
-  it("returns EVERY count map, not just the first — the old first-object-wins trap", () => {
-    const maps = extractCountMaps({
-      byDepartment: { Sales: 3, Support: 1 },
-      skuPartNumber: { ENTERPRISEPACK: 1, SPB: 3 },
-      unusedLicenseCount: 4,
-      _itemCount: 9,
-      __rawResponse: { value: [] },
-    });
-    expect(maps.map((m) => m.field).sort()).toEqual(["byDepartment", "skuPartNumber"]);
-    expect(maps.find((m) => m.field === "skuPartNumber")!.counts).toEqual({
-      ENTERPRISEPACK: 1,
-      SPB: 3,
-    });
+describe("unusedSeatsFromSubscribedSkus", () => {
+  it("computes unused seats as prepaidUnits.enabled - consumedUnits, per SKU", () => {
+    const out = unusedSeatsFromSubscribedSkus(
+      skuPage([sku("ENTERPRISEPACK", 25, 21), sku("SPB", 10, 10), sku("POWER_BI_PRO", 5, 2)]),
+    )!;
+    expect(out.counts).toEqual({ ENTERPRISEPACK: 4, POWER_BI_PRO: 3 }); // SPB fully assigned → omitted
+    expect(out.totalEnabledSeats).toBe(40);
+    expect(out.lines).toContainEqual({ skuPartNumber: "SPB", enabled: 10, consumed: 10, unused: 0 });
   });
 
-  it("skips reserved auto-keys, scalars and arrays", () => {
-    expect(extractCountMaps({ _itemCount: 4, total: 9, list: [1, 2], __status: "ok" })).toEqual([]);
+  it("never returns a negative count when consumed exceeds enabled", () => {
+    const out = unusedSeatsFromSubscribedSkus(skuPage([sku("ENTERPRISEPACK", 5, 8)]))!;
+    expect(out.counts).toEqual({});
+    expect(out.lines[0].unused).toBe(0);
+  });
+
+  it("skips a SKU missing consumedUnits rather than treating every seat as wasted", () => {
+    const partial = { skuPartNumber: "SPE_E3", prepaidUnits: { enabled: 50 } }; // no consumedUnits
+    const out = unusedSeatsFromSubscribedSkus(skuPage([partial, sku("ENTERPRISEPACK", 4, 1)]))!;
+    expect(out.counts).toEqual({ ENTERPRISEPACK: 3 });
+    expect(out.lines.map((l) => l.skuPartNumber)).toEqual(["ENTERPRISEPACK"]);
+    expect(out.totalEnabledSeats).toBe(4); // the 50 unusable seats are not counted either
+  });
+
+  it("refuses a truncated page — only the first Graph page is persisted", () => {
+    expect(
+      unusedSeatsFromSubscribedSkus(skuPage([sku("ENTERPRISEPACK", 25, 21)], "https://graph/next")),
+    ).toBeNull();
+  });
+
+  it("returns null for a response with no usable SKU rows", () => {
+    expect(unusedSeatsFromSubscribedSkus(skuPage([]))).toBeNull();
+    expect(unusedSeatsFromSubscribedSkus(null)).toBeNull();
+    expect(unusedSeatsFromSubscribedSkus({ notAPage: true })).toBeNull();
   });
 });
 
@@ -85,91 +113,65 @@ describe("resolveLicenseWasteCounts", () => {
     mockResultQueue = [];
   });
 
-  it("uses the preferred (registry) check key when it genuinely has SKU data", async () => {
-    queueSkusAndChecks(["cost:unused-unassigned-licenses"]);
+  it("prices real unused seats from the live tenant's /subscribedSkus response", async () => {
+    mockResultQueue.push([...OTHER_COST_CHECKS, ...SUBSCRIBED_SKU_CHECKS]);
+    // cost:unused-unassigned-licenses is tried first (name preference).
     mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { ENTERPRISEPACK: 2 } }, collectedAt },
+      { rawResponse: skuPage([sku("ENTERPRISEPACK", 25, 21), sku("SPB", 3, 3)]), collectedAt },
     ]);
 
     const res = await resolveLicenseWasteCounts("tenant-guid-1");
     expect(res).not.toBeNull();
-    expect(res!.checkKey).toBe(DEFAULT_LICENSE_WASTE_CHECK_KEY);
-    expect(res!.fallback).toBe(false);
-    expect(res!.counts).toEqual({ ENTERPRISEPACK: 2 });
+    expect(res!.checkKey).toBe("cost:unused-unassigned-licenses");
+    expect(res!.counts).toEqual({ ENTERPRISEPACK: 4 });
+    expect(res!.totalEnabledSeats).toBe(28);
   });
 
-  it("falls back to the cost check that ACTUALLY collected the seat data (the real bug)", async () => {
-    // Exactly the live shape Shane confirmed: nothing on the registry's declared
-    // key, real per-SKU waste on cost:unused-unassigned-licenses.
-    queueSkusAndChecks(["cost:unused-unassigned-licenses"]);
-    mockResultQueue.push([]); // cost:license-waste-estimate — no row for this tenant
+  it("NEVER prices a groupByCount SKU-row tally as waste (the fabrication trap)", async () => {
+    // extractedProperties on these checks carries {ENTERPRISEPACK: 1, ...} — one
+    // row per SKU. It is SKU-keyed and numeric, so a name/shape-based resolver
+    // would price it as 1 wasted seat per SKU. The real page says every seat is
+    // assigned, so the only honest answer is null.
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
     mockResultQueue.push([
       {
+        rawResponse: skuPage([sku("ENTERPRISEPACK", 21, 21), sku("SPB", 3, 3)]),
+        collectedAt,
         extractedProperties: {
+          entraLicenseTierDistribution: { ENTERPRISEPACK: 1, SPB: 1 },
           unusedLicenseCount: 4,
-          skuPartNumber: { ENTERPRISEPACK: 1, SPB: 3 },
-          _itemCount: 4,
         },
-        collectedAt,
       },
     ]);
 
-    const res = await resolveLicenseWasteCounts("tenant-guid-1");
-    expect(res).not.toBeNull();
-    expect(res!.checkKey).toBe("cost:unused-unassigned-licenses");
-    expect(res!.fallback).toBe(true);
-    expect(res!.field).toBe("skuPartNumber");
-    expect(res!.counts).toEqual({ ENTERPRISEPACK: 1, SPB: 3 });
-    expect(res!.pricedSkuCount).toBe(2);
+    expect(await resolveLicenseWasteCounts("tenant-guid-1")).toBeNull();
   });
 
-  it("prefers the SKU-keyed map over a same-check map grouped by something else", async () => {
-    queueSkusAndChecks([]);
-    mockResultQueue.push([
-      {
-        extractedProperties: {
-          // Alphabetically/insertion-order first, but NOT SKU-keyed — pricing it
-          // as license waste would invent a dollar figure out of nothing.
-          byDepartment: { Sales: 12, Support: 8 },
-          skuPartNumber: { ENTERPRISEPACK: 1 },
-        },
-        collectedAt,
-      },
-    ]);
-
-    const res = await resolveLicenseWasteCounts("tenant-guid-1");
-    expect(res!.field).toBe("skuPartNumber");
-    expect(res!.counts).toEqual({ ENTERPRISEPACK: 1 });
+  it("only considers checks whose ENDPOINT hits /subscribedSkus, not cost:* by name", async () => {
+    // Only the /users + /groups cost checks exist → no candidate at all, and no
+    // profile query is ever issued.
+    mockResultQueue.push(OTHER_COST_CHECKS);
+    expect(await resolveLicenseWasteCounts("tenant-guid-1")).toBeNull();
+    expect(mockResultQueue).toHaveLength(0);
   });
 
-  it("never widens into whole-estate licensing checks — only cost:* waste-named keys are candidates", async () => {
-    // The discovery query is restricted to cost:%; of those, only keys naming an
-    // unused/wasted concept survive. A cost inventory check must be ignored, or
-    // the entire license estate would be reported as waste.
-    queueSkusAndChecks(["cost:license-inventory", "cost:unused-unassigned-licenses"]);
-    mockResultQueue.push([]); // preferred key — no data
-    // Only ONE further profile query should be issued (the unused-* key). If
-    // cost:license-inventory were a candidate it would be queried first and
-    // consume this row.
-    mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { SPE_E3: 5 } }, collectedAt },
-    ]);
+  it("moves to the next /subscribedSkus check when the first has no stored page", async () => {
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
+    mockResultQueue.push([]); // cost:unused-unassigned-licenses — never collected
+    mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 12, 7)]), collectedAt }]);
 
     const res = await resolveLicenseWasteCounts("tenant-guid-1");
-    expect(res!.checkKey).toBe("cost:unused-unassigned-licenses");
+    expect(res!.checkKey).toBe("cost:entra-license-tier-distribution");
     expect(res!.counts).toEqual({ SPE_E3: 5 });
+    expect(res!.fallback).toBe(true);
   });
 
-  it("returns null (honest no-data) when no cost check has SKU-keyed seat data", async () => {
-    queueSkusAndChecks(["cost:unused-unassigned-licenses"]);
-    mockResultQueue.push([]);
-    mockResultQueue.push([{ extractedProperties: { _itemCount: 0 }, collectedAt }]);
-
-    expect(await resolveLicenseWasteCounts("tenant-guid-1")).toBeNull();
-  });
-
-  it("returns null rather than a bogus map when nothing is priceable at all", async () => {
-    mockResultQueue.push([]); // sku_price_reference empty
-    expect(await resolveLicenseWasteCounts("tenant-guid-1")).toBeNull();
+  it("reports fallback=true because the registry's declared key is not a real check", async () => {
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
+    mockResultQueue.push([{ rawResponse: skuPage([sku("ENTERPRISEPACK", 25, 21)]), collectedAt }]);
+    const res = await resolveLicenseWasteCounts("tenant-guid-1");
+    // `cost:license-waste-estimate` does not exist in the catalog, so whatever
+    // is used is by definition not the declared source.
+    expect(res!.fallback).toBe(true);
   });
 });

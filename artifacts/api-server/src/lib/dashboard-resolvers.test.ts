@@ -202,17 +202,26 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
   /**
    * Query order for this metric (see license-waste-source.ts):
    *   1. resolveTenantId
-   *   2. sku_price_reference — every priceable SKU
-   *   3. monitor_checks — active cost:* keys (fallback candidates)
-   *   4. tenant_monitor_profiles, once per candidate key in order
-   *   5. cost-engine price lookup, once per distinct SKU
+   *   2. monitor_checks — active checks, filtered to /subscribedSkus endpoints
+   *   3. tenant_monitor_profiles, once per candidate key in order
+   *   4. cost-engine price lookup, once per distinct SKU with unused seats
    */
-  it("prices real per-SKU seat counts into real dollar buckets via cost-engine", async () => {
+  const SUBSCRIBED_SKU_CHECKS = [
+    { key: "cost:entra-license-tier-distribution", endpoint: "/subscribedSkus" },
+    { key: "cost:unused-unassigned-licenses", endpoint: "/subscribedSkus" },
+  ];
+  const skuPage = (items: unknown[]) => ({ value: items });
+  const sku = (skuPartNumber: string, enabled: number, consumed: number) => ({
+    skuPartNumber,
+    consumedUnits: consumed,
+    prepaidUnits: { enabled },
+  });
+
+  it("prices real unused seats (enabled - consumed) into real dollar buckets via cost-engine", async () => {
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
-    mockResultQueue.push([{ sku: "SPE_E3" }, { sku: "SPE_E5" }]);
-    mockResultQueue.push([]); // no other cost:* waste checks in the catalog
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
     mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { SPE_E3: 10, SPE_E5: 2 } }, collectedAt: new Date() },
+      { rawResponse: skuPage([sku("SPE_E3", 40, 30), sku("SPE_E5", 5, 3)]), collectedAt: new Date() },
     ]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
@@ -223,48 +232,45 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     const buckets = res.data.buckets as { label: string; value: number }[];
     expect(buckets).toEqual(
       expect.arrayContaining([
-        { label: "Microsoft 365 E3", value: 360 },
-        { label: "Microsoft 365 E5", value: 114 },
+        { label: "Microsoft 365 E3", value: 360 }, // 10 unused x $36
+        { label: "Microsoft 365 E5", value: 114 }, // 2 unused x $57
       ]),
     );
     expect(res.meta?.totalMonthlyDollars).toBe(474);
     expect(res.meta?.unknownSkus).toEqual([]);
-    // Provenance — a dollar figure always names the check it came from.
-    expect(res.meta?.sourceCheckKey).toBe("cost:license-waste-estimate");
-    expect(res.meta?.sourceIsFallbackCheck).toBe(false);
+    // Provenance + the arithmetic behind the figure.
+    expect(res.meta?.sourceCheckKey).toBe("cost:unused-unassigned-licenses");
+    expect(res.meta?.totalEnabledSeats).toBe(45);
   });
 
-  it("prices waste from the cost check that ACTUALLY collected it, not just the registry's sourceKey", async () => {
-    // The real break: sku_price_reference has ENTERPRISEPACK at $23.00 and the
-    // tenant has real per-SKU waste, but it is collected under a different cost
-    // check key than the registry declares — which used to yield a null figure.
+  it("returns no_data — never a fabricated figure — when every seat is assigned", async () => {
+    // The live trap: this check's extractedProperties carry a SKU-keyed
+    // {ENTERPRISEPACK: 1} groupByCount (one row per SKU, not seats). The real
+    // page shows a fully-assigned estate, so the honest answer is no data.
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
-    mockResultQueue.push([{ sku: "ENTERPRISEPACK" }]);
-    mockResultQueue.push([{ key: "cost:unused-unassigned-licenses" }]);
-    mockResultQueue.push([]); // cost:license-waste-estimate — no row
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
     mockResultQueue.push([
-      { extractedProperties: { unusedLicenseCount: 4, skuPartNumber: { ENTERPRISEPACK: 1 } }, collectedAt: new Date() },
+      {
+        rawResponse: skuPage([sku("ENTERPRISEPACK", 21, 21)]),
+        collectedAt: new Date(),
+        extractedProperties: { entraLicenseTierDistribution: { ENTERPRISEPACK: 1 }, unusedLicenseCount: 4 },
+      },
     ]);
-    mockResultQueue.push([{ displayName: "Office 365 E3", monthlyPriceCents: 2300 }]);
 
     const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
-    expect(res.status).toBe("ok");
-    if (res.status !== "ok") return;
-    expect(res.data.buckets).toEqual([{ label: "Office 365 E3", value: 23 }]);
-    expect(res.meta?.totalMonthlyDollars).toBe(23);
-    expect(res.meta?.totalAnnualDollars).toBe(276);
-    expect(res.meta?.sourceCheckKey).toBe("cost:unused-unassigned-licenses");
-    expect(res.meta?.sourceIsFallbackCheck).toBe(true);
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("no_data");
   });
 
   it("surfaces unpriced SKUs via meta.unknownSkus instead of guessing a dollar figure", async () => {
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
-    // NOT_A_REAL_SKU is not priceable, but SPE_E3 in the same map is — so the
-    // map is still accepted as SKU-keyed and the unpriced SKU is declared.
-    mockResultQueue.push([{ sku: "SPE_E3" }]);
-    mockResultQueue.push([]);
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
     mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { NOT_A_REAL_SKU: 5, SPE_E3: 1 } }, collectedAt: new Date() },
+      {
+        rawResponse: skuPage([sku("NOT_A_REAL_SKU", 8, 3), sku("SPE_E3", 4, 3)]),
+        collectedAt: new Date(),
+      },
     ]);
     mockResultQueue.push([]); // no sku_price_reference row for NOT_A_REAL_SKU
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
