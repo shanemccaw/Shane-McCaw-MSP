@@ -60,7 +60,7 @@ export interface FailureClassification {
   statusCode: number | null;
   permissions: string[];
   alreadyDeclaredPermissions: string[];
-  action: { kind: FailureActionKind; label: string; focusField?: "endpoint" | "selectParams" | "requestBody" };
+  action: { kind: FailureActionKind; label: string; focusField?: "endpoint" | "selectParams" | "filterParams" | "requestBody" };
 }
 
 export interface ClassificationGroup {
@@ -136,7 +136,7 @@ export function SimulatorFailureClassification({
   canRetire = true,
 }: {
   classification: FailureClassification;
-  onEditEndpoint?: (focusField: "endpoint" | "selectParams" | "requestBody") => void;
+  onEditEndpoint?: (focusField: "endpoint" | "selectParams" | "filterParams" | "requestBody") => void;
   onRetire?: () => void;
   canRetire?: boolean;
 }) {

@@ -102,6 +102,7 @@ interface MonitorCheckNode {
   endpoint: string;
   method: string;
   selectParams: string | null;
+  filterParams?: string | null;
   requestBody: Record<string, unknown> | null;
   properties: string[];
   mapping: Array<{ sourceField: string; targetField: string; transform?: string }>;
@@ -350,6 +351,7 @@ export function SimulatorLeftTree() {
         check.endpoint,
         check.method,
         check.selectParams,
+        check.filterParams,
         ...(check.properties || []),
         check.status,
       ])

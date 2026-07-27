@@ -225,6 +225,7 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
 
   let gatedTemplateId: string | null = null;
   const coalescedGateTemplateIds: string[] = [];
+  let lastMonitorNodeId: string | null = null;
 
   for (let i = 0; i < ordered.length; i++) {
     const t = ordered[i];
@@ -248,41 +249,43 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       });
       link(nodeId);
       prev = { id: nodeId }; // No 'success' handle enforced for monitor check yet, just sequential
+      lastMonitorNodeId = nodeId;
+    }
 
-      // 2. Add Parameter Mapping node if mapping exists
-      if (t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
-        const mapNodeId = `map-${stepUniqueId}-outputs`;
-        const mapKeys = Object.keys(t.parameterMapping);
-        // E.g. SELECT $1::text AS "mappedKey" 
-        // using the first item's property from extractedProperties
-        const queryParts = mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`);
-        const query = `SELECT ${queryParts.join(", ")}`;
-        
-        // The values come from the monitor check's extracted properties
-        // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
-        // If the mapping starts with "static:", we treat the rest as a literal value.
-        const params = mapKeys.map(k => {
-          const val = t.parameterMapping![k];
-          return val.startsWith("static:")
-            ? val.slice(7)
-            : `{{steps.${nodeId}.extractedProperties.0.${val} }}`;
-        });
+    // 2. Add Parameter Mapping node if mapping exists (applies to both monitor and template steps)
+    if (t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
+      const mapNodeId = `map-${stepUniqueId}-outputs`;
+      const mapKeys = Object.keys(t.parameterMapping);
+      // E.g. SELECT $1::text AS "mappedKey" 
+      // using the first item's property from extractedProperties
+      const queryParts = mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`);
+      const query = `SELECT ${queryParts.join(", ")}`;
+      
+      const sourceNodeId = lastMonitorNodeId || nodeId;
+      // The values come from the monitor check's extracted properties or static values
+      // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
+      // If the mapping starts with "static:", we treat the rest as a literal value.
+      const params = mapKeys.map(k => {
+        const val = t.parameterMapping![k];
+        return val.startsWith("static:")
+          ? val.slice(7)
+          : `{{steps.${sourceNodeId}.extractedProperties.0.${val}}}`;
+      });
 
-        nodes.push({
-          id: mapNodeId,
-          type: "action",
-          position: nextPos(),
-          data: {
-            nodeType: "action",
-            actionType: "sql_query",
-            label: "Map Monitor Check Outputs",
-            query,
-            params: params as unknown as WfNodeData["params"],
-          },
-        });
-        link(mapNodeId);
-        prev = { id: mapNodeId };
-      }
+      nodes.push({
+        id: mapNodeId,
+        type: "action",
+        position: nextPos(),
+        data: {
+          nodeType: "action",
+          actionType: "sql_query",
+          label: "Map Pipeline Step Outputs",
+          query,
+          params: params as unknown as WfNodeData["params"],
+        },
+      });
+      link(mapNodeId);
+      prev = { id: mapNodeId };
     }
 
     if (t.templateId) {

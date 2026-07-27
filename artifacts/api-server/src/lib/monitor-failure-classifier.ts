@@ -106,7 +106,7 @@ export interface FailureAction {
   /** The button/label text the operator sees. */
   label: string;
   /** For edit_endpoint: which field the edit form should land the cursor in. */
-  focusField?: "endpoint" | "selectParams" | "requestBody";
+  focusField?: "endpoint" | "selectParams" | "filterParams" | "requestBody";
 }
 
 // ── Result ────────────────────────────────────────────────────────────────────

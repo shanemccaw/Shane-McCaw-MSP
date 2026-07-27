@@ -374,7 +374,7 @@ export function ConfigPackWizardDialog({
                       {step.templateId && (
                         <div className="space-y-2 mt-4 pt-4 border-t border-border">
                           <Label className="text-sm font-semibold text-gray-300 mb-2 block">Parameter Mapping (Required by Template)</Label>
-                          {templates.find((t) => t.templateId === step.templateId)?.requiredVariables.map((rv) => (
+                          {templates.find((t) => t.templateId === step.templateId)?.requiredVariables?.map((rv) => (
                             <div key={rv} className="flex items-center gap-3">
                               <span className="font-mono text-xs w-1/3 text-gray-400">{rv}</span>
                               <ArrowRight className="w-4 h-4 text-gray-600" />

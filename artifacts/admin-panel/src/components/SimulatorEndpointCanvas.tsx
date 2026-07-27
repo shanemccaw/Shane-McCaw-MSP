@@ -86,6 +86,7 @@ export interface MonitorCheckSummary {
   endpoint: string;
   method: string;
   selectParams: string | null;
+  filterParams?: string | null;
   requestBody: Record<string, unknown> | null;
   properties: string[];
   mapping: Array<{ sourceField: string; targetField: string; transform?: string }>;
@@ -106,6 +107,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const [endpoint, setEndpoint] = useState(check.endpoint);
   const [method, setMethod] = useState(check.method || "GET");
   const [selectParams, setSelectParams] = useState(check.selectParams ?? "");
+  const [filterParams, setFilterParams] = useState(check.filterParams ?? "");
   const [requestBodyText, setRequestBodyText] = useState(
     check.requestBody ? JSON.stringify(check.requestBody, null, 2) : "",
   );
@@ -151,6 +153,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   // already on this page. It opens and selects — it never saves.
   const endpointRef = useRef<HTMLInputElement | null>(null);
   const selectParamsRef = useRef<HTMLInputElement | null>(null);
+  const filterParamsRef = useRef<HTMLInputElement | null>(null);
   const requestBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Re-seed every field when a different endpoint is selected in the tree.
@@ -158,6 +161,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setEndpoint(check.endpoint);
     setMethod(check.method || "GET");
     setSelectParams(check.selectParams ?? "");
+    setFilterParams(check.filterParams ?? "");
     setRequestBodyText(check.requestBody ? JSON.stringify(check.requestBody, null, 2) : "");
     setRun(null);
     setClassification(null);
@@ -169,9 +173,10 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   }, [check.key]);
 
   /** Opens the edit form on the field the classification points at. Never saves. */
-  const focusRequestField = (field: "endpoint" | "selectParams" | "requestBody") => {
+  const focusRequestField = (field: "endpoint" | "selectParams" | "filterParams" | "requestBody") => {
     const el =
       field === "selectParams" ? selectParamsRef.current
+      : field === "filterParams" ? filterParamsRef.current
       : field === "requestBody" ? requestBodyRef.current
       : endpointRef.current;
     if (!el) return;
@@ -224,6 +229,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setEndpoint(check.endpoint);
     setMethod(check.method || "GET");
     setSelectParams(check.selectParams ?? "");
+    setFilterParams(check.filterParams ?? "");
     setRequestBodyText(check.requestBody ? JSON.stringify(check.requestBody, null, 2) : "");
   };
 
@@ -290,6 +296,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           endpoint: runEndpoint,
           method,
           requestBody: parsedBody.value,
+          filterParams: filterParams.trim() ? filterParams.trim() : null,
         }),
       });
       const data = await res.json();
@@ -390,6 +397,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           endpoint,
           method,
           selectParams: selectParams.trim() ? selectParams.trim() : null,
+          filterParams: filterParams.trim() ? filterParams.trim() : null,
           requestBody: parsedBody.value,
         }),
       });
@@ -562,7 +570,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       </div>
 
       {/* Parameters */}
-      <div className="mb-3 grid grid-cols-2 gap-3">
+      <div className="mb-3 grid grid-cols-3 gap-3">
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Select params
@@ -573,6 +581,19 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
             onChange={(e) => setSelectParams(e.target.value)}
             spellCheck={false}
             placeholder="$select=id,displayName"
+            className="w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-foreground focus:border-ring focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Filter params
+          </label>
+          <input
+            ref={filterParamsRef}
+            value={filterParams}
+            onChange={(e) => setFilterParams(e.target.value)}
+            spellCheck={false}
+            placeholder="userType eq 'Guest'"
             className="w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-foreground focus:border-ring focus:outline-none"
           />
         </div>

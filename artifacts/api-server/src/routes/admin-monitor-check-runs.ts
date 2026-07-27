@@ -115,6 +115,7 @@ interface RunOverrides {
   /** Present-flag separate from value, so an explicit `null` body can be sent. */
   requestBodyPresent?: boolean;
   requestBody?: unknown;
+  filterParams?: string | null;
 }
 
 /**
@@ -144,6 +145,7 @@ async function startCheckRun(opts: {
     endpoint: overrides.endpoint ?? check.endpoint,
     method: overrides.method ?? check.method,
     requestBody: (overrides.requestBodyPresent ? overrides.requestBody : check.requestBody) as MonitorCheck["requestBody"],
+    filterParams: overrides.filterParams !== undefined ? overrides.filterParams : check.filterParams,
   };
 
   const runId = randomUUID();
@@ -317,6 +319,7 @@ router.post("/admin/monitor-checks/:key/run", requireAdmin, async (req: Request,
         method: typeof body.method === "string" && body.method.trim() ? body.method.trim().toUpperCase() : null,
         requestBodyPresent: Object.prototype.hasOwnProperty.call(body, "requestBody"),
         requestBody: body.requestBody,
+        filterParams: typeof body.filterParams === "string" ? (body.filterParams.trim() ? body.filterParams.trim() : null) : (body.filterParams === null ? null : undefined),
       },
     });
 
