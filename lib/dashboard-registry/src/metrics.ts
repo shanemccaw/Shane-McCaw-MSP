@@ -179,7 +179,14 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "identity:high-risk-signins",
+    // The real catalog check is `identity:risky-signins` — it is the key
+    // curated into core:security-baseline (2026-07-21-repopulate-monitoring-
+    // package-checks.sql, whose keys were each verified present + active in the
+    // live monitor_checks catalog). `identity:high-risk-signins` appeared
+    // nowhere else in the repo — no migration ever created it — so this metric
+    // could never resolve. A phantom sourceKey now reports `unknown_check_key`
+    // rather than looking like an empty tenant (see dashboard-resolvers.ts).
+    sourceKey: "identity:risky-signins",
     scope: "customer",
     status: "available",
     smartEligible: true,

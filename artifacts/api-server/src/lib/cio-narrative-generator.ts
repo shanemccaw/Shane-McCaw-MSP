@@ -37,7 +37,7 @@ import { calculateArchitectureHealthScore } from "./health-engine";
 import { computeDisplayHealth } from "./health-display";
 import { fetchEvaluableSignalKeys } from "./pillar-coverage";
 import { fetchSignalRulesAndGroups } from "./priority-engine";
-import { latestCheckProps, extractGroupByCountCounts } from "./dashboard-resolvers";
+import { resolveLicenseWasteCounts } from "./license-waste-source";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -137,11 +137,11 @@ async function buildBenchmarkBlock(customerId: number): Promise<string> {
 async function buildCostBlock(tenantId: string | null): Promise<string> {
   if (!tenantId) return "No data.";
   try {
-    const props = await latestCheckProps(tenantId, "cost:license-waste-estimate");
-    if (!props) return "No data.";
-    const counts = extractGroupByCountCounts(props);
-    if (!counts) return "No data.";
-    const breakdown = await computeSkuCostBreakdown(counts);
+    // Which monitor check carries the real wasted-seat counts is DATA, not a
+    // constant — resolveLicenseWasteCounts finds it (see license-waste-source.ts).
+    const source = await resolveLicenseWasteCounts(tenantId);
+    if (!source) return "No data.";
+    const breakdown = await computeSkuCostBreakdown(source.counts);
     if (breakdown.totalMonthlyCents <= 0) return "No data.";
     return `Real license waste, priced against current list prices: $${centsToDollars(breakdown.totalMonthlyCents).toLocaleString()}/month ($${centsToDollars(breakdown.totalAnnualCents).toLocaleString()}/year).`;
   } catch (err) {

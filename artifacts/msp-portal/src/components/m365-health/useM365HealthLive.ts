@@ -147,6 +147,23 @@ export function resolvedHistory(r: ResolvedMetric | undefined): { t: string; val
   );
 }
 
+/** Why a metric has no value, in the words the customer should see. Keeps the
+ * three genuinely different dark states apart instead of flattening them all to
+ * "no data": `unknown_check_key` is a platform wiring gap (the registry names a
+ * check the catalog doesn't have), `no_data` means the tenant simply hasn't
+ * collected that check — usually because it isn't in their scan package. */
+export function resolvedEmptyReason(r: ResolvedMetric | undefined): string {
+  if (!r) return "not requested";
+  if (r.status === "error") return "failed to resolve";
+  if (r.status === "not_available") {
+    if (r.reason === "unknown_check_key") return "not wired to a real check yet";
+    if (r.reason === "no_tenant_id") return "no M365 tenant linked";
+    if (r.reason === "not_collected") return "not collected yet";
+    return "not in your scan package";
+  }
+  return "no data collected";
+}
+
 /** Extract the canonical numeric value from a resolved scalar/trend metric.
  * Returns null for not_available/error/non-numeric — the honest "no data". */
 export function resolvedValue(r: ResolvedMetric | undefined): number | null {

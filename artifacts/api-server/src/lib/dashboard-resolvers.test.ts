@@ -199,14 +199,21 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     expect(wasteDef.shape).toBe("distribution");
   });
 
+  /**
+   * Query order for this metric (see license-waste-source.ts):
+   *   1. resolveTenantId
+   *   2. sku_price_reference — every priceable SKU
+   *   3. monitor_checks — active cost:* keys (fallback candidates)
+   *   4. tenant_monitor_profiles, once per candidate key in order
+   *   5. cost-engine price lookup, once per distinct SKU
+   */
   it("prices real per-SKU seat counts into real dollar buckets via cost-engine", async () => {
-    // 1. resolveTenantId
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
-    // 2. latestCheckProps — the groupByCount output already produced by the monitor check.
+    mockResultQueue.push([{ sku: "SPE_E3" }, { sku: "SPE_E5" }]);
+    mockResultQueue.push([]); // no other cost:* waste checks in the catalog
     mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { SPE_E3: 10, SPE_E5: 2 } }, rawResponse: null, collectedAt: new Date(), status: "ok" },
+      { extractedProperties: { skuPartNumber: { SPE_E3: 10, SPE_E5: 2 } }, collectedAt: new Date() },
     ]);
-    // 3. cost-engine price lookups, one per distinct SKU.
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
 
@@ -222,19 +229,117 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     );
     expect(res.meta?.totalMonthlyDollars).toBe(474);
     expect(res.meta?.unknownSkus).toEqual([]);
+    // Provenance — a dollar figure always names the check it came from.
+    expect(res.meta?.sourceCheckKey).toBe("cost:license-waste-estimate");
+    expect(res.meta?.sourceIsFallbackCheck).toBe(false);
+  });
+
+  it("prices waste from the cost check that ACTUALLY collected it, not just the registry's sourceKey", async () => {
+    // The real break: sku_price_reference has ENTERPRISEPACK at $23.00 and the
+    // tenant has real per-SKU waste, but it is collected under a different cost
+    // check key than the registry declares — which used to yield a null figure.
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([{ sku: "ENTERPRISEPACK" }]);
+    mockResultQueue.push([{ key: "cost:unused-unassigned-licenses" }]);
+    mockResultQueue.push([]); // cost:license-waste-estimate — no row
+    mockResultQueue.push([
+      { extractedProperties: { unusedLicenseCount: 4, skuPartNumber: { ENTERPRISEPACK: 1 } }, collectedAt: new Date() },
+    ]);
+    mockResultQueue.push([{ displayName: "Office 365 E3", monthlyPriceCents: 2300 }]);
+
+    const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.data.buckets).toEqual([{ label: "Office 365 E3", value: 23 }]);
+    expect(res.meta?.totalMonthlyDollars).toBe(23);
+    expect(res.meta?.totalAnnualDollars).toBe(276);
+    expect(res.meta?.sourceCheckKey).toBe("cost:unused-unassigned-licenses");
+    expect(res.meta?.sourceIsFallbackCheck).toBe(true);
   });
 
   it("surfaces unpriced SKUs via meta.unknownSkus instead of guessing a dollar figure", async () => {
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    // NOT_A_REAL_SKU is not priceable, but SPE_E3 in the same map is — so the
+    // map is still accepted as SKU-keyed and the unpriced SKU is declared.
+    mockResultQueue.push([{ sku: "SPE_E3" }]);
+    mockResultQueue.push([]);
     mockResultQueue.push([
-      { extractedProperties: { skuPartNumber: { NOT_A_REAL_SKU: 5 } }, rawResponse: null, collectedAt: new Date(), status: "ok" },
+      { extractedProperties: { skuPartNumber: { NOT_A_REAL_SKU: 5, SPE_E3: 1 } }, collectedAt: new Date() },
     ]);
-    mockResultQueue.push([]); // no sku_price_reference row
+    mockResultQueue.push([]); // no sku_price_reference row for NOT_A_REAL_SKU
+    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
 
     const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
     expect(res.status).toBe("ok");
     if (res.status !== "ok") return;
     expect(res.meta?.unknownSkus).toEqual(["NOT_A_REAL_SKU"]);
     expect((res.data.buckets as any[])[0].value).toBe(0);
+  });
+});
+
+describe("monitor_profile scalar field selection (risk heatmap correctness)", () => {
+  const staleDef = getMetric("identity.staleAccountCount")!;
+
+  beforeEach(() => {
+    mockResultQueue = [];
+  });
+
+  it("reads the mapping field that MEANS the metric, not whichever numeric field comes first", async () => {
+    // A stale-account check that emits both the whole-directory user count and
+    // the real stale count. First-numeric-wins reported 412 stale accounts.
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]); // resolveTenantId
+    mockResultQueue.push([
+      {
+        extractedProperties: { totalUserCount: 412, staleUserCount: 7, _itemCount: 412 },
+        rawResponse: null,
+        collectedAt: new Date(),
+        status: "ok",
+      },
+    ]); // latestCheckProps
+    mockResultQueue.push([
+      { mapping: [{ targetField: "totalUserCount" }, { targetField: "staleUserCount" }] },
+    ]); // loadCheckMapping
+
+    const res = await resolveMetric(staleDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.data.value).toBe(7);
+    expect(res.meta?.valueSource).toBe("mapping:staleUserCount");
+  });
+
+  it("keeps the _itemCount fallback (and declares it) when the mapping yields no number", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([
+      { extractedProperties: { _itemCount: 42 }, rawResponse: null, collectedAt: new Date(), status: "ok" },
+    ]);
+    mockResultQueue.push([{ mapping: [{ targetField: "staleUserCount" }] }]);
+
+    const res = await resolveMetric(staleDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.data.value).toBe(42);
+    expect(res.meta?.valueSource).toBe("itemCount");
+  });
+
+  it("reports unknown_check_key — not no_data — when the sourceKey names no real check", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([]); // no tenant_monitor_profiles row
+    mockResultQueue.push([]); // no monitor_checks row either → phantom sourceKey
+
+    const res = await resolveMetric(staleDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("unknown_check_key");
+  });
+
+  it("still reports no_data when the check is real but the tenant has not collected it", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([]); // no profile row
+    mockResultQueue.push([{ mapping: [{ targetField: "staleUserCount" }] }]); // check exists
+
+    const res = await resolveMetric(staleDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("no_data");
   });
 });

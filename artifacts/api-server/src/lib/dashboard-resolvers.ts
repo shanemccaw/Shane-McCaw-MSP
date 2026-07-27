@@ -95,6 +95,7 @@ import { runSlaEngineForTenant } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
+import { resolveLicenseWasteCounts } from "./license-waste-source.ts";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -386,28 +387,114 @@ export async function latestCheckProps(
 }
 
 /**
- * Pull the canonical numeric value for a check out of its extractedProperties.
- * Preference order: the check's mapped targetField (if it holds a number) →
- * the schema-stable `_itemCount` auto-key. This mirrors priority-engine.ts,
- * which treats `_itemCount` as the per-check value.
+ * Tokens that carry no semantic meaning when matching a mapping targetField to
+ * the metric it is supposed to feed — every count field ends in one of these.
  */
-function checkNumericValue(props: Record<string, unknown>, mapping: CheckMapping | null): number | null {
-  if (mapping) {
-    for (const field of mapping.targetFields) {
-      const n = toNumber(props[field]);
-      if (n != null) return n;
-    }
-  }
-  const itemCount = toNumber(props["_itemCount"]);
-  return itemCount;
+const GENERIC_FIELD_TOKENS = new Set([
+  "count", "total", "num", "number", "sum", "value", "pct", "percent", "score", "all",
+]);
+
+/**
+ * camelCase / kebab / snake / colon-namespaced name → meaningful lowercase
+ * tokens, crudely singularised so `stale-accounts` and `staleAccountCount`
+ * agree on "account".
+ */
+export function fieldNameTokens(name: string): Set<string> {
+  return new Set(
+    name
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .split(/[^A-Za-z0-9]+/)
+      .map((t) => t.toLowerCase())
+      .filter((t) => t.length > 2 && !GENERIC_FIELD_TOKENS.has(t))
+      .map((t) => (t.endsWith("s") ? t.slice(0, -1) : t)),
+  );
 }
 
-/** Resolve a single tenant's numeric value for a check (or null if no data). */
-async function monitorScalarForTenant(tenantId: string, checkKey: string): Promise<number | null> {
+/**
+ * Pick the mapping targetField that actually means what the metric means.
+ *
+ * A check's `mapping` array frequently declares SEVERAL numeric targetFields —
+ * e.g. a stale-account check that emits both a whole-directory `totalUserCount`
+ * and the real `staleUserCount`. Taking "the first numeric targetField" (what
+ * this used to do) therefore silently reported a completely different, much
+ * larger number under the metric's label, with no way to tell from the response
+ * that the wrong field had been read.
+ *
+ * Scoring is token-overlap against the metric's own name PLUS its check key, so
+ * both `identity.staleAccountCount` and `identity:stale-accounts` vote for
+ * `staleUserCount` and against `totalUserCount`. When nothing scores (a
+ * single-field mapping whose name shares no token with the metric — the common
+ * case) the previous first-numeric-wins behaviour is kept unchanged.
+ */
+export function pickMappedValueField(
+  metricKey: string,
+  checkKey: string,
+  targetFields: string[],
+  props: Record<string, unknown>,
+): { field: string; value: number } | null {
+  const numeric = targetFields
+    .map((field) => ({ field, value: toNumber(props[field]) }))
+    .filter((c): c is { field: string; value: number } => c.value != null);
+  if (numeric.length === 0) return null;
+  if (numeric.length === 1) return numeric[0];
+
+  const wanted = new Set([
+    ...fieldNameTokens(metricKey.split(".").pop() ?? metricKey),
+    ...fieldNameTokens(checkKey.split(":").pop() ?? checkKey),
+  ]);
+  let best: { field: string; value: number; score: number } | null = null;
+  for (const candidate of numeric) {
+    let score = 0;
+    for (const token of fieldNameTokens(candidate.field)) if (wanted.has(token)) score++;
+    if (score > 0 && (best == null || score > best.score)) best = { ...candidate, score };
+  }
+  return best ?? numeric[0];
+}
+
+/** Where a resolved scalar's number came from — surfaced in meta, never guessed. */
+export type MonitorValueSource = `mapping:${string}` | "itemCount";
+
+export interface MonitorScalarResult {
+  value: number | null;
+  valueSource: MonitorValueSource | null;
+  /** False when `checkKey` has no monitor_checks row at all (a phantom sourceKey). */
+  checkExists: boolean;
+}
+
+/**
+ * Resolve a single tenant's numeric value for a check.
+ *
+ * Preference order: the mapping targetField that best matches the metric (see
+ * pickMappedValueField) → the schema-stable `_itemCount` auto-key, which
+ * mirrors priority-engine.ts's per-check value convention.
+ */
+async function monitorScalarForTenant(
+  metricKey: string,
+  tenantId: string,
+  checkKey: string,
+): Promise<MonitorScalarResult> {
   const props = await latestCheckProps(tenantId, checkKey);
-  if (!props) return null;
+  if (!props) {
+    // No row for this tenant. Distinguish "the tenant hasn't collected it" from
+    // "this sourceKey names a check that does not exist in the catalog" — they
+    // look identical to every consumer otherwise, and the second is a wiring bug
+    // that would otherwise stay invisible forever.
+    const mapping = await loadCheckMapping(checkKey);
+    return { value: null, valueSource: null, checkExists: mapping != null };
+  }
   const mapping = await loadCheckMapping(checkKey);
-  return checkNumericValue(props, mapping);
+  const picked = mapping
+    ? pickMappedValueField(metricKey, checkKey, mapping.targetFields, props)
+    : null;
+  if (picked) {
+    return { value: picked.value, valueSource: `mapping:${picked.field}`, checkExists: true };
+  }
+  const itemCount = toNumber(props["_itemCount"]);
+  return {
+    value: itemCount,
+    valueSource: itemCount == null ? null : "itemCount",
+    checkExists: mapping != null,
+  };
 }
 
 /**
@@ -418,6 +505,7 @@ async function monitorScalarForTenant(tenantId: string, checkKey: string): Promi
  * so it plugs straight into a sparkline; rows with no numeric value are dropped.
  */
 async function monitorHistoryForTenant(
+  metricKey: string,
   tenantId: string,
   checkKey: string,
   limit: number,
@@ -446,7 +534,12 @@ async function monitorHistoryForTenant(
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
     const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
-    const value = checkNumericValue(props, mapping);
+    // Same field-selection rule as the scalar path, so a history point means
+    // exactly what the headline value means.
+    const picked = mapping
+      ? pickMappedValueField(metricKey, checkKey, mapping.targetFields, props)
+      : null;
+    const value = picked ? picked.value : toNumber(props["_itemCount"]);
     if (value == null || row.collectedAt == null) continue;
     points.push({ t: row.collectedAt.toISOString(), value });
   }
@@ -476,27 +569,38 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
     return resolveMonitorAggregation(def, tenantId);
   }
 
-  const value = await monitorScalarForTenant(tenantId, def.sourceKey);
-  if (value == null) {
-    return notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`);
+  const resolved = await monitorScalarForTenant(def.key, tenantId, def.sourceKey);
+  if (resolved.value == null) {
+    return resolved.checkExists
+      ? notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`)
+      : notAvailable(
+          def,
+          "unknown_check_key",
+          `"${def.sourceKey}" is not a check in monitor_checks — this metric can never resolve until the registry sourceKey matches a real catalog key`,
+        );
   }
+  const value = resolved.value;
 
   // Percentage metric with a denominator → also compute percent.
   if (def.denominatorMetric) {
     const denomDef = getMetric(def.denominatorMetric);
     if (denomDef) {
-      const denom = await monitorScalarForTenant(tenantId, denomDef.sourceKey);
-      if (denom != null && denom > 0) {
+      const denom = await monitorScalarForTenant(denomDef.key, tenantId, denomDef.sourceKey);
+      if (denom.value != null && denom.value > 0) {
         return ok(
           def,
-          { value, percentage: Math.round((value / denom) * 1000) / 10 },
-          { denominator: denom, denominatorMetric: def.denominatorMetric },
+          { value, percentage: Math.round((value / denom.value) * 1000) / 10 },
+          {
+            denominator: denom.value,
+            denominatorMetric: def.denominatorMetric,
+            valueSource: resolved.valueSource,
+          },
         );
       }
     }
   }
 
-  return scalar(def, value);
+  return scalar(def, value, { valueSource: resolved.valueSource });
 }
 
 /**
@@ -513,9 +617,9 @@ async function resolveMonitorProfileMspScope(def: MetricDef, ctx: ResolveContext
   for (const cid of customerIds) {
     const tid = await resolveTenantId(cid);
     if (!tid) continue;
-    const v = await monitorScalarForTenant(tid, def.sourceKey);
-    if (v != null) {
-      sum += v;
+    const v = await monitorScalarForTenant(def.key, tid, def.sourceKey);
+    if (v.value != null) {
+      sum += v.value;
       contributing++;
     }
   }
@@ -527,31 +631,45 @@ async function resolveMonitorProfileMspScope(def: MetricDef, ctx: ResolveContext
 // ── needs_aggregation transforms (monitor_profile) ────────────────────────────
 
 async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Promise<MetricResult> {
+  // License waste, priced: real per-SKU wasted-seat counts × real
+  // sku_price_reference list price, via cost-engine.ts. Counts with no price on
+  // file surface as meta.unknownSkus rather than a guessed dollar figure.
+  //
+  // Resolved BEFORE the generic latestCheckProps fetch below, because the seat
+  // counts are not necessarily on `def.sourceKey`: monitor check keys are DATA,
+  // and the live catalog's real wasted-seat check may be keyed differently than
+  // the registry's declared `cost:license-waste-estimate` (see
+  // license-waste-source.ts). meta.sourceCheckKey states which check was used.
+  if (def.key === "licensing.wasteEstimateBreakdown") {
+    const source = await resolveLicenseWasteCounts(tenantId, def.sourceKey);
+    if (!source) {
+      return notAvailable(
+        def,
+        "no_data",
+        `no SKU-keyed seat data on "${def.sourceKey}" or any active cost:* waste check for this tenant`,
+      );
+    }
+    const breakdown = await computeSkuCostBreakdown(source.counts);
+    const buckets = breakdown.lines.map((l) => ({
+      label: l.displayName,
+      value: l.priceKnown ? centsToDollars(l.totalMonthlyPriceCents as number) : 0,
+    }));
+    return ok(def, { buckets }, {
+      source: "cost-engine",
+      unit: "usd_monthly",
+      totalMonthlyDollars: centsToDollars(breakdown.totalMonthlyCents),
+      totalAnnualDollars: centsToDollars(breakdown.totalAnnualCents),
+      unknownSkus: breakdown.unknownSkus,
+      sourceCheckKey: source.checkKey,
+      sourceField: source.field,
+      sourceIsFallbackCheck: source.fallback,
+    });
+  }
+
   const props = await latestCheckProps(tenantId, def.sourceKey);
   if (!props) return notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`);
 
   switch (def.key) {
-    // License waste, priced: real per-SKU seat counts (groupByCount transform on
-    // the cost:license-waste-estimate check) × real sku_price_reference list
-    // price, via cost-engine.ts. Counts with no price on file surface as
-    // meta.unknownSkus rather than a guessed dollar figure.
-    case "licensing.wasteEstimateBreakdown": {
-      const counts = extractGroupByCountCounts(props);
-      if (!counts) return notAvailable(def, "no_data", "no groupByCount seat data for license waste estimate");
-      const breakdown = await computeSkuCostBreakdown(counts);
-      const buckets = breakdown.lines.map((l) => ({
-        label: l.displayName,
-        value: l.priceKnown ? centsToDollars(l.totalMonthlyPriceCents as number) : 0,
-      }));
-      return ok(def, { buckets }, {
-        source: "cost-engine",
-        unit: "usd_monthly",
-        totalMonthlyDollars: centsToDollars(breakdown.totalMonthlyCents),
-        totalAnnualDollars: centsToDollars(breakdown.totalAnnualCents),
-        unknownSkus: breakdown.unknownSkus,
-      });
-    }
-
     // Secure score control breakdown, grouped by controlCategory.
     case "security.secureScoreControls":
       return aggregateGroupBy(def, props, "controlCategory");
@@ -617,29 +735,12 @@ function firstNumber(props: Record<string, unknown>, keys: string[]): number | n
 }
 
 /**
- * Extracts a pre-computed groupByCount map (a Record<string, number> under some
- * targetField) from monitor check props, e.g. `{ skuPartNumber: { SPE_E3: 12 } }`.
- * Returns null if no such object-valued field is present.
+ * NB: the former `extractGroupByCountCounts` helper (first object-valued field
+ * wins) was removed — it silently picked whichever count map happened to come
+ * first in key order, with no check that the map was even SKU-keyed. The
+ * license-waste path now uses license-waste-source.ts's `extractCountMaps`,
+ * which returns EVERY count map and scores them against sku_price_reference.
  */
-export function extractGroupByCountCounts(props: Record<string, unknown>): Record<string, number> | null {
-  for (const k of Object.keys(props)) {
-    if (k.startsWith("__") || k.startsWith("_")) continue;
-    const v = props[k];
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      const counts: Record<string, number> = {};
-      let found = false;
-      for (const [label, val] of Object.entries(v as Record<string, unknown>)) {
-        const n = toNumber(val);
-        if (n != null) {
-          counts[label] = n;
-          found = true;
-        }
-      }
-      if (found) return counts;
-    }
-  }
-  return null;
-}
 
 /**
  * Group-by-count transform. If the mapping already produced a groupByCount map
@@ -1289,7 +1390,7 @@ export async function resolveMetricHistory(
     if (def.sourceType === "monitor_profile") {
       const tenantId = await resolveTenantId(ctx.customerId);
       if (!tenantId) return null;
-      const points = await monitorHistoryForTenant(tenantId, def.sourceKey, MAX_HISTORY_ROWS, since);
+      const points = await monitorHistoryForTenant(def.key, tenantId, def.sourceKey, MAX_HISTORY_ROWS, since);
       return points.length > 0 ? points : null;
     }
 

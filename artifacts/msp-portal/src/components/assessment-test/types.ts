@@ -125,6 +125,9 @@ export interface LicenseWasteSummary {
   annualCents: number;
   seatCount: number;
   skuCount: number;
+  /** monitor_checks.key the seat counts were actually read from. Optional —
+   * absent on payloads from an api-server predating the provenance field. */
+  sourceCheckKey?: string;
   topSku: { displayName: string; count: number; monthlyCents: number } | null;
 }
 

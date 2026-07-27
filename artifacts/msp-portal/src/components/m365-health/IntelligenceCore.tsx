@@ -11,6 +11,7 @@ import {
   DRIFT_HEATMAP_METRICS,
   COST_BREAKDOWN_METRIC,
   HeatmapMetricDef,
+  resolvedEmptyReason,
 } from './useM365HealthLive';
 
 /**
@@ -41,6 +42,8 @@ import {
 interface HeatCell {
   def: HeatmapMetricDef;
   value: number | null;
+  /** Honest reason this cell is dark — never just "no data" for every case. */
+  emptyReason: string;
   category: 'IDENTITY' | 'POLICIES' | 'DRIFT';
 }
 
@@ -84,7 +87,12 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
 
   // ── Heatmap rows from real resolved metrics ────────────────────────────────
   const buildRow = (defs: HeatmapMetricDef[], category: HeatCell['category']): HeatCell[] =>
-    defs.map((def) => ({ def, category, value: resolvedValue(metrics[def.key]) }));
+    defs.map((def) => ({
+      def,
+      category,
+      value: resolvedValue(metrics[def.key]),
+      emptyReason: resolvedEmptyReason(metrics[def.key]),
+    }));
 
   const rows: { category: HeatCell['category']; cells: HeatCell[] }[] = [
     { category: 'IDENTITY', cells: buildRow(IDENTITY_HEATMAP_METRICS, 'IDENTITY') },
@@ -251,7 +259,7 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
                         title={
                           cell.value != null
                             ? `${cell.def.label}: ${cell.value}`
-                            : `${cell.def.label}: no data collected`
+                            : `${cell.def.label}: ${cell.emptyReason}`
                         }
                       />
                     );
@@ -289,7 +297,7 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
             <div className="p-2 bg-secondary/60 rounded border border-border text-[11px] flex items-center justify-between">
               <span className="font-semibold text-foreground">{activeCell.def.label}</span>
               <span className="font-mono font-bold text-secondary-foreground">
-                {activeCell.value != null ? activeCell.value : 'no data'}
+                {activeCell.value != null ? activeCell.value : activeCell.emptyReason}
               </span>
             </div>
           )}

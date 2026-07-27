@@ -82,7 +82,7 @@ import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { promoteMspUserToCustomer } from "./portal";
 import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
-import { latestCheckProps, extractGroupByCountCounts } from "../lib/dashboard-resolvers";
+import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
@@ -292,6 +292,8 @@ router.get(
         annualCents: number;
         seatCount: number;
         skuCount: number;
+        /** monitor_checks.key the seat counts were actually read from. */
+        sourceCheckKey: string;
         topSku: { displayName: string; count: number; monthlyCents: number } | null;
       } | null = null;
       // Real Copilot-readiness sub-indicators (see copilot-readiness.ts for the
@@ -314,10 +316,15 @@ router.get(
 
         if (coverageRun?.tenantId) {
           try {
-            const props = await latestCheckProps(coverageRun.tenantId, "cost:license-waste-estimate");
-            const counts = props ? extractGroupByCountCounts(props) : null;
-            if (counts) {
-              const breakdown: SkuCostBreakdown = await computeSkuCostBreakdown(counts);
+            // The wasted-seat counts do NOT necessarily live on
+            // "cost:license-waste-estimate" — monitor check keys are DATA, and
+            // the live catalog's real waste check may be keyed differently.
+            // resolveLicenseWasteCounts finds the check that genuinely holds
+            // SKU-keyed seat data (see license-waste-source.ts) and reports
+            // which one it used.
+            const wasteSource = await resolveLicenseWasteCounts(coverageRun.tenantId);
+            if (wasteSource) {
+              const breakdown: SkuCostBreakdown = await computeSkuCostBreakdown(wasteSource.counts);
               if (breakdown.totalMonthlyCents > 0) {
                 licenseWasteMonthlyCents = breakdown.totalMonthlyCents;
                 // Priced lines only — a line with no price on file contributes
@@ -334,6 +341,9 @@ router.get(
                   annualCents: breakdown.totalAnnualCents,
                   seatCount: pricedLines.reduce((s, l) => s + l.count, 0),
                   skuCount: pricedLines.length,
+                  // Provenance — which real monitor check the seat counts came
+                  // from, so a dollar figure is never unattributed.
+                  sourceCheckKey: wasteSource.checkKey,
                   topSku: topLine
                     ? {
                         displayName: topLine.displayName,
