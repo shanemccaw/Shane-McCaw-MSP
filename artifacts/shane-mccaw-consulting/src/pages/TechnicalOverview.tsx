@@ -1,14 +1,14 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
-import { ArrowRight } from "lucide-react";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Link } from "wouter";
-import { openChat } from "@/lib/chat";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 function DocSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-12">
-      <h2 className="text-xl font-extrabold text-[#0A2540] mb-4 pb-3 border-b border-border">{title}</h2>
+      <h2 className="font-display text-xl font-bold text-text-primary mb-4 pb-3 border-b border-white/[0.06]">{title}</h2>
       <div className="space-y-4">{children}</div>
     </div>
   );
@@ -17,19 +17,19 @@ function DocSection({ title, children }: { title: string; children: React.ReactN
 function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mt-6">
-      <h3 className="text-base font-bold text-[#0A2540] mb-2">{title}</h3>
+      <h3 className="text-base font-bold text-text-primary mb-2">{title}</h3>
       <div className="space-y-3">{children}</div>
     </div>
   );
 }
 
 function Para({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-foreground leading-relaxed">{children}</p>;
+  return <p className="text-sm text-text-secondary leading-relaxed">{children}</p>;
 }
 
 function CodeBlock({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[#0A2540] rounded-xl px-5 py-4 text-sm font-mono text-[#00B4D8] overflow-x-auto whitespace-pre-wrap">
+    <div className="bg-charcoal-0 border border-white/[0.08] rounded-xl px-5 py-4 text-sm font-numeric text-accent-blue overflow-x-auto whitespace-pre-wrap">
       {children}
     </div>
   );
@@ -37,7 +37,7 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 leading-relaxed">
+    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-amber-300 leading-relaxed">
       <span className="font-semibold">Note: </span>{children}
     </div>
   );
@@ -47,8 +47,8 @@ function ItemList({ items }: { items: string[] }) {
   return (
     <ul className="space-y-1.5 mt-2">
       {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-2 text-sm text-foreground leading-relaxed">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0 mt-2" />
+        <li key={i} className="flex items-start gap-2 text-sm text-text-secondary leading-relaxed">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent-blue flex-shrink-0 mt-2" />
           {item}
         </li>
       ))}
@@ -56,51 +56,53 @@ function ItemList({ items }: { items: string[] }) {
   );
 }
 
+const TOC_ITEMS = [
+  "Consent & Access Architecture",
+  "Microsoft Graph Data Collection",
+  "Data Collected per Scan Type",
+  "AI Scoring Model",
+  "Project Auto-Generation",
+  "Application Permissions Model",
+  "Manual vs Automated Steps",
+  "Data Residency and Retention",
+  "Revoking Access",
+];
+
 export default function TechnicalOverview() {
   return (
     <Layout>
       <SEOMeta
         title="Technical Overview | Shane McCaw Consulting"
-        description="Technical documentation covering Azure Automation, Microsoft Graph data collection, AI scoring, project generation, and the delegated permissions model used in Shane McCaw Consulting engagements."
-        ogUrl="https://shanemccawconsulting.com/how-it-works/technical"
+        description="Technical documentation covering the consent-based access model, Microsoft Graph data collection, AI scoring, project generation, and the application permissions model used in Shane McCaw Consulting engagements."
+        ogUrl="https://shanemccawconsulting.com/technical-overview"
       />
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-[172px] pb-16">
-        <div className="max-w-[1200px] mx-auto px-6">
+      <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-2 mb-4">
-            <Link href="/how-it-works" className="text-white/50 hover:text-white/80 text-sm transition-colors">How It Works</Link>
-            <span className="text-white/30 text-sm">›</span>
-            <span className="text-white/80 text-sm">Technical Overview</span>
+            <Link href="/how-it-works" className="text-text-secondary/70 hover:text-text-secondary text-sm transition-colors">How It Works</Link>
+            <span className="text-text-secondary/40 text-sm">›</span>
+            <span className="text-text-secondary text-sm">Technical Overview</span>
           </div>
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Documentation</p>
-          <h1 className="text-3xl md:text-5xl font-extrabold text-white leading-tight max-w-3xl">
+          <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.1em] mb-4">Documentation</p>
+          <h1 className="font-display text-3xl md:text-5xl font-bold text-text-primary leading-tight max-w-3xl mb-5">
             Technical Overview
           </h1>
-          <p className="text-white/60 text-base mt-5 max-w-2xl leading-relaxed">
-            A documentation-level breakdown of the Azure Automation architecture, Microsoft Graph data collection, AI scoring model, project auto-generation, and the delegated permissions model. Written for IT administrators and security teams who need to understand the technical implementation before granting access.
+          <p className="text-text-secondary text-base max-w-2xl leading-relaxed">
+            A documentation-level breakdown of the consent-based access model, Microsoft Graph data collection, AI scoring model, project auto-generation, and the application permissions model. Written for IT administrators and security teams who need to understand the technical implementation before granting access.
           </p>
         </div>
       </section>
 
       {/* Table of contents */}
-      <section className="bg-[#F7F9FC] border-b border-border py-8">
-        <div className="max-w-[900px] mx-auto px-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Contents</p>
+      <section className="border-t border-b border-white/[0.06] py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Contents</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-            {[
-              "Azure Automation Architecture",
-              "Microsoft Graph Data Collection",
-              "Data Collected per Runbook Type",
-              "AI Scoring Model",
-              "Project Auto-Generation",
-              "Delegated Permissions Model",
-              "Manual vs Automated Steps",
-              "Data Residency and Retention",
-              "Revoking Access",
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm text-[#0078D4] hover:text-[#005A9E] cursor-pointer transition-colors">
-                <span className="text-[10px] font-mono text-muted-foreground w-4">{String(i + 1).padStart(2, "0")}</span>
+            {TOC_ITEMS.map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-accent-blue hover:text-accent-violet cursor-pointer transition-colors">
+                <span className="text-[10px] font-numeric text-text-secondary w-4">{String(i + 1).padStart(2, "0")}</span>
                 {item}
               </div>
             ))}
@@ -109,49 +111,46 @@ export default function TechnicalOverview() {
       </section>
 
       {/* Doc body */}
-      <section className="bg-white py-16">
-        <div className="max-w-[900px] mx-auto px-6">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
 
-          <DocSection title="1. Azure Automation Architecture">
+          <DocSection title="1. Consent & Access Architecture">
             <Para>
-              Shane's practice uses Microsoft Azure — a managed script execution environment — as the runtime for all tenant-side PowerShell scripts. Azure is a first-party Microsoft service, hosted within Shane's Azure subscription, and communicates with your tenant exclusively through Microsoft's own API surface (Microsoft Graph and Exchange Online PowerShell).
+              The platform is registered with Microsoft as a multi-tenant Azure AD application. Granting access is a single Microsoft-hosted admin consent grant — there is no App Registration for you to create, no secret to generate, and no script or agent installed in your tenant. Consent is the only artifact left behind, and it lives entirely in your own Entra ID admin center.
             </Para>
             <SubSection title="Execution flow">
-              <Para>When a runbook is triggered (either on a schedule or manually):</Para>
+              <Para>When a scan runs (either on a schedule or manually triggered by Shane):</Para>
               <ItemList items={[
-                "Azure Automation retrieves your App Registration credentials from Azure Key Vault using a managed service identity (no human involvement).",
-                "The runbook authenticates to Microsoft Graph using the client credentials grant flow (application permissions, not delegated).",
+                "The platform requests a fresh application-only access token from Microsoft's identity platform, using its own credentials — you never generate, see, or handle a secret.",
+                "The platform authenticates to Microsoft Graph using application permissions (app-only, not delegated) — it never acts as you or as any user in your organization.",
                 "API calls are made against your tenant's Graph endpoints. All calls are read-only (HTTP GET).",
-                "Results are serialised to JSON and written to a structured Azure Blob Storage container within Shane's subscription.",
-                "The runbook completes and logs execution metadata (start time, duration, success/failure) — but never logs API response payloads to any shared log store.",
+                "Results are stored in the platform's own infrastructure, under the same security controls that govern the rest of the service.",
+                "The scan completes and logs execution metadata (start time, duration, success/failure) — but never logs API response payloads to any shared log store.",
               ]} />
             </SubSection>
             <SubSection title="Scheduling">
               <Para>
-                For one-time assessments, scripts are triggered manually when the engagement begins. For retainer clients, a recurring Azure schedule runs each script on a monthly cadence (default: first Monday of each month at 02:00 UTC). Schedules can be paused, modified, or deleted by Shane at any time, and by you at any time by deleting or suspending your App Registration.
+                For one-time assessments, the scan is triggered once when the engagement begins. For retainer clients, scans repeat on a recurring cadence (typically monthly). Scans can be paused or stopped by Shane at any time, and by you at any time — by revoking consent in your own Entra ID admin center. Revoking consent stops every future scan instantly; there is nothing further for you to configure or delete.
               </Para>
             </SubSection>
           </DocSection>
 
           <DocSection title="2. Microsoft Graph Data Collection">
             <Para>
-              All data collection happens through Microsoft Graph API v1.0 and beta endpoints, using Application-level permissions granted during your App Registration setup. The Graph API is Microsoft's unified gateway to Microsoft 365 data — the same API used by Microsoft's own first-party applications.
+              All data collection happens through Microsoft Graph API v1.0 and beta endpoints, using the application permissions you approved during admin consent. The Graph API is Microsoft's unified gateway to Microsoft 365 data — the same API used by Microsoft's own first-party applications.
             </Para>
             <SubSection title="Authentication">
-              <CodeBlock>{`POST https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token
-grant_type=client_credentials
-client_id={your_app_registration_client_id}
-client_secret={retrieved from Key Vault at runtime}
-scope=https://graph.microsoft.com/.default`}</CodeBlock>
-              <Para>The access token returned is short-lived (typically 3600 seconds) and used only for the duration of the runbook execution. It is not persisted anywhere.</Para>
+              <Para>
+                The platform authenticates using the OAuth 2.0 client credentials flow — a standard, Microsoft-documented pattern for app-only access. The credentials involved belong exclusively to the platform's own registered application; nothing about this step touches your tenant beyond the read calls it authorizes. The access token returned is short-lived (typically one hour) and used only for the duration of the scan. It is never persisted.
+              </Para>
             </SubSection>
             <SubSection title="API call pattern">
-              <Para>All Graph API calls follow this pattern: read-only HTTP GET requests, no pagination side effects, no write operations at any point in any runbook. If a Graph endpoint requires write permission to read (none currently in use do), that endpoint is excluded.</Para>
+              <Para>All Graph API calls follow this pattern: read-only HTTP GET requests, no pagination side effects, no write operations at any point in any scan. In this release, no endpoint requiring write permission is used.</Para>
             </SubSection>
           </DocSection>
 
-          <DocSection title="3. Data Collected per Runbook Type">
-            <Para>The exact data collected depends on the engagement type. Below is the complete list by runbook category.</Para>
+          <DocSection title="3. Data Collected per Scan Type">
+            <Para>The exact data collected depends on the engagement type. Below is the complete list by scan category.</Para>
 
             <SubSection title="Licensing & User Inventory">
               <ItemList items={[
@@ -229,10 +228,10 @@ scope=https://graph.microsoft.com/.default`}</CodeBlock>
 
           <DocSection title="4. AI Scoring Model">
             <Para>
-              Runbook output is passed to Claude (Anthropic's AI) via the Anthropic API. The API connection is configured with prompt caching disabled and no training data contribution — responses are not used to improve Anthropic's models.
+              Scan output is passed to Claude (Anthropic's AI) via the Anthropic API. The API connection is configured with prompt caching disabled and no training data contribution — responses are not used to improve Anthropic's models.
             </Para>
             <SubSection title="Input structure">
-              <Para>Each AI analysis call receives: the raw structured JSON from the relevant runbooks, a system prompt defining the scoring rubric and output schema, and contextual metadata about the engagement type and client profile (industry, size, known focus areas).</Para>
+              <Para>Each AI analysis call receives: the raw structured JSON from the relevant scans, a system prompt defining the scoring rubric and output schema, and contextual metadata about the engagement type and client profile (industry, size, known focus areas).</Para>
             </SubSection>
             <SubSection title="Scoring dimensions">
               <ItemList items={[
@@ -265,11 +264,11 @@ scope=https://graph.microsoft.com/.default`}</CodeBlock>
             ]} />
           </DocSection>
 
-          <DocSection title="6. Delegated Permissions Model">
+          <DocSection title="6. Application Permissions Model">
             <Para>
-              The App Registration you create uses Application-level permissions (not delegated user permissions). This is the correct grant type for background automation: it does not impersonate any user, it operates as a service identity.
+              The consent you grant authorizes exclusively Application-level (app-only) permissions — never Delegated (user-impersonation) permissions. This is a structural distinction Microsoft enforces at the platform level: application permissions mean the platform acts under its own service identity, with a fixed set of tenant-wide read scopes — never as any specific user, and never with the ability to act on a user's behalf.
             </Para>
-            <SubSection title="Minimum required permissions">
+            <SubSection title="Requested permissions">
               <CodeBlock>{`Directory.Read.All          — Read Azure AD objects (users, groups, policies)
 User.Read.All               — Read all user profiles and license assignments
 Organization.Read.All       — Read tenant-level settings
@@ -280,24 +279,24 @@ Team.ReadBasic.All          — Read Teams membership and channel structure
 TeamSettings.Read.All       — Read Teams configuration settings
 MailboxSettings.Read        — Read Exchange mailbox and forwarding settings`}</CodeBlock>
             </SubSection>
-            <Note>All permissions are Application type (background service), not Delegated (user-impersonation). Admin consent is required and is granted once during App Registration setup.</Note>
+            <Note>Every permission listed is Application type (background service) and read-only. In this release, no write-capable Graph permission is requested for any engagement, including Config Pack and other write-adjacent offerings. Admin consent is required and is granted once, during onboarding.</Note>
           </DocSection>
 
           <DocSection title="7. Manual vs Automated Steps">
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-[#0A2540] text-white">
-                    <th className="text-left px-5 py-3.5 font-semibold text-white/70 text-xs uppercase tracking-widest">Step</th>
-                    <th className="text-center px-5 py-3.5 font-semibold text-white/70 text-xs uppercase tracking-widest">Automated</th>
-                    <th className="text-center px-5 py-3.5 font-semibold text-white/70 text-xs uppercase tracking-widest">Manual (Shane)</th>
-                    <th className="text-center px-5 py-3.5 font-semibold text-white/70 text-xs uppercase tracking-widest">Manual (Client)</th>
+                  <tr className="bg-white/[0.04]">
+                    <th className="text-left px-5 py-3.5 font-semibold text-text-secondary text-xs uppercase tracking-widest">Step</th>
+                    <th className="text-center px-5 py-3.5 font-semibold text-text-secondary text-xs uppercase tracking-widest">Automated</th>
+                    <th className="text-center px-5 py-3.5 font-semibold text-text-secondary text-xs uppercase tracking-widest">Manual (Shane)</th>
+                    <th className="text-center px-5 py-3.5 font-semibold text-text-secondary text-xs uppercase tracking-widest">Manual (Client)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    ["App Registration creation", "", "", "✓"],
-                    ["Runbook execution & data collection", "✓", "", ""],
+                    ["Admin consent grant", "", "", "✓"],
+                    ["Scan execution & data collection", "✓", "", ""],
                     ["AI analysis & scoring", "✓", "", ""],
                     ["Output review & validation", "", "✓", ""],
                     ["Project creation in portal", "✓", "", ""],
@@ -307,9 +306,9 @@ MailboxSettings.Read        — Read Exchange mailbox and forwarding settings`}<
                     ["Recurring health monitoring", "✓", "", ""],
                     ["Access revocation", "", "", "✓ (optional)"],
                   ].map((row, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <tr key={i} className={i % 2 === 0 ? "" : "bg-white/[0.02]"}>
                       {row.map((cell, j) => (
-                        <td key={j} className={`px-5 py-3.5 ${j === 0 ? "font-medium text-[#0A2540]" : "text-center text-[#0078D4] font-bold"}`}>
+                        <td key={j} className={`px-5 py-3.5 border-t border-white/[0.06] ${j === 0 ? "font-medium text-text-primary" : "text-center text-accent-blue font-bold"}`}>
                           {cell}
                         </td>
                       ))}
@@ -322,12 +321,12 @@ MailboxSettings.Read        — Read Exchange mailbox and forwarding settings`}<
 
           <DocSection title="8. Data Residency and Retention">
             <Para>
-              Runbook output is written to Azure Blob Storage in Shane's Azure subscription, in the East US 2 region. Microsoft's standard Azure data residency guarantees apply.
+              Scan output is written to the platform's own infrastructure, under Microsoft's standard Azure data residency guarantees for the region the platform operates in.
             </Para>
             <ItemList items={[
-              "Runbook output JSON: retained for 24 months from engagement close, then permanently deleted.",
-              "AI analysis outputs: stored in the same Azure Storage account, same retention period.",
-              "App Registration credentials: stored in Azure Key Vault, never written to application databases. Deleted immediately upon engagement close or at client request.",
+              "Scan output JSON: retained for 24 months from engagement close, then permanently deleted.",
+              "AI analysis outputs: stored alongside scan output, same retention period.",
+              "Access tokens: short-lived (typically one hour) and never persisted beyond the scan that used them.",
               "Client portal data (project, tasks, documents): retained for the duration of the client relationship. Exported and deleted within 30 days of a written request.",
               "Findings reports (PDF): provided to the client and stored in their portal document library. Deleted from Shane's systems upon request.",
             ]} />
@@ -335,34 +334,40 @@ MailboxSettings.Read        — Read Exchange mailbox and forwarding settings`}<
 
           <DocSection title="9. Revoking Access">
             <Para>
-              You retain full control over the service identity at all times. To immediately terminate all automation access:
+              You retain full control over the consent grant at all times. To immediately terminate all access:
             </Para>
             <ItemList items={[
-              "Sign in to portal.azure.com as a Global Administrator.",
-              "Navigate to Microsoft Entra ID → App Registrations → Shane McCaw Automation.",
-              "Click Delete. Confirm the deletion.",
+              "Sign in to entra.microsoft.com (or portal.azure.com) as a Global Administrator.",
+              "Navigate to Microsoft Entra ID → Enterprise Applications and find Shane McCaw Consulting in the list.",
+              "Remove the application, or revoke its granted permissions. Confirm the action.",
             ]} />
             <Para>
-              Deletion of the App Registration immediately invalidates all access tokens issued to it. Any in-progress runbook execution will fail at the next API call. No further data can be collected. This action is instant and permanent.
+              Revoking consent immediately invalidates every access token issued to the platform for your tenant. Any in-progress scan will fail at the next API call. No further data can be collected. This action is instant and permanent.
             </Para>
-            <Note>You do not need to notify Shane before revoking access. The automation will simply stop working, and Shane will reach out if a scheduled run fails.</Note>
+            <Note>You do not need to notify Shane before revoking access. Scanning will simply stop working, and Shane will reach out if a scheduled scan fails.</Note>
           </DocSection>
 
         </div>
       </section>
 
       {/* CTA */}
-      <section className="bg-[#0A2540] py-16">
-        <div className="max-w-[900px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
-            <p className="text-white font-extrabold text-lg mb-1">Questions for your IT or security team?</p>
-            <p className="text-white/60 text-sm">Shane is happy to walk through the technical architecture in detail before any engagement begins.</p>
+            <p className="font-display text-text-primary font-bold text-lg mb-1">Questions for your IT or security team?</p>
+            <p className="text-text-secondary text-sm">Shane is happy to walk through the technical architecture in detail before any engagement begins.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
-            <CTAButton onClick={openChat}>Ask a Question</CTAButton>
+            <ChatCTA
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white text-sm transition-opacity hover:opacity-90 whitespace-nowrap"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
+              Ask a Question
+            </ChatCTA>
             <Link
               href="/how-it-works"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white text-sm font-medium border border-white/20 hover:border-white/40 px-5 py-2.5 rounded-xl transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm font-medium border border-white/[0.12] hover:border-white/[0.2] px-5 py-2.5 rounded-xl transition-colors whitespace-nowrap"
             >
               ← Back to How It Works
             </Link>
