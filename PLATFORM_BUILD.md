@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-26 | ⏳ IN FLIGHT | Remove Duplicate SOW Cleanup From Workflow Cutover | |
 | 2026-07-24 | ✅ DONE | RBD Liability Acceptance Module Integration — Added Drizzle schema for mspRiskDecisionsTable, created manual SQL seeding script, created Express router msp-rbd.ts and registered it in index.ts, integrated RiskBasedDecisionConsole frontend to communicate with backend APIs for listing, creating, signing, and revoking RBDs, and verified types project-wide. | 55d51fcc |
 | 2026-07-24 | ✅ DONE | DLQ Module Integration — Created Express router msp-dlq.ts and registered it in index.ts, created manual SQL seeding script, integrated DeadLetterQueueConsole frontend component with the new endpoints and dynamic tenants, and verified types project-wide. | 51317370 |
 | 2026-07-24 | ✅ DONE | SOP & Runbooks Module Integration — Added Drizzle schemas for mspSopsTable and mspSopRunsTable, created manual SQL migration script with seeding data, created Express router msp-sops.ts and registered it in index.ts, integrated StandardOperatingProceduresConsole frontend component to communicate with the backend API, and verified types project-wide. | e4162342 |
