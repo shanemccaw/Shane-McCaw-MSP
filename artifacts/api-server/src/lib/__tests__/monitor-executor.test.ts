@@ -17,6 +17,7 @@ import {
   executeMonitoringPackage,
   parseCsvReport,
   isCsvReportResponse,
+  appendQueryParams,
 } from "../monitor-executor";
 import type { SeverityRule, MappingRule } from "../monitor-executor";
 import { logger } from "../logger";
@@ -1107,5 +1108,25 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     expect(props.eligibleAssignmentsTotal).toBe(2);
     expect(props._itemCount).toBe(2); // applyMapping stamps this for pillar coverage
     expect(result.severityMatched).toBe("warning");
+  });
+});
+
+describe("appendQueryParams", () => {
+  it("overrides existing $select parameter when a new one is provided", () => {
+    const url = "/beta/users?$select=id,mail&$top=10";
+    const res = appendQueryParams(url, "$select=id,displayName,userPrincipalName", null);
+    expect(res).toBe("/beta/users?$top=10&$select=id,displayName,userPrincipalName");
+  });
+
+  it("overrides existing $filter parameter when a new one is provided", () => {
+    const url = "/security/alerts_v2?$filter=detectionSource eq 'old'&$select=id";
+    const res = appendQueryParams(url, null, "detectionSource eq 'new'");
+    expect(res).toBe("/security/alerts_v2?$select=id&$filter=detectionSource%20eq%20'new'");
+  });
+
+  it("handles both $select and $filter overrides simultaneously without double encoding", () => {
+    const url = "/beta/users?$select=id&$filter=accountEnabled eq false";
+    const res = appendQueryParams(url, "id,mail", "accountEnabled eq true");
+    expect(res).toBe("/beta/users?$select=id,mail&$filter=accountEnabled%20eq%20true");
   });
 });

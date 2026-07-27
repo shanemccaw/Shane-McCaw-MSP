@@ -28,3 +28,14 @@ export function stripSelectParam(url: string): string {
   if (kept.length === 0) return base;
   return `${base}?${kept.join("&")}`;
 }
+
+export function stripFilterParam(url: string): string {
+  const queryStart = url.indexOf("?");
+  if (queryStart === -1) return url;
+  const base = url.slice(0, queryStart);
+  const query = url.slice(queryStart + 1);
+  const kept = query.split("&").filter((part) => !/^\$filter=/i.test(part));
+  if (kept.length === 0) return base;
+  return `${base}?${kept.join("&")}`;
+}
+

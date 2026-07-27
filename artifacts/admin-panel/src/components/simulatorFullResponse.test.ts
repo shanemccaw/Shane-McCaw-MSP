@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { stripSelectParam } from "./simulatorFullResponse";
+import { stripSelectParam, stripFilterParam } from "./simulatorFullResponse";
 
 describe("stripSelectParam", () => {
   it("returns the endpoint unchanged when there is no query string at all", () => {
@@ -43,5 +43,20 @@ describe("stripSelectParam", () => {
     expect(stripSelectParam("/users?$filter=accountEnabled eq true")).toBe(
       "/users?$filter=accountEnabled eq true",
     );
+  });
+});
+
+describe("stripFilterParam", () => {
+  it("strips a bare $filter query string entirely", () => {
+    expect(stripFilterParam("/users?$filter=accountEnabled eq true")).toBe("/users");
+  });
+
+  it("strips $filter but keeps $select", () => {
+    const url = "/users?$filter=accountEnabled eq true&$select=id,displayName";
+    expect(stripFilterParam(url)).toBe("/users?$select=id,displayName");
+  });
+
+  it("is case-insensitive on the $filter token", () => {
+    expect(stripFilterParam("/users?$FILTER=accountEnabled eq true")).toBe("/users");
   });
 });

@@ -225,22 +225,32 @@ export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string,
   return withItem.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
 }
 
+function stripParam(url: string, prefixRegex: RegExp): string {
+  const queryStart = url.indexOf("?");
+  if (queryStart === -1) return url;
+  const base = url.slice(0, queryStart);
+  const query = url.slice(queryStart + 1);
+  const kept = query.split("&").filter((part) => !prefixRegex.test(part));
+  if (kept.length === 0) return base;
+  return `${base}?${kept.join("&")}`;
+}
+
 export function appendQueryParams(url: string, selectParams?: string | null, filterParams?: string | null): string {
   let finalUrl = url;
-  if (selectParams) {
-    const trimmed = selectParams.trim();
-    if (trimmed && !finalUrl.includes("$select=")) {
-      const sep = finalUrl.includes("?") ? "&" : "?";
-      finalUrl += `${sep}${trimmed.replace(/^[?&]/, "")}`;
-    }
+  if (selectParams !== undefined && selectParams !== null && selectParams.trim() !== "") {
+    finalUrl = stripParam(finalUrl, /^\$select=/i);
+    const trimmed = selectParams.trim().replace(/^[?&]/, "").replace(/^\$select=/i, "");
+    const sep = finalUrl.includes("?") ? "&" : "?";
+    finalUrl += `${sep}$select=${trimmed}`;
   }
-  if (filterParams) {
-    const trimmed = filterParams.trim();
-    if (trimmed && !finalUrl.includes("$filter=")) {
-      const sep = finalUrl.includes("?") ? "&" : "?";
-      const cleanFilter = trimmed.replace(/^\$filter=/, "");
-      finalUrl += `${sep}$filter=${encodeURIComponent(cleanFilter)}`;
-    }
+  if (filterParams !== undefined && filterParams !== null && filterParams.trim() !== "") {
+    finalUrl = stripParam(finalUrl, /^\$filter=/i);
+    let trimmed = filterParams.trim().replace(/^[?&]/, "").replace(/^\$filter=/i, "");
+    try {
+      trimmed = decodeURIComponent(trimmed);
+    } catch {}
+    const sep = finalUrl.includes("?") ? "&" : "?";
+    finalUrl += `${sep}$filter=${encodeURIComponent(trimmed)}`;
   }
   return finalUrl;
 }

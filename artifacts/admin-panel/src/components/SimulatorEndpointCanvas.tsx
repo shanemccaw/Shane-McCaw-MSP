@@ -51,7 +51,7 @@ import {
   SimulatorFailureClassification,
   type FailureClassification,
 } from "./SimulatorFailureClassification";
-import { stripSelectParam } from "./simulatorFullResponse";
+import { stripSelectParam, stripFilterParam } from "./simulatorFullResponse";
 import { resolveResponseValue, resolveResponseEmptyLabel, isGenuineEmptyRawCapture } from "./simulatorResponseView";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -199,15 +199,21 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const effectiveEndpoint = useMemo(() => {
     let url = endpoint;
     const trimmedSelect = selectParams.trim();
-    if (trimmedSelect && !url.includes("$select=")) {
+    if (trimmedSelect) {
+      url = stripSelectParam(url);
+      const cleaned = trimmedSelect.replace(/^[?&]/, "").replace(/^\$select=/i, "");
       const sep = url.includes("?") ? "&" : "?";
-      url = `${url}${sep}${trimmedSelect.replace(/^[?&]/, "")}`;
+      url = `${url}${sep}$select=${cleaned}`;
     }
     const trimmedFilter = filterParams.trim();
-    if (trimmedFilter && !url.includes("$filter=")) {
+    if (trimmedFilter) {
+      url = stripFilterParam(url);
+      let cleaned = trimmedFilter.replace(/^[?&]/, "").replace(/^\$filter=/i, "");
+      try {
+        cleaned = decodeURIComponent(cleaned);
+      } catch {}
       const sep = url.includes("?") ? "&" : "?";
-      const cleanFilter = trimmedFilter.replace(/^\$filter=/, "");
-      url = `${url}${sep}$filter=${encodeURIComponent(cleanFilter)}`;
+      url = `${url}${sep}$filter=${encodeURIComponent(cleaned)}`;
     }
     return url;
   }, [endpoint, selectParams, filterParams]);
@@ -296,13 +302,17 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setRawItemsError(null);
     setRawItemsLoaded(false);
     setViewingRaw(false);
+    let runBaseEndpoint = endpoint;
+    if (fullResponse || selectParams.trim()) runBaseEndpoint = stripSelectParam(runBaseEndpoint);
+    if (filterParams.trim()) runBaseEndpoint = stripFilterParam(runBaseEndpoint);
+
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId: selectedCustomerId,
-          endpoint,
+          endpoint: runBaseEndpoint,
           method,
           requestBody: parsedBody.value,
           selectParams: fullResponse ? null : (selectParams.trim() ? selectParams.trim() : null),
@@ -400,14 +410,20 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     }
     setSaving(true);
     try {
+      const cleanSelect = selectParams.trim() ? selectParams.trim() : null;
+      const cleanFilter = filterParams.trim() ? filterParams.trim() : null;
+      let cleanEndpoint = endpoint;
+      if (cleanSelect) cleanEndpoint = stripSelectParam(cleanEndpoint);
+      if (cleanFilter) cleanEndpoint = stripFilterParam(cleanEndpoint);
+
       const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          endpoint,
+          endpoint: cleanEndpoint,
           method,
-          selectParams: selectParams.trim() ? selectParams.trim() : null,
-          filterParams: filterParams.trim() ? filterParams.trim() : null,
+          selectParams: cleanSelect,
+          filterParams: cleanFilter,
           requestBody: parsedBody.value,
         }),
       });
@@ -415,6 +431,11 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       if (!res.ok) {
         toast.error(data.error || "Failed to save changes");
         return;
+      }
+      if (data.check) {
+        setEndpoint(data.check.endpoint);
+        setSelectParams(data.check.selectParams ?? "");
+        setFilterParams(data.check.filterParams ?? "");
       }
       toast.success("Endpoint saved");
       window.dispatchEvent(new CustomEvent("simulator-endpoints-updated"));
@@ -580,6 +601,19 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       </div>
 
       {/* Parameters */}
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Request Parameters
+        </span>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          title="Save the updated Select and Filter parameters to the M365 Endpoint"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save Params
+        </button>
+      </div>
       <div className="mb-3 grid grid-cols-3 gap-3">
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
