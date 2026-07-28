@@ -47,7 +47,6 @@ import {
 } from "@workspace/db";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "../lib/sse-channels";
 import { emitWorkflowEvent, fireWorkflowForDefinition } from "../lib/workflow-executor";
-import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
 import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";

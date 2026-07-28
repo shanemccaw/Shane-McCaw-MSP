@@ -5,6 +5,7 @@ import {
   insightsGeneratedDocumentsTable,
   mspCustomersTable,
   mspUsersTable,
+  quickWinPresentationsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -14,6 +15,7 @@ import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
 import { resolveSiblingUserIds } from "./tenant-signals";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
+import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
@@ -385,5 +387,34 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         .catch(() => { /* best-effort — never let the failure-marking itself throw over the original error */ });
     }
     throw err;
+  }
+}
+
+export async function broadcastSowChangeForProject(projectId: number): Promise<void> {
+  try {
+    const presentations = await db
+      .select({ id: quickWinPresentationsTable.id })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId));
+    const ts = String(Date.now());
+    for (const p of presentations) {
+      broadcastPresentationScopeChange(p.id, ts);
+    }
+  } catch (err) {
+    log.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
+  }
+}
+
+export async function broadcastDocsChangeForProject(projectId: number): Promise<void> {
+  try {
+    const presentations = await db
+      .select({ id: quickWinPresentationsTable.id })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId));
+    for (const p of presentations) {
+      broadcastPresentationDocsChange(p.id);
+    }
+  } catch (err) {
+    log.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
   }
 }

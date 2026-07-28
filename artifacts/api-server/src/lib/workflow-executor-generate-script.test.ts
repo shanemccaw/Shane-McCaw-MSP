@@ -172,8 +172,7 @@ vi.mock("./sse-channels", () => ({
   replayPhaseGenState: () => {},
 }));
 
-vi.mock("./consolidated-sow-generator", () => ({
-  generateConsolidatedSowDocument: async () => {},
+vi.mock("./document-engine-sow", () => ({
   broadcastSowChangeForProject: async () => {},
   broadcastDocsChangeForProject: async () => {},
 }));

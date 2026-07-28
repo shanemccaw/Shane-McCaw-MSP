@@ -75,7 +75,7 @@ import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
-import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
+import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow";
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
