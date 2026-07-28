@@ -110,11 +110,9 @@ function getUtmParams(): Record<string, string> {
 // tracker, no new persistence mechanism introduced.
 const FUNNEL_STORAGE_KEY = "smc_funnel";
 const FUNNEL_ROUTES: { prefix: string; funnel: string; stage: "landing" | "pricing" }[] = [
-  { prefix: "/monitoring", funnel: "monitoring", stage: "pricing" },
-  { prefix: "/platform/quick-start", funnel: "products", stage: "pricing" },
   { prefix: "/platform/retainer", funnel: "retainer", stage: "pricing" },
   { prefix: "/retainers", funnel: "retainer", stage: "pricing" },
-  { prefix: "/msp", funnel: "msp", stage: "pricing" },
+  { prefix: "/projects", funnel: "projects", stage: "pricing" },
   { prefix: "/assessments", funnel: "assessment", stage: "landing" },
   { prefix: "/assessment", funnel: "assessment", stage: "landing" },
   { prefix: "/quiz", funnel: "quiz", stage: "landing" },

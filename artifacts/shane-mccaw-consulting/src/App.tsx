@@ -3,28 +3,35 @@ import { Switch, Route, useLocation } from "wouter";
 import Home from "./pages/Home";
 import Assessments from "./pages/Assessments";
 import AssessmentDetail from "./pages/AssessmentDetail";
-import Monitoring from "./pages/Monitoring";
 import Status from "./pages/Status";
 import About from "./pages/About";
 import Checkout from "./pages/Checkout";
 import HowItWorks from "./pages/HowItWorks";
 import TechnicalOverview from "./pages/TechnicalOverview";
-import Msp from "./pages/Msp";
 import Resources from "./pages/Resources";
 import ArticlePage from "./pages/ArticlePage";
 import OnboardingLink from "./pages/OnboardingLink";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
-import MspPartnerTerms from "./pages/legal/MspPartnerTerms";
 import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
+import Services from "./pages/Services";
+import Microsoft365 from "./pages/services/Microsoft365";
+import M365Training from "./pages/services/M365Training";
+import SharePointService from "./pages/services/SharePoint";
+import PowerPlatformService from "./pages/services/PowerPlatform";
+import GovernanceService from "./pages/services/Governance";
+import CloudMigration from "./pages/services/CloudMigration";
+import SecurityHardening from "./pages/services/SecurityHardening";
+import CopilotAI from "./pages/services/CopilotAI";
+import Pricing from "./pages/Pricing";
+import Contact from "./pages/Contact";
 import { initTracker, trackPageview } from "./lib/analytics";
 import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
 import Solutions from "./pages/Solutions";
 import SolutionTopicPage from "./pages/solutions/SolutionTopicPage";
-import Products from "./pages/Products";
 import TrustSecurity from "./pages/TrustSecurity";
 import QuizHub from "./pages/QuizHub";
 import Login from "./pages/Login";
@@ -109,21 +116,31 @@ export default function App() {
       <Route path="/assessments/:slug" component={AssessmentDetail} />
       {/* Sitemap-canonical singular alias (website-rebuild-reference-v2.md §5) — same real page, no new content */}
       <Route path="/assessment" component={Assessments} />
-      <Route path="/monitoring" component={Monitoring} />
       <Route path="/status" component={Status} />
       <Route path="/about" component={About} />
       <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/technical-overview" component={TechnicalOverview} />
-      <Route path="/msp" component={Msp} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
       <Route path="/onboarding" component={OnboardingLink} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/contact" component={Contact} />
+
+      {/* Services — restored verticals + overview, wired back into nav (Website v1.1 base rebuild) */}
+      <Route path="/services" component={Services} />
+      <Route path="/services/microsoft-365" component={Microsoft365} />
+      <Route path="/services/m365-training" component={M365Training} />
+      <Route path="/services/sharepoint" component={SharePointService} />
+      <Route path="/services/power-platform" component={PowerPlatformService} />
+      <Route path="/services/governance" component={GovernanceService} />
+      <Route path="/services/cloud-migration" component={CloudMigration} />
+      <Route path="/services/security-hardening" component={SecurityHardening} />
+      <Route path="/services/copilot-ai" component={CopilotAI} />
 
       {/* Stage 2 sitemap pages — real content, replacing Stage 1's StubPage skeleton (website-rebuild-reference-v2.md §5/§7) */}
-      <Route path="/solutions/:slug" component={SolutionTopicPage} />
-      <Route path="/solutions" component={Solutions} />
-      <Route path="/platform/quick-start" component={Products} />
+      <Route path="/projects/:slug" component={SolutionTopicPage} />
+      <Route path="/projects" component={Solutions} />
       <Route path="/platform/retainer" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
@@ -135,7 +152,6 @@ export default function App() {
       {/* Legal Routes */}
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
-      <Route path="/msp-terms" component={MspPartnerTerms} />
       <Route path="/dpa" component={Dpa} />
 
       {/* Decommissioned Routes -> Redirects to /assessments */}

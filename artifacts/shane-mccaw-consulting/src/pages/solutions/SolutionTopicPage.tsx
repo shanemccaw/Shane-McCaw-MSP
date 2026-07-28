@@ -297,7 +297,7 @@ function FlagshipDocProducts({ slugs, heading }: { slugs: string[]; heading: Fla
  * inferred-signal nudge for quiz-tier visitors) on top of it.
  */
 export default function SolutionTopicPage() {
-  const [, params] = useRoute("/solutions/:slug");
+  const [, params] = useRoute("/projects/:slug");
   const topic = params?.slug ? getSolutionTopic(params.slug) : undefined;
 
   const { tier } = usePersonalizationState();
@@ -520,6 +520,13 @@ export default function SolutionTopicPage() {
         </div>
       </section>
 
+      {/* Real follow-on projects for this topic (engagement_projects, SOW-gated) — moved up
+          into the page's primary content: this is the point of the page now, a real gap
+          leading to a scoped project, not a footer afterthought. Renders nothing at all when
+          no real project's triggeredBy signal domain matches this topic, per this task's
+          explicit no-empty-state rule. */}
+      <FollowOnProjects topicSlug={topic.slug} />
+
       {useExpandedStructure ? (
         <>
           {/* What This Product Actually Does — flagship pairs the prose with the visual
@@ -734,11 +741,11 @@ export default function SolutionTopicPage() {
                   Start an Assessment
                 </Link>
                 <Link
-                  href="/monitoring"
+                  href="/projects"
                   className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
                   data-track="cta"
                 >
-                  See Monitoring Pricing
+                  Browse Projects
                 </Link>
               </div>
             </div>
@@ -816,11 +823,11 @@ export default function SolutionTopicPage() {
                   Start an Assessment
                 </Link>
                 <Link
-                  href="/monitoring"
+                  href="/projects"
                   className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
                   data-track="cta"
                 >
-                  See Monitoring Pricing
+                  Browse Projects
                 </Link>
               </div>
             </div>
@@ -879,11 +886,6 @@ export default function SolutionTopicPage() {
           />
         </div>
       </section>
-
-      {/* Real follow-on projects for this topic (engagement_projects, SOW-gated) — renders
-          nothing at all when no real project's triggeredBy signal domain matches this topic,
-          per this task's explicit no-empty-state rule. */}
-      <FollowOnProjects topicSlug={topic.slug} />
     </Layout>
   );
 }

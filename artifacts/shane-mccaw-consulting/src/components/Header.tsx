@@ -2,33 +2,36 @@ import { useState, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Menu, X, ChevronDown, ArrowRight, ShieldCheck,
-  Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity,
-  Package, Compass, LogIn, Info, MessageCircle,
+  Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity, Bot,
+  Compass, LogIn, Info, MessageCircle, GraduationCap, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatCTA } from "./ChatCTA";
 
-// Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
-// Each is the personalization surface for its domain; generic domain marketing for a cold visitor.
-const SOLUTIONS = [
-  { href: "/solutions/copilot", label: "Copilot & AI", icon: Brain },
-  { href: "/solutions/security-compliance", label: "Security & Compliance", icon: Lock },
-  { href: "/solutions/governance", label: "Governance", icon: Shield },
-  { href: "/solutions/sharepoint", label: "SharePoint", icon: Share2 },
-  { href: "/solutions/power-platform", label: "Power Platform", icon: Zap },
-  { href: "/solutions/teams", label: "Teams", icon: Users },
-  { href: "/solutions/migration", label: "Migration", icon: GitMerge },
-  { href: "/solutions/m365-health", label: "M365 Health", icon: Activity },
+// Service verticals — restored + built in the v1.1 base rebuild. Each is a static marketing
+// page for its domain; the topic-matched Projects index (/projects/*) is folded in below the
+// grid as a secondary link rather than a separate top-level nav item (nav spec locks the 5
+// top-level categories — Assessments | Services | Retainers | Resources | Company — but leaves
+// dropdown contents/ordering open for a follow-up pass).
+const SERVICES = [
+  { href: "/services/microsoft-365", label: "Microsoft 365 Architecture", icon: Shield },
+  { href: "/services/copilot-ai", label: "Copilot & AI", icon: Bot },
+  { href: "/services/security-hardening", label: "Security Hardening", icon: Lock },
+  { href: "/services/governance", label: "Governance & Compliance", icon: ShieldCheck },
+  { href: "/services/sharepoint", label: "SharePoint", icon: Share2 },
+  { href: "/services/power-platform", label: "Power Platform", icon: Zap },
+  { href: "/services/cloud-migration", label: "Cloud Migration", icon: Server },
+  { href: "/services/m365-training", label: "Training & Enablement", icon: GraduationCap },
 ];
 
-const PLATFORM_LINKS = [
-  { href: "/platform/quick-start", label: "Quick-Start Packs", desc: "Fixed-price tenant configuration packs.", icon: Package },
-  { href: "/platform/retainer", label: "Fractional Consulting", desc: "Ongoing architect-level retainer support.", icon: Compass },
-  { href: "/msp", label: "MSP / Partners", desc: "Partner onboarding, white-glove or self-serve.", icon: Users },
-  { href: "/trust-security", label: "Trust & Security", desc: "Tenant isolation, audit trail, exception tracking.", icon: ShieldCheck },
+const RETAINER_LINKS = [
+  { href: "/platform/retainer", label: "Compare Retainer Tiers", desc: "Ongoing architect-level retainer support, month to month.", icon: Compass },
+  { href: "/retainers/architect-essentials", label: "Architect Essentials", desc: "10 hours/month of senior M365 access.", icon: GitMerge },
+  { href: "/retainers/architect-growth", label: "Architect Growth", desc: "25 hours/month with priority response.", icon: Activity },
+  { href: "/retainers/architect-enterprise", label: "Architect Enterprise", desc: "Dedicated ongoing architecture partnership.", icon: Users },
 ];
 
-type DropdownName = "solutions" | "platform" | "company" | null;
+type DropdownName = "services" | "retainers" | "company" | null;
 
 export function Header() {
   const [location] = useLocation();
@@ -86,22 +89,22 @@ export function Header() {
           {/* Desktop Nav */}
           <nav className="hidden lg:flex items-center gap-1">
             <Link href="/assessment" className={navLinkClass(isActive("/assessment"))} data-track="nav">
-              Assessment
+              Assessments
             </Link>
 
-            {/* Solutions dropdown */}
-            <div className="relative" onMouseEnter={() => openMenu("solutions")} onMouseLeave={closeMenu}>
+            {/* Services dropdown */}
+            <div className="relative" onMouseEnter={() => openMenu("services")} onMouseLeave={closeMenu}>
               <button
-                className={cn(navLinkClass(SOLUTIONS.some((s) => isActive(s.href))), "flex items-center gap-1.5")}
-                aria-expanded={openDropdown === "solutions"}
+                className={cn(navLinkClass(isActive("/services") || SERVICES.some((s) => isActive(s.href))), "flex items-center gap-1.5")}
+                aria-expanded={openDropdown === "services"}
               >
-                <span>Solutions</span>
-                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "solutions" && "rotate-180")} />
+                <span>Services</span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "services" && "rotate-180")} />
               </button>
-              {openDropdown === "solutions" && (
+              {openDropdown === "services" && (
                 <div className="absolute top-full left-0 w-[420px] mt-1 menu-panel rounded-2xl p-2 z-50">
                   <div className="grid grid-cols-2 gap-0.5">
-                    {SOLUTIONS.map((s) => {
+                    {SERVICES.map((s) => {
                       const Icon = s.icon;
                       return (
                         <Link
@@ -121,26 +124,42 @@ export function Header() {
                       );
                     })}
                   </div>
+                  <div className="border-t border-white/[0.06] mt-1 pt-1">
+                    <Link
+                      href="/services"
+                      onClick={() => setOpenDropdown(null)}
+                      className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/[0.06] transition-colors text-xs font-medium text-accent-blue"
+                      data-track="nav"
+                    >
+                      <span>Browse all services</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link
+                      href="/projects"
+                      onClick={() => setOpenDropdown(null)}
+                      className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/[0.06] transition-colors text-xs font-medium text-text-secondary hover:text-text-primary"
+                      data-track="nav"
+                    >
+                      <span>Browse projects by topic</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
 
-            <Link href="/monitoring" className={navLinkClass(isActive("/monitoring"))} data-track="nav">
-              Monitoring
-            </Link>
-
-            {/* Platform dropdown */}
-            <div className="relative" onMouseEnter={() => openMenu("platform")} onMouseLeave={closeMenu}>
+            {/* Retainers dropdown */}
+            <div className="relative" onMouseEnter={() => openMenu("retainers")} onMouseLeave={closeMenu}>
               <button
-                className={cn(navLinkClass(PLATFORM_LINKS.some((p) => isActive(p.href))), "flex items-center gap-1.5")}
-                aria-expanded={openDropdown === "platform"}
+                className={cn(navLinkClass(RETAINER_LINKS.some((p) => isActive(p.href))), "flex items-center gap-1.5")}
+                aria-expanded={openDropdown === "retainers"}
               >
-                <span>Platform</span>
-                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "platform" && "rotate-180")} />
+                <span>Retainers</span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "retainers" && "rotate-180")} />
               </button>
-              {openDropdown === "platform" && (
+              {openDropdown === "retainers" && (
                 <div className="absolute top-full left-0 w-80 mt-1 menu-panel rounded-2xl p-2 z-50">
-                  {PLATFORM_LINKS.map((p) => {
+                  {RETAINER_LINKS.map((p) => {
                     const Icon = p.icon;
                     return (
                       <Link
@@ -171,7 +190,7 @@ export function Header() {
             {/* Company dropdown */}
             <div className="relative" onMouseEnter={() => openMenu("company")} onMouseLeave={closeMenu}>
               <button
-                className={cn(navLinkClass(isActive("/about")), "flex items-center gap-1.5")}
+                className={cn(navLinkClass(isActive("/about") || isActive("/trust-security") || isActive("/contact")), "flex items-center gap-1.5")}
                 aria-expanded={openDropdown === "company"}
               >
                 <span>Company</span>
@@ -185,12 +204,18 @@ export function Header() {
                     </div>
                     <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">About</span>
                   </Link>
-                  <ChatCTA onClick={() => setOpenDropdown(null)} className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.06] transition-colors group" data-track="nav">
+                  <Link href="/trust-security" onClick={() => setOpenDropdown(null)} className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.06] transition-colors group" data-track="nav">
+                    <div className="p-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-accent-blue shrink-0">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">Trust &amp; Security</span>
+                  </Link>
+                  <Link href="/contact" onClick={() => setOpenDropdown(null)} className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.06] transition-colors group" data-track="nav">
                     <div className="p-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-accent-blue shrink-0">
                       <MessageCircle className="w-3.5 h-3.5" />
                     </div>
                     <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">Contact</span>
-                  </ChatCTA>
+                  </Link>
                 </div>
               )}
             </div>
@@ -216,12 +241,12 @@ export function Header() {
               </ChatCTA>
             ) : (
               <Link
-                href="/msp"
+                href="/assessment"
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                <span>For MSPs</span>
+                <span>Start Assessment</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             )}
@@ -243,30 +268,39 @@ export function Header() {
       {/* Mobile menu */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-charcoal-0 border-b border-white/[0.08] px-4 pt-2 pb-6 space-y-1 max-h-[80vh] overflow-y-auto">
-          <Link href="/assessment" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Assessment</Link>
-          <Link href="/monitoring" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Monitoring</Link>
+          <Link href="/assessment" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Assessments</Link>
 
           <button
-            onClick={() => setMobileSection(mobileSection === "solutions" ? null : "solutions")}
+            onClick={() => setMobileSection(mobileSection === "services" ? null : "services")}
             className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-secondary tracking-widest"
           >
-            <span>Solutions</span>
-            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "solutions" && "rotate-180")} />
+            <span>Services</span>
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "services" && "rotate-180")} />
           </button>
-          {mobileSection === "solutions" && SOLUTIONS.map((s) => (
-            <Link key={s.href} href={s.href} onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-white/[0.06]" data-track="nav">
-              {s.label}
-            </Link>
-          ))}
+          {mobileSection === "services" && (
+            <>
+              {SERVICES.map((s) => (
+                <Link key={s.href} href={s.href} onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-white/[0.06]" data-track="nav">
+                  {s.label}
+                </Link>
+              ))}
+              <Link href="/services" onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-accent-blue hover:bg-white/[0.06]" data-track="nav">
+                Browse all services
+              </Link>
+              <Link href="/projects" onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-white/[0.06]" data-track="nav">
+                Browse projects by topic
+              </Link>
+            </>
+          )}
 
           <button
-            onClick={() => setMobileSection(mobileSection === "platform" ? null : "platform")}
+            onClick={() => setMobileSection(mobileSection === "retainers" ? null : "retainers")}
             className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-secondary tracking-widest"
           >
-            <span>Platform</span>
-            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "platform" && "rotate-180")} />
+            <span>Retainers</span>
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "retainers" && "rotate-180")} />
           </button>
-          {mobileSection === "platform" && PLATFORM_LINKS.map((p) => (
+          {mobileSection === "retainers" && RETAINER_LINKS.map((p) => (
             <Link key={p.href} href={p.href} onClick={closeMobileMenu} className="block px-6 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-white/[0.06]" data-track="nav">
               {p.label}
             </Link>
@@ -274,7 +308,8 @@ export function Header() {
 
           <Link href="/resources" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Resources</Link>
           <Link href="/about" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
-          <ChatCTA onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</ChatCTA>
+          <Link href="/trust-security" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Trust &amp; Security</Link>
+          <Link href="/contact" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</Link>
           <Link href="/login" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Client Login</Link>
 
           <div className="pt-4">
@@ -288,13 +323,13 @@ export function Header() {
               </ChatCTA>
             ) : (
               <Link
-                href="/msp"
+                href="/assessment"
                 onClick={closeMobileMenu}
                 className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                For MSPs
+                Start Assessment
               </Link>
             )}
           </div>

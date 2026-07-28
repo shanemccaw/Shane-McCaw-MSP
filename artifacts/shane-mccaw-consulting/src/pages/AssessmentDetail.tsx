@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { useCatalog, type AssessmentOffer } from "@/hooks/useCatalog";
+import { getTopicSlugForAssessment } from "@/lib/assessmentZones";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 import NotFound from "@/pages/not-found";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -166,6 +168,7 @@ export default function AssessmentDetail() {
   const features = service.features ?? [];
   const inclusions = service.inclusions ?? [];
   const allDeliverables = deliverables.length > 0 ? deliverables : inclusions;
+  const topicSlug = getTopicSlugForAssessment(service);
 
   return (
     <Layout>
@@ -280,6 +283,9 @@ export default function AssessmentDetail() {
           </div>
         </div>
       </section>
+
+      {/* ── WHAT THIS CAN LEAD TO ───────────────────────────────────────── */}
+      {topicSlug && <FollowOnProjects topicSlug={topicSlug} />}
 
       {/* ── WHY THIS MATTERS ────────────────────────────────────────────── */}
       <section className="py-12 border-t border-white/[0.06]">

@@ -90,6 +90,7 @@ export default function ServiceEditorShell({ id, onClose, onSaved, panelMode = f
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateMeta[]>([]);
   const [fulfillmentTypes, setFulfillmentTypes] = useState<{ key: string; label: string }[]>([]);
   const [tenantSignals, setTenantSignals] = useState<{ key: string; label: string }[]>([]);
+  const [monitoringPackages, setMonitoringPackages] = useState<{ key: string; label: string }[]>([]);
   const [typeAttrs, setTypeAttrs] = useState<Record<string, unknown>>({});
 
   const [showWorkflow, setShowWorkflow] = useState(false);
@@ -170,17 +171,26 @@ export default function ServiceEditorShell({ id, onClose, onSaved, panelMode = f
 
   useEffect(() => {
     void (async () => {
-      const [cr, wr, ftr, tsr] = await Promise.all([
+      const [cr, wr, ftr, tsr, mpr] = await Promise.all([
         fetchWithAuth("/api/admin/clients"),
         fetchWithAuth("/api/admin/workflow-templates"),
         fetchWithAuth("/api/admin/fulfillment-types"),
         fetchWithAuth("/api/admin/engagement-projects/signals"),
+        fetchWithAuth("/api/admin/monitoring-packages"),
       ]);
       if (cr.ok) setClients(await cr.json() as Client[]);
       if (wr.ok) setWorkflowTemplates(await wr.json() as WorkflowTemplateMeta[]);
       if (ftr.ok) {
         const d = await ftr.json() as { key: string; label: string }[];
         setFulfillmentTypes(Array.isArray(d) ? d : []);
+      }
+      if (mpr.ok) {
+        const d = await mpr.json() as { packages?: { key: string; label: string; status?: string }[] };
+        setMonitoringPackages(
+          Array.isArray(d.packages)
+            ? d.packages.filter(p => p.status !== "archived").map(p => ({ key: p.key, label: p.label }))
+            : []
+        );
       }
       if (tsr.ok) {
         const d = await tsr.json() as { key?: string; signalKey?: string; label?: string; name?: string }[];
@@ -316,7 +326,8 @@ export default function ServiceEditorShell({ id, onClose, onSaved, panelMode = f
     registryFeatures: registryFeatures.map(f => ({ key: f.key, label: f.label })),
     workflowTemplates,
     allCategoryPaths,
-  }), [fulfillmentTypes, tenantSignals, registryEngines, registryFeatures, workflowTemplates, allCategoryPaths]);
+    monitoringPackages,
+  }), [fulfillmentTypes, tenantSignals, registryEngines, registryFeatures, workflowTemplates, allCategoryPaths, monitoringPackages]);
 
   const getCoreValue = useCallback((key: string): unknown => {
     return (formWatch as Record<string, unknown>)[key] ?? null;

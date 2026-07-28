@@ -58,7 +58,7 @@ export function ArticlePersonalizedNudge({ category, title }: ArticlePersonalize
           {Math.round(worstRelevantPillar.score)}
         </p>
         <Link
-          href={`/solutions/${topic.slug}`}
+          href={`/projects/${topic.slug}`}
           className="inline-flex items-center gap-1.5 text-accent-blue font-bold hover:underline text-base"
           data-track="cta"
           onClick={() =>
@@ -82,7 +82,7 @@ export function ArticlePersonalizedNudge({ category, title }: ArticlePersonalize
           free, Graph-based Assessment.
         </p>
         <Link
-          href={`/solutions/${topic.slug}`}
+          href={`/projects/${topic.slug}`}
           className="inline-flex items-center gap-1.5 text-accent-blue font-bold hover:underline text-base"
           data-track="cta"
           onClick={() =>

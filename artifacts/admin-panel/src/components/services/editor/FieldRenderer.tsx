@@ -34,6 +34,8 @@ export interface FieldContext {
   registryFeatures: { key: string; label: string }[];
   workflowTemplates: WorkflowTemplateMeta[];
   allCategoryPaths: string[];
+  /** Real monitoring_packages rows (key + label) — populates the Assessment scan-package dropdown */
+  monitoringPackages: { key: string; label: string }[];
 }
 
 function MultiCheckboxSelect({
@@ -254,14 +256,17 @@ export default function FieldRenderer({ field, coreValue, onCoreChange, taValue,
       const dynamicOpts =
         field.key === "fulfillmentTypeKey" ? ctx.fulfillmentTypes.map(f => ({ value: f.key, label: f.label })) :
         field.key === "billingType" ? [{ value: "one_time", label: "One-time" }, { value: "recurring_monthly", label: "Monthly" }] :
+        field.key === "packageKey" ? ctx.monitoringPackages.map(p => ({ value: p.key, label: `${p.label} (${p.key})` })) :
         staticOpts;
+      // packageKey's empty option makes the silent core:security-baseline fallback visible to whoever's editing
+      const emptyLabel = field.key === "packageKey" ? "— none selected (falls back to core:security-baseline) —" : "— None —";
       return (
         <select
           value={(value as string | null | undefined) ?? ""}
           onChange={e => onChange(e.target.value || null)}
           className={cls}
         >
-          <option value="">— None —</option>
+          <option value="">{emptyLabel}</option>
           {dynamicOpts.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}

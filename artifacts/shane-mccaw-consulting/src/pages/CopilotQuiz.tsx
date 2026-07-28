@@ -123,7 +123,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive audit — using the same methodology Shane applies at NASA — identifies every configuration gap, licensing issue, and security risk, with a prioritised roadmap so you know exactly where to start.",
     slug: "m365-tenant-health-audit",
     ctaText: "Book Your Audit",
-    servicePath: "/solutions/m365-health",
+    servicePath: "/projects/m365-health",
     servicePageLabel: "M365 Health",
   },
   Developing: {
@@ -133,7 +133,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're building the right habits, but gaps remain before Copilot is safe to deploy. A targeted readiness assessment pinpoints exactly what to fix — and in what order — so your rollout doesn't stall or expose sensitive data.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Get Your Readiness Report",
-    servicePath: "/solutions/copilot",
+    servicePath: "/projects/copilot",
     servicePageLabel: "Copilot & AI",
   },
   Emerging: {
@@ -143,7 +143,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're making solid progress. A formal Copilot readiness assessment will validate your environment, surface the remaining gaps, and give you a prioritised rollout roadmap so you can deploy with confidence — not guesswork.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Validate Your Readiness",
-    servicePath: "/solutions/copilot",
+    servicePath: "/projects/copilot",
     servicePageLabel: "Copilot & AI",
   },
   Advanced: {
@@ -153,7 +153,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your M365 environment is mature and you're ready to start automating. A focused 30-day sprint to design, build, and deploy one production-ready Power App or Power Automate flow — turning your Copilot investment into measurable business impact.",
     slug: "power-platform-quickstart",
     ctaText: "Start Automating",
-    servicePath: "/solutions/power-platform",
+    servicePath: "/projects/power-platform",
     servicePageLabel: "Power Platform",
   },
   Ready: {
@@ -163,7 +163,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your environment is Copilot-ready — now make sure it scales safely. A complete Microsoft 365 governance framework built to enterprise standards, ensuring your Copilot deployment remains secure, compliant, and audit-ready as adoption grows.",
     slug: "governance-foundations-package",
     ctaText: "Build Your Governance Framework",
-    servicePath: "/solutions/governance",
+    servicePath: "/projects/governance",
     servicePageLabel: "Governance",
   },
 };

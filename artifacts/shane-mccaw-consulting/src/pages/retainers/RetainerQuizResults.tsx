@@ -209,11 +209,11 @@ export default function RetainerQuizResults({ scores = DEFAULT_SCORES, onRetake 
                 </p>
 
                 <p className="text-xs text-[#0A2540]/50 italic">
-                  This recommendation is a snapshot based on your answers today. Your ideal plan may shift as your environment changes — monitoring it continuously keeps the picture current.
+                  This recommendation is a snapshot based on your answers today. Your ideal plan may shift as your environment changes.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <CTAButton href="/monitoring" className="px-6 py-2.5 text-sm">
-                    Keep this current — Start Monitoring
+                  <CTAButton href="/assessments" className="px-6 py-2.5 text-sm">
+                    Start a Free Assessment
                   </CTAButton>
                   <CTAButton
                     onClick={openChat}
