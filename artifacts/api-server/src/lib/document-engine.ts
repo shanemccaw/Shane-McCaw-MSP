@@ -30,6 +30,10 @@ export interface GenerateDocumentParams {
   docTypeKey: string;
   testMode?: boolean;
   dryRun?: boolean;
+  /** When provided, used directly instead of fetching the published prompt
+   *  from ai_prompts — lets an admin test an unsaved draft prompt body
+   *  against real AI/real data before publishing it. */
+  promptOverride?: string;
 }
 
 export interface GenerateDocumentResult {
@@ -118,7 +122,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       const [promptRow] = await db.select({ key: aiPromptsTable.key }).from(aiPromptsTable).where(eq(aiPromptsTable.id, docTypeRow.aiPromptId)).limit(1);
       if (promptRow?.key) promptKey = promptRow.key;
     }
-    const rawTemplate = await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
+    const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsBlock = scopedFindings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
 
@@ -205,7 +209,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       const [promptRow] = await db.select({ key: aiPromptsTable.key }).from(aiPromptsTable).where(eq(aiPromptsTable.id, docTypeRow.aiPromptId)).limit(1);
       if (promptRow?.key) promptKey = promptRow.key;
     }
-    const rawTemplate = await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
+    const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsBlock = scopedFindings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
 
