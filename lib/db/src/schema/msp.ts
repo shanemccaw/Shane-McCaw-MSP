@@ -23,7 +23,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable, usersTable, scriptPackagesTable } from "./index";
+import { wfRunsTable, usersTable, scriptPackagesTable, type MspRole } from "./index";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -64,33 +64,47 @@ export const insertMspSchema = createInsertSchema(mspsTable).omit({ id: true, cr
 export type Msp = typeof mspsTable.$inferSelect;
 export type InsertMsp = typeof mspsTable.$inferInsert;
 
-// ── Customers (end-customer organisations belonging to an MSP) ─────────────────
+// ── Tenants (the real Tenant/Customer object — Tenant/User Refactor, #92) ──────
+// One row per end-customer M365 tenant. The tenant GUID is first-class,
+// required, and unique — never a loose optional string. The three per-resource
+// consent records (Graph read / write-back app / SharePoint) fold into the
+// single jsonb consent column, keyed by consent type, so future consent types
+// need no new tables or columns. The three grants remain independent — one
+// key's state proves nothing about another's.
 
-export const mspCustomersTable = pgTable("msp_customers", {
+export type TenantConsentRecord = {
+  status: "pending" | "granted" | "declined" | "revoked";
+  consentedAt?: string | null;
+  revokedAt?: string | null;
+  adminEmail?: string | null;
+  adminDisplayName?: string | null;
+  /** Graph/write-back: scopes granted; SharePoint: application permissions granted. */
+  grants?: string[];
+};
+
+export type TenantConsentMap = Partial<Record<"graph" | "writeBack" | "sharepoint", TenantConsentRecord>>;
+
+export const tenantsTable = pgTable("tenants", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "restrict" }),
-  name: text("name").notNull(),
-  domain: text("domain"),
-  industry: text("industry"),
-  tenantId: text("tenant_id"),
-  status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
-  ownerType: text("owner_type", { enum: ["customer", "msp", "platform"] }).notNull().default("customer"),
-  tags: text("tags").array().notNull().default([]),
-  isTestbed: boolean("is_testbed").notNull().default(false),
-  testbedMetadata: jsonb("testbed_metadata").notNull().default({}),
+  customerName: text("customer_name").notNull(),
+  tenantUrl: text("tenant_url"),
+  tenantId: text("tenant_id").notNull().unique(),
+  consent: jsonb("consent").$type<TenantConsentMap>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index("msp_customers_msp_id_idx").on(t.mspId),
+  index("tenants_msp_id_idx").on(t.mspId),
 ]);
 
-export const insertMspCustomerSchema = createInsertSchema(mspCustomersTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type MspCustomer = typeof mspCustomersTable.$inferSelect;
-export type InsertMspCustomer = typeof mspCustomersTable.$inferInsert;
+export const insertTenantSchema = createInsertSchema(tenantsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type Tenant = typeof tenantsTable.$inferSelect;
+export type InsertTenant = typeof tenantsTable.$inferInsert;
 
 export const tenantEngineOverridesTable = pgTable("tenant_engine_overrides", {
   id: serial("id").primaryKey(),
-  testbedCustomerId: integer("testbed_customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  // Orphaned msp_customers id — FK dropped with the table (Phase 0); column removed in Phase 7 cleanup.
+  testbedCustomerId: integer("testbed_customer_id").notNull(),
   runId: text("run_id"),
   graphEndpoint: text("graph_endpoint").notNull(),
   fieldPath: text("field_path").notNull(),
@@ -104,74 +118,10 @@ export type TenantEngineOverride = typeof tenantEngineOverridesTable.$inferSelec
 export type InsertTenantEngineOverride = typeof tenantEngineOverridesTable.$inferInsert;
 
 // ── MSP User Role Hierarchy ────────────────────────────────────────────────────
-//
-// PlatformAdmin  — full platform access, cross-MSP
-// MSPAdmin       — full access within their MSP
-// MSPOperator    — operational access within their MSP (no billing/settings)
-// CustomerUser   — access to their own customer portal
-// ServiceAccount — API key / machine identity
-// Free           — gates to free-assessment results only; upgrade flips to CustomerUser
-// Assessment     — assessment-experience customer (free OR paid tier). Same
-//                  privilege floor as Free (below CustomerUser): may view their
-//                  own assessment results/SOW, but never tenant-wide dashboards,
-//                  engines, signals, workflows, or monitoring. New assessment
-//                  signups use this role; existing Free rows are left as-is and
-//                  treated identically everywhere Free is checked.
-
-export const MSP_ROLES = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
-export type MspRole = typeof MSP_ROLES[number];
-
-// ── MSP Users (extended profile rows — one per user who has an MSP role) ───────
-// The core identity still lives in the existing users table.
-// This table links a users.id to its MSP-scoped role + tenant scope.
-
-export const mspUsersTable = pgTable("msp_users", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().unique().references(() => usersTable.id, { onDelete: "restrict" }),
-  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "restrict" }),
-  mspRole: text("msp_role", { enum: MSP_ROLES }).notNull().default("Free"),
-  isActive: boolean("is_active").notNull().default(true),
-  // Grants a non-MSPAdmin team member permission to approve/reject pending
-  // purchase-charge approvals for their MSP (e.g. an operations lead the
-  // MSPAdmin trusts, without making them a full admin). MSPAdmin can always
-  // approve regardless of this flag. Checked live (not cached in the JWT) so
-  // permission changes take effect immediately.
-  canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
-  // Requires this team member to have an active MFA enrollment to log in.
-  // Set false by default so an existing team member is never silently locked
-  // out the moment this column lands — an MSPAdmin/customer opts a user in
-  // explicitly via the team-management toggle. Checked live at login, not
-  // cached in the JWT.
-  mfaEnforced: boolean("mfa_enforced").notNull().default(false),
-  // Real account-lockout tracking (customer-team.tsx's lockout UI/unlock button).
-  // failedLoginAttempts counts consecutive bad passwords within the lockout
-  // window (reset to 0 on any successful login or by an admin unlock);
-  // lockedUntil is set once the threshold is crossed and gates /auth/login
-  // until it passes or an admin unlocks early. Checked live at login, not
-  // cached in the JWT.
-  failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
-  lastFailedLoginAt: timestamp("last_failed_login_at", { withTimezone: true }),
-  lockedUntil: timestamp("locked_until", { withTimezone: true }),
-  // Account-level theme preference (light/dark), so the customer never has to
-  // re-toggle after logging in on a new device or a cache clear. Null means
-  // "no preference set yet" — the client falls back to OS prefers-color-scheme.
-  themePreference: text("theme_preference", { enum: ["light", "dark"] }),
-  // Free-text organizational metadata for customer-side team members (set at
-  // invite time). Nullable — MSP-side roles (MSPAdmin, etc.) leave these unset.
-  department: text("department"),
-  jobTitle: text("job_title"),
-  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("msp_users_msp_id_idx").on(t.mspId),
-  index("msp_users_customer_id_idx").on(t.customerId),
-]);
-
-export const insertMspUserSchema = createInsertSchema(mspUsersTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type MspUser = typeof mspUsersTable.$inferSelect;
-export type InsertMspUser = typeof mspUsersTable.$inferInsert;
+// The role enum (MSP_ROLES/MspRole) and the single users table that carries it
+// live in ./index (Tenant/User Refactor Phase 0 absorbed msp_users into users).
+// MSP_ROLES is defined next to usersTable because its enum use there is eager —
+// defining it here would TDZ-crash under the msp.ts ↔ index.ts circular import.
 
 // ── MSP Staff Customer Scopes (per-staff-member tenant-access restriction) ──────
 //
@@ -196,7 +146,7 @@ export const mspStaffCustomerScopesTable = pgTable("msp_staff_customer_scopes", 
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   staffUserId: integer("staff_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -457,7 +407,7 @@ export const mspDocumentsTable = pgTable("msp_documents", {
   id: serial("id").primaryKey(),
   documentId: uuid("document_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   ownerType: text("owner_type", { enum: ["customer", "msp", "platform"] }).notNull().default("msp"),
   title: text("title").notNull(),
   documentType: text("document_type").notNull().default("general"),
@@ -527,7 +477,7 @@ export const mspAuditLogsTable = pgTable("msp_audit_logs", {
   actorServiceAccountId: integer("actor_service_account_id"),
   actorRole: text("actor_role"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   actionType: text("action_type").notNull(),
   entityType: text("entity_type"),
   entityId: text("entity_id"),
@@ -632,101 +582,11 @@ export type FulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferSelect
 export type InsertFulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferInsert;
 
 // ── Tenant Consent ─────────────────────────────────────────────────────────────
-// One row per customer Azure AD tenant. Created/updated by the admin-consent
-// OAuth callback. The platform's multi-tenant app registration is the identity;
-// no per-customer credential is ever stored.
-
-export const tenantConsentTable = pgTable("tenant_consent", {
-  tenantId: text("tenant_id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
-  clientUserId: integer("client_user_id"),
-  consentStatus: text("consent_status", {
-    enum: ["pending", "granted", "declined", "revoked"],
-  }).notNull().default("pending"),
-  consentedAt: timestamp("consented_at", { withTimezone: true }),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  adminEmail: text("admin_email"),
-  adminDisplayName: text("admin_display_name"),
-  scopesGranted: jsonb("scopes_granted").$type<string[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("tenant_consent_customer_id_idx").on(t.customerId),
-  index("tenant_consent_status_idx").on(t.consentStatus),
-]);
-
-export type TenantConsent = typeof tenantConsentTable.$inferSelect;
-export type InsertTenantConsent = typeof tenantConsentTable.$inferInsert;
-
-// ── Tenant Write Consent ───────────────────────────────────────────────────────
-// Separate consent record for write-back scopes, distinct from the read-only
-// tenantConsentTable above. One row per customer Azure AD tenant.
-
-export const tenantWriteConsentTable = pgTable("tenant_write_consent", {
-  tenantId: text("tenant_id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
-  consentStatus: text("consent_status", {
-    enum: ["pending", "granted", "declined", "revoked"],
-  }).notNull().default("pending"),
-  consentedAt: timestamp("consented_at", { withTimezone: true }),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  adminEmail: text("admin_email"),
-  adminDisplayName: text("admin_display_name"),
-  scopesGranted: jsonb("scopes_granted").$type<string[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("tenant_write_consent_customer_id_idx").on(t.customerId),
-  index("tenant_write_consent_status_idx").on(t.consentStatus),
-]);
-
-export type TenantWriteConsent = typeof tenantWriteConsentTable.$inferSelect;
-export type InsertTenantWriteConsent = typeof tenantWriteConsentTable.$inferInsert;
-
-// ── Tenant SharePoint Consent ──────────────────────────────────────────────────
-// Third, independent consent record — for the "Office 365 SharePoint Online"
-// resource (appId 00000003-0000-0ff1-ce00-000000000000), NOT Microsoft Graph.
-//
-// This exists because Sites.FullControl.All is an Application permission on a
-// DIFFERENT Azure resource from Graph's REQUIRED_MT_SCOPES. A tenant having a
-// granted tenant_consent row proves nothing about whether that tenant's admin
-// ever approved the SharePoint permission, so reusing tenant_consent.scopes_granted
-// for SharePoint would produce false "consented" reads for every tenant that
-// consented before Sites.FullControl.All was added to the app registration.
-// One row per customer Azure AD tenant, stamped by the SharePoint admin-consent
-// callback in routes/consent.ts.
-//
-// NOTE: unlike tenant_write_consent (which uses a separate WRITE app registration),
-// this permission lives on the SAME multi-tenant app as Graph — it is a second
-// resource on one app, so no separate client id is involved. What differs is the
-// consent grant itself, which is per-resource and must be obtained on its own.
-
-export const tenantSharePointConsentTable = pgTable("tenant_sharepoint_consent", {
-  tenantId: text("tenant_id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
-  consentStatus: text("consent_status", {
-    enum: ["pending", "granted", "declined", "revoked"],
-  }).notNull().default("pending"),
-  consentedAt: timestamp("consented_at", { withTimezone: true }),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  adminEmail: text("admin_email"),
-  adminDisplayName: text("admin_display_name"),
-  /**
-   * Snapshot of REQUIRED_SHAREPOINT_APP_PERMISSIONS at the moment this tenant's
-   * admin consented — the SharePoint analogue of tenant_consent.scopes_granted,
-   * and the thing re-consent detection diffs against. Defaults to [] so a row
-   * that predates a permission being added reads as stale, never as covered.
-   */
-  permissionsGranted: jsonb("permissions_granted").$type<string[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("tenant_sharepoint_consent_customer_id_idx").on(t.customerId),
-  index("tenant_sharepoint_consent_status_idx").on(t.consentStatus),
-]);
-
-export type TenantSharePointConsent = typeof tenantSharePointConsentTable.$inferSelect;
-export type InsertTenantSharePointConsent = typeof tenantSharePointConsentTable.$inferInsert;
+// The three per-resource consent tables (tenant_consent, tenant_write_consent,
+// tenant_sharepoint_consent) were retired by Tenant/User Refactor Phase 0 —
+// consent now lives in tenantsTable.consent (jsonb keyed graph / writeBack /
+// sharepoint). The three grants remain independent per-resource states; only
+// the storage shape changed.
 
 // ── Consent Invite Tokens ──────────────────────────────────────────────────────
 // Single-use expiring tokens that wrap the admin-consent redirect URL.
@@ -735,7 +595,7 @@ export type InsertTenantSharePointConsent = typeof tenantSharePointConsentTable.
 export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
   token: text("token").primaryKey(),
   tenantId: text("tenant_id"),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   clientUserId: integer("client_user_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -763,7 +623,7 @@ export const mspJobQueueTable = pgTable("msp_job_queue", {
   jobType: text("job_type").notNull(),
   status: text("status", { enum: MSP_JOB_STATUS }).notNull().default("pending"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   result: jsonb("result").$type<Record<string, unknown>>(),
   errorMessage: text("error_message"),
@@ -795,7 +655,7 @@ export const outboundWebhooksTable = pgTable("outbound_webhooks", {
   webhookId: uuid("webhook_id").notNull().unique().defaultRandom(),
   ownerType: text("owner_type", { enum: ["msp", "customer", "platform"] }).notNull(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   label: text("label").notNull(),
   url: text("url").notNull(),
   secret: text("secret").notNull(),
@@ -1733,7 +1593,7 @@ export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
   id: serial("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   graphMessageId: text("graph_message_id").notNull(),
   title: text("title").notNull(),
   category: text("category"),
@@ -1774,7 +1634,7 @@ export const m365ServiceHealthSamplesTable = pgTable("m365_service_health_sample
   id: serial("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   service: text("service").notNull(),
   status: text("status").notNull(),
   sampledAt: timestamp("sampled_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1810,7 +1670,7 @@ export const mspReportDefinitionsTable = pgTable("msp_report_definitions", {
   definitionId: uuid("definition_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   // Optional scope — null means "across all customers"
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   name: text("name").notNull(),
   description: text("description"),
   docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull().default("executive_summary"),
@@ -1846,7 +1706,7 @@ export const mspReportRunsTable = pgTable("msp_report_runs", {
   runId: uuid("run_id").notNull().unique().defaultRandom(),
   definitionId: uuid("definition_id").notNull().references(() => mspReportDefinitionsTable.definitionId, { onDelete: "cascade" }),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   title: text("title").notNull(),
   docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull(),
   status: text("status", { enum: REPORT_RUN_STATUSES }).notNull().default("pending"),
@@ -1955,7 +1815,7 @@ export const mspSalesBundleAssignmentsTable = pgTable("msp_sales_bundle_assignme
   assignmentId: uuid("assignment_id").notNull().unique().defaultRandom(),
   bundleId: uuid("bundle_id").notNull().references(() => mspSalesBundlesTable.bundleId, { onDelete: "restrict" }),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "restrict" }),
+  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   /** M365 tenant GUID — drives package execution routing */
   tenantId: text("tenant_id"),
   status: text("status", { enum: MSP_BUNDLE_ASSIGNMENT_STATUS }).notNull().default("active"),
@@ -1993,7 +1853,7 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   id: serial("id").primaryKey(),
   runId: uuid("run_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   tenantId: text("tenant_id"),
   packageKey: text("package_key").notNull().default("core:security-baseline"),
   status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
@@ -2136,7 +1996,7 @@ export const mspSowsTable = pgTable("msp_sows", {
 
   // ── Parties ───────────────────────────────────────────────────────────────
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   // The end-customer user that signs the SOW (CustomerUser role)
   customerUserId: integer("customer_user_id"),
 
@@ -2269,7 +2129,7 @@ export type InsertMspCharge = typeof mspChargesTable.$inferInsert;
 export const mspCustomerClickwrapsTable = pgTable("msp_customer_clickwraps", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   customerUserId: integer("customer_user_id").notNull(),
   // Snapshot of the text shown at acceptance time
   agreementTextSnapshot: text("agreement_text_snapshot").notNull(),
@@ -2579,7 +2439,7 @@ export type InsertConfigPackTemplate = typeof configPackTemplatesTable.$inferIns
 export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secrets", {
   id: serial("id").primaryKey(),
   runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id),
-  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id),
+  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   encryptedValue: text("encrypted_value").notNull(),
   // The paused workflow node id, so the /acknowledge path can resume the run via
   // resumeWorkflowRun(runId, gateNodeId, ...). One pause per pending secret.
@@ -2631,7 +2491,7 @@ export type InsertBreakGlassVerificationAttempt = typeof breakGlassVerificationA
 
 export const breakGlassOverrideAuditTable = pgTable("break_glass_override_audit", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id),
+  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   adminUserId: integer("admin_user_id").notNull(),
   reason: text("reason").notNull(),
   oldPendingSecretId: integer("old_pending_secret_id").references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
@@ -2764,7 +2624,7 @@ export type InsertDashboardOverride = typeof dashboardOverridesTable.$inferInser
 
 export const dashboardExecutiveSummariesTable = pgTable("dashboard_executive_summaries", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").notNull().unique().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().unique(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   headline: text("headline").notNull().default(""),
   bullets: jsonb("bullets").$type<Array<{ severity: "red" | "amber" | "green"; text: string }>>().notNull().default([]),

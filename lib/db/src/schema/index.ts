@@ -1,7 +1,7 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { mspsTable, mspCustomersTable } from "./msp";
+import { mspsTable, tenantsTable } from "./msp";
 
 export interface WizardOption {
   id: string;
@@ -16,6 +16,32 @@ export interface WizardStep {
   options: WizardOption[];
 }
 
+// ── MSP User Role Hierarchy ────────────────────────────────────────────────────
+//
+// PlatformAdmin  — full platform access, cross-MSP
+// MSPAdmin       — full access within their MSP
+// MSPOperator    — operational access within their MSP (no billing/settings)
+// CustomerUser   — access to their own customer portal
+// ServiceAccount — API key / machine identity
+// Free           — gates to free-assessment results only; upgrade flips to CustomerUser
+// Assessment     — assessment-experience customer (free OR paid tier). Same
+//                  privilege floor as Free (below CustomerUser): may view their
+//                  own assessment results/SOW, but never tenant-wide dashboards,
+//                  engines, signals, workflows, or monitoring. New assessment
+//                  signups use this role; existing Free rows are left as-is and
+//                  treated identically everywhere Free is checked.
+//
+// Defined here (not in ./msp) because usersTable's enum use below is eager and
+// the msp.ts ↔ index.ts circular import would TDZ-crash on a cross-module read.
+
+export const MSP_ROLES = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
+export type MspRole = typeof MSP_ROLES[number];
+
+// The SINGLE users table (Tenant/User Refactor Phase 0, #92/#93): auth identity
+// plus everything the retired msp_users 1:1 extension row used to carry.
+// Scope invariant is enforced by the users_role_scope_check CHECK below —
+// tenant-scoped roles need tenantId, MSP-scoped roles need mspId,
+// PlatformAdmin needs neither.
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -35,7 +61,44 @@ export const usersTable = pgTable("users", {
   linkedLeadId: integer("linked_lead_id"),
   pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+  // ── absorbed from msp_users (Phase 0) ──────────────────────────────────────
+  mspRole: text("msp_role", { enum: MSP_ROLES }).notNull().default("Free"),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "restrict" }),
+  isActive: boolean("is_active").notNull().default(true),
+  // Grants a non-MSPAdmin team member permission to approve/reject pending
+  // purchase-charge approvals for their MSP. MSPAdmin can always approve
+  // regardless of this flag. Checked live (not cached in the JWT).
+  canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
+  // Requires an active MFA enrollment to log in. False by default so existing
+  // users are never silently locked out; opted in explicitly via the
+  // team-management toggle. Checked live at login, not cached in the JWT.
+  mfaEnforced: boolean("mfa_enforced").notNull().default(false),
+  // Account-lockout tracking (customer-team.tsx's lockout UI/unlock button):
+  // failedLoginAttempts counts consecutive bad passwords (reset on success or
+  // admin unlock); lockedUntil gates /auth/login until it passes. Checked live.
+  failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+  lastFailedLoginAt: timestamp("last_failed_login_at", { withTimezone: true }),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  // Account-level theme preference. Null = no preference set yet — the client
+  // falls back to OS prefers-color-scheme.
+  themePreference: text("theme_preference", { enum: ["light", "dark"] }),
+  // Free-text organizational metadata for customer-side team members.
+  department: text("department"),
+  jobTitle: text("job_title"),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("users_msp_id_idx").on(t.mspId),
+  index("users_tenant_id_idx").on(t.tenantId),
+  check("users_role_scope_check", sql`
+    (${t.mspRole} IN ('CustomerUser', 'Free', 'Assessment') AND ${t.tenantId} IS NOT NULL)
+    OR
+    (${t.mspRole} IN ('MSPAdmin', 'MSPOperator', 'ServiceAccount') AND ${t.mspId} IS NOT NULL)
+    OR
+    (${t.mspRole} = 'PlatformAdmin')
+  `),
+]);
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });
 export type InsertUser = typeof usersTable.$inferInsert;
@@ -744,7 +807,7 @@ export type InsertSignalDerivationRule = typeof signalDerivationRulesTable.$infe
 
 export const tenantSignalHistoryTable = pgTable("tenant_signal_history", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   signalKey: text("signal_key").notNull(),
   category: text("category"),
@@ -1333,7 +1396,7 @@ export type MfaChallenge = typeof mfaChallengesTable.$inferSelect;
 
 // Emergency MFA bypass codes — a transient, single-use credential an MSP admin
 // issues from customer-team.tsx when a user is locked out of MFA (lost device,
-// no authenticator). Deliberately its OWN table, not a column on mspUsersTable:
+// no authenticator). Deliberately its OWN table, not a column on usersTable:
 // this is a short-lived, consumable secret (hashed, expiring, single-use), not a
 // persistent account attribute. At most one active row per user is enforced at
 // generation time (delete-then-insert), matching the "one at a time" emergency
@@ -1937,7 +2000,7 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
    * without it, so this changes no runtime behavior; it only stops selects from
    * typing a column that can no longer be NULL as `number | null`.
    */
-  mspCustomerId: integer("msp_customer_id").notNull().references(() => mspCustomersTable.id),
+  mspCustomerId: integer("msp_customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   category: text("category", { enum: ["report", "consulting"] }).notNull().default("report"),
   docType: text("doc_type").notNull().default("other"),
@@ -2858,7 +2921,7 @@ export type MspScoreHistory = typeof mspScoreHistoryTable.$inferSelect;
 export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   engineKey: text("engine_key").notNull(),
   score: integer("score").notNull().default(0),
   previousScore: integer("previous_score"),
@@ -2892,7 +2955,7 @@ export type EngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferS
 
 export const engineScoreDailyRollupTable = pgTable("engine_score_daily_rollup", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   engineKey: text("engine_key").notNull(),
   day: date("day").notNull(),
@@ -2947,7 +3010,7 @@ export type PolicyRuleAuditLog = typeof policyRuleAuditLogTable.$inferSelect;
 export const policyRuleFiringsTable = pgTable("policy_rule_firings", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   firedAt: timestamp("fired_at").notNull().defaultNow(),
 }, (table) => ({
@@ -2960,7 +3023,7 @@ export type PolicyRuleFiring = typeof policyRuleFiringsTable.$inferSelect;
 export const policyRuleIncidentsTable = pgTable("policy_rule_incidents", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   currentLevel: integer("current_level").notNull().default(1),
@@ -2977,7 +3040,7 @@ export type PolicyRuleIncident = typeof policyRuleIncidentsTable.$inferSelect;
 export const policyRuleSuppressionsTable = pgTable("policy_rule_suppressions", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   reason: text("reason"),
   suppressedByUserId: integer("suppressed_by_user_id"),
@@ -3123,7 +3186,7 @@ export type LeadScoringConfig = typeof leadScoringConfigTable.$inferSelect;
 
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   engineKey: text("engine_key").notNull(),
   baselineScore: integer("baseline_score").notNull(),
