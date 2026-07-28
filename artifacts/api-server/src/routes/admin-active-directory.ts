@@ -1,16 +1,33 @@
 // artifacts/api-server/src/routes/admin-active-directory.ts
 //
-// Phase 1 of the Active Directory admin surface (initiative: active-directory,
-// docs/build-plans/active-directory.md, Issue #61): read-only tree + universal
-// search over real msps/msp_customers/msp_users/users rows. No write actions —
-// those are Phases 7-9.
+// Active Directory admin surface (initiative: active-directory,
+// docs/build-plans/active-directory.md). Phase 1 (Issue #61): read-only tree
+// + universal search over real msps/msp_customers/msp_users/users rows.
+// Phase 2 (Issue #62): MSP Object detail pane. No write actions — those are
+// Phases 7-9.
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspUsersTable, usersTable } from "@workspace/db";
-import { eq, asc, inArray, count } from "drizzle-orm";
+import {
+  db,
+  mspsTable,
+  mspCustomersTable,
+  mspUsersTable,
+  usersTable,
+  mspSubscriptionsTable,
+  servicesTable,
+  platformAgreementsTable,
+  mspAgreementAcceptancesTable,
+} from "@workspace/db";
+import { eq, asc, inArray, count, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { buildMspTree, buildGroupNodes, searchDirectory, DIRECTORY_GROUP_ROLES } from "../lib/active-directory";
+import {
+  buildMspTree,
+  buildGroupNodes,
+  searchDirectory,
+  DIRECTORY_GROUP_ROLES,
+  buildMspDetail,
+} from "../lib/active-directory";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.active-directory" });
@@ -121,6 +138,120 @@ router.get("/admin/active-directory/search", requireAdmin, async (req: Request, 
   } catch (err) {
     log.error({ err }, "Active Directory search failed");
     res.status(500).json({ error: "Search failed" });
+  }
+});
+
+// ─── GET /admin/active-directory/msp/:id ─────────────────────────────────────
+// MSP Object detail pane (Phase 2): profile, subscription/plan + dunning
+// state, entitlements (derived from the subscription's Product Catalog tier,
+// per msp-entitlement.ts's loadTier() — no separate entitlements table),
+// linked customers, linked users with roles, and platform agreement
+// acceptance status. Read-only — no MSP-level edit actions here.
+router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request, res: Response) => {
+  const mspId = Number(req.params.id);
+  if (!Number.isInteger(mspId)) {
+    res.status(400).json({ error: "Invalid MSP id" });
+    return;
+  }
+
+  try {
+    const [mspRow] = await db
+      .select({
+        id: mspsTable.id,
+        name: mspsTable.name,
+        slug: mspsTable.slug,
+        domain: mspsTable.domain,
+        logoUrl: mspsTable.logoUrl,
+        status: mspsTable.status,
+        trialEndsAt: mspsTable.trialEndsAt,
+        suspendedAt: mspsTable.suspendedAt,
+        offboardingState: mspsTable.offboardingState,
+        isDirectBusiness: mspsTable.isDirectBusiness,
+        isTestbed: mspsTable.isTestbed,
+        writeBackEnabled: mspsTable.writeBackEnabled,
+        automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled,
+        createdAt: mspsTable.createdAt,
+      })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspId))
+      .limit(1);
+
+    if (!mspRow) {
+      res.status(404).json({ error: "MSP not found" });
+      return;
+    }
+
+    const [subRows, customers, userRows, agreementAcceptances, [currentAgreement]] = await Promise.all([
+      db
+        .select({
+          status: mspSubscriptionsTable.status,
+          tierName: servicesTable.name,
+          billingInterval: mspSubscriptionsTable.billingInterval,
+          currentPeriodStart: mspSubscriptionsTable.currentPeriodStart,
+          currentPeriodEnd: mspSubscriptionsTable.currentPeriodEnd,
+          dunningState: mspSubscriptionsTable.dunningState,
+          paymentFailedAt: mspSubscriptionsTable.paymentFailedAt,
+          tenantCountSnapshot: mspSubscriptionsTable.tenantCountSnapshot,
+          contactEmail: mspSubscriptionsTable.contactEmail,
+          typeAttributes: servicesTable.typeAttributes,
+        })
+        .from(mspSubscriptionsTable)
+        .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
+        .where(eq(mspSubscriptionsTable.mspId, mspId))
+        .limit(1),
+      db
+        .select({
+          id: mspCustomersTable.id,
+          name: mspCustomersTable.name,
+          domain: mspCustomersTable.domain,
+          tenantId: mspCustomersTable.tenantId,
+          status: mspCustomersTable.status,
+        })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.mspId, mspId))
+        .orderBy(asc(mspCustomersTable.name)),
+      db
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          name: usersTable.name,
+          mspRole: mspUsersTable.mspRole,
+          isActive: mspUsersTable.isActive,
+          lastLoginAt: mspUsersTable.lastLoginAt,
+        })
+        .from(mspUsersTable)
+        .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+        .where(eq(mspUsersTable.mspId, mspId))
+        .orderBy(asc(usersTable.email)),
+      db
+        .select({
+          agreementVersion: mspAgreementAcceptancesTable.agreementVersion,
+          acceptedAt: mspAgreementAcceptancesTable.acceptedAt,
+          checkboxConfirmed: mspAgreementAcceptancesTable.checkboxConfirmed,
+        })
+        .from(mspAgreementAcceptancesTable)
+        .where(eq(mspAgreementAcceptancesTable.mspId, mspId))
+        .orderBy(desc(mspAgreementAcceptancesTable.acceptedAt)),
+      db
+        .select({ version: platformAgreementsTable.version })
+        .from(platformAgreementsTable)
+        .where(eq(platformAgreementsTable.isCurrentVersion, true))
+        .limit(1),
+    ]);
+
+    res.json(
+      buildMspDetail({
+        msp: mspRow,
+        subscription: subRows[0] ?? null,
+        customers,
+        users: userRows,
+        agreementAcceptances,
+        currentAgreementVersion: currentAgreement?.version ?? null,
+      }),
+    );
+  } catch (err) {
+    log.error({ err, mspId }, "Failed to build MSP Object detail pane");
+    res.status(500).json({ error: "Failed to load MSP detail" });
   }
 });
 

@@ -1,14 +1,15 @@
 // artifacts/admin-panel/src/components/ActiveDirectoryCenterCanvas.tsx
 //
-// Phase 1 middle detail pane: dispatched-by-selected-type stub only ("selected:
-// <type> <name>"), same event-driven hand-off convention SimulatorLeftTree's
-// canvases use (window CustomEvent, not prop-drilled state). Full per-type
-// detail rendering (MSP/Customer/RBAC Group/User) is additive in Phases 2/3/4/6
-// — this phase only builds the dispatch mechanism those phases plug into.
+// Middle detail pane, dispatched by selected object type (window CustomEvent,
+// not prop-drilled state — same event-driven hand-off convention
+// SimulatorLeftTree's canvases use). Phase 2 adds the real MSP Object
+// renderer (ActiveDirectoryMspPane); Customer/RBAC Group/User stay Phase-1
+// stubs ("selected: <type> <name>") until their own phases (3/4/6) ship.
 
 import { useEffect, useState } from "react";
 import { FolderTree } from "lucide-react";
 import { AD_SELECT_EVENT, type AdSelectedObject, type AdSelectedType } from "./ActiveDirectoryTree";
+import { ActiveDirectoryMspPane } from "./ActiveDirectoryMspPane";
 
 const TYPE_LABEL: Record<AdSelectedType, string> = {
   msp: "MSP",
@@ -35,6 +36,10 @@ export function ActiveDirectoryCenterCanvas() {
         Select an MSP, Customer, or Group in the tree — or search — to view it here.
       </div>
     );
+  }
+
+  if (selected.type === "msp") {
+    return <ActiveDirectoryMspPane key={selected.id} mspId={Number(selected.id)} />;
   }
 
   return (

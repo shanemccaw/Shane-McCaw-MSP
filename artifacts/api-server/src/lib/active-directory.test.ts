@@ -4,9 +4,16 @@ import {
   buildGroupNodes,
   searchDirectory,
   DIRECTORY_GROUP_ROLES,
+  buildMspDetail,
+  deriveEntitlements,
   type MspRow,
   type CustomerRow,
   type SearchableUser,
+  type MspProfileRow,
+  type MspSubscriptionRow,
+  type MspDetailCustomer,
+  type MspDetailUser,
+  type MspAgreementAcceptanceRow,
 } from "./active-directory";
 
 const MSPS: MspRow[] = [
@@ -149,5 +156,155 @@ describe("searchDirectory", () => {
     const result = searchDirectory("Jane Doe", { msps: [], customers: [], users: USERS });
     expect(result.users.map((u) => u.id)).toEqual([100]);
     expect(searchDirectory("Jane Smith", { msps: [], customers: [], users: USERS }).users).toEqual([]);
+  });
+});
+
+// ── MSP Object detail pane (Phase 2) ─────────────────────────────────────────
+
+const MSP_PROFILE: MspProfileRow = {
+  id: 1,
+  name: "Acme Consulting",
+  slug: "acme-consulting",
+  domain: "acme.com",
+  logoUrl: null,
+  status: "active",
+  trialEndsAt: null,
+  suspendedAt: null,
+  offboardingState: null,
+  isDirectBusiness: false,
+  isTestbed: false,
+  writeBackEnabled: false,
+  automatedCustomerEmailsEnabled: true,
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+};
+
+const SUBSCRIPTION: MspSubscriptionRow = {
+  status: "active",
+  tierName: "Professional",
+  billingInterval: "month",
+  currentPeriodStart: new Date("2026-07-01T00:00:00Z"),
+  currentPeriodEnd: new Date("2026-08-01T00:00:00Z"),
+  dunningState: null,
+  paymentFailedAt: null,
+  tenantCountSnapshot: 12,
+  contactEmail: "billing@acme.com",
+  typeAttributes: {
+    tenantAllowance: 25,
+    aiCreditAllowancePlatformValue: 5000,
+    overageRateCents: 200,
+    tierCapabilities: { advanced_signals: true, custom_workflows: false },
+  },
+};
+
+const CUSTOMERS_DETAIL: MspDetailCustomer[] = [
+  { id: 10, name: "Contoso Ltd", domain: "contoso.com", tenantId: "tenant-contoso", status: "active" },
+];
+
+const USERS_DETAIL: MspDetailUser[] = [
+  { id: 100, email: "admin@acme.com", name: "Alex Admin", mspRole: "MSPAdmin", isActive: true, lastLoginAt: null },
+];
+
+const ACCEPTANCES: MspAgreementAcceptanceRow[] = [
+  { agreementVersion: "2026-01", acceptedAt: new Date("2026-01-02T00:00:00Z"), checkboxConfirmed: true },
+];
+
+describe("deriveEntitlements", () => {
+  it("returns null when there is no subscription", () => {
+    expect(deriveEntitlements(null)).toBeNull();
+  });
+
+  it("extracts tenantAllowance/aiCreditAllowance/overageRateCents/tierCapabilities from typeAttributes", () => {
+    expect(deriveEntitlements(SUBSCRIPTION)).toEqual({
+      tenantAllowance: 25,
+      aiCreditAllowance: 5000,
+      overageRateCents: 200,
+      tierCapabilities: { advanced_signals: true, custom_workflows: false },
+    });
+  });
+
+  it("falls back to the plain aiCreditAllowance key when the platform-value key is absent", () => {
+    const sub: MspSubscriptionRow = { ...SUBSCRIPTION, typeAttributes: { aiCreditAllowance: 1000 } };
+    expect(deriveEntitlements(sub)?.aiCreditAllowance).toBe(1000);
+  });
+
+  it("defaults every field to null/empty when typeAttributes is missing or empty", () => {
+    const sub: MspSubscriptionRow = { ...SUBSCRIPTION, typeAttributes: {} };
+    expect(deriveEntitlements(sub)).toEqual({
+      tenantAllowance: null,
+      aiCreditAllowance: null,
+      overageRateCents: null,
+      tierCapabilities: {},
+    });
+  });
+});
+
+describe("buildMspDetail", () => {
+  it("assembles the full MSP detail payload from real rows, including a real customer/user count", () => {
+    const detail = buildMspDetail({
+      msp: MSP_PROFILE,
+      subscription: SUBSCRIPTION,
+      customers: CUSTOMERS_DETAIL,
+      users: USERS_DETAIL,
+      agreementAcceptances: ACCEPTANCES,
+      currentAgreementVersion: "2026-01",
+    });
+
+    expect(detail.msp).toEqual(MSP_PROFILE);
+    expect(detail.customerCount).toBe(1);
+    expect(detail.userCount).toBe(1);
+    expect(detail.subscription).toMatchObject({ status: "active", tierName: "Professional", dunningState: null });
+    expect(detail.entitlements).toEqual({
+      tenantAllowance: 25,
+      aiCreditAllowance: 5000,
+      overageRateCents: 200,
+      tierCapabilities: { advanced_signals: true, custom_workflows: false },
+    });
+    expect(detail.hasAcceptedCurrentAgreement).toBe(true);
+  });
+
+  it("renders honest empty states for an MSP with zero customers/users/acceptances — real empty arrays, not placeholders", () => {
+    const detail = buildMspDetail({
+      msp: MSP_PROFILE,
+      subscription: null,
+      customers: [],
+      users: [],
+      agreementAcceptances: [],
+      currentAgreementVersion: "2026-01",
+    });
+
+    expect(detail.customers).toEqual([]);
+    expect(detail.customerCount).toBe(0);
+    expect(detail.users).toEqual([]);
+    expect(detail.userCount).toBe(0);
+    expect(detail.subscription).toBeNull();
+    expect(detail.entitlements).toBeNull();
+    expect(detail.agreementAcceptances).toEqual([]);
+    expect(detail.hasAcceptedCurrentAgreement).toBe(false);
+  });
+
+  it("flags hasAcceptedCurrentAgreement false when the MSP only accepted an older version", () => {
+    const detail = buildMspDetail({
+      msp: MSP_PROFILE,
+      subscription: SUBSCRIPTION,
+      customers: [],
+      users: [],
+      agreementAcceptances: ACCEPTANCES,
+      currentAgreementVersion: "2026-06",
+    });
+    expect(detail.hasAcceptedCurrentAgreement).toBe(false);
+    expect(detail.agreementAcceptances).toEqual(ACCEPTANCES);
+  });
+
+  it("treats a null currentAgreementVersion (no published agreement yet) as not accepted", () => {
+    const detail = buildMspDetail({
+      msp: MSP_PROFILE,
+      subscription: null,
+      customers: [],
+      users: [],
+      agreementAcceptances: ACCEPTANCES,
+      currentAgreementVersion: null,
+    });
+    expect(detail.hasAcceptedCurrentAgreement).toBe(false);
+    expect(detail.currentAgreementVersion).toBeNull();
   });
 });

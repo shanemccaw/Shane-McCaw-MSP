@@ -167,3 +167,148 @@ export function searchDirectory(
 
   return { msps, customers, users, roles };
 }
+
+// ── MSP Object detail pane (Phase 2) ─────────────────────────────────────────
+//
+// Everything the platform holds about one MSP: profile, current
+// subscription/plan + dunning state, entitlements (derived from the
+// subscription's Product Catalog tier, per msp-entitlement.ts's loadTier() —
+// there is no separate entitlements table), linked customers, linked users,
+// and platform agreement acceptance status.
+
+export interface MspProfileRow {
+  id: number;
+  name: string;
+  slug: string;
+  domain: string | null;
+  logoUrl: string | null;
+  status: string;
+  trialEndsAt: Date | null;
+  suspendedAt: Date | null;
+  offboardingState: string | null;
+  isDirectBusiness: boolean;
+  isTestbed: boolean;
+  writeBackEnabled: boolean;
+  automatedCustomerEmailsEnabled: boolean;
+  createdAt: Date;
+}
+
+export interface MspSubscriptionRow {
+  status: string;
+  tierName: string;
+  billingInterval: string;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  dunningState: string | null;
+  paymentFailedAt: Date | null;
+  tenantCountSnapshot: number;
+  contactEmail: string | null;
+  typeAttributes: Record<string, unknown> | null;
+}
+
+export interface MspDetailCustomer {
+  id: number;
+  name: string;
+  domain: string | null;
+  tenantId: string | null;
+  status: string;
+}
+
+export interface MspDetailUser {
+  id: number;
+  email: string;
+  name: string | null;
+  mspRole: string;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+}
+
+export interface MspAgreementAcceptanceRow {
+  agreementVersion: string;
+  acceptedAt: Date;
+  checkboxConfirmed: boolean;
+}
+
+export interface MspEntitlements {
+  tenantAllowance: number | null;
+  aiCreditAllowance: number | null;
+  overageRateCents: number | null;
+  tierCapabilities: Record<string, boolean>;
+}
+
+export interface MspDetail {
+  msp: MspProfileRow;
+  subscription: Omit<MspSubscriptionRow, "typeAttributes"> | null;
+  entitlements: MspEntitlements | null;
+  customers: MspDetailCustomer[];
+  customerCount: number;
+  users: MspDetailUser[];
+  userCount: number;
+  agreementAcceptances: MspAgreementAcceptanceRow[];
+  currentAgreementVersion: string | null;
+  hasAcceptedCurrentAgreement: boolean;
+}
+
+/** Derives the entitlements view of a subscription's typeAttributes jsonb — mirrors msp-entitlement.ts's loadTier(). */
+export function deriveEntitlements(sub: MspSubscriptionRow | null): MspEntitlements | null {
+  if (!sub) return null;
+  const attrs = sub.typeAttributes ?? {};
+  return {
+    tenantAllowance: typeof attrs.tenantAllowance === "number" ? attrs.tenantAllowance : null,
+    aiCreditAllowance:
+      typeof attrs.aiCreditAllowancePlatformValue === "number"
+        ? attrs.aiCreditAllowancePlatformValue
+        : typeof attrs.aiCreditAllowance === "number"
+          ? attrs.aiCreditAllowance
+          : null,
+    overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
+    tierCapabilities: (attrs.tierCapabilities ?? {}) as Record<string, boolean>,
+  };
+}
+
+/**
+ * Assembles the full MSP Object detail payload — pure, DB-free so it can be
+ * unit-tested against plain fixtures. An MSP with zero customers/users/
+ * acceptances still returns real empty arrays (honest empty states), never
+ * placeholders.
+ */
+export function buildMspDetail(params: {
+  msp: MspProfileRow;
+  subscription: MspSubscriptionRow | null;
+  customers: MspDetailCustomer[];
+  users: MspDetailUser[];
+  agreementAcceptances: MspAgreementAcceptanceRow[];
+  currentAgreementVersion: string | null;
+}): MspDetail {
+  const { msp, subscription, customers, users, agreementAcceptances, currentAgreementVersion } = params;
+
+  const subscriptionSummary = subscription
+    ? {
+        status: subscription.status,
+        tierName: subscription.tierName,
+        billingInterval: subscription.billingInterval,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        dunningState: subscription.dunningState,
+        paymentFailedAt: subscription.paymentFailedAt,
+        tenantCountSnapshot: subscription.tenantCountSnapshot,
+        contactEmail: subscription.contactEmail,
+      }
+    : null;
+
+  const hasAcceptedCurrentAgreement =
+    currentAgreementVersion != null && agreementAcceptances.some((a) => a.agreementVersion === currentAgreementVersion);
+
+  return {
+    msp,
+    subscription: subscriptionSummary,
+    entitlements: deriveEntitlements(subscription),
+    customers,
+    customerCount: customers.length,
+    users,
+    userCount: users.length,
+    agreementAcceptances,
+    currentAgreementVersion,
+    hasAcceptedCurrentAgreement,
+  };
+}
