@@ -46,6 +46,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { AssessmentCreationWizard } from "@/components/AssessmentCreationWizard";
+import { DeleteAssessmentModal, DeprecateAssessmentModal } from "@/components/AssessmentDeleteDeprecateModals";
 
 // Same repaint as SimulatorCenterCanvas's editor: keep One Dark's syntax
 // palette but swap its #282c34 surfaces for the app's GitHub-dark tokens.
@@ -69,6 +70,8 @@ export type ModalType =
   | "new-monitor-check"
   | "edit-monitor-check"
   | "new-assessment"
+  | "delete-assessment"
+  | "deprecate-assessment"
   | null;
 
 interface ModalContextType {
@@ -134,6 +137,16 @@ function ModalContainer() {
             editingAssessment={modalData?.editingAssessment ?? null}
             onClose={closeModal}
           />
+        )}
+        {activeModal === "delete-assessment" && modalData?.assessment && (
+          <DeleteAssessmentModal
+            assessment={modalData.assessment}
+            existingAssessments={modalData?.assessments ?? []}
+            onClose={closeModal}
+          />
+        )}
+        {activeModal === "deprecate-assessment" && modalData?.assessment && (
+          <DeprecateAssessmentModal assessment={modalData.assessment} onClose={closeModal} />
         )}
       </DialogContent>
     </Dialog>

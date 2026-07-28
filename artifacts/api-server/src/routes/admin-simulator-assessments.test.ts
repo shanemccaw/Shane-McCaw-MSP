@@ -44,12 +44,13 @@ const REAL_ASSESSMENT_SERVICES = [
   { id: 33, name: "Intune / Device Management Assessment", slug: "intune-device-management-assessment", isFreeOffering: false, packageKey: null },
 ];
 
-function serviceRow(s: (typeof REAL_ASSESSMENT_SERVICES)[number]) {
+function serviceRow(s: (typeof REAL_ASSESSMENT_SERVICES)[number], visibility: "public" | "private" | "landing_page_only" = "public") {
   return {
     id: s.id,
     name: s.name,
     slug: s.slug,
     isFreeOffering: s.isFreeOffering,
+    visibility,
     typeAttributes: s.packageKey ? { packageKey: s.packageKey } : null,
   };
 }
@@ -97,6 +98,7 @@ vi.mock("@workspace/db", () => {
       name: "name",
       slug: "slug",
       isFreeOffering: "is_free_offering",
+      visibility: "visibility",
       typeAttributes: "type_attributes",
       category: "category",
     },
@@ -142,7 +144,7 @@ beforeEach(() => {
 });
 
 function queueRealFixtures() {
-  selectQueue = [REAL_ASSESSMENT_SERVICES.map(serviceRow), REAL_PACKAGE_CHECKS];
+  selectQueue = [REAL_ASSESSMENT_SERVICES.map((s) => serviceRow(s)), REAL_PACKAGE_CHECKS];
 }
 
 describe("GET /admin/simulator/assessments", () => {
@@ -246,5 +248,20 @@ describe("GET /admin/simulator/assessments", () => {
     const snapshot = res.body.assessments.find((a: any) => a.id === 14);
     const full = res.body.assessments.find((a: any) => a.id === 25);
     expect(snapshot.checkKeys).toEqual(full.checkKeys);
+  });
+
+  it("surfaces visibility so Phase 7's Deprecate action is reflected without a second fetch", async () => {
+    selectQueue = [
+      [
+        ...REAL_ASSESSMENT_SERVICES.filter((s) => s.id !== 17).map((s) => serviceRow(s)),
+        serviceRow(REAL_ASSESSMENT_SERVICES.find((s) => s.id === 17)!, "private"),
+      ],
+      REAL_PACKAGE_CHECKS,
+    ];
+    const res = await auth(request(makeApp()).get("/api/admin/simulator/assessments"));
+    const deprecated = res.body.assessments.find((a: any) => a.id === 17);
+    expect(deprecated.visibility).toBe("private");
+    const stillPublic = res.body.assessments.find((a: any) => a.id === 16);
+    expect(stillPublic.visibility).toBe("public");
   });
 });
