@@ -9,13 +9,47 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { buildTenantProfile } from "./tenant-signals";
+import { buildTenantProfile, type CategorizedFinding } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
+// Document Generator scoping decisions (which of the tenant's real findings a
+// document type is allowed to see) get their own channel, so a "why is this
+// finding missing from the doc?" question is answerable from the logs without
+// wading through the whole generation pipeline.
+const scopeLog = logger.child({ channel: "engine.document-generator" });
+
+/**
+ * Applies a document type's `includedSignalCategories` scoping to the tenant's
+ * real findings. Shared by the dry-run and real-run branches so a preview can
+ * never show a different finding set than the document that gets generated.
+ *
+ * Empty `includedSignalCategories` = no filter (all findings pass through) —
+ * the SAME fallback convention `includedProfileKeyPatterns` already uses, so an
+ * unconfigured document type behaves exactly as it did before this filter
+ * existed.
+ *
+ * When categories ARE configured, an uncategorizable finding (`categories: []`
+ * — every script-run finding, plus any monitor finding whose check feeds no
+ * category-prefixed signal rule) is EXCLUDED, not passed through: the document
+ * type has stated which categories it wants, and we cannot confirm an
+ * unattributable finding belongs to one of them. Excluding is the honest
+ * direction — a scoped document may be narrower than ideal, but it never
+ * contains a finding the type didn't ask for.
+ */
+export function scopeFindingsBySignalCategory(
+  categorizedFindings: CategorizedFinding[],
+  allFindings: string[],
+  includedSignalCategories: string[],
+): string[] {
+  if (includedSignalCategories.length === 0) return allFindings;
+  return categorizedFindings
+    .filter((f) => f.categories.some((c) => includedSignalCategories.includes(c)))
+    .map((f) => f.text);
+}
 
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Intentionally duplicated from document-generator.ts's own local, non-exported
@@ -97,17 +131,32 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     let mergedProfile: Record<string, unknown> = {};
     let findings: string[] = [];
+    let categorizedFindings: CategorizedFinding[] = [];
     if (mspCustomerId != null) {
       const tenantProfile = await buildTenantProfile(mspCustomerId);
       mergedProfile = tenantProfile.mergedProfile;
       findings = tenantProfile.findings;
+      categorizedFindings = tenantProfile.categorizedFindings;
     }
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
     const scopedProfileEntries = profilePatterns.length > 0
       ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
       : Object.entries(mergedProfile);
     const scopedProfile = Object.fromEntries(scopedProfileEntries);
-    const scopedFindings = findings;
+    const signalCategories = docTypeRow.includedSignalCategories ?? [];
+    const scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
+    if (signalCategories.length > 0) {
+      scopeLog.info(
+        {
+          clientUserId, projectId, docTypeKey, dryRun: true,
+          includedSignalCategories: signalCategories,
+          findingsTotal: findings.length,
+          findingsKept: scopedFindings.length,
+          findingsUncategorizable: categorizedFindings.filter((f) => f.categories.length === 0).length,
+        },
+        "document-engine: findings scoped by includedSignalCategories (uncategorizable findings excluded)",
+      );
+    }
 
     const profileSample = scopedProfileEntries.length > 0
       ? scopedProfileEntries.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
@@ -179,20 +228,42 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // Real tenant profile + scoping
     let mergedProfile: Record<string, unknown> = {};
     let findings: string[] = [];
+    let categorizedFindings: CategorizedFinding[] = [];
     if (mspCustomerId != null) {
       const tenantProfile = await buildTenantProfile(mspCustomerId);
       mergedProfile = tenantProfile.mergedProfile;
       findings = tenantProfile.findings;
+      categorizedFindings = tenantProfile.categorizedFindings;
     }
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
     const scopedProfileEntries = profilePatterns.length > 0
       ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
       : Object.entries(mergedProfile);
     const scopedProfile = Object.fromEntries(scopedProfileEntries);
-    // Known gap: no signal-category-based findings filter exists yet
-    // (includedSignalCategories is stored but unused here) — findings pass
-    // through unfiltered until that filter is built.
-    const scopedFindings = findings;
+    // `includedSignalCategories` is now honored (was stored-but-unused): a
+    // finding is kept when the check that produced it feeds a signal rule in one
+    // of the requested categories. Empty list = no filter, same convention as
+    // includedProfileKeyPatterns above.
+    //
+    // Standing limitation, not a TODO: script-run findings
+    // (script_run_results.parsedFindings) carry no checkKey, so they can never
+    // be categorized and are excluded whenever a category filter is set. See
+    // buildTenantProfile()'s categorizedFindings doc comment for why that data
+    // does not exist to be recovered.
+    const signalCategories = docTypeRow.includedSignalCategories ?? [];
+    const scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
+    if (signalCategories.length > 0) {
+      scopeLog.info(
+        {
+          clientUserId, projectId, docTypeKey, documentId, dryRun: false,
+          includedSignalCategories: signalCategories,
+          findingsTotal: findings.length,
+          findingsKept: scopedFindings.length,
+          findingsUncategorizable: categorizedFindings.filter((f) => f.categories.length === 0).length,
+        },
+        "document-engine: findings scoped by includedSignalCategories (uncategorizable findings excluded)",
+      );
+    }
 
     const profileSample = scopedProfileEntries.length > 0
       ? scopedProfileEntries.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")

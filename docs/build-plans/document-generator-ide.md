@@ -74,6 +74,7 @@ Phase 3's create call path rather than a second one.
 | 3 | New Document Type create modal | Done | #43 |
 | 4 | Missing Document Types panel | Done | #44 |
 | 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
+| 6 | Signal-category scoping for document generation | Done (TBD) | — |
 
 
 ## Notes
@@ -93,7 +94,60 @@ The Phases table above previously carried a leftover merge artifact
 merge into `main`) — cleaned up as part of Phase 5, no content lost, both
 rows already agreed on "Done".
 
+## Phase 6 — Signal-category scoping for document generation
+Makes `document_types.includedSignalCategories` actually do something. It had
+been a stored-but-unread column since the table was created: Phase 5 gave
+admins editors and an "Unscoped" warning for it, but `document-engine.ts`
+discarded the value and always sent every finding to the AI, so a
+security-scoped document type still received adoption/licensing findings.
+
+What was built:
+- `deriveMonitorFindingsWithKeys()` (tenant-signals.ts) — the same findings
+  `deriveMonitorFindings()` already produced, each still carrying its source
+  `monitor_checks.key`. `deriveMonitorFindings()` is now a `.map(f => f.text)`
+  projection of it, so the two can't drift on wording or on which rows qualify.
+- `fetchSignalCategoriesForCheckKeys()` (tenant-signals.ts) — ONE batched query
+  (never per-check) joining `signal_derivation_rules.source_key =
+  monitor_checks.key`, projecting each matched rule's `signal_key` down to its
+  category prefix, validated against `SIGNAL_CATEGORY_PREFIXES` and deduped per
+  checkKey. Same join `getSignalStabilizationWindowHours` already uses.
+- `buildTenantProfile()` gained an ADDITIVE `categorizedFindings:
+  { text, categories }[]` — 1:1 with `findings` (same strings, order, dedupe),
+  built from the monitor rows it already fetched. `findings` and every other
+  field are byte-for-byte unchanged; all 18 existing call sites were audited
+  first and none read anything that moved.
+- `document-engine.ts` (both the dry-run and real-run branches, via one shared
+  `scopeFindingsBySignalCategory()` so preview can't disagree with the real
+  document): when `includedSignalCategories` is non-empty, only findings whose
+  categories intersect it are sent. Empty list = all findings, the same fallback
+  convention `includedProfileKeyPatterns` uses.
+- Logging on the filter decision under `engine.document-generator` (findings
+  total / kept / uncategorizable), so "why is this finding missing?" is
+  answerable from logs.
+
 ## Open Issues
+**Phase 6 — script-run findings can never be category-scoped (permanent).**
+Findings from `script_run_results.parsedFindings` are free-text strings uploaded
+by the legacy M365 script with no checkKey and no link to any
+`signal_derivation_rules` row. There is nothing to attribute them through, so
+they always carry `categories: []` and are EXCLUDED whenever a document type
+sets `includedSignalCategories`. This is a data limitation, not a deferred
+task — the attribution data does not exist and cannot be derived without
+fabricating it. They are deliberately kept in `categorizedFindings` (rather
+than dropped from the type) so callers can see them and decide. Post-wipe,
+script-fed findings are largely dead anyway.
+
+**Phase 6 — recall limit on the rule↔check join.** A rule whose `source_key` is
+a mapping targetField (e.g. `globalAdminCount`) or the synthetic
+`<checkKey>__itemCount` rather than the bare check key does not match the join,
+so its category isn't attributed to that check. Widening to mapping
+targetFields would be ambiguous (two checks can emit the same targetField).
+Under-attribution is the safe direction — it can only make a scoped document
+narrower, never leak a finding into a type that didn't ask for its category.
+Not live-verified: no DB access in Claude Code sessions, so how many real rules
+use the bare-key form vs. a derived form is unknown here and worth a look on
+Shane's console before any document type is switched to a narrow category list.
+
 Phase 5's "Unscoped" badge links to `DocumentTypesManager.tsx`'s edit flow
 at `/command/insights?tab=document_types` (deep link works — the page
 reads `?tab` — but the `cmd-insights` nav entry itself was removed in

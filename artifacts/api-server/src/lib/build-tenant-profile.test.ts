@@ -42,6 +42,9 @@ vi.mock("@workspace/db", () => ({
   mspCustomersTable: { __table: "msp_customers", id: "id", tenantId: "tenantId", mspId: "mspId" },
   mspUsersTable: { __table: "msp_users", userId: "userId", customerId: "customerId", isActive: "isActive" },
   tenantMonitorProfilesTable: { __table: "tenant_monitor_profiles", checkKey: "checkKey", extractedProperties: "extractedProperties", tenantId: "tenantId", collectedAt: "collectedAt" },
+  // Joined pair behind categorizedFindings' checkKey → signal-category lookup.
+  signalDerivationRulesTable: { __table: "signal_derivation_rules", signalKey: "signalKey", sourceKey: "sourceKey" },
+  monitorChecksTable: { __table: "monitor_checks", key: "key", frequency: "frequency" },
 }));
 
 vi.mock("./logger", () => ({
@@ -59,6 +62,7 @@ import {
   buildTenantProfile,
   mergeMonitorProfileRows,
   deriveMonitorFindings,
+  deriveMonitorFindingsWithKeys,
   type TenantMonitorProfileRow,
 } from "./tenant-signals.ts";
 
@@ -84,6 +88,13 @@ function makeDb(canned: {
   clientM365Profiles: Rows;
   scriptRunResults: Rows;
   tenantMonitorProfiles: Rows;
+  /**
+   * Rows the signal_derivation_rules ⋈ monitor_checks join returns — i.e. the
+   * `{ checkKey, signalKey }` pairs behind categorizedFindings. Optional: every
+   * pre-existing test omits it and gets no categories, which is exactly the
+   * shape of a tenant whose checks feed no category-prefixed rules.
+   */
+  signalRuleCheckJoin?: Rows;
 }) {
   const rowsFor = (table: { __table?: string } | undefined): Rows => {
     switch (table?.__table) {
@@ -92,6 +103,7 @@ function makeDb(canned: {
       case "client_m365_profiles": return canned.clientM365Profiles;
       case "script_run_results": return canned.scriptRunResults;
       case "tenant_monitor_profiles": return canned.tenantMonitorProfiles;
+      case "signal_derivation_rules": return canned.signalRuleCheckJoin ?? [];
       default: return [];
     }
   };
@@ -101,8 +113,15 @@ function makeDb(canned: {
     const resolve = () => Promise.resolve(rowsFor(table));
     const b: Record<string, unknown> = {
       from: vi.fn((t: { __table?: string }) => { table = t; return b; }),
+      // The categorized-findings lookup joins monitor_checks onto
+      // signal_derivation_rules; the joined table doesn't change which canned
+      // rows come back (the join result IS the canned set), so this just chains.
+      innerJoin: vi.fn(() => b),
       where: vi.fn(() => b),
       limit: vi.fn(() => resolve()),
+      // `where` is terminal for the join query (no limit/orderBy follows it), so
+      // the builder itself must be awaitable too.
+      then: (onF: (v: Rows) => unknown, onR?: (e: unknown) => unknown) => resolve().then(onF, onR),
       // orderBy is terminal for selectDistinctOn, non-terminal for scriptRuns —
       // return a thenable that is ALSO chainable to a subsequent .limit().
       orderBy: vi.fn(() => {
@@ -313,5 +332,115 @@ describe("deriveMonitorFindings", () => {
     expect(findings[0]).toBe("sharepoint:anonymous-links: warning severity condition matched on latest monitoring scan (7 items)");
     // The checkKey carries the keyword surface findings_keyword rules match on.
     expect(findings[0]!.toLowerCase()).toContain("sharepoint");
+  });
+
+  it("deriveMonitorFindingsWithKeys produces byte-identical strings, plus the source checkKey", () => {
+    const rows: TenantMonitorProfileRow[] = [
+      { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 7 } },
+      { checkKey: "identity:stale-guests", status: "ok", severityMatched: "high", extractedProperties: { _itemCount: 1 } },
+      { checkKey: "exchange:auto-forwarding-rules", status: "error", severityMatched: null, extractedProperties: null },
+    ];
+    const withKeys = deriveMonitorFindingsWithKeys(rows);
+    // Same rows qualify, same strings — deriveMonitorFindings is a projection of this.
+    expect(withKeys.map(f => f.text)).toEqual(deriveMonitorFindings(rows));
+    expect(withKeys.map(f => f.checkKey)).toEqual(["sharepoint:anonymous-links", "identity:stale-guests"]);
+    // Singular/plural item wording preserved.
+    expect(withKeys[1]!.text).toContain("(1 item)");
+  });
+});
+
+// ─── categorizedFindings — additive signal-category annotation ────────────────
+//
+// Locks the contract document-engine.ts's includedSignalCategories filter
+// depends on: categorizedFindings is 1:1 with findings, monitor findings carry
+// their check's signal-category prefixes, and script-run findings are present
+// with an empty category list (the permanent limitation) rather than dropped.
+
+describe("buildTenantProfile — categorizedFindings", () => {
+  it("annotates monitor findings with their check's signal-category prefixes, deduped", async () => {
+    makeDb({
+      mspCustomers: [{ tenantId: "tenant-abc", mspId: 9 }],
+      mspUsers: [{ userId: 777 }],
+      clientM365Profiles: [],
+      scriptRunResults: [],
+      tenantMonitorProfiles: [
+        { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 7 } },
+      ],
+      signalRuleCheckJoin: [
+        // Two rules in the same category → one deduped entry.
+        { checkKey: "sharepoint:anonymous-links", signalKey: "governance:oversharing" },
+        { checkKey: "sharepoint:anonymous-links", signalKey: "governance:external_access" },
+        { checkKey: "sharepoint:anonymous-links", signalKey: "security:has_gaps" },
+        // Not a valid SIGNAL_CATEGORY_PREFIXES member → dropped, not passed through.
+        { checkKey: "sharepoint:anonymous-links", signalKey: "notacategory:whatever" },
+        // No colon at all → dropped.
+        { checkKey: "sharepoint:anonymous-links", signalKey: "bareSignalKey" },
+      ],
+    });
+
+    const result = await buildTenantProfile(42);
+
+    expect(result.categorizedFindings).toHaveLength(1);
+    expect(result.categorizedFindings[0]!.text).toBe(result.findings[0]);
+    expect([...result.categorizedFindings[0]!.categories].sort()).toEqual(["governance", "security"]);
+  });
+
+  it("stays 1:1 with findings and gives script-run findings an empty category list (permanent limitation)", async () => {
+    makeDb({
+      mspCustomers: [{ tenantId: "tenant-abc", mspId: 9 }],
+      mspUsers: [{ userId: 777 }],
+      clientM365Profiles: [],
+      scriptRunResults: [{ parsedFindings: ["script-only finding with no checkKey"], profileUpdates: {} }],
+      tenantMonitorProfiles: [
+        { checkKey: "identity:stale-guests", status: "ok", severityMatched: "high", extractedProperties: { _itemCount: 4 } },
+      ],
+      signalRuleCheckJoin: [{ checkKey: "identity:stale-guests", signalKey: "security:stale_identities" }],
+    });
+
+    const result = await buildTenantProfile(42);
+
+    // Same strings, same order, same dedupe as findings — never a divergent set.
+    expect(result.categorizedFindings.map(f => f.text)).toEqual(result.findings);
+
+    const scriptEntry = result.categorizedFindings.find(f => f.text === "script-only finding with no checkKey");
+    expect(scriptEntry).toBeDefined();
+    // Kept and visible, NOT silently dropped — but uncategorizable.
+    expect(scriptEntry!.categories).toEqual([]);
+
+    const monitorEntry = result.categorizedFindings.find(f => f.text.startsWith("identity:stale-guests"));
+    expect(monitorEntry!.categories).toEqual(["security"]);
+  });
+
+  it("gives a monitor finding whose check feeds no category-prefixed rule an empty category list", async () => {
+    makeDb({
+      mspCustomers: [{ tenantId: "tenant-abc", mspId: 9 }],
+      mspUsers: [],
+      clientM365Profiles: [],
+      scriptRunResults: [],
+      tenantMonitorProfiles: [
+        { checkKey: "exchange:mailbox-audit", status: "ok", severityMatched: "medium", extractedProperties: { _itemCount: 3 } },
+      ],
+      signalRuleCheckJoin: [], // no rule sources this check
+    });
+
+    const result = await buildTenantProfile(42);
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.categorizedFindings[0]!.categories).toEqual([]);
+  });
+
+  it("returns an empty categorizedFindings (no throw) for a customer with no tenantId", async () => {
+    makeDb({
+      mspCustomers: [{ tenantId: null, mspId: 4 }],
+      mspUsers: [{ userId: 501 }],
+      clientM365Profiles: [],
+      scriptRunResults: [],
+      tenantMonitorProfiles: [],
+    });
+
+    const result = await buildTenantProfile(200);
+
+    expect(result.findings).toEqual([]);
+    expect(result.categorizedFindings).toEqual([]);
   });
 });

@@ -342,19 +342,89 @@ export function mergeMonitorProfileRows(
  * ("sharepoint:anonymous-links" → keyword "SharePoint").
  */
 export function deriveMonitorFindings(monitorRows: TenantMonitorProfileRow[]): string[] {
-  const findings: string[] = [];
+  return deriveMonitorFindingsWithKeys(monitorRows).map(f => f.text);
+}
+
+/** A monitor-derived finding string plus the `monitor_checks.key` that produced it. */
+export interface MonitorDerivedFinding {
+  text: string;
+  checkKey: string;
+}
+
+/**
+ * The same findings `deriveMonitorFindings()` returns, each still carrying the
+ * checkKey it came from. `deriveMonitorFindings()` is now a thin projection of
+ * this function (`.map(f => f.text)`), so the two can never drift on wording or
+ * on which rows qualify — the string contract every existing `findings_keyword`
+ * rule and every current caller depends on is byte-for-byte unchanged.
+ *
+ * The checkKey is what makes signal-category attribution possible: it is the
+ * only durable link from a finding back to the `signal_derivation_rules` rows
+ * (via `source_key`) that say which signal categories the check feeds.
+ */
+export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileRow[]): MonitorDerivedFinding[] {
+  const findings: MonitorDerivedFinding[] = [];
   for (const row of monitorRows) {
     if (row.status !== "ok") continue;
     const severity = row.severityMatched?.trim();
     if (!severity) continue;
     const props = row.extractedProperties ?? {};
     const itemCount = firstNumericProp(props, ["_itemCount"]);
-    findings.push(
-      `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
-      (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
-    );
+    findings.push({
+      checkKey: row.checkKey,
+      text:
+        `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
+        (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
+    });
   }
   return findings;
+}
+
+/**
+ * Batched checkKey → signal-category-prefix lookup. ONE query for the whole
+ * list, never one per check: every `signal_derivation_rules` row whose
+ * `source_key` equals one of the given `monitor_checks.key`s, projected down to
+ * that rule's `signal_key` category prefix (the substring before the first
+ * ":"), validated against `SIGNAL_CATEGORY_PREFIXES` and deduped per checkKey.
+ * A checkKey with no matching rule (or only rules whose signalKey has no valid
+ * prefix) is simply absent from the returned map.
+ *
+ * The join is `signal_derivation_rules.source_key = monitor_checks.key` — the
+ * exact join `getSignalStabilizationWindowHours` / `getSignalStabilizationWindowHoursBatch`
+ * above already use, so category attribution and stabilization windows agree on
+ * what "this rule is fed by this check" means.
+ *
+ * KNOWN RECALL LIMIT (deliberate, matches the existing join): a rule whose
+ * `source_key` is a mapping targetField (e.g. `globalAdminCount`) or the
+ * synthetic `<checkKey>__itemCount` rather than the bare check key will not
+ * match, so its category is not attributed to that check. Widening the join to
+ * mapping targetFields would be ambiguous — two checks can emit the same
+ * targetField — so it is not done here. Under-attribution is the safe direction:
+ * it can only make a category-scoped document narrower, never leak a finding
+ * into a document type that didn't ask for its category.
+ */
+export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Promise<Map<string, string[]>> {
+  const byCheckKey = new Map<string, string[]>();
+  const uniqueKeys = [...new Set(checkKeys)];
+  if (uniqueKeys.length === 0) return byCheckKey;
+
+  const rows = await db
+    .select({ checkKey: monitorChecksTable.key, signalKey: signalDerivationRulesTable.signalKey })
+    .from(signalDerivationRulesTable)
+    .innerJoin(monitorChecksTable, eq(signalDerivationRulesTable.sourceKey, monitorChecksTable.key))
+    .where(inArray(monitorChecksTable.key, uniqueKeys));
+
+  const validPrefixes = new Set<string>(SIGNAL_CATEGORY_PREFIXES);
+  for (const row of rows) {
+    const colonAt = row.signalKey.indexOf(":");
+    if (colonAt <= 0) continue;
+    const prefix = row.signalKey.slice(0, colonAt);
+    if (!validPrefixes.has(prefix)) continue;
+    const existing = byCheckKey.get(row.checkKey);
+    if (!existing) byCheckKey.set(row.checkKey, [prefix]);
+    else if (!existing.includes(prefix)) existing.push(prefix);
+  }
+  return byCheckKey;
 }
 
 // ─── Tenant profile builder (single source of truth for signal evaluation) ────
@@ -385,9 +455,44 @@ export function deriveMonitorFindings(monitorRows: TenantMonitorProfileRow[]): s
 // A customer with no active portal user (unclaimed) is valid: the profile /
 // script-run half simply contributes nothing, but tenant/msp resolution and
 // the monitor merge still proceed off the customer id.
+//
+// ADDITIVE (2026-07-28): the return also carries `categorizedFindings` — the
+// exact same strings as `findings`, in the same order, each annotated with the
+// signal-category prefixes of the check that produced it. `findings` itself and
+// every field's existing shape are untouched; consumers that don't want
+// category scoping keep reading `findings` and see no change.
+export interface CategorizedFinding {
+  text: string;
+  /**
+   * Signal-category prefixes (`SIGNAL_CATEGORY_PREFIXES` — security, compliance,
+   * governance, …) this finding belongs to. EMPTY means "not categorizable",
+   * which is a real, distinguishable state — not "belongs to nothing". See the
+   * permanent-limitation note on `categorizedFindings` below.
+   */
+  categories: string[];
+}
+
 export async function buildTenantProfile(customerId: number): Promise<{
   mergedProfile: Record<string, unknown>;
   findings: string[];
+  /**
+   * 1:1 with `findings` (same strings, same order, same dedupe) — an additive
+   * companion, not a replacement.
+   *
+   * PERMANENT LIMITATION, stated in the type rather than hidden: only
+   * MONITOR-derived findings can carry categories. Script-run findings (from
+   * `script_run_results.parsedFindings`) are free-text strings uploaded by the
+   * legacy M365 script with no checkKey and no link to any
+   * `signal_derivation_rules` row, so there is nothing to attribute them
+   * through — they always get `categories: []`. This is not a bug to fix later:
+   * the data to categorize them does not exist and cannot be derived without
+   * fabricating it. They are deliberately kept in this array (rather than
+   * dropped) so a caller can see them and decide, instead of silently losing
+   * findings it never knew were there. A monitor finding whose check feeds no
+   * category-prefixed rule also gets `[]` — same representation, same reason:
+   * we genuinely don't know its category.
+   */
+  categorizedFindings: CategorizedFinding[];
   customerId: number;
   mspId: number | null;
   tenantId: string | null;
@@ -446,10 +551,26 @@ export async function buildTenantProfile(customerId: number): Promise<{
   // precedence contract above), legacy-vocabulary bridge, and real
   // severity-matched monitor findings so findings_keyword rules can fire for
   // Graph-only customers.
+  //
+  // Category attribution (additive) is keyed by the finding STRING so the
+  // annotation survives the dedupe/reordering `findings` applies below.
+  const categoriesByFindingText = new Map<string, string[]>();
   if (tenantId) {
     const monitorRows = await fetchLatestMonitorProfileRows(tenantId);
     mergeMonitorProfileRows(mergedProfile, monitorRows);
-    findings = [...new Set([...findings, ...deriveMonitorFindings(monitorRows)])];
+    const monitorFindings = deriveMonitorFindingsWithKeys(monitorRows);
+    findings = [...new Set([...findings, ...monitorFindings.map(f => f.text)])];
+
+    // One batched query for the whole finding set (skipped entirely when there
+    // are no monitor findings — every engine calls buildTenantProfile, so this
+    // must not add a query to the common no-findings path).
+    if (monitorFindings.length > 0) {
+      const categoriesByCheckKey = await fetchSignalCategoriesForCheckKeys(monitorFindings.map(f => f.checkKey));
+      for (const finding of monitorFindings) {
+        const categories = categoriesByCheckKey.get(finding.checkKey);
+        if (categories?.length) categoriesByFindingText.set(finding.text, categories);
+      }
+    }
   } else {
     log.warn(
       { customerId },
@@ -457,7 +578,16 @@ export async function buildTenantProfile(customerId: number): Promise<{
     );
   }
 
-  return { mergedProfile, findings, customerId, mspId, tenantId };
+  // Built from `findings` itself so the two arrays can never disagree on
+  // content, order, or dedupe. Anything without a category entry — every
+  // script-run finding, plus any monitor finding whose check feeds no
+  // category-prefixed rule — gets `[]` (see the type's limitation note).
+  const categorizedFindings: CategorizedFinding[] = findings.map(text => ({
+    text,
+    categories: categoriesByFindingText.get(text) ?? [],
+  }));
+
+  return { mergedProfile, findings, categorizedFindings, customerId, mspId, tenantId };
 }
 
 // ─── Tenant health block vars (used by email templates) ──────────────────────
