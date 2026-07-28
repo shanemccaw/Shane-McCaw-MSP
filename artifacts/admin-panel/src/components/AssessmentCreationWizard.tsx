@@ -70,6 +70,7 @@ import {
   Package,
   Search,
   X,
+  Plus,
 } from "lucide-react";
 import type { AssessmentNode } from "./SimulatorLeftTree";
 
@@ -78,6 +79,9 @@ interface MonitorCheckOption {
   label: string;
   description: string | null;
   status: string;
+  endpoint: string;
+  method: string;
+  properties: string[];
 }
 
 interface MonitoringPackageOption {
@@ -152,6 +156,20 @@ export function AssessmentCreationWizard({ existingAssessments, editingAssessmen
   // The check selection as loaded from the currently-attached package —
   // diffed against selectedCheckKeys to detect an edit-mode checks change.
   const [originalCheckKeys, setOriginalCheckKeys] = useState<string[]>([]);
+
+  // Inline "+ New check" section (Phase 8, Issue #55) — deliberately NOT the
+  // existing MonitorCheckEditorModal/"new-monitor-check" ModalType: opening
+  // that modal from inside this wizard would replace/close the wizard itself
+  // via ModalContext's single-activeModal slot, silently discarding Steps 1-2
+  // and any already-selected checks. This is a same-component expandable
+  // section instead, calling the same POST /api/admin/monitor-checks route.
+  const [inlineCreateOpen, setInlineCreateOpen] = useState(false);
+  const [newCheckKey, setNewCheckKey] = useState("");
+  const [newCheckLabel, setNewCheckLabel] = useState("");
+  const [newCheckEndpoint, setNewCheckEndpoint] = useState("");
+  const [newCheckMethod, setNewCheckMethod] = useState("GET");
+  const [inlineCreateSubmitting, setInlineCreateSubmitting] = useState(false);
+  const [inlineCreateError, setInlineCreateError] = useState<string | null>(null);
 
   // ── Edit mode only ──────────────────────────────────────────────────────
   // Full current row from GET /admin/services/:id — the round-trip base for
@@ -366,7 +384,11 @@ export function AssessmentCreationWizard({ existingAssessments, editingAssessmen
   const checksByDomain = useMemo(() => {
     const q = checkSearch.trim().toLowerCase();
     const filtered = q
-      ? allChecks.filter((c) => `${c.key} ${c.label} ${c.description ?? ""}`.toLowerCase().includes(q))
+      ? allChecks.filter((c) =>
+          `${c.key} ${c.label} ${c.description ?? ""} ${c.endpoint ?? ""} ${(c.properties ?? []).join(" ")}`
+            .toLowerCase()
+            .includes(q),
+        )
       : allChecks;
     const grouped: Record<string, MonitorCheckOption[]> = {};
     for (const check of filtered) {
@@ -395,6 +417,75 @@ export function AssessmentCreationWizard({ existingAssessments, editingAssessmen
   const removeCheck = (key: string) => {
     setSelectedCheckKeys((prev) => prev.filter((k) => k !== key));
   };
+
+  // Opening the inline "+ New check" section pre-fills the endpoint field
+  // from whatever the operator just searched for — almost certainly the
+  // Graph endpoint they were looking for and didn't find in the catalog.
+  const openInlineCreate = () => {
+    setNewCheckEndpoint(checkSearch.trim());
+    setInlineCreateError(null);
+    setInlineCreateOpen(true);
+  };
+
+  const cancelInlineCreate = () => {
+    setInlineCreateOpen(false);
+    setInlineCreateError(null);
+    setNewCheckKey("");
+    setNewCheckLabel("");
+    setNewCheckEndpoint("");
+    setNewCheckMethod("GET");
+  };
+
+  // Same key format MonitorCheckEditorModal (ModalContext.tsx) already
+  // enforces, so this can't produce a check the rest of the system's
+  // key-parsing (domain-grouping split on ":") can't handle.
+  async function submitInlineCreate() {
+    const key = newCheckKey.trim();
+    const label = newCheckLabel.trim();
+    const endpoint = newCheckEndpoint.trim();
+
+    if (!key) {
+      setInlineCreateError("Key is required");
+      return;
+    }
+    if (!/^[a-z0-9]+:[a-z0-9-]+$/.test(key)) {
+      setInlineCreateError("Key must look like domain:check-name — the prefix is what groups it in the tree");
+      return;
+    }
+    if (!label) {
+      setInlineCreateError("Label is required");
+      return;
+    }
+    if (!endpoint) {
+      setInlineCreateError("Endpoint is required");
+      return;
+    }
+
+    setInlineCreateSubmitting(true);
+    setInlineCreateError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/monitor-checks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, label, endpoint, method: newCheckMethod }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInlineCreateError(data.error || "Failed to create monitor check");
+        return;
+      }
+      const created = data.check as MonitorCheckOption;
+      // Optimistic append into this component's own state — no need to wait
+      // for/listen to the simulator-endpoints-updated event.
+      setAllChecks((prev) => [...prev, created]);
+      setSelectedCheckKeys((prev) => (prev.includes(created.key) ? prev : [...prev, created.key]));
+      cancelInlineCreate();
+    } catch (err: any) {
+      setInlineCreateError(err?.message || "Network error creating monitor check");
+    } finally {
+      setInlineCreateSubmitting(false);
+    }
+  }
 
   // Step 3 exists when creating a new package, and (edit mode only) when
   // attached to an existing package — editing that package's checks is a
@@ -1057,6 +1148,101 @@ export function AssessmentCreationWizard({ existingAssessments, editingAssessmen
                 )}
               </div>
             </div>
+          </div>
+
+          {/* ── Inline "+ New check" (Phase 8, Issue #55) — expandable
+              section, never a Dialog, so Steps 1-2 and the current check
+              selection are never at risk of being discarded. ── */}
+          <div className="rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => (inlineCreateOpen ? cancelInlineCreate() : openInlineCreate())}
+              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              {inlineCreateOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+              New check
+            </button>
+            {inlineCreateOpen && (
+              <div className="space-y-2.5 border-t border-border p-2.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-check-key" className="text-xs font-semibold text-muted-foreground">Key</Label>
+                    <Input
+                      id="new-check-key"
+                      placeholder="identity:users-list"
+                      value={newCheckKey}
+                      onChange={(e) => setNewCheckKey(e.target.value)}
+                      className="bg-background border-border text-foreground text-xs h-9 font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-check-label" className="text-xs font-semibold text-muted-foreground">Label</Label>
+                    <Input
+                      id="new-check-label"
+                      placeholder="Users list"
+                      value={newCheckLabel}
+                      onChange={(e) => setNewCheckLabel(e.target.value)}
+                      className="bg-background border-border text-foreground text-xs h-9"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-check-endpoint" className="text-xs font-semibold text-muted-foreground">Endpoint</Label>
+                    <Input
+                      id="new-check-endpoint"
+                      placeholder="/users"
+                      value={newCheckEndpoint}
+                      onChange={(e) => setNewCheckEndpoint(e.target.value)}
+                      className="bg-background border-border text-foreground text-xs h-9 font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-check-method" className="text-xs font-semibold text-muted-foreground">Method</Label>
+                    <select
+                      id="new-check-method"
+                      value={newCheckMethod}
+                      onChange={(e) => setNewCheckMethod(e.target.value)}
+                      className="h-9 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none"
+                    >
+                      <option value="GET">GET</option>
+                      <option value="POST">POST</option>
+                    </select>
+                  </div>
+                </div>
+                {inlineCreateError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{inlineCreateError}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelInlineCreate}
+                    disabled={inlineCreateSubmitting}
+                    className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs h-8"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={submitInlineCreate}
+                    disabled={inlineCreateSubmitting}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 h-8 px-3"
+                  >
+                    {inlineCreateSubmitting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding…
+                      </>
+                    ) : (
+                      "Add check"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           </div>
         )}

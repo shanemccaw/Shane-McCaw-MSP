@@ -20,6 +20,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
+import { toast } from "sonner";
 
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { AssessmentNode } from "./SimulatorLeftTree";
@@ -65,8 +66,24 @@ const PACKAGES = [
 ];
 
 const CHECKS = [
-  { key: "identity:mfa-registration", label: "MFA registration coverage", description: null, status: "active" },
-  { key: "copilot:usage-activity", label: "Copilot usage activity", description: null, status: "active" },
+  {
+    key: "identity:mfa-registration",
+    label: "MFA registration coverage",
+    description: null,
+    status: "active",
+    endpoint: "/reports/authenticationMethods/userRegistrationDetails",
+    method: "GET",
+    properties: ["isMfaRegistered"],
+  },
+  {
+    key: "copilot:usage-activity",
+    label: "Copilot usage activity",
+    description: null,
+    status: "active",
+    endpoint: "/reports/getM365CopilotUsageUserDetail",
+    method: "GET",
+    properties: ["lastActivityDate"],
+  },
 ];
 
 function jsonResponse(body: unknown, ok = true) {
@@ -698,5 +715,194 @@ describe("AssessmentCreationWizard — slug uniqueness", () => {
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
 
     expect(await screen.findByText("Create new package")).toBeTruthy();
+  });
+});
+
+// ── Phase 8 (#55): Step 3 check search by endpoint/properties + inline create ──
+
+async function toStep3WithChecks(checks: unknown[]) {
+  fetchWithAuth.mockImplementation(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    if (method === "GET" && url === "/api/admin/monitoring-packages") return jsonResponse({ packages: PACKAGES });
+    if (method === "GET" && url === "/api/admin/monitor-checks") return jsonResponse({ checks });
+    if (method === "POST" && url === "/api/admin/monitor-checks") {
+      const body = JSON.parse(init!.body as string);
+      return jsonResponse(
+        { check: { key: body.key, label: body.label, description: null, status: "active", endpoint: body.endpoint, method: body.method, properties: [] } },
+        true,
+      );
+    }
+    return jsonResponse({});
+  });
+
+  renderWizard(EXISTING, vi.fn());
+  await fillStep1("Entra ID Governance Assessment");
+  fireEvent.change(screen.getByLabelText("Package name"), { target: { value: "Entra ID Governance" } });
+  await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/monitoring-packages"));
+  fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+  await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/monitor-checks"));
+}
+
+describe("AssessmentCreationWizard — Phase 8: search by endpoint/properties", () => {
+  const SEARCH_CHECKS = [
+    ...CHECKS,
+    {
+      key: "reports:tenant-summary",
+      label: "Tenant Summary Report",
+      description: null,
+      status: "active",
+      endpoint: "/users",
+      method: "GET",
+      properties: [],
+    },
+    {
+      key: "reports:license-detail",
+      label: "License Detail Report",
+      description: null,
+      status: "active",
+      endpoint: "/subscribedSkus",
+      method: "GET",
+      properties: ["licenseAssignmentStates"],
+    },
+  ];
+
+  it("matches on endpoint even when neither key nor label contains the search term", async () => {
+    await toStep3WithChecks(SEARCH_CHECKS);
+
+    expect(await screen.findByText("Tenant Summary Report")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Filter checks…"), { target: { value: "/users" } });
+
+    expect(await screen.findByText("Tenant Summary Report")).toBeTruthy();
+    expect(screen.queryByText("MFA registration coverage")).toBeNull();
+    expect(screen.queryByText("Copilot usage activity")).toBeNull();
+  });
+
+  it("matches on a properties value", async () => {
+    await toStep3WithChecks(SEARCH_CHECKS);
+
+    fireEvent.change(screen.getByPlaceholderText("Filter checks…"), { target: { value: "licenseAssignmentStates" } });
+
+    expect(await screen.findByText("License Detail Report")).toBeTruthy();
+    expect(screen.queryByText("MFA registration coverage")).toBeNull();
+    expect(screen.queryByText("Tenant Summary Report")).toBeNull();
+  });
+});
+
+describe("AssessmentCreationWizard — Phase 8: inline check creation", () => {
+  it("pre-fills the endpoint field from the current search, appends the created check, and auto-selects it without a reload/event wait", async () => {
+    await toStep3WithChecks(CHECKS);
+
+    fireEvent.change(screen.getByPlaceholderText("Filter checks…"), { target: { value: "/users" } });
+    fireEvent.click(screen.getByRole("button", { name: /New check/i }));
+
+    expect((screen.getByLabelText("Endpoint") as HTMLInputElement).value).toBe("/users");
+
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "identity:users-list" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Users list" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add check" }));
+
+    expect(await screen.findAllByText("Users list")).not.toHaveLength(0);
+    expect(screen.getByText("Selected (1)")).toBeTruthy();
+    // Section collapsed back down after a successful create.
+    expect(screen.queryByLabelText("Key")).toBeNull();
+
+    const postCall = fetchWithAuth.mock.calls.find((c) => c[0] === "/api/admin/monitor-checks" && c[1]?.method === "POST");
+    expect(postCall).toBeTruthy();
+    expect(JSON.parse(postCall![1].body as string)).toEqual({
+      key: "identity:users-list",
+      label: "Users list",
+      endpoint: "/users",
+      method: "GET",
+    });
+  });
+
+  it("rejects a key that doesn't look like domain:check-name, client-side, before hitting the network", async () => {
+    await toStep3WithChecks(CHECKS);
+
+    fireEvent.click(screen.getByRole("button", { name: /New check/i }));
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "not-a-valid-key" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Whatever" } });
+    fireEvent.change(screen.getByLabelText("Endpoint"), { target: { value: "/x" } });
+
+    const postCallsBefore = fetchWithAuth.mock.calls.filter((c) => c[1]?.method === "POST").length;
+    fireEvent.click(screen.getByRole("button", { name: "Add check" }));
+
+    expect(await screen.findByText(/must look like domain:check-name/i)).toBeTruthy();
+    const postCallsAfter = fetchWithAuth.mock.calls.filter((c) => c[1]?.method === "POST").length;
+    expect(postCallsAfter).toBe(postCallsBefore);
+  });
+
+  it("shows a duplicate-key error inline within the section, not a toast", async () => {
+    fetchWithAuth.mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url === "/api/admin/monitoring-packages") return jsonResponse({ packages: PACKAGES });
+      if (method === "GET" && url === "/api/admin/monitor-checks") return jsonResponse({ checks: CHECKS });
+      if (method === "POST" && url === "/api/admin/monitor-checks") {
+        return jsonResponse({ error: "A check with that key already exists" }, false);
+      }
+      return jsonResponse({});
+    });
+
+    renderWizard(EXISTING, vi.fn());
+    await fillStep1("Entra ID Governance Assessment");
+    fireEvent.change(screen.getByLabelText("Package name"), { target: { value: "Entra ID Governance" } });
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/monitoring-packages"));
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/monitor-checks"));
+
+    const toastErrorSpy = vi.spyOn(toast, "error");
+
+    fireEvent.click(screen.getByRole("button", { name: /New check/i }));
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "identity:mfa-registration" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Dup" } });
+    fireEvent.change(screen.getByLabelText("Endpoint"), { target: { value: "/x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add check" }));
+
+    expect(await screen.findByText("A check with that key already exists")).toBeTruthy();
+    // Still expanded — the operator can fix the key without losing their input.
+    expect((screen.getByLabelText("Key") as HTMLInputElement).value).toBe("identity:mfa-registration");
+    expect(toastErrorSpy).not.toHaveBeenCalledWith("A check with that key already exists");
+  });
+
+  it("does not disturb Steps 1-2 form state or an already-selected Step 3 check", async () => {
+    await toStep3WithChecks(CHECKS);
+
+    // Re-visit Step 1's description via Back, to prove it survives inline-create untouched.
+    // (Already filled by fillStep1's Name; add a Description value directly here.)
+    fireEvent.click(screen.getByRole("button", { name: /Back/i })); // -> step 2
+    fireEvent.click(screen.getByRole("button", { name: /Back/i })); // -> step 1
+    fireEvent.change(screen.getByPlaceholderText("What this assessment evaluates and delivers"), {
+      target: { value: "Custom description text" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> step 2
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> step 3
+
+    fireEvent.click(await screen.findByText("MFA registration coverage"));
+    expect(screen.getByText("Selected (1)")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /New check/i }));
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "identity:users-list" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Users list" } });
+    fireEvent.change(screen.getByLabelText("Endpoint"), { target: { value: "/users" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add check" }));
+
+    expect(await screen.findByText("Selected (2)")).toBeTruthy();
+
+    // Steps 1-2 untouched by the inline-create round trip.
+    fireEvent.click(screen.getByRole("button", { name: /Back/i })); // -> step 2
+    expect((screen.getByLabelText("Package name") as HTMLInputElement).value).toBe("Entra ID Governance");
+    fireEvent.click(screen.getByRole("button", { name: /Back/i })); // -> step 1
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Entra ID Governance Assessment");
+    expect((screen.getByPlaceholderText("What this assessment evaluates and delivers") as HTMLTextAreaElement).value).toBe(
+      "Custom description text",
+    );
+
+    // And the prior Step 3 selection (plus the newly-created check) survives the round trip.
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> step 2
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> step 3
+    expect(await screen.findByText("Selected (2)")).toBeTruthy();
+    expect(await screen.findAllByText("MFA registration coverage")).not.toHaveLength(0);
+    expect(await screen.findAllByText("Users list")).not.toHaveLength(0);
   });
 });
