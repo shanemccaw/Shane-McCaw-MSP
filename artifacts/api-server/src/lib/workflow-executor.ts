@@ -6454,12 +6454,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       case "kanban_auto_fire": {
-        // Fires the appropriate kanban auto-fire function based on the `action`
-        // field in the node data / payload (set by the upstream kanban.card_moved event).
-        //   action = "script"   → autoFireFirstBacklogScript (Azure script execution)
-        //   action = "document" → autoFireDocumentCard (AI document generation)
+        // Fires the kanban auto-fire function based on the `action` field in the
+        // node data / payload (set by the upstream kanban.card_moved event).
+        // Script and document actions were removed — both are superseded by the
+        // real, event-driven flow (consent -> event emitted -> login -> workflow
+        // verifies telemetry -> generates documents).
         //   action = "workflow" → autoFireRunWorkflowCards (child workflow launch)
-        //   action = ""         → defaults to "script" (backwards-compatible)
+        //   action = ""         → defaults to "workflow"
         // Delegated to handleAutoFireKanban for testable, isolated dispatch logic.
         const mepClientIdRaw = interp(node.data.clientId as string | undefined, payload)
           ?? String((payload.clientUserId as number | string | undefined) ?? "");
@@ -6473,8 +6474,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        // Empty action defaults to "script" (original executor behaviour).
-        output = await handleAutoFireKanban({ clientUserId: mepClientId, action: mepAction || "script" });
+        // Empty action defaults to "workflow" (only remaining action after
+        // script/document removal).
+        output = await handleAutoFireKanban({ clientUserId: mepClientId, action: mepAction || "workflow" });
         log.info({ runId, mepClientId, mepAction, output }, "wf-executor: kanban_auto_fire dispatched");
         break;
       }
