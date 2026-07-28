@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FileCog, Plus, Pencil, Loader2, X, SlidersHorizontal, Sparkles } from "lucide-react";
 import PromptEditDialog from "@/components/PromptEditDialog";
 import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
+import DocumentScopingEditor from "@/components/DocumentScopingEditor";
 
 // Section builder and scoping builder (includedProfileKeyPatterns /
 // includedSignalCategories) are covered here. The linked AI prompt (set at
@@ -55,8 +56,8 @@ interface TypeForm {
   sortOrder: string;
   isActive: boolean;
   sectionsRaw: string;
-  profilePatternsRaw: string;
-  signalCategoriesRaw: string;
+  profileKeyPatterns: string[];
+  signalCategories: string[];
 }
 
 const emptyTypeForm = (): TypeForm => ({
@@ -68,8 +69,8 @@ const emptyTypeForm = (): TypeForm => ({
   sortOrder: "0",
   isActive: true,
   sectionsRaw: "[]",
-  profilePatternsRaw: "[]",
-  signalCategoriesRaw: "[]",
+  profileKeyPatterns: [],
+  signalCategories: [],
 });
 
 async function readErr(res: Response, fallback: string): Promise<string> {
@@ -177,8 +178,8 @@ export default function DocumentTypesManager() {
       sortOrder: String(type.sortOrder),
       isActive: type.isActive,
       sectionsRaw: JSON.stringify(type.sections ?? [], null, 2),
-      profilePatternsRaw: JSON.stringify(type.includedProfileKeyPatterns ?? [], null, 2),
-      signalCategoriesRaw: JSON.stringify(type.includedSignalCategories ?? [], null, 2),
+      profileKeyPatterns: type.includedProfileKeyPatterns ?? [],
+      signalCategories: type.includedSignalCategories ?? [],
     });
     setFormError(null);
     setModalOpen(true);
@@ -207,28 +208,6 @@ export default function DocumentTypesManager() {
       setFormError(err instanceof Error ? `Sections JSON error: ${err.message}` : "Invalid sections JSON");
       return;
     }
-    let parsedProfilePatterns: string[];
-    try {
-      const parsed = JSON.parse(form.profilePatternsRaw);
-      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      parsedProfilePatterns = parsed as string[];
-    } catch (err) {
-      setFormError(err instanceof Error ? `Profile Key Patterns JSON error: ${err.message}` : "Invalid profile key patterns JSON");
-      return;
-    }
-    let parsedSignalCategories: string[];
-    try {
-      const parsed = JSON.parse(form.signalCategoriesRaw);
-      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      parsedSignalCategories = parsed as string[];
-    } catch (err) {
-      setFormError(err instanceof Error ? `Signal Categories JSON error: ${err.message}` : "Invalid signal categories JSON");
-      return;
-    }
     setSaving(true);
     setFormError(null);
     try {
@@ -239,8 +218,8 @@ export default function DocumentTypesManager() {
         sortOrder: Number(form.sortOrder) || 0,
         isActive: form.isActive,
         sections: parsedSections,
-        includedProfileKeyPatterns: parsedProfilePatterns,
-        includedSignalCategories: parsedSignalCategories,
+        includedProfileKeyPatterns: form.profileKeyPatterns,
+        includedSignalCategories: form.signalCategories,
       };
 
       const res = editingType
@@ -375,7 +354,7 @@ export default function DocumentTypesManager() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card border border-border rounded-lg w-full max-w-md p-5 space-y-4">
+          <div className="bg-card border border-border rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">{editingType ? "Edit Document Type" : "New Document Type"}</h3>
               <button onClick={() => setModalOpen(false)} className="text-muted-foreground hover:text-foreground">
@@ -453,39 +432,12 @@ export default function DocumentTypesManager() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Profile Key Patterns <span className="font-normal text-muted-foreground/60">(JSON array of strings, wildcard suffix supported, e.g. "copilot*")</span>
-              </label>
-              <div className="border border-border rounded-md overflow-hidden" style={{ height: "150px" }}>
-                <CodeMirror
-                  value={form.profilePatternsRaw}
-                  onChange={value => setForm(f => ({ ...f, profilePatternsRaw: value }))}
-                  extensions={[json()]}
-                  theme={oneDark}
-                  height="100%"
-                  style={{ height: "100%", fontSize: "12px" }}
-                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Signal Categories <span className="font-normal text-muted-foreground/60">(JSON array of signal key prefixes, e.g. "security:")</span>
-              </label>
-              <div className="border border-border rounded-md overflow-hidden" style={{ height: "150px" }}>
-                <CodeMirror
-                  value={form.signalCategoriesRaw}
-                  onChange={value => setForm(f => ({ ...f, signalCategoriesRaw: value }))}
-                  extensions={[json()]}
-                  theme={oneDark}
-                  height="100%"
-                  style={{ height: "100%", fontSize: "12px" }}
-                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-                />
-              </div>
-            </div>
+            <DocumentScopingEditor
+              profileKeyPatterns={form.profileKeyPatterns}
+              onProfileKeyPatternsChange={v => setForm(f => ({ ...f, profileKeyPatterns: v }))}
+              signalCategories={form.signalCategories}
+              onSignalCategoriesChange={v => setForm(f => ({ ...f, signalCategories: v }))}
+            />
 
             <div className="grid grid-cols-2 gap-3 items-end">
               <div className="space-y-1.5">

@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { ExternalLink, Loader2, Play, Eye, Sparkles, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import DocumentTypePreviewContent, { type DocumentTypePreviewData } from "./DocumentTypePreviewContent";
+import DocumentScopingEditor from "./DocumentScopingEditor";
 import type { DocumentTypeNode } from "./SimulatorLeftTree";
 
 interface TenantOption {
@@ -63,8 +64,8 @@ interface PropertiesForm {
   serviceId: string;
   sectionHintsRaw: string;
   sectionsRaw: string;
-  includedProfileKeyPatternsRaw: string;
-  includedSignalCategoriesRaw: string;
+  includedProfileKeyPatterns: string[];
+  includedSignalCategories: string[];
 }
 
 function toForm(doc: DocumentTypeNode): PropertiesForm {
@@ -75,8 +76,8 @@ function toForm(doc: DocumentTypeNode): PropertiesForm {
     serviceId: doc.serviceId != null ? String(doc.serviceId) : "",
     sectionHintsRaw: doc.sectionHints ?? "",
     sectionsRaw: JSON.stringify(doc.sections ?? [], null, 2),
-    includedProfileKeyPatternsRaw: JSON.stringify(doc.includedProfileKeyPatterns ?? [], null, 2),
-    includedSignalCategoriesRaw: JSON.stringify(doc.includedSignalCategories ?? [], null, 2),
+    includedProfileKeyPatterns: doc.includedProfileKeyPatterns ?? [],
+    includedSignalCategories: doc.includedSignalCategories ?? [],
   };
 }
 
@@ -215,34 +216,6 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
       return;
     }
 
-    let includedProfileKeyPatterns: string[];
-    try {
-      const parsed = JSON.parse(form.includedProfileKeyPatternsRaw);
-      if (!Array.isArray(parsed) || !parsed.every((p: unknown) => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      includedProfileKeyPatterns = parsed as string[];
-    } catch (err) {
-      setFormError(
-        err instanceof Error ? `Profile Key Patterns JSON error: ${err.message}` : "Invalid profile key patterns JSON",
-      );
-      return;
-    }
-
-    let includedSignalCategories: string[];
-    try {
-      const parsed = JSON.parse(form.includedSignalCategoriesRaw);
-      if (!Array.isArray(parsed) || !parsed.every((p: unknown) => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      includedSignalCategories = parsed as string[];
-    } catch (err) {
-      setFormError(
-        err instanceof Error ? `Signal Categories JSON error: ${err.message}` : "Invalid signal categories JSON",
-      );
-      return;
-    }
-
     setSaving(true);
     setFormError(null);
     try {
@@ -254,8 +227,8 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
         serviceId: form.serviceId.trim() !== "" ? Number(form.serviceId) : null,
         sectionHints: form.sectionHintsRaw.trim() !== "" ? form.sectionHintsRaw : null,
         sections,
-        includedProfileKeyPatterns,
-        includedSignalCategories,
+        includedProfileKeyPatterns: form.includedProfileKeyPatterns,
+        includedSignalCategories: form.includedSignalCategories,
       };
       const res = await fetchWithAuth(`/api/admin/document-types/${encodeURIComponent(doc.key)}`, {
         method: "PUT",
@@ -502,40 +475,12 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">
-              Profile Key Patterns{" "}
-              <span className="font-normal text-muted-foreground/60">(JSON array of strings, wildcard suffix supported, e.g. "copilot*")</span>
-            </label>
-            <div className="overflow-hidden rounded-md border border-border" style={{ height: "120px" }}>
-              <CodeMirror
-                value={form.includedProfileKeyPatternsRaw}
-                onChange={(value) => setForm((f) => ({ ...f, includedProfileKeyPatternsRaw: value }))}
-                extensions={[json()]}
-                theme={oneDark}
-                height="100%"
-                style={{ height: "100%", fontSize: "12px" }}
-                basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">
-              Signal Categories <span className="font-normal text-muted-foreground/60">(JSON array of signal key prefixes, e.g. "security:")</span>
-            </label>
-            <div className="overflow-hidden rounded-md border border-border" style={{ height: "120px" }}>
-              <CodeMirror
-                value={form.includedSignalCategoriesRaw}
-                onChange={(value) => setForm((f) => ({ ...f, includedSignalCategoriesRaw: value }))}
-                extensions={[json()]}
-                theme={oneDark}
-                height="100%"
-                style={{ height: "100%", fontSize: "12px" }}
-                basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-              />
-            </div>
-          </div>
+          <DocumentScopingEditor
+            profileKeyPatterns={form.includedProfileKeyPatterns}
+            onProfileKeyPatternsChange={(v) => setForm((f) => ({ ...f, includedProfileKeyPatterns: v }))}
+            signalCategories={form.includedSignalCategories}
+            onSignalCategoriesChange={(v) => setForm((f) => ({ ...f, includedSignalCategories: v }))}
+          />
 
           {formError && <p className="text-xs text-red-400">{formError}</p>}
 

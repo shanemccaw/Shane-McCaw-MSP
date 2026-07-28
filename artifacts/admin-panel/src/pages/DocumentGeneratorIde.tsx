@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "wouter";
-import CodeMirror from "@uiw/react-codemirror";
-import { json } from "@codemirror/lang-json";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap } from "lucide-react";
 import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
+import DocumentScopingEditor from "@/components/DocumentScopingEditor";
 
 function slugifyKey(input: string): string {
   return input.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "type";
@@ -493,8 +491,8 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
   const [category, setCategory] = useState<"report" | "consulting">("report");
   const [pipelineCategory, setPipelineCategory] = useState<"standalone" | "pipeline_output">("standalone");
   const [serviceId, setServiceId] = useState<number | "">("");
-  const [profilePatternsRaw, setProfilePatternsRaw] = useState("[]");
-  const [signalCategoriesRaw, setSignalCategoriesRaw] = useState("[]");
+  const [profileKeyPatterns, setProfileKeyPatterns] = useState<string[]>([]);
+  const [signalCategories, setSignalCategories] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ label: string; aiPromptId: number | null } | null>(null);
@@ -509,30 +507,6 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
     if (!label.trim() || !key.trim()) return;
     setError(null);
 
-    let includedProfileKeyPatterns: string[];
-    try {
-      const parsed = JSON.parse(profilePatternsRaw);
-      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      includedProfileKeyPatterns = parsed as string[];
-    } catch (err) {
-      setError(err instanceof Error ? `Profile Key Patterns JSON error: ${err.message}` : "Invalid profile key patterns JSON");
-      return;
-    }
-
-    let includedSignalCategories: string[];
-    try {
-      const parsed = JSON.parse(signalCategoriesRaw);
-      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
-        throw new Error("Must be a JSON array of strings");
-      }
-      includedSignalCategories = parsed as string[];
-    } catch (err) {
-      setError(err instanceof Error ? `Signal Categories JSON error: ${err.message}` : "Invalid signal categories JSON");
-      return;
-    }
-
     setSubmitting(true);
     try {
       const row = await onCreate({
@@ -541,8 +515,8 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
         category,
         pipelineCategory,
         serviceId: serviceId === "" ? null : serviceId,
-        includedProfileKeyPatterns,
-        includedSignalCategories,
+        includedProfileKeyPatterns: profileKeyPatterns,
+        includedSignalCategories: signalCategories,
       });
       setCreated({ label: row.label, aiPromptId: row.aiPromptId });
     } catch (err) {
@@ -648,46 +622,16 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Profile Key Patterns <span className="text-gray-500">(JSON array of strings, wildcard suffix supported, e.g. "copilot*")</span>
-              </label>
-              <div className="border border-gray-700/50 rounded-lg overflow-hidden" style={{ height: "120px" }}>
-                <CodeMirror
-                  value={profilePatternsRaw}
-                  onChange={value => setProfilePatternsRaw(value)}
-                  extensions={[json()]}
-                  theme={oneDark}
-                  height="100%"
-                  style={{ height: "100%", fontSize: "12px" }}
-                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-                />
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1">
-                Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
-                client profile.
-              </p>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Signal Categories <span className="text-gray-500">(JSON array of signal key prefixes, e.g. "security:")</span>
-              </label>
-              <div className="border border-gray-700/50 rounded-lg overflow-hidden" style={{ height: "120px" }}>
-                <CodeMirror
-                  value={signalCategoriesRaw}
-                  onChange={value => setSignalCategoriesRaw(value)}
-                  extensions={[json()]}
-                  theme={oneDark}
-                  height="100%"
-                  style={{ height: "100%", fontSize: "12px" }}
-                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-                />
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1">
-                Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
-                client profile.
-              </p>
-            </div>
+            <DocumentScopingEditor
+              profileKeyPatterns={profileKeyPatterns}
+              onProfileKeyPatternsChange={setProfileKeyPatterns}
+              signalCategories={signalCategories}
+              onSignalCategoriesChange={setSignalCategories}
+            />
+            <p className="text-[10px] text-gray-500">
+              Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
+              client profile.
+            </p>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-gray-700/50 text-gray-300 hover:bg-gray-800/50">
                 Cancel
