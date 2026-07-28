@@ -39,7 +39,7 @@ exist and are live (see `consent.ts`).
 | 4 | Run history & diff | Done | #26 |
 | 5 | Assessment Creation Wizard | Done | #28 |
 | 6 | Assessment Edit Wizard | Done | #29 |
-| 7 | Delete / Deprecate | Not Started | #30 |
+| 7 | Delete / Deprecate | In Progress | #30 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
