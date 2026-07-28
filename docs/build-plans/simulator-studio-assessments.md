@@ -40,10 +40,10 @@ login and has no PlatformAdmin entry point at all.
 ## Phases
 | Phase | Title                                        | Status      | Issue |
 |-------|-----------------------------------------------|-------------|-------|
-| 1     | Assessment catalog tree + packageKey audit     | Not Started | #TBD  |
-| 2     | Admin-direct execution wiring                  | Not Started | #TBD  |
-| 3     | Results & findings display                    | Not Started | #TBD  |
-| 4     | Run history & diff                             | Not Started | #TBD  |
+| 1     | Assessment catalog tree + packageKey audit     | Not Started | #23 |
+| 2     | Admin-direct execution wiring                  | Not Started | #24 |
+| 3     | Results & findings display                    | Not Started | #25 |
+| 4     | Run history & diff                             | Not Started | #26 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5) if a phase splits
