@@ -11,6 +11,7 @@ import { FolderTree } from "lucide-react";
 import { AD_SELECT_EVENT, type AdSelectedObject, type AdSelectedType } from "./ActiveDirectoryTree";
 import { ActiveDirectoryMspPane } from "./ActiveDirectoryMspPane";
 import { ActiveDirectoryGroupPane } from "./ActiveDirectoryGroupPane";
+import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
 
 const TYPE_LABEL: Record<AdSelectedType, string> = {
   msp: "MSP",
@@ -45,6 +46,10 @@ export function ActiveDirectoryCenterCanvas() {
 
   if (selected.type === "group") {
     return <ActiveDirectoryGroupPane key={selected.id} role={String(selected.id)} />;
+  }
+
+  if (selected.type === "customer") {
+    return <ActiveDirectoryCustomerPane key={selected.id} customerId={Number(selected.id)} />;
   }
 
   return (

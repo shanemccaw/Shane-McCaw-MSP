@@ -8,6 +8,7 @@ import {
   deriveEntitlements,
   buildGroupDetail,
   filterGroupMembers,
+  buildCustomerDetail,
   type MspRow,
   type CustomerRow,
   type SearchableUser,
@@ -17,6 +18,12 @@ import {
   type MspDetailUser,
   type MspAgreementAcceptanceRow,
   type GroupMember,
+  type CustomerProfileRow,
+  type CustomerOwningMsp,
+  type CustomerDetailUser,
+  type CustomerConsentStatus,
+  type CustomerPurchasedService,
+  type CustomerDiagnosticRunSummary,
 } from "./active-directory";
 
 const MSPS: MspRow[] = [
@@ -374,5 +381,123 @@ describe("filterGroupMembers", () => {
 
   it("returns nothing when no member matches", () => {
     expect(filterGroupMembers("nonexistent", GROUP_MEMBERS)).toEqual([]);
+  });
+});
+
+// ── Customer Object detail pane (Phase 3) ───────────────────────────────────
+
+const CUSTOMER_PROFILE: CustomerProfileRow = {
+  id: 10,
+  mspId: 1,
+  name: "Contoso Ltd",
+  domain: "contoso.com",
+  industry: "Manufacturing",
+  tenantId: "tenant-contoso",
+  status: "active",
+  ownerType: "customer",
+  isTestbed: false,
+  createdAt: new Date("2026-02-01T00:00:00Z"),
+};
+
+const OWNING_MSP: CustomerOwningMsp = { id: 1, name: "Acme Consulting", slug: "acme-consulting" };
+
+const CUSTOMER_USERS: CustomerDetailUser[] = [
+  { id: 100, email: "jane@contoso.com", name: "Jane Doe", mspRole: "CustomerUser", isActive: true, lastLoginAt: null },
+];
+
+const GRAPH_CONSENT: CustomerConsentStatus = {
+  tenantId: "tenant-contoso",
+  consentStatus: "granted",
+  consentedAt: new Date("2026-03-01T00:00:00Z"),
+  revokedAt: null,
+  adminEmail: "admin@contoso.com",
+};
+
+const PURCHASED_SERVICES: CustomerPurchasedService[] = [
+  { id: 1, serviceName: "Managed Security", status: "active", billingInterval: "month", purchasedAt: new Date("2026-04-01T00:00:00Z") },
+];
+
+const DIAGNOSTIC_RUNS: CustomerDiagnosticRunSummary[] = [
+  {
+    runId: "11111111-1111-1111-1111-111111111111",
+    packageKey: "core:security-baseline",
+    status: "completed",
+    startedAt: new Date("2026-07-01T00:00:00Z"),
+    completedAt: new Date("2026-07-01T00:05:00Z"),
+  },
+];
+
+describe("buildCustomerDetail", () => {
+  it("assembles the full customer detail payload from real rows, including a real user count", () => {
+    const detail = buildCustomerDetail({
+      customer: CUSTOMER_PROFILE,
+      owningMsp: OWNING_MSP,
+      users: CUSTOMER_USERS,
+      graphConsent: GRAPH_CONSENT,
+      sharePointConsent: null,
+      writeConsent: null,
+      purchasedServices: PURCHASED_SERVICES,
+      recentDiagnosticRuns: DIAGNOSTIC_RUNS,
+    });
+
+    expect(detail.customer).toEqual(CUSTOMER_PROFILE);
+    expect(detail.owningMsp).toEqual(OWNING_MSP);
+    expect(detail.userCount).toBe(1);
+    expect(detail.users).toEqual(CUSTOMER_USERS);
+    expect(detail.graphConsent).toEqual(GRAPH_CONSENT);
+    expect(detail.purchasedServices).toEqual(PURCHASED_SERVICES);
+    expect(detail.recentDiagnosticRuns).toEqual(DIAGNOSTIC_RUNS);
+  });
+
+  it("renders honest empty/null states for a customer with no consent/services/runs/users — real empty arrays and nulls, not placeholders", () => {
+    const detail = buildCustomerDetail({
+      customer: CUSTOMER_PROFILE,
+      owningMsp: OWNING_MSP,
+      users: [],
+      graphConsent: null,
+      sharePointConsent: null,
+      writeConsent: null,
+      purchasedServices: [],
+      recentDiagnosticRuns: [],
+    });
+
+    expect(detail.users).toEqual([]);
+    expect(detail.userCount).toBe(0);
+    expect(detail.graphConsent).toBeNull();
+    expect(detail.sharePointConsent).toBeNull();
+    expect(detail.writeConsent).toBeNull();
+    expect(detail.purchasedServices).toEqual([]);
+    expect(detail.recentDiagnosticRuns).toEqual([]);
+  });
+
+  it("carries a null owningMsp through rather than throwing, for a customer whose MSP row is missing", () => {
+    const detail = buildCustomerDetail({
+      customer: CUSTOMER_PROFILE,
+      owningMsp: null,
+      users: [],
+      graphConsent: null,
+      sharePointConsent: null,
+      writeConsent: null,
+      purchasedServices: [],
+      recentDiagnosticRuns: [],
+    });
+    expect(detail.owningMsp).toBeNull();
+  });
+
+  it("keeps Graph, SharePoint, and write consent independent of one another", () => {
+    const sharePointConsent: CustomerConsentStatus = { ...GRAPH_CONSENT, consentStatus: "pending" };
+    const detail = buildCustomerDetail({
+      customer: CUSTOMER_PROFILE,
+      owningMsp: OWNING_MSP,
+      users: [],
+      graphConsent: GRAPH_CONSENT,
+      sharePointConsent,
+      writeConsent: null,
+      purchasedServices: [],
+      recentDiagnosticRuns: [],
+    });
+    expect(detail.graphConsent?.consentStatus).toBe("granted");
+    expect(detail.sharePointConsent?.consentStatus).toBe("pending");
+    expect(detail.writeConsent).toBeNull();
   });
 });

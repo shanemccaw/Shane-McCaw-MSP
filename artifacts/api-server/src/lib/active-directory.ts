@@ -347,3 +347,117 @@ export function buildMspDetail(params: {
     hasAcceptedCurrentAgreement,
   };
 }
+
+// ── Customer Object detail pane (Phase 3) ────────────────────────────────────
+//
+// Everything the platform holds about one customer: profile, owning MSP
+// (id/name only — a link-out via the tree's ad-select-object mechanism, not a
+// duplicated MSP detail render), linked users with roles, Graph/SharePoint/
+// write consent status, purchased services (client_services, reached via the
+// msp_users -> users.id bridge — client_services has no msp_customers FK of
+// its own), and a summary of the N most recent diagnostic runs. Read-only, no
+// customer-level edit actions belong in this phase (Issue #63).
+
+export interface CustomerProfileRow {
+  id: number;
+  mspId: number;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  tenantId: string | null;
+  status: string;
+  ownerType: string;
+  isTestbed: boolean;
+  createdAt: Date;
+}
+
+export interface CustomerOwningMsp {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface CustomerDetailUser {
+  id: number;
+  email: string;
+  name: string | null;
+  mspRole: string;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+}
+
+export interface CustomerConsentStatus {
+  tenantId: string;
+  consentStatus: string;
+  consentedAt: Date | null;
+  revokedAt: Date | null;
+  adminEmail: string | null;
+}
+
+export interface CustomerPurchasedService {
+  id: number;
+  serviceName: string;
+  status: string;
+  billingInterval: string;
+  purchasedAt: Date;
+}
+
+export interface CustomerDiagnosticRunSummary {
+  runId: string;
+  packageKey: string;
+  status: string;
+  startedAt: Date | null;
+  completedAt: Date | null;
+}
+
+export interface CustomerDetail {
+  customer: CustomerProfileRow;
+  owningMsp: CustomerOwningMsp | null;
+  users: CustomerDetailUser[];
+  userCount: number;
+  graphConsent: CustomerConsentStatus | null;
+  sharePointConsent: CustomerConsentStatus | null;
+  writeConsent: CustomerConsentStatus | null;
+  purchasedServices: CustomerPurchasedService[];
+  recentDiagnosticRuns: CustomerDiagnosticRunSummary[];
+}
+
+/**
+ * Assembles the full Customer Object detail payload — pure, DB-free so it can
+ * be unit-tested against plain fixtures. A customer with no consent rows /
+ * purchased services / diagnostic runs still returns real empty/null values
+ * (honest empty states), never placeholders.
+ */
+export function buildCustomerDetail(params: {
+  customer: CustomerProfileRow;
+  owningMsp: CustomerOwningMsp | null;
+  users: CustomerDetailUser[];
+  graphConsent: CustomerConsentStatus | null;
+  sharePointConsent: CustomerConsentStatus | null;
+  writeConsent: CustomerConsentStatus | null;
+  purchasedServices: CustomerPurchasedService[];
+  recentDiagnosticRuns: CustomerDiagnosticRunSummary[];
+}): CustomerDetail {
+  const {
+    customer,
+    owningMsp,
+    users,
+    graphConsent,
+    sharePointConsent,
+    writeConsent,
+    purchasedServices,
+    recentDiagnosticRuns,
+  } = params;
+
+  return {
+    customer,
+    owningMsp,
+    users,
+    userCount: users.length,
+    graphConsent,
+    sharePointConsent,
+    writeConsent,
+    purchasedServices,
+    recentDiagnosticRuns,
+  };
+}
