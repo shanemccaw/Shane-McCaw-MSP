@@ -20,8 +20,9 @@ This directory holds the plan files for multi-phase initiatives in this repo.
 ## Labels
 
 - `area:*` labels (`area:billing-webhooks`, `area:admin-panel`,
-  `area:msp-portal`, `area:public-website`, `area:backlog`) are pre-seeded
-  on the repo.
+  `area:msp-portal`, `area:public-website`, `area:backlog`,
+  `area:api-server`, `area:document-generator`, `area:engines`) are
+  pre-seeded on the repo.
 - `iteration:*` labels (`iteration:1`, `iteration:2`, `iteration:3`) are
   pre-seeded — iteration:1 = currently being built, iteration:2 = planned
   v1.2, iteration:3 = planned v1.3.
