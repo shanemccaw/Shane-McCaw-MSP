@@ -38,7 +38,22 @@ import {
 import { eq, and, sum, desc, gte, sql, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+import { broadcastToHubWithReplay } from "./sse-hub.ts";
 const log = logger.child({ channel: "billing" });
+
+/**
+ * SSE hub channel carrying one frame per recorded AI usage event.
+ *
+ * Consumed by the admin StatusBar's Today/Month cost segments via
+ * useLiveStream("ai-cost") → GET /api/admin/live-stream?channel=ai-cost.
+ * Frames are DELTAS, never running totals: the client seeds its totals from
+ * GET /admin/ai-billing/summary on mount and adds each frame's costCents on
+ * top. broadcastToHubWithReplay caches only the LAST frame per channel, which
+ * is a single delta — replaying it into a client that already counted it would
+ * double-count, so the live-stream route must keep NOT enabling replay for
+ * this channel (it doesn't today: channel-firehose subscribers never replay).
+ */
+export const AI_COST_SSE_CHANNEL = "ai-cost";
 
 // ── Billing MSP resolution ─────────────────────────────────────────────────────
 
@@ -370,7 +385,30 @@ export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
         triggerSource: triggerSource ?? undefined,
         correlationId: correlationId ?? undefined,
       })
-      .returning({ eventId: aiUsageEventsTable.eventId });
+      .returning({ eventId: aiUsageEventsTable.eventId, occurredAt: aiUsageEventsTable.occurredAt });
+
+    // Push the delta to live admin views the instant the row lands. Wrapped in
+    // its own try/catch so a broadcast fault can never divert the ledger debit
+    // below into this function's outer error path — an unreachable status bar
+    // must not look like a failed usage record.
+    try {
+      broadcastToHubWithReplay(AI_COST_SSE_CHANNEL, null, {
+        type: "ai-cost",
+        eventId: usageEvent?.eventId ?? null,
+        occurredAt: (usageEvent?.occurredAt ?? new Date()).toISOString(),
+        costCents,
+        costOwner,
+        mspId: mspId ?? null,
+        customerId: customerId ?? null,
+        nodeType,
+        feature: feature ?? nodeType,
+        model: model ?? null,
+        generatedArtifactType: generatedArtifactType ?? null,
+        generatedArtifactName: generatedArtifactName ?? null,
+      });
+    } catch (broadcastErr) {
+      log.warn({ err: broadcastErr, nodeType }, "ai-billing: ai-cost SSE broadcast failed (non-fatal)");
+    }
 
     // Only debit the MSP's ledger for MSP-owned usage
     if (costOwner === "msp" && mspId != null && costCents > 0) {

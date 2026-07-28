@@ -24,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { EmailBadgeContext } from "@/contexts/EmailBadgeContext";
 import NotificationDrawer from "@/components/NotificationDrawer";
 import { usePurchaseSound } from "@/hooks/usePurchaseSound";
+import { useAiCostSegments } from "@/hooks/useAiCostSegments";
 import { playSoundFromParams } from "@/lib/playSound";
 import { logger } from "@/lib/logger";
 import {
@@ -899,6 +900,11 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
     };
   }, [startCampaignSSE, fetchCampaignBadges, accessToken, getProactiveReconnectDelayMs]);
 
+  // ─── AI spend segments (REST seed + ai-cost SSE deltas) ────────────────────
+  // Owned here, passed into StatusBar as a prop — same threading as
+  // liveVisitors/campaignBadges, so StatusBar never fetches for itself.
+  const aiCost = useAiCostSegments();
+
   // ─── Notification drawer ───────────────────────────────────────────────────
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
@@ -1067,6 +1073,7 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
             onToggleMute={toggleMute}
             consoleOpen={consoleOpen}
             onToggleConsole={toggleConsole}
+            aiCost={aiCost}
             rightExtra={<ViewAsSwitcher />}
           />
         </div>

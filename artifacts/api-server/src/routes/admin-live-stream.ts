@@ -22,6 +22,7 @@ const CHANNEL_TAXONOMY = [
   "comms.sms-push",
   "comms.webhook",
   "crm",
+  "engine.ai-cost-governance",
   "engine.alert",
   "engine.config-pack",
   "engine.kanban",

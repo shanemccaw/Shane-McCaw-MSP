@@ -198,6 +198,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
           { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
           { id: "sys-active-directory", label: "Active Directory", path: "/system/active-directory", icon: FolderTree },
+          { id: "sys-ai-billing", label: "AI Billing", path: "/system/ai-billing", icon: Receipt },
         ],
       },
       {

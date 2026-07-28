@@ -12,6 +12,7 @@ import AlertRulesPage from "@/pages/AlertRulesPage";
 import ExceptionTracking from "@/pages/ExceptionTracking";
 import IncidentsAdminPage from "@/pages/IncidentsAdminPage";
 import { ActiveDirectoryPage } from "@/pages/ActiveDirectoryPage";
+import AiBillingPage from "@/pages/AiBillingPage";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -26,6 +27,7 @@ function getContent(section: string): ReactNode {
     case "platform-agreements":   return <PlatformAgreementsPage />;
     case "simulator":             return <SimulatorStudioPage />;
     case "active-directory":      return <ActiveDirectoryPage />;
+    case "ai-billing":            return <AiBillingPage />;
     case "pcc":                   return <PccDashboard />;
     default:                      return <InboxPage />;
   }

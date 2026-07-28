@@ -58,9 +58,12 @@ describe("GET /api/admin/live-stream/channels", () => {
       .set("Authorization", `Bearer ${adminToken()}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.channels).toHaveLength(33);
+    expect(res.body.channels).toHaveLength(34);
     expect(res.body.channels).not.toContain("inbox");
     expect(res.body.channels).toContain("engine.sla");
+    // Introduced by the AI Cost Governance initiative's Phase 1 but never added
+    // to the picker's taxonomy until Phase 3.
+    expect(res.body.channels).toContain("engine.ai-cost-governance");
     expect(res.body.channels).toContain("growth.booking");
     expect(res.body.channels).toContain("admin.shell");
     expect(res.body.channels).toContain("test-suite");

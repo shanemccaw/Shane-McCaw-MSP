@@ -55,6 +55,8 @@ export default defineConfig({
       "src/lib/__tests__/msp-financial-aggregator-overlord.test.ts",
       "src/routes/msp-sla-scope-creep.test.ts",
       "src/lib/ai-billing.test.ts",
+      "src/lib/ai-billing-cost-broadcast.test.ts",
+      "src/routes/admin-ai-billing.test.ts",
       "src/lib/ai-usage-metering.test.ts",
       "src/lib/ai-usage-sink.test.ts",
       "src/tests/doc-pipeline.test.ts",
