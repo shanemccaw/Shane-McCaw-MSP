@@ -77,6 +77,7 @@ Phase 3's create call path rather than a second one.
 | 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
 | 7 | Simulator Studio Documents node | Done (ef7ba2a3) | — |
 | 8 | Tenant-first document generation signature | Done (b44f01fd) | #47 |
+| 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (code) — **migration File B pending Shane** | — |
 | 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Open | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
@@ -270,7 +271,107 @@ null) and the duplicated MSP-branding lookup they wrapped, extracted to one
 never be branded differently from the document. Dry-run/preview behavior is
 otherwise untouched.
 
+## Phase 8.5 — `insights_generated_documents` tenant FK (`msp_customer_id`)
+
+**Numbering note.** The task that commissioned this work called it "Phase 9",
+but Phase 9 in the table above is the tenant picker and is still Open — marking
+that row Done would have been false. Inserted as 8.5 per this file's own
+documented convention (decimal insertion for split phases, never renumber).
+
+**The gap.** `insights_generated_documents.customer_id` is a `users.id` — ONE
+arbitrary login out of however many a tenant has. Every customer-scoped read
+therefore fans out through the `msp_users` bridge
+(`inArray(customerId, resolveCustomerUserIds(...))`), and a document becomes
+unfindable if that particular login is ever unlinked. Phase 8 made the
+generation *signature* tenant-first; this phase makes the *stored row*
+tenant-first. `customer_id` stays, demoted to what it actually is: the document
+OWNER (which login generated/receives it), not the scope.
+
+**Migration ships as TWO manual SQL files, deliberately not combined.** Claude
+Code executes no SQL in this environment; Shane runs both by hand.
+- `lib/db/migrations/manual/2026-07-28-igd-msp-customer-id-A-add-and-backfill.sql`
+  — adds the nullable column, backfills from `msp_users`, and ends with a
+  verification SELECT grouped by `doc_type` that breaks the stragglers into
+  their three real causes (owner is NULL / no `msp_users` row / the bridge row
+  has a NULL `customer_id`), plus a single gating count. Safe, additive.
+- `2026-07-28-igd-msp-customer-id-B-not-null-and-index.sql` — `SET NOT NULL`
+  plus the `(msp_customer_id, doc_type, created_at)` index. Labelled
+  **⛔ DO NOT RUN** in the file itself, not just in commit prose. If stragglers
+  remain, its `SET NOT NULL` fails outright (Postgres validates the whole
+  table) — nothing corrupts, the migration just stops.
+- `msp_users.user_id` is UNIQUE, so the backfill join matches at most one row
+  per document — deterministic, no arbitrary row-pick.
+- **No migration file deletes a document.** Resolving stragglers is Shane's
+  explicit decision, not a side effect.
+
+**The Drizzle column is typed NULLABLE on purpose.** Until File B has actually
+been run, real rows can hold NULL, so `.notNull()` would make every read lie.
+Adding `.notNull()` is an explicit post-File-B step, called out both in the
+schema comment and at the end of File B.
+
+**All 5 real writers populate it:**
+- `document-engine.ts` / `document-engine-sow.ts` — `mspCustomerId` is already
+  the function's own required param post-Phase-8; nothing to resolve.
+- `workflow-executor.ts` (the `task_execution_guide` branch) — resolves via
+  `resolveCustomerIdForPortalUser(clientUserId)` **before the AI call**, so an
+  unlinked client fails the node with a real message instead of paying for a
+  document that cannot be persisted. Mirrors the engine branch below it.
+- `dashboard-export.ts` (`POST /portal/dashboard/share`) — resolves from
+  `req.user!.id` and 409s with customer-safe wording.
+- `document-generator.ts` (legacy but still live — imported by
+  `cio-narrative-generator.ts`, `document-types.ts`, `crm-pipeline.ts`,
+  `admin-document-types.ts`; deleting it is Phase 19.2's job, not this one).
+  It already resolved the customer for `buildTenantProfile()`, so that value is
+  threaded into `upsertDocument()` as a required param rather than re-queried —
+  the row's tenant and the tenant the document was GENERATED against therefore
+  cannot disagree. `testMode` is exempt from the guard because it never
+  persists.
+
+**Step 3 landed differently than commissioned — see Open Issues below.** The
+task called for unmounting `admin-insights.ts` entirely from `routes/index.ts`
+on the basis that "nothing calls them". That is true of its three insert
+routes, but NOT of the router as a whole, so the three write routes were gated
+off (410 Gone) instead and the router stays mounted.
+
 ## Open Issues
+**Phase 8.5 — File B is NOT run.** The DB column is still nullable and the
+index does not exist until Shane runs
+`2026-07-28-igd-msp-customer-id-B-not-null-and-index.sql`, and he must not run
+it until File A's straggler count reads zero. Deploy the code first: File B
+turns "insert without a tenant" into a hard DB error, and all five writers
+already refuse to insert without one.
+
+**Phase 8.5 — `admin-insights.ts` could NOT be unmounted; 3 GET routes are
+still live.** The task commissioning this phase specified removing the
+`router.use(adminInsightsRouter)` mounting entirely. Grep says that would break
+real surfaces, so it was not done:
+- `GET /admin/insights/documents/:id/download` is the URL stored in
+  `insights_generated_documents.pdf_url` **by the current engine path** —
+  `workflow-executor.ts` stamps it on every document `generateDocument()`/
+  `generateSowDocument()` produces, and `document-generator.ts` does the same.
+  Unmounting 404s the download link on every generated document, including
+  brand-new ones and every row already in the table.
+- `GET /admin/insights/documents` backs live pickers in
+  `ScriptGeneratorPage.tsx` and `WorkflowBuilderPage.tsx`.
+- `GET /admin/insights/projects` backs `WorkflowBuilderPage.tsx` and
+  `WorkflowListPage.tsx`.
+
+What was done instead achieves the actual safety goal: the three
+document-creating routes (`POST /admin/insights/documents/generate`,
+`POST /admin/insights/consulting/generate`,
+`POST /admin/insights/automations/:id/run`) return **410 Gone** via a
+`retiredWriteRoute()` gate. `executeAutomation` has no scheduler or cron caller
+— verified by grep — so gating that route genuinely makes its insert
+unreachable. Note that route could never have satisfied the constraint anyway:
+its insert uses `automation.customerId ?? null`, nullable by design.
+
+**To actually unmount the file**, those three GETs need rehoming onto a
+non-legacy router (`admin-document-generator.ts` is the natural home), and the
+`pdf_url` values already persisted in the table need either a backfill to the
+new path or a redirect from the old one. That is its own phase, not a
+side-effect of this one. A matching comment sits at the mount site in
+`routes/index.ts` so the next session doesn't re-litigate it.
+
 **Phase 6 — script-run findings can never be category-scoped (permanent).**
 Findings from `script_run_results.parsedFindings` are free-text strings uploaded
 by the legacy M365 script with no checkKey and no link to any

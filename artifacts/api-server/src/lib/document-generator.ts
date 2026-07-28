@@ -528,6 +528,13 @@ async function fetchPriorDocuments(clientUserId: number, projectId: number, excl
 
 async function upsertDocument(
   customerId: number,
+  /**
+   * The owning tenant (`msp_customers.id`) — the real scoping key, required on
+   * every insert. Resolved by the caller (which already has it) rather than
+   * re-queried here, so the row's tenant and the tenant the document was
+   * GENERATED against can never disagree.
+   */
+  mspCustomerId: number,
   projectId: number,
   values: {
     category: "report" | "consulting";
@@ -569,6 +576,7 @@ async function upsertDocument(
   }
 
   const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
+    mspCustomerId,
     customerId,
     projectId,
     category:        values.category,
@@ -611,6 +619,18 @@ export async function generateAndDeliverDocument(
     fetchProjectTasks(projectId),
     resolveEngineCustomerId(clientUserId),
   ]);
+
+  // insights_generated_documents.msp_customer_id is the real scoping key and is
+  // required for any persisted document. Fail HERE — before the AI call — rather
+  // than letting generation run and then hitting a constraint violation at the
+  // insert (which would also mean paying for a document that can never be
+  // stored). testMode never persists (it returns documentId -1), so it is
+  // exempt: a test draft for an unlinked user is still useful and harmless.
+  if (!testMode && mspCustomerId == null) {
+    throw new Error(
+      `document-generator: client ${clientUserId} is not linked to an MSP customer, so there is no tenant to own the generated document`,
+    );
+  }
 
   const clientName = userRows[0]?.company ?? userRows[0]?.name ?? "Client";
   const projRow = projectRows[0];
@@ -875,7 +895,9 @@ export async function generateAndDeliverDocument(
     return { documentId: -1, title, htmlContent };
   }
 
-  const doc = await upsertDocument(clientUserId, projectId, {
+  // Non-null here: the !testMode guard above already threw for an unlinked
+  // client, and this line is only reached on the persisting path.
+  const doc = await upsertDocument(clientUserId, mspCustomerId!, projectId, {
     category,
     docType,
     title,

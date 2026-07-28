@@ -1915,6 +1915,27 @@ export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
 export const insightsGeneratedDocumentsTable = pgTable("insights_generated_documents", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /**
+   * The owning TENANT (`msp_customers.id`) — the real scoping key for a
+   * generated document.
+   *
+   * `customerId` above is a `users.id`: one arbitrary login out of however many
+   * a tenant has, which made every customer-scoped read go through the
+   * `msp_users` bridge (`inArray(customerId, resolveCustomerUserIds(...))`) and
+   * made a document unfindable if that particular login was ever unlinked.
+   * This column owns the document by tenant directly. `customerId` is retained
+   * as the document OWNER (which login generated/receives it), not as the scope.
+   *
+   * TYPED NULLABLE ON PURPOSE, FOR NOW. The DB column lands nullable in manual
+   * migration File A (`2026-07-28-igd-msp-customer-id-A-add-and-backfill.sql`)
+   * and only becomes `NOT NULL` when Shane runs File B
+   * (`...-B-not-null-and-index.sql`) after confirming File A's straggler count
+   * is zero. Until File B runs, real rows CAN hold NULL here, so typing this
+   * `.notNull()` would make every read lie. Add `.notNull()` here once File B
+   * has actually been run — every writer already populates it unconditionally
+   * and refuses to insert without it, so nothing else changes at that point.
+   */
+  mspCustomerId: integer("msp_customer_id").references(() => mspCustomersTable.id),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   category: text("category", { enum: ["report", "consulting"] }).notNull().default("report"),
   docType: text("doc_type").notNull().default("other"),
@@ -2011,6 +2032,9 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   uniqueIndex("igd_scoped_sow_no_project_uidx")
     .on(t.customerId, t.docType)
     .where(sql`doc_type = 'scoped_sow' AND project_id IS NULL`),
+  // Serves the tenant-scoped document reads: "this tenant's documents of this
+  // type, newest first". Created by manual migration File B, NOT File A.
+  index("igd_msp_customer_doc_type_created_idx").on(t.mspCustomerId, t.docType, t.createdAt),
 ]);
 
 export type InsertInsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferInsert;

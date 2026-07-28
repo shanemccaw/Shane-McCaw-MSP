@@ -28,6 +28,7 @@ import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { renderDashboardSnapshotHtml, DashboardSnapshotError } from "../lib/dashboard-snapshot.ts";
 import { renderDashboardPpt } from "../lib/dashboard-ppt.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -123,6 +124,20 @@ router.get("/portal/dashboard/share", requireRole("CustomerUser"), async (req: R
 router.post("/portal/dashboard/share", requireRole("CustomerUser"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+
+    // Resolve the owning tenant at THIS boundary, before anything is rendered
+    // or written. insights_generated_documents.msp_customer_id is the real
+    // scoping key and is required — a document inserted without it would be
+    // rejected by the DB once migration File B lands, so fail here with a
+    // message that names the actual problem rather than surfacing a constraint
+    // violation as a generic 500.
+    const mspCustomerId = await resolveCustomerIdForPortalUser(userId);
+    if (mspCustomerId == null) {
+      log.warn({ userId }, "portal/dashboard/share: user is not linked to an MSP customer — refusing to create an untenanted document");
+      res.status(409).json({ error: "Your account isn't linked to a tenant yet, so this dashboard can't be shared. Contact your provider." });
+      return;
+    }
+
     const { title, html } = await renderDashboardSnapshotHtml(req);
 
     // Persist this render as a real generated document — the same row shape
@@ -131,6 +146,7 @@ router.post("/portal/dashboard/share", requireRole("CustomerUser"), async (req: 
     const [doc] = await db
       .insert(insightsGeneratedDocumentsTable)
       .values({
+        mspCustomerId,
         customerId: userId,
         category: "report",
         docType: "dashboard_snapshot",

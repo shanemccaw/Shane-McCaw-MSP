@@ -216,6 +216,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
   // Insert a "generating" placeholder immediately so the UI has something real
   // to poll/display before the (potentially multi-minute) AI call even starts.
   const [placeholderRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+    // The real scoping key. This engine is tenant-first (Phase 8), so the
+    // customer is the function's own required param — nothing to resolve here.
+    mspCustomerId,
     customerId: documentOwnerUserId,
     projectId,
     category: docTypeRow.category,

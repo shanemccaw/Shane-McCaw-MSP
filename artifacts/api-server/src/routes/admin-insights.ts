@@ -90,6 +90,46 @@ import {
 
 const router = Router();
 
+// ── Retired write routes ──────────────────────────────────────────────────────
+//
+// This file's THREE document-creating routes are switched off:
+//   POST /admin/insights/documents/generate
+//   POST /admin/insights/consulting/generate
+//   POST /admin/insights/automations/:id/run   (via executeAutomation)
+//
+// They are legacy inline generation (hardcoded prompts, no scoping, not
+// database-driven), superseded by document-engine.ts / document-engine-sow.ts,
+// and unreachable from the nav since the Insights page was retired.
+//
+// The hard reason they cannot merely be left alone: `insights_generated_
+// documents.msp_customer_id` is becoming NOT NULL (manual migrations
+// 2026-07-28-igd-msp-customer-id-A/B). None of these three can satisfy it —
+// the automation runner's insert uses `automation.customerId ?? null`, which is
+// nullable BY DESIGN, so there is no correct tenant to write. Rather than
+// teach a dead code path to resolve a tenant, the routes are closed.
+//
+// WHY THE ROUTER IS STILL MOUNTED IN routes/index.ts, despite this file's
+// dead-code banner: three of its GET routes are NOT dead.
+//   * GET /admin/insights/documents/:id/download — this is the URL stored in
+//     `insights_generated_documents.pdf_url` by the CURRENT engine path
+//     (workflow-executor.ts stamps it on every document `generateDocument()`/
+//     `generateSowDocument()` produces, and document-generator.ts does the
+//     same). Unmounting it 404s the download link on every generated document,
+//     including brand-new ones and every row already in the table.
+//   * GET /admin/insights/documents — live document pickers in
+//     ScriptGeneratorPage.tsx and WorkflowBuilderPage.tsx.
+//   * GET /admin/insights/projects — WorkflowBuilderPage.tsx, WorkflowListPage.tsx.
+// Those three need rehoming onto a non-legacy router before this file can be
+// unmounted or deleted. Until then, closing the write routes achieves the
+// actual safety goal without breaking live surfaces.
+function retiredWriteRoute(req: Request, res: Response): boolean {
+  log.warn({ path: req.originalUrl }, "admin-insights: blocked call to a retired legacy generation route");
+  res.status(410).json({
+    error: "This legacy Insights generation route has been retired. Use the Document Generator (/command/doc-generator) instead.",
+  });
+  return true;
+}
+
 // ── Helper: broadcast scope change to all presentations for a project ──────────
 // Called fire-and-forget after a SOW document is created or its pricing updated.
 // Finds all presentations for the project and notifies open SSE clients so the
@@ -948,6 +988,7 @@ const generateDocSchema = z.object({
 });
 
 router.post("/admin/insights/documents/generate", requireAdmin, async (req: Request, res: Response) => {
+  if (retiredWriteRoute(req, res)) return;
   try {
     const body = generateDocSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
@@ -1427,6 +1468,7 @@ const generateConsultingSchema = z.object({
 });
 
 router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Request, res: Response) => {
+  if (retiredWriteRoute(req, res)) return;
   try {
     const body = generateConsultingSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
@@ -2448,6 +2490,11 @@ router.delete("/admin/insights/automations/:id", requireAdmin, async (req: Reque
 //   event: error — data: { error: string }  (on failure)
 
 router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Request, res: Response) => {
+  // Gated before the SSE headers go out, so the caller gets a plain 410 rather
+  // than an event stream carrying an error. `executeAutomation` is called from
+  // nowhere else in the codebase (no scheduler, no cron) — verified by grep —
+  // so this gate genuinely makes its document insert unreachable.
+  if (retiredWriteRoute(req, res)) return;
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });

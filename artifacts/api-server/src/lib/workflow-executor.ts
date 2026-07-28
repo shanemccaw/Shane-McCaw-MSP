@@ -2240,6 +2240,18 @@ async function executeNode(
               nodeError = true;
               output = { error: `generate_document: unknown document type "${resolvedDocType}"` };
             } else if (docCategory === "consulting" && resolvedDocType === "task_execution_guide") {
+              // insights_generated_documents.msp_customer_id is the real
+              // scoping key and is required. This node's payload only carries a
+              // clientId (users.id), so the translation happens HERE, at the
+              // caller's boundary — before the AI call, so an unlinked client
+              // fails the node with a real message instead of paying for a
+              // document that cannot be persisted. Same pattern as the engine
+              // branch below.
+              const tegMspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+              if (tegMspCustomerId == null) {
+                throw new Error(`generate_document: client ${clientUserId} is not linked to an MSP customer, so there is no tenant to own the generated document`);
+              }
+
               let sowHtmlForDoc = interp(node.data.sowHtml as string | undefined, payload) ?? "";
               const sowDocumentIdRaw = interp(node.data.sowDocumentId as string | undefined, payload) ?? "";
               const sowDocumentId = sowDocumentIdRaw ? parseInt(sowDocumentIdRaw, 10) : NaN;
@@ -2264,6 +2276,7 @@ async function executeNode(
               });
 
               const [genWfRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+                mspCustomerId: tegMspCustomerId,
                 customerId: clientUserId, projectId: !isNaN(projectId) ? projectId : null,
                 category: docCategory, docType: resolvedDocType, title: docTitle, htmlContent: "", status: "generating",
               }).returning({ id: insightsGeneratedDocumentsTable.id });

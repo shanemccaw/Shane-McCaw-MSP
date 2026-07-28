@@ -240,6 +240,14 @@ router.use(notificationsRouter);
 router.use(notificationPreferencesRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
+// ⚠️ admin-insights.ts carries a "DEAD — do not use" banner, but it is STILL
+// MOUNTED ON PURPOSE and must stay mounted for now. Its three document-creating
+// routes are gated off (410) inside the file; its GET routes are not dead:
+// /admin/insights/documents/:id/download is the URL stored in every generated
+// document's `pdf_url` (stamped by the CURRENT engine path in
+// workflow-executor.ts), and /admin/insights/documents + /admin/insights/projects
+// back live pickers in ScriptGeneratorPage / WorkflowBuilderPage / WorkflowListPage.
+// Unmounting this router breaks all of those. Rehome those three GETs first.
 router.use(adminInsightsRouter);
 router.use(portalQuickWinScoringRouter);
 router.use(adminWorkflowsRouter);
