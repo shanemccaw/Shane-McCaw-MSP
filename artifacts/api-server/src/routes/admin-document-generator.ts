@@ -16,10 +16,11 @@
  * POST /api/admin/document-generator/document-types/:key/generate — real generation
  * GET  /api/admin/document-generator/history                — recent generations
  * GET  /api/admin/document-generator/history/:id/html        — view/download stored HTML
+ * GET  /api/admin/document-generator/profile-keys           — real, aggregated profile-key registry (Phase 1 of #70)
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, mspCustomersTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, mspCustomersTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
 import { eq, desc, and, isNull, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
@@ -105,6 +106,45 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
   } catch (err) {
     missingTypesLog.error({ err }, "admin-document-generator: missing-types failed");
     res.status(500).json({ error: "Failed to fetch missing document types" });
+  }
+});
+
+// ── Profile key registry ─────────────────────────────────────────────────────
+// Real, live source of every key that can land in a tenant's merged profile:
+// `monitor_checks.mapping[].targetField` across active checks, plus each
+// check's synthetic `${key}__itemCount` entry — the exact same naming
+// `mergeMonitorProfileRows` (tenant-signals.ts) stamps onto the merged
+// profile, reused here rather than reinvented. Grouped by the checkKey's
+// domain prefix (segment before "://") so the picker can render collapsible
+// groups instead of one flat 100+ key list. Single query, no N+1.
+
+router.get("/admin/document-generator/profile-keys", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({ key: monitorChecksTable.key, mapping: monitorChecksTable.mapping })
+      .from(monitorChecksTable)
+      .where(eq(monitorChecksTable.status, "active"));
+
+    const domains = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const domain = row.key.split("://")[0] ?? row.key;
+      let keys = domains.get(domain);
+      if (!keys) {
+        keys = new Set<string>();
+        domains.set(domain, keys);
+      }
+      for (const m of row.mapping) keys.add(m.targetField);
+      keys.add(`${row.key}__itemCount`);
+    }
+
+    const result = Array.from(domains.entries())
+      .map(([domain, keys]) => ({ domain, keys: Array.from(keys).sort() }))
+      .sort((a, b) => a.domain.localeCompare(b.domain));
+
+    res.json(result);
+  } catch (err) {
+    log.error({ err }, "admin-document-generator: profile-keys failed");
+    res.status(500).json({ error: "Failed to fetch profile keys" });
   }
 });
 
