@@ -45,6 +45,7 @@ import {
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
+import { AssessmentCreationWizard } from "@/components/AssessmentCreationWizard";
 
 // Same repaint as SimulatorCenterCanvas's editor: keep One Dark's syntax
 // palette but swap its #282c34 surfaces for the app's GitHub-dark tokens.
@@ -67,6 +68,7 @@ export type ModalType =
   | "fire-bus-event"
   | "new-monitor-check"
   | "edit-monitor-check"
+  | "new-assessment"
   | null;
 
 interface ModalContextType {
@@ -109,13 +111,14 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
 }
 
 function ModalContainer() {
-  const { activeModal, closeModal } = useModal();
+  const { activeModal, modalData, closeModal } = useModal();
   const isWide =
     activeModal === "engine-trace" || activeModal === "new-test-suite" || activeModal === "edit-test-suite";
+  const isExtraWide = activeModal === "new-assessment";
 
   return (
     <Dialog open={activeModal !== null} onOpenChange={(open) => { if (!open) closeModal(); }}>
-      <DialogContent className={`${isWide ? "max-w-3xl" : "max-w-2xl"} bg-background border border-border text-foreground shadow-2xl p-6 rounded-xl`}>
+      <DialogContent className={`${isExtraWide ? "max-w-5xl" : isWide ? "max-w-3xl" : "max-w-2xl"} bg-background border border-border text-foreground shadow-2xl p-6 rounded-xl`}>
         {activeModal === "execute-scenario" && <ExecuteScenarioModal />}
         {activeModal === "edit-script" && <ScriptEditorModal isNew={false} />}
         {activeModal === "new-script" && <ScriptEditorModal isNew={true} />}
@@ -125,6 +128,9 @@ function ModalContainer() {
         {activeModal === "fire-bus-event" && <FireBusEventModal />}
         {activeModal === "new-monitor-check" && <MonitorCheckEditorModal isNew={true} />}
         {activeModal === "edit-monitor-check" && <MonitorCheckEditorModal isNew={false} />}
+        {activeModal === "new-assessment" && (
+          <AssessmentCreationWizard existingAssessments={modalData?.assessments ?? []} onClose={closeModal} />
+        )}
       </DialogContent>
     </Dialog>
   );

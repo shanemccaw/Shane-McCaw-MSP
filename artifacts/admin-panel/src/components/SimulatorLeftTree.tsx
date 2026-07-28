@@ -161,6 +161,7 @@ export interface AssessmentNode {
   name: string;
   slug: string | null;
   isFreeOffering: boolean;
+  sortOrder: number;
   packageKey: string | null;
   hasDedicatedPackage: boolean;
   checkKeys: string[] | null;
@@ -621,13 +622,20 @@ export function SimulatorLeftTree() {
     const handleEndpointsUpdate = () => {
       loadData();
     };
+    // AssessmentCreationWizard fires this on a successful create so the new
+    // assessment appears in the tree without a manual reload (Phase 5, #28).
+    const handleAssessmentsUpdate = () => {
+      loadData();
+    };
     window.addEventListener("simulator-scripts-updated", handleScriptsUpdate);
     window.addEventListener("simulator-suites-updated", handleSuitesUpdate);
     window.addEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
+    window.addEventListener("simulator-assessments-updated", handleAssessmentsUpdate);
     return () => {
       window.removeEventListener("simulator-scripts-updated", handleScriptsUpdate);
       window.removeEventListener("simulator-suites-updated", handleSuitesUpdate);
       window.removeEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
+      window.removeEventListener("simulator-assessments-updated", handleAssessmentsUpdate);
     };
   }, [fetchWithAuth]);
 
@@ -1899,11 +1907,14 @@ export function SimulatorLeftTree() {
 
         {/* Section 11: Assessments — real `services` rows (category='assessment'),
             grouped Free/Paid on the real is_free_offering column. Read-only
-            catalog + packageKey audit view (Phase 1); create/edit/delete of the
-            packageKey assignment or of monitoring packages themselves is a
-            later, not-yet-built phase. */}
+            catalog + packageKey audit view (Phase 1); create wizard (Phase 5,
+            #28) — right-click the section header or use the "+" button, both
+            open the same AssessmentCreationWizard via openModal. Edit/delete
+            of an existing assessment is still a later, not-yet-built phase. */}
         {showAssessments && (
         <div>
+          <ContextMenu>
+          <ContextMenuTrigger asChild>
           <div
             onClick={() => setAssessmentsOpen(!assessmentsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
@@ -1915,7 +1926,25 @@ export function SimulatorLeftTree() {
             )}
             <ListChecks className="h-3.5 w-3.5 text-emerald-400" />
             <span className="truncate">Assessments</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal("new-assessment", { assessments });
+              }}
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="New assessment"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
           </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-44">
+            <ContextMenuItem onSelect={() => openModal("new-assessment", { assessments })} className="gap-2 text-xs">
+              <Plus className="h-3.5 w-3.5" />
+              New Assessment
+            </ContextMenuItem>
+          </ContextMenuContent>
+          </ContextMenu>
 
           {(isSearching || assessmentsOpen) && (
             <div className="ml-[22px] border-l border-accent">

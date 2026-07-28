@@ -37,7 +37,7 @@ exist and are live (see `consent.ts`).
 | 2 | Admin-direct execution wiring | Done | #24 |
 | 3 | Results & findings display | Done | #25 |
 | 4 | Run history & diff | Done | #26 |
-| 5 | Assessment Creation Wizard | Not Started | #28 |
+| 5 | Assessment Creation Wizard | Done | #28 |
 | 6 | Assessment Edit Wizard | Not Started | #29 |
 | 7 | Delete / Deprecate | Not Started | #30 |
 

@@ -37,6 +37,10 @@ export interface SimulatorAssessmentNode {
   name: string;
   slug: string | null;
   isFreeOffering: boolean;
+  /** Real services.sort_order — surfaced so the Phase 5 creation wizard can
+   *  default a new assessment's sortOrder to max(existing) + 1 without a
+   *  second fetch of the full services catalog. */
+  sortOrder: number;
   /** The real dedicated packageKey, or null when this assessment has none and
    *  runs on the core:security-baseline fallback at scan time. */
   packageKey: string | null;
@@ -55,6 +59,7 @@ router.get("/admin/simulator/assessments", requireAdmin, async (_req: Request, r
         name: servicesTable.name,
         slug: servicesTable.slug,
         isFreeOffering: servicesTable.isFreeOffering,
+        sortOrder: servicesTable.sortOrder,
         typeAttributes: servicesTable.typeAttributes,
       })
       .from(servicesTable)
@@ -99,6 +104,7 @@ router.get("/admin/simulator/assessments", requireAdmin, async (_req: Request, r
         name: row.name,
         slug: row.slug,
         isFreeOffering: row.isFreeOffering,
+        sortOrder: row.sortOrder,
         packageKey: row.packageKey,
         hasDedicatedPackage,
         checkKeys,

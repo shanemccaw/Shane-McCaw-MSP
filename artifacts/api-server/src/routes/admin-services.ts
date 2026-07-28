@@ -114,6 +114,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       serviceClass, deliveryType, fulfillmentType,
       typeAttributes, associatedDocuments,
       priceCents, internalCostCents, annualPriceCents,
+      bestFor, allowFreeCheckout,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -204,6 +205,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         ...(resolvedFulfillmentType !== undefined ? { fulfillmentType: resolvedFulfillmentType } : {}),
         typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
         associatedDocuments: parseAssociatedDocuments(associatedDocuments),
+        bestFor: (bestFor as string | null) ?? null,
+        ...(allowFreeCheckout != null ? { allowFreeCheckout: Boolean(allowFreeCheckout) } : {}),
         ...centsColumnUpdates,
         updatedAt: new Date(),
       })
@@ -226,7 +229,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey, priceCents, internalCostCents, annualPriceCents } = body;
+    const { name, slug, description, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey, priceCents, internalCostCents, annualPriceCents, category, basePrice, maxPrice, sortOrder, tagline, bestFor, isFreeOffering, allowFreeCheckout } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -254,6 +257,7 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
       .values({
         name: name.trim(),
         slug: slug.trim(),
+        description: (description as string | null) ?? null,
         billingType: resolvedBillingType,
         visibility: resolvedCreateVisibility,
         isPublic: resolvedCreateVisibility === "public",
@@ -274,6 +278,14 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         priceCents: priceCents != null ? Number(priceCents) : null,
         internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
         annualPriceCents: annualPriceCents != null ? Number(annualPriceCents) : null,
+        category: (category as string | null) ?? null,
+        basePrice: basePrice != null ? String(basePrice) : null,
+        maxPrice: maxPrice != null ? String(maxPrice) : null,
+        sortOrder: sortOrder != null ? Number(sortOrder) : 0,
+        tagline: (tagline as string | null) ?? null,
+        bestFor: (bestFor as string | null) ?? null,
+        isFreeOffering: isFreeOffering != null ? Boolean(isFreeOffering) : false,
+        ...(allowFreeCheckout != null ? { allowFreeCheckout: Boolean(allowFreeCheckout) } : {}),
       })
       .returning();
     res.status(201).json({
