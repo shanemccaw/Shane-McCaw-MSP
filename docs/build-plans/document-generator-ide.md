@@ -69,10 +69,15 @@ Phase 3's create call path rather than a second one.
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
+
 | 1 | Document Generator admin page — list, generate, preview, history | Not Started | #40 |
 | 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Not Started | #41 |
 | 3 | New Document Type create modal | Done | #43 |
 | 4 | Missing Document Types panel | Done | #44 |
+=======
+| 1 | Document Generator admin page — list, generate, preview, history | Done (8b25356f, 69edf1ae) | #40 |
+| 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Done | #41 |
+
 
 ## Notes
 `InsightsPayloadDialog.tsx` exports `CollapsibleSection`/`MonoPre`, which
