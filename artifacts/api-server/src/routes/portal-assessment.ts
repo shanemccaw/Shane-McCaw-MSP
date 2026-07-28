@@ -75,7 +75,7 @@ import { registerWorkflowRunSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
 import { runDiagnostics } from "../lib/diagnostics-runner";
-import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
+import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { getStripeKey } from "../lib/stripe";
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
@@ -1015,7 +1015,7 @@ router.get(
 // resets the clock. The actual pay-in-full vs phased choice is task 5; this route
 // only surfaces where the customer sits in the window.
 
-const SOW_DOC_TYPE = "consolidated_sow";
+const SOW_DOC_TYPE = "sow";
 const DISCOUNT_WINDOW_MS = 72 * 60 * 60 * 1000; // 72 hours
 const VALIDITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -1274,15 +1274,15 @@ router.post(
       let onRow: (docId: number) => void = () => {};
       const rowReady = new Promise<number>((resolve, reject) => {
         onRow = (docId: number) => resolve(docId);
-        void generateConsolidatedSowDocument({
+        void generateSowDocument({
           clientUserId: userId,
-          projectId,
-          title: activeDoc.title,
+          projectId: projectId ?? 0,
+          docTypeKey: SOW_DOC_TYPE,
           selectedWorkstreamTitles: requested,
           supersedeMode: "archive",
           onRowCreated: (docId) => onRow(docId),
         })
-          .then((result) => resolve(result.docId))
+          .then((result) => resolve(result.documentId))
           .catch((genErr) => {
             if (responded) {
               log.error({ genErr, userId }, "portal/assessment/sow/select: background SOW regeneration failed");
