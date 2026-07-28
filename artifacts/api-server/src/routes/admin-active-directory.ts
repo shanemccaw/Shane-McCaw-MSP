@@ -27,6 +27,9 @@ import {
   searchDirectory,
   DIRECTORY_GROUP_ROLES,
   buildMspDetail,
+  buildGroupDetail,
+  filterGroupMembers,
+  type DirectoryGroupRole,
 } from "../lib/active-directory";
 
 const router: IRouter = Router();
@@ -252,6 +255,73 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
   } catch (err) {
     log.error({ err, mspId }, "Failed to build MSP Object detail pane");
     res.status(500).json({ error: "Failed to load MSP detail" });
+  }
+});
+
+// ─── GET /admin/active-directory/group/:role?q= ──────────────────────────────
+// RBAC/Group Object detail pane (Phase 4): every real account holding a given
+// role (source-of-truth column is mspUsersTable.mspRole, same column Phase
+// 1/2 already query against — no second role-lookup path), a live member
+// count, and an optional server-side name/email search filter. Read-only —
+// role reassignment is Phase 7.
+router.get("/admin/active-directory/group/:role", requireAdmin, async (req: Request, res: Response) => {
+  const role = req.params.role as DirectoryGroupRole;
+  if (!DIRECTORY_GROUP_ROLES.includes(role)) {
+    res.status(400).json({ error: "Invalid RBAC group role" });
+    return;
+  }
+  const q = typeof req.query.q === "string" ? req.query.q : "";
+
+  try {
+    const memberRows = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        mspId: mspUsersTable.mspId,
+        customerId: mspUsersTable.customerId,
+        isActive: mspUsersTable.isActive,
+        lastLoginAt: mspUsersTable.lastLoginAt,
+      })
+      .from(mspUsersTable)
+      .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+      .where(eq(mspUsersTable.mspRole, role))
+      .orderBy(asc(usersTable.email));
+
+    const mspIds = [...new Set(memberRows.map((m) => m.mspId).filter((id): id is number => id != null))];
+    const customerIds = [...new Set(memberRows.map((m) => m.customerId).filter((id): id is number => id != null))];
+
+    const [mspRows, customerRows] = await Promise.all([
+      mspIds.length
+        ? db.select({ id: mspsTable.id, name: mspsTable.name }).from(mspsTable).where(inArray(mspsTable.id, mspIds))
+        : Promise.resolve([]),
+      customerIds.length
+        ? db
+            .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
+            .from(mspCustomersTable)
+            .where(inArray(mspCustomersTable.id, customerIds))
+        : Promise.resolve([]),
+    ]);
+
+    const mspNameById = new Map(mspRows.map((m) => [m.id, m.name]));
+    const customerNameById = new Map(customerRows.map((c) => [c.id, c.name]));
+
+    const members = memberRows.map((m) => ({
+      id: m.id,
+      email: m.email,
+      name: m.name,
+      mspId: m.mspId,
+      mspName: m.mspId != null ? mspNameById.get(m.mspId) ?? null : null,
+      customerId: m.customerId,
+      customerName: m.customerId != null ? customerNameById.get(m.customerId) ?? null : null,
+      isActive: m.isActive,
+      lastLoginAt: m.lastLoginAt,
+    }));
+
+    res.json(buildGroupDetail(role, filterGroupMembers(q, members)));
+  } catch (err) {
+    log.error({ err, role }, "Failed to build RBAC Group detail pane");
+    res.status(500).json({ error: "Failed to load Group detail" });
   }
 });
 

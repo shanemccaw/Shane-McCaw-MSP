@@ -266,6 +266,41 @@ export function deriveEntitlements(sub: MspSubscriptionRow | null): MspEntitleme
   };
 }
 
+// ── RBAC/Group Object detail pane (Phase 4) ──────────────────────────────────
+//
+// Every real account holding a given DIRECTORY_GROUP_ROLES role, plus a live
+// member count and a search-within-members predicate over name/email.
+
+export interface GroupMember {
+  id: number;
+  email: string;
+  name: string | null;
+  mspId: number | null;
+  mspName: string | null;
+  customerId: number | null;
+  customerName: string | null;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+}
+
+export interface GroupDetail {
+  role: DirectoryGroupRole;
+  members: GroupMember[];
+  memberCount: number;
+}
+
+/** Every group renders every real member holding that role — the live count always matches the rendered list length. */
+export function buildGroupDetail(role: DirectoryGroupRole, members: GroupMember[]): GroupDetail {
+  return { role, members, memberCount: members.length };
+}
+
+/** Same AND-of-terms search convention as searchDirectory/SimulatorLeftTree — filters members by name/email. */
+export function filterGroupMembers(query: string, members: GroupMember[]): GroupMember[] {
+  const q = query.trim();
+  if (!q) return members;
+  return members.filter((m) => matchesAllTerms(q, [m.name, m.email]));
+}
+
 /**
  * Assembles the full MSP Object detail payload — pure, DB-free so it can be
  * unit-tested against plain fixtures. An MSP with zero customers/users/

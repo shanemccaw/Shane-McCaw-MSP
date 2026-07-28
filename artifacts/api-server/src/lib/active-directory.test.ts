@@ -6,6 +6,8 @@ import {
   DIRECTORY_GROUP_ROLES,
   buildMspDetail,
   deriveEntitlements,
+  buildGroupDetail,
+  filterGroupMembers,
   type MspRow,
   type CustomerRow,
   type SearchableUser,
@@ -14,6 +16,7 @@ import {
   type MspDetailCustomer,
   type MspDetailUser,
   type MspAgreementAcceptanceRow,
+  type GroupMember,
 } from "./active-directory";
 
 const MSPS: MspRow[] = [
@@ -306,5 +309,70 @@ describe("buildMspDetail", () => {
     });
     expect(detail.hasAcceptedCurrentAgreement).toBe(false);
     expect(detail.currentAgreementVersion).toBeNull();
+  });
+});
+
+// ── RBAC/Group Object detail pane (Phase 4) ─────────────────────────────────
+
+const GROUP_MEMBERS: GroupMember[] = [
+  {
+    id: 100,
+    email: "jane@contoso.com",
+    name: "Jane Doe",
+    mspId: 1,
+    mspName: "Acme Consulting",
+    customerId: 10,
+    customerName: "Contoso Ltd",
+    isActive: true,
+    lastLoginAt: new Date("2026-07-01T00:00:00Z"),
+  },
+  {
+    id: 101,
+    email: "admin@acme.com",
+    name: "Alex Admin",
+    mspId: 1,
+    mspName: "Acme Consulting",
+    customerId: null,
+    customerName: null,
+    isActive: false,
+    lastLoginAt: null,
+  },
+];
+
+describe("buildGroupDetail", () => {
+  it("carries through the role and members, with a live count matching the list length", () => {
+    const detail = buildGroupDetail("CustomerUser", GROUP_MEMBERS);
+    expect(detail.role).toBe("CustomerUser");
+    expect(detail.members).toEqual(GROUP_MEMBERS);
+    expect(detail.memberCount).toBe(2);
+  });
+
+  it("returns a real empty member list (honest empty state) for a role with zero accounts", () => {
+    const detail = buildGroupDetail("ServiceAccount", []);
+    expect(detail.members).toEqual([]);
+    expect(detail.memberCount).toBe(0);
+  });
+});
+
+describe("filterGroupMembers", () => {
+  it("returns every member for a blank query", () => {
+    expect(filterGroupMembers("  ", GROUP_MEMBERS)).toEqual(GROUP_MEMBERS);
+  });
+
+  it("matches a member by name", () => {
+    expect(filterGroupMembers("Jane", GROUP_MEMBERS).map((m) => m.id)).toEqual([100]);
+  });
+
+  it("matches a member by email", () => {
+    expect(filterGroupMembers("admin@acme.com", GROUP_MEMBERS).map((m) => m.id)).toEqual([101]);
+  });
+
+  it("requires every whitespace-separated term to match (AND, not OR)", () => {
+    expect(filterGroupMembers("Jane Doe", GROUP_MEMBERS).map((m) => m.id)).toEqual([100]);
+    expect(filterGroupMembers("Jane Smith", GROUP_MEMBERS)).toEqual([]);
+  });
+
+  it("returns nothing when no member matches", () => {
+    expect(filterGroupMembers("nonexistent", GROUP_MEMBERS)).toEqual([]);
   });
 });
