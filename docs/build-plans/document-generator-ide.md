@@ -74,7 +74,7 @@ Phase 3's create call path rather than a second one.
 | 3 | New Document Type create modal | Done | #43 |
 | 4 | Missing Document Types panel | Done | #44 |
 | 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
-| 6 | Signal-category scoping for document generation | Done (TBD) | — |
+| 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
 
 
 ## Notes
