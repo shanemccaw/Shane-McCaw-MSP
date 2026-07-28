@@ -25,6 +25,7 @@ Channel: <existing taxonomy channel, or note "N/A — no runtime code">
 - [ ] PLATFORM_BUILD.md updated: ⏳ IN FLIGHT at start, ✅ DONE with commit hash at end
 - [ ] Commit directly to main, own changes only
 - [ ] Plan file phase table status updated
+- [ ] Issue created with `gh issue create --assignee shanemccaw`
 
 ## Full Context
 <complete phase description — everything needed for a cold chat with

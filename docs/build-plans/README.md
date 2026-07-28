@@ -14,11 +14,16 @@ This directory holds the plan files for multi-phase initiatives in this repo.
   the Issue to match it.
 - **One GitHub Issue per phase.** Phases use decimal insertion (e.g. `2.5`)
   when a phase splits mid-build — never renumber existing phases.
+- Every phase Issue is auto-assigned to Shane on creation
+  (`--assignee shanemccaw`).
 
 ## Labels
 
 - `area:*` labels (`area:billing-webhooks`, `area:admin-panel`,
   `area:msp-portal`, `area:public-website`, `area:backlog`) are pre-seeded
   on the repo.
+- `iteration:*` labels (`iteration:1`, `iteration:2`, `iteration:3`) are
+  pre-seeded — iteration:1 = currently being built, iteration:2 = planned
+  v1.2, iteration:3 = planned v1.3.
 - `initiative:*` and `phase:*` labels are created per-initiative/phase as
   needed — not pre-seeded.
