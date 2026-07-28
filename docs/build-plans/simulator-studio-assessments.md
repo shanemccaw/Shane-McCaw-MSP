@@ -36,7 +36,7 @@ exist and are live (see `consent.ts`).
 | 1 | Assessment catalog tree + packageKey audit | Done | #23 |
 | 2 | Admin-direct execution wiring | Done | #24 |
 | 3 | Results & findings display | Done | #25 |
-| 4 | Run history & diff | In Progress | #26 |
+| 4 | Run history & diff | Done | #26 |
 | 5 | Assessment Creation Wizard | Not Started | #28 |
 | 6 | Assessment Edit Wizard | Not Started | #29 |
 | 7 | Delete / Deprecate | Not Started | #30 |
