@@ -79,7 +79,7 @@ Phase 3's create call path rather than a second one.
 | 8 | Tenant-first document generation signature | Done (b44f01fd) | #47 |
 | 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (bb3390b1) — File B reported run; Drizzle `.notNull()` added in Phase 9.5 | — |
 | 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Done | — |
-| 9.5 | Document drift gate (cost overrun guard) — reuse an existing document when no tenant data has moved | Done (COMMIT_HASH) | — |
+| 9.5 | Document drift gate (cost overrun guard) — reuse an existing document when no tenant data has moved | Done (c2e498ea) | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
 | 12 | Tenant-first `admin-ai-prompts` test-draft surface | Open | — |
