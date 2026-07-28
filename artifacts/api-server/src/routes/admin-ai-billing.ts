@@ -9,10 +9,12 @@
 // is an MSP looking at its OWN allowance; everything here is platform-wide and
 // requireAdmin-gated. Nothing in this file is reachable by an MSP.
 //
-// Three endpoints:
-//   GET /admin/ai-billing/events   — filterable, paginated full-detail ledger
-//   GET /admin/ai-billing/summary  — period rollup (seeds the StatusBar totals)
-//   GET /admin/ai-billing/recent   — last N transactions (StatusBar popovers)
+// Four endpoints:
+//   GET /admin/ai-billing/events    — filterable, paginated full-detail ledger
+//   GET /admin/ai-billing/summary   — period rollup (seeds the StatusBar totals)
+//   GET /admin/ai-billing/recent    — last N transactions (StatusBar popovers)
+//   GET /admin/ai-billing/analytics — Phase 4 (#52): trend series over time,
+//       cost per customer / MSP / document type, and anomaly flagging
 //
 // The live delta that rides on top of the summary totals is pushed on the
 // "ai-cost" SSE hub channel — see the broadcast in lib/ai-billing.ts's
@@ -37,6 +39,16 @@ import {
   resolveRangeBounds,
   rollupBy,
 } from "../lib/ai-billing-rollup.ts";
+import {
+  BUCKET_NOUN,
+  DEFAULT_DIMENSION_LIMIT,
+  bucketTimeSeries,
+  parseBucketCount,
+  parseTrendBucket,
+  resolveTrendWindow,
+  rollupDimension,
+} from "../lib/ai-billing-analytics.ts";
+import { scanCostAnomalies } from "../lib/ai-cost-anomaly.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "engine.ai-cost-governance" });
@@ -44,6 +56,12 @@ const log = logger.child({ channel: "engine.ai-cost-governance" });
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_RECENT = 50;
+
+// Hard ceiling on the rows /analytics will pull into memory for one request.
+// Exceeding it does not silently truncate: the response says so, and the buckets
+// that fell outside what was actually read are marked partial so the anomaly
+// rule refuses to judge them or to use them as a baseline.
+const MAX_ANALYTICS_ROWS = 50_000;
 
 // Full-detail projection: what caused the call, what it produced, who pays.
 // Every column the Phase 2 schema expansion added is surfaced — the point of
@@ -76,10 +94,15 @@ type EventRow = {
 } & { mspName: string | null; customerName: string | null };
 
 /**
- * Build the WHERE clause shared by /events and its total count, so the page of
- * rows and the row count can never be filtered differently.
+ * The non-date half of the filter set: everything that narrows WHICH calls are
+ * in scope, as opposed to WHEN they happened.
+ *
+ * Split out so /analytics can honour exactly the same filters as /events while
+ * owning its own time window (it derives one from bucket + count rather than
+ * taking from/to). One definition means a filtered chart and a filtered ledger
+ * can never disagree about what "this MSP's spend" includes.
  */
-function buildEventFilters(req: Request): SQL[] {
+function buildDimensionFilters(req: Request): SQL[] {
   const conditions: SQL[] = [];
 
   const mspId = parseIdParam(req.query.mspId);
@@ -87,12 +110,6 @@ function buildEventFilters(req: Request): SQL[] {
 
   const customerId = parseIdParam(req.query.customerId);
   if (customerId != null) conditions.push(eq(aiUsageEventsTable.customerId, customerId));
-
-  const from = parseDateParam(req.query.from);
-  if (from) conditions.push(gte(aiUsageEventsTable.occurredAt, from));
-
-  const to = parseDateParam(req.query.to);
-  if (to) conditions.push(lte(aiUsageEventsTable.occurredAt, to));
 
   // nodeType and feature are separate columns but one filter concept in the UI
   // ("what kind of call was this"), so each is matched on its own column.
@@ -114,6 +131,22 @@ function buildEventFilters(req: Request): SQL[] {
   if (artifactType) {
     conditions.push(eq(aiUsageEventsTable.generatedArtifactType, artifactType));
   }
+
+  return conditions;
+}
+
+/**
+ * Build the WHERE clause shared by /events and its total count, so the page of
+ * rows and the row count can never be filtered differently.
+ */
+function buildEventFilters(req: Request): SQL[] {
+  const conditions = buildDimensionFilters(req);
+
+  const from = parseDateParam(req.query.from);
+  if (from) conditions.push(gte(aiUsageEventsTable.occurredAt, from));
+
+  const to = parseDateParam(req.query.to);
+  if (to) conditions.push(lte(aiUsageEventsTable.occurredAt, to));
 
   return conditions;
 }
@@ -264,6 +297,114 @@ router.get("/admin/ai-billing/recent", requireAdmin, async (req: Request, res: R
   } catch (err) {
     log.error({ err }, "ai-billing: failed to load recent usage events");
     res.status(500).json({ error: "Failed to load recent AI usage" });
+  }
+});
+
+// ─── GET /admin/ai-billing/analytics ─────────────────────────────────────────
+// Phase 4 (#52). The decision-useful layer over the same rows /events lists:
+//
+//   ?bucket=day|week|month   size of each trend bucket        (default day)
+//   ?buckets=N               how many buckets back            (per-size bounds)
+//   ?tzOffsetMinutes=N       viewer's offset, as Phase 3 uses
+//   ?limit=N                 top-N per dimension              (default 8)
+//   plus every non-date filter /events accepts (mspId, customerId, costOwner,
+//   feature, nodeType, generatedArtifactType), so a chart can be scoped exactly
+//   like the ledger below it.
+//
+// Deliberately NOT parameterised: the anomaly rule. Letting a caller pass its
+// own factor would turn "no anomalies" into a statement about the query string
+// rather than about spend. The rule is server-owned and echoed back in full
+// (including its direction) so the page can print it verbatim.
+//
+// Cost per LEAD is not here. It is split out to #81 and blocked on the Zoho CRM
+// lead-integration initiative; building it against today's fragmented lead
+// tables would have been thrown away. Its absence is intentional.
+router.get("/admin/ai-billing/analytics", requireAdmin, async (req: Request, res: Response) => {
+  const bucket = parseTrendBucket(req.query.bucket);
+  const bucketCount = parseBucketCount(req.query.buckets, bucket);
+  const tzOffsetMinutes = parseTzOffsetMinutes(req.query.tzOffsetMinutes);
+  const dimensionLimit = parseBoundedInt(req.query.limit, DEFAULT_DIMENSION_LIMIT, 3, 25);
+  const now = new Date();
+  const window = resolveTrendWindow(bucket, bucketCount, tzOffsetMinutes, now);
+
+  try {
+    const conditions = [
+      gte(aiUsageEventsTable.occurredAt, window.start),
+      lt(aiUsageEventsTable.occurredAt, window.end),
+      ...buildDimensionFilters(req),
+    ];
+
+    // Newest first, with one row of headroom past the ceiling: if the extra row
+    // comes back the window was bigger than we read, and the OLDEST end is what
+    // got clipped — which is exactly what `observedFrom` below then declares.
+    const scanned = await db
+      .select({
+        occurredAt: aiUsageEventsTable.occurredAt,
+        costCents: aiUsageEventsTable.costCents,
+        customerId: aiUsageEventsTable.customerId,
+        mspId: aiUsageEventsTable.mspId,
+        generatedArtifactType: aiUsageEventsTable.generatedArtifactType,
+        customerName: mspCustomersTable.name,
+        mspName: mspsTable.name,
+      })
+      .from(aiUsageEventsTable)
+      .leftJoin(mspsTable, eq(mspsTable.id, aiUsageEventsTable.mspId))
+      .leftJoin(mspCustomersTable, eq(mspCustomersTable.id, aiUsageEventsTable.customerId))
+      .where(and(...conditions))
+      .orderBy(desc(aiUsageEventsTable.occurredAt))
+      .limit(MAX_ANALYTICS_ROWS + 1);
+
+    const truncated = scanned.length > MAX_ANALYTICS_ROWS;
+    const rows = truncated ? scanned.slice(0, MAX_ANALYTICS_ROWS) : scanned;
+
+    // When the scan was clipped, the earliest row we hold is the earliest instant
+    // we can honestly speak about. Everything before it is unread, not empty.
+    let observedFrom: Date | null = null;
+    if (truncated) {
+      let earliest = Number.POSITIVE_INFINITY;
+      for (const r of rows) {
+        const ms = r.occurredAt instanceof Date ? r.occurredAt.getTime() : NaN;
+        if (Number.isFinite(ms) && ms < earliest) earliest = ms;
+      }
+      observedFrom = Number.isFinite(earliest) ? new Date(earliest) : window.end;
+      log.warn(
+        { bucket, bucketCount, rowLimit: MAX_ANALYTICS_ROWS },
+        "ai-billing: analytics row scan hit its ceiling; older buckets reported as partial",
+      );
+    }
+
+    const series = bucketTimeSeries(rows, {
+      bucket,
+      window,
+      tzOffsetMinutes,
+      now,
+      observedFrom,
+    });
+
+    res.json({
+      bucket,
+      bucketCount,
+      periodStart: window.start.toISOString(),
+      periodEnd: window.end.toISOString(),
+      // Totals over what was read — reconciles with the series and with every
+      // dimension rollup below, because all four are derived from these rows.
+      totalCostCents: rows.reduce((acc, r) => acc + (r.costCents ?? 0), 0),
+      eventCount: rows.length,
+      coverage: {
+        rowsScanned: rows.length,
+        rowLimit: MAX_ANALYTICS_ROWS,
+        truncated,
+        observedFrom: observedFrom?.toISOString() ?? null,
+      },
+      series,
+      byCustomer: rollupDimension(rows, "customer", dimensionLimit),
+      byMsp: rollupDimension(rows, "msp", dimensionLimit),
+      byArtifactType: rollupDimension(rows, "artifactType", dimensionLimit),
+      anomalies: scanCostAnomalies(series, {}, BUCKET_NOUN[bucket]),
+    });
+  } catch (err) {
+    log.error({ err, bucket, bucketCount }, "ai-billing: failed to build usage analytics");
+    res.status(500).json({ error: "Failed to load AI usage analytics" });
   }
 });
 

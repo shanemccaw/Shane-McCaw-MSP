@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import AiCostTrends from "@/components/ai-billing/AiCostTrends";
+import { formatCents } from "@/components/ai-billing/format";
 
 // ─── Types (mirror routes/admin-ai-billing.ts's responses) ───────────────────
 
@@ -63,9 +65,9 @@ interface SummaryResponse {
 
 const PAGE_SIZE = 50;
 
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+// formatCents lives in components/ai-billing/format so the ledger and the Phase 4
+// trends section render cents identically — and so cents become currency in
+// exactly one place.
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return "—";
@@ -214,6 +216,20 @@ export default function AiBillingPage() {
 
   const rangeLabel = filters.range === "today" ? "Today" : "This month";
 
+  // Memoised so the trends section's fetch keys off the FILTER VALUES rather
+  // than off object identity — an inline literal here would rebuild every render
+  // and refetch the analytics on every keystroke elsewhere on the page.
+  const trendScope = useMemo(
+    () => ({
+      mspId: filters.mspId,
+      customerId: filters.customerId,
+      costOwner: filters.costOwner,
+      feature: filters.feature,
+      generatedArtifactType: filters.generatedArtifactType,
+    }),
+    [filters],
+  );
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background font-sans text-foreground">
       <header className="flex h-9 shrink-0 items-center gap-2.5 border-b border-border bg-card px-3 select-none">
@@ -330,6 +346,19 @@ export default function AiBillingPage() {
             </p>
           )}
         </div>
+
+        {/* ── Trends & anomalies (Phase 4 / #52) ──
+            Owns its own bucket size and its own window, so it is not bound to
+            the Today/Month toggle above — a trend needs more history than a
+            single period. It DOES honour the filters, so narrowing to one MSP
+            narrows the charts, the anomaly baseline and the ledger together. */}
+        <AiCostTrends
+          fetchWithAuth={fetchWithAuth}
+          tzOffsetMinutes={tzOffsetMinutes}
+          scope={trendScope}
+          onFilter={setFilter}
+          reloadKey={reloadKey}
+        />
 
         {/* ── Event table ── */}
         <div className="rounded-md border border-border bg-card">

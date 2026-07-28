@@ -47,7 +47,7 @@ Done, so Phases 4 and 5 are unblocked.
 | 1 | Close AI-call logging gaps | Done | #49 |
 | 2 | Expand ai_usage_events schema for full traceability | Done | #50 |
 | 3 | PlatformAdmin AI Billing page + live StatusBar segments (SSE) | Done | #51 |
-| 4 | Analytics/trends layer (cost-per-customer/MSP/doc-type, trend charts, anomaly flagging) | Not Started | #52 |
+| 4 | Analytics/trends layer (cost-per-customer/MSP/doc-type, trend charts, anomaly flagging) | Done | #52 |
 | 4.1 | Cost-per-lead analytics (BLOCKED — depends on lead-table unification, itself depends on the not-yet-scoped Zoho CRM lead-integration initiative) | Blocked | #81 |
 | 5 | Document Engine cost return value | Not Started | #53 |
 
@@ -89,8 +89,61 @@ Decisions worth carrying forward:
   `CHANNEL_TAXONOMY` — Phase 1 introduced the logger channel but never listed
   it in the picker.
 
+### Phase 4 — what shipped
+One new endpoint, `GET /admin/ai-billing/analytics`, and one new section on the
+existing AI Billing page (`components/ai-billing/AiCostTrends.tsx`). Two new pure
+modules carry the thinking: `lib/ai-billing-analytics.ts` (bucketing + dimension
+rollups) and `lib/ai-cost-anomaly.ts` (the rule).
+
+Decisions worth carrying forward:
+
+- **The anomaly rule is data, and so is its direction.** `AI_COST_ANOMALY_DIRECTION
+  = "high-is-bad"` is exported next to the rule it governs, and the page prints
+  the server's own `rule.description` rather than a hardcoded sentence, so the
+  stated threshold cannot drift from the one the data was judged by. A "a large
+  DROP never fires" test exists specifically because this repo has shipped
+  threshold rules that encoded the wrong direction.
+- **Median baseline, not mean.** With a mean, one spike lifts the baseline enough
+  to hide the next one — the sustained overrun this initiative exists to catch.
+- **A $1.00 floor.** Without it, $0.02 → $0.09 is a 4.5x "spike" and the page
+  becomes noise its reader switches off.
+- **`partial` means "not fully observed"** and covers two cases: the in-progress
+  bucket, and buckets clipped by the 50k row-scan ceiling. Partial buckets are
+  neither judged nor used as a baseline. Judging an in-progress period against
+  complete ones would systematically UNDER-fire, which for a high-is-bad metric
+  means missing real overruns; counting a clipped bucket as low would drag the
+  baseline down and manufacture one.
+- **The series is gapless.** A quiet day is a real $0.00 bucket. A missing bucket
+  both lies about the time axis and removes a genuine zero from the baseline.
+- **Unattributed spend is its own field, never a bucket.** NULL `customerId` /
+  NULL `mspId` / no artifact type are reported as `unattributed` alongside the
+  ranked slices, not folded into one. Note this differs deliberately from Phase
+  3's `/summary`, which labels null-mspId as a "Platform (no MSP)" bucket;
+  `/summary` was left untouched so the StatusBar seeding is unchanged.
+- **recharts, with literal colours.** admin-panel's design tokens are raw HSL
+  triples, valid only inside `hsl()`; a chart theme reading `var(--border)` gets
+  an invisible grid and black ticks. Colours are passed explicitly as literals
+  from index.css's token block, matching the nine recharts pages already here.
+  `@workspace/dashboard-canvas` (Nivo) was not used — it is the widget-canvas
+  system, and pulling it in would put a second chart runtime on this page.
+- **The row ceiling is declared, not silent.** Past 50,000 rows the response says
+  `truncated`, names the earliest instant it can speak to, and the page shows a
+  banner telling the reader to narrow the filters.
+- **Cost per lead is NOT here.** Split to #81, blocked on the Zoho CRM
+  lead-integration initiative. Its absence is intentional; do not "complete the
+  set" by building it against today's fragmented lead tables.
+
 Open follow-ups: the page has no CSV export, and `/summary`'s breakdowns are
 computed in JS over the period's rows (correct and self-reconciling, but it
 reads every row in the window — worth moving to SQL `GROUP BY` if the table
 grows large enough for that to matter). Not live-verified against a real
 database — no `DATABASE_URL` in the Claude Code environment, per repo rule.
+
+Phase 4 inherits that same read-the-window shape deliberately (one read backs the
+series, all three rollups and the headline total, so they cannot disagree), and
+bounds it with the declared 50k ceiling rather than pretending it scales
+unbounded. If `ai_usage_events` grows past that in a normal window, the move is a
+SQL `date_trunc` + `GROUP BY` behind the same response shape — the pure modules
+take rows, so only the route changes. Phase 4 is likewise not live-verified: the
+aggregation and anomaly logic are tested against fixtures, not against a real
+database.
