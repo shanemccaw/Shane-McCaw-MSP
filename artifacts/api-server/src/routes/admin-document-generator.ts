@@ -11,20 +11,22 @@
  * Routes
  * ──────
  * GET  /api/admin/document-generator/clients/:id/projects — project picker for a client
+ * GET  /api/admin/document-generator/missing-types           — document_generation services with no document_types row
  * POST /api/admin/document-generator/document-types/:key/generate — real generation
  * GET  /api/admin/document-generator/history                — recent generations
  * GET  /api/admin/document-generator/history/:id/html        — view/download stored HTML
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, projectsTable, usersTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
+const missingTypesLog = logger.child({ channel: "engine.document-generator" });
 const router: IRouter = Router();
 
 // ── Project picker ──────────────────────────────────────────────────────────
@@ -43,6 +45,33 @@ router.get("/admin/document-generator/clients/:id/projects", requireAdmin, async
   } catch (err) {
     log.error({ err, clientUserId }, "admin-document-generator: list projects failed");
     res.status(500).json({ error: "Failed to fetch projects" });
+  }
+});
+
+// ── Missing document types ───────────────────────────────────────────────────
+// Services flagged for document-generation delivery with no matching
+// document_types row yet — surfaces registry gaps before they're hit at
+// generation time. `slug` is included alongside the id/name/description the
+// panel displays so the frontend's Quick Add can derive a key without a
+// second round trip.
+
+router.get("/admin/document-generator/missing-types", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: servicesTable.id,
+        name: servicesTable.name,
+        description: servicesTable.description,
+        slug: servicesTable.slug,
+      })
+      .from(servicesTable)
+      .leftJoin(documentTypesTable, eq(documentTypesTable.serviceId, servicesTable.id))
+      .where(and(eq(servicesTable.deliveryType, "document_generation"), isNull(documentTypesTable.id)))
+      .orderBy(servicesTable.name);
+    res.json(rows);
+  } catch (err) {
+    missingTypesLog.error({ err }, "admin-document-generator: missing-types failed");
+    res.status(500).json({ error: "Failed to fetch missing document types" });
   }
 });
 

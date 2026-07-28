@@ -43,6 +43,18 @@ once the new page covers the same ground.
   `cmd-insights` nav entry from `workspaceNav.tsx` entirely, and stamp a
   standard "dead — do not use" banner comment at the top of
   `admin-insights.ts`, `InsightsOutputs.tsx`, and `InsightsPayloadDialog.tsx`.
+- Phase 3: "New Document Type" button + modal on `DocumentGeneratorIde.tsx`
+  (label, auto-slugified/editable key, category, pipelineCategory, optional
+  service dropdown from `GET /admin/services`), submitting to the existing
+  `POST /admin/document-types` (admin-document-types.ts) unmodified, plus an
+  "Edit Prompt" deep link to `/prompt-center/:id` after creation. Also fixes
+  that route's prompt-creation block, which still pointed its new prompts'
+  `featureRoute` at the legacy `/command/insights` instead of this page.
+- Phase 4: "Missing Document Types" panel on the same page, backed by a new
+  `GET` in `admin-document-generator.ts` — `services` LEFT JOIN
+  `document_types`, filtered to `delivery_type = 'document_generation'` rows
+  with no matching type — with a per-row "Quick Add" that reuses Phase 3's
+  create call path.
 
 ## Dependencies / Prerequisites
 Built on top of the already-shipped Document Engine initiative
@@ -51,13 +63,21 @@ Built on top of the already-shipped Document Engine initiative
 overloads), and `DocumentTypePreviewDialog.tsx` all already exist and are
 reused, not rebuilt. Phase 2 depends on Phase 1 being done first (can't kill
 the old nav entry / mark the old files dead until the new page actually
-covers generation).
+covers generation). Phase 4 is sequenced after Phase 3 since Quick Add reuses
+Phase 3's create call path rather than a second one.
 
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
+
+| 1 | Document Generator admin page — list, generate, preview, history | Not Started | #40 |
+| 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Not Started | #41 |
+| 3 | New Document Type create modal | Done | #43 |
+| 4 | Missing Document Types panel | Done | #44 |
+=======
 | 1 | Document Generator admin page — list, generate, preview, history | Done (8b25356f, 69edf1ae) | #40 |
 | 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Done | #41 |
+
 
 ## Notes
 `InsightsPayloadDialog.tsx` exports `CollapsibleSection`/`MonoPre`, which
