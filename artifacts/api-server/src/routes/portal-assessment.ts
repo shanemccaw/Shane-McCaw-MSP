@@ -73,7 +73,7 @@ import { requireRole } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
 import { registerWorkflowRunSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
-import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
+import { type OmgCard } from "../lib/omg-card-generator-v2";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { getStripeKey } from "../lib/stripe";
@@ -749,17 +749,7 @@ router.get(
         return;
       }
 
-      // Lazily extract OMG cards on first view; reuse stored cards thereafter.
-      let omgCards: OmgCard[] = (doc.omgCards as OmgCard[] | null) ?? [];
-      if (doc.omgCards == null) {
-        omgCards = await extractAndStoreOmgCards({
-          id: doc.id,
-          docType: doc.docType,
-          title: doc.title,
-          htmlContent: doc.htmlContent,
-          customerUserId: doc.customerId,
-        });
-      }
+      const omgCards: OmgCard[] = (doc.omgCards as OmgCard[] | null) ?? [];
 
       res.json({
         id: doc.id,

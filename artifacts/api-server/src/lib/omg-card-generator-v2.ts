@@ -15,13 +15,29 @@
  * this right after a document is generated) is separate follow-up work.
  */
 
+import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, insightsGeneratedDocumentsTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
-import { OmgCardSchema, type OmgCard } from "./omg-card-extractor";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
+
+// ── Card shape ──────────────────────────────────────────────────────────────
+
+export const OmgCardSchema = z.object({
+  severity: z.enum(["red", "amber", "green"]),
+  /** Big, pre-formatted headline figure — e.g. "$18,000", "0", "23", "94%". */
+  metric: z.string().min(1).max(24),
+  /** Short qualifier under the metric — e.g. "per year wasted", "MFA-exempt admins". */
+  metricLabel: z.string().min(1).max(60),
+  /** Punchy human headline — e.g. "Your admins can sign in without MFA". */
+  headline: z.string().min(1).max(120),
+  /** One-sentence plain-language explanation of why it matters. */
+  detail: z.string().min(1).max(400),
+});
+
+export type OmgCard = z.infer<typeof OmgCardSchema>;
 
 // Bounded extraction/classification over already-real structured data —
 // Haiku is the cost-appropriate tier, matching m365-health-ai-scorer.ts and
@@ -60,7 +76,7 @@ RULES:
   { "severity": "red", "metric": "$18,000", "metricLabel": "per year wasted", "headline": "You're paying for 20 licenses nobody uses", "detail": "The license review found 20 assigned E3 licenses with no sign-in activity, costing roughly $18,000 annually." }
 ]`;
 
-// Mirrors extractJson() in omg-card-extractor.ts / admin-marketing.ts — see
+// Mirrors extractJson() in admin-marketing.ts — see
 // .agents/memory/ai-json-extraction.md. Claude sometimes wraps JSON in
 // prose/fences; never use a ^-anchored regex.
 function extractJson(text: string): string {
