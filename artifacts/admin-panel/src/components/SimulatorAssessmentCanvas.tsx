@@ -2,7 +2,7 @@
 //
 // Center view for the Simulator Studio's "Assessments" node. Phase 1 (Issue
 // #23) built the read-only shell — header, metadata, real stored config,
-// resolved packageKey + package check list. Phase 2 (Issue #24) adds
+// resolved packageKey + package check list. Phase 2 (Issue #24) added
 // execution: a "Run" button against the selected testbed customer, wired to
 // the EXISTING diagnostics pipeline (no new backend) —
 // POST /api/msp/customers/:customerId/diagnostics/run followed by
@@ -16,16 +16,30 @@
 // own default resolution apply, exactly like the "default"/empty-string
 // no-op the route already treats as "not provided".
 //
-// Deliberately NOT here (later phases, not yet built): a findings table or
-// run history — this phase's "results" surface is just the completion
-// summary banner. create/edit/delete of the packageKey assignment or of
-// monitoring packages themselves stays out of scope too.
+// Phase 3 (Issue #25) adds results/findings display. No new backend: reuses
+// the existing GET /api/msp/customers/:customerId/diagnostics/runs/:runId
+// (returns { run, findings }, msp-diagnostics.ts) and, for viewing a run
+// picked outside the live-run flow, GET .../diagnostics/runs (plain array,
+// most recent first — the same route customer-detail.tsx's Diagnostics tab
+// uses for its run-history list). That route orders findings alphabetically
+// by severity text ("critical, info, ok, warning"), which is not a usable
+// priority order — re-sorted client-side by SEVERITY_PRIORITY instead of
+// touching the shared backend route. Severity colors/labels and the
+// findings-row shape mirror customer-detail.tsx's SEVERITY_CONFIG/
+// DiagnosticFinding (same msp_diagnostic_findings rows, same 4-value enum).
+// extractedProperties renders via the existing JsonResponseViewer
+// (Formatted/Raw tabs + copy) rather than a second JSON viewer.
+//
+// Deliberately NOT here (later phase, not yet built): full run history
+// browsing/diff across many runs — Phase 4 (#26). This phase's past-run
+// picker is a minimal recent-runs dropdown only.
 
-import { useEffect, useRef, useState } from "react";
-import { ListChecks, AlertTriangle, Loader2, Play } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { ListChecks, AlertTriangle, AlertCircle, Info, CheckCircle2, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
+import { JsonResponseViewer } from "./JsonResponseViewer";
 import type { AssessmentNode } from "./SimulatorLeftTree";
 
 // Discriminated union matching the real events broadcastDiagnosticsRun*
@@ -60,6 +74,76 @@ interface RunSummary {
   findings: number;
 }
 
+// Matches msp_diagnostic_findings (msp.ts) — same rows customer-detail.tsx's
+// DiagnosticsTab renders, same 4-value severity enum.
+interface DiagnosticFinding {
+  findingId: string;
+  checkKey: string;
+  checkLabel: string;
+  severity: "ok" | "info" | "warning" | "critical";
+  title: string;
+  description?: string | null;
+  extractedProperties?: Record<string, unknown> | null;
+  checkStatus?: string | null;
+}
+
+// A row from GET .../diagnostics/runs (plain array, most recent first) — the
+// minimal past-run picker for this phase, not full history browsing (#26).
+interface PastRun {
+  runId: string;
+  status: string;
+  packageKey: string;
+  checksTotal: number;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+// The API orders findings alphabetically by severity text ("critical, info,
+// ok, warning") — not a usable priority order. Re-sort client-side instead
+// of touching the shared backend route.
+const SEVERITY_PRIORITY: Record<DiagnosticFinding["severity"], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+  ok: 3,
+};
+
+function sortFindingsBySeverity(findings: DiagnosticFinding[]): DiagnosticFinding[] {
+  return [...findings].sort((a, b) => SEVERITY_PRIORITY[a.severity] - SEVERITY_PRIORITY[b.severity]);
+}
+
+// Same color/label convention as customer-detail.tsx's SEVERITY_CONFIG for
+// this exact 4-value enum — reused here rather than inventing new colors.
+const SEVERITY_CONFIG = {
+  critical: { label: "Critical", icon: AlertCircle, color: "text-red-400", bg: "bg-red-500/10 border-red-500/30" },
+  warning: { label: "Warning", icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30" },
+  info: { label: "Info", icon: Info, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/30" },
+  ok: { label: "OK", icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/10 border-green-500/30" },
+} as const;
+
+function SeverityBadge({ severity }: { severity: DiagnosticFinding["severity"] }) {
+  const cfg = SEVERITY_CONFIG[severity];
+  return (
+    <span
+      className={`rounded-sm border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider ${cfg.bg} ${cfg.color}`}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+function relativeDate(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const diff = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (diff < 1) return "Just now";
+  if (diff < 60) return `${diff}m ago`;
+  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
+  const days = Math.floor(diff / 1440);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function SimulatorAssessmentCanvas({ assessment }: { assessment: AssessmentNode }) {
   const { fetchWithAuth, accessToken } = useAuth();
   const { selectedCustomerId } = useTestbedContext();
@@ -71,6 +155,20 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
+  // Findings for whichever run is currently being viewed — either the run
+  // that just completed via the live SSE flow above, or one picked from the
+  // past-runs dropdown below.
+  const [findingsRunId, setFindingsRunId] = useState<string | null>(null);
+  const [findings, setFindings] = useState<DiagnosticFinding[] | null>(null);
+  const [loadingFindings, setLoadingFindings] = useState(false);
+  const [findingsError, setFindingsError] = useState<string | null>(null);
+  const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
+
+  // Minimal recent-runs picker so results are viewable for a run selected
+  // outside the live-run flow. Full history/diff is Phase 4 (#26).
+  const [pastRuns, setPastRuns] = useState<PastRun[]>([]);
+  const [loadingPastRuns, setLoadingPastRuns] = useState(false);
+
   // Re-seed whenever a different assessment is selected in the tree.
   useEffect(() => {
     esRef.current?.close();
@@ -80,6 +178,10 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
     setLog([]);
     setSummary(null);
     setErrorMessage(null);
+    setFindingsRunId(null);
+    setFindings(null);
+    setFindingsError(null);
+    setExpandedFindingId(null);
   }, [assessment.id]);
 
   useEffect(() => {
@@ -87,6 +189,57 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
       esRef.current?.close();
     };
   }, []);
+
+  const loadPastRuns = async () => {
+    if (selectedCustomerId == null) {
+      setPastRuns([]);
+      return;
+    }
+    setLoadingPastRuns(true);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${selectedCustomerId}/diagnostics/runs?limit=10`);
+      if (!res.ok) {
+        setPastRuns([]);
+        return;
+      }
+      const data = await res.json();
+      setPastRuns(Array.isArray(data) ? data : []);
+    } catch {
+      setPastRuns([]);
+    } finally {
+      setLoadingPastRuns(false);
+    }
+  };
+
+  // Reload the picker whenever the testbed customer or selected assessment
+  // changes — the dropdown always reflects that customer's recent runs.
+  useEffect(() => {
+    void loadPastRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomerId, assessment.id]);
+
+  const loadFindings = async (runId: string) => {
+    if (selectedCustomerId == null) return;
+    setFindingsRunId(runId);
+    setLoadingFindings(true);
+    setFindingsError(null);
+    setExpandedFindingId(null);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${selectedCustomerId}/diagnostics/runs/${runId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setFindingsError(data.error || "Failed to load findings for this run");
+        setFindings(null);
+        return;
+      }
+      setFindings(sortFindingsBySeverity((data.findings ?? []) as DiagnosticFinding[]));
+    } catch (err: any) {
+      setFindingsError(err.message || "Network error loading findings");
+      setFindings(null);
+    } finally {
+      setLoadingFindings(false);
+    }
+  };
 
   const handleRun = async () => {
     if (phase === "starting" || phase === "running") return;
@@ -100,6 +253,10 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
     setLog([]);
     setSummary(null);
     setErrorMessage(null);
+    setFindingsRunId(null);
+    setFindings(null);
+    setFindingsError(null);
+    setExpandedFindingId(null);
 
     try {
       const res = await fetchWithAuth(`/api/msp/customers/${selectedCustomerId}/diagnostics/run`, {
@@ -148,6 +305,8 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
             findings: parsed.findings,
           });
           toast.success(`${assessment.name} run complete`);
+          void loadFindings(runId);
+          void loadPastRuns();
         } else if (parsed.type === "diagnostics_error") {
           es.close();
           esRef.current = null;
@@ -261,6 +420,129 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
                 <span>requires script: {summary.requiresScript}</span>
                 <span>findings: {summary.findings}</span>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Past runs — minimal picker so results are viewable for a run
+          selected outside the live-run flow above. Full history/diff
+          browsing is Phase 4 (#26). */}
+      <div className="mb-3 flex items-center gap-2">
+        <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          View run
+        </label>
+        <select
+          className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 font-mono text-[11px] text-foreground disabled:opacity-50"
+          disabled={loadingPastRuns || pastRuns.length === 0 || selectedCustomerId == null}
+          value={findingsRunId ?? ""}
+          onChange={(e) => {
+            if (e.target.value) void loadFindings(e.target.value);
+          }}
+        >
+          <option value="" disabled>
+            {selectedCustomerId == null
+              ? "Select a testbed customer first"
+              : loadingPastRuns
+                ? "Loading recent runs…"
+                : pastRuns.length === 0
+                  ? "No runs yet for this customer"
+                  : "Select a past run…"}
+          </option>
+          {pastRuns.map((run) => (
+            <option key={run.runId} value={run.runId}>
+              {run.status} · {relativeDate(run.createdAt)} · {run.checksTotal} checks · {run.packageKey}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Findings table */}
+      {(loadingFindings || findingsError || findings !== null) && (
+        <div className="mb-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Findings{findingsRunId ? ` — run ${findingsRunId.slice(0, 8)}` : ""}
+            </span>
+            {findings && (
+              <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                {findings.length} finding{findings.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+
+          {loadingFindings && (
+            <div className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading findings…
+            </div>
+          )}
+
+          {!loadingFindings && findingsError && (
+            <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+              {findingsError}
+            </p>
+          )}
+
+          {!loadingFindings && !findingsError && findings && findings.length === 0 && (
+            <div className="rounded border border-border bg-card px-3 py-2 text-[11px] italic text-muted-foreground">
+              No findings for this run.
+            </div>
+          )}
+
+          {!loadingFindings && !findingsError && findings && findings.length > 0 && (
+            <div className="overflow-hidden rounded border border-border">
+              <table className="w-full border-collapse text-[11px]">
+                <thead>
+                  <tr className="border-b border-border bg-card text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <th className="w-20 px-2 py-1.5 text-left font-semibold">Severity</th>
+                    <th className="px-2 py-1.5 text-left font-semibold">Check</th>
+                    <th className="px-2 py-1.5 text-left font-semibold">Finding</th>
+                    <th className="w-6 px-2 py-1.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {findings.map((finding) => {
+                    const isExpanded = expandedFindingId === finding.findingId;
+                    return (
+                      <Fragment key={finding.findingId}>
+                        <tr
+                          className="cursor-pointer border-b border-border bg-background last:border-b-0 hover:bg-accent/40"
+                          onClick={() => setExpandedFindingId(isExpanded ? null : finding.findingId)}
+                        >
+                          <td className="px-2 py-1.5 align-top">
+                            <SeverityBadge severity={finding.severity} />
+                          </td>
+                          <td className="px-2 py-1.5 align-top font-mono text-muted-foreground">
+                            {finding.checkLabel || finding.checkKey}
+                          </td>
+                          <td className="px-2 py-1.5 align-top text-foreground">{finding.title}</td>
+                          <td className="px-2 py-1.5 align-top text-muted-foreground">
+                            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="border-b border-border bg-card last:border-b-0">
+                            <td colSpan={4} className="px-2 py-2">
+                              {finding.description && (
+                                <p className="mb-2 text-[11px] text-muted-foreground">{finding.description}</p>
+                              )}
+                              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Extracted properties
+                              </div>
+                              <JsonResponseViewer
+                                value={finding.extractedProperties ?? undefined}
+                                emptyLabel="No extracted properties captured for this finding"
+                                className="max-h-64"
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
