@@ -58,11 +58,15 @@ describe("GET /api/admin/live-stream/channels", () => {
       .set("Authorization", `Bearer ${adminToken()}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.channels).toHaveLength(34);
+    expect(res.body.channels).toHaveLength(35);
     expect(res.body.channels).not.toContain("inbox");
     expect(res.body.channels).toContain("engine.sla");
-    // Introduced by the AI Cost Governance initiative's Phase 1 but never added
-    // to the picker's taxonomy until Phase 3.
+    // Two channels that existed in the codebase but were missing from this
+    // assertion's count: "integration.sharepoint" (added by the SharePoint
+    // tenant-admin work without updating this number, so the test was already
+    // red) and "engine.ai-cost-governance" (introduced by AI Cost Governance
+    // Phase 1, added to the taxonomy itself in Phase 3).
+    expect(res.body.channels).toContain("integration.sharepoint");
     expect(res.body.channels).toContain("engine.ai-cost-governance");
     expect(res.body.channels).toContain("growth.booking");
     expect(res.body.channels).toContain("admin.shell");
