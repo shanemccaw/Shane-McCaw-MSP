@@ -121,6 +121,7 @@ export default defineConfig({
       "src/lib/__tests__/monitor-failure-classifier.test.ts",
       "src/lib/write-action-safety.test.ts",
       "src/routes/admin-write-actions.test.ts",
+      "src/routes/admin-document-generator.test.ts",
     ],
     coverage: {
       provider: "v8",

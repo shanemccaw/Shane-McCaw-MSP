@@ -251,7 +251,7 @@ router.post("/admin/document-types", requireAdmin, async (req: Request, res: Res
           description: `Generates the "${label}" ${category} deliverable in HTML. Created automatically for the document_types registry entry "${key}".`,
           category: "insights",
           featureArea: "Command — Insights",
-          featureRoute: "/command/insights",
+          featureRoute: "/command/doc-generator",
           model: "claude-haiku-4-5",
           promptBody: defaultBody,
           defaultBody,
