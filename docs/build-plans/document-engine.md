@@ -63,6 +63,7 @@ this same session.
 | 19.1 | Port admin test-draft feature to real engine | Done | #35 |
 | 19.3 | Delete consolidated-sow-generator.ts and admin-sow-debug.ts | Done | #39 |
 | 19.4 | Delete omg-card-extractor.ts | Done | #38 |
+| 19.5 | Remove parseSowPricing | Done | #37 |
 
 ## Notes
 Phase 17 is a real, load-bearing gap, not cleanup: `portal-assessment.ts`'s
