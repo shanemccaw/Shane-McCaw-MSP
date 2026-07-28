@@ -61,6 +61,7 @@ this same session.
 | 18 | Document Types IDE — preview (dry-run payload shown to admin before real generation) | Done | #33 |
 | 19 | Retire old generation path (`generateAndDeliverDocument`, `generateConsolidatedSowDocument`, `extractAndStoreOmgCards`, extraction-based `sowPricingLines`) — blocked on Phase 17 | Not Started | #34 |
 | 19.1 | Port admin test-draft feature to real engine | Done | #35 |
+| 19.3 | Delete consolidated-sow-generator.ts and admin-sow-debug.ts | Done | #39 |
 | 19.4 | Delete omg-card-extractor.ts | Done | #38 |
 
 ## Notes
