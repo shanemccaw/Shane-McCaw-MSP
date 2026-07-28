@@ -3,8 +3,9 @@
 // Middle detail pane, dispatched by selected object type (window CustomEvent,
 // not prop-drilled state — same event-driven hand-off convention
 // SimulatorLeftTree's canvases use). Phase 2 adds the real MSP Object
-// renderer (ActiveDirectoryMspPane); Customer/RBAC Group/User stay Phase-1
-// stubs ("selected: <type> <name>") until their own phases (3/4/6) ship.
+// renderer (ActiveDirectoryMspPane); Phase 6 adds the real User Object
+// renderer (ActiveDirectoryUserPane). Only the OU-placeholder fallback below
+// remains a generic stub now.
 
 import { useEffect, useState } from "react";
 import { FolderTree } from "lucide-react";
@@ -13,6 +14,7 @@ import { ActiveDirectoryMspPane } from "./ActiveDirectoryMspPane";
 import { ActiveDirectoryGroupPane } from "./ActiveDirectoryGroupPane";
 import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
 import { ActiveDirectoryOuPane } from "./ActiveDirectoryOuPane";
+import { ActiveDirectoryUserPane } from "./ActiveDirectoryUserPane";
 
 const TYPE_LABEL: Record<AdSelectedType, string> = {
   msp: "MSP",
@@ -56,6 +58,10 @@ export function ActiveDirectoryCenterCanvas() {
 
   if (selected.type === "ou") {
     return <ActiveDirectoryOuPane key={selected.id} name={selected.label} />;
+  }
+
+  if (selected.type === "user") {
+    return <ActiveDirectoryUserPane key={selected.id} userId={Number(selected.id)} />;
   }
 
   return (

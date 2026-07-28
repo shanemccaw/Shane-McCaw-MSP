@@ -86,7 +86,7 @@ rather than a flat account list.
 | 3 | Customer Object detail pane | Done | #63 |
 | 4 | RBAC/Group Object detail pane (members, search, count) | In Progress | #64 |
 | 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | In Progress | #65 |
-| 6 | User Object detail pane (full read view) | Not Started | #66 |
+| 6 | User Object detail pane (full read view) | In Progress | #66 |
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | Not Started | #67 |
 | 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | Not Started | #68 |
 | 9 | User Object — dev-only cascading hard delete | Not Started | #69 |

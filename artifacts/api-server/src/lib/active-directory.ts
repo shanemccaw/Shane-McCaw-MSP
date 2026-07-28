@@ -485,3 +485,121 @@ export interface OuNode {
 export function buildOuNodes(ous: OuRow[]): OuNode[] {
   return [...ous].sort((a, b) => a.name.localeCompare(b.name)).map((o) => ({ id: o.id, name: o.name }));
 }
+
+// ── User Object detail pane (Phase 6) ────────────────────────────────────────
+//
+// Everything the platform holds about one account: base profile (users
+// table — note `users.role` is only ["admin","client"], NOT the real
+// platform role), the real role/MSP/customer linkage (msp_users.mspRole,
+// same source-of-truth Phases 2/4 already query), entitlements inherited
+// from the linked MSP's subscription tier (there is no separate per-user
+// entitlements table — this reuses Phase 2's deriveEntitlements() rather
+// than inventing a user-level concept that doesn't exist in the schema),
+// an active-session summary, and MFA enrollment status. Read-only, per
+// Issue #66 — RBAC/MSP reassignment, entitlement grant/revoke, credential
+// ops, impersonation, and delete are Phases 7/8/9 and are NOT built here.
+
+export interface UserProfileRow {
+  id: number;
+  email: string;
+  name: string | null;
+  company: string | null;
+  phone: string | null;
+  baseRole: string;
+  createdAt: Date;
+}
+
+export interface UserMspLinkage {
+  mspId: number | null;
+  mspName: string | null;
+  mspSlug: string | null;
+  customerId: number | null;
+  customerName: string | null;
+  mspRole: DirectoryGroupRole;
+  isActive: boolean;
+  mfaEnforced: boolean;
+  department: string | null;
+  jobTitle: string | null;
+  lastLoginAt: Date | null;
+}
+
+export interface UserSessionRow {
+  sessionType: string;
+  loginMethod: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+  lastActiveAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+}
+
+export interface UserSessionSummary {
+  activeSessionCount: number;
+  totalSessionCount: number;
+  mostRecentSession: UserSessionRow | null;
+}
+
+export interface UserMfaEnrollmentRow {
+  method: string;
+  createdAt: Date;
+}
+
+export interface UserMfaStatus {
+  enrolled: boolean;
+  methods: UserMfaEnrollmentRow[];
+}
+
+export interface UserDetail {
+  profile: UserProfileRow;
+  linkage: UserMspLinkage | null;
+  entitlements: MspEntitlements | null;
+  sessions: UserSessionSummary;
+  mfa: UserMfaStatus;
+}
+
+/**
+ * Live-session count: not revoked and not yet expired — same "still usable
+ * right now" definition as `listActiveSessions` in session-tracking.ts,
+ * recomputed here rather than reused so this stays DB-free/pure and
+ * includes impersonation-type rows (that helper deliberately excludes
+ * them; an admin detail view should not hide them).
+ */
+function isSessionActive(session: UserSessionRow, now: Date): boolean {
+  return session.revokedAt == null && session.expiresAt.getTime() > now.getTime();
+}
+
+/**
+ * Assembles the full User Object detail payload — pure, DB-free so it can be
+ * unit-tested against plain fixtures. A user with no msp_users row (linkage
+ * null), zero sessions, or zero MFA enrollments still returns real honest
+ * empty values, never placeholders.
+ */
+export function buildUserDetail(params: {
+  profile: UserProfileRow;
+  linkage: UserMspLinkage | null;
+  subscriptionForEntitlements: MspSubscriptionRow | null;
+  sessions: UserSessionRow[];
+  mfaEnrollments: UserMfaEnrollmentRow[];
+  now: Date;
+}): UserDetail {
+  const { profile, linkage, subscriptionForEntitlements, sessions, mfaEnrollments, now } = params;
+
+  const sortedSessions = [...sessions].sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
+  const activeSessionCount = sessions.filter((s) => isSessionActive(s, now)).length;
+
+  return {
+    profile,
+    linkage,
+    entitlements: deriveEntitlements(subscriptionForEntitlements),
+    sessions: {
+      activeSessionCount,
+      totalSessionCount: sessions.length,
+      mostRecentSession: sortedSessions[0] ?? null,
+    },
+    mfa: {
+      enrolled: mfaEnrollments.length > 0,
+      methods: mfaEnrollments,
+    },
+  };
+}

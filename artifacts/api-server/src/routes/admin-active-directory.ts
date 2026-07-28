@@ -23,8 +23,10 @@ import {
   clientServicesTable,
   mspDiagnosticRunsTable,
   activeDirectoryOusTable,
+  userSessionsTable,
+  mfaEnrollmentsTable,
 } from "@workspace/db";
-import { eq, asc, inArray, count, desc } from "drizzle-orm";
+import { eq, asc, and, inArray, count, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
@@ -38,6 +40,8 @@ import {
   type DirectoryGroupRole,
   buildCustomerDetail,
   buildOuNodes,
+  buildUserDetail,
+  type UserMspLinkage,
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 
@@ -486,6 +490,138 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
   } catch (err) {
     log.error({ err, customerId }, "Failed to build Customer Object detail pane");
     res.status(500).json({ error: "Failed to load Customer detail" });
+  }
+});
+
+// ─── GET /admin/active-directory/user/:id ────────────────────────────────────
+// User Object detail pane (Phase 6): full profile (users), current role +
+// MSP/customer linkage (msp_users.mspRole — the real role source of truth,
+// NOT users.role which is only ["admin","client"]), entitlements inherited
+// from the linked MSP's subscription tier (reuses Phase 2's
+// deriveEntitlements() — no per-user entitlements table exists), active
+// session summary, and MFA enrollment status. Read-only — RBAC/MSP
+// reassignment, entitlement grant/revoke, credential ops, impersonation, and
+// delete are Phases 7/8/9 and are NOT built here.
+router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  try {
+    const [userRow] = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        company: usersTable.company,
+        phone: usersTable.phone,
+        baseRole: usersTable.role,
+        createdAt: usersTable.createdAt,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    if (!userRow) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const [mspUserRow] = await db
+      .select({
+        mspId: mspUsersTable.mspId,
+        customerId: mspUsersTable.customerId,
+        mspRole: mspUsersTable.mspRole,
+        isActive: mspUsersTable.isActive,
+        mfaEnforced: mspUsersTable.mfaEnforced,
+        department: mspUsersTable.department,
+        jobTitle: mspUsersTable.jobTitle,
+        lastLoginAt: mspUsersTable.lastLoginAt,
+      })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+
+    const [[mspRow], [customerRow], subRows, sessionRows, mfaRows] = await Promise.all([
+      mspUserRow?.mspId != null
+        ? db.select({ id: mspsTable.id, name: mspsTable.name, slug: mspsTable.slug }).from(mspsTable).where(eq(mspsTable.id, mspUserRow.mspId)).limit(1)
+        : Promise.resolve([]),
+      mspUserRow?.customerId != null
+        ? db
+            .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
+            .from(mspCustomersTable)
+            .where(eq(mspCustomersTable.id, mspUserRow.customerId))
+            .limit(1)
+        : Promise.resolve([]),
+      mspUserRow?.mspId != null
+        ? db
+            .select({
+              status: mspSubscriptionsTable.status,
+              tierName: servicesTable.name,
+              billingInterval: mspSubscriptionsTable.billingInterval,
+              currentPeriodStart: mspSubscriptionsTable.currentPeriodStart,
+              currentPeriodEnd: mspSubscriptionsTable.currentPeriodEnd,
+              dunningState: mspSubscriptionsTable.dunningState,
+              paymentFailedAt: mspSubscriptionsTable.paymentFailedAt,
+              tenantCountSnapshot: mspSubscriptionsTable.tenantCountSnapshot,
+              contactEmail: mspSubscriptionsTable.contactEmail,
+              typeAttributes: servicesTable.typeAttributes,
+            })
+            .from(mspSubscriptionsTable)
+            .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
+            .where(eq(mspSubscriptionsTable.mspId, mspUserRow.mspId))
+            .limit(1)
+        : Promise.resolve([]),
+      db
+        .select({
+          sessionType: userSessionsTable.sessionType,
+          loginMethod: userSessionsTable.loginMethod,
+          ipAddress: userSessionsTable.ipAddress,
+          userAgent: userSessionsTable.userAgent,
+          createdAt: userSessionsTable.createdAt,
+          lastActiveAt: userSessionsTable.lastActiveAt,
+          expiresAt: userSessionsTable.expiresAt,
+          revokedAt: userSessionsTable.revokedAt,
+        })
+        .from(userSessionsTable)
+        .where(eq(userSessionsTable.userId, userId)),
+      db
+        .select({ method: mfaEnrollmentsTable.method, createdAt: mfaEnrollmentsTable.createdAt })
+        .from(mfaEnrollmentsTable)
+        .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.enabled, true))),
+    ]);
+
+    const linkage: UserMspLinkage | null = mspUserRow
+      ? {
+          mspId: mspUserRow.mspId,
+          mspName: mspRow?.name ?? null,
+          mspSlug: mspRow?.slug ?? null,
+          customerId: mspUserRow.customerId,
+          customerName: customerRow?.name ?? null,
+          mspRole: mspUserRow.mspRole as DirectoryGroupRole,
+          isActive: mspUserRow.isActive,
+          mfaEnforced: mspUserRow.mfaEnforced,
+          department: mspUserRow.department,
+          jobTitle: mspUserRow.jobTitle,
+          lastLoginAt: mspUserRow.lastLoginAt,
+        }
+      : null;
+
+    res.json(
+      buildUserDetail({
+        profile: userRow,
+        linkage,
+        subscriptionForEntitlements: subRows[0] ?? null,
+        sessions: sessionRows,
+        mfaEnrollments: mfaRows,
+        now: new Date(),
+      }),
+    );
+  } catch (err) {
+    log.error({ err, userId }, "Failed to build User Object detail pane");
+    res.status(500).json({ error: "Failed to load User detail" });
   }
 });
 

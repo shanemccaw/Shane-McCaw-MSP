@@ -10,7 +10,12 @@ import {
   filterGroupMembers,
   buildCustomerDetail,
   buildOuNodes,
+  buildUserDetail,
   type OuRow,
+  type UserProfileRow,
+  type UserMspLinkage,
+  type UserSessionRow,
+  type UserMfaEnrollmentRow,
   type MspRow,
   type CustomerRow,
   type SearchableUser,
@@ -522,5 +527,161 @@ describe("buildOuNodes", () => {
 
   it("returns an empty array when there are no OUs", () => {
     expect(buildOuNodes([])).toEqual([]);
+  });
+});
+
+describe("buildUserDetail", () => {
+  const PROFILE: UserProfileRow = {
+    id: 100,
+    email: "jane@contoso.com",
+    name: "Jane Doe",
+    company: "Contoso Ltd",
+    phone: "555-1234",
+    baseRole: "client",
+    createdAt: new Date("2026-01-01"),
+  };
+
+  const LINKAGE: UserMspLinkage = {
+    mspId: 1,
+    mspName: "Acme Consulting",
+    mspSlug: "acme-consulting",
+    customerId: 10,
+    customerName: "Contoso Ltd",
+    mspRole: "CustomerUser",
+    isActive: true,
+    mfaEnforced: false,
+    department: "Finance",
+    jobTitle: "Controller",
+    lastLoginAt: new Date("2026-07-20"),
+  };
+
+  const SUBSCRIPTION: MspSubscriptionRow = {
+    status: "active",
+    tierName: "Growth",
+    billingInterval: "monthly",
+    currentPeriodStart: new Date("2026-07-01"),
+    currentPeriodEnd: new Date("2026-08-01"),
+    dunningState: null,
+    paymentFailedAt: null,
+    tenantCountSnapshot: 5,
+    contactEmail: "billing@acme.com",
+    typeAttributes: { tenantAllowance: 10, aiCreditAllowance: 500, overageRateCents: 25, tierCapabilities: { copilot: true } },
+  };
+
+  const NOW = new Date("2026-07-28T12:00:00Z");
+
+  function session(overrides: Partial<UserSessionRow> = {}): UserSessionRow {
+    return {
+      sessionType: "standard",
+      loginMethod: "password",
+      ipAddress: "10.0.0.1",
+      userAgent: "Mozilla/5.0",
+      createdAt: new Date("2026-07-20T09:00:00Z"),
+      lastActiveAt: new Date("2026-07-20T09:05:00Z"),
+      expiresAt: new Date("2026-07-21T09:00:00Z"),
+      revokedAt: null,
+      ...overrides,
+    };
+  }
+
+  it("assembles full profile, linkage, and inherited entitlements", () => {
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: SUBSCRIPTION,
+      sessions: [],
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.profile).toEqual(PROFILE);
+    expect(detail.linkage).toEqual(LINKAGE);
+    expect(detail.entitlements).toEqual({
+      tenantAllowance: 10,
+      aiCreditAllowance: 500,
+      overageRateCents: 25,
+      tierCapabilities: { copilot: true },
+    });
+  });
+
+  it("returns null linkage and null entitlements for an account with no msp_users row", () => {
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: null,
+      subscriptionForEntitlements: null,
+      sessions: [],
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.linkage).toBeNull();
+    expect(detail.entitlements).toBeNull();
+  });
+
+  it("counts only non-revoked, non-expired sessions as active", () => {
+    const sessions: UserSessionRow[] = [
+      session({ revokedAt: new Date("2026-07-20T10:00:00Z") }), // revoked
+      session({ expiresAt: new Date("2026-07-21T00:00:00Z") }), // expired relative to NOW
+      session({ lastActiveAt: new Date("2026-07-27T00:00:00Z"), expiresAt: new Date("2026-08-01T00:00:00Z") }), // active
+    ];
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: null,
+      sessions,
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.sessions.totalSessionCount).toBe(3);
+    expect(detail.sessions.activeSessionCount).toBe(1);
+  });
+
+  it("surfaces the session with the most recent lastActiveAt, not insertion order", () => {
+    const older = session({ lastActiveAt: new Date("2026-07-10T00:00:00Z") });
+    const newer = session({ lastActiveAt: new Date("2026-07-25T00:00:00Z"), ipAddress: "10.0.0.9" });
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: null,
+      sessions: [older, newer],
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.sessions.mostRecentSession?.ipAddress).toBe("10.0.0.9");
+  });
+
+  it("renders an honest empty session state when there are zero sessions", () => {
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: null,
+      sessions: [],
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.sessions).toEqual({ activeSessionCount: 0, totalSessionCount: 0, mostRecentSession: null });
+  });
+
+  it("reports MFA enrolled with the real methods when enrollments exist", () => {
+    const methods: UserMfaEnrollmentRow[] = [{ method: "totp", createdAt: new Date("2026-02-01") }];
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: null,
+      sessions: [],
+      mfaEnrollments: methods,
+      now: NOW,
+    });
+    expect(detail.mfa).toEqual({ enrolled: true, methods });
+  });
+
+  it("renders an honest not-enrolled state when there are zero MFA enrollments", () => {
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: null,
+      sessions: [],
+      mfaEnrollments: [],
+      now: NOW,
+    });
+    expect(detail.mfa).toEqual({ enrolled: false, methods: [] });
   });
 });
