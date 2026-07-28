@@ -41,7 +41,7 @@ None — this is foundational; Phase 1 blocks Phases 2-5.
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
-| 1 | Close AI-call logging gaps | In Progress | #49 |
+| 1 | Close AI-call logging gaps | Done | #49 |
 | 2 | Expand ai_usage_events schema for full traceability | Not Started | #50 |
 | 3 | PlatformAdmin AI Billing page + live StatusBar segments (SSE) | Not Started | #51 |
 | 4 | Analytics/trends layer | Not Started | #52 |
