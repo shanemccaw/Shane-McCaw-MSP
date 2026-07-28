@@ -75,6 +75,7 @@ Phase 3's create call path rather than a second one.
 | 4 | Missing Document Types panel | Done | #44 |
 | 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
 | 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
+| 7 | Simulator Studio Documents node | Done (TBD) | — |
 
 
 ## Notes
@@ -124,6 +125,62 @@ What was built:
 - Logging on the filter decision under `engine.document-generator` (findings
   total / kept / uncategorizable), so "why is this finding missing?" is
   answerable from logs.
+
+## Phase 7 — Simulator Studio Documents node
+Gives Simulator Studio its own "Documents" explorer section (`SimulatorLeftTree.tsx`)
+and center-canvas tab (`SimulatorCenterCanvas.tsx`), following the Assessments
+section's exact existing event-driven select/open-tab pattern — no new
+convention invented. This is a second, additive front end onto the same
+`document_types` registry `DocumentGeneratorIde.tsx` already exposes; no
+backend routes changed.
+
+What was built:
+- `SimulatorLeftTree.tsx` — new top-level "Documents" section (Section 12),
+  fetching the same `GET /api/admin/document-types` list, grouped by the
+  real `category` column ("report"/"consulting") the same way Section 11
+  groups Assessments Free/Paid. A row with `aiPromptId === null` shows an
+  amber warning-triangle with the tooltip "No AI prompt configured — this
+  document type has no database-backed generation logic yet." Clicking a
+  row dispatches `simulator-select-document` with the full row as detail,
+  same hand-off pattern `simulator-select-assessment` already uses.
+- `SimulatorCenterCanvas.tsx` — `"document"` added to `SimDocumentTab`'s type
+  union; a `handleSelectDocumentType` listener (mirroring
+  `handleSelectAssessment`) opens a `document:<key>` tab rendering the new
+  `SimulatorDocumentCanvas`.
+- `DocumentTypePreviewContent.tsx` (new) — the inner content rendering
+  extracted out of `DocumentTypePreviewDialog.tsx` (copy-all button +
+  collapsible sections), so the exact same preview rendering is shared by
+  (a) the existing modal dialog, unchanged props/behavior for its two
+  existing callers (`DocumentGeneratorIde.tsx`, `DocumentTypesManager.tsx`),
+  and (b) the new inline tab pane. `DocumentTypePreviewDialog.tsx` now only
+  owns the modal chrome (backdrop, bordered box, header/close button).
+- `SimulatorDocumentCanvas.tsx` (new) — client/project picker using
+  `DocumentGeneratorIde.tsx`'s exact fetch pattern (`GET /api/admin/clients`,
+  `GET /api/admin/document-generator/clients/:id/projects`); a Dry-Run/Real
+  AI toggle defaulting to Dry-Run (no accidental AI spend); one action button
+  whose label follows the toggle:
+  - Dry-Run → `GET /api/admin/document-types/:key/preview`, rendered via
+    `DocumentTypePreviewContent`.
+  - Real AI → `POST /api/admin/document-generator/document-types/:key/generate`
+    (unchanged route/behavior), rendered live in an `iframe` via the
+    `srcDoc`/`sandbox="allow-same-origin"` pattern `RunDetailContent.tsx`'s
+    `HtmlContentPreview` already established, with a loading state during the
+    call. Below that, an editable properties panel (label, pipeline category,
+    linked service, section hints, sections, profile key patterns, signal
+    categories) reusing `DocumentTypesManager.tsx`'s exact JSON-array
+    CodeMirror editor pattern for the two scoping fields plus `sections`;
+    "Save" submits through the existing `PUT /api/admin/document-types/:key`
+    unmodified. `category` is shown read-only — `updateSchema`
+    (`admin-document-types.ts`) omits it from the PUT payload, same as
+    `DocumentTypesManager.tsx`'s edit-mode behavior, so it was never
+    editable here either. A successful Save refetches via
+    `simulator-documents-updated` (new event, mirroring
+    `simulator-endpoints-updated`) so the tree's warning-triangle state and
+    this pane's fields reflect the saved row. "Edit Prompt" stays a deep link
+    to `/prompt-center/:id` — no prompt-body editor was built here.
+
+No other Simulator Studio section (Assessments, Config Packs, Write Actions,
+Monitor Checks, etc.) was touched — purely additive.
 
 ## Open Issues
 **Phase 6 — script-run findings can never be category-scoped (permanent).**

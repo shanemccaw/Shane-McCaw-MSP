@@ -12,6 +12,7 @@ import {
   Play,
   Layers,
   ListChecks,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,11 +35,12 @@ import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
 import { SimulatorConfigPackCanvas } from "./SimulatorConfigPackCanvas";
 import { SimulatorPillarMatrixCanvas, type PillarKey } from "./SimulatorPillarMatrixCanvas";
 import { SimulatorAssessmentCanvas } from "./SimulatorAssessmentCanvas";
-import type { ConfigPackNode, WriteActionNode, AssessmentNode } from "./SimulatorLeftTree";
+import { SimulatorDocumentCanvas } from "./SimulatorDocumentCanvas";
+import type { ConfigPackNode, WriteActionNode, AssessmentNode, DocumentTypeNode } from "./SimulatorLeftTree";
 
 export interface SimDocumentTab {
   id: string;
-  type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration" | "assessment";
+  type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration" | "assessment" | "document";
   label: string;
   data: any;
 }
@@ -109,6 +111,7 @@ export function SimulatorCenterCanvas({
     | "pillar-matrix"
     | "config-pack"
     | "assessment"
+    | "document"
   >("sql");
 
   // The pillar currently open in the Pillar Matrix tab, set by clicking a pillar
@@ -130,6 +133,10 @@ export function SimulatorCenterCanvas({
   // The assessment currently open in the Assessment tab, set by clicking an
   // assessment in the Explorer tree.
   const [selectedAssessment, setSelectedAssessment] = useState<AssessmentNode | null>(null);
+
+  // The document type currently open in the Document tab, set by clicking a
+  // document type in the Explorer tree.
+  const [selectedDocument, setSelectedDocument] = useState<DocumentTypeNode | null>(null);
 
   // The bulk run currently open in the Batch tab, set by "Run all" on a domain
   // folder in the Explorer tree.
@@ -196,6 +203,9 @@ export function SimulatorCenterCanvas({
         } else if (doc.type === "assessment") {
           setSelectedAssessment(doc.data);
           setActiveTab("assessment");
+        } else if (doc.type === "document") {
+          setSelectedDocument(doc.data);
+          setActiveTab("document");
         }
       }
     }
@@ -231,6 +241,9 @@ export function SimulatorCenterCanvas({
     } else if (doc.type === "assessment") {
       setSelectedAssessment(doc.data);
       setActiveTab("assessment");
+    } else if (doc.type === "document") {
+      setSelectedDocument(doc.data);
+      setActiveTab("document");
     }
   };
 
@@ -359,6 +372,18 @@ export function SimulatorCenterCanvas({
         data: detail,
       });
     };
+    const handleSelectDocumentType = (e: Event) => {
+      const detail = (e as CustomEvent<DocumentTypeNode>).detail;
+      if (!detail) return;
+      setSelectedDocument(detail);
+      setActiveTab("document");
+      openDoc({
+        id: `document:${detail.key}`,
+        type: "document",
+        label: detail.label,
+        data: detail,
+      });
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleRunMigration);
@@ -368,6 +393,7 @@ export function SimulatorCenterCanvas({
     window.addEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
     window.addEventListener("simulator-select-config-pack", handleSelectConfigPack);
     window.addEventListener("simulator-select-assessment", handleSelectAssessment);
+    window.addEventListener("simulator-select-document", handleSelectDocumentType);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
@@ -378,6 +404,7 @@ export function SimulatorCenterCanvas({
       window.removeEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
       window.removeEventListener("simulator-select-config-pack", handleSelectConfigPack);
       window.removeEventListener("simulator-select-assessment", handleSelectAssessment);
+      window.removeEventListener("simulator-select-document", handleSelectDocumentType);
     };
   }, []);
 
@@ -532,7 +559,8 @@ export function SimulatorCenterCanvas({
                 (doc.type === "config-pack" && activeTab === "config-pack") ||
                 (doc.type === "batch" && activeTab === "batch") ||
                 (doc.type === "pillar" && activeTab === "pillar-matrix") ||
-                (doc.type === "assessment" && activeTab === "assessment"));
+                (doc.type === "assessment" && activeTab === "assessment") ||
+                (doc.type === "document" && activeTab === "document"));
 
             return (
               <div
@@ -550,6 +578,7 @@ export function SimulatorCenterCanvas({
                 {doc.type === "batch" && <Play className="w-3 h-3 text-amber-400 shrink-0" />}
                 {doc.type === "pillar" && <Layers className="w-3 h-3 text-purple-400 shrink-0" />}
                 {doc.type === "assessment" && <ListChecks className="w-3 h-3 text-emerald-400 shrink-0" />}
+                {doc.type === "document" && <FileText className="w-3 h-3 text-sky-400 shrink-0" />}
                 <span className="truncate">{doc.label}</span>
                 <button
                   type="button"
@@ -600,6 +629,12 @@ export function SimulatorCenterCanvas({
         {/* Tab: Assessment — read-only catalog + packageKey audit (Phase 1) */}
         {activeTab === "assessment" && selectedAssessment && (
           <SimulatorAssessmentCanvas key={selectedAssessment.id} assessment={selectedAssessment} />
+        )}
+
+        {/* Tab: Document — client/project picker + dry-run preview / real-AI
+            generate + editable document_types properties panel */}
+        {activeTab === "document" && selectedDocument && (
+          <SimulatorDocumentCanvas key={selectedDocument.key} documentType={selectedDocument} />
         )}
 
         {/* Tab 2: Testbeds Dashboard */}

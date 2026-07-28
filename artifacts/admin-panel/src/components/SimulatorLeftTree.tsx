@@ -31,6 +31,7 @@ import {
   Package,
   Search,
   X,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -172,6 +173,27 @@ export interface AssessmentNode {
   checkCount: number | null;
 }
 
+// Real `document_types` rows from GET /api/admin/document-types — the same
+// registry DocumentGeneratorIde.tsx / DocumentTypesManager.tsx already read.
+// Grouped by the real `category` column ("report"/"consulting"), mirroring
+// how Section 11 groups Assessments Free/Paid on `is_free_offering`.
+export interface DocumentTypeNode {
+  id: number;
+  key: string;
+  label: string;
+  category: "report" | "consulting";
+  sectionHints: string | null;
+  sections: { id: string; heading: string; guidance: string }[];
+  requiresSowHtml: boolean;
+  serviceId: number | null;
+  includedProfileKeyPatterns: string[];
+  includedSignalCategories: string[];
+  pipelineCategory: "standalone" | "pipeline_output";
+  sortOrder: number;
+  isActive: boolean;
+  aiPromptId: number | null;
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -223,6 +245,7 @@ export function SimulatorLeftTree() {
   const [writeActions, setWriteActions] = useState<WriteActionNode[]>([]);
   const [configPacks, setConfigPacks] = useState<ConfigPackNode[]>([]);
   const [assessments, setAssessments] = useState<AssessmentNode[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   // The domain whose bulk run is being started — one at a time, so a stray
@@ -251,6 +274,7 @@ export function SimulatorLeftTree() {
   const [pillarMatrixOpen, setPillarMatrixOpen] = useState(initialTreeState?.sections.pillarMatrix ?? true);
   const [configPacksOpen, setConfigPacksOpen] = useState(initialTreeState?.sections.configPacks ?? true);
   const [assessmentsOpen, setAssessmentsOpen] = useState(initialTreeState?.sections.assessments ?? true);
+  const [documentsOpen, setDocumentsOpen] = useState(initialTreeState?.sections.documents ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
   // Which write-action template the center canvas is showing — highlighted in the tree.
@@ -261,6 +285,8 @@ export function SimulatorLeftTree() {
   const [selectedConfigPackKey, setSelectedConfigPackKey] = useState<string | null>(null);
   // Which assessment the center canvas is showing — highlighted in the tree.
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<number | null>(null);
+  // Which document type the center canvas is showing — highlighted in the tree.
+  const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
@@ -288,6 +314,7 @@ export function SimulatorLeftTree() {
         pillarMatrix: pillarMatrixOpen,
         configPacks: configPacksOpen,
         assessments: assessmentsOpen,
+        documents: documentsOpen,
       },
       cats: expandedCats,
     });
@@ -304,6 +331,7 @@ export function SimulatorLeftTree() {
     pillarMatrixOpen,
     configPacksOpen,
     assessmentsOpen,
+    documentsOpen,
     expandedCats,
   ]);
 
@@ -431,6 +459,13 @@ export function SimulatorLeftTree() {
     );
   }, [assessments, searchQuery, isSearching]);
 
+  const filteredDocumentTypes = useMemo(() => {
+    if (!isSearching) return documentTypes;
+    return documentTypes.filter((d) =>
+      itemMatchesSearch(searchQuery, [d.key, d.label, d.category, d.pipelineCategory])
+    );
+  }, [documentTypes, searchQuery, isSearching]);
+
   const showScenarios = !isSearching || filteredScenarios.length > 0;
   const showScripts = !isSearching || filteredScripts.length > 0;
   const showMigrations = !isSearching || filteredMigrationFiles.length > 0;
@@ -443,6 +478,7 @@ export function SimulatorLeftTree() {
   const showPillarMatrix = !isSearching || filteredPillars.length > 0;
   const showConfigPacks = !isSearching || filteredConfigPacks.length > 0;
   const showAssessments = !isSearching || filteredAssessments.length > 0;
+  const showDocuments = !isSearching || filteredDocumentTypes.length > 0;
 
   // Group assessments Free/Paid, exactly the real `is_free_offering` column —
   // there is no other free/paid split on this row.
@@ -454,6 +490,17 @@ export function SimulatorLeftTree() {
       return acc;
     },
     {} as Record<"Free" | "Paid", AssessmentNode[]>,
+  );
+
+  // Group document types by the real `category` column ("report"/"consulting") —
+  // the same split DocumentGeneratorIde.tsx/DocumentTypesManager.tsx already show.
+  const documentsByCategory = filteredDocumentTypes.reduce(
+    (acc, d) => {
+      if (!acc[d.category]) acc[d.category] = [];
+      acc[d.category].push(d);
+      return acc;
+    },
+    {} as Record<"report" | "consulting", DocumentTypeNode[]>,
   );
 
   // Group event types by dot-prefix; keys are namespaced ("evt:auth") so event
@@ -603,6 +650,13 @@ export function SimulatorLeftTree() {
         const assessmentsData = await assessmentsRes.json();
         setAssessments(assessmentsData.assessments || []);
       }
+
+      // 10. Fetch the real document_types registry (Document Generator).
+      const documentTypesRes = await fetchWithAuth("/api/admin/document-types");
+      if (documentTypesRes.ok) {
+        const documentTypesData = await documentTypesRes.json();
+        setDocumentTypes(Array.isArray(documentTypesData) ? documentTypesData : []);
+      }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
       toast.error("Failed to load some simulator workspace items");
@@ -631,15 +685,22 @@ export function SimulatorLeftTree() {
     const handleAssessmentsUpdate = () => {
       loadData();
     };
+    // The document canvas's Save button fires this so the tree's warning-triangle
+    // state and label/category reflect the saved row without a manual reload.
+    const handleDocumentsUpdate = () => {
+      loadData();
+    };
     window.addEventListener("simulator-scripts-updated", handleScriptsUpdate);
     window.addEventListener("simulator-suites-updated", handleSuitesUpdate);
     window.addEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
     window.addEventListener("simulator-assessments-updated", handleAssessmentsUpdate);
+    window.addEventListener("simulator-documents-updated", handleDocumentsUpdate);
     return () => {
       window.removeEventListener("simulator-scripts-updated", handleScriptsUpdate);
       window.removeEventListener("simulator-suites-updated", handleSuitesUpdate);
       window.removeEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
       window.removeEventListener("simulator-assessments-updated", handleAssessmentsUpdate);
+      window.removeEventListener("simulator-documents-updated", handleDocumentsUpdate);
     };
   }, [fetchWithAuth]);
 
@@ -884,6 +945,14 @@ export function SimulatorLeftTree() {
     window.dispatchEvent(new CustomEvent("simulator-select-assessment", { detail: assessment }));
   };
 
+  // Selecting a document type opens the client/project picker + dry-run
+  // preview / real-AI generate pane in the center canvas, same event-driven
+  // hand-off pattern as endpoints/write-actions/config-packs/assessments.
+  const handleDocumentSelect = (doc: DocumentTypeNode) => {
+    setSelectedDocumentKey(doc.key);
+    window.dispatchEvent(new CustomEvent("simulator-select-document", { detail: doc }));
+  };
+
   /**
    * Starts a bulk run over one domain prefix and hands the batch to the center
    * canvas, which polls the real persisted rows for a live summary.
@@ -1029,7 +1098,8 @@ export function SimulatorLeftTree() {
           !showEndpoints &&
           !showWriteActions &&
           !showPillarMatrix &&
-          !showConfigPacks && (
+          !showConfigPacks &&
+          !showDocuments && (
             <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
               <Search className="mb-2 h-6 w-6 opacity-40" />
               <p className="text-xs font-medium text-foreground/80">No results found</p>
@@ -2077,6 +2147,93 @@ export function SimulatorLeftTree() {
                             </ContextMenu>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null
+                )
+              )}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Section 12: Documents — real `document_types` rows
+            (GET /api/admin/document-types), grouped by the real `category`
+            column ("report"/"consulting"), mirroring how Section 11 groups
+            Assessments Free/Paid. Clicking a row opens the client/project
+            picker + dry-run preview / real-AI generate pane + editable
+            properties panel in the center canvas. Read-only browse here —
+            no tree-level create/edit/delete (that stays Document Types
+            Manager's job elsewhere); a yellow warning triangle flags any
+            row with no linked AI prompt (aiPromptId null). */}
+        {showDocuments && (
+        <div>
+          <div
+            onClick={() => setDocumentsOpen(!documentsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {isSearching || documentsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <FileText className="h-3.5 w-3.5 text-sky-400" />
+            <span className="truncate">Documents</span>
+          </div>
+
+          {(isSearching || documentsOpen) && (
+            <div className="ml-[22px] border-l border-accent">
+              {filteredDocumentTypes.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No document types</div>
+              ) : (
+                (["report", "consulting"] as const).map((cat) =>
+                  documentsByCategory[cat]?.length ? (
+                    <div key={cat}>
+                      <div
+                        onClick={() => toggleCat(`doc:${cat}`)}
+                        className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
+                      >
+                        {isSearching || expandedCats[`doc:${cat}`] ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                        )}
+                        {isSearching || expandedCats[`doc:${cat}`] ? (
+                          <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <Folder className="h-3.5 w-3.5 text-primary" />
+                        )}
+                        <span className="truncate capitalize">{cat}</span>
+                        <span className="ml-auto shrink-0 text-[9px] tabular-nums text-muted-foreground/60">
+                          {documentsByCategory[cat]!.length}
+                        </span>
+                      </div>
+
+                      {(isSearching || expandedCats[`doc:${cat}`]) && (
+                        <div className="ml-[22px] border-l border-accent">
+                          {documentsByCategory[cat]!.map((doc) => (
+                            <div
+                              key={doc.key}
+                              onClick={() => handleDocumentSelect(doc)}
+                              className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                selectedDocumentKey === doc.key ? "bg-accent text-foreground" : "text-foreground/85"
+                              } ${!doc.isActive ? "opacity-50" : ""}`}
+                            >
+                              <FileText className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                              <span className="flex-1 truncate text-[11px]" title={doc.label}>
+                                {doc.label}
+                              </span>
+                              {doc.aiPromptId == null && (
+                                <span
+                                  className="shrink-0 text-amber-400"
+                                  title="No AI prompt configured — this document type has no database-backed generation logic yet."
+                                >
+                                  <AlertTriangle className="h-3 w-3" />
+                                </span>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
