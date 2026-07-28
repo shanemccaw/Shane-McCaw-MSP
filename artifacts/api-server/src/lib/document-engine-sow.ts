@@ -45,6 +45,14 @@ export interface GenerateSowParams {
    *  any real work begins — lets an HTTP caller respond immediately with the new document's
    *  id while generation continues, matching the live-progress pattern used elsewhere. */
   onRowCreated?: (documentId: number) => void;
+  /** When provided, used directly instead of fetching the published SOW
+   *  prompt from ai_prompts — lets an admin test an unsaved draft before
+   *  publishing it. */
+  promptOverride?: string;
+  /** When provided, used directly instead of fetching the published
+   *  pricing-formula prompt — tested independently from promptOverride,
+   *  since the formula is its own separately-editable prompt. */
+  pricingFormulaOverride?: string;
 }
 
 export interface GenerateSowResult {
@@ -278,7 +286,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         .join("\n\n")
       : "The Sales Offer Engine returned no candidate projects for this client. Do NOT invent projects or pricing.";
 
-    const pricingFormulaBlock = await getSowPricingFormulaBlock(
+    const pricingFormulaBlock = params.pricingFormulaOverride ?? await getSowPricingFormulaBlock(
       "Price each workstream at exactly the adjusted price provided by the Sales Offer Engine. Do not apply additional markup or discounting beyond what is shown. Present a pricing table listing each workstream and its price, summing to a total engagement price.",
     );
 
@@ -288,7 +296,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       const [promptRow] = await db.select({ key: aiPromptsTable.key }).from(aiPromptsTable).where(eq(aiPromptsTable.id, docTypeRow.aiPromptId)).limit(1);
       if (promptRow?.key) promptKey = promptRow.key;
     }
-    const rawTemplate = await getPrompt(
+    const rawTemplate = params.promptOverride ?? await getPrompt(
       promptKey,
       "Generate a professional HTML Statement of Work titled \"{{docLabel}}\".\n\nGrounding findings from prior generated documents for this client (do NOT invent additional findings):\n{{priorFindings}}\n\nScoped projects and their engine-priced pricing — this is the sole source of truth for what to scope and what to charge; do NOT invent additional projects or adjust these prices:\n{{candidates}}\n\nPricing presentation rules:\n{{pricingFormula}}",
     );
