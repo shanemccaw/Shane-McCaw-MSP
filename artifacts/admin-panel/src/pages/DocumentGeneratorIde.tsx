@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "wouter";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap } from "lucide-react";
@@ -25,6 +28,8 @@ interface DocumentType {
   isActive: boolean;
   sortOrder: number;
   aiPromptId: number | null;
+  includedProfileKeyPatterns: string[];
+  includedSignalCategories: string[];
 }
 
 interface ClientOption {
@@ -199,6 +204,8 @@ export default function DocumentGeneratorIde() {
     category: "report" | "consulting";
     pipelineCategory: "standalone" | "pipeline_output";
     serviceId: number | null;
+    includedProfileKeyPatterns: string[];
+    includedSignalCategories: string[];
   }) => {
     const res = await fetchWithAuth("/api/admin/document-types", {
       method: "POST",
@@ -222,6 +229,8 @@ export default function DocumentGeneratorIde() {
         category: "report",
         pipelineCategory: "standalone",
         serviceId: svc.id,
+        includedProfileKeyPatterns: [],
+        includedSignalCategories: [],
       });
       setMissingTypes(prev => prev.filter(m => m.id !== svc.id));
       toast({ title: "Document type created", description: `${svc.name} — key "${created.key}"` });
@@ -349,6 +358,15 @@ export default function DocumentGeneratorIde() {
                         {type.pipelineCategory === "pipeline_output" ? "SOW pipeline" : "standalone"}
                       </span>
                     </div>
+                    {type.includedProfileKeyPatterns.length === 0 && type.includedSignalCategories.length === 0 && (
+                      <Link
+                        href="/command/insights?tab=document_types"
+                        title={`"${type.label}" has no profile key patterns or signal categories set — edit scoping in Document Types`}
+                        className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20"
+                      >
+                        <AlertTriangle className="w-3 h-3" /> Unscoped — sends full profile
+                      </Link>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-auto">
                     <button
@@ -462,6 +480,8 @@ interface NewDocumentTypeModalProps {
     category: "report" | "consulting";
     pipelineCategory: "standalone" | "pipeline_output";
     serviceId: number | null;
+    includedProfileKeyPatterns: string[];
+    includedSignalCategories: string[];
   }) => Promise<DocumentType>;
 }
 
@@ -472,6 +492,8 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
   const [category, setCategory] = useState<"report" | "consulting">("report");
   const [pipelineCategory, setPipelineCategory] = useState<"standalone" | "pipeline_output">("standalone");
   const [serviceId, setServiceId] = useState<number | "">("");
+  const [profilePatternsRaw, setProfilePatternsRaw] = useState("[]");
+  const [signalCategoriesRaw, setSignalCategoriesRaw] = useState("[]");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ label: string; aiPromptId: number | null } | null>(null);
@@ -484,8 +506,33 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!label.trim() || !key.trim()) return;
-    setSubmitting(true);
     setError(null);
+
+    let includedProfileKeyPatterns: string[];
+    try {
+      const parsed = JSON.parse(profilePatternsRaw);
+      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
+        throw new Error("Must be a JSON array of strings");
+      }
+      includedProfileKeyPatterns = parsed as string[];
+    } catch (err) {
+      setError(err instanceof Error ? `Profile Key Patterns JSON error: ${err.message}` : "Invalid profile key patterns JSON");
+      return;
+    }
+
+    let includedSignalCategories: string[];
+    try {
+      const parsed = JSON.parse(signalCategoriesRaw);
+      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
+        throw new Error("Must be a JSON array of strings");
+      }
+      includedSignalCategories = parsed as string[];
+    } catch (err) {
+      setError(err instanceof Error ? `Signal Categories JSON error: ${err.message}` : "Invalid signal categories JSON");
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const row = await onCreate({
         label: label.trim(),
@@ -493,6 +540,8 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
         category,
         pipelineCategory,
         serviceId: serviceId === "" ? null : serviceId,
+        includedProfileKeyPatterns,
+        includedSignalCategories,
       });
       setCreated({ label: row.label, aiPromptId: row.aiPromptId });
     } catch (err) {
@@ -597,6 +646,46 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">
+                Profile Key Patterns <span className="text-gray-500">(JSON array of strings, wildcard suffix supported, e.g. "copilot*")</span>
+              </label>
+              <div className="border border-gray-700/50 rounded-lg overflow-hidden" style={{ height: "120px" }}>
+                <CodeMirror
+                  value={profilePatternsRaw}
+                  onChange={value => setProfilePatternsRaw(value)}
+                  extensions={[json()]}
+                  theme={oneDark}
+                  height="100%"
+                  style={{ height: "100%", fontSize: "12px" }}
+                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
+                client profile.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">
+                Signal Categories <span className="text-gray-500">(JSON array of signal key prefixes, e.g. "security:")</span>
+              </label>
+              <div className="border border-gray-700/50 rounded-lg overflow-hidden" style={{ height: "120px" }}>
+                <CodeMirror
+                  value={signalCategoriesRaw}
+                  onChange={value => setSignalCategoriesRaw(value)}
+                  extensions={[json()]}
+                  theme={oneDark}
+                  height="100%"
+                  style={{ height: "100%", fontSize: "12px" }}
+                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
+                client profile.
+              </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-gray-700/50 text-gray-300 hover:bg-gray-800/50">

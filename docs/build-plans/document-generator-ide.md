@@ -69,14 +69,11 @@ Phase 3's create call path rather than a second one.
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
-
-| 1 | Document Generator admin page — list, generate, preview, history | Not Started | #40 |
-| 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Not Started | #41 |
+| 1 | Document Generator admin page — list, generate, preview, history | Done (8b25356f, 69edf1ae) | #40 |
+| 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Done (e5607df6) | #41 |
 | 3 | New Document Type create modal | Done | #43 |
 | 4 | Missing Document Types panel | Done | #44 |
-=======
-| 1 | Document Generator admin page — list, generate, preview, history | Done (8b25356f, 69edf1ae) | #40 |
-| 2 | Retire legacy insights generation UI — remove nav entry, mark files dead | Done | #41 |
+| 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
 
 
 ## Notes
@@ -90,3 +87,19 @@ Phase count/order may change (decimal insertion) if a phase splits
 mid-build. This table is the index only — full spec per phase lives in
 that phase's GitHub issue. This file is the source of truth; the GitHub
 Issue/Project card is a derived view.
+
+The Phases table above previously carried a leftover merge artifact
+(duplicate Phase 1/2 rows plus a stray `=======` divider from a prior
+merge into `main`) — cleaned up as part of Phase 5, no content lost, both
+rows already agreed on "Done".
+
+## Open Issues
+Phase 5's "Unscoped" badge links to `DocumentTypesManager.tsx`'s edit flow
+at `/command/insights?tab=document_types` (deep link works — the page
+reads `?tab` — but the `cmd-insights` nav entry itself was removed in
+Phase 2, so an admin can only reach it by knowing this URL). If
+`DocumentTypesManager.tsx`'s scoping builder becomes a regularly-needed
+editing surface rather than an occasional one, it should get its own
+reachable nav entry (or be ported into `DocumentGeneratorIde.tsx` directly)
+rather than staying a URL-only path into a page whose own banner calls it
+dead.
