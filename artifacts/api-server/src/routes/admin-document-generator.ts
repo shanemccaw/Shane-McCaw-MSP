@@ -17,11 +17,14 @@
  * GET  /api/admin/document-generator/history                — recent generations
  * GET  /api/admin/document-generator/history/:id/html        — view/download stored HTML
  * GET  /api/admin/document-generator/profile-keys           — real, aggregated profile-key registry (Phase 1 of #70)
+ * POST /api/admin/document-generator/document-types/:key/suggest-scoping — constrained AI scoping suggestion (Phase 4 of #70)
+ * POST /api/admin/document-generator/document-types/suggest-scoping      — same, pre-save (New Document Type modal has no key yet)
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, mspCustomersTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, mspCustomersTable, projectsTable, servicesTable, usersTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
 import { eq, desc, and, isNull, inArray, asc } from "drizzle-orm";
+import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
@@ -30,6 +33,7 @@ import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 const missingTypesLog = logger.child({ channel: "engine.document-generator" });
+const scopingLog = logger.child({ channel: "engine.document-generator" });
 const router: IRouter = Router();
 
 // ── Tenant picker ────────────────────────────────────────────────────────────
@@ -118,30 +122,37 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
 // domain prefix (segment before "://") so the picker can render collapsible
 // groups instead of one flat 100+ key list. Single query, no N+1.
 
+/**
+ * The aggregation itself, split out from the route so the AI-suggest endpoint
+ * (Phase 4) can hand Claude the *same* real key list the picker shows, without
+ * re-implementing the query or calling this server's own HTTP route.
+ */
+export async function fetchProfileKeyGroups(): Promise<{ domain: string; keys: string[] }[]> {
+  const rows = await db
+    .select({ key: monitorChecksTable.key, mapping: monitorChecksTable.mapping })
+    .from(monitorChecksTable)
+    .where(eq(monitorChecksTable.status, "active"));
+
+  const domains = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const domain = row.key.split("://")[0] ?? row.key;
+    let keys = domains.get(domain);
+    if (!keys) {
+      keys = new Set<string>();
+      domains.set(domain, keys);
+    }
+    for (const m of row.mapping) keys.add(m.targetField);
+    keys.add(`${row.key}__itemCount`);
+  }
+
+  return Array.from(domains.entries())
+    .map(([domain, keys]) => ({ domain, keys: Array.from(keys).sort() }))
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+}
+
 router.get("/admin/document-generator/profile-keys", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const rows = await db
-      .select({ key: monitorChecksTable.key, mapping: monitorChecksTable.mapping })
-      .from(monitorChecksTable)
-      .where(eq(monitorChecksTable.status, "active"));
-
-    const domains = new Map<string, Set<string>>();
-    for (const row of rows) {
-      const domain = row.key.split("://")[0] ?? row.key;
-      let keys = domains.get(domain);
-      if (!keys) {
-        keys = new Set<string>();
-        domains.set(domain, keys);
-      }
-      for (const m of row.mapping) keys.add(m.targetField);
-      keys.add(`${row.key}__itemCount`);
-    }
-
-    const result = Array.from(domains.entries())
-      .map(([domain, keys]) => ({ domain, keys: Array.from(keys).sort() }))
-      .sort((a, b) => a.domain.localeCompare(b.domain));
-
-    res.json(result);
+    res.json(await fetchProfileKeyGroups());
   } catch (err) {
     log.error({ err }, "admin-document-generator: profile-keys failed");
     res.status(500).json({ error: "Failed to fetch profile keys" });
@@ -252,5 +263,218 @@ router.get("/admin/document-generator/history/:id/html", requireAdmin, async (re
     res.status(500).json({ error: "Failed to load document" });
   }
 });
+
+// ── Constrained AI scoping suggestion (Phase 4 of #70) ──────────────────────
+//
+// Suggests `includedProfileKeyPatterns` / `includedSignalCategories` / `sections`
+// for a document type. Two things make this safe to put in front of an admin:
+//
+//  1. The model is only ever shown REAL values — the same profile-key groups the
+//     Phase 1 registry route returns (via `fetchProfileKeyGroups()`, reused, not
+//     re-implemented) and the real `SIGNAL_CATEGORY_PREFIXES` enum.
+//  2. Everything that comes back is filtered against those same real sets before
+//     it is returned. The prompt wording is a hint; step 2 is the actual
+//     mechanism. A hallucinated key is dropped silently — that is normal model
+//     behaviour, not an error condition, so it never surfaces as a failure. The
+//     requested-vs-kept counts go to the log instead, so a suspiciously low keep
+//     rate is visible without having to reproduce the call.
+//
+// This endpoint writes NOTHING. It returns a suggestion payload for the admin to
+// review, edit and explicitly Save through the existing document-types routes.
+
+/** Free-form sections have no real-list to validate against, so they get a cap. */
+const MAX_SUGGESTED_SECTIONS = 8;
+
+/** Model tier already used for the other admin authoring aids (admin-marketing.ts). */
+const SUGGEST_MODEL = "claude-haiku-4-5";
+
+interface SuggestedSection { heading: string; guidance: string }
+
+/** Pull the first balanced JSON object out of a model reply (fences, prose, etc). */
+function extractJsonObject(text: string): unknown {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim());
+}
+
+function suggestedSections(value: unknown): SuggestedSection[] {
+  if (!Array.isArray(value)) return [];
+  const out: SuggestedSection[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const heading = typeof (entry as { heading?: unknown }).heading === "string" ? (entry as { heading: string }).heading.trim() : "";
+    const guidance = typeof (entry as { guidance?: unknown }).guidance === "string" ? (entry as { guidance: string }).guidance.trim() : "";
+    if (!heading || !guidance) continue;
+    out.push({ heading, guidance });
+  }
+  return out;
+}
+
+router.post(
+  [
+    "/admin/document-generator/document-types/:key/suggest-scoping",
+    // Pre-save case: the New Document Type modal has no key yet, so the same
+    // handler runs off label/category/serviceId in the body alone.
+    "/admin/document-generator/document-types/suggest-scoping",
+  ],
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const key = String(req.params["key"] ?? "").trim();
+
+    let label = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+    let category = req.body?.category === "report" || req.body?.category === "consulting" ? req.body.category : "";
+    const bodyServiceId = Number.parseInt(String(req.body?.serviceId ?? ""), 10);
+    let serviceId: number | null = Number.isNaN(bodyServiceId) ? null : bodyServiceId;
+
+    try {
+      if (key) {
+        // Saved type: the stored row is the source of truth for anything the
+        // caller did not explicitly override.
+        const [docTypeRow] = await db
+          .select({ label: documentTypesTable.label, category: documentTypesTable.category, serviceId: documentTypesTable.serviceId })
+          .from(documentTypesTable)
+          .where(eq(documentTypesTable.key, key))
+          .limit(1);
+        if (!docTypeRow) { res.status(404).json({ error: "Document type not found" }); return; }
+        if (!label) label = docTypeRow.label;
+        if (!category) category = docTypeRow.category;
+        if (serviceId === null) serviceId = docTypeRow.serviceId;
+      }
+
+      if (!label || !category) {
+        res.status(400).json({ error: "label and category (\"report\" or \"consulting\") are required" });
+        return;
+      }
+
+      // ── Step 1: the real constraint sets ──────────────────────────────────
+      const groups = await fetchProfileKeyGroups();
+      const realProfileKeys = new Set(groups.flatMap((g) => g.keys));
+      const realCategories = new Set<string>(SIGNAL_CATEGORY_PREFIXES);
+
+      let serviceContext = "";
+      if (serviceId !== null) {
+        const [service] = await db
+          .select({ name: servicesTable.name, description: servicesTable.description })
+          .from(servicesTable)
+          .where(eq(servicesTable.id, serviceId))
+          .limit(1);
+        if (service) {
+          serviceContext = `\nLinked service: ${service.name}\nService description: ${service.description ?? "(none)"}\n`;
+        }
+      }
+
+      // ── Step 2: one constrained model call ────────────────────────────────
+      const keyCatalog = groups.map((g) => `${g.domain}:\n${g.keys.map((k) => `  - ${k}`).join("\n")}`).join("\n\n");
+      const prompt = [
+        `You are helping an MSP platform admin scope a generated document type.`,
+        ``,
+        `Document type label: ${label}`,
+        `Category: ${category}`,
+        serviceContext,
+        `Below are the ONLY valid profile key patterns, grouped by data domain. You must copy values character-for-character from this list. Do not invent, abbreviate, pluralise, or combine keys.`,
+        ``,
+        keyCatalog,
+        ``,
+        `Below are the ONLY valid signal categories:`,
+        SIGNAL_CATEGORY_PREFIXES.map((c) => `  - ${c}`).join("\n"),
+        ``,
+        `Select the subset of profile key patterns and signal categories that are genuinely relevant to a "${label}" document, and propose 3-6 document sections.`,
+        `A tight, relevant selection is far better than a broad one.`,
+        ``,
+        `Respond with ONLY a JSON object, no prose and no markdown fences:`,
+        `{"profileKeyPatterns":["..."],"signalCategories":["..."],"sections":[{"heading":"...","guidance":"..."}]}`,
+        ``,
+        `profileKeyPatterns and signalCategories MUST contain only values that appear verbatim in the lists above. Anything else will be discarded.`,
+        `sections is free-form: heading is a short title, guidance is one or two sentences telling the document generator what belongs in that section.`,
+      ].join("\n");
+
+      // Cost attribution (#48): this is a platform-funded authoring aid, not a
+      // customer deliverable, so costOwner is "platform" and there is no
+      // customerId/mspId to attach — it is not tenant-scoped.
+      const message = await withAiAttribution(
+        {
+          costOwner: "platform",
+          feature: "document_scoping_suggest",
+          generatedArtifactType: "scoping_suggestion",
+          generatedArtifactName: label,
+          ...(key ? { generatedArtifactId: key } : {}),
+          triggerSource: "admin-document-generator:suggest-scoping",
+        },
+        () =>
+          anthropic.messages.create({
+            model: SUGGEST_MODEL,
+            max_tokens: 2000,
+            messages: [{ role: "user", content: prompt }],
+          }),
+      );
+
+      const textBlock = message.content.find((b) => b.type === "text");
+      const parsed = textBlock?.type === "text" ? extractJsonObject(textBlock.text) : null;
+      if (!parsed || typeof parsed !== "object") {
+        scopingLog.warn({ key: key || null, label }, "suggest-scoping: model returned an unreadable response");
+        res.status(502).json({ error: "AI returned an unreadable response — please try again" });
+        return;
+      }
+
+      // ── Step 3: hard server-side validation ───────────────────────────────
+      const rawPatterns = stringArray((parsed as { profileKeyPatterns?: unknown }).profileKeyPatterns);
+      const rawCategories = stringArray((parsed as { signalCategories?: unknown }).signalCategories);
+      const rawSections = suggestedSections((parsed as { sections?: unknown }).sections);
+
+      const profileKeyPatterns = Array.from(new Set(rawPatterns.filter((p) => realProfileKeys.has(p))));
+      const signalCategories = Array.from(new Set(rawCategories.filter((c) => realCategories.has(c))));
+      const sections = rawSections.slice(0, MAX_SUGGESTED_SECTIONS);
+
+      scopingLog.info(
+        {
+          key: key || null,
+          label,
+          category,
+          serviceId,
+          profileKeys: { requested: rawPatterns.length, kept: profileKeyPatterns.length, available: realProfileKeys.size },
+          signalCategories: { requested: rawCategories.length, kept: signalCategories.length },
+          sections: { requested: rawSections.length, kept: sections.length },
+        },
+        "suggest-scoping: validated AI suggestion against real registries",
+      );
+
+      res.json({
+        profileKeyPatterns,
+        signalCategories,
+        sections,
+        meta: {
+          profileKeyPatterns: { requested: rawPatterns.length, kept: profileKeyPatterns.length },
+          signalCategories: { requested: rawCategories.length, kept: signalCategories.length },
+          sections: { requested: rawSections.length, kept: sections.length },
+        },
+      });
+    } catch (err) {
+      scopingLog.error({ err, key: key || null }, "admin-document-generator: suggest-scoping failed");
+      res.status(500).json({ error: "Failed to generate scoping suggestion" });
+    }
+  },
+);
 
 export default router;
