@@ -76,7 +76,7 @@ Phase 3's create call path rather than a second one.
 | 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
 | 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
 | 7 | Simulator Studio Documents node | Done (ef7ba2a3) | — |
-| 8 | Tenant-first document generation signature | Done (TBD) | #47 |
+| 8 | Tenant-first document generation signature | Done (b44f01fd) | #47 |
 | 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Open | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
