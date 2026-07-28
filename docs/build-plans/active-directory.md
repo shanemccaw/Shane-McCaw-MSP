@@ -88,8 +88,9 @@ rather than a flat account list.
 | 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | In Progress | #65 |
 | 6 | User Object detail pane (full read view) | In Progress | #66 |
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | Not Started | #67 |
-| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
+| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | Not Started | #68 |
 | 9 | User Object — dev-only cascading hard delete | Not Started | #69 |
+| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Not Started | #91 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
@@ -116,3 +117,22 @@ Audited against existing code before drafting (2026-07-28): no
 self-service/`requireAuth`-only (no admin-reset path yet). The
 "platform" nav section in `workspaceNav.tsx` (lines ~193-200) is the
 confirmed real registration point.
+
+
+Phase 10 was added mid-build (2026-07-28), after Shane used the initiative
+for a session and wanted: the tree's "Customer" nodes relabeled "Tenant"
+(display label only — the internal object-type identifier stays
+"customer" to avoid colliding with Phases 7/8, which were actively
+wiring against that type at the time this phase was scoped), real Users
+nested as tree children under each Tenant (not just a linked list inside
+the Tenant pane), and three new Tenant-level admin actions on top of
+Phase 3's existing consent/telemetry summary: Graph consent revoke
+(reuses the existing PATCH /api/admin/consent/:tenantId/revoke — already
+built, admin-gated, audit-logged elsewhere in the platform), a live
+pillar-score display (reuses the existing GET
+/admin/signal-rules/customer-pillar-scores/:customerId), and a tenant
+telemetry view (reuses the existing tenant_monitor_profiles read pattern
+from admin-monitor-checks.ts). Also adds SharePoint consent revoke, a
+manual scan trigger, and a re-consent invite-link generator, all
+confirmed to have existing reusable backend mechanisms rather than being
+built from scratch. Depends on Phase 3 (Done) for the pane it extends.
