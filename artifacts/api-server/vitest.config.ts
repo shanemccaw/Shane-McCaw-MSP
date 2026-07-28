@@ -133,6 +133,8 @@ export default defineConfig({
       "src/routes/admin-write-actions.test.ts",
       "src/routes/admin-document-generator.test.ts",
       "src/lib/active-directory.test.ts",
+      "src/routes/admin-active-directory-credential-ops.test.ts",
+      "src/routes/mfa-admin-reset.test.ts",
     ],
     coverage: {
       provider: "v8",

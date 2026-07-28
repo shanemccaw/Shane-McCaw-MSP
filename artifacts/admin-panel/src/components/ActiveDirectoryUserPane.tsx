@@ -12,13 +12,15 @@
 // summary, and MFA enrollment status — from the single
 // GET /admin/active-directory/user/:id payload.
 //
-// Read-only per Issue #66: the RBAC/MSP-reassignment/entitlement-grant
-// actions (Phase 7), credential reset/MFA reset/impersonation (Phase 8),
-// and delete (Phase 9) are all rendered as visibly-disabled placeholder
-// slots below, so those phases are additive to this layout rather than a
-// redesign of it.
+// Phase 8 (Issue #68) filled the "Credential Ops" placeholder slot below with
+// the three real, audited write actions — forced password reset, MFA reset,
+// and impersonation launch into /portal/ — each posting to
+// /admin/active-directory/user/:id/{force-password-reset,mfa-reset,impersonate}.
+// The RBAC/MSP-reassignment/entitlement-grant actions (Phase 7) and delete
+// (Phase 9) remain visibly-disabled placeholder slots, so those phases stay
+// additive to this layout rather than a redesign of it.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   UserCircle,
   Building2,
@@ -29,6 +31,9 @@ import {
   Lock,
   UserCog,
   Trash2,
+  Loader2,
+  LogIn,
+  ShieldOff,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AD_SELECT_EVENT, type AdSelectedObject } from "./ActiveDirectoryTree";
@@ -117,29 +122,48 @@ function dispatchSelect(detail: AdSelectedObject) {
   window.dispatchEvent(new CustomEvent<AdSelectedObject>(AD_SELECT_EVENT, { detail }));
 }
 
+/** Which Phase 8 action is awaiting an explicit confirm, if any. */
+type PendingAction =
+  | { kind: "password" }
+  | { kind: "mfa"; method?: string }
+  | { kind: "impersonate" };
+
+interface ActionOutcome {
+  tone: "ok" | "error";
+  message: string;
+}
+
 export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
   const { fetchWithAuth } = useAuth();
   const [detail, setDetail] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}`);
+    if (!res.ok) throw new Error(res.status === 404 ? "This user no longer exists." : "Failed to load user detail.");
+    return (await res.json()) as UserDetail;
+  }, [userId, fetchWithAuth]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setDetail(null);
+    // Credential-op state is per-account — never carry a previous account's
+    // confirm prompt or result over when the tree selection changes.
+    setPending(null);
+    setOutcome(null);
 
     (async () => {
       try {
-        const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}`);
-        if (cancelled) return;
-        if (!res.ok) {
-          setError(res.status === 404 ? "This user no longer exists." : "Failed to load user detail.");
-          return;
-        }
-        setDetail((await res.json()) as UserDetail);
-      } catch {
-        if (!cancelled) setError("Failed to load user detail.");
+        const next = await load();
+        if (!cancelled) setDetail(next);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load user detail.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -148,7 +172,81 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, fetchWithAuth]);
+  }, [load]);
+
+  // ── Phase 8 credential ops ─────────────────────────────────────────────────
+  // Every action is a POST behind an explicit confirm step, and every one
+  // refreshes the pane afterwards so the Sessions / MFA sections reflect what
+  // just happened rather than pre-action state.
+  async function runAction(action: PendingAction) {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const base = `/api/admin/active-directory/user/${userId}`;
+      const path =
+        action.kind === "password" ? "force-password-reset" : action.kind === "mfa" ? "mfa-reset" : "impersonate";
+      const res = await fetchWithAuth(`${base}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action.kind === "mfa" && action.method ? { method: action.method } : {}),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+      if (!res.ok) {
+        setOutcome({ tone: "error", message: (data.error as string) ?? "The action failed. Nothing was changed." });
+        return;
+      }
+
+      if (action.kind === "impersonate") {
+        // Same launch convention as the shell's View-As switcher: hand the
+        // single-use token to /portal/ in a new tab, where auth-context
+        // exchanges it and the amber "Admin Preview Mode" banner marks the
+        // session as an impersonation rather than a real login.
+        const token = String(data.token ?? "");
+        const targetSlug = data.targetSlug as string | null;
+        const params = new URLSearchParams({ impersonation_token: token });
+        if (targetSlug) params.set("target_slug", targetSlug);
+        window.open(`${window.location.origin}/portal/?${params.toString()}`, "_blank", "noopener");
+        setOutcome({
+          tone: "ok",
+          message: targetSlug
+            ? `Impersonation session opened in a new tab as ${detail?.profile.email ?? "this account"} (expires in 30 minutes).`
+            : `Impersonation session opened, but this account has no owning MSP — the new tab cannot auto-navigate to a tenant.`,
+        });
+        return;
+      }
+
+      if (action.kind === "password") {
+        const revoked = Number(data.revokedSessionCount ?? 0);
+        const flow = String(data.flow ?? "password_reset");
+        setOutcome({
+          tone: "ok",
+          message:
+            `${flow === "account_setup" ? "Account-setup" : "Password reset"} link emailed to ${String(data.emailedTo ?? "the account")}. ` +
+            `${revoked} existing session${revoked === 1 ? "" : "s"} invalidated.`,
+        });
+      } else {
+        const cleared = Array.isArray(data.clearedMethods) ? (data.clearedMethods as string[]) : [];
+        setOutcome({
+          tone: "ok",
+          message: cleared.length
+            ? `MFA reset — un-enrolled: ${cleared.join(", ")}.`
+            : "MFA reset — this account had no enrolled methods to clear.",
+        });
+      }
+
+      try {
+        setDetail(await load());
+      } catch {
+        // A stale pane is not worth overwriting a successful action's result.
+      }
+    } catch {
+      setOutcome({ tone: "error", message: "The action failed. Nothing was changed." });
+    } finally {
+      setBusy(false);
+      setPending(null);
+    }
+  }
 
   if (loading) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading user…</div>;
@@ -302,19 +400,161 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
         </div>
       </Section>
 
-      <Section title="Credential Ops (Phase 8)" icon={<Lock className="h-4 w-4 text-muted-foreground" />}>
-        <p className="mb-2 text-[11px] italic text-muted-foreground">Coming soon — forced credential reset, MFA reset, impersonation into /portal/.</p>
-        <div className="flex flex-wrap gap-2">
-          <PlaceholderButton label="Reset credentials" />
-          <PlaceholderButton label="Reset MFA" />
-          <PlaceholderButton label="Impersonate" />
-        </div>
+      <Section title="Credential Ops" icon={<Lock className="h-4 w-4 text-muted-foreground" />}>
+        <p className="mb-2 text-[11px] italic text-muted-foreground">
+          Security-sensitive. Every action here is audit-logged with your identity, this account, and a timestamp.
+        </p>
+
+        {outcome && (
+          <div
+            className={`mb-2 rounded border px-2 py-1.5 text-[11px] ${
+              outcome.tone === "ok"
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+            }`}
+          >
+            {outcome.message}
+          </div>
+        )}
+
+        {pending ? (
+          <ConfirmRow
+            busy={busy}
+            prompt={
+              pending.kind === "password"
+                ? `Force a password reset for ${profile.email}? This emails a reset link and immediately signs the account out of every device.`
+                : pending.kind === "impersonate"
+                  ? `Open a 30-minute impersonation session in /portal/ as ${profile.email}? The session is marked as admin preview, not a real login.`
+                  : pending.method
+                    ? `Un-enroll the "${pending.method}" MFA method for ${profile.email}? They will be emailed and must set it up again.`
+                    : `Reset ALL MFA methods for ${profile.email}? Every enrolled method, pending challenge, and unused emergency bypass code is cleared.`
+            }
+            confirmLabel={pending.kind === "impersonate" ? "Impersonate" : "Confirm reset"}
+            onConfirm={() => void runAction(pending)}
+            onCancel={() => setPending(null)}
+          />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <ActionButton
+              icon={<KeyRound className="h-3 w-3" />}
+              label="Force password reset"
+              disabled={busy}
+              onClick={() => {
+                setOutcome(null);
+                setPending({ kind: "password" });
+              }}
+            />
+            <ActionButton
+              icon={<ShieldOff className="h-3 w-3" />}
+              label={mfa.enrolled ? "Reset all MFA" : "Reset MFA"}
+              disabled={busy}
+              onClick={() => {
+                setOutcome(null);
+                setPending({ kind: "mfa" });
+              }}
+            />
+            <ActionButton
+              icon={<LogIn className="h-3 w-3" />}
+              label="Impersonate in /portal/"
+              disabled={busy}
+              onClick={() => {
+                setOutcome(null);
+                setPending({ kind: "impersonate" });
+              }}
+            />
+          </div>
+        )}
+
+        {!pending && mfa.enrolled && (
+          <div className="mt-2 border-t border-border/60 pt-2">
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Un-enroll a single method</p>
+            <div className="flex flex-wrap gap-1.5">
+              {mfa.methods.map((m, i) => (
+                <button
+                  key={`unenroll-${m.method}-${i}`}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setOutcome(null);
+                    setPending({ kind: "mfa", method: m.method });
+                  }}
+                  className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-amber-500/60 hover:text-amber-600 disabled:opacity-50 dark:hover:text-amber-400"
+                >
+                  {m.method}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section title="Delete (Phase 9)" icon={<Trash2 className="h-4 w-4 text-muted-foreground" />}>
         <p className="mb-2 text-[11px] italic text-muted-foreground">Coming soon — dev-environment-only cascading hard delete.</p>
         <PlaceholderButton label="Delete account" danger />
       </Section>
+    </div>
+  );
+}
+
+function ActionButton({
+  icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex items-center gap-1 rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-700 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-400"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function ConfirmRow({
+  prompt,
+  confirmLabel,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  prompt: string;
+  confirmLabel: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-2">
+      <p className="mb-2 text-[11px] text-amber-800 dark:text-amber-200">{prompt}</p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className="flex items-center gap-1 rounded bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+        >
+          {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+          {confirmLabel}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

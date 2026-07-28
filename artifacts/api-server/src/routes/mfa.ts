@@ -5,10 +5,12 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
 import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, mspUsersTable, mspRefreshTokensTable } from "@workspace/db";
 import { eq, and, gt, isNull } from "drizzle-orm";
-import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
+import { requireAuth, requireAdmin, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createAuditLog } from "../lib/audit";
+import { sendEmailFromTemplate, PORTAL_URL } from "../lib/mailer.ts";
 const log = logger.child({ channel: "auth" });
+const auditLog = logger.child({ channel: "audit" });
 import { createSession, type LoginMethod } from "../lib/session-tracking";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
@@ -104,6 +106,213 @@ export function verifyMfaToken(token: string): { userId: number; methods: string
   if (!payload.mfa) throw new Error("Not an MFA token");
   return { userId: payload.userId, methods: payload.methods };
 }
+
+// ── MFA un-enrollment: the single shared implementation ───────────────────────
+// Active Directory Phase 8 (Issue #68) needs an admin-initiated MFA reset. Per
+// the initiative's "extend, do not fork" rule, the real per-method
+// un-enrollment logic that the self-service DELETE routes below have always
+// run is lifted here verbatim, and BOTH paths now call it:
+//
+//   • self-service  — DELETE /auth/mfa/{totp,sms,passkey}  (unchanged behaviour)
+//   • admin-gated   — POST  /auth/mfa/admin/reset/:userId   (below), and
+//                     POST  /admin/active-directory/user/:id/mfa-reset, which
+//                     imports adminResetMfa() directly rather than duplicating it.
+//
+// There is deliberately no second implementation: adminResetMfa() is a thin
+// wrapper that adds the notification e-mail and the audit trail on top of
+// resetMfaForUser(), which is itself just unenrollMfaMethod() applied across
+// the requested methods.
+
+export const MFA_METHODS = ["totp", "sms", "passkey"] as const;
+export type MfaMethod = (typeof MFA_METHODS)[number];
+
+export function isMfaMethod(value: unknown): value is MfaMethod {
+  return typeof value === "string" && (MFA_METHODS as readonly string[]).includes(value);
+}
+
+export const MFA_METHOD_LABELS: Record<string, string> = {
+  totp: "Authenticator App (TOTP)",
+  sms: "SMS",
+  passkey: "Passkey / Security Key",
+};
+
+/**
+ * Un-enroll ONE method for a user — byte-for-byte the deletes the matching
+ * self-service DELETE route has always performed, so refactoring those routes
+ * onto this helper is behaviour-preserving.
+ */
+export async function unenrollMfaMethod(userId: number, method: MfaMethod): Promise<void> {
+  if (method === "passkey") {
+    await db.delete(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, userId));
+  }
+  await db.delete(mfaEnrollmentsTable).where(
+    and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, method)),
+  );
+}
+
+/** Which methods a user currently holds — enrollment rows plus real passkey credentials. */
+async function listEnrolledMfaMethods(userId: number): Promise<string[]> {
+  const enrollments = await db
+    .select({ method: mfaEnrollmentsTable.method })
+    .from(mfaEnrollmentsTable)
+    .where(eq(mfaEnrollmentsTable.userId, userId));
+  const passkeyRows = await db
+    .select({ id: webauthnCredentialsTable.id })
+    .from(webauthnCredentialsTable)
+    .where(eq(webauthnCredentialsTable.userId, userId));
+
+  const methods = enrollments.map((e) => e.method);
+  if (passkeyRows.length > 0 && !methods.includes("passkey")) methods.push("passkey");
+  return methods;
+}
+
+/**
+ * Reset MFA for a user. Pass a single `method` to un-enroll just that one, or
+ * omit it to clear every method ("any method", per Issue #68).
+ *
+ * A FULL reset additionally purges pending challenge rows and any *unused*
+ * emergency bypass codes — a bypass code outliving the reset would otherwise
+ * remain a live, un-revoked way past MFA. Already-used bypass codes are kept:
+ * their usedAt/usedIp columns are the audit record of a real sign-in.
+ */
+export async function resetMfaForUser(
+  userId: number,
+  opts: { method?: MfaMethod } = {},
+): Promise<{ clearedMethods: string[] }> {
+  const enrolled = await listEnrolledMfaMethods(userId);
+
+  if (opts.method) {
+    const method = opts.method;
+    await unenrollMfaMethod(userId, method);
+    if (method === "passkey") {
+      await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.userId, userId));
+    } else {
+      await db.delete(mfaChallengesTable).where(
+        and(eq(mfaChallengesTable.userId, userId), eq(mfaChallengesTable.method, method)),
+      );
+    }
+    return { clearedMethods: enrolled.includes(method) ? [method] : [] };
+  }
+
+  for (const method of MFA_METHODS) {
+    await unenrollMfaMethod(userId, method);
+  }
+  await db.delete(mfaChallengesTable).where(eq(mfaChallengesTable.userId, userId));
+  await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.userId, userId));
+  await db.delete(mfaBypassCodesTable).where(
+    and(eq(mfaBypassCodesTable.userId, userId), isNull(mfaBypassCodesTable.usedAt)),
+  );
+
+  return { clearedMethods: enrolled };
+}
+
+export interface AdminMfaResetActor {
+  id: number;
+  email: string;
+  name?: string | null;
+}
+
+/**
+ * Admin-initiated MFA reset: the data reset above, plus the notification e-mail
+ * the target is owed and the audit trail Issue #68 requires (actor identity,
+ * target account, timestamp). Returns null when the target user does not exist.
+ */
+export async function adminResetMfa(input: {
+  userId: number;
+  method?: MfaMethod;
+  actor: AdminMfaResetActor;
+  /** Surfaced in the audit metadata so a reset can be traced to the surface that fired it. */
+  source: string;
+}): Promise<{ clearedMethods: string[]; targetEmail: string; targetName: string | null } | null> {
+  const [target] = await db
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, input.userId))
+    .limit(1);
+  if (!target) return null;
+
+  const { clearedMethods } = await resetMfaForUser(input.userId, { method: input.method });
+
+  const methodsList = clearedMethods.map((m) => MFA_METHOD_LABELS[m] ?? m).join(", ") || "None";
+  void sendEmailFromTemplate(
+    "mfa-reset",
+    target.email,
+    {
+      clientName: target.name ?? target.email,
+      methodsList,
+      loginLink: PORTAL_URL,
+      securityLink: `${PORTAL_URL}/security`,
+    },
+    "Your two-factor authentication has been reset",
+    `<p>Hi ${target.name ?? target.email},</p><p>Your multi-factor authentication has been reset by an administrator. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+  ).catch((err) => log.warn({ err, userId: input.userId }, "admin mfa reset: notification email failed (non-fatal)"));
+
+  void createAuditLog({
+    actorUserId: input.actor.id,
+    actorName: input.actor.name ?? input.actor.email,
+    actorRole: "admin",
+    actionType: "admin_mfa_reset",
+    entityType: "user",
+    entityId: target.id,
+    entityLabel: target.name ?? target.email,
+    metadata: { clearedMethods, method: input.method ?? "all", source: input.source },
+  });
+
+  auditLog.info(
+    {
+      actionType: "admin_mfa_reset",
+      actorUserId: input.actor.id,
+      actorEmail: input.actor.email,
+      targetUserId: target.id,
+      targetEmail: target.email,
+      clearedMethods,
+      method: input.method ?? "all",
+      source: input.source,
+      occurredAt: new Date().toISOString(),
+    },
+    "audit: PlatformAdmin reset MFA for an account",
+  );
+
+  log.info({ actorUserId: input.actor.id, targetUserId: target.id, clearedMethods }, "admin mfa reset applied");
+
+  return { clearedMethods, targetEmail: target.email, targetName: target.name };
+}
+
+// ── POST /api/auth/mfa/admin/reset/:userId ────────────────────────────────────
+// The admin-gated entry point Issue #68 calls for, living alongside mfa.ts's
+// self-service routes and sharing their un-enrollment logic. Body may carry
+// { method } to un-enroll a single method; omit it to clear all of them.
+router.post("/auth/mfa/admin/reset/:userId", requireAdmin, async (req: Request, res: Response) => {
+  const userId = parseInt(String(req.params.userId ?? ""), 10);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const rawMethod = (req.body as { method?: unknown } | undefined)?.method;
+  if (rawMethod !== undefined && !isMfaMethod(rawMethod)) {
+    res.status(400).json({ error: `method must be one of: ${MFA_METHODS.join(", ")}` });
+    return;
+  }
+
+  try {
+    const actor = req.user!;
+    const result = await adminResetMfa({
+      userId,
+      method: rawMethod,
+      actor: { id: actor.id, email: actor.email, name: actor.name },
+      source: "auth.mfa.admin-reset",
+    });
+    if (!result) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    res.json({ ok: true, clearedMethods: result.clearedMethods });
+  } catch (err) {
+    log.error({ err, userId }, "admin mfa reset failed");
+    res.status(500).json({ error: "Failed to reset MFA" });
+  }
+});
 
 // ── GET /api/auth/mfa/enrollments ─────────────────────────────────────────────
 // List all active MFA enrollments for the authenticated user.
@@ -218,9 +427,7 @@ router.post("/auth/mfa/totp/challenge", mfaLimiter, async (req: Request, res: Re
 
 router.delete("/auth/mfa/totp", requireAuth, async (req: Request, res: Response) => {
   const user = req.user!;
-  await db.delete(mfaEnrollmentsTable).where(
-    and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.method, "totp"))
-  );
+  await unenrollMfaMethod(user.id, "totp");
   res.json({ ok: true });
 });
 
@@ -385,9 +592,7 @@ router.post("/auth/mfa/sms/verify", mfaLimiter, async (req: Request, res: Respon
 
 router.delete("/auth/mfa/sms", requireAuth, async (req: Request, res: Response) => {
   const user = req.user!;
-  await db.delete(mfaEnrollmentsTable).where(
-    and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.method, "sms"))
-  );
+  await unenrollMfaMethod(user.id, "sms");
   res.json({ ok: true });
 });
 
@@ -637,10 +842,7 @@ router.post("/auth/mfa/passkey/verify-authentication", mfaLimiter, async (req: R
 
 router.delete("/auth/mfa/passkey", requireAuth, async (req: Request, res: Response) => {
   const user = req.user!;
-  await db.delete(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, user.id));
-  await db.delete(mfaEnrollmentsTable).where(
-    and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.method, "passkey"))
-  );
+  await unenrollMfaMethod(user.id, "passkey");
   res.json({ ok: true });
 });
 

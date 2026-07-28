@@ -25,10 +25,21 @@ import {
   activeDirectoryOusTable,
   userSessionsTable,
   mfaEnrollmentsTable,
+  passwordResetTokensTable,
+  accountSetupTokensTable,
+  impersonationTokensTable,
+  mspAuditLogsTable,
 } from "@workspace/db";
 import { eq, asc, and, inArray, count, desc } from "drizzle-orm";
+import { randomBytes, randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { revokeAllOtherSessions } from "../lib/session-tracking";
+import { createAuditLog } from "../lib/audit";
+import { adminResetMfa, isMfaMethod, MFA_METHODS } from "./mfa";
+import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
+import { getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 import {
   buildMspTree,
   buildGroupNodes,
@@ -51,6 +62,19 @@ const RECENT_DIAGNOSTIC_RUN_LIMIT = 10;
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.active-directory" });
+// Phase 8 credential/impersonation actions are core auth-surface events, so they
+// log on the `auth` channel, and every one of them additionally writes an
+// actor/target/timestamp line to the `audit` channel (Issue #68).
+const authLog = logger.child({ channel: "auth" });
+const auditLog = logger.child({ channel: "audit" });
+
+// Matches /auth/forgot-password's RESET_TOKEN_TTL_MS and portal.ts's
+// TEAM_RESET_TOKEN_TTL_MS — one shared reset-link lifetime across the platform.
+const FORCED_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Matches /auth/forgot-password's no-password-set branch.
+const ACCOUNT_SETUP_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
+// Matches every existing impersonation-token issuer (portal.ts).
+const IMPERSONATION_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 // ─── GET /admin/active-directory/tree ────────────────────────────────────────
 // OU=MSPs (every real MSP, each with its real customers nested underneath) +
@@ -691,6 +715,311 @@ router.delete("/admin/active-directory/ou/:id", requireAdmin, async (req: Reques
   } catch (err) {
     log.error({ err, ouId }, "Failed to delete OU");
     res.status(500).json({ error: "Failed to delete OU" });
+  }
+});
+
+// ─── User Object credential ops + impersonation (Phase 8, Issue #68) ─────────
+// The second tier of User Object write actions. Every one of the three is a
+// thin, audited admin-gated entry point onto a mechanism that already exists:
+//
+//   force-password-reset → passwordResetTokensTable + the "password-reset"
+//       e-mail template (the same flow /auth/forgot-password and
+//       /portal/team/:userId/reset-password already run), plus
+//       revokeAllOtherSessions(userId, null) — the codebase's established
+//       session-invalidation convention (lib/session-tracking.ts; the same
+//       call /portal/team/:userId/sessions makes to force-logout an account).
+//   mfa-reset            → mfa.ts's adminResetMfa(), which is built from the
+//       very per-method un-enrollment logic its self-service DELETE routes run.
+//   impersonate          → an impersonation_tokens row consumed by the
+//       pre-existing, already-generic POST /auth/impersonate-exchange. No
+//       second impersonation system is introduced: the exchange endpoint
+//       derives the target's full MSP claims itself, opens a
+//       sessionType="impersonation" user_sessions row, stamps `impersonatedBy`
+//       into the JWT, and audit-logs IMPERSONATION_SESSION_STARTED — which is
+//       also what makes the resulting /portal/ session visibly distinct (the
+//       amber "Admin Preview Mode" ImpersonationBanner renders off
+//       user.impersonatedBy in msp-portal's app-shell).
+
+/** Shared 404-or-row lookup for the three Phase 8 write routes. */
+async function loadTargetAccount(userId: number) {
+  const [row] = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      name: usersTable.name,
+      passwordHash: usersTable.passwordHash,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+// ─── POST /admin/active-directory/user/:id/force-password-reset ──────────────
+// Forces the account through a password reset and immediately invalidates its
+// existing sessions. Accounts that have never set a password (passwordHash
+// null) get the account-setup link instead of a reset link — the same branch
+// /auth/forgot-password already takes, so an admin never hands out a reset URL
+// that the target's account state cannot consume.
+router.post("/admin/active-directory/user/:id/force-password-reset", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  try {
+    const target = await loadTargetAccount(userId);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const actor = req.user!;
+
+    // Session invalidation FIRST: even if the e-mail transport is down, the
+    // account has already lost every live session and refresh token.
+    const revokedSessionCount = await revokeAllOtherSessions(userId, null);
+
+    const token = randomBytes(32).toString("hex");
+    const hasPassword = !!target.passwordHash;
+    const flow = hasPassword ? "password_reset" : "account_setup";
+
+    if (hasPassword) {
+      await db.insert(passwordResetTokensTable).values({
+        userId,
+        token,
+        expiresAt: new Date(Date.now() + FORCED_RESET_TOKEN_TTL_MS),
+      });
+      const resetUrl = `${getMspPortalBaseUrl()}/reset-password?token=${token}`;
+      void sendEmailFromTemplate(
+        "password-reset",
+        target.email,
+        { resetLink: resetUrl },
+        "Reset your Shane McCaw Consulting portal password",
+        passwordResetEmail({ resetUrl }),
+      ).catch((err) => authLog.warn({ err, userId }, "force-password-reset: reset email failed (non-fatal)"));
+    } else {
+      await db.insert(accountSetupTokensTable).values({
+        userId,
+        token,
+        expiresAt: new Date(Date.now() + ACCOUNT_SETUP_TOKEN_TTL_MS),
+      });
+      const setupUrl = buildAccountSetupUrl(token);
+      void sendEmailFromTemplate(
+        "account-setup",
+        target.email,
+        { setupLink: setupUrl, clientName: target.name ?? target.email },
+        "Set up your Shane McCaw Consulting portal password",
+        `<p>Hi ${target.name ?? ""},</p><p>Click the link below to set your portal password:</p><p><a href="${setupUrl}">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+      ).catch((err) => authLog.warn({ err, userId }, "force-password-reset: setup email failed (non-fatal)"));
+    }
+
+    void createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: "admin",
+      actionType: "admin_forced_password_reset",
+      entityType: "user",
+      entityId: target.id,
+      entityLabel: target.name ?? target.email,
+      metadata: { flow, revokedSessionCount, source: "admin.active-directory" },
+    });
+
+    auditLog.info(
+      {
+        actionType: "admin_forced_password_reset",
+        actorUserId: actor.id,
+        actorEmail: actor.email,
+        targetUserId: target.id,
+        targetEmail: target.email,
+        flow,
+        revokedSessionCount,
+        occurredAt: new Date().toISOString(),
+      },
+      "audit: PlatformAdmin forced a password reset",
+    );
+
+    authLog.info({ actorUserId: actor.id, targetUserId: target.id, flow, revokedSessionCount }, "force-password-reset applied");
+
+    res.json({ ok: true, flow, revokedSessionCount, emailedTo: target.email });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to force password reset");
+    res.status(500).json({ error: "Failed to force a password reset" });
+  }
+});
+
+// ─── POST /admin/active-directory/user/:id/mfa-reset ─────────────────────────
+// Resets/un-enrolls the account's MFA. Body may carry { method } to clear a
+// single method; omitting it clears every method. All of the real work — the
+// per-method un-enrollment, the notification e-mail, and the audit trail —
+// lives in mfa.ts's adminResetMfa(), shared with its self-service routes.
+router.post("/admin/active-directory/user/:id/mfa-reset", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const rawMethod = (req.body as { method?: unknown } | undefined)?.method;
+  if (rawMethod !== undefined && !isMfaMethod(rawMethod)) {
+    res.status(400).json({ error: `method must be one of: ${MFA_METHODS.join(", ")}` });
+    return;
+  }
+
+  try {
+    const actor = req.user!;
+    const result = await adminResetMfa({
+      userId,
+      method: rawMethod,
+      actor: { id: actor.id, email: actor.email, name: actor.name },
+      source: "admin.active-directory",
+    });
+    if (!result) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    res.json({ ok: true, clearedMethods: result.clearedMethods, emailedTo: result.targetEmail });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to reset MFA");
+    res.status(500).json({ error: "Failed to reset MFA" });
+  }
+});
+
+// ─── POST /admin/active-directory/user/:id/impersonate ───────────────────────
+// Issues a single-use, 30-minute impersonation token for the target account,
+// consumed by the pre-existing POST /auth/impersonate-exchange. The response
+// carries the target's owning-MSP slug because msp-portal's auth-context needs
+// `target_slug` alongside the token to land the new tab on the correct
+// tenant's URL (without it it can only warn and stay put).
+//
+// Two guards that the older, narrower issuers did not need:
+//   • self-impersonation is refused (a no-op session that only muddies audit);
+//   • impersonating another PlatformAdmin is refused — that is lateral admin
+//     access, not the customer/MSP preview this mechanism exists for.
+router.post("/admin/active-directory/user/:id/impersonate", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  try {
+    const actor = req.user!;
+    if (userId === actor.id) {
+      res.status(400).json({ error: "You cannot impersonate your own account" });
+      return;
+    }
+
+    const target = await loadTargetAccount(userId);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const [linkage] = await db
+      .select({
+        mspId: mspUsersTable.mspId,
+        customerId: mspUsersTable.customerId,
+        mspRole: mspUsersTable.mspRole,
+        isActive: mspUsersTable.isActive,
+      })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+
+    if (linkage?.mspRole === "PlatformAdmin") {
+      authLog.warn({ actorUserId: actor.id, targetUserId: userId }, "impersonate: refused PlatformAdmin target");
+      res.status(403).json({ error: "PlatformAdmin accounts cannot be impersonated" });
+      return;
+    }
+
+    const [msp] = linkage?.mspId != null
+      ? await db.select({ slug: mspsTable.slug, name: mspsTable.name }).from(mspsTable).where(eq(mspsTable.id, linkage.mspId)).limit(1)
+      : [];
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + IMPERSONATION_TOKEN_TTL_MS);
+    await db.insert(impersonationTokensTable).values({
+      token,
+      clientUserId: target.id,
+      adminUserId: actor.id,
+      expiresAt,
+    });
+
+    // Same MSP-audit shape /msp/:mspId/customers/:customerId/impersonate writes.
+    try {
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: actor.id,
+        actorRole: actor.mspRole ?? "PlatformAdmin",
+        mspId: linkage?.mspId ?? null,
+        customerId: linkage?.customerId ?? null,
+        actionType: "IMPERSONATION_TOKEN_ISSUED",
+        entityType: "user",
+        entityId: String(target.id),
+        entityLabel: target.email,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
+        ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+        userAgent: req.headers["user-agent"] ?? null,
+        outcome: "success",
+        metadata: { targetUserId: target.id, targetEmail: target.email, source: "admin.active-directory" },
+      });
+    } catch {
+      // Audit log is non-fatal — never interrupt the impersonation flow
+    }
+
+    void createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: "admin",
+      actionType: "admin_impersonation_started",
+      entityType: "user",
+      entityId: target.id,
+      entityLabel: target.name ?? target.email,
+      metadata: {
+        targetMspRole: linkage?.mspRole ?? null,
+        targetSlug: msp?.slug ?? null,
+        expiresAt: expiresAt.toISOString(),
+        source: "admin.active-directory",
+      },
+    });
+
+    auditLog.info(
+      {
+        actionType: "admin_impersonation_started",
+        actorUserId: actor.id,
+        actorEmail: actor.email,
+        targetUserId: target.id,
+        targetEmail: target.email,
+        targetMspRole: linkage?.mspRole ?? null,
+        targetSlug: msp?.slug ?? null,
+        expiresAt: expiresAt.toISOString(),
+        occurredAt: new Date().toISOString(),
+      },
+      "audit: PlatformAdmin started an impersonation session",
+    );
+
+    authLog.info(
+      { actorUserId: actor.id, targetUserId: target.id, targetSlug: msp?.slug ?? null },
+      "impersonation token issued from Active Directory",
+    );
+
+    res.json({
+      token,
+      targetSlug: msp?.slug ?? null,
+      expiresAt: expiresAt.toISOString(),
+      user: {
+        id: target.id,
+        email: target.email,
+        name: target.name,
+        mspRole: linkage?.mspRole ?? null,
+        mspName: msp?.name ?? null,
+        isActive: linkage?.isActive ?? null,
+      },
+    });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to issue impersonation token");
+    res.status(500).json({ error: "Failed to start impersonation" });
   }
 });
 
