@@ -1,3 +1,15 @@
+/**
+ * ⚠️ DEAD — DO NOT USE, DO NOT EXTEND, DO NOT "FIX"
+ *
+ * Superseded by Document Generator (document-engine.ts / document-engine-sow.ts
+ * + document_types table). This file is legacy inline document generation —
+ * hardcoded prompts, no scoping, not database-driven. It is unreachable from
+ * the nav on purpose. Nobody uses it. It is not coming back.
+ *
+ * If you're here because something references this file: that reference is
+ * also dead and should be deleted, not fixed.
+ */
+
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
