@@ -242,6 +242,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "cmd-attribution", label: "Attribution", path: "/command/attribution", icon: Waypoints },
           { id: "cmd-heatmap", label: "Heatmap", path: "/command/heatmap", icon: Flame },
           { id: "cmd-insights", label: "Insights", path: "/command/insights", icon: Lightbulb },
+          { id: "cmd-doc-generator", label: "Document Generator", path: "/command/doc-generator", icon: FileText },
         ],
       },
       {

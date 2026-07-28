@@ -7,6 +7,7 @@ import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
 import InsightsOutputsPage from "@/pages/InsightsOutputs";
+import DocumentGeneratorPage from "@/pages/DocumentGeneratorIde";
 import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
 import SessionReplayPage from "@/pages/SessionReplay";
 import AttributionPage from "@/pages/Attribution";
@@ -33,6 +34,7 @@ function getContent(section: string): ReactNode {
       </Suspense>
     );
     case "insights":         return <InsightsOutputsPage />;
+    case "doc-generator":    return <DocumentGeneratorPage />;
     case "presentations":    return <PresentationsPage />;
     default:                 return <OverviewPage />;
   }

@@ -1,7 +1,7 @@
 import { X, Sparkles, Copy, CheckCircle } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { CollapsibleSection, MonoPre } from "@/components/InsightsPayloadDialog";
+import { CollapsibleSection, MonoPre } from "@/components/ui/collapsible-mono";
 
 interface DocumentTypePreviewDialogProps {
   onClose: () => void;
