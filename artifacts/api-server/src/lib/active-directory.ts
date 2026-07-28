@@ -582,16 +582,22 @@ export function buildUserDetail(params: {
   sessions: UserSessionRow[];
   mfaEnrollments: UserMfaEnrollmentRow[];
   now: Date;
+  entitlementOverrides?: EntitlementOverrideRow[];
 }): UserDetail {
-  const { profile, linkage, subscriptionForEntitlements, sessions, mfaEnrollments, now } = params;
+  const { profile, linkage, subscriptionForEntitlements, sessions, mfaEnrollments, now, entitlementOverrides = [] } = params;
 
   const sortedSessions = [...sessions].sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
   const activeSessionCount = sessions.filter((s) => isSessionActive(s, now)).length;
 
+  const inherited = deriveEntitlements(subscriptionForEntitlements);
+
   return {
     profile,
     linkage,
-    entitlements: deriveEntitlements(subscriptionForEntitlements),
+    entitlements:
+      entitlementOverrides.length > 0
+        ? buildUserEntitlementsView(inherited, entitlementOverrides).effective
+        : inherited,
     sessions: {
       activeSessionCount,
       totalSessionCount: sessions.length,
@@ -600,6 +606,173 @@ export function buildUserDetail(params: {
     mfa: {
       enrolled: mfaEnrollments.length > 0,
       methods: mfaEnrollments,
+    },
+  };
+}
+
+// ── User Object write actions (Phase 7) ──────────────────────────────────────
+//
+// RBAC role change, MSP/customer reassignment, and entitlement grant/revoke —
+// Issue #67. mspUsersTable has no DB-level CHECK constraint tying mspRole to
+// mspId/customerId nullability; the real constraint is enforced here, derived
+// from the actual observed pattern across the codebase (auth.ts's PlatformAdmin
+// seeding, every JWT-claim test fixture): PlatformAdmin carries neither
+// linkage; MSPAdmin/MSPOperator/ServiceAccount carry mspId only; CustomerUser
+// carries customerId (with mspId denormalized to that customer's owning MSP);
+// Free/Assessment are the floor tier and carry no linkage requirement.
+
+export type RoleLinkageRequirement = "none" | "msp" | "customer";
+
+export function roleLinkageRequirement(role: DirectoryGroupRole): RoleLinkageRequirement {
+  switch (role) {
+    case "PlatformAdmin":
+    case "Free":
+    case "Assessment":
+      return "none";
+    case "MSPAdmin":
+    case "MSPOperator":
+    case "ServiceAccount":
+      return "msp";
+    case "CustomerUser":
+      return "customer";
+  }
+}
+
+export type RoleChangeResult =
+  | { ok: true; mspRole: DirectoryGroupRole; mspId: number | null; customerId: number | null }
+  | { ok: false; error: string };
+
+/**
+ * Computes the resulting mspId/customerId for a role change on an account
+ * that already has an msp_users row. Never invents a new mspId/customerId —
+ * a role that requires linkage the account doesn't currently have is
+ * rejected, telling the caller to reassign MSP/customer linkage first via
+ * planAssignmentChange. A role change to an MSP-scoped role from a
+ * customer-scoped account (or vice versa) clears the linkage that no longer
+ * applies rather than leaving an invalid combination on the row.
+ */
+export function planRoleChange(input: {
+  newRole: DirectoryGroupRole;
+  currentMspId: number | null;
+  currentCustomerId: number | null;
+}): RoleChangeResult {
+  const requirement = roleLinkageRequirement(input.newRole);
+
+  if (requirement === "none") {
+    return { ok: true, mspRole: input.newRole, mspId: null, customerId: null };
+  }
+
+  if (requirement === "msp") {
+    if (input.currentMspId == null) {
+      return {
+        ok: false,
+        error: `Cannot set role to ${input.newRole}: this account has no MSP linkage yet — reassign it to an MSP first.`,
+      };
+    }
+    return { ok: true, mspRole: input.newRole, mspId: input.currentMspId, customerId: null };
+  }
+
+  // requirement === "customer"
+  if (input.currentCustomerId == null) {
+    return {
+      ok: false,
+      error: `Cannot set role to ${input.newRole}: this account has no customer linkage yet — reassign it to a customer first.`,
+    };
+  }
+  return { ok: true, mspRole: input.newRole, mspId: input.currentMspId, customerId: input.currentCustomerId };
+}
+
+export type AssignmentChangeResult =
+  | { ok: true; mspId: number | null; customerId: number | null }
+  | { ok: false; error: string };
+
+/**
+ * Computes the resulting mspId/customerId for an MSP/customer reassignment.
+ * Which field is reassignable is entirely determined by the account's
+ * CURRENT role (an MSP-scoped role reassigns mspId only; CustomerUser
+ * reassigns customerId only, with mspId always derived server-side from the
+ * target customer's real owning MSP — never client-supplied, so an mspId/
+ * customerId pair can never disagree). Roles with no linkage requirement
+ * (PlatformAdmin/Free/Assessment) have nothing to reassign.
+ */
+export function planAssignmentChange(input: {
+  currentRole: DirectoryGroupRole;
+  target: { mspId?: number | null; customerId?: number | null };
+  /** The target customer's real owning mspId, resolved by the caller from mspCustomersTable — required when target.customerId is provided. */
+  customerOwningMspId?: number | null;
+}): AssignmentChangeResult {
+  const requirement = roleLinkageRequirement(input.currentRole);
+
+  if (requirement === "none") {
+    return { ok: false, error: `${input.currentRole} accounts have no MSP/customer linkage to reassign.` };
+  }
+
+  if (requirement === "msp") {
+    if (input.target.customerId != null) {
+      return { ok: false, error: `${input.currentRole} accounts are reassigned by mspId only — they cannot be assigned a customer.` };
+    }
+    if (input.target.mspId == null) {
+      return { ok: false, error: `Reassigning a ${input.currentRole} account requires a target mspId.` };
+    }
+    return { ok: true, mspId: input.target.mspId, customerId: null };
+  }
+
+  // requirement === "customer"
+  if (input.target.mspId != null) {
+    return { ok: false, error: "CustomerUser accounts are reassigned by customerId only — the owning MSP is derived automatically." };
+  }
+  if (input.target.customerId == null) {
+    return { ok: false, error: "Reassigning a CustomerUser account requires a target customerId." };
+  }
+  if (input.customerOwningMspId == null) {
+    return { ok: false, error: "Could not resolve the owning MSP for the target customer." };
+  }
+  return { ok: true, mspId: input.customerOwningMspId, customerId: input.target.customerId };
+}
+
+// ── Entitlement grant/revoke overrides ───────────────────────────────────────
+
+export interface EntitlementOverrideRow {
+  capabilityKey: string;
+  enabled: boolean;
+  grantedByUserId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserEntitlementsView {
+  inherited: MspEntitlements | null;
+  overrides: EntitlementOverrideRow[];
+  effective: MspEntitlements | null;
+}
+
+/**
+ * Merges per-user entitlement overrides on top of the MSP-tier-inherited
+ * entitlements. An override always wins over the inherited value for that
+ * capability key; a key with no override falls through to the inherited
+ * value (or is simply absent if there's no inherited entitlements at all).
+ * Numeric allowances are never overridden — see the schema-side comment on
+ * userEntitlementOverridesTable for why.
+ */
+export function buildUserEntitlementsView(
+  inherited: MspEntitlements | null,
+  overrides: EntitlementOverrideRow[],
+): UserEntitlementsView {
+  if (overrides.length === 0) {
+    return { inherited, overrides, effective: inherited };
+  }
+
+  const effectiveCapabilities: Record<string, boolean> = { ...(inherited?.tierCapabilities ?? {}) };
+  for (const o of overrides) effectiveCapabilities[o.capabilityKey] = o.enabled;
+
+  return {
+    inherited,
+    overrides,
+    effective: {
+      tenantAllowance: inherited?.tenantAllowance ?? null,
+      aiCreditAllowance: inherited?.aiCreditAllowance ?? null,
+      overageRateCents: inherited?.overageRateCents ?? null,
+      tierCapabilities: effectiveCapabilities,
     },
   };
 }

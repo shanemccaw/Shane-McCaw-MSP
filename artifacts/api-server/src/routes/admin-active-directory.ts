@@ -53,8 +53,13 @@ import {
   buildOuNodes,
   buildUserDetail,
   type UserMspLinkage,
+  deriveEntitlements,
+  planRoleChange,
+  planAssignmentChange,
+  buildUserEntitlementsView,
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
+import { userEntitlementOverridesTable } from "@workspace/db";
 
 // Most recent N diagnostic runs shown in the Customer Object pane's summary —
 // a run-history preview, not a full diagnostics browser (Issue #63 scope).
@@ -646,6 +651,300 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
   } catch (err) {
     log.error({ err, userId }, "Failed to build User Object detail pane");
     res.status(500).json({ error: "Failed to load User detail" });
+  }
+});
+
+// ─── User Object write actions (Phase 7, Issue #67) ──────────────────────────
+// RBAC role change, MSP/customer reassignment, and entitlement grant/revoke.
+// All three mutate msp_users (or the new user_entitlement_overrides table) and
+// additionally emit to the platform-wide `audit` channel via createAuditLog()
+// — the same cross-subsystem audit convention graph.ts/data-rights.ts already
+// use, as distinct from the MSP-self-service-scoped mspAuditLogsTable/
+// writeAuditLog() pattern in msp-settings.ts (always scoped to one
+// req.user.mspId, which doesn't fit a PlatformAdmin acting across any MSP).
+
+function auditActor(req: Request): { actorUserId: number; actorName: string; actorRole: "admin" | "client" } {
+  const user = req.user!;
+  return { actorUserId: user.id, actorName: user.name ?? user.email, actorRole: user.role };
+}
+
+// PATCH /admin/active-directory/user/:id/role
+// Body: { mspRole: DirectoryGroupRole }. Validated against the account's
+// CURRENT mspId/customerId via planRoleChange() (lib/active-directory.ts) —
+// see that function's header comment for the real linkage rule audited from
+// the codebase. Takes effect on the account's next JWT refresh: auth.ts's
+// getMspClaims() already reads msp_users live at every token mint, so no
+// token-side change is needed here.
+router.patch("/admin/active-directory/user/:id/role", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const newRole = req.body?.mspRole;
+  if (typeof newRole !== "string" || !DIRECTORY_GROUP_ROLES.includes(newRole as DirectoryGroupRole)) {
+    res.status(400).json({ error: `mspRole must be one of: ${DIRECTORY_GROUP_ROLES.join(", ")}` });
+    return;
+  }
+
+  try {
+    const [current] = await db
+      .select({ mspRole: mspUsersTable.mspRole, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: "This account has no msp_users linkage record — role assignment is not available for it." });
+      return;
+    }
+
+    const plan = planRoleChange({
+      newRole: newRole as DirectoryGroupRole,
+      currentMspId: current.mspId,
+      currentCustomerId: current.customerId,
+    });
+    if (!plan.ok) {
+      res.status(400).json({ error: plan.error });
+      return;
+    }
+
+    await db
+      .update(mspUsersTable)
+      .set({ mspRole: plan.mspRole, mspId: plan.mspId, customerId: plan.customerId, updatedAt: new Date() })
+      .where(eq(mspUsersTable.userId, userId));
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "user.role.update",
+      entityType: "msp_user",
+      entityId: userId,
+      metadata: {
+        before: { mspRole: current.mspRole, mspId: current.mspId, customerId: current.customerId },
+        after: { mspRole: plan.mspRole, mspId: plan.mspId, customerId: plan.customerId },
+      },
+    });
+    log.info({ userId, mspRole: plan.mspRole }, "PlatformAdmin changed an account's role");
+
+    res.json({ ok: true, mspRole: plan.mspRole, mspId: plan.mspId, customerId: plan.customerId });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to update user role");
+    res.status(500).json({ error: "Failed to update role" });
+  }
+});
+
+// PATCH /admin/active-directory/user/:id/assignment
+// Body: { mspId: number } for an MSP-scoped role, or { customerId: number }
+// for CustomerUser — never both. Reassigning a CustomerUser always derives
+// mspId server-side from the target customer's real owning MSP (never
+// client-supplied), per planAssignmentChange()'s header comment.
+router.patch("/admin/active-directory/user/:id/assignment", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const bodyMspId = req.body?.mspId;
+  const bodyCustomerId = req.body?.customerId;
+  if (bodyMspId != null && !Number.isInteger(bodyMspId)) {
+    res.status(400).json({ error: "mspId must be an integer" });
+    return;
+  }
+  if (bodyCustomerId != null && !Number.isInteger(bodyCustomerId)) {
+    res.status(400).json({ error: "customerId must be an integer" });
+    return;
+  }
+
+  try {
+    const [current] = await db
+      .select({ mspRole: mspUsersTable.mspRole, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: "This account has no msp_users linkage record — reassignment is not available for it." });
+      return;
+    }
+
+    let customerOwningMspId: number | null = null;
+    if (bodyCustomerId != null) {
+      const [targetCustomer] = await db
+        .select({ mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, bodyCustomerId))
+        .limit(1);
+      if (!targetCustomer) {
+        res.status(404).json({ error: "Target customer not found" });
+        return;
+      }
+      customerOwningMspId = targetCustomer.mspId;
+    }
+    if (bodyMspId != null) {
+      const [targetMsp] = await db.select({ id: mspsTable.id }).from(mspsTable).where(eq(mspsTable.id, bodyMspId)).limit(1);
+      if (!targetMsp) {
+        res.status(404).json({ error: "Target MSP not found" });
+        return;
+      }
+    }
+
+    const plan = planAssignmentChange({
+      currentRole: current.mspRole as DirectoryGroupRole,
+      target: { mspId: bodyMspId, customerId: bodyCustomerId },
+      customerOwningMspId,
+    });
+    if (!plan.ok) {
+      res.status(400).json({ error: plan.error });
+      return;
+    }
+
+    await db
+      .update(mspUsersTable)
+      .set({ mspId: plan.mspId, customerId: plan.customerId, updatedAt: new Date() })
+      .where(eq(mspUsersTable.userId, userId));
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "user.assignment.update",
+      entityType: "msp_user",
+      entityId: userId,
+      metadata: {
+        before: { mspId: current.mspId, customerId: current.customerId },
+        after: { mspId: plan.mspId, customerId: plan.customerId },
+      },
+    });
+    log.info({ userId, mspId: plan.mspId, customerId: plan.customerId }, "PlatformAdmin reassigned an account's MSP/customer linkage");
+
+    res.json({ ok: true, mspId: plan.mspId, customerId: plan.customerId });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to update user assignment");
+    res.status(500).json({ error: "Failed to update assignment" });
+  }
+});
+
+// Shared by GET/PATCH .../entitlements — the same inherited-tier + override
+// merge Phase 6's buildUserDetail() already performs, exposed standalone so
+// the Account Control entitlements UI can view/act on it directly.
+async function loadUserEntitlementsView(userId: number) {
+  const [mspUserRow] = await db
+    .select({ mspId: mspUsersTable.mspId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+
+  const [subRows, overrideRows] = await Promise.all([
+    mspUserRow?.mspId != null
+      ? db
+          .select({
+            status: mspSubscriptionsTable.status,
+            tierName: servicesTable.name,
+            billingInterval: mspSubscriptionsTable.billingInterval,
+            currentPeriodStart: mspSubscriptionsTable.currentPeriodStart,
+            currentPeriodEnd: mspSubscriptionsTable.currentPeriodEnd,
+            dunningState: mspSubscriptionsTable.dunningState,
+            paymentFailedAt: mspSubscriptionsTable.paymentFailedAt,
+            tenantCountSnapshot: mspSubscriptionsTable.tenantCountSnapshot,
+            contactEmail: mspSubscriptionsTable.contactEmail,
+            typeAttributes: servicesTable.typeAttributes,
+          })
+          .from(mspSubscriptionsTable)
+          .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
+          .where(eq(mspSubscriptionsTable.mspId, mspUserRow.mspId))
+          .limit(1)
+      : Promise.resolve([]),
+    db
+      .select({
+        capabilityKey: userEntitlementOverridesTable.capabilityKey,
+        enabled: userEntitlementOverridesTable.enabled,
+        grantedByUserId: userEntitlementOverridesTable.grantedByUserId,
+        createdAt: userEntitlementOverridesTable.createdAt,
+        updatedAt: userEntitlementOverridesTable.updatedAt,
+      })
+      .from(userEntitlementOverridesTable)
+      .where(eq(userEntitlementOverridesTable.userId, userId)),
+  ]);
+
+  return buildUserEntitlementsView(deriveEntitlements(subRows[0] ?? null), overrideRows);
+}
+
+// GET /admin/active-directory/user/:id/entitlements
+// View the account's inherited (tier-derived), overridden, and effective
+// entitlements — same deriveEntitlements() Phase 2/6 already use, merged with
+// any user_entitlement_overrides rows via buildUserEntitlementsView().
+router.get("/admin/active-directory/user/:id/entitlements", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  try {
+    res.json(await loadUserEntitlementsView(userId));
+  } catch (err) {
+    log.error({ err, userId }, "Failed to load user entitlements");
+    res.status(500).json({ error: "Failed to load entitlements" });
+  }
+});
+
+// PATCH /admin/active-directory/user/:id/entitlements
+// Body: { capabilityKey: string, enabled: boolean | null }. enabled=null
+// clears the override (reverts that key to its tier-inherited value);
+// enabled=true/false grants/revokes it. Upserts on the
+// (userId, capabilityKey) unique index.
+router.patch("/admin/active-directory/user/:id/entitlements", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const capabilityKey = req.body?.capabilityKey;
+  if (typeof capabilityKey !== "string" || !capabilityKey.trim()) {
+    res.status(400).json({ error: "capabilityKey is required" });
+    return;
+  }
+  const enabled = req.body?.enabled;
+  if (enabled !== null && typeof enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be true, false, or null (null clears the override)" });
+    return;
+  }
+
+  try {
+    const [before] = await db
+      .select({ enabled: userEntitlementOverridesTable.enabled })
+      .from(userEntitlementOverridesTable)
+      .where(and(eq(userEntitlementOverridesTable.userId, userId), eq(userEntitlementOverridesTable.capabilityKey, capabilityKey)))
+      .limit(1);
+
+    if (enabled === null) {
+      await db
+        .delete(userEntitlementOverridesTable)
+        .where(and(eq(userEntitlementOverridesTable.userId, userId), eq(userEntitlementOverridesTable.capabilityKey, capabilityKey)));
+    } else {
+      await db
+        .insert(userEntitlementOverridesTable)
+        .values({ userId, capabilityKey, enabled, grantedByUserId: req.user!.id })
+        .onConflictDoUpdate({
+          target: [userEntitlementOverridesTable.userId, userEntitlementOverridesTable.capabilityKey],
+          set: { enabled, grantedByUserId: req.user!.id, updatedAt: new Date() },
+        });
+    }
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: enabled === null ? "user.entitlement.clear" : enabled ? "user.entitlement.grant" : "user.entitlement.revoke",
+      entityType: "msp_user",
+      entityId: userId,
+      metadata: { capabilityKey, before: before?.enabled ?? null, after: enabled },
+    });
+    log.info({ userId, capabilityKey, enabled }, "PlatformAdmin changed a user entitlement override");
+
+    res.json(await loadUserEntitlementsView(userId));
+  } catch (err) {
+    log.error({ err, userId, capabilityKey }, "Failed to update user entitlement");
+    res.status(500).json({ error: "Failed to update entitlement" });
   }
 });
 

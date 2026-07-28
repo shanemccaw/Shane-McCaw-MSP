@@ -11,6 +11,10 @@ import {
   buildCustomerDetail,
   buildOuNodes,
   buildUserDetail,
+  roleLinkageRequirement,
+  planRoleChange,
+  planAssignmentChange,
+  buildUserEntitlementsView,
   type OuRow,
   type UserProfileRow,
   type UserMspLinkage,
@@ -31,6 +35,8 @@ import {
   type CustomerConsentStatus,
   type CustomerPurchasedService,
   type CustomerDiagnosticRunSummary,
+  type MspEntitlements,
+  type EntitlementOverrideRow,
 } from "./active-directory";
 
 const MSPS: MspRow[] = [
@@ -683,5 +689,183 @@ describe("buildUserDetail", () => {
       now: NOW,
     });
     expect(detail.mfa).toEqual({ enrolled: false, methods: [] });
+  });
+
+  it("applies entitlement overrides on top of the tier-inherited entitlements", () => {
+    const detail = buildUserDetail({
+      profile: PROFILE,
+      linkage: LINKAGE,
+      subscriptionForEntitlements: SUBSCRIPTION,
+      sessions: [],
+      mfaEnrollments: [],
+      now: NOW,
+      entitlementOverrides: [
+        { capabilityKey: "copilot", enabled: false, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+        { capabilityKey: "whiteLabel", enabled: true, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+      ],
+    });
+    expect(detail.entitlements?.tierCapabilities).toEqual({ copilot: false, whiteLabel: true });
+    // Numeric allowances stay purely tier-inherited — never overridden.
+    expect(detail.entitlements?.tenantAllowance).toBe(SUBSCRIPTION.typeAttributes?.tenantAllowance);
+  });
+});
+
+// ── User Object write actions (Phase 7) ──────────────────────────────────────
+
+describe("roleLinkageRequirement", () => {
+  it("requires no linkage for PlatformAdmin/Free/Assessment", () => {
+    expect(roleLinkageRequirement("PlatformAdmin")).toBe("none");
+    expect(roleLinkageRequirement("Free")).toBe("none");
+    expect(roleLinkageRequirement("Assessment")).toBe("none");
+  });
+
+  it("requires MSP linkage for MSPAdmin/MSPOperator/ServiceAccount", () => {
+    expect(roleLinkageRequirement("MSPAdmin")).toBe("msp");
+    expect(roleLinkageRequirement("MSPOperator")).toBe("msp");
+    expect(roleLinkageRequirement("ServiceAccount")).toBe("msp");
+  });
+
+  it("requires customer linkage for CustomerUser", () => {
+    expect(roleLinkageRequirement("CustomerUser")).toBe("customer");
+  });
+});
+
+describe("planRoleChange", () => {
+  it("clears mspId/customerId when promoting to PlatformAdmin", () => {
+    const result = planRoleChange({ newRole: "PlatformAdmin", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "PlatformAdmin", mspId: null, customerId: null });
+  });
+
+  it("keeps the existing mspId and clears customerId when moving a CustomerUser to MSPOperator", () => {
+    // The acceptance-criteria example from Issue #67: an MSPAdmin role can't
+    // be assigned to a customer-scoped account without clearing the customer
+    // linkage. mspId carries over since it was already denormalized to the
+    // same MSP that owns the customer.
+    const result = planRoleChange({ newRole: "MSPOperator", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "MSPOperator", mspId: 1, customerId: null });
+  });
+
+  it("rejects an MSP-scoped role when the account has no MSP linkage", () => {
+    const result = planRoleChange({ newRole: "MSPAdmin", currentMspId: null, currentCustomerId: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/no MSP linkage/i);
+  });
+
+  it("rejects CustomerUser when the account has no customer linkage", () => {
+    const result = planRoleChange({ newRole: "CustomerUser", currentMspId: 1, currentCustomerId: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/no customer linkage/i);
+  });
+
+  it("keeps the existing customerId/mspId pair when reassigning within the customer tier", () => {
+    const result = planRoleChange({ newRole: "CustomerUser", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "CustomerUser", mspId: 1, customerId: 10 });
+  });
+
+  it("leaves Free/Assessment role changes with no linkage regardless of current state", () => {
+    const result = planRoleChange({ newRole: "Assessment", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "Assessment", mspId: null, customerId: null });
+  });
+});
+
+describe("planAssignmentChange", () => {
+  it("reassigns an MSPAdmin's mspId", () => {
+    const result = planAssignmentChange({ currentRole: "MSPAdmin", target: { mspId: 5 } });
+    expect(result).toEqual({ ok: true, mspId: 5, customerId: null });
+  });
+
+  it("rejects an MSP-scoped reassignment missing a target mspId", () => {
+    const result = planAssignmentChange({ currentRole: "MSPOperator", target: {} });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/requires a target mspId/i);
+  });
+
+  it("rejects assigning a customer to an MSP-scoped role", () => {
+    const result = planAssignmentChange({ currentRole: "MSPAdmin", target: { customerId: 10 } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/cannot be assigned a customer/i);
+  });
+
+  it("reassigns a CustomerUser's customerId and derives mspId from the target customer's real owning MSP", () => {
+    const result = planAssignmentChange({
+      currentRole: "CustomerUser",
+      target: { customerId: 42 },
+      customerOwningMspId: 7,
+    });
+    expect(result).toEqual({ ok: true, mspId: 7, customerId: 42 });
+  });
+
+  it("rejects a CustomerUser reassignment missing a target customerId", () => {
+    const result = planAssignmentChange({ currentRole: "CustomerUser", target: {} });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/requires a target customerId/i);
+  });
+
+  it("rejects a client-supplied mspId for a CustomerUser reassignment (mspId is always derived server-side)", () => {
+    const result = planAssignmentChange({ currentRole: "CustomerUser", target: { mspId: 1, customerId: 42 } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/derived automatically/i);
+  });
+
+  it("rejects reassignment for roles with no linkage concept", () => {
+    for (const role of ["PlatformAdmin", "Free", "Assessment"] as const) {
+      const result = planAssignmentChange({ currentRole: role, target: { mspId: 1 } });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/no MSP\/customer linkage/i);
+    }
+  });
+});
+
+describe("buildUserEntitlementsView", () => {
+  const NOW = new Date("2026-07-28T12:00:00Z");
+  const INHERITED: MspEntitlements = {
+    tenantAllowance: 10,
+    aiCreditAllowance: 500,
+    overageRateCents: 25,
+    tierCapabilities: { copilot: true, whiteLabel: false },
+  };
+
+  it("returns the inherited entitlements untouched when there are zero overrides", () => {
+    const view = buildUserEntitlementsView(INHERITED, []);
+    expect(view).toEqual({ inherited: INHERITED, overrides: [], effective: INHERITED });
+  });
+
+  it("overrides take precedence over the inherited capability value", () => {
+    const overrides: EntitlementOverrideRow[] = [
+      { capabilityKey: "whiteLabel", enabled: true, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+    ];
+    const view = buildUserEntitlementsView(INHERITED, overrides);
+    expect(view.effective?.tierCapabilities).toEqual({ copilot: true, whiteLabel: true });
+  });
+
+  it("adds a brand-new capability key via override even if absent from the inherited tier", () => {
+    const overrides: EntitlementOverrideRow[] = [
+      { capabilityKey: "betaFeature", enabled: true, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+    ];
+    const view = buildUserEntitlementsView(INHERITED, overrides);
+    expect(view.effective?.tierCapabilities.betaFeature).toBe(true);
+  });
+
+  it("never overrides numeric allowances, only tierCapabilities", () => {
+    const overrides: EntitlementOverrideRow[] = [
+      { capabilityKey: "copilot", enabled: false, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+    ];
+    const view = buildUserEntitlementsView(INHERITED, overrides);
+    expect(view.effective?.tenantAllowance).toBe(10);
+    expect(view.effective?.aiCreditAllowance).toBe(500);
+    expect(view.effective?.overageRateCents).toBe(25);
+  });
+
+  it("builds an effective view from overrides alone when there is no inherited entitlements at all", () => {
+    const overrides: EntitlementOverrideRow[] = [
+      { capabilityKey: "betaFeature", enabled: true, grantedByUserId: 1, createdAt: NOW, updatedAt: NOW },
+    ];
+    const view = buildUserEntitlementsView(null, overrides);
+    expect(view.effective).toEqual({
+      tenantAllowance: null,
+      aiCreditAllowance: null,
+      overageRateCents: null,
+      tierCapabilities: { betaFeature: true },
+    });
   });
 });

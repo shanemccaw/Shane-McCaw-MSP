@@ -3317,4 +3317,33 @@ export const activeDirectoryOusTable = pgTable("active_directory_ous", {
 export type InsertActiveDirectoryOu = typeof activeDirectoryOusTable.$inferInsert;
 export type ActiveDirectoryOu = typeof activeDirectoryOusTable.$inferSelect;
 
+// ── User Entitlement Overrides (Active Directory Phase 7) ───────────────────
+//
+// Phase 2's deriveEntitlements() derives entitlements purely from the linked
+// MSP's subscription tier (servicesTable.typeAttributes.tierCapabilities) —
+// there is no per-user override concept anywhere else in the schema. Issue
+// #67 requires PlatformAdmin to grant/revoke INDIVIDUAL entitlements on one
+// account, so this is the smallest table that can express that: one row per
+// (user, capability key) whose inherited tier value is overridden. Only the
+// boolean tierCapabilities map is overridable here — numeric allowances
+// (tenantAllowance/aiCreditAllowance/overageRateCents) stay purely
+// tier-inherited, since Issue #67 talks about discrete "individual
+// entitlements", not numeric quota overrides.
+
+export const userEntitlementOverridesTable = pgTable("user_entitlement_overrides", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  capabilityKey: text("capability_key").notNull(),
+  enabled: boolean("enabled").notNull(),
+  grantedByUserId: integer("granted_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("user_entitlement_overrides_user_capability_uniq").on(t.userId, t.capabilityKey),
+  index("user_entitlement_overrides_user_id_idx").on(t.userId),
+]);
+
+export type InsertUserEntitlementOverride = typeof userEntitlementOverridesTable.$inferInsert;
+export type UserEntitlementOverride = typeof userEntitlementOverridesTable.$inferSelect;
+
 export * from "./msp";

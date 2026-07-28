@@ -135,6 +135,7 @@ export default defineConfig({
       "src/lib/active-directory.test.ts",
       "src/routes/admin-active-directory-credential-ops.test.ts",
       "src/routes/mfa-admin-reset.test.ts",
+      "src/routes/admin-active-directory-user-actions.test.ts",
     ],
     coverage: {
       provider: "v8",

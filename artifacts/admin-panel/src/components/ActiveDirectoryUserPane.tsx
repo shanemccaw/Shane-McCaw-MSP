@@ -133,6 +133,44 @@ interface ActionOutcome {
   message: string;
 }
 
+// ── Phase 7: Account Control (RBAC role, MSP/customer reassignment, entitlement overrides) ──
+// Kept fully self-contained (own types/state/helpers, no shared symbols with
+// the Phase 8 credential-ops block above) since both phases build out this
+// same file concurrently.
+
+const ROLE_OPTIONS = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
+
+/** Mirrors api-server's roleLinkageRequirement() (lib/active-directory.ts) — admin-panel has no shared-component path to that package, so this is a small intentional duplicate. */
+function roleLinkageRequirement(role: string): "none" | "msp" | "customer" {
+  if (role === "MSPAdmin" || role === "MSPOperator" || role === "ServiceAccount") return "msp";
+  if (role === "CustomerUser") return "customer";
+  return "none";
+}
+
+interface EntitlementOverrideRow {
+  capabilityKey: string;
+  enabled: boolean;
+  grantedByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface EntitlementsView {
+  inherited: UserEntitlements | null;
+  overrides: EntitlementOverrideRow[];
+  effective: UserEntitlements | null;
+}
+
+type AccountControlAction =
+  | { kind: "role"; role: string }
+  | { kind: "assignment"; requirement: "msp" | "customer"; targetId: number }
+  | { kind: "entitlement"; capabilityKey: string; enabled: boolean | null };
+
+interface AccountControlOutcome {
+  tone: "ok" | "error";
+  message: string;
+}
+
 export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
   const { fetchWithAuth } = useAuth();
   const [detail, setDetail] = useState<UserDetail | null>(null);
@@ -141,6 +179,14 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
+  const [entitlementsView, setEntitlementsView] = useState<EntitlementsView | null>(null);
+  const [roleDraft, setRoleDraft] = useState("");
+  const [assignTargetId, setAssignTargetId] = useState("");
+  const [newCapabilityKey, setNewCapabilityKey] = useState("");
+  const [newCapabilityEnabled, setNewCapabilityEnabled] = useState(true);
+  const [acPending, setAcPending] = useState<AccountControlAction | null>(null);
+  const [acBusy, setAcBusy] = useState(false);
+  const [acOutcome, setAcOutcome] = useState<AccountControlOutcome | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}`);
@@ -173,6 +219,89 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
       cancelled = true;
     };
   }, [load]);
+
+  // ── Phase 7 Account Control: entitlements view + role draft ───────────────
+  // Independent of the detail load above (own request, own cancellation) so
+  // it stays additive rather than reworking Phase 6/8's existing effect.
+  useEffect(() => {
+    let cancelled = false;
+    setEntitlementsView(null);
+    setAcOutcome(null);
+    setAcPending(null);
+    setAssignTargetId("");
+    setNewCapabilityKey("");
+    setNewCapabilityEnabled(true);
+
+    (async () => {
+      try {
+        const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}/entitlements`);
+        if (!res.ok) return;
+        const data = (await res.json()) as EntitlementsView;
+        if (!cancelled) setEntitlementsView(data);
+      } catch {
+        // Non-fatal — the Account Control entitlements list just stays empty.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, fetchWithAuth]);
+
+  useEffect(() => {
+    setRoleDraft(detail?.linkage?.mspRole ?? "");
+  }, [detail]);
+
+  async function runAccountControlAction(action: AccountControlAction) {
+    setAcBusy(true);
+    setAcOutcome(null);
+    try {
+      const base = `/api/admin/active-directory/user/${userId}`;
+      let res: Response;
+      if (action.kind === "role") {
+        res = await fetchWithAuth(`${base}/role`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mspRole: action.role }),
+        });
+      } else if (action.kind === "assignment") {
+        res = await fetchWithAuth(`${base}/assignment`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(action.requirement === "customer" ? { customerId: action.targetId } : { mspId: action.targetId }),
+        });
+      } else {
+        res = await fetchWithAuth(`${base}/entitlements`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ capabilityKey: action.capabilityKey, enabled: action.enabled }),
+        });
+      }
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+      if (!res.ok) {
+        setAcOutcome({ tone: "error", message: (data.error as string) ?? "The action failed. Nothing was changed." });
+        return;
+      }
+
+      setAcOutcome({ tone: "ok", message: "Change applied." });
+      setAssignTargetId("");
+      setNewCapabilityKey("");
+
+      try {
+        const [detailRes, entitlementsRes] = await Promise.all([fetchWithAuth(base), fetchWithAuth(`${base}/entitlements`)]);
+        if (detailRes.ok) setDetail((await detailRes.json()) as UserDetail);
+        if (entitlementsRes.ok) setEntitlementsView((await entitlementsRes.json()) as EntitlementsView);
+      } catch {
+        // A stale pane is not worth overwriting a successful action's result.
+      }
+    } catch {
+      setAcOutcome({ tone: "error", message: "The action failed. Nothing was changed." });
+    } finally {
+      setAcBusy(false);
+      setAcPending(null);
+    }
+  }
 
   // ── Phase 8 credential ops ─────────────────────────────────────────────────
   // Every action is a POST behind an explicit confirm step, and every one
@@ -391,13 +520,147 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
 
       {/* ── Placeholder action slots for Phases 7/8/9 — not built here ── */}
 
-      <Section title="Account Control (Phase 7)" icon={<UserCog className="h-4 w-4 text-muted-foreground" />}>
-        <p className="mb-2 text-[11px] italic text-muted-foreground">Coming soon — RBAC role edit, MSP/customer reassignment, entitlement grant/revoke.</p>
-        <div className="flex flex-wrap gap-2">
-          <PlaceholderButton label="Edit role" />
-          <PlaceholderButton label="Reassign MSP/customer" />
-          <PlaceholderButton label="Grant/revoke entitlement" />
-        </div>
+      <Section title="Account Control" icon={<UserCog className="h-4 w-4 text-muted-foreground" />}>
+        <p className="mb-2 text-[11px] italic text-muted-foreground">
+          RBAC role, MSP/customer reassignment, and entitlement overrides. Every change here is audit-logged with your identity, this account, and a
+          before/after.
+        </p>
+
+        {acOutcome && (
+          <div
+            className={`mb-2 rounded border px-2 py-1.5 text-[11px] ${
+              acOutcome.tone === "ok"
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+            }`}
+          >
+            {acOutcome.message}
+          </div>
+        )}
+
+        {!linkage ? (
+          <p className="italic text-muted-foreground">No msp_users linkage record — role/assignment/entitlement actions require one.</p>
+        ) : acPending ? (
+          <AccountControlConfirmRow
+            busy={acBusy}
+            prompt={
+              acPending.kind === "role"
+                ? `Change ${profile.email}'s role from ${linkage.mspRole} to ${acPending.role}?`
+                : acPending.kind === "assignment"
+                  ? `Reassign ${profile.email} to ${acPending.requirement === "customer" ? "customer" : "MSP"} id ${acPending.targetId}?`
+                  : `${acPending.enabled === null ? "Clear the override for" : acPending.enabled ? "Grant" : "Revoke"} "${acPending.capabilityKey}" for ${profile.email}?`
+            }
+            onConfirm={() => void runAccountControlAction(acPending)}
+            onCancel={() => setAcPending(null)}
+          />
+        ) : (
+          <>
+            <div className="mb-3">
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Role</p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={roleDraft}
+                  onChange={(e) => setRoleDraft(e.target.value)}
+                  className="rounded border border-border bg-background px-2 py-1 text-[11px]"
+                >
+                  {ROLE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <AccountControlButton
+                  label="Save role"
+                  disabled={acBusy || !roleDraft || roleDraft === linkage.mspRole}
+                  onClick={() => setAcPending({ kind: "role", role: roleDraft })}
+                />
+              </div>
+            </div>
+
+            {roleLinkageRequirement(linkage.mspRole) !== "none" && (
+              <div className="mb-3">
+                <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Reassign {roleLinkageRequirement(linkage.mspRole) === "customer" ? "customer" : "MSP"}
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={assignTargetId}
+                    onChange={(e) => setAssignTargetId(e.target.value)}
+                    placeholder={roleLinkageRequirement(linkage.mspRole) === "customer" ? "Target customer id" : "Target MSP id"}
+                    className="w-40 rounded border border-border bg-background px-2 py-1 text-[11px]"
+                  />
+                  <AccountControlButton
+                    label="Reassign"
+                    disabled={acBusy || !assignTargetId.trim()}
+                    onClick={() =>
+                      setAcPending({
+                        kind: "assignment",
+                        requirement: roleLinkageRequirement(linkage.mspRole) === "customer" ? "customer" : "msp",
+                        targetId: Number(assignTargetId),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Entitlement overrides</p>
+              {entitlementsView?.effective && Object.keys(entitlementsView.effective.tierCapabilities).length > 0 && (
+                <div className="mb-1.5 flex flex-wrap gap-1.5">
+                  {Object.entries(entitlementsView.effective.tierCapabilities).map(([key, enabled]) => {
+                    const override = entitlementsView.overrides.find((o) => o.capabilityKey === key);
+                    return (
+                      <span key={key} className="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px]">
+                        <span className={enabled ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground line-through"}>{key}</span>
+                        {override && <span className="text-amber-600 dark:text-amber-400">override</span>}
+                        <button
+                          type="button"
+                          disabled={acBusy}
+                          title={enabled ? "Revoke" : "Grant"}
+                          onClick={() => setAcPending({ kind: "entitlement", capabilityKey: key, enabled: !enabled })}
+                          className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        >
+                          {enabled ? "revoke" : "grant"}
+                        </button>
+                        {override && (
+                          <button
+                            type="button"
+                            disabled={acBusy}
+                            title="Clear override, revert to inherited"
+                            onClick={() => setAcPending({ kind: "entitlement", capabilityKey: key, enabled: null })}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          >
+                            clear
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newCapabilityKey}
+                  onChange={(e) => setNewCapabilityKey(e.target.value)}
+                  placeholder="Capability key"
+                  className="w-36 rounded border border-border bg-background px-2 py-1 text-[11px]"
+                />
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <input type="checkbox" checked={newCapabilityEnabled} onChange={(e) => setNewCapabilityEnabled(e.target.checked)} />
+                  enabled
+                </label>
+                <AccountControlButton
+                  label="Set override"
+                  disabled={acBusy || !newCapabilityKey.trim()}
+                  onClick={() => setAcPending({ kind: "entitlement", capabilityKey: newCapabilityKey.trim(), enabled: newCapabilityEnabled })}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </Section>
 
       <Section title="Credential Ops" icon={<Lock className="h-4 w-4 text-muted-foreground" />}>
@@ -591,6 +854,55 @@ function Field({ label, value, highlight }: { label: string; value: string; high
     <div className="flex items-center justify-between gap-2 py-0.5">
       <span className="text-muted-foreground">{label}</span>
       <span className={highlight ? "font-semibold text-amber-600 dark:text-amber-400" : "text-foreground"}>{value}</span>
+    </div>
+  );
+}
+
+function AccountControlButton({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-400"
+    >
+      {label}
+    </button>
+  );
+}
+
+function AccountControlConfirmRow({
+  prompt,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  prompt: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-2">
+      <p className="mb-2 text-[11px] text-amber-800 dark:text-amber-200">{prompt}</p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className="rounded bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+        >
+          {busy ? "Working…" : "Confirm"}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
