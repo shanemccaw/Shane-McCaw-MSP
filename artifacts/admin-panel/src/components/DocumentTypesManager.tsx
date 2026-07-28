@@ -4,8 +4,9 @@ import { json } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { FileCog, Plus, Pencil, Loader2, X, SlidersHorizontal } from "lucide-react";
+import { FileCog, Plus, Pencil, Loader2, X, SlidersHorizontal, Sparkles } from "lucide-react";
 import PromptEditDialog from "@/components/PromptEditDialog";
+import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
 
 // Section builder and scoping builder (includedProfileKeyPatterns /
 // includedSignalCategories) are covered here. The linked AI prompt (set at
@@ -116,6 +117,9 @@ export default function DocumentTypesManager() {
   const [promptDialogKey, setPromptDialogKey] = useState<string | null>(null);
   const [promptDialogLoading, setPromptDialogLoading] = useState(false);
 
+  const [previewData, setPreviewData] = useState<{ docTypeLabel: string; preview: any } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const openPromptDialog = async (type: DocumentType) => {
     if (type.aiPromptId == null) {
       toast({ title: "No linked prompt", description: "This document type has no linked AI prompt.", variant: "destructive" });
@@ -131,6 +135,27 @@ export default function DocumentTypesManager() {
       toast({ title: "Failed to load prompt", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setPromptDialogLoading(false);
+    }
+  };
+
+  const openPreview = async (type: DocumentType) => {
+    const clientUserIdInput = window.prompt("Enter a real client user ID to preview against (use a testbed customer):");
+    if (!clientUserIdInput) return;
+    const clientUserId = parseInt(clientUserIdInput, 10);
+    if (isNaN(clientUserId)) {
+      toast({ title: "Invalid input", description: "Must be a numeric user ID.", variant: "destructive" });
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/document-types/${encodeURIComponent(type.key)}/preview?clientUserId=${clientUserId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Preview failed");
+      setPreviewData({ docTypeLabel: type.label, preview: data.preview });
+    } catch (err) {
+      toast({ title: "Preview failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -335,6 +360,14 @@ export default function DocumentTypesManager() {
               >
                 <SlidersHorizontal className="size-3.5" />
               </button>
+              <button
+                onClick={() => void openPreview(type)}
+                disabled={previewLoading}
+                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 disabled:opacity-40"
+                title="Preview scoped data"
+              >
+                <Sparkles className="size-3.5" />
+              </button>
             </div>
           ))}
         </div>
@@ -484,6 +517,14 @@ export default function DocumentTypesManager() {
           onClose={() => setPromptDialogKey(null)}
           promptKey={promptDialogKey}
           fetchWithAuth={fetchWithAuth}
+        />
+      )}
+
+      {previewData && (
+        <DocumentTypePreviewDialog
+          onClose={() => setPreviewData(null)}
+          docTypeLabel={previewData.docTypeLabel}
+          preview={previewData.preview}
         />
       )}
     </div>

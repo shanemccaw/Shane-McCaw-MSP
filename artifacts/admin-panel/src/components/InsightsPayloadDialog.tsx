@@ -28,7 +28,7 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
 }
 
-function CollapsibleSection({ title, icon, defaultOpen = false, badge, children }: CollapsibleSectionProps) {
+export function CollapsibleSection({ title, icon, defaultOpen = false, badge, children }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border border-gray-700/50 rounded-lg overflow-hidden">
@@ -59,7 +59,7 @@ function CollapsibleSection({ title, icon, defaultOpen = false, badge, children 
   );
 }
 
-function MonoPre({ text }: { text: string }) {
+export function MonoPre({ text }: { text: string }) {
   return (
     <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-card rounded-lg p-3 overflow-auto max-h-80">
       {text}

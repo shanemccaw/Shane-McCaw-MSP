@@ -58,7 +58,7 @@ this same session.
 | 15 | Workstream selection + archive-mode supersede, moved into `generateSowDocument()` itself (not caller-side) | Done | #TBD |
 | 16 | Remove now-duplicate prior-doc cleanup from workflow cutover wrapper | Done | #TBD |
 | 17 | Port `portal-assessment.ts`'s direct SOW-regeneration call site to the new engine | Done | #32 |
-| 18 | Document Types IDE — preview (dry-run payload shown to admin before real generation) | Not Started | #33 |
+| 18 | Document Types IDE — preview (dry-run payload shown to admin before real generation) | Done | #33 |
 | 19 | Retire old generation path (`generateAndDeliverDocument`, `generateConsolidatedSowDocument`, `extractAndStoreOmgCards`, extraction-based `sowPricingLines`) — blocked on Phase 17 | Not Started | #34 |
 
 ## Notes
