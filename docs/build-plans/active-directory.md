@@ -90,7 +90,7 @@ rather than a flat account list.
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
 | 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
 | 9 | User Object — dev-only cascading hard delete | Not Started | #69 |
-| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Not Started | #91 |
+| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Blocked (by #92) | #91 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
@@ -136,3 +136,16 @@ from admin-monitor-checks.ts). Also adds SharePoint consent revoke, a
 manual scan trigger, and a re-consent invite-link generator, all
 confirmed to have existing reusable backend mechanisms rather than being
 built from scratch. Depends on Phase 3 (Done) for the pane it extends.
+
+
+**Phase 10 is BLOCKED (2026-07-28) by Issue #92** ("Fix database to
+have a true Tenant Customer hierarchy") in a separate initiative,
+opened after Shane took the Tenant/User data model refactor proposal
+(see that chat's handoff document) to a dedicated session. Phase 10's
+own scope — a real Tenant hierarchy with nested Users — is exactly what
+#92's schema refactor (new `tenants` table, single expanded `users`
+table) makes possible correctly. Do not build Phase 10 against the
+current `msp_customers`/`msp_users`/loose-string-`tenant_id` schema; it
+would need a rewrite the moment #92 lands. Phase 10's issue body still
+references the pre-refactor schema and must be re-scoped against #92's
+real final shape before any implementation prompt is written for it.
