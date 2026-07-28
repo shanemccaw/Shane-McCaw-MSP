@@ -11,6 +11,7 @@ import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
 import ExceptionTracking from "@/pages/ExceptionTracking";
 import IncidentsAdminPage from "@/pages/IncidentsAdminPage";
+import { ActiveDirectoryPage } from "@/pages/ActiveDirectoryPage";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -24,6 +25,7 @@ function getContent(section: string): ReactNode {
     case "sow-debug":             return <SowDebugPage />;
     case "platform-agreements":   return <PlatformAgreementsPage />;
     case "simulator":             return <SimulatorStudioPage />;
+    case "active-directory":      return <ActiveDirectoryPage />;
     case "pcc":                   return <PccDashboard />;
     default:                      return <InboxPage />;
   }

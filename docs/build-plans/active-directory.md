@@ -1,7 +1,7 @@
 # Initiative: Active Directory (Admin Panel)
 
 **Slug:** active-directory
-**Status:** Not Started
+**Status:** In Progress
 **Iteration:** 1
 **Area:** admin-panel
 **Owner:** Shane McCaw Consulting
@@ -81,7 +81,7 @@ rather than a flat account list.
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
-| 1 | IDE shell + tree skeleton (OU containers, MSP/Customer/Group nodes) + universal search + nav registration | Not Started | #61 |
+| 1 | IDE shell + tree skeleton (OU containers, MSP/Customer/Group nodes) + universal search + nav registration | In Progress | #61 |
 | 2 | MSP Object detail pane | Not Started | #62 |
 | 3 | Customer Object detail pane | Not Started | #63 |
 | 4 | RBAC/Group Object detail pane (members, search, count) | Not Started | #64 |
