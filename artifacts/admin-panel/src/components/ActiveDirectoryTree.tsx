@@ -21,6 +21,10 @@ import {
   Search,
   X,
   RefreshCw,
+  FolderCog,
+  Plus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { readAdTreeState, writeAdTreeState } from "./activeDirectoryTreeState";
@@ -47,6 +51,11 @@ export interface AdGroupNode {
   count: number;
 }
 
+export interface AdOuNode {
+  id: number;
+  name: string;
+}
+
 export interface AdSearchResults {
   msps: Array<{ id: number; name: string; slug: string }>;
   customers: Array<{ id: number; name: string; mspId: number; mspName: string | null }>;
@@ -61,7 +70,7 @@ export interface AdSearchResults {
   roles: string[];
 }
 
-export type AdSelectedType = "msp" | "customer" | "group" | "user";
+export type AdSelectedType = "msp" | "customer" | "group" | "user" | "ou";
 
 export interface AdSelectedObject {
   type: AdSelectedType;
@@ -83,11 +92,13 @@ export function ActiveDirectoryTree() {
 
   const [msps, setMsps] = useState<AdMspNode[]>([]);
   const [groups, setGroups] = useState<AdGroupNode[]>([]);
+  const [ous, setOus] = useState<AdOuNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   const initialTreeState = useMemo(() => readAdTreeState(), []);
   const [mspsOpen, setMspsOpen] = useState(initialTreeState.mspsOpen);
   const [groupsOpen, setGroupsOpen] = useState(initialTreeState.groupsOpen);
+  const [ousOpen, setOusOpen] = useState(initialTreeState.ousOpen);
   const [expandedMspIds, setExpandedMspIds] = useState<Set<number>>(
     () => new Set(initialTreeState.expandedMspIds),
   );
@@ -95,17 +106,18 @@ export function ActiveDirectoryTree() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    writeAdTreeState({ mspsOpen, groupsOpen, expandedMspIds: [...expandedMspIds] });
-  }, [mspsOpen, groupsOpen, expandedMspIds]);
+    writeAdTreeState({ mspsOpen, groupsOpen, ousOpen, expandedMspIds: [...expandedMspIds] });
+  }, [mspsOpen, groupsOpen, ousOpen, expandedMspIds]);
 
   const loadTree = async () => {
     setLoading(true);
     try {
       const res = await fetchWithAuth("/api/admin/active-directory/tree");
       if (res.ok) {
-        const data = (await res.json()) as { msps: AdMspNode[]; groups: AdGroupNode[] };
+        const data = (await res.json()) as { msps: AdMspNode[]; groups: AdGroupNode[]; ous: AdOuNode[] };
         setMsps(data.msps || []);
         setGroups(data.groups || []);
+        setOus(data.ous || []);
       }
     } catch {
       // Left tree stays empty on a transient failure — the explorer's own
@@ -143,6 +155,52 @@ export function ActiveDirectoryTree() {
   const selectUser = (user: AdSearchResults["users"][number]) => {
     setSelectedKey(`user-${user.id}`);
     dispatchSelect({ type: "user", id: user.id, label: user.name || user.email });
+  };
+  const selectOu = (ou: AdOuNode) => {
+    setSelectedKey(`ou-${ou.id}`);
+    dispatchSelect({ type: "ou", id: ou.id, label: ou.name });
+  };
+
+  // ─── OU CRUD (Phase 5) ───────────────────────────────────────────────────────
+  const createOu = async () => {
+    const name = window.prompt("New Organizational Unit name:");
+    if (!name || !name.trim()) return;
+    try {
+      const res = await fetchWithAuth("/api/admin/active-directory/ou", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (res.ok) await loadTree();
+    } catch {
+      // Operator can retry via the create action again.
+    }
+  };
+  const renameOu = async (ou: AdOuNode) => {
+    const name = window.prompt("Rename Organizational Unit:", ou.name);
+    if (!name || !name.trim() || name.trim() === ou.name) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/active-directory/ou/${ou.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (res.ok) await loadTree();
+    } catch {
+      // Operator can retry via the rename action again.
+    }
+  };
+  const deleteOu = async (ou: AdOuNode) => {
+    if (!window.confirm(`Delete Organizational Unit "${ou.name}"?`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/active-directory/ou/${ou.id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (selectedKey === `ou-${ou.id}`) setSelectedKey(null);
+        await loadTree();
+      }
+    } catch {
+      // Operator can retry via the delete action again.
+    }
   };
 
   // ─── Universal search ──────────────────────────────────────────────────────
@@ -422,6 +480,78 @@ export function ActiveDirectoryTree() {
                         <ShieldCheck className="h-3 w-3 shrink-0 text-muted-foreground" />
                         <span className="flex-1 truncate">{group.role}</span>
                         <span className="text-[9px] tabular-nums text-muted-foreground/60">{group.count}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* OU=Placeholders (Phase 5 — creatable/browsable stub, no policy logic) */}
+            <div>
+              <div
+                onClick={() => setOusOpen(!ousOpen)}
+                className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+              >
+                {ousOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                <FolderCog className="h-3.5 w-3.5 text-amber-600 dark:text-amber-500" />
+                <span className="truncate">OU=Placeholders</span>
+                <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">{ous.length}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void createOu();
+                  }}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  title="New Organizational Unit"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+
+              {ousOpen && (
+                <div className="ml-[22px] border-l border-accent">
+                  {ous.length === 0 ? (
+                    <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
+                      {loading ? "Loading…" : "No OUs — click + to create one"}
+                    </div>
+                  ) : (
+                    ous.map((ou) => (
+                      <div
+                        key={ou.id}
+                        onClick={() => selectOu(ou)}
+                        className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-1 transition-colors hover:bg-accent hover:text-foreground ${
+                          selectedKey === `ou-${ou.id}` ? "text-primary font-semibold" : "text-foreground/85"
+                        }`}
+                      >
+                        <FolderCog className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
+                        <span className="flex-1 truncate font-mono" title={`OU=${ou.name}`}>
+                          OU={ou.name}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void renameOu(ou);
+                          }}
+                          className="hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground group-hover:block"
+                          title="Rename OU"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteOu(ou);
+                          }}
+                          className="hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover:block"
+                          title="Delete OU"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     ))
                   )}

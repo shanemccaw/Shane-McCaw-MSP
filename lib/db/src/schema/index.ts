@@ -3300,4 +3300,21 @@ export const insertPublicChatConversationSchema = createInsertSchema(publicChatC
 export type InsertPublicChatConversation = typeof publicChatConversationsTable.$inferInsert;
 export type PublicChatConversation = typeof publicChatConversationsTable.$inferSelect;
 
+// ── Active Directory — Organizational Units (Phase 5, placeholder objects) ────
+// A real, creatable/browsable OU container node in the Active Directory tree.
+// No policy semantics yet — Shane: "OUs undefined right now, but put a
+// placeholder for later policies... this might be where we lock the MSP in
+// the next version." Deliberately no policy columns and no object-to-OU
+// membership model in this phase.
+
+export const activeDirectoryOusTable = pgTable("active_directory_ous", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertActiveDirectoryOu = typeof activeDirectoryOusTable.$inferInsert;
+export type ActiveDirectoryOu = typeof activeDirectoryOusTable.$inferSelect;
+
 export * from "./msp";

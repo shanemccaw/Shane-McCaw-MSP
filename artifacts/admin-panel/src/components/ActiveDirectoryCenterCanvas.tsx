@@ -12,12 +12,14 @@ import { AD_SELECT_EVENT, type AdSelectedObject, type AdSelectedType } from "./A
 import { ActiveDirectoryMspPane } from "./ActiveDirectoryMspPane";
 import { ActiveDirectoryGroupPane } from "./ActiveDirectoryGroupPane";
 import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
+import { ActiveDirectoryOuPane } from "./ActiveDirectoryOuPane";
 
 const TYPE_LABEL: Record<AdSelectedType, string> = {
   msp: "MSP",
   customer: "Customer",
   group: "RBAC Group",
   user: "User",
+  ou: "Organizational Unit",
 };
 
 export function ActiveDirectoryCenterCanvas() {
@@ -50,6 +52,10 @@ export function ActiveDirectoryCenterCanvas() {
 
   if (selected.type === "customer") {
     return <ActiveDirectoryCustomerPane key={selected.id} customerId={Number(selected.id)} />;
+  }
+
+  if (selected.type === "ou") {
+    return <ActiveDirectoryOuPane key={selected.id} name={selected.label} />;
   }
 
   return (

@@ -461,3 +461,27 @@ export function buildCustomerDetail(params: {
     recentDiagnosticRuns,
   };
 }
+
+// ── Organizational Unit placeholder objects (Phase 5) ────────────────────────
+//
+// A real, creatable/browsable OU container node — genuinely persisted, but
+// with NO policy enforcement logic. Policy semantics are explicitly
+// undefined per Shane, reserved for a future version. Do not add policy
+// columns or an object-to-OU membership model here.
+
+export interface OuRow {
+  id: number;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OuNode {
+  id: number;
+  name: string;
+}
+
+/** OUs sorted by name — same list-shape convention as buildMspTree/buildGroupNodes. */
+export function buildOuNodes(ous: OuRow[]): OuNode[] {
+  return [...ous].sort((a, b) => a.name.localeCompare(b.name)).map((o) => ({ id: o.id, name: o.name }));
+}

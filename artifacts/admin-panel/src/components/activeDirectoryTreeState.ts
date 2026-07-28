@@ -10,10 +10,11 @@ export const LS_AD_TREE_STATE = "active_directory_tree_expanded_v1";
 export interface AdPersistedTreeState {
   mspsOpen: boolean;
   groupsOpen: boolean;
+  ousOpen: boolean;
   expandedMspIds: number[];
 }
 
-const DEFAULTS: AdPersistedTreeState = { mspsOpen: true, groupsOpen: true, expandedMspIds: [] };
+const DEFAULTS: AdPersistedTreeState = { mspsOpen: true, groupsOpen: true, ousOpen: true, expandedMspIds: [] };
 
 export function readAdTreeState(): AdPersistedTreeState {
   try {
@@ -21,10 +22,11 @@ export function readAdTreeState(): AdPersistedTreeState {
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return DEFAULTS;
-    const { mspsOpen, groupsOpen, expandedMspIds } = parsed as Record<string, unknown>;
+    const { mspsOpen, groupsOpen, ousOpen, expandedMspIds } = parsed as Record<string, unknown>;
     return {
       mspsOpen: typeof mspsOpen === "boolean" ? mspsOpen : DEFAULTS.mspsOpen,
       groupsOpen: typeof groupsOpen === "boolean" ? groupsOpen : DEFAULTS.groupsOpen,
+      ousOpen: typeof ousOpen === "boolean" ? ousOpen : DEFAULTS.ousOpen,
       expandedMspIds: Array.isArray(expandedMspIds)
         ? expandedMspIds.filter((x): x is number => typeof x === "number")
         : [],

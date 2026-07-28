@@ -9,6 +9,8 @@ import {
   buildGroupDetail,
   filterGroupMembers,
   buildCustomerDetail,
+  buildOuNodes,
+  type OuRow,
   type MspRow,
   type CustomerRow,
   type SearchableUser,
@@ -499,5 +501,26 @@ describe("buildCustomerDetail", () => {
     expect(detail.graphConsent?.consentStatus).toBe("granted");
     expect(detail.sharePointConsent?.consentStatus).toBe("pending");
     expect(detail.writeConsent).toBeNull();
+  });
+});
+
+describe("buildOuNodes", () => {
+  const OUS: OuRow[] = [
+    { id: 2, name: "Zebra Unit", createdAt: new Date("2026-07-01"), updatedAt: new Date("2026-07-01") },
+    { id: 1, name: "Acme Unit", createdAt: new Date("2026-07-02"), updatedAt: new Date("2026-07-02") },
+  ];
+
+  it("sorts OU nodes by name", () => {
+    const nodes = buildOuNodes(OUS);
+    expect(nodes.map((o) => o.name)).toEqual(["Acme Unit", "Zebra Unit"]);
+  });
+
+  it("carries through id and name only — no policy fields", () => {
+    const nodes = buildOuNodes(OUS);
+    expect(nodes[0]).toEqual({ id: 1, name: "Acme Unit" });
+  });
+
+  it("returns an empty array when there are no OUs", () => {
+    expect(buildOuNodes([])).toEqual([]);
   });
 });

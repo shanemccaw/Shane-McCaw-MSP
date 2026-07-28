@@ -22,6 +22,7 @@ import {
   tenantWriteConsentTable,
   clientServicesTable,
   mspDiagnosticRunsTable,
+  activeDirectoryOusTable,
 } from "@workspace/db";
 import { eq, asc, inArray, count, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -36,6 +37,7 @@ import {
   filterGroupMembers,
   type DirectoryGroupRole,
   buildCustomerDetail,
+  buildOuNodes,
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 
@@ -51,7 +53,7 @@ const log = logger.child({ channel: "admin.active-directory" });
 // Groups (one node per RBAC role, with a live count).
 router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [msps, customers, roleCountRows] = await Promise.all([
+    const [msps, customers, roleCountRows, ous] = await Promise.all([
       db
         .select({
           id: mspsTable.id,
@@ -78,11 +80,20 @@ router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, r
         .from(mspUsersTable)
         .where(inArray(mspUsersTable.mspRole, [...DIRECTORY_GROUP_ROLES]))
         .groupBy(mspUsersTable.mspRole),
+      db
+        .select({
+          id: activeDirectoryOusTable.id,
+          name: activeDirectoryOusTable.name,
+          createdAt: activeDirectoryOusTable.createdAt,
+          updatedAt: activeDirectoryOusTable.updatedAt,
+        })
+        .from(activeDirectoryOusTable),
     ]);
 
     res.json({
       msps: buildMspTree(msps, customers),
       groups: buildGroupNodes(roleCountRows.map((r) => ({ role: r.role, count: Number(r.count) }))),
+      ous: buildOuNodes(ous),
     });
   } catch (err) {
     log.error({ err }, "Failed to build Active Directory tree");
@@ -475,6 +486,75 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
   } catch (err) {
     log.error({ err, customerId }, "Failed to build Customer Object detail pane");
     res.status(500).json({ error: "Failed to load Customer detail" });
+  }
+});
+
+// ─── OU CRUD (Phase 5) ────────────────────────────────────────────────────────
+// Organizational Unit placeholder objects — create/list/rename/delete a
+// container node only. No policy logic, no object-to-OU membership model.
+
+router.post("/admin/active-directory/ou", requireAdmin, async (req: Request, res: Response) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name) {
+    res.status(400).json({ error: "OU name is required" });
+    return;
+  }
+
+  try {
+    const [created] = await db.insert(activeDirectoryOusTable).values({ name }).returning();
+    res.status(201).json(created);
+  } catch (err) {
+    log.error({ err }, "Failed to create OU");
+    res.status(500).json({ error: "Failed to create OU" });
+  }
+});
+
+router.patch("/admin/active-directory/ou/:id", requireAdmin, async (req: Request, res: Response) => {
+  const ouId = Number(req.params.id);
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!Number.isInteger(ouId)) {
+    res.status(400).json({ error: "Invalid OU id" });
+    return;
+  }
+  if (!name) {
+    res.status(400).json({ error: "OU name is required" });
+    return;
+  }
+
+  try {
+    const [updated] = await db
+      .update(activeDirectoryOusTable)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(activeDirectoryOusTable.id, ouId))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "OU not found" });
+      return;
+    }
+    res.json(updated);
+  } catch (err) {
+    log.error({ err, ouId }, "Failed to rename OU");
+    res.status(500).json({ error: "Failed to rename OU" });
+  }
+});
+
+router.delete("/admin/active-directory/ou/:id", requireAdmin, async (req: Request, res: Response) => {
+  const ouId = Number(req.params.id);
+  if (!Number.isInteger(ouId)) {
+    res.status(400).json({ error: "Invalid OU id" });
+    return;
+  }
+
+  try {
+    const [deleted] = await db.delete(activeDirectoryOusTable).where(eq(activeDirectoryOusTable.id, ouId)).returning();
+    if (!deleted) {
+      res.status(404).json({ error: "OU not found" });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    log.error({ err, ouId }, "Failed to delete OU");
+    res.status(500).json({ error: "Failed to delete OU" });
   }
 });
 
