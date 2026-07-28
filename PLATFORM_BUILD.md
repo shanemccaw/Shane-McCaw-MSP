@@ -541,3 +541,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-07-28 | ⏳ IN FLIGHT | Zoho Integration Foundation | |
 | 2026-07-28 | ⏳ IN FLIGHT | Active Directory Phase 9 — User Object: dev-only cascading hard delete | |
 | 2026-07-28 | ⏳ IN FLIGHT | Document Engine cost return value | |
+| 2026-07-28 | ⏳ IN FLIGHT | Tenant/User Refactor Phase 0: Schema + wipe (tenants table, expand users, drop old tables) — Issue #93 | |
