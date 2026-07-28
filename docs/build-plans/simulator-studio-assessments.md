@@ -37,9 +37,9 @@ exist and are live (see `consent.ts`).
 | 2 | Admin-direct execution wiring | Not Started | #24 |
 | 3 | Results & findings display | Not Started | #25 |
 | 4 | Run history & diff | Not Started | #26 |
-| 5 | Assessment Creation Wizard | Not Started | #TBD |
-| 6 | Assessment Edit Wizard | Not Started | #TBD |
-| 7 | Delete / Deprecate | Not Started | #TBD |
+| 5 | Assessment Creation Wizard | Not Started | #28 |
+| 6 | Assessment Edit Wizard | Not Started | #29 |
+| 7 | Delete / Deprecate | Not Started | #30 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
@@ -48,9 +48,9 @@ lives in that phase's GitHub issue. This file is the source of truth;
 the GitHub Issue/Project card is a derived view. If they ever disagree,
 this file wins and the Issue gets corrected to match it.
 
-Phases 5–7 are placeholders only — their real scope will be filled in on
-each phase's issue once the phase it depends on is Done and it's actually
-planned in detail. Summarized dependency chain: Phase 5 depends on Phase 1
-(#23) being Done; Phases 6 and 7 each depend on Phase 5 being Done (an
-edit/delete wizard needs the create wizard's form + validation scaffolding
-in place first).
+Phases 5–7 (#28, #29, #30) are placeholders only — their real scope will be
+filled in on each phase's issue once the phase it depends on is Done and
+it's actually planned in detail. Dependency chain: Phase 5 (#28) depends on
+Phase 1 (#23) being Done; Phase 6 (#29) and Phase 7 (#30) each depend on
+Phase 5 (#28) being Done (an edit/delete wizard needs the create wizard's
+form + validation scaffolding in place first).
