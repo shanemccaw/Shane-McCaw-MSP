@@ -111,6 +111,7 @@ import portalThemePreferenceRouter from "./portal-theme-preference";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
 import adminMonitorCheckRunsRouter from "./admin-monitor-check-runs";
+import adminSimulatorAssessmentsRouter from "./admin-simulator-assessments";
 import adminBaselineTemplatesRouter from "./admin-baseline-templates";
 import adminWriteActionsRouter from "./admin-write-actions";
 import adminConfigPackRunRouter from "./admin-config-pack-run";
@@ -286,6 +287,7 @@ router.use(supportChatRouter);
 // the CRUD router's :key patterns not shadowing them.
 router.use(adminMonitorCheckRunsRouter);
 router.use(adminMonitorChecksRouter);
+router.use(adminSimulatorAssessmentsRouter);
 router.use(adminBaselineTemplatesRouter);
 router.use(adminWriteActionsRouter);
 router.use(adminConfigPackRunRouter);

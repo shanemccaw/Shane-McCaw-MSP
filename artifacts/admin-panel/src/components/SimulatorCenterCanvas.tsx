@@ -11,6 +11,7 @@ import {
   Terminal,
   Play,
   Layers,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,11 +33,12 @@ import { SimulatorBatchCanvas, type BulkRunTarget } from "./SimulatorBatchCanvas
 import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
 import { SimulatorConfigPackCanvas } from "./SimulatorConfigPackCanvas";
 import { SimulatorPillarMatrixCanvas, type PillarKey } from "./SimulatorPillarMatrixCanvas";
-import type { ConfigPackNode, WriteActionNode } from "./SimulatorLeftTree";
+import { SimulatorAssessmentCanvas } from "./SimulatorAssessmentCanvas";
+import type { ConfigPackNode, WriteActionNode, AssessmentNode } from "./SimulatorLeftTree";
 
 export interface SimDocumentTab {
   id: string;
-  type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration";
+  type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration" | "assessment";
   label: string;
   data: any;
 }
@@ -96,7 +98,17 @@ export function SimulatorCenterCanvas({
   const { openModal } = useModal();
 
   const [activeTab, setActiveTab] = useState<
-    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action" | "pillar-matrix" | "config-pack"
+    | "sql"
+    | "testbeds"
+    | "overrides"
+    | "engines"
+    | "deploy"
+    | "endpoint"
+    | "batch"
+    | "write-action"
+    | "pillar-matrix"
+    | "config-pack"
+    | "assessment"
   >("sql");
 
   // The pillar currently open in the Pillar Matrix tab, set by clicking a pillar
@@ -114,6 +126,10 @@ export function SimulatorCenterCanvas({
   // The config pack currently open in the Config Pack tab, set by clicking a
   // pack in the Explorer tree.
   const [selectedConfigPack, setSelectedConfigPack] = useState<ConfigPackNode | null>(null);
+
+  // The assessment currently open in the Assessment tab, set by clicking an
+  // assessment in the Explorer tree.
+  const [selectedAssessment, setSelectedAssessment] = useState<AssessmentNode | null>(null);
 
   // The bulk run currently open in the Batch tab, set by "Run all" on a domain
   // folder in the Explorer tree.
@@ -177,6 +193,9 @@ export function SimulatorCenterCanvas({
         } else if (doc.type === "pillar") {
           if (doc.data?.pillar) setSelectedPillar(doc.data.pillar);
           setActiveTab("pillar-matrix");
+        } else if (doc.type === "assessment") {
+          setSelectedAssessment(doc.data);
+          setActiveTab("assessment");
         }
       }
     }
@@ -209,6 +228,9 @@ export function SimulatorCenterCanvas({
     } else if (doc.type === "pillar") {
       if (doc.data?.pillar) setSelectedPillar(doc.data.pillar);
       setActiveTab("pillar-matrix");
+    } else if (doc.type === "assessment") {
+      setSelectedAssessment(doc.data);
+      setActiveTab("assessment");
     }
   };
 
@@ -325,6 +347,18 @@ export function SimulatorCenterCanvas({
         data: detail,
       });
     };
+    const handleSelectAssessment = (e: Event) => {
+      const detail = (e as CustomEvent<AssessmentNode>).detail;
+      if (!detail) return;
+      setSelectedAssessment(detail);
+      setActiveTab("assessment");
+      openDoc({
+        id: `assessment:${detail.id}`,
+        type: "assessment",
+        label: detail.name,
+        data: detail,
+      });
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleRunMigration);
@@ -333,6 +367,7 @@ export function SimulatorCenterCanvas({
     window.addEventListener("simulator-select-write-action", handleSelectWriteAction);
     window.addEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
     window.addEventListener("simulator-select-config-pack", handleSelectConfigPack);
+    window.addEventListener("simulator-select-assessment", handleSelectAssessment);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
@@ -342,6 +377,7 @@ export function SimulatorCenterCanvas({
       window.removeEventListener("simulator-select-write-action", handleSelectWriteAction);
       window.removeEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
       window.removeEventListener("simulator-select-config-pack", handleSelectConfigPack);
+      window.removeEventListener("simulator-select-assessment", handleSelectAssessment);
     };
   }, []);
 
@@ -495,7 +531,8 @@ export function SimulatorCenterCanvas({
                 (doc.type === "write-action" && activeTab === "write-action") ||
                 (doc.type === "config-pack" && activeTab === "config-pack") ||
                 (doc.type === "batch" && activeTab === "batch") ||
-                (doc.type === "pillar" && activeTab === "pillar-matrix"));
+                (doc.type === "pillar" && activeTab === "pillar-matrix") ||
+                (doc.type === "assessment" && activeTab === "assessment"));
 
             return (
               <div
@@ -512,6 +549,7 @@ export function SimulatorCenterCanvas({
                 {doc.type === "endpoint" && <Building2 className="w-3 h-3 text-indigo-400 shrink-0" />}
                 {doc.type === "batch" && <Play className="w-3 h-3 text-amber-400 shrink-0" />}
                 {doc.type === "pillar" && <Layers className="w-3 h-3 text-purple-400 shrink-0" />}
+                {doc.type === "assessment" && <ListChecks className="w-3 h-3 text-emerald-400 shrink-0" />}
                 <span className="truncate">{doc.label}</span>
                 <button
                   type="button"
@@ -557,6 +595,11 @@ export function SimulatorCenterCanvas({
             dependency order, or single step), testbed-only, with live progress */}
         {activeTab === "config-pack" && selectedConfigPack && (
           <SimulatorConfigPackCanvas key={selectedConfigPack.packKey} pack={selectedConfigPack} />
+        )}
+
+        {/* Tab: Assessment — read-only catalog + packageKey audit (Phase 1) */}
+        {activeTab === "assessment" && selectedAssessment && (
+          <SimulatorAssessmentCanvas key={selectedAssessment.id} assessment={selectedAssessment} />
         )}
 
         {/* Tab 2: Testbeds Dashboard */}

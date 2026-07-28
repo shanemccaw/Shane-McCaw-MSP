@@ -152,6 +152,21 @@ export interface ConfigPackNode {
   categories: string[];
 }
 
+// Real `services` rows (category='assessment') from
+// GET /api/admin/simulator/assessments, with the resolved packageKey (the
+// SAME `type_attributes->>'packageKey'` path consent.ts uses at scan time)
+// and — when a dedicated package exists — its ordered check_key list.
+export interface AssessmentNode {
+  id: number;
+  name: string;
+  slug: string | null;
+  isFreeOffering: boolean;
+  packageKey: string | null;
+  hasDedicatedPackage: boolean;
+  checkKeys: string[] | null;
+  checkCount: number | null;
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -202,6 +217,7 @@ export function SimulatorLeftTree() {
   const [monitorChecks, setMonitorChecks] = useState<MonitorCheckNode[]>([]);
   const [writeActions, setWriteActions] = useState<WriteActionNode[]>([]);
   const [configPacks, setConfigPacks] = useState<ConfigPackNode[]>([]);
+  const [assessments, setAssessments] = useState<AssessmentNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   // The domain whose bulk run is being started — one at a time, so a stray
@@ -229,6 +245,7 @@ export function SimulatorLeftTree() {
   const [writeActionsOpen, setWriteActionsOpen] = useState(initialTreeState?.sections.writeActions ?? true);
   const [pillarMatrixOpen, setPillarMatrixOpen] = useState(initialTreeState?.sections.pillarMatrix ?? true);
   const [configPacksOpen, setConfigPacksOpen] = useState(initialTreeState?.sections.configPacks ?? true);
+  const [assessmentsOpen, setAssessmentsOpen] = useState(initialTreeState?.sections.assessments ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
   // Which write-action template the center canvas is showing — highlighted in the tree.
@@ -237,6 +254,8 @@ export function SimulatorLeftTree() {
   const [selectedPillarKey, setSelectedPillarKey] = useState<string | null>(null);
   // Which config pack the center canvas is showing — highlighted in the tree.
   const [selectedConfigPackKey, setSelectedConfigPackKey] = useState<string | null>(null);
+  // Which assessment the center canvas is showing — highlighted in the tree.
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState<number | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
@@ -263,6 +282,7 @@ export function SimulatorLeftTree() {
         writeActions: writeActionsOpen,
         pillarMatrix: pillarMatrixOpen,
         configPacks: configPacksOpen,
+        assessments: assessmentsOpen,
       },
       cats: expandedCats,
     });
@@ -278,6 +298,7 @@ export function SimulatorLeftTree() {
     writeActionsOpen,
     pillarMatrixOpen,
     configPacksOpen,
+    assessmentsOpen,
     expandedCats,
   ]);
 
@@ -398,6 +419,13 @@ export function SimulatorLeftTree() {
     );
   }, [configPacks, searchQuery, isSearching]);
 
+  const filteredAssessments = useMemo(() => {
+    if (!isSearching) return assessments;
+    return assessments.filter((a) =>
+      itemMatchesSearch(searchQuery, [a.name, a.slug, a.packageKey, ...(a.checkKeys || [])])
+    );
+  }, [assessments, searchQuery, isSearching]);
+
   const showScenarios = !isSearching || filteredScenarios.length > 0;
   const showScripts = !isSearching || filteredScripts.length > 0;
   const showMigrations = !isSearching || filteredMigrationFiles.length > 0;
@@ -409,6 +437,19 @@ export function SimulatorLeftTree() {
   const showWriteActions = !isSearching || filteredWriteActions.length > 0;
   const showPillarMatrix = !isSearching || filteredPillars.length > 0;
   const showConfigPacks = !isSearching || filteredConfigPacks.length > 0;
+  const showAssessments = !isSearching || filteredAssessments.length > 0;
+
+  // Group assessments Free/Paid, exactly the real `is_free_offering` column —
+  // there is no other free/paid split on this row.
+  const assessmentsByGroup = filteredAssessments.reduce(
+    (acc, a) => {
+      const group = a.isFreeOffering ? "Free" : "Paid";
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(a);
+      return acc;
+    },
+    {} as Record<"Free" | "Paid", AssessmentNode[]>,
+  );
 
   // Group event types by dot-prefix; keys are namespaced ("evt:auth") so event
   // groups never collide with scenario/script categories in expandedCats.
@@ -548,6 +589,14 @@ export function SimulatorLeftTree() {
       if (configPacksRes.ok) {
         const configPacksData = await configPacksRes.json();
         setConfigPacks(configPacksData.packs || []);
+      }
+
+      // 9. Fetch the real assessment catalog (services, category='assessment')
+      // + resolved packageKey audit.
+      const assessmentsRes = await fetchWithAuth("/api/admin/simulator/assessments");
+      if (assessmentsRes.ok) {
+        const assessmentsData = await assessmentsRes.json();
+        setAssessments(assessmentsData.assessments || []);
       }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
@@ -814,6 +863,14 @@ export function SimulatorLeftTree() {
   // deep-linked rather than duplicated here. The Simulator's own value-add is
   // running a pack, not re-implementing its editor.
   const openConfigPackManager = () => navigate("/delivery/baseline-templates?tab=config-packs");
+
+  // Selecting an assessment opens its read-only catalog + packageKey audit view
+  // in the center canvas — same event-driven hand-off pattern as endpoints/
+  // write-actions/config-packs. Read-only in this phase: no run/create/edit.
+  const handleAssessmentSelect = (assessment: AssessmentNode) => {
+    setSelectedAssessmentId(assessment.id);
+    window.dispatchEvent(new CustomEvent("simulator-select-assessment", { detail: assessment }));
+  };
 
   /**
    * Starts a bulk run over one domain prefix and hands the batch to the center
@@ -1834,6 +1891,89 @@ export function SimulatorLeftTree() {
                     </ContextMenuContent>
                   </ContextMenu>
                 ))
+              )}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Section 11: Assessments — real `services` rows (category='assessment'),
+            grouped Free/Paid on the real is_free_offering column. Read-only
+            catalog + packageKey audit view (Phase 1); create/edit/delete of the
+            packageKey assignment or of monitoring packages themselves is a
+            later, not-yet-built phase. */}
+        {showAssessments && (
+        <div>
+          <div
+            onClick={() => setAssessmentsOpen(!assessmentsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {isSearching || assessmentsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <ListChecks className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="truncate">Assessments</span>
+          </div>
+
+          {(isSearching || assessmentsOpen) && (
+            <div className="ml-[22px] border-l border-accent">
+              {filteredAssessments.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No assessments</div>
+              ) : (
+                (["Free", "Paid"] as const).map((group) =>
+                  assessmentsByGroup[group]?.length ? (
+                    <div key={group}>
+                      <div
+                        onClick={() => toggleCat(`asmt:${group}`)}
+                        className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
+                      >
+                        {isSearching || expandedCats[`asmt:${group}`] ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                        )}
+                        {isSearching || expandedCats[`asmt:${group}`] ? (
+                          <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <Folder className="h-3.5 w-3.5 text-primary" />
+                        )}
+                        <span className="truncate">{group}</span>
+                        <span className="ml-auto shrink-0 text-[9px] tabular-nums text-muted-foreground/60">
+                          {assessmentsByGroup[group]!.length}
+                        </span>
+                      </div>
+
+                      {(isSearching || expandedCats[`asmt:${group}`]) && (
+                        <div className="ml-[22px] border-l border-accent">
+                          {assessmentsByGroup[group]!.map((assessment) => (
+                            <div
+                              key={assessment.id}
+                              onClick={() => handleAssessmentSelect(assessment)}
+                              className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                selectedAssessmentId === assessment.id ? "bg-accent text-foreground" : "text-foreground/85"
+                              }`}
+                            >
+                              <ListChecks className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                              <span className="flex-1 truncate text-[11px]" title={assessment.slug ?? assessment.name}>
+                                {assessment.name}
+                              </span>
+                              {!assessment.hasDedicatedPackage && (
+                                <span
+                                  className="shrink-0 text-[9px] uppercase tracking-wider text-destructive"
+                                  title="No dedicated packageKey — runs on the core:security-baseline fallback at scan time"
+                                >
+                                  ⚠️ no dedicated package
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null
+                )
               )}
             </div>
           )}
