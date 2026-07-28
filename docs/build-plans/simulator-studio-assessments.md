@@ -38,7 +38,7 @@ exist and are live (see `consent.ts`).
 | 3 | Results & findings display | Done | #25 |
 | 4 | Run history & diff | Done | #26 |
 | 5 | Assessment Creation Wizard | Done | #28 |
-| 6 | Assessment Edit Wizard | Not Started | #29 |
+| 6 | Assessment Edit Wizard | Done | #29 |
 | 7 | Delete / Deprecate | Not Started | #30 |
 
 ## Notes

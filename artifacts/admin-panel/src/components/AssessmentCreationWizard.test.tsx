@@ -226,6 +226,454 @@ describe("AssessmentCreationWizard — partial-failure surfacing", () => {
   });
 });
 
+// ── Phase 6 (#29): edit mode ────────────────────────────────────────────────
+
+const FULL_ROW_ATTACHED: Record<string, unknown> = {
+  id: 1,
+  name: "Copilot Readiness Assessment",
+  slug: "copilot-readiness-assessment",
+  description: "Evaluates Copilot rollout readiness.",
+  tagline: "Know before you buy seats",
+  bestFor: "Mid-market IT teams",
+  isFreeOffering: false,
+  allowFreeCheckout: false,
+  basePrice: "500",
+  maxPrice: "750",
+  sortOrder: 25,
+  category: "assessment",
+  // Fields this wizard never manages — must survive a save untouched.
+  iconName: "Sparkles",
+  tags: ["ai", "copilot"],
+  requiredAppPermissions: [{ scope: "User.Read", reason: "profile lookup" }],
+  typeAttributes: { packageKey: "assess:copilot-readiness" },
+  priceCents: 50000,
+  internalCostCents: 35000,
+};
+
+const FULL_ROW_FALLBACK: Record<string, unknown> = {
+  id: 10,
+  name: "Fallback Assessment",
+  slug: "fallback-assessment",
+  description: null,
+  tagline: null,
+  bestFor: null,
+  isFreeOffering: true,
+  allowFreeCheckout: true,
+  basePrice: null,
+  maxPrice: null,
+  sortOrder: 5,
+  category: "assessment",
+  iconName: null,
+  tags: null,
+  requiredAppPermissions: null,
+  typeAttributes: {},
+};
+
+const FULL_ROW_SOLO: Record<string, unknown> = {
+  id: 3,
+  name: "Solo Package Assessment",
+  slug: "solo-package-assessment",
+  description: null,
+  tagline: null,
+  bestFor: null,
+  isFreeOffering: false,
+  allowFreeCheckout: false,
+  basePrice: null,
+  maxPrice: null,
+  sortOrder: 30,
+  category: "assessment",
+  iconName: null,
+  tags: null,
+  requiredAppPermissions: null,
+  typeAttributes: { packageKey: "assess:solo-package" },
+};
+
+const EXISTING_WITH_EDIT_TARGETS: AssessmentNode[] = [
+  ...EXISTING,
+  {
+    id: 3,
+    name: "Solo Package Assessment",
+    slug: "solo-package-assessment",
+    isFreeOffering: false,
+    sortOrder: 30,
+    packageKey: "assess:solo-package",
+    hasDedicatedPackage: true,
+    checkKeys: ["identity:mfa-registration"],
+    checkCount: 1,
+  },
+  {
+    id: 10,
+    name: "Fallback Assessment",
+    slug: "fallback-assessment",
+    isFreeOffering: true,
+    sortOrder: 5,
+    packageKey: null,
+    hasDedicatedPackage: false,
+    checkKeys: null,
+    checkCount: null,
+  },
+];
+
+const PACKAGES_WITH_SOLO = [...PACKAGES, { key: "assess:solo-package", label: "Solo Package", description: null, status: "active" }];
+
+function packageChecksResponse(packageKey: string, checkKeys: string[]) {
+  return jsonResponse({ checks: checkKeys.map((checkKey, i) => ({ packageKey, checkKey, sortOrder: i })) });
+}
+
+function editModeFetchImpl(opts: {
+  fullRowsById: Record<number, Record<string, unknown>>;
+  checksByPackage: Record<string, string[]>;
+  packages?: typeof PACKAGES;
+}) {
+  const packages = opts.packages ?? PACKAGES_WITH_SOLO;
+  return async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    const servicesIdMatch = url.match(/^\/api\/admin\/services\/(\d+)$/);
+    if (method === "GET" && servicesIdMatch) {
+      const id = Number(servicesIdMatch[1]);
+      return jsonResponse(opts.fullRowsById[id]);
+    }
+    if (method === "GET" && url === "/api/admin/monitoring-packages") {
+      return jsonResponse({ packages });
+    }
+    if (method === "GET" && url === "/api/admin/monitor-checks") {
+      return jsonResponse({ checks: CHECKS });
+    }
+    const packageChecksMatch = url.match(/^\/api\/admin\/monitoring-packages\/([^/]+)\/checks$/);
+    if (method === "GET" && packageChecksMatch) {
+      const key = decodeURIComponent(packageChecksMatch[1]!);
+      return packageChecksResponse(key, opts.checksByPackage[key] ?? []);
+    }
+    if (method === "POST" && url === "/api/admin/monitoring-packages") {
+      const body = JSON.parse(init!.body as string);
+      return jsonResponse({ package: { key: body.key, label: body.label } });
+    }
+    if (method === "PUT" && packageChecksMatch) {
+      const body = JSON.parse(init!.body as string);
+      return jsonResponse({ updated: true, checkKeys: body.checkKeys });
+    }
+    if (method === "PUT" && servicesIdMatch) {
+      const body = JSON.parse(init!.body as string);
+      return jsonResponse({ id: Number(servicesIdMatch[1]), ...body });
+    }
+    return jsonResponse({});
+  };
+}
+
+async function waitForEditLoaded(name: string) {
+  await waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(name));
+}
+
+describe("AssessmentCreationWizard — edit mode pre-fill", () => {
+  it("pre-fills Step 1 from a fresh GET, and Step 2 to 'attach' with checks pre-populated for a real dedicated package", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard
+            existingAssessments={EXISTING_WITH_EDIT_TARGETS}
+            editingAssessment={EXISTING[0]!}
+            onClose={vi.fn()}
+          />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    expect((screen.getByLabelText("Slug") as HTMLInputElement).value).toBe("copilot-readiness-assessment");
+
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    // Step 2 pre-selected to "attach", targeting the real dedicated package.
+    await screen.findByText("Attach to existing package");
+    expect(await screen.findByText("assess:copilot-readiness")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    // Step 3 shown (edit + attach) and pre-populated from the real package's
+    // checks — appears both in the filter list and the "Selected" panel.
+    expect(await screen.findAllByText("Copilot usage activity")).toHaveLength(2);
+    expect(screen.getByText("Selected (1)")).toBeTruthy();
+  });
+
+  it("defaults Step 2 to 'create new' for a fallback assessment with no dedicated packageKey", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 10: FULL_ROW_FALLBACK },
+        checksByPackage: {},
+      }),
+    );
+
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard
+            existingAssessments={EXISTING_WITH_EDIT_TARGETS}
+            editingAssessment={EXISTING_WITH_EDIT_TARGETS.find((a) => a.id === 10)!}
+            onClose={vi.fn()}
+          />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Fallback Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    await screen.findByText("Create new package");
+    // "create" mode's own inputs are visible (not the attach list).
+    expect(screen.getByLabelText("Package name")).toBeTruthy();
+  });
+});
+
+describe("AssessmentCreationWizard — edit mode round-trips the full row", () => {
+  it("PUT body includes fields the wizard never manages, unchanged", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard existingAssessments={EXISTING_WITH_EDIT_TARGETS} editingAssessment={EXISTING[0]!} onClose={onClose} />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> Step 2
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> Step 3 (unchanged selection)
+    await screen.findAllByText("Copilot usage activity");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i })); // -> Step 4
+
+    fireEvent.click(await screen.findByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const putCall = fetchWithAuth.mock.calls.find((c) => c[0] === "/api/admin/services/1" && c[1]?.method === "PUT");
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse(putCall![1].body as string);
+    expect(body.iconName).toBe("Sparkles");
+    expect(body.tags).toEqual(["ai", "copilot"]);
+    expect(body.requiredAppPermissions).toEqual([{ scope: "User.Read", reason: "profile lookup" }]);
+    expect(body.priceCents).toBe(50000);
+    expect(body.internalCostCents).toBe(35000);
+    // Managed fields still reflect the (unedited) loaded values.
+    expect(body.name).toBe("Copilot Readiness Assessment");
+    expect(body.typeAttributes.packageKey).toBe("assess:copilot-readiness");
+
+    // Checks were never touched — no PUT to the package's checks endpoint.
+    expect(fetchWithAuth).not.toHaveBeenCalledWith(
+      "/api/admin/monitoring-packages/assess%3Acopilot-readiness/checks",
+      expect.objectContaining({ method: "PUT" }),
+    );
+  });
+});
+
+describe("AssessmentCreationWizard — shared-package edit warning", () => {
+  it("blocks submit until a save-vs-fork choice when checks change on a package used by 2+ assessments", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard existingAssessments={EXISTING_WITH_EDIT_TARGETS} editingAssessment={EXISTING[0]!} onClose={vi.fn()} />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Change the check selection.
+    fireEvent.click(await screen.findByText("MFA registration coverage"));
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    expect(await screen.findByText(/also backs another assessment/i)).toBeTruthy();
+
+    // Blocked: submit without choosing shows a toast and does not call PUT services.
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => {
+      expect(fetchWithAuth).not.toHaveBeenCalledWith("/api/admin/services/1", expect.objectContaining({ method: "PUT" }));
+    });
+  });
+
+  it("saves directly to the shared package when 'save to shared' is chosen", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard existingAssessments={EXISTING_WITH_EDIT_TARGETS} editingAssessment={EXISTING[0]!} onClose={onClose} />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    fireEvent.click(await screen.findByText("MFA registration coverage"));
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    fireEvent.click(await screen.findByText(/Save changes to the shared package/i));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const checksCall = fetchWithAuth.mock.calls.find(
+      (c) => c[0] === "/api/admin/monitoring-packages/assess%3Acopilot-readiness/checks" && c[1]?.method === "PUT",
+    );
+    expect(checksCall).toBeTruthy();
+    const checksBody = JSON.parse(checksCall![1].body as string);
+    expect(checksBody.checkKeys).toEqual(expect.arrayContaining(["copilot:usage-activity", "identity:mfa-registration"]));
+
+    const putCall = fetchWithAuth.mock.calls.find((c) => c[0] === "/api/admin/services/1" && c[1]?.method === "PUT");
+    expect(JSON.parse(putCall![1].body as string).typeAttributes.packageKey).toBe("assess:copilot-readiness");
+  });
+
+  it("forks a new package, repoints packageKey, and never mutates the shared package", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard existingAssessments={EXISTING_WITH_EDIT_TARGETS} editingAssessment={EXISTING[0]!} onClose={onClose} />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    fireEvent.click(await screen.findByText("MFA registration coverage"));
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    fireEvent.click(await screen.findByText(/Fork: create a new package/i));
+    fireEvent.change(screen.getByLabelText("Fork package key"), { target: { value: "assess:copilot-readiness-fork" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const forkPostCall = fetchWithAuth.mock.calls.find((c) => c[0] === "/api/admin/monitoring-packages" && c[1]?.method === "POST");
+    expect(forkPostCall).toBeTruthy();
+    expect(JSON.parse(forkPostCall![1].body as string).key).toBe("assess:copilot-readiness-fork");
+
+    const forkChecksCall = fetchWithAuth.mock.calls.find(
+      (c) => c[0] === "/api/admin/monitoring-packages/assess%3Acopilot-readiness-fork/checks" && c[1]?.method === "PUT",
+    );
+    expect(forkChecksCall).toBeTruthy();
+
+    // The shared package's own checks endpoint was NEVER written to.
+    expect(fetchWithAuth).not.toHaveBeenCalledWith(
+      "/api/admin/monitoring-packages/assess%3Acopilot-readiness/checks",
+      expect.objectContaining({ method: "PUT" }),
+    );
+
+    const putCall = fetchWithAuth.mock.calls.find((c) => c[0] === "/api/admin/services/1" && c[1]?.method === "PUT");
+    expect(JSON.parse(putCall![1].body as string).typeAttributes.packageKey).toBe("assess:copilot-readiness-fork");
+  });
+
+  it("does not trigger the warning for a single-owner package", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 3: FULL_ROW_SOLO },
+        checksByPackage: { "assess:solo-package": ["identity:mfa-registration"] },
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard
+            existingAssessments={EXISTING_WITH_EDIT_TARGETS}
+            editingAssessment={EXISTING_WITH_EDIT_TARGETS.find((a) => a.id === 3)!}
+            onClose={onClose}
+          />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Solo Package Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    fireEvent.click(await screen.findByText("Copilot usage activity")); // add a second check
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    expect(screen.queryByText(/also backs/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const checksCall = fetchWithAuth.mock.calls.find(
+      (c) => c[0] === "/api/admin/monitoring-packages/assess%3Asolo-package/checks" && c[1]?.method === "PUT",
+    );
+    expect(checksCall).toBeTruthy();
+  });
+
+  it("does not trigger the warning when the check list is unchanged", async () => {
+    fetchWithAuth.mockImplementation(
+      editModeFetchImpl({
+        fullRowsById: { 1: FULL_ROW_ATTACHED },
+        checksByPackage: { "assess:copilot-readiness": ["copilot:usage-activity"] },
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <AssessmentCreationWizard existingAssessments={EXISTING_WITH_EDIT_TARGETS} editingAssessment={EXISTING[0]!} onClose={onClose} />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await waitForEditLoaded("Copilot Readiness Assessment");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findByText("Attach to existing package");
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+    await screen.findAllByText("Copilot usage activity"); // leave selection untouched
+    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+
+    expect(screen.queryByText(/also backs/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    expect(fetchWithAuth).not.toHaveBeenCalledWith(
+      "/api/admin/monitoring-packages/assess%3Acopilot-readiness/checks",
+      expect.objectContaining({ method: "PUT" }),
+    );
+  });
+});
+
 describe("AssessmentCreationWizard — slug uniqueness", () => {
   it("blocks advancing past Step 1 when the derived slug collides with an existing assessment", async () => {
     renderWizard(EXISTING, vi.fn());

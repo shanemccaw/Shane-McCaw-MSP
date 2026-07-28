@@ -1909,8 +1909,10 @@ export function SimulatorLeftTree() {
             grouped Free/Paid on the real is_free_offering column. Read-only
             catalog + packageKey audit view (Phase 1); create wizard (Phase 5,
             #28) — right-click the section header or use the "+" button, both
-            open the same AssessmentCreationWizard via openModal. Edit/delete
-            of an existing assessment is still a later, not-yet-built phase. */}
+            open the same AssessmentCreationWizard via openModal. Per-row Edit
+            (Phase 6, #29) opens the same wizard in edit mode via
+            openModal("new-assessment", { assessments, editingAssessment }).
+            Delete is still a later, not-yet-built phase. */}
         {showAssessments && (
         <div>
           <ContextMenu>
@@ -1977,26 +1979,48 @@ export function SimulatorLeftTree() {
                       {(isSearching || expandedCats[`asmt:${group}`]) && (
                         <div className="ml-[22px] border-l border-accent">
                           {assessmentsByGroup[group]!.map((assessment) => (
-                            <div
-                              key={assessment.id}
-                              onClick={() => handleAssessmentSelect(assessment)}
-                              className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
-                                selectedAssessmentId === assessment.id ? "bg-accent text-foreground" : "text-foreground/85"
-                              }`}
-                            >
-                              <ListChecks className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
-                              <span className="flex-1 truncate text-[11px]" title={assessment.slug ?? assessment.name}>
-                                {assessment.name}
-                              </span>
-                              {!assessment.hasDedicatedPackage && (
-                                <span
-                                  className="shrink-0 text-[9px] uppercase tracking-wider text-destructive"
-                                  title="No dedicated packageKey — runs on the core:security-baseline fallback at scan time"
+                            <ContextMenu key={assessment.id}>
+                              <ContextMenuTrigger asChild>
+                                <div
+                                  onClick={() => handleAssessmentSelect(assessment)}
+                                  className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                    selectedAssessmentId === assessment.id ? "bg-accent text-foreground" : "text-foreground/85"
+                                  }`}
                                 >
-                                  ⚠️ no dedicated package
-                                </span>
-                              )}
-                            </div>
+                                  <ListChecks className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                                  <span className="flex-1 truncate text-[11px]" title={assessment.slug ?? assessment.name}>
+                                    {assessment.name}
+                                  </span>
+                                  {!assessment.hasDedicatedPackage && (
+                                    <span
+                                      className="shrink-0 text-[9px] uppercase tracking-wider text-destructive"
+                                      title="No dedicated packageKey — runs on the core:security-baseline fallback at scan time"
+                                    >
+                                      ⚠️ no dedicated package
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openModal("new-assessment", { assessments, editingAssessment: assessment });
+                                    }}
+                                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100"
+                                    title="Edit assessment"
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent className="w-44">
+                                <ContextMenuItem
+                                  onSelect={() => openModal("new-assessment", { assessments, editingAssessment: assessment })}
+                                  className="gap-2 text-xs"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                  Edit
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
                           ))}
                         </div>
                       )}

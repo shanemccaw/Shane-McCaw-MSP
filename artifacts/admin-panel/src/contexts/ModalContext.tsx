@@ -129,7 +129,11 @@ function ModalContainer() {
         {activeModal === "new-monitor-check" && <MonitorCheckEditorModal isNew={true} />}
         {activeModal === "edit-monitor-check" && <MonitorCheckEditorModal isNew={false} />}
         {activeModal === "new-assessment" && (
-          <AssessmentCreationWizard existingAssessments={modalData?.assessments ?? []} onClose={closeModal} />
+          <AssessmentCreationWizard
+            existingAssessments={modalData?.assessments ?? []}
+            editingAssessment={modalData?.editingAssessment ?? null}
+            onClose={closeModal}
+          />
         )}
       </DialogContent>
     </Dialog>
