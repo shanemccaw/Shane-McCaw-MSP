@@ -48,7 +48,7 @@ describe("buildMspTree", () => {
 });
 
 describe("buildGroupNodes", () => {
-  it("returns exactly the 5 locked RBAC roles, in order, even with no counts", () => {
+  it("returns exactly the 7 real MSP roles, in order, even with no counts", () => {
     const groups = buildGroupNodes([]);
     expect(groups.map((g) => g.role)).toEqual([...DIRECTORY_GROUP_ROLES]);
     expect(groups.every((g) => g.count === 0)).toBe(true);
@@ -58,16 +58,19 @@ describe("buildGroupNodes", () => {
     const groups = buildGroupNodes([
       { role: "MSPAdmin", count: 4 },
       { role: "CustomerUser", count: 57 },
+      { role: "Assessment", count: 12 },
     ]);
     expect(groups.find((g) => g.role === "MSPAdmin")?.count).toBe(4);
     expect(groups.find((g) => g.role === "CustomerUser")?.count).toBe(57);
+    expect(groups.find((g) => g.role === "Assessment")?.count).toBe(12);
     expect(groups.find((g) => g.role === "PlatformAdmin")?.count).toBe(0);
     expect(groups.find((g) => g.role === "ServiceAccount")?.count).toBe(0);
+    expect(groups.find((g) => g.role === "Free")?.count).toBe(0);
   });
 
-  it("ignores counts for a role outside the locked 5 (e.g. Free/Assessment)", () => {
+  it("includes Free with a live count", () => {
     const groups = buildGroupNodes([{ role: "Free", count: 900 }]);
-    expect(groups.map((g) => g.role)).not.toContain("Free");
+    expect(groups.find((g) => g.role === "Free")?.count).toBe(900);
   });
 });
 

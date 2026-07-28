@@ -67,9 +67,8 @@ export function buildMspTree(msps: MspRow[], customers: CustomerRow[]): MspTreeN
 
 // ── Groups (RBAC role nodes) ─────────────────────────────────────────────────
 //
-// Exactly the 5 roles named in Issue #61 / the plan file's Groups container —
-// deliberately excludes the schema's Free/Assessment roles, which are not
-// "accounts" in the directory-browser sense this phase models.
+// All 7 real MSP_ROLES values from the schema (lib/db/src/schema/msp.ts),
+// including Free and Assessment.
 
 export const DIRECTORY_GROUP_ROLES = [
   "PlatformAdmin",
@@ -77,6 +76,8 @@ export const DIRECTORY_GROUP_ROLES = [
   "MSPOperator",
   "CustomerUser",
   "ServiceAccount",
+  "Free",
+  "Assessment",
 ] as const;
 export type DirectoryGroupRole = (typeof DIRECTORY_GROUP_ROLES)[number];
 
