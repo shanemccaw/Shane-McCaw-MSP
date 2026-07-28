@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-28 | ⏳ IN FLIGHT | Simulator Studio Documents node | |
 | 2026-07-28 | ⏳ IN FLIGHT | Signal-category scoping for document generation | |
 | 2026-07-28 | ✅ DONE | Document Generator scoping visibility | e4237aa2 |
 | 2026-07-28 | ✅ DONE | Insights nav removal + dead banners — removed the `cmd-insights` entry (and now-unused `Lightbulb` icon import) from `workspaceNav.tsx`; stamped the standard "dead — do not use" banner on `admin-insights.ts`, `InsightsOutputs.tsx`, and `InsightsPayloadDialog.tsx` (left `DocumentTypePreviewDialog.tsx`/`collapsible-mono.tsx` untouched per Phase 1's extraction); marked Phases 1 and 2 Done in `docs/build-plans/document-generator-ide.md`. `npx tsc --noEmit` clean in admin-panel and api-server. Closes #41. | e5607df6 |
