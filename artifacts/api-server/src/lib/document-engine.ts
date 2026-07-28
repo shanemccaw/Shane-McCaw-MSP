@@ -4,12 +4,11 @@ import {
   documentTypesTable,
   insightsGeneratedDocumentsTable,
   mspCustomersTable,
-  mspUsersTable,
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { buildTenantProfile, type CategorizedFinding } from "./tenant-signals";
+import { buildTenantProfile, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
@@ -59,11 +58,35 @@ export function scopeFindingsBySignalCategory(
 const AI_KILL_SWITCH_ENABLED = false;
 
 export interface GenerateDocumentParams {
-  clientUserId: number;
+  /**
+   * The engine customer (`mspCustomersTable.id`) this document is generated FOR.
+   * This is the PRIMARY identity of a generation request: every real input the
+   * document is built from — the tenant profile, the findings, the MSP branding
+   * — is customer-scoped, never user-scoped.
+   *
+   * Deliberately NOT a `users.id`. This function no longer translates a portal
+   * user id into a customer id internally; a caller holding only a users.id
+   * resolves it at its own boundary via `resolveCustomerIdForPortalUser()` and
+   * passes the result here, and a caller that already knows the tenant (an admin
+   * tenant picker, a tenant-scoped job) passes it straight through with no user
+   * id involved at all.
+   */
+  mspCustomerId: number;
   projectId: number;
   docTypeKey: string;
   testMode?: boolean;
   dryRun?: boolean;
+  /**
+   * The `users.id` to stamp on the generated row's `customerId` FK (which is a
+   * users.id-shaped column, not a customer id — see the schema).
+   *
+   * Optional. Callers entering from a real logged-in user pass theirs so the
+   * document lands under exactly the login it did before this parameter existed;
+   * omitted, it defaults to the customer's canonical document owner via
+   * `resolveDocumentOwnerUserId()`. Reads of these documents are already
+   * customer-scoped, so either way the whole customer can see the result.
+   */
+  documentOwnerUserId?: number;
   /** When provided, used directly instead of fetching the published prompt
    *  from ai_prompts — lets an admin test an unsaved draft prompt body
    *  against real AI/real data before publishing it. */
@@ -92,23 +115,30 @@ function matchesProfilePattern(key: string, pattern: string): boolean {
   return key.toLowerCase() === pattern.toLowerCase();
 }
 
-// Intentionally duplicated from document-generator.ts's private, non-exported
-// resolveEngineCustomerId rather than importing it — same reasoning as the kill
-// switch above. Bridges a portal users.id to the engine's msp_customers.id.
-async function resolveEngineCustomerId(clientUserId: number): Promise<number | null> {
-  const [row] = await db
-    .select({ customerId: mspCustomersTable.id })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, clientUserId))
+/**
+ * Resolves the MSP branding (name + primary color) for an engine customer.
+ * Shared by the dry-run and real branches so a preview can never be branded
+ * differently from the document that gets generated.
+ */
+async function resolveMspBranding(mspCustomerId: number): Promise<{ mspName: string | null; mspPrimaryColor: string | null }> {
+  const [customerRow] = await db
+    .select({ mspId: mspCustomersTable.mspId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, mspCustomerId))
     .limit(1);
-  return row?.customerId ?? null;
+  if (customerRow?.mspId == null) return { mspName: null, mspPrimaryColor: null };
+  const [msp] = await db
+    .select({ name: mspsTable.name, primaryColor: mspsTable.primaryColor })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, customerRow.mspId))
+    .limit(1);
+  return { mspName: msp?.name ?? null, mspPrimaryColor: msp?.primaryColor ?? null };
 }
 
 export async function generateDocument(params: GenerateDocumentParams & { dryRun: true }): Promise<DryRunDocumentResult>;
 export async function generateDocument(params: GenerateDocumentParams & { dryRun?: false }): Promise<GenerateDocumentResult>;
 export async function generateDocument(params: GenerateDocumentParams): Promise<GenerateDocumentResult | DryRunDocumentResult> {
-  const { clientUserId, projectId, docTypeKey, testMode = false } = params;
+  const { mspCustomerId, projectId, docTypeKey, testMode = false } = params;
 
   const [docTypeRow] = await db.select().from(documentTypesTable).where(eq(documentTypesTable.key, docTypeKey)).limit(1);
   if (!docTypeRow) throw new Error(`document-engine: unknown document type "${docTypeKey}"`);
@@ -117,27 +147,12 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
   }
 
   if (params.dryRun) {
-    const mspCustomerId = await resolveEngineCustomerId(clientUserId);
-    let mspName: string | null = null;
-    let mspPrimaryColor: string | null = null;
-    if (mspCustomerId != null) {
-      const [customerRow] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerId)).limit(1);
-      if (customerRow?.mspId != null) {
-        const [msp] = await db.select({ name: mspsTable.name, primaryColor: mspsTable.primaryColor }).from(mspsTable).where(eq(mspsTable.id, customerRow.mspId)).limit(1);
-        mspName = msp?.name ?? null;
-        mspPrimaryColor = msp?.primaryColor ?? null;
-      }
-    }
+    const { mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
 
-    let mergedProfile: Record<string, unknown> = {};
-    let findings: string[] = [];
-    let categorizedFindings: CategorizedFinding[] = [];
-    if (mspCustomerId != null) {
-      const tenantProfile = await buildTenantProfile(mspCustomerId);
-      mergedProfile = tenantProfile.mergedProfile;
-      findings = tenantProfile.findings;
-      categorizedFindings = tenantProfile.categorizedFindings;
-    }
+    const tenantProfile = await buildTenantProfile(mspCustomerId);
+    const mergedProfile: Record<string, unknown> = tenantProfile.mergedProfile;
+    const findings: string[] = tenantProfile.findings;
+    const categorizedFindings: CategorizedFinding[] = tenantProfile.categorizedFindings;
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
     const scopedProfileEntries = profilePatterns.length > 0
       ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
@@ -148,7 +163,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     if (signalCategories.length > 0) {
       scopeLog.info(
         {
-          clientUserId, projectId, docTypeKey, dryRun: true,
+          mspCustomerId, projectId, docTypeKey, dryRun: true,
           includedSignalCategories: signalCategories,
           findingsTotal: findings.length,
           findingsKept: scopedFindings.length,
@@ -185,15 +200,23 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     const stylePrefix = await getDocumentStylePrefix();
 
-    log.info({ clientUserId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
+    log.info({ mspCustomerId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
 
     return { dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey };
   }
 
+  // `insights_generated_documents.customerId` is a users.id-shaped FK, so the
+  // customer-first request still has to name a document owner. An explicit
+  // documentOwnerUserId from the caller wins (ownership stays exactly what it
+  // was for user-entry-point callers); otherwise the customer's canonical owner
+  // is resolved. Null is a legal value here (the FK is nullable) and only
+  // happens for a customer with no linked portal user at all.
+  const documentOwnerUserId = params.documentOwnerUserId ?? await resolveDocumentOwnerUserId(mspCustomerId);
+
   // Insert a "generating" placeholder immediately so the UI has something real
   // to poll/display before the (potentially multi-minute) AI call even starts.
   const [placeholderRow] = await db.insert(insightsGeneratedDocumentsTable).values({
-    customerId: clientUserId,
+    customerId: documentOwnerUserId,
     projectId,
     category: docTypeRow.category,
     docType: docTypeKey,
@@ -205,36 +228,13 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
   try {
     // Resolve real MSP branding
-    const mspCustomerId = await resolveEngineCustomerId(clientUserId);
-    let mspName: string | null = null;
-    let mspPrimaryColor: string | null = null;
-    if (mspCustomerId != null) {
-      const [customerRow] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, mspCustomerId))
-        .limit(1);
-      if (customerRow?.mspId != null) {
-        const [msp] = await db
-          .select({ name: mspsTable.name, primaryColor: mspsTable.primaryColor })
-          .from(mspsTable)
-          .where(eq(mspsTable.id, customerRow.mspId))
-          .limit(1);
-        mspName = msp?.name ?? null;
-        mspPrimaryColor = msp?.primaryColor ?? null;
-      }
-    }
+    const { mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
 
     // Real tenant profile + scoping
-    let mergedProfile: Record<string, unknown> = {};
-    let findings: string[] = [];
-    let categorizedFindings: CategorizedFinding[] = [];
-    if (mspCustomerId != null) {
-      const tenantProfile = await buildTenantProfile(mspCustomerId);
-      mergedProfile = tenantProfile.mergedProfile;
-      findings = tenantProfile.findings;
-      categorizedFindings = tenantProfile.categorizedFindings;
-    }
+    const tenantProfile = await buildTenantProfile(mspCustomerId);
+    const mergedProfile: Record<string, unknown> = tenantProfile.mergedProfile;
+    const findings: string[] = tenantProfile.findings;
+    const categorizedFindings: CategorizedFinding[] = tenantProfile.categorizedFindings;
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
     const scopedProfileEntries = profilePatterns.length > 0
       ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
@@ -255,7 +255,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     if (signalCategories.length > 0) {
       scopeLog.info(
         {
-          clientUserId, projectId, docTypeKey, documentId, dryRun: false,
+          mspCustomerId, projectId, docTypeKey, documentId, dryRun: false,
           includedSignalCategories: signalCategories,
           findingsTotal: findings.length,
           findingsKept: scopedFindings.length,
@@ -317,7 +317,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       .where(eq(insightsGeneratedDocumentsTable.id, documentId));
 
     log.info(
-      { clientUserId, projectId, documentId, docTypeKey, testMode },
+      { mspCustomerId, documentOwnerUserId, projectId, documentId, docTypeKey, testMode },
       "document-engine: standalone document generated",
     );
 

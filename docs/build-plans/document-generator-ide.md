@@ -75,7 +75,12 @@ Phase 3's create call path rather than a second one.
 | 4 | Missing Document Types panel | Done | #44 |
 | 5 | Scoping visibility — unscoped warning + create-time editors | Done | #46 |
 | 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
-| 7 | Simulator Studio Documents node | Done (TBD) | — |
+| 7 | Simulator Studio Documents node | Done (ef7ba2a3) | — |
+| 8 | Tenant-first document generation signature | Done (TBD) | #47 |
+| 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Open | — |
+| 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
+| 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
+| 12 | Tenant-first `admin-ai-prompts` test-draft surface | Open | — |
 
 
 ## Notes
@@ -181,6 +186,89 @@ What was built:
 
 No other Simulator Studio section (Assessments, Config Packs, Write Actions,
 Monitor Checks, etc.) was touched — purely additive.
+
+## Phase 8 — Tenant-first document generation signature
+Flips the primary parameter of the shared generation entry points from a portal
+user to the tenant they belong to. `generateDocument()` / `generateSowDocument()`
+now take `mspCustomerId` (an `msp_customers.id`) and no longer translate a
+`users.id` into one internally.
+
+**Why it mattered:** every real input a document is built from — the tenant
+profile, the findings, the MSP branding, the Sales Offer Engine's candidates —
+is customer-scoped. Taking a `users.id` and privately resolving it meant the
+engines could only ever be driven from user-shaped entry points, which is what
+kept document generation from being drivable by tenant at all.
+
+**Audit first (mandatory step 1, done before any code).** Repo-wide grep of every
+`generateDocument(` / `generateSowDocument(` call site, cross-checked with a
+second `grep -rn` pass through Bash because the Grep tool is known to silently
+skip the 9899-line `workflow-executor.ts` in directory sweeps — and it did skip
+it again here, so the second pass was what surfaced the executor's two call
+sites. **8 real call sites across 5 files**, every one of which had only a
+`users.id` available and NONE of which had an `mspCustomerId` already resolved:
+
+| Call site | Identifier it had |
+|---|---|
+| `workflow-executor.ts:2320` `generateSowDocument` | `clientUserId` from the node payload |
+| `workflow-executor.ts:2321` `generateDocument` | `clientUserId` from the node payload |
+| `admin-ai-prompts.ts:217` `generateSowDocument` (test-draft, pipeline_output) | `clientUserId` from the request body |
+| `admin-ai-prompts.ts:229` `generateDocument` (test-draft, standalone) | `clientUserId` from the request body |
+| `admin-ai-prompts.ts:254` `generateSowDocument` (pricing-formula prompt) | `clientUserId` from the request body |
+| `admin-document-generator.ts:103/104` (real generate) | `clientUserId` from the request body |
+| `admin-document-types.ts:216/217` (dry-run preview) | `clientUserId` from the query string |
+| `portal-assessment.ts:1267` `generateSowDocument` (SOW rescope) | `userId` from the logged-in token |
+
+Ruled out as false positives: `msp-sow.ts:1178` and `portal-checkout.ts:135`
+each define their own unrelated LOCAL `generateSowDocument(opts)` HTML-string
+builder, and `admin-insights.ts` / `InsightsOutputs.tsx` / the `lib/db` schema
+carry a `generateDocument` BOOLEAN column of the same name.
+
+**The audit's key finding — `clientUserId` was doing two jobs, not one.** It was
+the customer lookup key, but it was ALSO stamped directly onto
+`insights_generated_documents.customerId`, which is a nullable `users.id`-shaped
+FK, and it fed `resolveSiblingUserIds()` for prior-document grounding. So this
+was never a pure rename; the customer-first signature still has to name a
+document owner.
+
+What was built:
+- `resolveCustomerIdForPortalUser()` (tenant-signals.ts) — the `users.id ->
+  msp_customers.id` translation, exported ONCE, beside the other bridge helpers
+  and the exact inverse of the `resolveCustomerPortalUserId()` already there. It
+  had been duplicated privately in three files; the two engines' copies are gone.
+- `resolveDocumentOwnerUserId()` (tenant-signals.ts) — the `users.id` to stamp on
+  a generated document. Prefers the canonical ACTIVE portal user, falls back to
+  the canonical-order first linked login even if deactivated (a NULL FK would
+  make the document unfindable by every customer-scoped read), null only when
+  the customer has no linked portal user at all.
+- `GenerateDocumentParams` / `GenerateSowParams` — `mspCustomerId: number`
+  replaces `clientUserId`, plus an optional `documentOwnerUserId?: number`. Every
+  existing caller passes its `users.id` through that field, so which login owns a
+  generated document is byte-for-byte unchanged by this phase. It exists so a
+  signature change couldn't silently re-attribute documents; Phase 11 retires it.
+- Both engines' private `resolveEngineCustomerId()` deleted. The SOW engine's
+  two `resolveSiblingUserIds(clientUserId)` grounding reads became one
+  `resolveCustomerUserIds(mspCustomerId)` resolved up front — the same set,
+  reached from the customer directly instead of bouncing off one arbitrary login.
+- Every caller resolves at its OWN boundary and reports a real error when a user
+  has no engine customer, instead of the engine silently generating against an
+  empty tenant profile: workflow-executor fails the node with a message naming
+  the client, the three admin routes 404, and the portal route 409s with
+  customer-safe wording.
+
+**Phase 10 (tenant picker) had not landed, so the two admin routes still accept
+`clientUserId` — deliberately, and only at the boundary.** The Document
+Generator IDE's only picker is `GET /admin/clients`, which is user-shaped, so
+nothing in the UI could supply a customer id yet; changing the HTTP contract now
+would break the page for a field no caller can populate. No frontend file
+changed. Each route resolves in one line that becomes a one-line deletion when
+the picker lands.
+
+Also collapsed, because the change made them dead: the two `if (mspCustomerId !=
+null)` guards in `document-engine.ts` (the id is now required, so it can't be
+null) and the duplicated MSP-branding lookup they wrapped, extracted to one
+`resolveMspBranding()` shared by the dry-run and real branches so a preview can
+never be branded differently from the document. Dry-run/preview behavior is
+otherwise untouched.
 
 ## Open Issues
 **Phase 6 — script-run findings can never be category-scoped (permanent).**

@@ -28,6 +28,7 @@ export default defineConfig({
       "src/lib/telemetry-retention-nodes.test.ts",
       "src/lib/tenant-signals.test.ts",
       "src/lib/tenant-signals-stabilization.test.ts",
+      "src/lib/tenant-signals-customer-bridge.test.ts",
       "src/lib/build-tenant-profile.test.ts",
       "src/lib/document-engine-signal-scoping.test.ts",
       "src/lib/drift-engine.test.ts",

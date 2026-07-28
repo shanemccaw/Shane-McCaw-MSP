@@ -7,6 +7,7 @@ const log = logger.child({ channel: "admin.content" });
 import { getDefaultPromptMeta } from "../lib/prompt-loader";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
 
 const router = Router();
 
@@ -205,6 +206,16 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
 
   const key = prompt.key;
 
+  // The document engines are tenant-first — they take the engine customer, not a
+  // portal user. This route's picker is still user-shaped, so the users.id →
+  // msp_customers.id translation happens here, at the route boundary, and
+  // reports a real 404 when the chosen user has no engine customer behind it.
+  const mspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+  if (mspCustomerId == null) {
+    res.status(404).json({ error: `Client ${clientUserId} is not linked to an MSP customer — there is no tenant to test this prompt against` });
+    return;
+  }
+
   try {
     const [docTypeRow] = await db
       .select({ key: documentTypesTable.key, pipelineCategory: documentTypesTable.pipelineCategory })
@@ -215,7 +226,8 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
     if (docTypeRow) {
       if (docTypeRow.pipelineCategory === "pipeline_output") {
         const result = await generateSowDocument({
-          clientUserId,
+          mspCustomerId,
+          documentOwnerUserId: clientUserId,
           projectId: projectId ?? 0,
           docTypeKey: docTypeRow.key,
           promptOverride: testBody,
@@ -227,7 +239,8 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
 
       if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
       const result = await generateDocument({
-        clientUserId,
+        mspCustomerId,
+        documentOwnerUserId: clientUserId,
         projectId,
         docTypeKey: docTypeRow.key,
         promptOverride: testBody,
@@ -252,7 +265,8 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
         return;
       }
       const result = await generateSowDocument({
-        clientUserId,
+        mspCustomerId,
+        documentOwnerUserId: clientUserId,
         projectId: projectId ?? 0,
         docTypeKey: sowType.key,
         pricingFormulaOverride: testBody,

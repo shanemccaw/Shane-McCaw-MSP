@@ -178,6 +178,51 @@ export async function resolveSiblingUserIds(clientUserId: number): Promise<numbe
   return siblings.includes(clientUserId) ? siblings : [...siblings, clientUserId];
 }
 
+/**
+ * The engine customerId (`mspCustomersTable.id`) a portal user (`usersTable.id`)
+ * belongs to, via the `msp_users` bridge. The exact inverse of
+ * `resolveCustomerPortalUserId` above, and the single shared implementation of a
+ * translation that used to be duplicated privately inside `document-engine.ts`,
+ * `document-engine-sow.ts`, and `document-generator.ts`.
+ *
+ * Lives here, beside the other bridge helpers, because it belongs at a CALLER's
+ * boundary, not inside an engine: an engine that takes a users.id and silently
+ * translates it can only ever serve user-shaped entry points, which is what kept
+ * document generation from being drivable by tenant. Callers holding a
+ * `mspCustomersTable.id` already (an admin tenant picker, a tenant-scoped job)
+ * must NOT round-trip through a user id — they pass the customer id straight in.
+ *
+ * Returns null when the user has no bridge row (a direct-business or unclaimed
+ * user with no engine customer) — a real state, not an error, and the caller
+ * decides how to report it.
+ */
+export async function resolveCustomerIdForPortalUser(clientUserId: number): Promise<number | null> {
+  const [row] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, clientUserId))
+    .limit(1);
+  return row?.customerId ?? null;
+}
+
+/**
+ * The users.id to stamp on a generated document's `insights_generated_documents
+ * .customerId` FK for a given engine customer.
+ *
+ * Prefers the canonical ACTIVE portal user; falls back to the canonical-order
+ * first linked login even if deactivated, so a customer whose only logins have
+ * been deactivated still OWNS its documents rather than getting a NULL FK that
+ * no customer-scoped read (`inArray(customerId, resolveCustomerUserIds(...))`)
+ * could ever find again. Null only when the customer has no linked portal user
+ * at all — the FK is nullable, so that document is still created, just unowned.
+ */
+export async function resolveDocumentOwnerUserId(customerId: number): Promise<number | null> {
+  const active = await resolveCustomerPortalUserId(customerId);
+  if (active != null) return active;
+  const all = await resolveCustomerUserIds(customerId);
+  return all[0] ?? null;
+}
+
 // ─── Monitor-profile merge (shared by every signal-evaluation assembly site) ──
 //
 // The Graph-based diagnostics/monitoring pipeline writes one

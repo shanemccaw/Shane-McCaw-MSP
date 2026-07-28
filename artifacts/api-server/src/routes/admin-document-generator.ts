@@ -23,6 +23,7 @@ import { eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -76,6 +77,19 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
 });
 
 // ── Generate (real, persisting) ─────────────────────────────────────────────
+//
+// Still takes `clientUserId` — deliberately, as an INTERIM step.
+//
+// The document engines are now tenant-first (they take an `mspCustomerId`), and
+// the right end state for this route is to take one directly. It can't yet: the
+// only picker the Document Generator IDE has is `GET /admin/clients`, which is
+// user-shaped, so there is nothing in the UI that could supply a customer id.
+// Changing the contract now would break the page for the sake of a field no
+// caller can populate. So the users.id → msp_customers.id translation happens
+// here, at the route boundary, instead of hidden inside the engine — which is
+// the actual point of the change: the engine no longer does it, exactly one
+// caller-side line does, and it becomes a one-line deletion the moment the
+// tenant picker lands (Phase 10).
 
 router.post("/admin/document-generator/document-types/:key/generate", requireAdmin, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "");
@@ -97,13 +111,19 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
     if (!docTypeRow) { res.status(404).json({ error: `Unknown document type "${key}"` }); return; }
     if (!docTypeRow.isActive) { res.status(400).json({ error: `Document type "${key}" is not active` }); return; }
 
-    log.info({ key, clientUserId, projectId, actor: req.user?.email }, "admin-document-generator: generate requested");
+    const mspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+    if (mspCustomerId == null) {
+      res.status(404).json({ error: `Client ${clientUserId} is not linked to an MSP customer — there is no tenant to generate a document against` });
+      return;
+    }
+
+    log.info({ key, clientUserId, mspCustomerId, projectId, actor: req.user?.email }, "admin-document-generator: generate requested");
 
     const result = docTypeRow.pipelineCategory === "pipeline_output"
-      ? await generateSowDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key })
-      : await generateDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key });
+      ? await generateSowDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key })
+      : await generateDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key });
 
-    log.info({ key, clientUserId, documentId: result.documentId }, "admin-document-generator: generate completed");
+    log.info({ key, clientUserId, mspCustomerId, documentId: result.documentId }, "admin-document-generator: generate completed");
     res.json({ documentId: result.documentId, htmlContent: result.htmlContent, docTypeKey: key });
   } catch (err) {
     log.error({ err, key, clientUserId }, "admin-document-generator: generate failed");

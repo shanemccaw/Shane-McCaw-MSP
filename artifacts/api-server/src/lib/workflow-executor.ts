@@ -78,7 +78,7 @@ import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, bro
 import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow";
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
-import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveCustomerIdForPortalUser, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
@@ -2315,10 +2315,23 @@ async function executeNode(
               }
 
               try {
+                // The engines are tenant-first: they take the engine customer,
+                // not a portal user. This node's payload only carries a
+                // clientId (users.id), so the users.id → msp_customers.id
+                // translation happens HERE, at the caller's boundary, and
+                // fails the node with a real message when the user has no
+                // engine customer — rather than the engine silently generating
+                // a document with an empty tenant profile.
+                const nodeMspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+                if (nodeMspCustomerId == null) {
+                  throw new Error(`generate_document: client ${clientUserId} is not linked to an MSP customer, so there is no tenant to generate against`);
+                }
                 const isPipelineOutput = docTypeRow.pipelineCategory === "pipeline_output";
+                // documentOwnerUserId keeps the generated row owned by the exact
+                // login this run is for, unchanged from before the signature flip.
                 const engineResult = isPipelineOutput
-                  ? await generateSowDocument({ clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType })
-                  : await generateDocument({ clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType });
+                  ? await generateSowDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType })
+                  : await generateDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType });
 
                 await db.update(insightsGeneratedDocumentsTable)
                   .set({ pdfUrl: `/api/admin/insights/documents/${engineResult.documentId}/download` })

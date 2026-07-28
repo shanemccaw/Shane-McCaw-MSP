@@ -4,7 +4,6 @@ import {
   documentTypesTable,
   insightsGeneratedDocumentsTable,
   mspCustomersTable,
-  mspUsersTable,
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
@@ -13,7 +12,7 @@ import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
-import { resolveSiblingUserIds } from "./tenant-signals";
+import { resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels";
 
@@ -29,7 +28,25 @@ const AI_KILL_SWITCH_ENABLED = false;
 const MAX_PRIOR_FINDINGS = 30;
 
 export interface GenerateSowParams {
-  clientUserId: number;
+  /**
+   * The engine customer (`mspCustomersTable.id`) this SOW is generated FOR — the
+   * PRIMARY identity of the request. The Sales Offer Engine, the tenant's mspId,
+   * and the prior-document grounding set are all customer-scoped, so the customer
+   * is what this function actually needs; a users.id was only ever a way to look
+   * one up.
+   *
+   * Deliberately NOT a `users.id`. This function no longer translates a portal
+   * user id into a customer id internally — a caller holding only a users.id
+   * resolves it at its own boundary via `resolveCustomerIdForPortalUser()`.
+   */
+  mspCustomerId: number;
+  /**
+   * The `users.id` to stamp on the generated row's `customerId` FK (a
+   * users.id-shaped column). Optional — callers entering from a real logged-in
+   * user pass theirs so ownership is unchanged; omitted, the customer's
+   * canonical owner is resolved via `resolveDocumentOwnerUserId()`.
+   */
+  documentOwnerUserId?: number;
   projectId: number;
   // Expected to be "sow" in practice, but resolved generically via document_types
   // below rather than hardcoded, so any pipeline_output type can reuse this path.
@@ -78,23 +95,32 @@ export interface DryRunSowResult {
   promptKey: string;
 }
 
-// Intentionally duplicated from document-engine.ts's private, non-exported
-// resolveEngineCustomerId rather than importing it — same reasoning as the kill
-// switch above. Bridges a portal users.id to the engine's msp_customers.id.
-async function resolveEngineCustomerId(clientUserId: number): Promise<number | null> {
-  const [row] = await db
-    .select({ customerId: mspCustomersTable.id })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, clientUserId))
-    .limit(1);
-  return row?.customerId ?? null;
+/**
+ * The users.id read key for this customer's prior documents.
+ *
+ * `insights_generated_documents.customerId` is a users.id-shaped FK, so reading
+ * "the customer's prior documents" means reading across every login linked to
+ * the customer. `resolveCustomerUserIds()` is the canonical customer-scoped
+ * form of the `resolveSiblingUserIds()` call this used to make from a users.id
+ * entry point — same set, reached from the customer directly instead of
+ * bouncing off one arbitrary login.
+ *
+ * An explicit `documentOwnerUserId` is unioned in so a caller entering from a
+ * login that (for any data reason) has no bridge row still sees its own prior
+ * documents, exactly as `resolveSiblingUserIds()` guaranteed by always including
+ * its input. Can legitimately return an EMPTY array for a customer with no
+ * linked portal user — callers must not feed an empty array to `inArray`.
+ */
+async function resolveGroundingOwnerUserIds(mspCustomerId: number, documentOwnerUserId?: number): Promise<number[]> {
+  const ids = await resolveCustomerUserIds(mspCustomerId);
+  if (documentOwnerUserId != null && !ids.includes(documentOwnerUserId)) return [...ids, documentOwnerUserId];
+  return ids;
 }
 
 export async function generateSowDocument(params: GenerateSowParams & { dryRun: true }): Promise<DryRunSowResult>;
 export async function generateSowDocument(params: GenerateSowParams & { dryRun?: false }): Promise<GenerateSowResult>;
 export async function generateSowDocument(params: GenerateSowParams): Promise<GenerateSowResult | DryRunSowResult> {
-  const { clientUserId, projectId, docTypeKey, testMode = false } = params;
+  const { mspCustomerId, projectId, docTypeKey, testMode = false } = params;
 
   let documentId: number | null = null;
 
@@ -106,15 +132,13 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     }
 
     if (params.dryRun) {
-      const mspCustomerIdDry = await resolveEngineCustomerId(clientUserId);
-      if (mspCustomerIdDry == null) {
-        throw new Error(`document-engine-sow: no msp_customers row found for clientUserId ${clientUserId}`);
-      }
-      const [customerRowDry] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerIdDry)).limit(1);
+      const [customerRowDry] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerId)).limit(1);
       const resolvedMspIdDry = customerRowDry?.mspId ?? null;
 
-      const groundingOwnerUserIdsDry = await resolveSiblingUserIds(clientUserId);
-      const priorDocsDry = await db
+      const groundingOwnerUserIdsDry = await resolveGroundingOwnerUserIds(mspCustomerId, params.documentOwnerUserId);
+      // A customer with no linked portal user has no prior documents to ground
+      // on — skip the query rather than handing `inArray` an empty set.
+      const priorDocsDry = groundingOwnerUserIdsDry.length === 0 ? [] : await db
         .select({ generationInput: insightsGeneratedDocumentsTable.generationInput })
         .from(insightsGeneratedDocumentsTable)
         .innerJoin(documentTypesTable, eq(documentTypesTable.key, insightsGeneratedDocumentsTable.docType))
@@ -138,7 +162,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         ? priorFindingsDry.map((f, i) => `${i + 1}. ${f}`).join("\n")
         : "No prior documents have been generated for this client/project. Do NOT invent findings.";
 
-      const salesOfferOutputDry = await runSalesOfferEngineForTenant(mspCustomerIdDry, resolvedMspIdDry);
+      const salesOfferOutputDry = await runSalesOfferEngineForTenant(mspCustomerId, resolvedMspIdDry);
       const candidatesDry = salesOfferOutputDry.candidates;
 
       const candidatesBlockDry = candidatesDry.length > 0
@@ -167,7 +191,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
 
       const stylePrefixDry = await getDocumentStylePrefix();
 
-      log.info({ clientUserId, projectId, docTypeKey }, "document-engine-sow: dry-run preview assembled (no AI call, no DB write)");
+      log.info({ mspCustomerId, projectId, docTypeKey }, "document-engine-sow: dry-run preview assembled (no AI call, no DB write)");
 
       return {
         dryRun: true,
@@ -186,8 +210,14 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       };
     }
 
+    // Resolve the document owner + the customer's full users.id read key once,
+    // up front: the placeholder insert, the prior-doc supersede lookup, and the
+    // grounding read all need them, and they must agree with each other.
+    const groundingOwnerUserIds = await resolveGroundingOwnerUserIds(mspCustomerId, params.documentOwnerUserId);
+    const documentOwnerUserId = params.documentOwnerUserId ?? await resolveDocumentOwnerUserId(mspCustomerId);
+
     const [placeholderRow] = await db.insert(insightsGeneratedDocumentsTable).values({
-      customerId: clientUserId,
+      customerId: documentOwnerUserId,
       projectId,
       category: docTypeRow.category,
       docType: docTypeKey,
@@ -203,12 +233,11 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     // supersede on success. Never matches the placeholder just created above (it has
     // status "generating", not in this set).
     let priorDocId: number | null = null;
-    {
-      const priorGroundingOwnerUserIds = await resolveSiblingUserIds(clientUserId);
+    if (groundingOwnerUserIds.length > 0) {
       const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
         .from(insightsGeneratedDocumentsTable)
         .where(and(
-          inArray(insightsGeneratedDocumentsTable.customerId, priorGroundingOwnerUserIds),
+          inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIds),
           eq(insightsGeneratedDocumentsTable.projectId, projectId),
           eq(insightsGeneratedDocumentsTable.docType, docTypeKey),
           inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
@@ -222,13 +251,10 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     // the resulting SOW's pricing table back (requiresSowHtml === true) is separate
     // follow-up work, not handled by this function.
 
-    // Resolve the real msp_customers.id, then the customer's real mspId — the Sales
-    // Offer Engine is the sole authority on which projects to scope, and both are
-    // required inputs to run it.
-    const mspCustomerId = await resolveEngineCustomerId(clientUserId);
-    if (mspCustomerId == null) {
-      throw new Error(`document-engine-sow: no msp_customers row found for clientUserId ${clientUserId}`);
-    }
+    // The customer's real mspId — the Sales Offer Engine is the sole authority on
+    // which projects to scope, and both it and the customer id are required
+    // inputs to run it. The customer id now arrives as a parameter rather than
+    // being translated out of a users.id here.
     const [customerRow] = await db
       .select({ mspId: mspCustomersTable.mspId })
       .from(mspCustomersTable)
@@ -242,9 +268,9 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     // standalone doc generated under any sibling login of the same customer
     // (insights_generated_documents.customerId is a users.id-shaped FK) still
     // grounds this SOW — never silently empty grounding because an earlier doc
-    // landed under a different linked user.
-    const groundingOwnerUserIds = await resolveSiblingUserIds(clientUserId);
-    const priorDocs = await db
+    // landed under a different linked user. `groundingOwnerUserIds` was resolved
+    // from the customer up front, above.
+    const priorDocs = groundingOwnerUserIds.length === 0 ? [] : await db
       .select({
         generationInput: insightsGeneratedDocumentsTable.generationInput,
       })
@@ -365,7 +391,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     }
 
     log.info(
-      { clientUserId, projectId, documentId, docTypeKey, testMode },
+      { mspCustomerId, documentOwnerUserId, projectId, documentId, docTypeKey, testMode },
       "document-engine-sow: SOW document generated",
     );
 
@@ -376,7 +402,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     return { documentId, htmlContent };
   } catch (err) {
     log.error(
-      { clientUserId, projectId, docTypeKey, testMode, err },
+      { mspCustomerId, projectId, docTypeKey, testMode, err },
       "document-engine-sow: SOW generation failed",
     );
     if (typeof documentId === "number") {

@@ -28,6 +28,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { invalidateDocumentTypeCache } from "../lib/document-types";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "system.core" });
 import { z } from "zod";
@@ -212,9 +213,19 @@ router.get("/admin/document-types/:key/preview", requireAdmin, async (req: Reque
       return;
     }
 
+    // Tenant-first engines: the users.id → msp_customers.id translation the
+    // engine used to do internally now happens here, at the route boundary.
+    // Interim, like the generate route — this preview's picker is still
+    // user-shaped (`clientUserId` query param) until the tenant picker lands.
+    const mspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+    if (mspCustomerId == null) {
+      res.status(404).json({ error: `Client ${clientUserId} is not linked to an MSP customer — there is no tenant to preview against` });
+      return;
+    }
+
     const result = docTypeRow.pipelineCategory === "pipeline_output"
-      ? await generateSowDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
-      : await generateDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
+      ? await generateSowDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
+      : await generateDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
 
     res.json({ preview: result });
   } catch (err) {

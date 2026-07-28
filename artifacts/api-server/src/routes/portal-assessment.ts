@@ -88,7 +88,7 @@ import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-g
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
-import { resolveSiblingUserIds } from "../lib/tenant-signals";
+import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin";
 
@@ -1260,12 +1260,28 @@ router.post(
         "portal/assessment/sow/select: regenerating SOW for new customer scope selection",
       );
 
+      // This is the "logged-in customer requests their own document" case: the
+      // route only ever knows the portal user on the token, so the users.id →
+      // msp_customers.id translation the SOW engine used to do internally now
+      // happens here, before the call. A customer with no engine tenant can't
+      // have a SOW regenerated at all, so it's a real 409, not a silent
+      // empty-scope generation.
+      const mspCustomerId = await resolveCustomerIdForPortalUser(userId);
+      if (mspCustomerId == null) {
+        log.error({ userId }, "portal/assessment/sow/select: no MSP customer linked to this portal user");
+        res.status(409).json({ error: "Your account isn't linked to a tenant yet, so the statement of work can't be updated." });
+        return;
+      }
+
       let responded = false;
       let onRow: (docId: number) => void = () => {};
       const rowReady = new Promise<number>((resolve, reject) => {
         onRow = (docId: number) => resolve(docId);
         void generateSowDocument({
-          clientUserId: userId,
+          mspCustomerId,
+          // Keeps the regenerated SOW owned by the same login that owned the
+          // one it supersedes — unchanged from before the signature flip.
+          documentOwnerUserId: userId,
           projectId: projectId ?? 0,
           docTypeKey: SOW_DOC_TYPE,
           selectedWorkstreamTitles: requested,
