@@ -28,7 +28,7 @@ import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, next
 import { computeTenantSignals, getAdjustmentSignalDefinitions, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
-import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
+import { autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient, convertLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
@@ -1949,10 +1949,6 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     permissionsMissing: permissionCheck?.missing.length ?? 0,
   });
 
-  autoFireFirstBacklogScript(userId).catch(err => {
-    req.log.warn({ err, userId }, "app-reg submit: autoFireFirstBacklogScript error (non-fatal)");
-  });
-
 });
 
 // ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
@@ -2252,26 +2248,6 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
     hasCredentials: !!appReg,
     wizardResultsReady,
   });
-});
-
-// ─── Ensure auto-fire (client-safe, idempotent) ───────────────────────────────
-// Called by the diagnostic landing page after binding to an existing quick-win
-// project. autoFireFirstBacklogScript() only ever acts on a card that is still
-// sitting in "backlog" with an unexhausted retry budget — cards that are
-// already in_progress, completed, or have hit MAX_AUTO_FIRE_FAILURES are
-// excluded by findFirstBacklogScriptCard() and this call becomes a no-op.
-// It also dedups against any already-running Azure job via
-// findActiveJobForRunbook(), so this can never stack a duplicate job even if
-// called more than once (e.g. by both the app-reg submit flow and this route
-// in quick succession).
-router.post("/portal/onboarding/ensure-auto-fire", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-
-  autoFireFirstBacklogScript(userId).catch(err => {
-    req.log.warn({ err, userId }, "ensure-auto-fire: autoFireFirstBacklogScript error (non-fatal)");
-  });
-
-  res.json({ ok: true });
 });
 
 // ─── Onboarding wizard complete ───────────────────────────────────────────────
@@ -8606,8 +8582,8 @@ router.post("/admin/kanban-tasks/:id/retry-auto-fire", requireAdmin, async (req:
 
   broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
 
-  autoFireFirstBacklogScript(project.clientUserId).catch(err => {
-    req.log.warn({ err, taskId: id, clientUserId: project.clientUserId }, "retry-auto-fire: autoFireFirstBacklogScript error (non-fatal)");
+  autoFireRunWorkflowCards(project.clientUserId).catch(err => {
+    req.log.warn({ err, taskId: id, clientUserId: project.clientUserId }, "retry-auto-fire: autoFireRunWorkflowCards error (non-fatal)");
   });
 
   res.json(updated);

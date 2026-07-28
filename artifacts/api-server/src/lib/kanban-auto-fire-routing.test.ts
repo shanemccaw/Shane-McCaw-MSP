@@ -1,15 +1,22 @@
 /**
  * Unit tests for handleAutoFireKanban(payload) routing.
  *
+ * The script and document auto-fire actions were removed (superseded by the
+ * real, event-driven flow: consent -> event emitted -> login -> workflow
+ * verifies telemetry -> generates documents). Only the "workflow" action
+ * (launching a real child workflow) remains.
+ *
  * Verifies that the auto-fire kanban handler correctly:
- *   1. Calls autoFireFirstBacklogScript (and NOT autoFireDocumentCard)
- *      when action='script'.
- *   2. Calls autoFireDocumentCard (and NOT autoFireFirstBacklogScript)
- *      when action='document'.
- *   3. Calls BOTH functions when action='both' (the default).
- *   4. Returns { skipped: true } without calling either function when
- *      clientUserId is absent from the payload.
+ *   1. Calls autoFireRunWorkflowCards when action='workflow' (and the default
+ *      when action is omitted).
+ *   2. Calls autoFireRunWorkflowCards when action='both'.
+ *   3. Does NOT call autoFireRunWorkflowCards for the retired 'script'/'document'
+ *      actions — they are now silent no-ops.
+ *   4. Returns { skipped: true } without calling anything when clientUserId is
+ *      absent from the payload.
  *   5. clientUserId=0 (falsy) is treated as absent — same guard.
+ *   6. A thrown error from autoFireRunWorkflowCards is caught (fire-and-forget)
+ *      and never surfaces to the caller.
  *
  * Approach:
  *   - vi.mock() stubs kanban-auto-fire and logger so no real DB
@@ -25,33 +32,22 @@
 import { describe, it, vi, expect, beforeAll } from "vitest";
 
 // ── Call counters ─────────────────────────────────────────────────────────────
-let scriptCallCount = 0;
-let documentCallCount = 0;
-let lastScriptClientId: number | undefined;
-let lastDocumentClientId: number | undefined;
-let scriptShouldThrow = false;
-let documentShouldThrow = false;
+let workflowCallCount = 0;
+let lastWorkflowClientId: number | undefined;
+let workflowShouldThrow = false;
 
 function resetCounters() {
-  scriptCallCount = 0;
-  documentCallCount = 0;
-  lastScriptClientId = undefined;
-  lastDocumentClientId = undefined;
+  workflowCallCount = 0;
+  lastWorkflowClientId = undefined;
 }
 
 // ── Stub kanban-auto-fire BEFORE importing auto-fire-kanban-handler ───────────
 vi.mock("./kanban-auto-fire", () => ({
-  autoFireFirstBacklogScript: vi.fn(async (clientUserId: number) => {
-    if (scriptShouldThrow) throw new Error("Azure Automation unreachable (simulated outage)");
-    scriptCallCount++;
-    lastScriptClientId = clientUserId;
+  autoFireRunWorkflowCards: vi.fn(async (clientUserId: number) => {
+    if (workflowShouldThrow) throw new Error("Workflow execution failed (simulated outage)");
+    workflowCallCount++;
+    lastWorkflowClientId = clientUserId;
   }),
-  autoFireDocumentCard: vi.fn(async (clientUserId: number) => {
-    if (documentShouldThrow) throw new Error("AI generation failed (simulated error)");
-    documentCallCount++;
-    lastDocumentClientId = clientUserId;
-  }),
-  autoFireRunWorkflowCards: vi.fn(async () => {}),
   reconcileOrphanedRuns: vi.fn(async () => {}),
   reconcileStalledPhases: vi.fn(async () => {}),
   reconcileLateStuckQueuedCompletions: vi.fn(async () => {}),
@@ -73,70 +69,36 @@ async function flushMicrotasks() {
 }
 
 // =============================================================================
-// action = 'script'  → only autoFireFirstBacklogScript should be called
+// action = 'workflow' → autoFireRunWorkflowCards should be called
 // =============================================================================
 
-describe("handleAutoFireKanban — action='script'", () => {
+describe("handleAutoFireKanban — action='workflow'", () => {
   let result: Record<string, unknown>;
 
   beforeAll(async () => {
     resetCounters();
-    result = await handleAutoFireKanban({ clientUserId: 42, action: "script" });
+    result = await handleAutoFireKanban({ clientUserId: 42, action: "workflow" });
     await flushMicrotasks();
   });
 
   it("returns fired=true with the correct clientUserId and action", () => {
-    expect(result).toEqual({ fired: true, clientUserId: 42, action: "script" });
+    expect(result).toEqual({ fired: true, clientUserId: 42, action: "workflow" });
   });
 
-  it("calls autoFireFirstBacklogScript exactly once", () => {
-    expect(scriptCallCount).toBe(1);
+  it("calls autoFireRunWorkflowCards exactly once", () => {
+    expect(workflowCallCount).toBe(1);
   });
 
-  it("passes the correct clientUserId to autoFireFirstBacklogScript", () => {
-    expect(lastScriptClientId).toBe(42);
-  });
-
-  it("does NOT call autoFireDocumentCard", () => {
-    expect(documentCallCount).toBe(0);
+  it("passes the correct clientUserId to autoFireRunWorkflowCards", () => {
+    expect(lastWorkflowClientId).toBe(42);
   });
 });
 
 // =============================================================================
-// action = 'document'  → only autoFireDocumentCard should be called
+// action omitted → defaults to 'workflow'
 // =============================================================================
 
-describe("handleAutoFireKanban — action='document'", () => {
-  let result: Record<string, unknown>;
-
-  beforeAll(async () => {
-    resetCounters();
-    result = await handleAutoFireKanban({ clientUserId: 99, action: "document" });
-    await flushMicrotasks();
-  });
-
-  it("returns fired=true with the correct clientUserId and action", () => {
-    expect(result).toEqual({ fired: true, clientUserId: 99, action: "document" });
-  });
-
-  it("calls autoFireDocumentCard exactly once", () => {
-    expect(documentCallCount).toBe(1);
-  });
-
-  it("passes the correct clientUserId to autoFireDocumentCard", () => {
-    expect(lastDocumentClientId).toBe(99);
-  });
-
-  it("does NOT call autoFireFirstBacklogScript", () => {
-    expect(scriptCallCount).toBe(0);
-  });
-});
-
-// =============================================================================
-// action = 'both' (the default when action is omitted)
-// =============================================================================
-
-describe("handleAutoFireKanban — action='both' (default)", () => {
+describe("handleAutoFireKanban — action omitted (defaults to 'workflow')", () => {
   let result: Record<string, unknown>;
 
   beforeAll(async () => {
@@ -145,26 +107,87 @@ describe("handleAutoFireKanban — action='both' (default)", () => {
     await flushMicrotasks();
   });
 
-  it("returns fired=true with action='both'", () => {
-    expect(result).toEqual({ fired: true, clientUserId: 7, action: "both" });
+  it("returns fired=true with action='workflow'", () => {
+    expect(result).toEqual({ fired: true, clientUserId: 7, action: "workflow" });
   });
 
-  it("calls autoFireFirstBacklogScript exactly once", () => {
-    expect(scriptCallCount).toBe(1);
+  it("calls autoFireRunWorkflowCards exactly once", () => {
+    expect(workflowCallCount).toBe(1);
   });
 
-  it("calls autoFireDocumentCard exactly once", () => {
-    expect(documentCallCount).toBe(1);
-  });
-
-  it("passes the correct clientUserId to both functions", () => {
-    expect(lastScriptClientId).toBe(7);
-    expect(lastDocumentClientId).toBe(7);
+  it("passes the correct clientUserId", () => {
+    expect(lastWorkflowClientId).toBe(7);
   });
 });
 
 // =============================================================================
-// Edge case: missing clientUserId → graceful skip, no crash, no functions fired
+// action = 'both' → autoFireRunWorkflowCards should still be called
+// =============================================================================
+
+describe("handleAutoFireKanban — action='both'", () => {
+  let result: Record<string, unknown>;
+
+  beforeAll(async () => {
+    resetCounters();
+    result = await handleAutoFireKanban({ clientUserId: 101, action: "both" });
+    await flushMicrotasks();
+  });
+
+  it("returns fired=true with action='both'", () => {
+    expect(result).toEqual({ fired: true, clientUserId: 101, action: "both" });
+  });
+
+  it("calls autoFireRunWorkflowCards exactly once", () => {
+    expect(workflowCallCount).toBe(1);
+  });
+
+  it("passes the correct clientUserId", () => {
+    expect(lastWorkflowClientId).toBe(101);
+  });
+});
+
+// =============================================================================
+// Retired actions ('script' / 'document') are now silent no-ops
+// =============================================================================
+
+describe("handleAutoFireKanban — retired action='script' (no-op)", () => {
+  let result: Record<string, unknown>;
+
+  beforeAll(async () => {
+    resetCounters();
+    result = await handleAutoFireKanban({ clientUserId: 55, action: "script" });
+    await flushMicrotasks();
+  });
+
+  it("still returns fired=true", () => {
+    expect(result).toEqual({ fired: true, clientUserId: 55, action: "script" });
+  });
+
+  it("does NOT call autoFireRunWorkflowCards", () => {
+    expect(workflowCallCount).toBe(0);
+  });
+});
+
+describe("handleAutoFireKanban — retired action='document' (no-op)", () => {
+  let result: Record<string, unknown>;
+
+  beforeAll(async () => {
+    resetCounters();
+    result = await handleAutoFireKanban({ clientUserId: 88, action: "document" });
+    await flushMicrotasks();
+  });
+
+  it("still returns fired=true", () => {
+    expect(result).toEqual({ fired: true, clientUserId: 88, action: "document" });
+  });
+
+  it("does NOT call autoFireRunWorkflowCards", () => {
+    expect(workflowCallCount).toBe(0);
+  });
+});
+
+// =============================================================================
+// Edge case: missing clientUserId → graceful skip, no crash, no function fired
 // =============================================================================
 
 describe("handleAutoFireKanban — missing clientUserId", () => {
@@ -172,7 +195,7 @@ describe("handleAutoFireKanban — missing clientUserId", () => {
 
   beforeAll(async () => {
     resetCounters();
-    result = await handleAutoFireKanban({ action: "script" });
+    result = await handleAutoFireKanban({ action: "workflow" });
     await flushMicrotasks();
   });
 
@@ -185,12 +208,8 @@ describe("handleAutoFireKanban — missing clientUserId", () => {
     expect((result.reason as string).length).toBeGreaterThan(0);
   });
 
-  it("does NOT call autoFireFirstBacklogScript", () => {
-    expect(scriptCallCount).toBe(0);
-  });
-
-  it("does NOT call autoFireDocumentCard", () => {
-    expect(documentCallCount).toBe(0);
+  it("does NOT call autoFireRunWorkflowCards", () => {
+    expect(workflowCallCount).toBe(0);
   });
 });
 
@@ -211,37 +230,33 @@ describe("handleAutoFireKanban — clientUserId=0 (falsy, treated as absent)", (
     expect(result.skipped).toBe(true);
   });
 
-  it("does NOT call autoFireFirstBacklogScript", () => {
-    expect(scriptCallCount).toBe(0);
-  });
-
-  it("does NOT call autoFireDocumentCard", () => {
-    expect(documentCallCount).toBe(0);
+  it("does NOT call autoFireRunWorkflowCards", () => {
+    expect(workflowCallCount).toBe(0);
   });
 });
 
 // =============================================================================
-// Azure-outage resilience — when autoFireFirstBacklogScript throws, handler must NOT crash
+// Outage resilience — when autoFireRunWorkflowCards throws, handler must NOT crash
 // =============================================================================
 
-describe("handleAutoFireKanban — Azure outage (script function throws)", () => {
+describe("handleAutoFireKanban — workflow execution outage (function throws)", () => {
   let result: Record<string, unknown>;
   let caughtError: unknown = null;
 
   beforeAll(async () => {
     resetCounters();
-    scriptShouldThrow = true;
+    workflowShouldThrow = true;
     try {
-      result = await handleAutoFireKanban({ clientUserId: 55, action: "script" });
+      result = await handleAutoFireKanban({ clientUserId: 55, action: "workflow" });
     } catch (err) {
       caughtError = err;
     } finally {
-      scriptShouldThrow = false;
+      workflowShouldThrow = false;
     }
     await flushMicrotasks();
   });
 
-  it("does NOT throw — Azure outage is caught by fire-and-forget .catch()", () => {
+  it("does NOT throw — the outage is caught by fire-and-forget .catch()", () => {
     expect(caughtError).toBeNull();
   });
 
@@ -251,127 +266,8 @@ describe("handleAutoFireKanban — Azure outage (script function throws)", () =>
     expect(result.clientUserId).toBe(55);
   });
 
-  it("does NOT surface the Azure error to the caller", () => {
+  it("does NOT surface the error to the caller", () => {
     expect("error" in result).toBe(false);
     expect("skipped" in result).toBe(false);
-  });
-});
-
-// =============================================================================
-// Azure-outage resilience — action='both': even when script throws, document should still be attempted
-// =============================================================================
-
-describe("handleAutoFireKanban — Azure outage with action='both'", () => {
-  let result: Record<string, unknown>;
-  let caughtError: unknown = null;
-
-  beforeAll(async () => {
-    resetCounters();
-    scriptShouldThrow = true;
-    try {
-      result = await handleAutoFireKanban({ clientUserId: 77, action: "both" });
-    } catch (err) {
-      caughtError = err;
-    } finally {
-      scriptShouldThrow = false;
-    }
-    await flushMicrotasks();
-  });
-
-  it("does NOT throw even when the script function fails", () => {
-    expect(caughtError).toBeNull();
-  });
-
-  it("returns fired=true — handler is non-blocking", () => {
-    expect(result).toBeDefined();
-    expect(result.fired).toBe(true);
-  });
-
-  it("document function is still attempted independently (called once)", () => {
-    expect(documentCallCount).toBe(1);
-  });
-
-  it("passes the correct clientUserId to the document function", () => {
-    expect(lastDocumentClientId).toBe(77);
-  });
-});
-
-// =============================================================================
-// Document AI failure — when autoFireDocumentCard throws, handler must NOT crash
-// =============================================================================
-
-describe("handleAutoFireKanban — document AI failure (document function throws)", () => {
-  let result: Record<string, unknown>;
-  let caughtError: unknown = null;
-
-  beforeAll(async () => {
-    resetCounters();
-    documentShouldThrow = true;
-    try {
-      result = await handleAutoFireKanban({ clientUserId: 88, action: "document" });
-    } catch (err) {
-      caughtError = err;
-    } finally {
-      documentShouldThrow = false;
-    }
-    await flushMicrotasks();
-  });
-
-  it("does NOT throw — AI failure is caught by fire-and-forget .catch()", () => {
-    expect(caughtError).toBeNull();
-  });
-
-  it("still returns fired=true (handler is fire-and-forget — result is immediate)", () => {
-    expect(result).toBeDefined();
-    expect(result.fired).toBe(true);
-    expect(result.clientUserId).toBe(88);
-  });
-
-  it("does NOT surface the AI error to the caller", () => {
-    expect("error" in result).toBe(false);
-    expect("skipped" in result).toBe(false);
-  });
-
-  it("does NOT call autoFireFirstBacklogScript when action='document'", () => {
-    expect(scriptCallCount).toBe(0);
-  });
-});
-
-// =============================================================================
-// Document AI failure with action='both' — even when document throws, script should still be attempted
-// =============================================================================
-
-describe("handleAutoFireKanban — document AI failure with action='both'", () => {
-  let result: Record<string, unknown>;
-  let caughtError: unknown = null;
-
-  beforeAll(async () => {
-    resetCounters();
-    documentShouldThrow = true;
-    try {
-      result = await handleAutoFireKanban({ clientUserId: 101, action: "both" });
-    } catch (err) {
-      caughtError = err;
-    } finally {
-      documentShouldThrow = false;
-    }
-    await flushMicrotasks();
-  });
-
-  it("does NOT throw even when the document function fails", () => {
-    expect(caughtError).toBeNull();
-  });
-
-  it("returns fired=true — handler is non-blocking", () => {
-    expect(result).toBeDefined();
-    expect(result.fired).toBe(true);
-  });
-
-  it("script function is still attempted independently (called once)", () => {
-    expect(scriptCallCount).toBe(1);
-  });
-
-  it("passes the correct clientUserId to the script function", () => {
-    expect(lastScriptClientId).toBe(101);
   });
 });
