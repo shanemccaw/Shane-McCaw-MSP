@@ -12,7 +12,7 @@ import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
-import { resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
+import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels";
 
@@ -72,6 +72,22 @@ export interface GenerateSowParams {
    *  pricing-formula prompt — tested independently from promptOverride,
    *  since the formula is its own separately-editable prompt. */
   pricingFormulaOverride?: string;
+  /**
+   * Skips the drift gate and always generates fresh.
+   *
+   * Default `false`: a real (non-dry-run) SOW generation first asks
+   * `findReusableDocument()` whether this tenant already has a SOW of this type
+   * that none of its data has moved since, and returns it without an AI call if
+   * so. `true` is for callers that know an input the gate cannot see has
+   * changed — the Simulator's explicit regenerate override being the intended
+   * one.
+   *
+   * Request-level inputs the gate structurally cannot see (`promptOverride`,
+   * `pricingFormulaOverride`, `selectedWorkstreamTitles`) suppress reuse on
+   * their own without needing this flag — see the gate at the top of the real
+   * branch below.
+   */
+  forceRegenerate?: boolean;
 }
 
 export interface GenerateSowResult {
@@ -208,6 +224,46 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         })),
         promptKey: promptKeyDry,
       };
+    }
+
+    // ── Drift gate (cost overrun guard) ─────────────────────────────────────
+    // Real generation only — the dry-run branch above returns before reaching
+    // here, so preview behavior is untouched and never consults the gate.
+    //
+    // THREE request-level inputs suppress reuse regardless of `forceRegenerate`,
+    // because each one changes the document while the tenant's DATA — all the
+    // drift gate can see — stays identical:
+    //   * promptOverride / pricingFormulaOverride — an admin testing an unsaved
+    //     draft prompt. Reuse would hand back a document built from the
+    //     PUBLISHED prompt and let them believe their draft produced it.
+    //   * selectedWorkstreamTitles — the customer narrowing their own SOW scope
+    //     (portal-assessment.ts's rescope path). Reuse would return the OLD,
+    //     wider SOW — wrong scope and wrong price on a document the customer
+    //     signs. That path also passes forceRegenerate explicitly; this is the
+    //     structural backstop so a future caller can't reintroduce the bug by
+    //     forgetting to.
+    // Note this returns BEFORE `onRowCreated` would have fired: a reuse hit
+    // creates no new row, so there is no new id to announce. Callers get the
+    // reused document id from the resolved promise instead (portal-assessment's
+    // rescope path already resolves off both, so neither hangs).
+    const reuseSuppressedByOverride =
+      params.promptOverride != null
+      || params.pricingFormulaOverride != null
+      || (params.selectedWorkstreamTitles?.length ?? 0) > 0;
+    if (!params.forceRegenerate && !reuseSuppressedByOverride) {
+      const reusable = await findReusableDocument(mspCustomerId, docTypeKey);
+      if (reusable) {
+        log.info(
+          { mspCustomerId, projectId, docTypeKey, documentId: reusable.documentId },
+          "document-engine-sow: reusing existing document, no drift detected, no AI call made",
+        );
+        return { documentId: reusable.documentId, htmlContent: reusable.htmlContent };
+      }
+    } else {
+      log.info(
+        { mspCustomerId, projectId, docTypeKey, forceRegenerate: params.forceRegenerate === true, reuseSuppressedByOverride },
+        "document-engine-sow: drift gate skipped — generating fresh",
+      );
     }
 
     // Resolve the document owner + the customer's full users.id read key once,

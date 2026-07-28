@@ -77,8 +77,9 @@ Phase 3's create call path rather than a second one.
 | 6 | Signal-category scoping for document generation | Done (9255f6fc) | — |
 | 7 | Simulator Studio Documents node | Done (ef7ba2a3) | — |
 | 8 | Tenant-first document generation signature | Done (b44f01fd) | #47 |
-| 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (code) — **migration File B pending Shane** | — |
+| 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (bb3390b1) — File B reported run; Drizzle `.notNull()` added in Phase 9.5 | — |
 | 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Done | — |
+| 9.5 | Document drift gate (cost overrun guard) — reuse an existing document when no tenant data has moved | Done (COMMIT_HASH) | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
 | 12 | Tenant-first `admin-ai-prompts` test-draft surface | Open | — |
@@ -395,13 +396,135 @@ Existing `admin-document-generator.test.ts` (missing-types coverage) passes
 unchanged. Not live-verified — no `DATABASE_URL` in this environment per repo
 rule.
 
+## Phase 9.5 — Document drift gate (cost overrun guard)
+
+**Numbering note.** The task that commissioned this work called it "Phase 11",
+but Phase 11 in the table above (`Retire documentOwnerUserId — derive ownership
+from the customer only`) is a different, unrelated change and is still Open —
+`documentOwnerUserId` is untouched by this phase and every caller still passes
+it. Marking that row Done would have been false. Decimal insertion instead, per
+the same convention Phase 8.5 and Phase 9 already set: this phase depends on
+Phase 8.5 (the real `msp_customer_id` column) and Phase 9 (the tenant-native
+generate route) and on nothing in Phases 10-12, so it sits at 9.5. This file is
+the source of truth over a task description's phase number.
+
+Repeated "Generate" clicks against a tenant whose data had not moved each paid
+for a fresh AI call to produce the same document. This phase gates real
+generation on whether any of the document's real inputs are newer than the
+document already on file.
+
+**Built (`tenant-signals.ts`): `findReusableDocument(mspCustomerId, docTypeKey)`.**
+Reads `insights_generated_documents` by `msp_customer_id` + `doc_type` directly
+— a real column since Phase 8.5, with File B's `(msp_customer_id, doc_type,
+created_at)` index behind exactly this query, so no `msp_users` fan-out join is
+involved. Candidate statuses are `approved` / `delivered` / `draft` only:
+`generating` is an in-flight placeholder with empty HTML, `failed` never
+produced content, and `archived` was deliberately superseded (by an operator or
+by the SOW supersede path) — handing one back would silently resurrect it.
+`draft` IS reusable: it is a complete document, just one generated in testMode.
+
+Drift is the MAX of the three timestamps that actually feed a document's inputs,
+matching what `buildTenantProfile()` reads: `tenant_monitor_profiles.collectedAt`
+for the customer's `msp_customers.tenantId`, plus `client_m365_profiles.updatedAt`
+and `script_run_results.createdAt` across every login `resolveCustomerUserIds()`
+returns. A NULL `tenantId` (no linked M365 tenant yet) skips the monitor source
+rather than erroring — the other two can still be meaningful, and for some
+document types they are the only inputs there are; an unclaimed customer with no
+linked logins skips the other two the same way. `MAX <= document.createdAt` is
+reuse; strictly newer is drift. **No telemetry at all is treated as no drift** —
+nothing has changed since the document was written because nothing exists to
+change, and regenerating would buy an AI call to reproduce the same "no
+telemetry was captured" document.
+
+**Wired (`document-engine.ts`, `document-engine-sow.ts`):** new
+`forceRegenerate?: boolean` (default false) on `GenerateDocumentParams` /
+`GenerateSowParams`. At the top of each function's non-dry-run branch a hit
+returns immediately — no placeholder row, no AI call — logging
+`"document-engine: reusing existing document, no drift detected, no AI call
+made"` under `engine.document-generator` with the tenant, doc type, and reused
+document id. **Dry-run/preview is untouched:** both dry-run branches return
+before the gate, so a preview never consults it.
+
+**THE GATE REFUSES TO RUN FOR REQUEST-LEVEL INPUTS IT CANNOT SEE.** The three
+timestamps describe the tenant's DATA; they say nothing about inputs that belong
+to a particular *request*, and reusing on those would be silently wrong rather
+than merely stale. So reuse is suppressed, independently of `forceRegenerate`,
+whenever `promptOverride` or `pricingFormulaOverride` is set (an admin testing an
+unsaved draft prompt would otherwise be handed a document built from the
+PUBLISHED prompt and believe their draft produced it — `admin-ai-prompts.ts`'s
+three test-draft calls) or `selectedWorkstreamTitles` is non-empty (the customer
+narrowing their own SOW scope in `portal-assessment.ts` would otherwise get the
+OLD, wider SOW back — wrong scope and wrong price on a document they sign).
+Inputs owned by other tables — an edited `ai_prompts` body, changed
+`document_types` scoping config, new Sales Offer Engine pricing — are equally
+invisible to the gate and are what `forceRegenerate: true` exists for.
+
+**Two real hazards this change introduced elsewhere, found by audit and fixed
+in the same commit:**
+- `workflow-executor.ts`'s `generate_document` node looks up a `priorDocId` to
+  supersede BEFORE generating and deletes it after. A reuse hit very often
+  returns *that exact row* (same customer, project, doc type, status set), so
+  the node would have deleted the document it had just reported as its own
+  output. Guarded with `priorDocId !== engineResult.documentId`.
+- `portal-assessment.ts`'s SOW rescope path now passes `forceRegenerate: true`
+  explicitly. Non-empty `selectedWorkstreamTitles` already suppresses reuse
+  structurally, but the caller states the intent, and it holds even when the
+  requested list is empty.
+
+**Threaded:** `POST /admin/document-generator/document-types/:key/generate`
+takes `forceRegenerate` as a body param, defaulting false via a strict
+`=== true` check so a body carrying the string `"false"` cannot accidentally buy
+an AI call. Whichever later phase adds the Simulator's explicit regenerate
+override sets this same flag.
+
+**Schema:** `insightsGeneratedDocumentsTable.mspCustomerId` is now `.notNull()`,
+matching the DB column after File B. **This uncovered three insert call sites
+Phase 8.5's "all 5 real writers already supply it" audit did not cover** — the
+three retired write paths in `admin-insights.ts` (`POST .../documents/generate`,
+`POST .../consulting/generate`, `POST .../automations/:id/run`). All three are
+unreachable behind that file's 410 `retiredWriteRoute()` gate, but unreachable
+code still type-checks, and none of them has a correct tenant to supply (the
+automation runner's is `automation.customerId ?? null`, nullable by design).
+Rather than fabricate a value — which would write a document under the WRONG
+tenant the moment anyone lifted the gate — each insert's `mspCustomerId` is
+supplied by `retiredWriteRouteHasNoTenant()`, a function typed `number` that
+throws. They compile, stay unreachable, and fail loudly instead of silently
+mis-attributing a document.
+
+**Known timestamp caveat, documented in the helper rather than hidden:**
+`collected_at` is `timestamptz` while `created_at`/`updated_at` on the other
+three tables are `timestamp` (no zone), which node-postgres parses as local time.
+At a positive UTC offset that biases the comparison toward REGENERATING (the safe
+direction); at a negative offset a same-hour reuse could in principle serve a
+document a few hours stale. Worth confirming the DB's `TimeZone` on Shane's
+console; not fixable from here without changing the column types.
+
+**Verified:** `npx tsc --noEmit` clean in `api-server` (after
+`tsc --build --force lib/db`). 14 new tests in `document-drift-gate.test.ts`
+(registered in `vitest.config.ts`'s hardcoded include list) — 14/14 passing:
+no-candidate short-circuits before any drift query; the reusable-status set
+asserted on the real query rather than inferred; drift from each of the three
+sources independently; the `<=` boundary; no-telemetry reuse; draft reuse; and
+NULL-`tenantId` / no-linked-login paths proving the skipped source is not
+queried at all while the remaining ones still decide. Scoped A/B on the
+`workflow-executor.ts` hunk: 97 failed / 195 passed across the five
+workflow-executor test files BEFORE and AFTER — identical, and those 97 belong to
+a concurrent AI-cost-metering session's in-flight work, not this change.
+`tenant-signals.test.ts` (needs a real `DATABASE_URL` — it never mocked
+`@workspace/db`) and `doc-pipeline.test.ts` (`logger.child` in
+`sharepoint-connector.ts`, a file this change never touches) fail for documented
+pre-existing reasons. Not live-verified — no `DATABASE_URL` in this environment
+per repo rule.
+
 ## Open Issues
-**Phase 8.5 — File B is NOT run.** The DB column is still nullable and the
-index does not exist until Shane runs
-`2026-07-28-igd-msp-customer-id-B-not-null-and-index.sql`, and he must not run
-it until File A's straggler count reads zero. Deploy the code first: File B
-turns "insert without a tenant" into a hard DB error, and all five writers
-already refuse to insert without one.
+**Phase 9.5 assumes migration File B has been run.** The Drizzle `.notNull()`
+was added on the commissioning task's statement that
+`insights_generated_documents.msp_customer_id` is already NOT NULL in the DB.
+That could not be verified from here (no `DATABASE_URL` per repo rule). If File B
+has NOT actually been run, real rows can still hold NULL and every select of that
+column now types as `number` while it isn't — Shane should confirm File B ran
+before relying on it. The `.notNull()` changes no runtime behavior either way;
+all five real writers already populated the column unconditionally.
 
 **Phase 8.5 — `admin-insights.ts` could NOT be unmounted; 3 GET routes are
 still live.** The task commissioning this phase specified removing the

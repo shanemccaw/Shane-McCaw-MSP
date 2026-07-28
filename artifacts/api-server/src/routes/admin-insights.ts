@@ -130,6 +130,30 @@ function retiredWriteRoute(req: Request, res: Response): boolean {
   return true;
 }
 
+/**
+ * The `msp_customer_id` value for those three retired write paths' document
+ * inserts — which is to say, no value at all.
+ *
+ * `insights_generated_documents.msp_customer_id` is NOT NULL as of manual
+ * migration File B, and now in the Drizzle schema too, so those inserts no
+ * longer type-check without one. None of the three has a correct tenant to
+ * supply: the automation runner's is `automation.customerId ?? null`, nullable
+ * BY DESIGN, and the other two only ever knew a users.id. Teaching a dead path
+ * to resolve a tenant would be inventing behavior for code that cannot run;
+ * fabricating a value would write a document under the WRONG tenant the moment
+ * anyone removed the 410 gate.
+ *
+ * So the value is produced by a function that throws. The inserts compile, stay
+ * unreachable behind `retiredWriteRoute()`, and fail loudly instead of silently
+ * mis-attributing a document if the gate is ever lifted without re-tenanting
+ * these paths first.
+ */
+function retiredWriteRouteHasNoTenant(): number {
+  throw new Error(
+    "admin-insights: retired legacy generation path reached — it has no tenant scope, so insights_generated_documents.msp_customer_id cannot be satisfied. Use the Document Generator (/command/doc-generator).",
+  );
+}
+
 // ── Helper: broadcast scope change to all presentations for a project ──────────
 // Called fire-and-forget after a SOW document is created or its pricing updated.
 // Finds all presentations for the project and notifies open SSE clients so the
@@ -1058,6 +1082,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
 
     // Always INSERT a new generating row — fresh createdAt sorts it to the top of the list
     const [genRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+      mspCustomerId: retiredWriteRouteHasNoTenant(),
       customerId: customerId ?? null, projectId: projectId ?? null,
       category: "report", docType, title, htmlContent: "",
       status: "generating", pdfUrl: null,
@@ -1704,6 +1729,7 @@ INSTRUCTIONS:
 
     // Always INSERT a new generating row — fresh createdAt sorts to top; prior doc untouched until success
     const [genConsultingRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+      mspCustomerId: retiredWriteRouteHasNoTenant(),
       customerId: customerId ?? null, projectId: projectId ?? null,
       category: "consulting", docType: deliverableType,
       title, htmlContent: "", status: "generating", pdfUrl: null,
@@ -2663,6 +2689,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
       recordRunLog("info", "AI generation complete — saving document draft…");
 
       const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
+        mspCustomerId: retiredWriteRouteHasNoTenant(),
         customerId: automation.customerId ?? null,
         projectId:  automation.projectId  ?? null,
         category:   "report",

@@ -2363,10 +2363,17 @@ async function executeNode(
                   }
                 }
 
-                if (priorDocId !== null && !isPipelineOutput) {
+                if (priorDocId !== null && priorDocId !== engineResult.documentId && !isPipelineOutput) {
                   // Standalone documents only — generateSowDocument() now owns its own
                   // prior-document supersede logic internally (respecting supersedeMode),
                   // so the SOW path must not also delete here.
+                  //
+                  // The `priorDocId !== engineResult.documentId` guard is what makes
+                  // this safe under the drift gate: when no tenant data has moved, the
+                  // engine returns the EXISTING document rather than generating a new
+                  // one, and that document is very often the exact row this lookup
+                  // selected as "the prior copy to supersede". Deleting it would erase
+                  // the document this node just reported as its own output.
                   await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, priorDocId));
                 }
 

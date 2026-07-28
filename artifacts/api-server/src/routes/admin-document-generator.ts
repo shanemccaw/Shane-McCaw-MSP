@@ -118,6 +118,12 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
   const key = String(req.params["key"] ?? "");
   const mspCustomerId = parseInt(String(req.body?.mspCustomerId ?? ""), 10);
   const projectId = parseInt(String(req.body?.projectId ?? "0"), 10);
+  // Drift gate override. Defaults to false, so a plain "Generate" click reuses
+  // an existing document when nothing about the tenant's data has moved instead
+  // of paying for an identical AI call. Strict `=== true` so a body carrying the
+  // string "false" (or any other truthy-but-not-true value) can't accidentally
+  // buy an AI call.
+  const forceRegenerate = req.body?.forceRegenerate === true;
 
   if (isNaN(mspCustomerId)) {
     res.status(400).json({ error: "mspCustomerId is required and must be a number" });
@@ -134,11 +140,11 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
     if (!docTypeRow) { res.status(404).json({ error: `Unknown document type "${key}"` }); return; }
     if (!docTypeRow.isActive) { res.status(400).json({ error: `Document type "${key}" is not active` }); return; }
 
-    log.info({ key, mspCustomerId, projectId, actor: req.user?.email }, "admin-document-generator: generate requested");
+    log.info({ key, mspCustomerId, projectId, forceRegenerate, actor: req.user?.email }, "admin-document-generator: generate requested");
 
     const result = docTypeRow.pipelineCategory === "pipeline_output"
-      ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key })
-      : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key });
+      ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate })
+      : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate });
 
     log.info({ key, mspCustomerId, documentId: result.documentId }, "admin-document-generator: generate completed");
     res.json({ documentId: result.documentId, htmlContent: result.htmlContent, docTypeKey: key });

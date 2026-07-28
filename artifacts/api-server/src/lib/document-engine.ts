@@ -8,7 +8,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { buildTenantProfile, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
+import { buildTenantProfile, findReusableDocument, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
@@ -91,6 +91,25 @@ export interface GenerateDocumentParams {
    *  from ai_prompts — lets an admin test an unsaved draft prompt body
    *  against real AI/real data before publishing it. */
   promptOverride?: string;
+  /**
+   * Skips the drift gate and always generates fresh.
+   *
+   * Default `false`: a real (non-dry-run) generation first asks
+   * `findReusableDocument()` whether this tenant already has a document of this
+   * type that none of its data has moved since — and if so returns that document
+   * without inserting a placeholder row or making an AI call at all. That guard
+   * is the whole point of this parameter's existence: repeated "Generate" clicks
+   * against an unchanged tenant were each paying for a fresh AI call to produce
+   * the same document.
+   *
+   * `true` is for callers that know an input the drift gate cannot see has
+   * changed — the Simulator's explicit regenerate override, an operator who
+   * edited the prompt or the document type's scoping config, a re-run after a
+   * bad generation. Request-level overrides (`promptOverride`) suppress reuse on
+   * their own without needing this flag; see the gate at the top of the real
+   * branch below.
+   */
+  forceRegenerate?: boolean;
 }
 
 export interface GenerateDocumentResult {
@@ -203,6 +222,33 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     log.info({ mspCustomerId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
 
     return { dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey };
+  }
+
+  // ── Drift gate (cost overrun guard) ───────────────────────────────────────
+  // Real generation only — the dry-run branch above returns before reaching
+  // here, so preview behavior is untouched by this and never consults the gate.
+  //
+  // `promptOverride` suppresses reuse regardless of `forceRegenerate`: the
+  // override is a property of THIS request (an admin testing an unsaved draft
+  // prompt body), and the drift gate can only see whether the tenant's DATA
+  // moved. Reusing here would hand the admin a document generated from the
+  // PUBLISHED prompt and let them believe their draft produced it — a silently
+  // wrong answer, and the exact case the gate cannot detect for itself.
+  const reuseSuppressedByOverride = params.promptOverride != null;
+  if (!params.forceRegenerate && !reuseSuppressedByOverride) {
+    const reusable = await findReusableDocument(mspCustomerId, docTypeKey);
+    if (reusable) {
+      log.info(
+        { mspCustomerId, projectId, docTypeKey, documentId: reusable.documentId },
+        "document-engine: reusing existing document, no drift detected, no AI call made",
+      );
+      return reusable;
+    }
+  } else {
+    log.info(
+      { mspCustomerId, projectId, docTypeKey, forceRegenerate: params.forceRegenerate === true, reuseSuppressedByOverride },
+      "document-engine: drift gate skipped — generating fresh",
+    );
   }
 
   // `insights_generated_documents.customerId` is a users.id-shaped FK, so the

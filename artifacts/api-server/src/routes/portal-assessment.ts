@@ -1285,6 +1285,15 @@ router.post(
           projectId: projectId ?? 0,
           docTypeKey: SOW_DOC_TYPE,
           selectedWorkstreamTitles: requested,
+          // The customer changed their own scope selection — that is the entire
+          // reason this branch runs, and it is an input the document drift gate
+          // structurally cannot see (it compares tenant DATA timestamps only).
+          // Without this, an unchanged tenant would get the OLD, wider SOW back
+          // and be told it was regenerated: wrong scope and wrong price on a
+          // document they sign. Non-empty selectedWorkstreamTitles suppresses
+          // reuse inside the engine too, but this states the intent at the
+          // caller and holds even when `requested` is empty.
+          forceRegenerate: true,
           supersedeMode: "archive",
           onRowCreated: (docId) => onRow(docId),
         })

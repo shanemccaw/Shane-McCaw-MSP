@@ -31,6 +31,7 @@ export default defineConfig({
       "src/lib/tenant-signals-customer-bridge.test.ts",
       "src/lib/build-tenant-profile.test.ts",
       "src/lib/document-engine-signal-scoping.test.ts",
+      "src/lib/document-drift-gate.test.ts",
       "src/lib/drift-engine.test.ts",
       "src/lib/forecasting-engine.test.ts",
       "src/lib/priority-engine.test.ts",

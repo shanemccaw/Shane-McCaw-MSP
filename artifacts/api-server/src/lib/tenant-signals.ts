@@ -1,6 +1,7 @@
 import {
   db,
   clientM365ProfilesTable,
+  insightsGeneratedDocumentsTable,
   scriptRunResultsTable,
   mspCustomersTable,
   mspUsersTable,
@@ -12,6 +13,10 @@ import {
 import { sql, eq, and, asc, desc, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.signals" });
+// Document reuse / drift decisions get the Document Generator's own channel —
+// "why did (or didn't) this document regenerate?" must be answerable without
+// reading the whole signal-engine log stream.
+const docGenLog = logger.child({ channel: "engine.document-generator" });
 import { startSlaTimer } from "./sla-engine";
 
 /**
@@ -221,6 +226,169 @@ export async function resolveDocumentOwnerUserId(customerId: number): Promise<nu
   if (active != null) return active;
   const all = await resolveCustomerUserIds(customerId);
   return all[0] ?? null;
+}
+
+// ─── Document drift gate (cost overrun guard) ────────────────────────────────
+
+/** What `findReusableDocument()` hands back — deliberately the same shape as
+ *  `GenerateDocumentResult`, so a reuse hit can be returned from the engine
+ *  directly with no adaptation. */
+export interface ReusableDocument {
+  documentId: number;
+  htmlContent: string;
+  docTypeKey: string;
+}
+
+/**
+ * The most recent real generated document for this tenant + document type,
+ * but ONLY when none of the tenant's underlying data has moved since it was
+ * generated. A hit means the AI would be asked to write the same document from
+ * the same inputs, so the caller can skip the AI call entirely.
+ *
+ * "Real" excludes `generating` (an in-flight placeholder with empty HTML),
+ * `failed` (never produced content), and `archived` (deliberately superseded —
+ * reusing one would silently resurrect a document an operator or the SOW
+ * supersede path retired). `draft` IS reusable: it is a complete document, just
+ * one generated in testMode.
+ *
+ * DRIFT is the MAX of the three timestamps that actually feed a document's
+ * inputs, matching what `buildTenantProfile()` reads:
+ *   (a) `tenant_monitor_profiles.collectedAt` for the tenant's Graph tenantId,
+ *   (b) `client_m365_profiles.updatedAt` across every login linked to the
+ *       customer, and
+ *   (c) `script_run_results.createdAt` across the same login set.
+ * A customer with no linked M365 tenant (`msp_customers.tenantId` NULL) simply
+ * skips (a) rather than erroring — (b)/(c) can still be meaningful, and for
+ * some document types they are the only inputs there are.
+ *
+ * NO data at all (a tenant that has never been scanned) is treated as NO drift:
+ * nothing has changed since the document was written, because nothing exists to
+ * change. Regenerating would burn an AI call to produce the same
+ * "no telemetry was captured" document.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT COVER: inputs that are properties of the
+ * REQUEST rather than of the tenant's data — a draft `promptOverride`, a
+ * `pricingFormulaOverride`, a customer's changed `selectedWorkstreamTitles` — and
+ * inputs owned by other tables (an edited `ai_prompts` body, a changed
+ * `document_types` scoping config, new Sales Offer Engine pricing). Those cannot
+ * be detected from the three timestamps above, so the two engines refuse to
+ * consult this helper at all when a request-level override is present, and any
+ * caller that knows its non-data inputs moved passes `forceRegenerate: true`.
+ * See the call sites in `document-engine.ts` / `document-engine-sow.ts`.
+ *
+ * KNOWN TIMESTAMP CAVEAT, stated rather than hidden: `collected_at` is
+ * `timestamptz` while `created_at`/`updated_at` on the other three tables are
+ * `timestamp` (no zone), so node-postgres parses the latter as local time. If
+ * the DB writes those columns in UTC and the api-server process runs at a
+ * positive UTC offset, the document's own `createdAt` reads EARLIER than it
+ * really is — which biases this comparison toward REGENERATING, the safe
+ * direction (a fresh document, not a stale one). At a negative offset the bias
+ * inverts, so a same-hour reuse could in principle serve a document a few hours
+ * stale. Worth confirming the DB's `TimeZone` on Shane's console; not fixable
+ * from here without a schema change to the timestamp types.
+ */
+export async function findReusableDocument(
+  mspCustomerId: number,
+  docTypeKey: string,
+): Promise<ReusableDocument | null> {
+  // Direct tenant-scoped read — `msp_customer_id` is a real column now (Phase
+  // 8.5) with a (msp_customer_id, doc_type, created_at) index behind exactly
+  // this query, so no `msp_users` fan-out join is involved.
+  const [existing] = await db
+    .select({
+      id: insightsGeneratedDocumentsTable.id,
+      htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+      createdAt: insightsGeneratedDocumentsTable.createdAt,
+      status: insightsGeneratedDocumentsTable.status,
+    })
+    .from(insightsGeneratedDocumentsTable)
+    .where(and(
+      eq(insightsGeneratedDocumentsTable.mspCustomerId, mspCustomerId),
+      eq(insightsGeneratedDocumentsTable.docType, docTypeKey),
+      inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered", "draft"]),
+    ))
+    .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+    .limit(1);
+
+  if (!existing) {
+    docGenLog.info({ mspCustomerId, docTypeKey }, "document drift gate: no prior reusable document for this tenant + type — generating");
+    return null;
+  }
+
+  const [customerRow] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, mspCustomerId))
+    .limit(1);
+  const tenantId = customerRow?.tenantId ?? null;
+
+  // Same customer-scoped users.id read key every other document-side read uses:
+  // telemetry written under ANY linked login (including a deactivated one)
+  // belongs to the tenant, so drift must be answered across the whole set.
+  const customerUserIds = await resolveCustomerUserIds(mspCustomerId);
+
+  // Each source is a single indexed "latest row" read rather than an aggregate,
+  // so a tenant with no rows in a table costs nothing and contributes nothing.
+  const [latestMonitorAt, latestProfileAt, latestScriptRunAt] = await Promise.all([
+    tenantId == null
+      ? Promise.resolve(null)
+      : db
+        .select({ collectedAt: tenantMonitorProfilesTable.collectedAt })
+        .from(tenantMonitorProfilesTable)
+        .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
+        .orderBy(desc(tenantMonitorProfilesTable.collectedAt))
+        .limit(1)
+        .then((rows) => rows[0]?.collectedAt ?? null),
+    customerUserIds.length === 0
+      ? Promise.resolve(null)
+      : db
+        .select({ updatedAt: clientM365ProfilesTable.updatedAt })
+        .from(clientM365ProfilesTable)
+        .where(inArray(clientM365ProfilesTable.clientId, customerUserIds))
+        .orderBy(desc(clientM365ProfilesTable.updatedAt))
+        .limit(1)
+        .then((rows) => rows[0]?.updatedAt ?? null),
+    customerUserIds.length === 0
+      ? Promise.resolve(null)
+      : db
+        .select({ createdAt: scriptRunResultsTable.createdAt })
+        .from(scriptRunResultsTable)
+        .where(inArray(scriptRunResultsTable.customerId, customerUserIds))
+        .orderBy(desc(scriptRunResultsTable.createdAt))
+        .limit(1)
+        .then((rows) => rows[0]?.createdAt ?? null),
+  ]);
+
+  const dataTimestamps = [latestMonitorAt, latestProfileAt, latestScriptRunAt].filter(
+    (d): d is Date => d instanceof Date,
+  );
+  const latestDataAt = dataTimestamps.length === 0
+    ? null
+    : new Date(Math.max(...dataTimestamps.map((d) => d.getTime())));
+
+  const drifted = latestDataAt != null && latestDataAt.getTime() > existing.createdAt.getTime();
+
+  const logContext = {
+    mspCustomerId,
+    docTypeKey,
+    documentId: existing.id,
+    documentStatus: existing.status,
+    documentCreatedAt: existing.createdAt,
+    latestDataAt,
+    latestMonitorAt,
+    latestProfileAt,
+    latestScriptRunAt,
+    tenantIdPresent: tenantId != null,
+    linkedUserCount: customerUserIds.length,
+  };
+
+  if (drifted) {
+    docGenLog.info(logContext, "document drift gate: tenant data is newer than the existing document — regenerating");
+    return null;
+  }
+
+  docGenLog.info(logContext, "document-engine: reusing existing document, no drift detected, no AI call made");
+  return { documentId: existing.id, htmlContent: existing.htmlContent, docTypeKey };
 }
 
 // ─── Monitor-profile merge (shared by every signal-evaluation assembly site) ──

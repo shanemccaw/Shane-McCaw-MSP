@@ -1926,16 +1926,18 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
    * This column owns the document by tenant directly. `customerId` is retained
    * as the document OWNER (which login generated/receives it), not as the scope.
    *
-   * TYPED NULLABLE ON PURPOSE, FOR NOW. The DB column lands nullable in manual
-   * migration File A (`2026-07-28-igd-msp-customer-id-A-add-and-backfill.sql`)
-   * and only becomes `NOT NULL` when Shane runs File B
-   * (`...-B-not-null-and-index.sql`) after confirming File A's straggler count
-   * is zero. Until File B runs, real rows CAN hold NULL here, so typing this
-   * `.notNull()` would make every read lie. Add `.notNull()` here once File B
-   * has actually been run — every writer already populates it unconditionally
-   * and refuses to insert without it, so nothing else changes at that point.
+   * NOT NULL as of manual migration File B
+   * (`2026-07-28-igd-msp-customer-id-B-not-null-and-index.sql`), which Shane ran
+   * after File A's straggler count came back zero. The TS definition was
+   * deliberately left nullable during the window between the two files — real
+   * rows could hold NULL then, so `.notNull()` would have made every read lie —
+   * and is brought back into line with the DB column here.
+   *
+   * Every writer already populated it unconditionally and refused to insert
+   * without it, so this changes no runtime behavior; it only stops selects from
+   * typing a column that can no longer be NULL as `number | null`.
    */
-  mspCustomerId: integer("msp_customer_id").references(() => mspCustomersTable.id),
+  mspCustomerId: integer("msp_customer_id").notNull().references(() => mspCustomersTable.id),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   category: text("category", { enum: ["report", "consulting"] }).notNull().default("report"),
   docType: text("doc_type").notNull().default("other"),
