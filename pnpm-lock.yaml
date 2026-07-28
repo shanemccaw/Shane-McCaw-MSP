@@ -369,6 +369,9 @@ importers:
       '@workspace/dashboard-registry':
         specifier: workspace:*
         version: link:../../lib/dashboard-registry
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../../lib/db
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -12416,6 +12419,8 @@ snapshots:
       invariant: 2.2.4
       nullthrows: 1.1.1
       yargs: 17.7.3
+    transitivePeerDependencies:
+      - supports-color
 
   '@react-native/community-cli-plugin@0.81.5':
     dependencies:
