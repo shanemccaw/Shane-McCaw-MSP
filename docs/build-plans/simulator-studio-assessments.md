@@ -1,7 +1,7 @@
 # Initiative: Simulator Studio Assessments
 
 **Slug:** simulator-studio-assessments
-**Status:** Done
+**Status:** In Progress
 **Iteration:** 1
 **Area:** admin-panel
 **Owner:** Shane McCaw Consulting
@@ -40,6 +40,7 @@ exist and are live (see `consent.ts`).
 | 5 | Assessment Creation Wizard | Done | #28 |
 | 6 | Assessment Edit Wizard | Done | #29 |
 | 7 | Delete / Deprecate | Done | #30 |
+| 8 | Step 3 check search by endpoint/properties + inline create (no modal stacking) | Not Started | #TBD |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
@@ -48,9 +49,7 @@ lives in that phase's GitHub issue. This file is the source of truth;
 the GitHub Issue/Project card is a derived view. If they ever disagree,
 this file wins and the Issue gets corrected to match it.
 
-Phases 5–7 (#28, #29, #30) are placeholders only — their real scope will be
-filled in on each phase's issue once the phase it depends on is Done and
-it's actually planned in detail. Dependency chain: Phase 5 (#28) depends on
-Phase 1 (#23) being Done; Phase 6 (#29) and Phase 7 (#30) each depend on
-Phase 5 (#28) being Done (an edit/delete wizard needs the create wizard's
-form + validation scaffolding in place first).
+Phase 8 (#TBD, filled in below) depends on Phase 5 (#28) and Phase 6 (#29)
+being Done — it extends Step 3 of AssessmentCreationWizard.tsx, shared by
+both create and edit mode. Full spec lives on that phase's GitHub issue,
+same convention as Phases 5-7.
