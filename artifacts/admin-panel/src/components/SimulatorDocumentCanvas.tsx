@@ -93,6 +93,7 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
 
   // Mode + action state
   const [mode, setMode] = useState<Mode>("dry-run");
+  const [forceRegenerate, setForceRegenerate] = useState(false);
   const [running, setRunning] = useState(false);
   const [preview, setPreview] = useState<DocumentTypePreviewData | null>(null);
   const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
@@ -171,7 +172,11 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0 }),
+            body: JSON.stringify({
+              mspCustomerId: selectedCustomerId,
+              projectId: selectedProjectId ?? 0,
+              ...(forceRegenerate ? { forceRegenerate: true } : {}),
+            }),
           },
         );
         const data = await res.json();
@@ -353,6 +358,23 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
             Real AI
           </button>
         </div>
+
+        {mode === "real-ai" && (
+          <div className="flex flex-col">
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={forceRegenerate}
+                onChange={(e) => setForceRegenerate(e.target.checked)}
+                className="h-3.5 w-3.5"
+              />
+              Force regenerate
+            </label>
+            <span className="text-[10px] text-muted-foreground/70">
+              Bypasses the reuse check — always calls AI, even if an unchanged document already exists.
+            </span>
+          </div>
+        )}
 
         <button
           onClick={() => void runAction()}

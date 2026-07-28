@@ -80,6 +80,7 @@ Phase 3's create call path rather than a second one.
 | 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (bb3390b1) — File B reported run; Drizzle `.notNull()` added in Phase 9.5 | — |
 | 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Done | — |
 | 9.5 | Document drift gate (cost overrun guard) — reuse an existing document when no tenant data has moved | Done (c2e498ea) | — |
+| 9.6 | Simulator Studio force-regenerate override | Done | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
 | 12 | Tenant-first `admin-ai-prompts` test-draft surface | Open | — |
@@ -515,6 +516,29 @@ a concurrent AI-cost-metering session's in-flight work, not this change.
 `sharepoint-connector.ts`, a file this change never touches) fail for documented
 pre-existing reasons. Not live-verified — no `DATABASE_URL` in this environment
 per repo rule.
+
+## Phase 9.6 — Simulator Studio force-regenerate override
+
+**Numbering note.** The task that commissioned this work called it "Phase 12",
+but Phase 12 in the table above (`Tenant-first admin-ai-prompts test-draft
+surface`) is a different, unrelated change and is still Open. Phase 9.5's own
+numbering note had already flagged that whichever phase adds this Simulator
+override should sit next to the drift gate it exposes, not after it — so this
+is 9.6: it depends on 9.5 (the drift gate/`forceRegenerate` param it already
+built) and on nothing in Phases 10-12.
+
+`SimulatorDocumentCanvas.tsx`'s Real AI mode had no way to bypass the Phase 9.5
+reuse check — an operator testing a document type against a tenant with no new
+telemetry would silently get the old cached document back instead of a fresh
+generation. Added a "Force regenerate" checkbox next to the Dry-Run/Real AI
+toggle, visible and enabled only in Real AI mode (meaningless in Dry-Run, since
+`/preview` never consults the drift gate). Default unchecked. When checked, the
+generate POST body includes `forceRegenerate: true`; when unchecked, the field
+is omitted entirely so the server's existing `=== true` default-false handling
+is unchanged. An inline note under the checkbox states what it does: "Bypasses
+the reuse check — always calls AI, even if an unchanged document already
+exists." No backend changes — the route and `forceRegenerate` param already
+existed from Phase 9.5.
 
 ## Open Issues
 **Phase 9.5 assumes migration File B has been run.** The Drizzle `.notNull()`
