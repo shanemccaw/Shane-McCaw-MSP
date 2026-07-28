@@ -61,6 +61,7 @@ this same session.
 | 18 | Document Types IDE — preview (dry-run payload shown to admin before real generation) | Done | #33 |
 | 19 | Retire old generation path (`generateAndDeliverDocument`, `generateConsolidatedSowDocument`, `extractAndStoreOmgCards`, extraction-based `sowPricingLines`) — blocked on Phase 17 | Not Started | #34 |
 | 19.1 | Port admin test-draft feature to real engine | Done | #35 |
+| 19.4 | Delete omg-card-extractor.ts | Done | #38 |
 
 ## Notes
 Phase 17 is a real, load-bearing gap, not cleanup: `portal-assessment.ts`'s
@@ -70,13 +71,12 @@ selection, using `supersedeMode: "archive"` so prior scope selections aren't
 lost. This currently still calls the legacy `generateConsolidatedSowDocument`
 directly — Phase 19's retirement is blocked until this is ported.
 
-`extractAndStoreOmgCards` also still has one real caller in
-`portal-assessment.ts` as a lazy-extraction fallback for the race condition
-where a customer views a document before the new engine's fire-and-forget
-OMG card generation has finished. Confirm whether this fallback should be
-kept (harmless, rare) or removed once Phase 17 lands, since removing it
-entirely would mean a genuinely blank OMG-cards state during that race
-window instead of a fallback extraction.
+Phase 19.4 removed `extractAndStoreOmgCards` and its lazy-extraction
+fallback in `portal-assessment.ts` entirely. Accepted tradeoff: a document
+generated before `generationInput` existed, or viewed in the rare race
+window before the new engine's fire-and-forget OMG card generation has
+finished, now shows zero OMG cards on first view instead of falling back
+to extraction.
 
 Phase count/order may change (decimal insertion) if a phase splits
 mid-build. This table is the index only — full spec per phase lives in
