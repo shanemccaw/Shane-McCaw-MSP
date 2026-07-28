@@ -162,6 +162,10 @@ export interface AssessmentNode {
   slug: string | null;
   isFreeOffering: boolean;
   sortOrder: number;
+  /** Real services.visibility. "private" is Phase 7's Deprecate action
+   *  (PUT /admin/services/:id, visibility: "private") — unpublished but the
+   *  row (and any grandfathered client access) stays intact. */
+  visibility: "public" | "private" | "landing_page_only";
   packageKey: string | null;
   hasDedicatedPackage: boolean;
   checkKeys: string[] | null;
@@ -1912,7 +1916,13 @@ export function SimulatorLeftTree() {
             open the same AssessmentCreationWizard via openModal. Per-row Edit
             (Phase 6, #29) opens the same wizard in edit mode via
             openModal("new-assessment", { assessments, editingAssessment }).
-            Delete is still a later, not-yet-built phase. */}
+            Per-row Delete/Deprecate (Phase 7, #30) open
+            AssessmentDeleteDeprecateModals.tsx via
+            openModal("delete-assessment", { assessment, assessments }) /
+            openModal("deprecate-assessment", { assessment }) — a deprecated
+            (visibility: "private") row is dimmed and badged "Private" here,
+            refreshed by the same simulator-assessments-updated event the
+            create/edit wizard already dispatches. */}
         {showAssessments && (
         <div>
           <ContextMenu>
@@ -1978,19 +1988,29 @@ export function SimulatorLeftTree() {
 
                       {(isSearching || expandedCats[`asmt:${group}`]) && (
                         <div className="ml-[22px] border-l border-accent">
-                          {assessmentsByGroup[group]!.map((assessment) => (
+                          {assessmentsByGroup[group]!.map((assessment) => {
+                            const isDeprecated = assessment.visibility === "private";
+                            return (
                             <ContextMenu key={assessment.id}>
                               <ContextMenuTrigger asChild>
                                 <div
                                   onClick={() => handleAssessmentSelect(assessment)}
                                   className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
                                     selectedAssessmentId === assessment.id ? "bg-accent text-foreground" : "text-foreground/85"
-                                  }`}
+                                  } ${isDeprecated ? "opacity-50" : ""}`}
                                 >
                                   <ListChecks className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
                                   <span className="flex-1 truncate text-[11px]" title={assessment.slug ?? assessment.name}>
                                     {assessment.name}
                                   </span>
+                                  {isDeprecated && (
+                                    <span
+                                      className="shrink-0 rounded border border-amber-400/40 px-1 text-[9px] uppercase tracking-wider text-amber-400/80"
+                                      title="Deprecated — visibility set to private, unpublished from the catalog"
+                                    >
+                                      Private
+                                    </span>
+                                  )}
                                   {!assessment.hasDedicatedPackage && (
                                     <span
                                       className="shrink-0 text-[9px] uppercase tracking-wider text-destructive"
@@ -2009,6 +2029,26 @@ export function SimulatorLeftTree() {
                                   >
                                     <Edit2 className="h-3 w-3" />
                                   </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openModal("deprecate-assessment", { assessment });
+                                    }}
+                                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100"
+                                    title="Deprecate assessment (unpublish, reversible)"
+                                  >
+                                    <Archive className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openModal("delete-assessment", { assessment, assessments });
+                                    }}
+                                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-destructive group-hover:opacity-100"
+                                    title="Delete assessment"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
                                 </div>
                               </ContextMenuTrigger>
                               <ContextMenuContent className="w-44">
@@ -2019,9 +2059,24 @@ export function SimulatorLeftTree() {
                                   <Edit2 className="h-3.5 w-3.5" />
                                   Edit
                                 </ContextMenuItem>
+                                <ContextMenuItem
+                                  onSelect={() => openModal("deprecate-assessment", { assessment })}
+                                  className="gap-2 text-xs"
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                  Deprecate
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onSelect={() => openModal("delete-assessment", { assessment, assessments })}
+                                  className="gap-2 text-xs text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

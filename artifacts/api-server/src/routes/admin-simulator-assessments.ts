@@ -41,6 +41,11 @@ export interface SimulatorAssessmentNode {
    *  default a new assessment's sortOrder to max(existing) + 1 without a
    *  second fetch of the full services catalog. */
   sortOrder: number;
+  /** Real services.visibility — "private" is how Phase 7's Deprecate action
+   *  unpublishes an assessment (PUT /admin/services/:id) without deleting
+   *  the row. Surfaced so the tree can flag a deprecated assessment without
+   *  a second fetch. */
+  visibility: "public" | "private" | "landing_page_only";
   /** The real dedicated packageKey, or null when this assessment has none and
    *  runs on the core:security-baseline fallback at scan time. */
   packageKey: string | null;
@@ -60,6 +65,7 @@ router.get("/admin/simulator/assessments", requireAdmin, async (_req: Request, r
         slug: servicesTable.slug,
         isFreeOffering: servicesTable.isFreeOffering,
         sortOrder: servicesTable.sortOrder,
+        visibility: servicesTable.visibility,
         typeAttributes: servicesTable.typeAttributes,
       })
       .from(servicesTable)
@@ -105,6 +111,7 @@ router.get("/admin/simulator/assessments", requireAdmin, async (_req: Request, r
         slug: row.slug,
         isFreeOffering: row.isFreeOffering,
         sortOrder: row.sortOrder,
+        visibility: row.visibility,
         packageKey: row.packageKey,
         hasDedicatedPackage,
         checkKeys,
