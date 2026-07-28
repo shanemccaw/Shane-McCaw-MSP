@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./batch": "./src/batch/index.ts"
+    "./batch": "./src/batch/index.ts",
+    "./metering": "./src/metering.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

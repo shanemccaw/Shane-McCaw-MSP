@@ -15,6 +15,10 @@ import jwt from "jsonwebtoken";
 // All factory functions must be self-contained (vi.mock is hoisted — no external vars)
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
+  // support-chat wraps its Anthropic call in withAiAttribution() so the metered
+  // client bills the turn to the right MSP. Pass-through here — the attribution
+  // values themselves are asserted in ai-usage-metering.test.ts.
+  withAiAttribution: <T,>(_attribution: unknown, fn: () => T): T => fn(),
   anthropic: {
     messages: {
       create: vi.fn(),

@@ -25,6 +25,12 @@ import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner";
+import { installAiUsageSink } from "./lib/ai-usage-sink";
+
+// Install the AI usage sink before anything else can reach the model. The
+// metered Anthropic client buffers records emitted before this point and
+// flushes them here, so no call made during module init goes unrecorded.
+installAiUsageSink();
 
 const rawPort = process.env["PORT"];
 

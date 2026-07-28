@@ -82,7 +82,8 @@ import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, co
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
+import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.js";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
 import path from "path";
@@ -1783,6 +1784,50 @@ const PROMOTED_ACTION_TYPES = new Set([
   "calculate_pricing", "run_workflow",
 ]);
 
+// ── AI cost attribution ───────────────────────────────────────────────────────
+// Every Anthropic call in this file is wrapped in withAiAttribution() so the
+// metered client (@workspace/integrations-anthropic-ai) writes an
+// ai_usage_events row naming the node that spent the money. Without the wrap
+// the call is still recorded — the metering is structural — but lands as
+// platform-owned and flagged `attributed: false`, which is a gap, not a
+// classification.
+//
+// mspId comes off the run payload. This executor has no run-level tenant
+// context (unlike portal-workflow-engine.ts, which carries a tenantContext), so
+// a workflow whose payload carries no mspId genuinely cannot be attributed to
+// one — that is reported honestly as unattributed rather than guessed at.
+
+function resolvePayloadMspId(payload: Record<string, unknown>): number | null {
+  const raw = payload["mspId"];
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return parseInt(raw.trim(), 10);
+  return null;
+}
+
+/**
+ * Attribution for an AI call made by `node` during `runId`.
+ *
+ * The cost owner comes from the node-type registry, resolved through the
+ * action/actionType meta-dispatch so `actionType: "generate_document"` is
+ * classified as the AI node it is rather than as a bare "action".
+ */
+function aiAttributionFor(
+  node: WfNode,
+  payload: Record<string, unknown>,
+  runId: number,
+): AiCallAttribution {
+  const actionType = node.data.actionType as string | undefined;
+  const effectiveType = resolveEffectiveNodeType(node.type, actionType);
+  const meta = resolveNodeTypeMeta(node.type, actionType);
+  return {
+    mspId: resolvePayloadMspId(payload),
+    costOwner: meta.isAIDependent ? meta.aiCostOwner : "platform",
+    nodeType: effectiveType,
+    feature: `workflow:${effectiveType}`,
+    runId: String(runId),
+  };
+}
+
 // ── Runbook ID resolution ─────────────────────────────────────────────────────
 // The Execute Runbook node's "Runbook ID" field is populated from two very
 // different ID spaces depending on where it came from:
@@ -2285,10 +2330,13 @@ async function executeNode(
               let tegHtmlContent: string;
               try {
                 const docStylePrefix = await getDocumentStylePrefix();
-                const stream = anthropic.messages.stream({
-                  model: "claude-haiku-4-5", max_tokens: 16384,
-                  messages: [{ role: "user", content: docStylePrefix + prompt }],
-                });
+                const stream = withAiAttribution(
+                  aiAttributionFor(node, payload, runId),
+                  () => anthropic.messages.stream({
+                    model: "claude-haiku-4-5", max_tokens: 16384,
+                    messages: [{ role: "user", content: docStylePrefix + prompt }],
+                  }),
+                );
                 const aiResp = await stream.finalMessage();
                 const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
                 tegHtmlContent = igExtractHtml(rawText);
@@ -5370,11 +5418,14 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
   "content": "Full article body in Markdown — use ## subheadings, bullet points where appropriate"
 }`;
 
-        const gaResp = await anthropic.messages.create({
-          model: "claude-haiku-4-5",
-          max_tokens: 4096,
-          messages: [{ role: "user", content: gaPrompt }],
-        });
+        const gaResp = await withAiAttribution(
+          aiAttributionFor(node, payload, runId),
+          () => anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 4096,
+            messages: [{ role: "user", content: gaPrompt }],
+          }),
+        );
 
         const gaRaw = gaResp.content
           .filter(b => b.type === "text")
@@ -5527,11 +5578,14 @@ Return ONLY a JSON object with these exact keys:
   "rationale": "One sentence explaining why this topic will resonate"
 }`;
 
-        const tpResp = await anthropic.messages.create({
-          model: "claude-haiku-4-5",
-          max_tokens: 512,
-          messages: [{ role: "user", content: tpPrompt }],
-        });
+        const tpResp = await withAiAttribution(
+          aiAttributionFor(node, payload, runId),
+          () => anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 512,
+            messages: [{ role: "user", content: tpPrompt }],
+          }),
+        );
 
         const tpRaw = tpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
         const tpParsed = extractJsonFromAiText(tpRaw);
@@ -5742,11 +5796,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   "cta": { "buttonText": "${glpCta}", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
 }`;
 
-        const glpResp = await anthropic.messages.create({
-          model: "claude-haiku-4-5",
-          max_tokens: 2000,
-          messages: [{ role: "user", content: glpPrompt }],
-        });
+        const glpResp = await withAiAttribution(
+          aiAttributionFor(node, payload, runId),
+          () => anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 2000,
+            messages: [{ role: "user", content: glpPrompt }],
+          }),
+        );
 
         const glpRaw = glpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
         const glpParsed = extractJsonFromAiText(glpRaw);
@@ -6307,12 +6364,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        const aaResp = await anthropic.messages.create({
-          model: aaModel,
-          max_tokens: 1024,
-          ...(aaSystem ? { system: aaSystem } : {}),
-          messages: [{ role: "user", content: aaPrompt }],
-        });
+        const aaResp = await withAiAttribution(
+          aiAttributionFor(node, payload, runId),
+          () => anthropic.messages.create({
+            model: aaModel,
+            max_tokens: 1024,
+            ...(aaSystem ? { system: aaSystem } : {}),
+            messages: [{ role: "user", content: aaPrompt }],
+          }),
+        );
 
         const aaText = aaResp.content
           .filter(b => b.type === "text")
@@ -6585,12 +6645,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }));
         const fnhAiInput = `${fnhPrompt}\n\nHEADLINES (${fnhSlimHeadlines.length} stories):\n${JSON.stringify(fnhSlimHeadlines, null, 2)}`;
 
-        const fnhAiResponse = await anthropic.messages.create({
-          model: "claude-haiku-4-5",
-          max_tokens: 2048,
-          system: "You must respond with a single JSON object only — no prose, no markdown fences, no explanation before or after. Start your response with { and end with }.",
-          messages: [{ role: "user", content: fnhAiInput }],
-        });
+        const fnhAiResponse = await withAiAttribution(
+          aiAttributionFor(node, payload, runId),
+          () => anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 2048,
+            system: "You must respond with a single JSON object only — no prose, no markdown fences, no explanation before or after. Start your response with { and end with }.",
+            messages: [{ role: "user", content: fnhAiInput }],
+          }),
+        );
 
         const fnhAiText = fnhAiResponse.content.find(b => b.type === "text")?.text ?? "";
         const fnhParsed = extractJsonFromAiText(fnhAiText) ?? {};
@@ -6624,11 +6687,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
         if (fnhIsHot) {
           const fnhBriefInput = `${CAMPAIGN_BRIEF_PROMPT}\n\nTopic: ${fnhTopic}\nContext: ${fnhContext}\nTarget sector: ${fnhSector}`;
-          const fnhBriefResponse = await anthropic.messages.create({
-            model: "claude-haiku-4-5",
-            max_tokens: 512,
-            messages: [{ role: "user", content: fnhBriefInput }],
-          });
+          const fnhBriefResponse = await withAiAttribution(
+            aiAttributionFor(node, payload, runId),
+            () => anthropic.messages.create({
+              model: "claude-haiku-4-5",
+              max_tokens: 512,
+              messages: [{ role: "user", content: fnhBriefInput }],
+            }),
+          );
           const fnhBriefText = fnhBriefResponse.content.find(b => b.type === "text")?.text ?? "";
           fnhBrief = extractJsonFromAiText(fnhBriefText);
 

@@ -21,28 +21,65 @@
  *
  * The monitoring engine's data-collection path MUST always run regardless of
  * an MSP's AI balance. Only nodes with isAIDependent: true are gated.
+ *
+ * ── The "action" meta-node ────────────────────────────────────────────────
+ * `workflow-executor.ts` has a single `case "action"` handler that dispatches
+ * internally on `node.data.actionType`, and a PROMOTED_ACTION_TYPES bridge that
+ * rewrites first-class node types (e.g. `generate_document`) into
+ * `type: "action"` + `data.actionType`. So the type that actually decides what
+ * runs — and whether it calls a model — is `node.data.actionType ?? node.type`,
+ * not `node.type` alone.
+ *
+ * This matters for billing: `actionType: "generate_document"` makes a real
+ * streaming Anthropic call. Classifying the bare `action` node type would gate
+ * every non-AI action (create_lead, http_request, …) on an MSP's AI balance,
+ * which is wrong in the other direction. Use `resolveNodeTypeMeta(nodeType,
+ * actionType)` — it follows the same resolution rule the executor does.
+ *
+ * ── Completeness ──────────────────────────────────────────────────────────
+ * Every member of the `WfNode` union in `lib/db/src/schema/index.ts` and every
+ * member of `PROMOTED_ACTION_TYPES` in `workflow-executor.ts` must have an
+ * entry here. This is enforced by `ai-usage-metering.test.ts`, which parses
+ * both source files — an unregistered node type falls through
+ * `getNodeTypeMeta`'s "unknown → non-AI" default and would be silently
+ * un-gated and unbilled, so the gap has to be a test failure rather than
+ * something only a reviewer would notice.
  */
 
 /**
  * Discriminated union — when isAIDependent is false, aiCostOwner must be
  * absent (or never). When isAIDependent is true, aiCostOwner is REQUIRED.
  * This lets TypeScript enforce completeness at compile time.
+ *
+ * `dispatchesOn: "actionType"` marks a meta-node whose real classification
+ * lives on its sub-type; see `resolveNodeTypeMeta`.
  */
 export type NodeTypeMeta =
   | {
       nodeType: string;
       isAIDependent: false;
       aiCostOwner?: never;
+      dispatchesOn?: "actionType";
       description?: string;
     }
   | {
       nodeType: string;
       isAIDependent: true;
       aiCostOwner: "msp" | "platform";
+      dispatchesOn?: never;
       description?: string;
     };
 
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
+  // ── Meta-node ──────────────────────────────────────────────────────────────
+  {
+    nodeType: "action",
+    isAIDependent: false,
+    dispatchesOn: "actionType",
+    description:
+      "Generic action node — the executor dispatches on data.actionType, and PROMOTED_ACTION_TYPES rewrites first-class node types into this shape. Its real AI classification comes from the actionType entry; resolve with resolveNodeTypeMeta(). The bare node type is non-AI so an action node with no actionType is never gated.",
+  },
+
   // ── Foundation / structural nodes ──────────────────────────────────────────
   {
     nodeType: "start",
@@ -164,6 +201,89 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Emits a progress event to the run's SSE stream",
   },
+  {
+    nodeType: "comment",
+    isAIDependent: false,
+    description: "Canvas annotation — produces no output and executes nothing",
+  },
+
+  // ── Promoted action types (PROMOTED_ACTION_TYPES) ───────────────────────────
+  // These arrive as node.data.actionType on an "action" node. Listed here so
+  // resolveNodeTypeMeta() can classify them; none of them calls a model.
+  {
+    nodeType: "cancel_workflow",
+    isAIDependent: false,
+    description: "Cancels the current run — no AI",
+  },
+  {
+    nodeType: "http_request",
+    isAIDependent: false,
+    description: "Outbound HTTP request from an action node — no AI",
+  },
+  {
+    nodeType: "sql_query",
+    isAIDependent: false,
+    description: "Parameterized SQL query from an action node — no AI",
+  },
+  {
+    nodeType: "send_sms",
+    isAIDependent: false,
+    description: "Sends an SMS — no AI",
+  },
+  {
+    nodeType: "create_lead",
+    isAIDependent: false,
+    description: "Creates a CRM lead record — no AI",
+  },
+  {
+    nodeType: "convert_to_opportunity",
+    isAIDependent: false,
+    description: "Converts a lead into an opportunity — no AI",
+  },
+  {
+    nodeType: "create_client",
+    isAIDependent: false,
+    description: "Creates a client user record — no AI",
+  },
+  {
+    nodeType: "create_project",
+    isAIDependent: false,
+    description: "Creates a project record — no AI",
+  },
+  {
+    nodeType: "calculate_pricing",
+    isAIDependent: false,
+    description: "Runs the pricing calculation from an action node — deterministic",
+  },
+
+  // ── Graph write ────────────────────────────────────────────────────────────
+  {
+    nodeType: "graph_write_operation",
+    isAIDependent: false,
+    description: "Issues a write against Microsoft Graph (POST/PATCH/PUT) — no AI",
+  },
+
+  // ── Signal policy / engagement offer engines ───────────────────────────────
+  {
+    nodeType: "evaluate_signal_policies",
+    isAIDependent: false,
+    description: "Runs policy-engine.ts evaluateAllPolicies() — deterministic rules, no AI",
+  },
+  {
+    nodeType: "evaluate_engagement_offers",
+    isAIDependent: false,
+    description: "Runs engagement-offer-engine.ts evaluateAllEngagementOffers() — deterministic rules, no AI",
+  },
+  {
+    nodeType: "dispatch_engagement_followups",
+    isAIDependent: false,
+    description: "Dispatches pending engagement follow-ups — no AI",
+  },
+  {
+    nodeType: "cancel_conflicting_engagement_followup",
+    isAIDependent: false,
+    description: "Cancels a follow-up that conflicts with a purchased service — no AI",
+  },
 
   // ── Monitoring / data collection ── NEVER AI-gated ────────────────────────
   {
@@ -206,11 +326,10 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Executes a monitoring package's checks — no AI",
   },
-  {
-    nodeType: "fetch_news_headlines",
-    isAIDependent: false,
-    description: "Fetches external news headlines — no AI",
-  },
+  // NOTE: fetch_news_headlines is NOT in this section despite the name — it
+  // makes two real Anthropic calls (headline selection + campaign brief) and is
+  // classified as AI-dependent below. It was misclassified as non-AI here until
+  // the AI-call-site audit; the fetch is only the first half of what it does.
 
   // ── CRM / pipeline ─────────────────────────────────────────────────────────
   {
@@ -763,6 +882,13 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     aiCostOwner: "msp",
     description: "AI-generated landing page content — billed to MSP",
   },
+  {
+    nodeType: "fetch_news_headlines",
+    isAIDependent: true,
+    aiCostOwner: "msp",
+    description:
+      "Fetches external news headlines, then makes two AI calls — headline selection and an optional campaign brief (workflow-executor.ts). Content generation, same owner as generate_article — billed to MSP.",
+  },
 
   // ── AI-dependent — billed to platform ─────────────────────────────────────
   {
@@ -803,12 +929,58 @@ export function getNodeTypeMeta(nodeType: string): NodeTypeMeta {
   );
 }
 
+/** True when this node type has a real registry entry (not the unknown fallback). */
+export function isRegisteredNodeType(nodeType: string): boolean {
+  return registryMap.has(nodeType);
+}
+
+/**
+ * The type that actually decides what a node does.
+ *
+ * `workflow-executor.ts` rewrites every PROMOTED_ACTION_TYPES node into
+ * `type: "action"` + `data.actionType`, and the `action` handler dispatches on
+ * `actionType` from there. So `actionType` wins whenever it is present — this
+ * is the same rule the executor applies, kept in one place so the two cannot
+ * drift.
+ */
+export function resolveEffectiveNodeType(
+  nodeType: string,
+  actionType?: string | null,
+): string {
+  const meta = registryMap.get(nodeType);
+  if (meta?.dispatchesOn === "actionType" && actionType) return actionType;
+  // A promoted first-class node type (e.g. "generate_document") may arrive
+  // either as the node type itself or already rewritten onto actionType.
+  if (actionType && registryMap.has(actionType) && !registryMap.has(nodeType)) {
+    return actionType;
+  }
+  return nodeType;
+}
+
+/**
+ * Metadata for a node, following meta-node dispatch.
+ *
+ * Prefer this over `getNodeTypeMeta` anywhere a real graph node is in hand:
+ * `getNodeTypeMeta("action")` reports non-AI, which is correct for a bare
+ * action node but wrong for `actionType: "generate_document"`, which calls a
+ * model.
+ */
+export function resolveNodeTypeMeta(
+  nodeType: string,
+  actionType?: string | null,
+): NodeTypeMeta {
+  return getNodeTypeMeta(resolveEffectiveNodeType(nodeType, actionType));
+}
+
 /**
  * Returns true if this node type requires an AI inference call.
  * Non-AI nodes always run regardless of MSP balance.
+ *
+ * Pass `actionType` when the caller has a real graph node, so meta-node
+ * dispatch is followed.
  */
-export function isAIDependent(nodeType: string): boolean {
-  return getNodeTypeMeta(nodeType).isAIDependent;
+export function isAIDependent(nodeType: string, actionType?: string | null): boolean {
+  return resolveNodeTypeMeta(nodeType, actionType).isAIDependent;
 }
 
 /**
@@ -816,10 +988,13 @@ export function isAIDependent(nodeType: string): boolean {
  * "msp"      → usage debits the MSP's credit allowance.
  * "platform" → usage is always billed to the platform; never blocks.
  */
-export function getAiCostOwner(nodeType: string): "msp" | "platform" {
-  const meta = getNodeTypeMeta(nodeType);
+export function getAiCostOwner(
+  nodeType: string,
+  actionType?: string | null,
+): "msp" | "platform" {
+  const meta = resolveNodeTypeMeta(nodeType, actionType);
   if (!meta.isAIDependent) {
-    throw new Error(`getAiCostOwner: node type '${nodeType}' is not AI-dependent`);
+    throw new Error(`getAiCostOwner: node type '${meta.nodeType}' is not AI-dependent`);
   }
   return meta.aiCostOwner;
 }

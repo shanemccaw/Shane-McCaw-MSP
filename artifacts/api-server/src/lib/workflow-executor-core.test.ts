@@ -121,6 +121,10 @@ vi.mock("./sse-channels", () => ({
 
 // ── Mock anthropic ────────────────────────────────────────────────────────────
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
+  // The executor wraps every AI call in withAiAttribution() so the metered
+  // client can bill it. Pass-through here — attribution itself is covered by
+  // ai-usage-metering.test.ts; this mock only needs the call to still happen.
+  withAiAttribution: <T,>(_attribution: unknown, fn: () => T): T => fn(),
   anthropic: {
     messages: {
       create: vi.fn(async () => ({

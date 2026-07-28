@@ -30,7 +30,8 @@ import {
 } from "@workspace/db";
 import { eq, and, or, desc, count, gte, like } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
+import { resolveBillingMspId } from "../lib/ai-billing.ts";
 import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-channels.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
@@ -45,6 +46,13 @@ import { listRemediableOffers, type RemediableOffer } from "./portal-mission-con
 const PLATFORM_MSP_ID = 1;
 
 const log = logger.child({ channel: "growth.booking" });
+
+/**
+ * AI Support Assistant cost attribution. Separate from the route's own
+ * `growth.booking` logger so spend telemetry lands on the cost-governance
+ * channel with every other AI-cost signal.
+ */
+const costLog = logger.child({ channel: "engine.ai-cost-governance" });
 
 const router: IRouter = Router();
 
@@ -425,6 +433,12 @@ router.post(
     const customerId = user.customerId ?? null;
     const isCustomerUser = user.mspRole === "CustomerUser";
 
+    // Billing attribution for this chat turn. resolveBillingMspId takes
+    // precedence over resolveMspId so an impersonation session bills the
+    // impersonated MSP rather than the actor (GAP-09) — a PlatformAdmin has a
+    // null mspId, so reading it directly would leave the spend unattributed.
+    const billingMspId = resolveBillingMspId(user) ?? mspId;
+
     let groundedCtx: GroundedContext;
     // Instant remediations the AI is allowed to propose in this session. Only
     // ever non-empty for a CustomerUser on a testbed tenant with an eligible
@@ -455,12 +469,29 @@ router.post(
 
     let fullReply: string;
     try {
-      const response = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: trimmedMessages,
-      });
+      // Every AI Support Assistant turn is billed to the MSP, matching the
+      // chat_message node type's registered aiCostOwner. The metered client
+      // writes the ai_usage_events row from inside this scope.
+      const response = await withAiAttribution(
+        {
+          mspId: billingMspId,
+          costOwner: "msp",
+          nodeType: "chat_message",
+          feature: "support_chat",
+        },
+        () => anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: trimmedMessages,
+        }),
+      );
+      if (billingMspId == null) {
+        costLog.warn(
+          { userId: user.id, mspRole: user.mspRole },
+          "support-chat: AI turn had no resolvable MSP — usage recorded as unattributed rather than billed to the wrong tenant",
+        );
+      }
       const block = response.content[0];
       fullReply = block.type === "text" ? block.text : "";
     } catch (err) {
@@ -512,6 +543,8 @@ router.post(
         mspRole: user.mspRole,
         escalated: shouldEscalate,
         aiCostOwner: "msp",
+        // The MSP actually billed — differs from mspId under impersonation.
+        aiBillingMspId: billingMspId,
         proposedRemediationOfferId: proposedRemediation?.offerId ?? null,
       },
     });

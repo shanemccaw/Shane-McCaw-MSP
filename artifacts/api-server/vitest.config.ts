@@ -55,6 +55,7 @@ export default defineConfig({
       "src/lib/__tests__/msp-financial-aggregator-overlord.test.ts",
       "src/routes/msp-sla-scope-creep.test.ts",
       "src/lib/ai-billing.test.ts",
+      "src/lib/ai-usage-metering.test.ts",
       "src/tests/doc-pipeline.test.ts",
       "src/tests/msp-reports.test.ts",
       "src/tests/request-context-spine.test.ts",
@@ -125,6 +126,7 @@ export default defineConfig({
       "src/lib/write-action-safety.test.ts",
       "src/routes/admin-write-actions.test.ts",
       "src/routes/admin-document-generator.test.ts",
+      "src/lib/active-directory.test.ts",
     ],
     coverage: {
       provider: "v8",
