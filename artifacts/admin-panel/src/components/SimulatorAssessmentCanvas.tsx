@@ -30,9 +30,19 @@
 // extractedProperties renders via the existing JsonResponseViewer
 // (Formatted/Raw tabs + copy) rather than a second JSON viewer.
 //
-// Deliberately NOT here (later phase, not yet built): full run history
-// browsing/diff across many runs — Phase 4 (#26). This phase's past-run
-// picker is a minimal recent-runs dropdown only.
+// Phase 4 (Issue #26) adds run history + diff, in a sibling component
+// (SimulatorAssessmentRunHistory.tsx, wired in at the bottom of this canvas)
+// rather than growing this already-large file further. No new backend
+// either: the history list reuses the SAME GET .../diagnostics/runs route
+// as the past-run picker above (filtered client-side to this assessment's
+// resolved packageKey, since the shared route has no server-side packageKey
+// filter), and the diff is NEW client-side logic — categorizing the two
+// selected runs' findings arrays (each fetched via the existing
+// GET .../diagnostics/runs/:runId route) into new/resolved/severity-changed/
+// unchanged. This is NOT the same diff as SimulatorRunHistory.tsx's (that
+// one is server-computed against simulator_check_runs, a different table
+// entirely) — only its checkbox-select-two / Diff-button / DiffView
+// interaction pattern is mirrored here.
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ListChecks, AlertTriangle, AlertCircle, Info, CheckCircle2, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
@@ -40,6 +50,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
+import { SimulatorAssessmentRunHistory } from "./SimulatorAssessmentRunHistory";
 import type { AssessmentNode } from "./SimulatorLeftTree";
 
 // Discriminated union matching the real events broadcastDiagnosticsRun*
@@ -75,8 +86,9 @@ interface RunSummary {
 }
 
 // Matches msp_diagnostic_findings (msp.ts) — same rows customer-detail.tsx's
-// DiagnosticsTab renders, same 4-value severity enum.
-interface DiagnosticFinding {
+// DiagnosticsTab renders, same 4-value severity enum. Exported for reuse by
+// SimulatorAssessmentRunHistory.tsx's client-side diff (Phase 4, #26).
+export interface DiagnosticFinding {
   findingId: string;
   checkKey: string;
   checkLabel: string;
@@ -101,7 +113,7 @@ interface PastRun {
 // The API orders findings alphabetically by severity text ("critical, info,
 // ok, warning") — not a usable priority order. Re-sort client-side instead
 // of touching the shared backend route.
-const SEVERITY_PRIORITY: Record<DiagnosticFinding["severity"], number> = {
+export const SEVERITY_PRIORITY: Record<DiagnosticFinding["severity"], number> = {
   critical: 0,
   warning: 1,
   info: 2,
@@ -611,6 +623,9 @@ export function SimulatorAssessmentCanvas({ assessment }: { assessment: Assessme
           )}
         </div>
       )}
+
+      {/* Full run history + diff — Phase 4 (#26). */}
+      <SimulatorAssessmentRunHistory assessment={assessment} customerId={selectedCustomerId} />
     </div>
   );
 }
