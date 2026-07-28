@@ -83,7 +83,7 @@ rather than a flat account list.
 |-------|-------|--------|-------|
 | 1 | IDE shell + tree skeleton (OU containers, MSP/Customer/Group nodes) + universal search + nav registration | In Progress | #61 |
 | 2 | MSP Object detail pane | In Progress | #62 |
-| 3 | Customer Object detail pane | In Progress | #63 |
+| 3 | Customer Object detail pane | Done | #63 |
 | 4 | RBAC/Group Object detail pane (members, search, count) | In Progress | #64 |
 | 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | In Progress | #65 |
 | 6 | User Object detail pane (full read view) | Not Started | #66 |
