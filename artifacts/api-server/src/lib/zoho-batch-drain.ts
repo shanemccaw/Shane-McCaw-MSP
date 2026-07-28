@@ -68,6 +68,7 @@ export async function runWithConcurrency<T, R>(
 }
 
 interface ClaimedZohoJob {
+  [key: string]: unknown;
   id: number;
   job_id: string;
   job_type: string;

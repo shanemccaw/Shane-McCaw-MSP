@@ -3,7 +3,16 @@
 // (zoho-webhook), and the drain's bounded-concurrency runner
 // (zoho-batch-drain). DB-touching paths are exercised in later phases.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// zoho-client transitively imports @workspace/db, whose index throws on import
+// unless DATABASE_URL is set. No query ever runs in these pure-helper tests —
+// the pool connects lazily — so a dummy URL is enough. vi.hoisted runs before
+// the hoisted static imports below.
+vi.hoisted(() => {
+  process.env.DATABASE_URL ??= "postgres://test:test@127.0.0.1:5432/test";
+});
+
 import { isZohoAccessTokenExpired, zohoRefreshTokenSecretName } from "./zoho-client.ts";
 import { verifyZohoWebhookToken, resolveZohoEventType } from "./zoho-webhook.ts";
 import { runWithConcurrency } from "./zoho-batch-drain.ts";
