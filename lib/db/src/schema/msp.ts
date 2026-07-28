@@ -1269,6 +1269,36 @@ export const mspConnectorConfigsTable = pgTable("msp_connector_configs", {
 export type MspConnectorConfig = typeof mspConnectorConfigsTable.$inferSelect;
 export type InsertMspConnectorConfig = typeof mspConnectorConfigsTable.$inferInsert;
 
+// ── Zoho Connection ────────────────────────────────────────────────────────────
+// One row per MSP (single-tenant today: mspId 1 only, shaped for later).
+// The long-lived Zoho REFRESH token lives in Key Vault under keyVaultSecretName —
+// never in this table. Access tokens churn hourly and are NOT long-term secrets,
+// so they are cached here (accessTokenCache/accessTokenExpiresAt) and refreshed
+// from the Key Vault refresh token when expired.
+
+export const ZOHO_CONNECTION_STATUS = ["disconnected", "connected", "error"] as const;
+export type ZohoConnectionStatus = typeof ZOHO_CONNECTION_STATUS[number];
+
+export const zohoConnectionTable = pgTable("zoho_connection", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().default(1).references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // Zoho's own org identifier, captured at OAuth callback time (best-effort)
+  zohoOrgId: text("zoho_org_id"),
+  // Key Vault secret NAME holding the refresh token — never the value itself
+  keyVaultSecretName: text("key_vault_secret_name").notNull(),
+  accessTokenCache: text("access_token_cache"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  status: text("status", { enum: ZOHO_CONNECTION_STATUS }).notNull().default("disconnected"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ZohoConnection = typeof zohoConnectionTable.$inferSelect;
+export type InsertZohoConnection = typeof zohoConnectionTable.$inferInsert;
+
 // ── Plan Capability Rules ──────────────────────────────────────────────────────
 // Data-driven mapping: (Stripe product/service tier) → (capability key → enabled).
 // Editable through the Admin Panel. Resolved at runtime by requirePlanFeature().

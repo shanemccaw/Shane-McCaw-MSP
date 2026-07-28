@@ -100,6 +100,7 @@ import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-no
 import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
+import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
@@ -1206,6 +1207,12 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "platform_log_stream_prune": {
       const retentionDaysDry = Number((node.data.retentionDays as number | undefined) ?? 7);
       return { dryRun: true, retentionDays: retentionDaysDry, rowsDeleted: 0, note: "dry run — prune skipped" };
+    }
+
+    case "zoho_batch_drain": {
+      const dryBatchSize = Number((node.data.batchSize as number | undefined) ?? 20);
+      const dryConcurrency = Number((node.data.concurrency as number | undefined) ?? 5);
+      return { dryRun: true, claimed: 0, succeeded: 0, failed: 0, retried: 0, batchSize: dryBatchSize, concurrency: dryConcurrency, note: "dry run — zoho queue drain skipped" };
     }
 
     case "send_browser_notification": {
@@ -6527,6 +6534,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "platform_log_stream_prune": {
         // Promoted node type: deletes platform_log_stream rows past retention.
         output = await handlePlatformLogStreamPrune(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "zoho_batch_drain": {
+        // Promoted node type: drains a bounded batch of pending zoho.* jobs
+        // from msp_job_queue (Zoho Integration Foundation, #82) — runs inside
+        // the seeded 5-minute "Zoho Queue Drain" schedule workflow so every
+        // sync batch is a visible, logged run.
+        output = await handleZohoBatchDrain(node.data as Record<string, unknown>);
         break;
       }
 

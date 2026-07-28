@@ -802,6 +802,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Deletes platform_log_stream rows older than the retention window — no AI",
   },
+  {
+    nodeType: "zoho_batch_drain",
+    isAIDependent: false,
+    description: "Drains a bounded batch of pending zoho.* jobs from msp_job_queue — no AI",
+  },
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

@@ -2398,6 +2398,8 @@ export interface WfNode {
     | "m365_health_sample"
     // Telemetry Retention
     | "platform_log_stream_prune"
+    // Zoho Integration — queue drain (Foundation, #82)
+    | "zoho_batch_drain"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities

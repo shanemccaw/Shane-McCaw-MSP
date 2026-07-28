@@ -308,6 +308,11 @@ function TriggerCard({
             )}
           </div>
         )}
+        {t.type === "webhook" && typeof t.config.zohoEventType === "string" && t.config.zohoEventType && (
+          <div className="text-xs text-muted-foreground/60 font-mono bg-background border border-border rounded-lg px-3 py-2 mb-2">
+            zoho event: <span className="text-foreground">{t.config.zohoEventType}</span>
+          </div>
+        )}
         {t.type === "webhook" && t.webhookToken && (
           <div className="flex items-center gap-2">
             <code className="flex-1 text-[10px] bg-background border border-border rounded-lg px-3 py-2 text-muted-foreground font-mono truncate">
@@ -516,6 +521,8 @@ export default function TriggersPage({ defId }: { defId: number }) {
   const [cronExpr, setCronExpr] = useState("0 9 * * 1");
   const [eventName, setEventName] = useState("");
 
+  const [zohoEventType, setZohoEventType] = useState("");
+
   const [schedulePayloadMode, setSchedulePayloadMode] = useState<"static" | "per_record" | "batched">("static");
   const [staticPayload, setStaticPayload] = useState("{}");
   const [fanOutQuery, setFanOutQuery] = useState("SELECT id FROM clients WHERE active = true");
@@ -553,6 +560,10 @@ export default function TriggersPage({ defId }: { defId: number }) {
         }
       } else if (newType === "event") {
         config = { eventName };
+      } else if (newType === "webhook" && zohoEventType) {
+        // Zoho-listening webhook triggers carry the event type they match;
+        // generic webhook triggers keep an empty config.
+        config = { zohoEventType };
       }
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`, {
         method: "POST",
@@ -708,9 +719,27 @@ export default function TriggersPage({ defId }: { defId: number }) {
               )}
 
               {newType === "webhook" && (
-                <div className="bg-background border border-border rounded-lg p-3 text-xs text-muted-foreground">
-                  A unique webhook URL will be generated automatically after saving.
-                </div>
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Zoho Event (optional)</label>
+                    <select
+                      value={zohoEventType}
+                      onChange={e => setZohoEventType(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
+                    >
+                      <option value="">None — generic webhook URL</option>
+                      <option value="Leads.create">Zoho: Leads.create</option>
+                      <option value="Deals.update">Zoho: Deals.update</option>
+                      <option value="Contacts.update">Zoho: Contacts.update</option>
+                    </select>
+                    <p className="text-[11px] text-muted-foreground/60">
+                      Selecting a Zoho event makes this trigger fire from the platform's /api/zoho/webhook receiver when that event arrives.
+                    </p>
+                  </div>
+                  <div className="bg-background border border-border rounded-lg p-3 text-xs text-muted-foreground">
+                    A unique webhook URL will be generated automatically after saving.
+                  </div>
+                </>
               )}
 
               <div className="flex gap-2 justify-end">
