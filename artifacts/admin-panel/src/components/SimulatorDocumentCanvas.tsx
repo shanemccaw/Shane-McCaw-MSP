@@ -26,7 +26,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toast } from "sonner";
-import { ExternalLink, Loader2, Play, Eye, Sparkles, AlertTriangle } from "lucide-react";
+import { ExternalLink, Loader2, Play, Eye, Sparkles, AlertTriangle, Wand2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import DocumentTypePreviewContent, { type DocumentTypePreviewData } from "./DocumentTypePreviewContent";
 import DocumentScopingEditor from "./DocumentScopingEditor";
@@ -105,6 +105,7 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
   const [form, setForm] = useState<PropertiesForm>(() => toForm(documentType));
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [suggestingSections, setSuggestingSections] = useState(false);
 
   // Re-seed everything whenever a different document type is selected in the tree.
   useEffect(() => {
@@ -191,6 +192,36 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
       toast.error(mode === "dry-run" ? "Preview failed" : "Generation failed");
     } finally {
       setRunning(false);
+    }
+  };
+
+  const suggestSections = async () => {
+    if (!form.label.trim()) return;
+    setSuggestingSections(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/admin/document-generator/document-types/${encodeURIComponent(doc.key)}/suggest-scoping`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: form.label,
+            category: form.category,
+            ...(form.serviceId.trim() !== "" ? { serviceId: Number(form.serviceId) } : {}),
+          }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? "Failed to generate scoping suggestion");
+      const suggested = (data as { sections: { heading: string; guidance: string }[] }).sections;
+      const existing = JSON.parse(form.sectionsRaw || "[]") as { id: string; heading: string; guidance: string }[];
+      const merged = [...existing, ...suggested.map((s) => ({ id: crypto.randomUUID(), heading: s.heading, guidance: s.guidance }))];
+      setForm((f) => ({ ...f, sectionsRaw: JSON.stringify(merged, null, 2) }));
+      toast.success("AI suggestions applied — review before saving");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "AI Suggest failed");
+    } finally {
+      setSuggestingSections(false);
     }
   };
 
@@ -459,9 +490,20 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">
-              Sections <span className="font-normal text-muted-foreground/60">(JSON array of {"{"}id, heading, guidance{"}"})</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Sections <span className="font-normal text-muted-foreground/60">(JSON array of {"{"}id, heading, guidance{"}"})</span>
+              </label>
+              <button
+                onClick={() => void suggestSections()}
+                disabled={suggestingSections || !form.label.trim()}
+                title={!form.label.trim() ? "Enter a label first" : undefined}
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+              >
+                {suggestingSections ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                AI Suggest
+              </button>
+            </div>
             <div className="overflow-hidden rounded-md border border-border" style={{ height: "180px" }}>
               <CodeMirror
                 value={form.sectionsRaw}
@@ -480,6 +522,10 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
             onProfileKeyPatternsChange={(v) => setForm((f) => ({ ...f, includedProfileKeyPatterns: v }))}
             signalCategories={form.includedSignalCategories}
             onSignalCategoriesChange={(v) => setForm((f) => ({ ...f, includedSignalCategories: v }))}
+            docTypeKey={doc.key}
+            label={form.label}
+            category={form.category}
+            serviceId={form.serviceId.trim() !== "" ? Number(form.serviceId) : null}
           />
 
           {formError && <p className="text-xs text-red-400">{formError}</p>}

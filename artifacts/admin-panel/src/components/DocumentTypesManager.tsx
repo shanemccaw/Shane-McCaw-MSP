@@ -121,6 +121,38 @@ export default function DocumentTypesManager() {
   const [previewData, setPreviewData] = useState<{ docTypeLabel: string; preview: any } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  const [suggestingSections, setSuggestingSections] = useState(false);
+
+  const suggestSections = async () => {
+    if (!form.label.trim()) return;
+    setSuggestingSections(true);
+    try {
+      const url = editingType
+        ? `/api/admin/document-generator/document-types/${encodeURIComponent(editingType.key)}/suggest-scoping`
+        : "/api/admin/document-generator/document-types/suggest-scoping";
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: form.label,
+          category: form.category,
+          ...(form.serviceId.trim() !== "" ? { serviceId: Number(form.serviceId) } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? "Failed to generate scoping suggestion");
+      const suggested = (data as { sections: { heading: string; guidance: string }[] }).sections;
+      const existing = JSON.parse(form.sectionsRaw || "[]") as { id: string; heading: string; guidance: string }[];
+      const merged = [...existing, ...suggested.map(s => ({ id: crypto.randomUUID(), heading: s.heading, guidance: s.guidance }))];
+      setForm(f => ({ ...f, sectionsRaw: JSON.stringify(merged, null, 2) }));
+      toast({ title: "AI suggestions applied", description: "Review the suggested sections before saving." });
+    } catch (err) {
+      toast({ title: "AI Suggest failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setSuggestingSections(false);
+    }
+  };
+
   const openPromptDialog = async (type: DocumentType) => {
     if (type.aiPromptId == null) {
       toast({ title: "No linked prompt", description: "This document type has no linked AI prompt.", variant: "destructive" });
@@ -416,9 +448,21 @@ export default function DocumentTypesManager() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Sections <span className="font-normal text-muted-foreground/60">(JSON array of {"{"}id, heading, guidance{"}"})</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Sections <span className="font-normal text-muted-foreground/60">(JSON array of {"{"}id, heading, guidance{"}"})</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void suggestSections()}
+                  disabled={suggestingSections || !form.label.trim()}
+                  title={!form.label.trim() ? "Enter a label first" : undefined}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+                >
+                  {suggestingSections ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  AI Suggest
+                </button>
+              </div>
               <div className="border border-border rounded-md overflow-hidden" style={{ height: "220px" }}>
                 <CodeMirror
                   value={form.sectionsRaw}
@@ -437,6 +481,10 @@ export default function DocumentTypesManager() {
               onProfileKeyPatternsChange={v => setForm(f => ({ ...f, profileKeyPatterns: v }))}
               signalCategories={form.signalCategories}
               onSignalCategoriesChange={v => setForm(f => ({ ...f, signalCategories: v }))}
+              docTypeKey={editingType?.key}
+              label={form.label}
+              category={form.category}
+              serviceId={form.serviceId.trim() !== "" ? Number(form.serviceId) : null}
             />
 
             <div className="grid grid-cols-2 gap-3 items-end">

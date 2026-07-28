@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { SIGNAL_CATEGORY_PREFIXES } from "@workspace/db/schema";
 
 // Drop-in replacement for the raw JSON CodeMirror textboxes previously used
@@ -8,6 +9,12 @@ import { SIGNAL_CATEGORY_PREFIXES } from "@workspace/db/schema";
 // #70). `sections` is NOT covered here — that stays the existing structured
 // editor at every call site. Props in, array out, same controlled shape the
 // CodeMirror editors already used, so this can swap in directly.
+//
+// AI Suggest (Phase 5) calls the Phase 4 constrained-suggestion endpoint and
+// merges the returned profileKeyPatterns/signalCategories on top of whatever
+// is already checked — it never wipes existing selections. `sections` from
+// the same response is ignored here; each call site wires its own separate
+// AI Suggest trigger for that field, since this component doesn't own it.
 
 interface ProfileKeyDomain {
   domain: string;
@@ -19,6 +26,16 @@ interface DocumentScopingEditorProps {
   onProfileKeyPatternsChange: (v: string[]) => void;
   signalCategories: string[];
   onSignalCategoriesChange: (v: string[]) => void;
+  /** Existing saved document type's key — omit for the pre-save (New Document Type) case. */
+  docTypeKey?: string;
+  label: string;
+  category: "report" | "consulting";
+  serviceId?: number | null;
+}
+
+interface SuggestScopingResponse {
+  profileKeyPatterns: string[];
+  signalCategories: string[];
 }
 
 const inputCls =
@@ -29,14 +46,20 @@ export default function DocumentScopingEditor({
   onProfileKeyPatternsChange,
   signalCategories,
   onSignalCategoriesChange,
+  docTypeKey,
+  label,
+  category,
+  serviceId,
 }: DocumentScopingEditorProps) {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
 
   const [domains, setDomains] = useState<ProfileKeyDomain[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,16 +131,61 @@ export default function DocumentScopingEditor({
 
   const isDomainExpanded = (domain: string) => (searchTerm ? true : expanded.has(domain));
 
-  const toggleSignalCategory = (category: string, checked: boolean) => {
+  const toggleSignalCategory = (cat: string, checked: boolean) => {
     if (checked) {
-      if (!signalCategories.includes(category)) onSignalCategoriesChange([...signalCategories, category]);
+      if (!signalCategories.includes(cat)) onSignalCategoriesChange([...signalCategories, cat]);
     } else {
-      onSignalCategoriesChange(signalCategories.filter(c => c !== category));
+      onSignalCategoriesChange(signalCategories.filter(c => c !== cat));
+    }
+  };
+
+  const runAiSuggest = async () => {
+    setSuggesting(true);
+    try {
+      const url = docTypeKey
+        ? `/api/admin/document-generator/document-types/${encodeURIComponent(docTypeKey)}/suggest-scoping`
+        : "/api/admin/document-generator/document-types/suggest-scoping";
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, category, ...(serviceId != null ? { serviceId } : {}) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((data as { error?: string } | null)?.error ?? "Failed to generate scoping suggestion");
+      }
+      const suggestion = data as SuggestScopingResponse;
+      const mergedKeys = [...profileKeyPatterns, ...suggestion.profileKeyPatterns.filter(k => !profileKeyPatterns.includes(k))];
+      const mergedCategories = [...signalCategories, ...suggestion.signalCategories.filter(c => !signalCategories.includes(c))];
+      onProfileKeyPatternsChange(mergedKeys);
+      onSignalCategoriesChange(mergedCategories);
+      toast({ title: "AI suggestions applied", description: "Review the pre-checked boxes before saving." });
+    } catch (err) {
+      toast({
+        title: "AI Suggest failed",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSuggesting(false);
     }
   };
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void runAiSuggest()}
+          disabled={suggesting || !label.trim()}
+          title={!label.trim() ? "Enter a label first" : undefined}
+          className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+        >
+          {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          AI Suggest
+        </button>
+      </div>
+
       <div className="space-y-1.5">
         <label className="text-[11px] font-medium text-muted-foreground">Profile Key Patterns</label>
 

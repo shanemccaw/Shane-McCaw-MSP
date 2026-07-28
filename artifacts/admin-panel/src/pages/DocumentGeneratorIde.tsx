@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap } from "lucide-react";
+import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap, Sparkles, Trash2 } from "lucide-react";
 import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
 import DocumentScopingEditor from "@/components/DocumentScopingEditor";
 
@@ -205,6 +205,7 @@ export default function DocumentGeneratorIde() {
     serviceId: number | null;
     includedProfileKeyPatterns: string[];
     includedSignalCategories: string[];
+    sections?: { id: string; heading: string; guidance: string }[];
   }) => {
     const res = await fetchWithAuth("/api/admin/document-types", {
       method: "POST",
@@ -481,10 +482,13 @@ interface NewDocumentTypeModalProps {
     serviceId: number | null;
     includedProfileKeyPatterns: string[];
     includedSignalCategories: string[];
+    sections?: { id: string; heading: string; guidance: string }[];
   }) => Promise<DocumentType>;
 }
 
 function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeModalProps) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [label, setLabel] = useState("");
   const [key, setKey] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
@@ -493,6 +497,8 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
   const [serviceId, setServiceId] = useState<number | "">("");
   const [profileKeyPatterns, setProfileKeyPatterns] = useState<string[]>([]);
   const [signalCategories, setSignalCategories] = useState<string[]>([]);
+  const [sections, setSections] = useState<{ id: string; heading: string; guidance: string }[]>([]);
+  const [suggestingSections, setSuggestingSections] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ label: string; aiPromptId: number | null } | null>(null);
@@ -500,6 +506,27 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
   const handleLabelChange = (value: string) => {
     setLabel(value);
     if (!keyTouched) setKey(slugifyKey(value));
+  };
+
+  const suggestSections = async () => {
+    if (!label.trim()) return;
+    setSuggestingSections(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/document-generator/document-types/suggest-scoping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, category, ...(serviceId !== "" ? { serviceId } : {}) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? "Failed to generate scoping suggestion");
+      const suggested = (data as { sections: { heading: string; guidance: string }[] }).sections;
+      setSections(prev => [...prev, ...suggested.map(s => ({ id: crypto.randomUUID(), heading: s.heading, guidance: s.guidance }))]);
+      toast({ title: "AI suggestions applied", description: "Review the suggested sections before creating." });
+    } catch (err) {
+      toast({ title: "AI Suggest failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setSuggestingSections(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -517,6 +544,7 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
         serviceId: serviceId === "" ? null : serviceId,
         includedProfileKeyPatterns: profileKeyPatterns,
         includedSignalCategories: signalCategories,
+        sections,
       });
       setCreated({ label: row.label, aiPromptId: row.aiPromptId });
     } catch (err) {
@@ -627,11 +655,52 @@ function NewDocumentTypeModal({ services, onClose, onCreate }: NewDocumentTypeMo
               onProfileKeyPatternsChange={setProfileKeyPatterns}
               signalCategories={signalCategories}
               onSignalCategoriesChange={setSignalCategories}
+              label={label}
+              category={category}
+              serviceId={serviceId === "" ? null : serviceId}
             />
             <p className="text-[10px] text-gray-500">
               Left empty on purpose, or unsure? Empty means unscoped — this document type will receive the full
               client profile.
             </p>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-400">Sections (optional)</label>
+                <button
+                  type="button"
+                  onClick={() => void suggestSections()}
+                  disabled={suggestingSections || !label.trim()}
+                  title={!label.trim() ? "Enter a label first" : undefined}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-400 hover:bg-blue-500/20 disabled:opacity-40 transition-colors"
+                >
+                  {suggestingSections ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  AI Suggest
+                </button>
+              </div>
+              {sections.length === 0 ? (
+                <p className="text-[10px] italic text-gray-500">No sections yet — use AI Suggest or leave empty.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {sections.map(s => (
+                    <div key={s.id} className="flex items-start gap-2 bg-card border border-gray-700/50 rounded-lg px-2.5 py-1.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs text-white font-medium truncate">{s.heading}</div>
+                        <div className="text-[10px] text-gray-500 line-clamp-2">{s.guidance}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSections(prev => prev.filter(x => x.id !== s.id))}
+                        className="shrink-0 text-gray-500 hover:text-red-400"
+                        aria-label={`Remove section ${s.heading}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-gray-700/50 text-gray-300 hover:bg-gray-800/50">
                 Cancel
