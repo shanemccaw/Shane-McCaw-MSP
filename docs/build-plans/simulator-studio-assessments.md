@@ -40,7 +40,7 @@ exist and are live (see `consent.ts`).
 | 5 | Assessment Creation Wizard | Done | #28 |
 | 6 | Assessment Edit Wizard | Done | #29 |
 | 7 | Delete / Deprecate | Done | #30 |
-| 8 | Step 3 check search by endpoint/properties + inline create (no modal stacking) | Not Started | #55 |
+| 8 | Step 3 check search by endpoint/properties + inline create (no modal stacking) | Done | #55 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
