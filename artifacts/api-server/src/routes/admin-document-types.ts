@@ -26,6 +26,8 @@ import { db, documentTypesTable, aiPromptsTable, auditLogsTable } from "@workspa
 import { eq, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { invalidateDocumentTypeCache } from "../lib/document-types";
+import { generateDocument } from "../lib/document-engine.ts";
+import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "system.core" });
 import { z } from "zod";
@@ -183,6 +185,41 @@ router.get("/admin/document-types/:key", requireAdmin, async (req: Request, res:
   } catch (err) {
     log.error({ err }, "admin-document-types: get failed");
     res.status(500).json({ error: "Failed to fetch document type" });
+  }
+});
+
+// ── Preview (dry-run) ──────────────────────────────────────────────────────────
+
+router.get("/admin/document-types/:key/preview", requireAdmin, async (req: Request, res: Response) => {
+  const key = String(req.params["key"] ?? "");
+  const clientUserId = parseInt(String(req.query["clientUserId"] ?? ""), 10);
+  const projectId = parseInt(String(req.query["projectId"] ?? "0"), 10);
+
+  if (isNaN(clientUserId)) {
+    res.status(400).json({ error: "clientUserId query parameter is required and must be a number" });
+    return;
+  }
+
+  try {
+    const [docTypeRow] = await db
+      .select({ pipelineCategory: documentTypesTable.pipelineCategory })
+      .from(documentTypesTable)
+      .where(eq(documentTypesTable.key, key))
+      .limit(1);
+
+    if (!docTypeRow) {
+      res.status(404).json({ error: `Unknown document type "${key}"` });
+      return;
+    }
+
+    const result = docTypeRow.pipelineCategory === "pipeline_output"
+      ? await generateSowDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
+      : await generateDocument({ clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
+
+    res.json({ preview: result });
+  } catch (err) {
+    log.error({ err, key, clientUserId }, "GET /admin/document-types/:key/preview failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Preview generation failed" });
   }
 });
 
