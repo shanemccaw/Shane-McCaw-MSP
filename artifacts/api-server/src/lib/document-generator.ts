@@ -31,7 +31,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
-import { extractAiHtml, parseSowPricing } from "./sow-pricing";
+import { extractAiHtml, type SowPricingLine } from "./sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream-normalizer";
 import { ensureOpportunityForSow } from "./crm-pipeline";
 import { emitWorkflowEvent } from "./workflow-executor";
@@ -852,7 +852,10 @@ export async function generateAndDeliverDocument(
     "",
   );
 
-  const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
+  // parseSowPricing was removed (Document Engine Phase 19.5, unused now that
+  // this file has no live callers) — this whole path is orphaned pending the
+  // file's own removal in Phase 19.2, but kept compiling in the meantime.
+  const { lines: sowLines, totalPrice: sowTotal }: { lines: SowPricingLine[]; totalPrice: number } = { lines: [], totalPrice: 0 };
 
   if (testMode) {
     // Real Anthropic spend still occurred even though the document itself is
