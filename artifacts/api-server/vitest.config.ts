@@ -59,6 +59,8 @@ export default defineConfig({
       "src/routes/admin-ai-billing.test.ts",
       "src/lib/ai-billing-analytics.test.ts",
       "src/lib/ai-cost-anomaly.test.ts",
+      "src/lib/ai-cost-capture.test.ts",
+      "src/lib/document-engine-cost.test.ts",
       "src/routes/admin-ai-billing-analytics.test.ts",
       "src/lib/ai-usage-metering.test.ts",
       "src/lib/ai-usage-sink.test.ts",
@@ -136,6 +138,7 @@ export default defineConfig({
       "src/routes/admin-active-directory-credential-ops.test.ts",
       "src/routes/mfa-admin-reset.test.ts",
       "src/routes/admin-active-directory-user-actions.test.ts",
+      "src/lib/zoho-foundation.test.ts",
     ],
     coverage: {
       provider: "v8",

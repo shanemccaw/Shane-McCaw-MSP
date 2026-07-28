@@ -233,7 +233,7 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
           promptOverride: testBody,
           testMode: true,
         });
-        res.json({ htmlContent: result.htmlContent });
+        res.json({ htmlContent: result.htmlContent, costCents: result.costCents, costStatus: result.costStatus });
         return;
       }
 
@@ -246,7 +246,7 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
         promptOverride: testBody,
         testMode: true,
       });
-      res.json({ htmlContent: result.htmlContent });
+      res.json({ htmlContent: result.htmlContent, costCents: result.costCents, costStatus: result.costStatus });
       return;
     }
 
@@ -272,7 +272,7 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
         pricingFormulaOverride: testBody,
         testMode: true,
       });
-      res.json({ htmlContent: result.htmlContent });
+      res.json({ htmlContent: result.htmlContent, costCents: result.costCents, costStatus: result.costStatus });
       return;
     }
 

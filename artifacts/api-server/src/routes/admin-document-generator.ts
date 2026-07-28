@@ -197,8 +197,21 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
       ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate })
       : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate });
 
-    log.info({ key, mspCustomerId, documentId: result.documentId }, "admin-document-generator: generate completed");
-    res.json({ documentId: result.documentId, htmlContent: result.htmlContent, docTypeKey: key });
+    log.info(
+      { key, mspCustomerId, documentId: result.documentId, costCents: result.costCents, costStatus: result.costStatus },
+      "admin-document-generator: generate completed",
+    );
+    // costCents/costStatus are additive (#53): the engine reports what its own
+    // ai_usage_events row recorded, so the IDE can show what a generation spent
+    // without a second query — and `costStatus` keeps a reused/preview `0`
+    // distinguishable from a cost we could not read back.
+    res.json({
+      documentId: result.documentId,
+      htmlContent: result.htmlContent,
+      docTypeKey: key,
+      costCents: result.costCents,
+      costStatus: result.costStatus,
+    });
   } catch (err) {
     log.error({ err, key, mspCustomerId }, "admin-document-generator: generate failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });

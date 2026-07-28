@@ -7,7 +7,7 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { buildTenantProfile, findReusableDocument, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
@@ -20,6 +20,16 @@ const log = logger.child({ channel: "workflow.doc-pipeline" });
 // finding missing from the doc?" question is answerable from the logs without
 // wading through the whole generation pipeline.
 const scopeLog = logger.child({ channel: "engine.document-generator" });
+// The cost plumbing gets the initiative's own channel, so "what did this
+// document cost, and did we actually learn it?" is answerable from the logs
+// without reading the generation pipeline's own noise.
+const costLog = logger.child({ channel: "engine.ai-cost-governance" });
+
+/**
+ * A generation that made no model call. Zero here is a real, defensible zero —
+ * `costStatus` is what makes it distinguishable from an unknown figure.
+ */
+const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" };
 
 /**
  * Applies a document type's `includedSignalCategories` scoping to the tenant's
@@ -112,13 +122,41 @@ export interface GenerateDocumentParams {
   forceRegenerate?: boolean;
 }
 
-export interface GenerateDocumentResult {
+/**
+ * How the `costCents` on a generation result came to be — so a caller can tell
+ * "this cost nothing because no model was called" apart from "we don't know
+ * what this cost". Collapsing those two into a bare `0` is exactly the kind of
+ * quietly-wrong billing figure this initiative exists to eliminate.
+ */
+export type DocumentCostStatus =
+  /** A real AI call was made and the ledger reported its cost. `costCents` is that figure. */
+  | "recorded"
+  /** No AI call was made at all (dry run, or the drift gate reused a document). `costCents` is 0. */
+  | "no-ai-call"
+  /** An AI call was made but its usage row could not be read back. `costCents` is null. */
+  | "unknown";
+
+/** The cost half of a generation result, shared by both engines. */
+export interface DocumentCost {
+  /**
+   * What this generation cost, in cents, taken from the `ai_usage_events` row
+   * written for its own AI call — never recomputed here, so it cannot disagree
+   * with what the MSP was billed.
+   *
+   * `0` only ever means "no model was called" (`costStatus: "no-ai-call"`).
+   * `null` means the cost is genuinely unknown (`costStatus: "unknown"`).
+   */
+  costCents: number | null;
+  costStatus: DocumentCostStatus;
+}
+
+export interface GenerateDocumentResult extends DocumentCost {
   documentId: number;
   htmlContent: string;
   docTypeKey: string;
 }
 
-export interface DryRunDocumentResult {
+export interface DryRunDocumentResult extends DocumentCost {
   dryRun: true;
   docTypeKey: string;
   assembledPrompt: string;
@@ -221,7 +259,13 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     log.info({ mspCustomerId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
 
-    return { dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey };
+    // A preview assembles the prompt and stops — no model call, so the honest
+    // figure is a real zero, marked `no-ai-call` so it can never be read as
+    // "the AI ran and happened to be free".
+    return {
+      dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey,
+      ...NO_AI_CALL_COST,
+    };
   }
 
   // ── Drift gate (cost overrun guard) ───────────────────────────────────────
@@ -242,7 +286,11 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         { mspCustomerId, projectId, docTypeKey, documentId: reusable.documentId },
         "document-engine: reusing existing document, no drift detected, no AI call made",
       );
-      return reusable;
+      // Reuse is the drift gate doing its job: this request made no AI call, so
+      // it cost nothing. The ORIGINAL document's cost is not this call's cost
+      // and is deliberately not reported here — it lives in the ledger against
+      // the generation that actually incurred it.
+      return { ...reusable, ...NO_AI_CALL_COST };
     }
   } else {
     log.info(
@@ -352,7 +400,11 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // engine knows — the customer this document is FOR and the artifact it
     // produces. Nested withAiAttribution shallow-merges, so a caller's
     // mspId/nodeType/runId survive alongside these.
-    const aiResponse = await withAiAttribution(
+    // `withAiUsageCapture` is `withAiAttribution` plus a read-back of what the
+    // sink persisted for the call — the same `ai_usage_events` row this call
+    // created. The cost is taken from that row, never recomputed here: a second
+    // calculation could drift from what the MSP was actually charged.
+    const { result: aiResponse, costs } = await withAiUsageCapture(
       {
         customerId: mspCustomerId,
         generatedArtifactType: docTypeKey,
@@ -367,6 +419,24 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
           messages: [{ role: "user", content: stylePrefix + prompt }],
         }),
     );
+
+    const capturedCostCents = totalCapturedCostCents(costs);
+    const cost: DocumentCost = capturedCostCents == null
+      ? { costCents: null, costStatus: "unknown" }
+      : { costCents: capturedCostCents, costStatus: "recorded" };
+    if (cost.costStatus === "unknown") {
+      // Usage recording is deliberately non-fatal, so this is a real and
+      // expected state — but it is "we don't know", not "it was free".
+      costLog.warn(
+        { mspCustomerId, documentId, docTypeKey, callsCaptured: costs.length, statuses: costs.map((c) => c.status) },
+        "ai-cost-governance: document generated but its usage row could not be read back — cost reported as unknown, not zero",
+      );
+    } else {
+      costLog.info(
+        { mspCustomerId, documentId, docTypeKey, costCents: cost.costCents },
+        "ai-cost-governance: document generation cost resolved from its ai_usage_events row",
+      );
+    }
 
     const htmlContent = extractAiHtml(aiResponse);
 
@@ -389,7 +459,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       log.warn({ err, documentId }, "document-engine: OMG card generation failed (non-fatal)");
     });
 
-    return { documentId, htmlContent, docTypeKey };
+    return { documentId, htmlContent, docTypeKey, ...cost };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     await db.update(insightsGeneratedDocumentsTable)

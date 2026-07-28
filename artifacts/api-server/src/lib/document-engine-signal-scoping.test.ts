@@ -32,7 +32,14 @@ vi.mock("@workspace/db", () => ({
   mspUsersTable: {},
   mspsTable: {},
 }));
-vi.mock("@workspace/integrations-anthropic-ai", () => ({ anthropic: { messages: { create: vi.fn() } } }));
+// document-engine.ts also imports the cost-capture helpers (Phase 5); a mock
+// missing a name the module under test imports is an import-time error in
+// vitest, so both are stubbed even though these tests only call a pure helper.
+vi.mock("@workspace/integrations-anthropic-ai", () => ({
+  anthropic: { messages: { create: vi.fn() } },
+  withAiUsageCapture: vi.fn(),
+  totalCapturedCostCents: vi.fn(),
+}));
 vi.mock("./logger", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));

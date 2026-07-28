@@ -116,4 +116,24 @@ describe("handleAiUsageRecord", () => {
       expect.objectContaining({ correlationId: undefined }),
     );
   });
+
+  // Phase 5 (#53): the sink is also the channel by which a caller learns what
+  // its call cost, so it must hand back what the ledger actually persisted.
+  it("relays the persisted costCents so a capture scope can report it", async () => {
+    recordAiUsage.mockResolvedValueOnce({ costCents: 734, eventId: 12 } as never);
+
+    const persisted = await handleAiUsageRecord(baseRecord());
+
+    expect(persisted).toEqual({ costCents: 734, eventId: 12 });
+  });
+
+  it("relays nothing when recording failed — unknown cost, not a zero one", async () => {
+    // recordAiUsage swallows its own failures and returns null; reporting 0
+    // here would tell the caller the call was free.
+    recordAiUsage.mockResolvedValueOnce(null as never);
+
+    const persisted = await handleAiUsageRecord(baseRecord());
+
+    expect(persisted).toBeUndefined();
+  });
 });

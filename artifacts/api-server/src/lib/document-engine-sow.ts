@@ -7,16 +7,21 @@ import {
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
 import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
+import type { DocumentCost } from "./document-engine";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
+const costLog = logger.child({ channel: "engine.ai-cost-governance" });
+
+/** A generation that made no model call — see document-engine.ts's copy. */
+const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" };
 
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Intentionally duplicated from document-engine.ts's own local, non-exported
@@ -90,12 +95,19 @@ export interface GenerateSowParams {
   forceRegenerate?: boolean;
 }
 
-export interface GenerateSowResult {
+/**
+ * Cost reporting is shared verbatim with the standalone engine — same field
+ * names, same meaning of `0` vs `null` — so a caller that routes between
+ * `generateDocument()` and `generateSowDocument()` (admin-document-generator,
+ * admin-document-types, the workflow executor's generate_document node all do)
+ * reads the cost the same way from either.
+ */
+export interface GenerateSowResult extends DocumentCost {
   documentId: number;
   htmlContent: string;
 }
 
-export interface DryRunSowResult {
+export interface DryRunSowResult extends DocumentCost {
   dryRun: true;
   docTypeKey: string;
   assembledPrompt: string;
@@ -223,6 +235,8 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
           firedSignalKeys: c.firedSignalKeys,
         })),
         promptKey: promptKeyDry,
+        // Prompt assembled, no model called — a real zero, marked as such.
+        ...NO_AI_CALL_COST,
       };
     }
 
@@ -257,7 +271,9 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
           { mspCustomerId, projectId, docTypeKey, documentId: reusable.documentId },
           "document-engine-sow: reusing existing document, no drift detected, no AI call made",
         );
-        return { documentId: reusable.documentId, htmlContent: reusable.htmlContent };
+        // No AI call was made for THIS request; the reused document's own cost
+        // sits in the ledger against the generation that incurred it.
+        return { documentId: reusable.documentId, htmlContent: reusable.htmlContent, ...NO_AI_CALL_COST };
       }
     } else {
       log.info(
@@ -405,7 +421,9 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     // engine knows — the customer this document is FOR and the artifact it
     // produces. Nested withAiAttribution shallow-merges, so a caller's
     // mspId/nodeType/runId survive alongside these.
-    const aiResponse = await withAiAttribution(
+    // Same read-back as the standalone engine: the cost comes from the
+    // `ai_usage_events` row this call created, never recomputed here.
+    const { result: aiResponse, costs } = await withAiUsageCapture(
       {
         customerId: mspCustomerId,
         generatedArtifactType: docTypeKey,
@@ -420,6 +438,22 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
           messages: [{ role: "user", content: stylePrefix + prompt }],
         }),
     );
+
+    const capturedCostCents = totalCapturedCostCents(costs);
+    const cost: DocumentCost = capturedCostCents == null
+      ? { costCents: null, costStatus: "unknown" }
+      : { costCents: capturedCostCents, costStatus: "recorded" };
+    if (cost.costStatus === "unknown") {
+      costLog.warn(
+        { mspCustomerId, documentId, docTypeKey, callsCaptured: costs.length, statuses: costs.map((c) => c.status) },
+        "ai-cost-governance: SOW generated but its usage row could not be read back — cost reported as unknown, not zero",
+      );
+    } else {
+      costLog.info(
+        { mspCustomerId, documentId, docTypeKey, costCents: cost.costCents },
+        "ai-cost-governance: SOW generation cost resolved from its ai_usage_events row",
+      );
+    }
 
     const htmlContent = extractAiHtml(aiResponse);
 
@@ -473,7 +507,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       log.warn({ err, documentId }, "document-engine-sow: OMG card generation failed (non-fatal)");
     });
 
-    return { documentId, htmlContent };
+    return { documentId, htmlContent, ...cost };
   } catch (err) {
     log.error(
       { mspCustomerId, projectId, docTypeKey, testMode, err },

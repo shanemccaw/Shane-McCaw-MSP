@@ -123,7 +123,61 @@ export interface AiUsageRecord {
   tokensUnknown?: boolean;
 }
 
-export type AiUsageSink = (record: AiUsageRecord) => void;
+/**
+ * What the sink reports back about the row it actually persisted.
+ *
+ * This is the ONLY channel by which a caller can learn what its model call
+ * cost, and it deliberately carries the figure the ledger wrote rather than
+ * anything recomputed downstream — a second cost calculation could disagree
+ * with what the MSP was charged.
+ *
+ * A sink that returns nothing (the pre-existing `void` shape) is not treated as
+ * "free": the cost is reported as unknown.
+ */
+export interface AiUsagePersistResult {
+  /** `ai_usage_events.costCents` as written for this call. */
+  costCents: number;
+  /** `ai_usage_events.eventId` of that row, when the insert returned one. */
+  eventId?: number | null;
+}
+
+export type AiUsageSink = (
+  record: AiUsageRecord,
+) => void | AiUsagePersistResult | Promise<AiUsagePersistResult | void>;
+
+/** How a captured call's cost came to be known — or not. */
+export type AiCallCostStatus =
+  /** A row was written and reported its cost. `costCents` is that figure. */
+  | "recorded"
+  /** The call happened but recording failed or reported nothing back. Cost unknown. */
+  | "recording-failed"
+  /** No sink ever consumed the record (unregistered sink, buffer overflow, timeout). */
+  | "unrecorded";
+
+/** The cost outcome of exactly one metered model call. */
+export interface AiCallCost {
+  /**
+   * Cents the ledger recorded for this call, or `null` when that is genuinely
+   * not knowable. `null` means unknown — never assume zero.
+   */
+  costCents: number | null;
+  eventId: number | null;
+  status: AiCallCostStatus;
+  /** The call itself threw; any cost is a floor, not a total. */
+  failed: boolean;
+  /** Token counts could not be read off the response. */
+  tokensUnknown: boolean;
+}
+
+/** One in-flight metered call awaiting its persisted cost. */
+interface CostSlot {
+  promise: Promise<AiCallCost>;
+  settle: (cost: AiCallCost) => void;
+}
+
+interface UsageCollector {
+  slots: CostSlot[];
+}
 
 /** Fallback labels for calls made with no attribution context. */
 const UNATTRIBUTED_NODE_TYPE = "unattributed";
@@ -133,9 +187,13 @@ const UNATTRIBUTED_FEATURE = "unattributed:anthropic";
 const MAX_BUFFERED_RECORDS = 500;
 
 const attributionStore = new AsyncLocalStorage<AiCallAttribution>();
+const collectorStore = new AsyncLocalStorage<UsageCollector>();
+
+/** How long `withAiUsageCapture` waits for the sink before reporting unknown. */
+const DEFAULT_SETTLE_TIMEOUT_MS = 5_000;
 
 let usageSink: AiUsageSink | null = null;
-let buffered: AiUsageRecord[] = [];
+let buffered: Array<{ record: AiUsageRecord; slot: CostSlot | null }> = [];
 let droppedBufferedCount = 0;
 
 /**
@@ -147,7 +205,7 @@ export function registerAiUsageSink(sink: AiUsageSink | null): void {
   if (!sink) return;
   const flush = buffered;
   buffered = [];
-  for (const record of flush) deliver(record, sink);
+  for (const entry of flush) deliver(entry.record, sink, entry.slot);
 }
 
 /** Records emitted with no sink installed, still held in the buffer. */
@@ -181,12 +239,39 @@ export function withAiAttribution<T>(attribution: AiCallAttribution, fn: () => T
   return attributionStore.run({ ...parent, ...attribution }, fn);
 }
 
-function deliver(record: AiUsageRecord, sink: AiUsageSink): void {
+function costOf(
+  record: AiUsageRecord,
+  status: AiCallCostStatus,
+  persisted?: AiUsagePersistResult | void,
+): AiCallCost {
+  return {
+    costCents: status === "recorded" && persisted ? persisted.costCents : null,
+    eventId: persisted?.eventId ?? null,
+    status,
+    failed: record.failed === true,
+    tokensUnknown: record.tokensUnknown === true,
+  };
+}
+
+function deliver(record: AiUsageRecord, sink: AiUsageSink, slot: CostSlot | null = null): void {
+  let returned: void | AiUsagePersistResult | Promise<AiUsagePersistResult | void>;
   try {
-    sink(record);
+    returned = sink(record);
   } catch {
-    // A failing sink must never surface to the caller of the model.
+    // A failing sink must never surface to the caller of the model — but the
+    // cost is then unknown, not zero.
+    slot?.settle(costOf(record, "recording-failed"));
+    return;
   }
+  if (returned && typeof (returned as Promise<unknown>).then === "function") {
+    void (returned as Promise<AiUsagePersistResult | void>).then(
+      (persisted) => slot?.settle(persisted ? costOf(record, "recorded", persisted) : costOf(record, "recording-failed")),
+      () => slot?.settle(costOf(record, "recording-failed")),
+    );
+    return;
+  }
+  const persisted = returned as AiUsagePersistResult | void;
+  slot?.settle(persisted ? costOf(record, "recorded", persisted) : costOf(record, "recording-failed"));
 }
 
 /**
@@ -194,16 +279,108 @@ function deliver(record: AiUsageRecord, sink: AiUsageSink): void {
  * using the SDK through a path this module does not wrap (e.g. the batch API)
  * can still meter explicitly.
  */
-export function emitAiUsage(record: AiUsageRecord): void {
+export function emitAiUsage(record: AiUsageRecord, slot: CostSlot | null = null): void {
   if (usageSink) {
-    deliver(record, usageSink);
+    deliver(record, usageSink, slot);
     return;
   }
   if (buffered.length >= MAX_BUFFERED_RECORDS) {
     droppedBufferedCount += 1;
+    slot?.settle(costOf(record, "unrecorded"));
     return;
   }
-  buffered.push(record);
+  buffered.push({ record, slot });
+}
+
+/**
+ * Register an in-flight call with the enclosing capture scope, if any.
+ *
+ * Called SYNCHRONOUSLY at model-call time — before the response is awaited —
+ * so `withAiUsageCapture` knows a call is pending regardless of when the usage
+ * record is later emitted. Doing this at emit time instead would race: the
+ * caller's `await` can resume before the metering tap's derived promise runs.
+ */
+function beginCapturedCall(): CostSlot | null {
+  const collector = collectorStore.getStore();
+  if (!collector) return null;
+  let settle: (cost: AiCallCost) => void = () => {};
+  let done = false;
+  const promise = new Promise<AiCallCost>((resolve) => {
+    settle = (cost) => {
+      if (done) return;
+      done = true;
+      resolve(cost);
+    };
+  });
+  const slot: CostSlot = { promise, settle };
+  collector.slots.push(slot);
+  return slot;
+}
+
+/**
+ * Run `fn` with `attribution` in scope (exactly as `withAiAttribution`) and
+ * additionally report what each Anthropic call made inside it actually cost,
+ * as recorded by the sink.
+ *
+ * The costs come from the persisted `ai_usage_events` rows — they are not
+ * recomputed here, so a caller can never report a figure that disagrees with
+ * what was billed.
+ *
+ * Because recording is asynchronous and deliberately non-fatal, this waits a
+ * bounded time for the sink to settle. Calls that have not settled by then are
+ * reported as `unrecorded` with a `null` cost — unknown, never zero.
+ */
+export async function withAiUsageCapture<T>(
+  attribution: AiCallAttribution,
+  fn: () => Promise<T>,
+  opts?: { settleTimeoutMs?: number },
+): Promise<{ result: T; costs: AiCallCost[] }> {
+  const collector: UsageCollector = { slots: [] };
+  const result = await withAiAttribution(attribution, () => collectorStore.run(collector, fn));
+
+  if (collector.slots.length === 0) return { result, costs: [] };
+
+  const timeoutMs = opts?.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS;
+  const costs = await Promise.all(
+    collector.slots.map((slot) =>
+      Promise.race([
+        slot.promise,
+        new Promise<AiCallCost>((resolve) => {
+          const timer = setTimeout(
+            () =>
+              resolve({
+                costCents: null,
+                eventId: null,
+                status: "unrecorded",
+                failed: false,
+                tokensUnknown: false,
+              }),
+            timeoutMs,
+          );
+          // Never hold the process open just to wait on a billing figure.
+          (timer as { unref?: () => void }).unref?.();
+        }),
+      ]),
+    ),
+  );
+  return { result, costs };
+}
+
+/**
+ * Total the captured costs into a single figure.
+ *
+ * Returns `null` — unknown — if ANY call in the scope failed to report its
+ * cost. A partial sum presented as a total would understate real spend, which
+ * is the same class of dishonesty as reporting zero.
+ */
+export function totalCapturedCostCents(costs: AiCallCost[]): number | null {
+  if (costs.length === 0) return null;
+  let total = 0;
+  for (const cost of costs) {
+    if (cost.costCents == null) return null;
+    total += cost.costCents;
+  }
+  return total;
 }
 
 /** Shape of the pieces of the SDK client this module touches. */
@@ -269,6 +446,7 @@ function emitFromResponse(
   attribution: AiCallAttribution | undefined,
   params: unknown,
   response: unknown,
+  slot: CostSlot | null = null,
 ): void {
   const record = baseRecord(attribution, params, response);
   const usage = readUsage(response);
@@ -281,17 +459,18 @@ function emitFromResponse(
     // the tap must not consume. Report honestly rather than as a zero-cost call.
     record.tokensUnknown = true;
   }
-  emitAiUsage(record);
+  emitAiUsage(record, slot);
 }
 
 function emitFailure(
   attribution: AiCallAttribution | undefined,
   params: unknown,
+  slot: CostSlot | null = null,
 ): void {
   const record = baseRecord(attribution, params, null);
   record.failed = true;
   record.tokensUnknown = true;
-  emitAiUsage(record);
+  emitAiUsage(record, slot);
 }
 
 /**
@@ -308,19 +487,23 @@ export function meterAnthropicClient<T extends AnthropicLike>(client: T): T {
 
   const meteredCreate = (...args: never[]): unknown => {
     const attribution = getAiAttribution();
+    // Registered here, synchronously, so an enclosing capture scope knows this
+    // call is pending before the caller can await past it.
+    const slot = beginCapturedCall();
     const params = args[0];
     const result = rawMessages.create.apply(rawMessages, args);
     // Derived promise — the caller still receives `result` itself, and our
     // rejection handler keeps this branch from becoming an unhandled rejection.
     void Promise.resolve(result as unknown).then(
-      (value) => emitFromResponse(attribution, params, value),
-      () => emitFailure(attribution, params),
+      (value) => emitFromResponse(attribution, params, value, slot),
+      () => emitFailure(attribution, params, slot),
     );
     return result;
   };
 
   const meteredStream = (...args: never[]): unknown => {
     const attribution = getAiAttribution();
+    const slot = beginCapturedCall();
     const params = args[0];
     const stream = rawMessages.stream.apply(rawMessages, args);
     const emitter = stream as {
@@ -331,11 +514,11 @@ export function meterAnthropicClient<T extends AnthropicLike>(client: T): T {
       // stream is unaffected. An 'error' listener also prevents the emitter
       // from treating a stream error as an unhandled 'error' event.
       emitter.on("finalMessage", (message) =>
-        emitFromResponse(attribution, params, message),
+        emitFromResponse(attribution, params, message, slot),
       );
-      emitter.on("error", () => emitFailure(attribution, params));
+      emitter.on("error", () => emitFailure(attribution, params, slot));
     } else {
-      emitFromResponse(attribution, params, null);
+      emitFromResponse(attribution, params, null, slot);
     }
     return stream;
   };

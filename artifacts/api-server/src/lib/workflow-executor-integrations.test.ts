@@ -121,6 +121,11 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   // client can bill it. Pass-through here — attribution itself is covered by
   // ai-usage-metering.test.ts; this mock only needs the call to still happen.
   withAiAttribution: <T,>(_attribution: unknown, fn: () => T): T => fn(),
+  // Phase 5: the document engines call withAiUsageCapture instead, to read back
+  // what the call cost. Pass-through with no costs — these tests assert the call
+  // still happens, not what it cost.
+  withAiUsageCapture: async <T,>(_attribution: unknown, fn: () => Promise<T>) => ({ result: await fn(), costs: [] }),
+  totalCapturedCostCents: () => null,
   anthropic: {
     messages: {
       create: async () => ({

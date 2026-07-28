@@ -22,7 +22,7 @@
  * sites can be found and fixed rather than quietly paid for.
  */
 
-import type { AiUsageRecord } from "@workspace/integrations-anthropic-ai";
+import type { AiUsagePersistResult, AiUsageRecord } from "@workspace/integrations-anthropic-ai";
 import { registerAiUsageSink } from "@workspace/integrations-anthropic-ai";
 import { recordAiUsage } from "./ai-billing";
 import { logger } from "./logger";
@@ -32,8 +32,14 @@ const log = logger.child({ channel: "engine.ai-cost-governance" });
 
 let installed = false;
 
-/** Convert one metered record into a persisted usage event. */
-export function handleAiUsageRecord(record: AiUsageRecord): void {
+/**
+ * Convert one metered record into a persisted usage event.
+ *
+ * Returns the persisted `costCents` (and event id) so a capture scope — see
+ * `withAiUsageCapture` — can hand a caller the ledger's own figure for its
+ * call. `undefined` means recording failed: the cost is unknown, not zero.
+ */
+export function handleAiUsageRecord(record: AiUsageRecord): Promise<AiUsagePersistResult | void> {
   if (!record.attributed) {
     log.warn(
       {
@@ -63,9 +69,11 @@ export function handleAiUsageRecord(record: AiUsageRecord): void {
   // or workflow run shares one value without each site having to know it.
   const correlationId = getRequestContext()?.traceId;
 
-  // Fire-and-forget: recordAiUsage swallows and logs its own failures, so a
-  // ledger problem can never propagate back into the model call path.
-  void recordAiUsage({
+  // recordAiUsage swallows and logs its own failures and never rejects, so a
+  // ledger problem still cannot propagate back into the model call path.
+  // Returning (rather than voiding) its promise is what lets a capture scope
+  // read back the cost the ledger actually recorded.
+  return recordAiUsage({
     mspId: record.mspId,
     customerId: record.customerId ?? null,
     nodeType: record.nodeType,
@@ -81,7 +89,7 @@ export function handleAiUsageRecord(record: AiUsageRecord): void {
     generatedArtifactId: record.generatedArtifactId,
     triggerSource: record.triggerSource,
     correlationId,
-  });
+  }).then((recorded) => (recorded ? { costCents: recorded.costCents, eventId: recorded.eventId } : undefined));
 }
 
 /**

@@ -329,15 +329,27 @@ export interface RecordAiUsageOpts {
   correlationId?: string;
 }
 
+/** What was actually written for one usage event. */
+export interface RecordedAiUsage {
+  /** `ai_usage_events.costCents` exactly as persisted for this call. */
+  costCents: number;
+  eventId: number | null;
+}
+
 /**
  * Record an AI usage event and, for MSP-owned usage, debit the balance ledger.
  *
  * For platform-owned usage: records the event but does NOT touch any MSP ledger.
  * For MSP-owned usage: records the event and creates a consumption ledger entry.
  *
- * Returns the recorded usage event row.
+ * Returns what was persisted — the row's `costCents` and `eventId` — so a
+ * caller can report what its call cost without recomputing the figure and
+ * risking a number that disagrees with what was billed. Returns `null` when
+ * recording failed: unknown cost, NOT zero. Recording remains non-fatal, so
+ * this never rejects and existing `void recordAiUsage(...)` callers are
+ * unaffected.
  */
-export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
+export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<RecordedAiUsage | null> {
   const {
     mspId,
     nodeType,
@@ -439,9 +451,14 @@ export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
     } else if (costOwner === "platform") {
       log.debug({ nodeType, costCents }, "ai-billing: platform usage recorded (no MSP debit)");
     }
+
+    return { costCents, eventId: usageEvent?.eventId ?? null };
   } catch (err) {
     // Non-fatal — usage recording failures must never break the workflow
     log.error({ err, mspId, nodeType }, "ai-billing: failed to record usage event (non-fatal)");
+    // Null, not a cost: if the row did not land, what this call cost is
+    // unknown, and reporting 0 here would read as "it was free".
+    return null;
   }
 }
 
