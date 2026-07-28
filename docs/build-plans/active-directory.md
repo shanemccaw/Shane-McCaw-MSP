@@ -88,7 +88,7 @@ rather than a flat account list.
 | 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | In Progress | #65 |
 | 6 | User Object detail pane (full read view) | In Progress | #66 |
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
-| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | Not Started | #68 |
+| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
 | 9 | User Object — dev-only cascading hard delete | Not Started | #69 |
 | 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Not Started | #91 |
 
