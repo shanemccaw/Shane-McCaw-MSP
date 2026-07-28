@@ -34,7 +34,7 @@ exist and are live (see `consent.ts`).
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
 | 1 | Assessment catalog tree + packageKey audit | Done | #23 |
-| 2 | Admin-direct execution wiring | Not Started | #24 |
+| 2 | Admin-direct execution wiring | In Progress | #24 |
 | 3 | Results & findings display | Not Started | #25 |
 | 4 | Run history & diff | Not Started | #26 |
 | 5 | Assessment Creation Wizard | Not Started | #28 |
