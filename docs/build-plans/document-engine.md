@@ -60,6 +60,7 @@ this same session.
 | 17 | Port `portal-assessment.ts`'s direct SOW-regeneration call site to the new engine | Done | #32 |
 | 18 | Document Types IDE — preview (dry-run payload shown to admin before real generation) | Done | #33 |
 | 19 | Retire old generation path (`generateAndDeliverDocument`, `generateConsolidatedSowDocument`, `extractAndStoreOmgCards`, extraction-based `sowPricingLines`) — blocked on Phase 17 | Not Started | #34 |
+| 19.1 | Port admin test-draft feature to real engine | Done | #35 |
 
 ## Notes
 Phase 17 is a real, load-bearing gap, not cleanup: `portal-assessment.ts`'s

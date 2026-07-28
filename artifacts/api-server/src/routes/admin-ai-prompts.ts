@@ -1,12 +1,12 @@
 import { Router, type Request, type Response } from "express";
-import { db, aiPromptsTable, aiPromptVersionsTable } from "@workspace/db";
+import { db, aiPromptsTable, aiPromptVersionsTable, documentTypesTable } from "@workspace/db";
 import { eq, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "admin.content" });
 import { getDefaultPromptMeta } from "../lib/prompt-loader";
-import { generateAndDeliverDocument } from "../lib/document-generator";
-import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
+import { generateDocument } from "../lib/document-engine.ts";
+import { generateSowDocument } from "../lib/document-engine-sow.ts";
 
 const router = Router();
 
@@ -206,53 +206,58 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
   const key = prompt.key;
 
   try {
-    if (key === "insights-consulting-consolidated_sow") {
-      const result = await generateConsolidatedSowDocument({
+    const [docTypeRow] = await db
+      .select({ key: documentTypesTable.key, pipelineCategory: documentTypesTable.pipelineCategory })
+      .from(documentTypesTable)
+      .where(eq(documentTypesTable.aiPromptId, id))
+      .limit(1);
+
+    if (docTypeRow) {
+      if (docTypeRow.pipelineCategory === "pipeline_output") {
+        const result = await generateSowDocument({
+          clientUserId,
+          projectId: projectId ?? 0,
+          docTypeKey: docTypeRow.key,
+          promptOverride: testBody,
+          testMode: true,
+        });
+        res.json({ htmlContent: result.htmlContent });
+        return;
+      }
+
+      if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
+      const result = await generateDocument({
         clientUserId,
-        projectId: projectId ?? null,
-        title: `Test Draft — ${prompt.name}`,
+        projectId,
+        docTypeKey: docTypeRow.key,
         promptOverride: testBody,
         testMode: true,
       });
-      res.json({ htmlContent: result.htmlContent, sowTotal: result.sowTotal, clientName: result.clientName });
-      return;
-    }
-
-    // The pricing-formula prompt is only meaningful when exercised through the
-    // real consolidated SOW pipeline (it's interpolated into the SOW prompt, not
-    // used standalone) — route it through the same generator with the formula override.
-    if (key === "insights-consulting-sow_pricing_formula") {
-      const result = await generateConsolidatedSowDocument({
-        clientUserId,
-        projectId: projectId ?? null,
-        title: `Test Draft — ${prompt.name}`,
-        pricingFormulaOverride: testBody,
-        testMode: true,
-      });
-      res.json({ htmlContent: result.htmlContent, sowTotal: result.sowTotal, clientName: result.clientName });
-      return;
-    }
-
-    if (key.startsWith("insights-report-")) {
-      if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
-      const docType = key.replace("insights-report-", "");
-      const result = await generateAndDeliverDocument(clientUserId, projectId, {
-        category: "report",
-        docType,
-        title: `Test Draft — ${prompt.name}`,
-      }, { promptOverride: testBody, testMode: true });
       res.json({ htmlContent: result.htmlContent });
       return;
     }
 
-    if (key.startsWith("insights-consulting-")) {
-      if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
-      const docType = key.replace("insights-consulting-", "");
-      const result = await generateAndDeliverDocument(clientUserId, projectId, {
-        category: "consulting",
-        docType,
-        title: `Test Draft — ${prompt.name}`,
-      }, { promptOverride: testBody, testMode: true });
+    // Pricing-formula prompt isn't tied to a document_types row directly — it's
+    // a shared block interpolated into the SOW prompt, not a document type of
+    // its own. Test it by generating the real "sow"-category pipeline_output
+    // document type with the formula overridden.
+    if (key === "insights-consulting-sow_pricing_formula") {
+      const [sowType] = await db
+        .select({ key: documentTypesTable.key })
+        .from(documentTypesTable)
+        .where(eq(documentTypesTable.pipelineCategory, "pipeline_output"))
+        .limit(1);
+      if (!sowType) {
+        res.status(400).json({ error: "No pipeline_output document type is configured to test this prompt against" });
+        return;
+      }
+      const result = await generateSowDocument({
+        clientUserId,
+        projectId: projectId ?? 0,
+        docTypeKey: sowType.key,
+        pricingFormulaOverride: testBody,
+        testMode: true,
+      });
       res.json({ htmlContent: result.htmlContent });
       return;
     }
