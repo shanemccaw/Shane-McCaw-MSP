@@ -1079,12 +1079,32 @@ export const aiUsageEventsTable = pgTable("ai_usage_events", {
   runId: text("run_id"),
   // AI model used
   model: text("model"),
+  // Which customer (tenant) this usage was generated for. Null for
+  // platform-level or MSP-scoped-but-not-customer-specific calls.
+  customerId: integer("customer_id"),
+  // Type of artifact this call generated, e.g. "sow", "governance_snapshot",
+  // "assessment". Null when the call produced no persisted artifact.
+  generatedArtifactType: text("generated_artifact_type"),
+  // Human-readable name of the generated artifact, e.g. "SOW - Acme Corp".
+  generatedArtifactName: text("generated_artifact_name"),
+  // Reference to the generated artifact's row. Stored as text (not a real FK)
+  // because it may point at different tables depending on artifactType.
+  generatedArtifactId: text("generated_artifact_id"),
+  // What triggered this call when it did not originate from a workflow node
+  // (nodeType already captures that case), e.g. "simulator-studio:manual-run",
+  // "support-chat".
+  triggerSource: text("trigger_source"),
+  // Correlation id shared across all calls in the same request/run, sourced
+  // from request-context.ts's per-request/per-run traceId.
+  correlationId: text("correlation_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("ai_usage_events_msp_id_idx").on(t.mspId),
   index("ai_usage_events_occurred_at_idx").on(t.occurredAt),
   index("ai_usage_events_cost_owner_idx").on(t.costOwner),
   index("ai_usage_events_run_id_idx").on(t.runId),
+  index("ai_usage_events_customer_id_idx").on(t.customerId),
+  index("ai_usage_events_correlation_id_idx").on(t.correlationId),
 ]);
 
 export type AiUsageEvent = typeof aiUsageEventsTable.$inferSelect;

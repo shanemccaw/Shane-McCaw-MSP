@@ -26,6 +26,7 @@ import type { AiUsageRecord } from "@workspace/integrations-anthropic-ai";
 import { registerAiUsageSink } from "@workspace/integrations-anthropic-ai";
 import { recordAiUsage } from "./ai-billing";
 import { logger } from "./logger";
+import { getRequestContext } from "./request-context";
 
 const log = logger.child({ channel: "engine.ai-cost-governance" });
 
@@ -57,10 +58,16 @@ export function handleAiUsageRecord(record: AiUsageRecord): void {
     );
   }
 
+  // Correlation id rides request-context.ts's per-request/per-run traceId
+  // rather than call-site attribution, so every call in the same HTTP request
+  // or workflow run shares one value without each site having to know it.
+  const correlationId = getRequestContext()?.traceId;
+
   // Fire-and-forget: recordAiUsage swallows and logs its own failures, so a
   // ledger problem can never propagate back into the model call path.
   void recordAiUsage({
     mspId: record.mspId,
+    customerId: record.customerId ?? null,
     nodeType: record.nodeType,
     feature: record.feature,
     promptTokens: record.promptTokens,
@@ -69,6 +76,11 @@ export function handleAiUsageRecord(record: AiUsageRecord): void {
     costOwner: record.costOwner,
     runId: record.runId,
     model: record.model,
+    generatedArtifactType: record.generatedArtifactType,
+    generatedArtifactName: record.generatedArtifactName,
+    generatedArtifactId: record.generatedArtifactId,
+    triggerSource: record.triggerSource,
+    correlationId,
   });
 }
 

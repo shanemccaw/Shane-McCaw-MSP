@@ -56,6 +56,7 @@ export default defineConfig({
       "src/routes/msp-sla-scope-creep.test.ts",
       "src/lib/ai-billing.test.ts",
       "src/lib/ai-usage-metering.test.ts",
+      "src/lib/ai-usage-sink.test.ts",
       "src/tests/doc-pipeline.test.ts",
       "src/tests/msp-reports.test.ts",
       "src/tests/request-context-spine.test.ts",

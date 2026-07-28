@@ -478,6 +478,8 @@ router.post(
           costOwner: "msp",
           nodeType: "chat_message",
           feature: "support_chat",
+          customerId: isCustomerUser ? customerId : null,
+          triggerSource: "support-chat",
         },
         () => anthropic.messages.create({
           model: "claude-haiku-4-5",

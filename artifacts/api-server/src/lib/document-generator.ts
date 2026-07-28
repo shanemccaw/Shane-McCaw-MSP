@@ -37,6 +37,7 @@ import { ensureOpportunityForSow } from "./crm-pipeline";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { getDocumentTypeLabel, getDocumentTypeSectionHints, documentTypeRequiresSowHtml } from "./document-types";
 import { recordAiUsage } from "./ai-billing";
+import { getRequestContext } from "./request-context";
 
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Disables real AI spend during active testing. Must be removed/re-enabled
@@ -55,6 +56,8 @@ function trackUsage(opts: {
   clientUserId: number;
   documentId: number;
   docType: string;
+  mspCustomerId?: number | null;
+  docTitle?: string;
 }): void {
   void (async () => {
     try {
@@ -72,6 +75,14 @@ function trackUsage(opts: {
         completionTokens: opts.outputTokens,
         costOwner: "msp",
         model: opts.model,
+        customerId: opts.mspCustomerId ?? null,
+        generatedArtifactType: opts.docType,
+        generatedArtifactName: opts.docTitle,
+        // documentId is -1 for a test-draft call that never persists — not a
+        // real row reference, so leave the artifact id null in that case.
+        ...(opts.documentId > 0 ? { generatedArtifactId: String(opts.documentId) } : {}),
+        triggerSource: "document-generator",
+        correlationId: getRequestContext()?.traceId,
       });
     } catch (err) {
       log.warn({ err, documentId: opts.documentId }, "document-generator: usage telemetry failed (non-fatal)");
@@ -887,6 +898,8 @@ export async function generateAndDeliverDocument(
       clientUserId,
       documentId: -1,
       docType,
+      mspCustomerId,
+      docTitle: title,
     });
     log.info(
       { clientUserId, projectId, category, docType },
@@ -916,6 +929,8 @@ export async function generateAndDeliverDocument(
     clientUserId,
     documentId: doc.id,
     docType,
+    mspCustomerId,
+    docTitle: title,
   });
 
   void emitWorkflowEvent("document.generated", {

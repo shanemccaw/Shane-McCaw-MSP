@@ -2331,7 +2331,13 @@ async function executeNode(
               try {
                 const docStylePrefix = await getDocumentStylePrefix();
                 const stream = withAiAttribution(
-                  aiAttributionFor(node, payload, runId),
+                  {
+                    ...aiAttributionFor(node, payload, runId),
+                    customerId: tegMspCustomerId,
+                    generatedArtifactType: resolvedDocType,
+                    generatedArtifactName: docTitle,
+                    generatedArtifactId: String(tegDocId),
+                  },
                   () => anthropic.messages.stream({
                     model: "claude-haiku-4-5", max_tokens: 16384,
                     messages: [{ role: "user", content: docStylePrefix + prompt }],
@@ -2390,9 +2396,14 @@ async function executeNode(
                 const isPipelineOutput = docTypeRow.pipelineCategory === "pipeline_output";
                 // documentOwnerUserId keeps the generated row owned by the exact
                 // login this run is for, unchanged from before the signature flip.
-                const engineResult = isPipelineOutput
-                  ? await generateSowDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType })
-                  : await generateDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType });
+                // withAiAttribution here supplies nodeType/mspId/runId; the engine
+                // itself refines with customerId/artifact fields via its own
+                // nested withAiAttribution call.
+                const engineResult = await withAiAttribution(aiAttributionFor(node, payload, runId), () =>
+                  isPipelineOutput
+                    ? generateSowDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType })
+                    : generateDocument({ mspCustomerId: nodeMspCustomerId, documentOwnerUserId: clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType }),
+                );
 
                 await db.update(insightsGeneratedDocumentsTable)
                   .set({ pdfUrl: `/api/admin/insights/documents/${engineResult.documentId}/download` })

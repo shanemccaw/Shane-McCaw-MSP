@@ -390,6 +390,49 @@ describe("metered Anthropic client", () => {
     expect(getUnsunkUsageCount()).toBe(0);
   });
 
+  it("threads customerId/artifact/triggerSource fields from attribution into the usage record", async () => {
+    // Phase 2 (#50): document-generating calls attribute the artifact they
+    // produce so ai_usage_events rows are traceable back to a real document.
+    const client = meterAnthropicClient(makeFakeClient());
+    await withAiAttribution(
+      {
+        mspId: 42,
+        costOwner: "msp",
+        nodeType: "generate_document",
+        customerId: 501,
+        generatedArtifactType: "sow",
+        generatedArtifactName: "SOW - Acme Corp",
+        generatedArtifactId: "9001",
+        triggerSource: "document-engine",
+      },
+      () => (client.messages.create as (a: unknown) => Promise<unknown>)({ model: "claude-haiku-4-5" }),
+    );
+    await flush();
+
+    expect(records[0]).toMatchObject({
+      customerId: 501,
+      generatedArtifactType: "sow",
+      generatedArtifactName: "SOW - Acme Corp",
+      generatedArtifactId: "9001",
+      triggerSource: "document-engine",
+    });
+  });
+
+  it("leaves customerId/artifact fields absent for a platform-level call with no artifact", async () => {
+    const client = meterAnthropicClient(makeFakeClient());
+    await withAiAttribution(
+      { mspId: null, costOwner: "platform", nodeType: "generate_insight", feature: "campaign_brief" },
+      () => (client.messages.create as (a: unknown) => Promise<unknown>)({ model: "claude-haiku-4-5" }),
+    );
+    await flush();
+
+    expect(records[0]!.customerId).toBeUndefined();
+    expect(records[0]!.generatedArtifactType).toBeUndefined();
+    expect(records[0]!.generatedArtifactName).toBeUndefined();
+    expect(records[0]!.generatedArtifactId).toBeUndefined();
+    expect(records[0]!.triggerSource).toBeUndefined();
+  });
+
   it("passes through non-messages client members untouched", () => {
     const raw = makeFakeClient() as unknown as Record<string, unknown>;
     raw.apiKey = "sk-test";

@@ -306,6 +306,12 @@ export interface RecordAiUsageOpts {
   costOwner: AiCostOwner;
   runId?: string;
   model?: string;
+  customerId?: number | null;
+  generatedArtifactType?: string;
+  generatedArtifactName?: string;
+  generatedArtifactId?: string;
+  triggerSource?: string;
+  correlationId?: string;
 }
 
 /**
@@ -326,6 +332,12 @@ export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
     costOwner,
     runId,
     model,
+    customerId,
+    generatedArtifactType,
+    generatedArtifactName,
+    generatedArtifactId,
+    triggerSource,
+    correlationId,
   } = opts;
 
   // Compute cost if not provided
@@ -351,6 +363,12 @@ export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
         costOwner,
         runId: runId ?? undefined,
         model: model ?? undefined,
+        customerId: customerId ?? undefined,
+        generatedArtifactType: generatedArtifactType ?? undefined,
+        generatedArtifactName: generatedArtifactName ?? undefined,
+        generatedArtifactId: generatedArtifactId ?? undefined,
+        triggerSource: triggerSource ?? undefined,
+        correlationId: correlationId ?? undefined,
       })
       .returning({ eventId: aiUsageEventsTable.eventId });
 

@@ -7,7 +7,7 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { buildTenantProfile, findReusableDocument, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
@@ -347,11 +347,26 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       throw new Error("AI generation disabled by testing kill-switch (document-engine.ts)");
     }
 
-    const aiResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 16000,
-      messages: [{ role: "user", content: stylePrefix + prompt }],
-    });
+    // Refines whatever attribution the caller already established (e.g.
+    // workflow-executor.ts's aiAttributionFor()) with the fields only this
+    // engine knows — the customer this document is FOR and the artifact it
+    // produces. Nested withAiAttribution shallow-merges, so a caller's
+    // mspId/nodeType/runId survive alongside these.
+    const aiResponse = await withAiAttribution(
+      {
+        customerId: mspCustomerId,
+        generatedArtifactType: docTypeKey,
+        generatedArtifactName: docTypeRow.label,
+        generatedArtifactId: String(documentId),
+        triggerSource: "document-engine",
+      },
+      () =>
+        anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 16000,
+          messages: [{ role: "user", content: stylePrefix + prompt }],
+        }),
+    );
 
     const htmlContent = extractAiHtml(aiResponse);
 

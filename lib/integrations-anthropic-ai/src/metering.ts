@@ -70,6 +70,20 @@ export interface AiCallAttribution {
   feature?: string;
   /** Workflow run id, when the call happens inside a run. */
   runId?: string;
+  /** Customer (tenant) this call was for. Null/absent when not customer-scoped. */
+  customerId?: number | null;
+  /** Type of artifact this call generates, e.g. "sow", "governance_snapshot". */
+  generatedArtifactType?: string;
+  /** Human-readable name of the generated artifact, e.g. "SOW - Acme Corp". */
+  generatedArtifactName?: string;
+  /** Reference to the generated artifact's row (table varies by artifactType). */
+  generatedArtifactId?: string;
+  /**
+   * What triggered this call when it did not originate from a workflow node
+   * (nodeType already captures that case), e.g. "simulator-studio:manual-run",
+   * "support-chat".
+   */
+  triggerSource?: string;
 }
 
 /** One recorded model call, handed to the sink. */
@@ -83,6 +97,11 @@ export interface AiUsageRecord {
   nodeType: string;
   feature: string;
   runId?: string;
+  customerId?: number | null;
+  generatedArtifactType?: string;
+  generatedArtifactName?: string;
+  generatedArtifactId?: string;
+  triggerSource?: string;
   /**
    * False when the call ran outside any `withAiAttribution` scope. Such calls
    * are still recorded — as platform-owned, so they can never wrongly debit an
@@ -237,6 +256,11 @@ function baseRecord(
     nodeType: attribution?.nodeType ?? UNATTRIBUTED_NODE_TYPE,
     feature: attribution?.feature ?? UNATTRIBUTED_FEATURE,
     ...(attribution?.runId ? { runId: attribution.runId } : {}),
+    ...(attribution?.customerId != null ? { customerId: attribution.customerId } : {}),
+    ...(attribution?.generatedArtifactType ? { generatedArtifactType: attribution.generatedArtifactType } : {}),
+    ...(attribution?.generatedArtifactName ? { generatedArtifactName: attribution.generatedArtifactName } : {}),
+    ...(attribution?.generatedArtifactId ? { generatedArtifactId: attribution.generatedArtifactId } : {}),
+    ...(attribution?.triggerSource ? { triggerSource: attribution.triggerSource } : {}),
     attributed,
   };
 }
