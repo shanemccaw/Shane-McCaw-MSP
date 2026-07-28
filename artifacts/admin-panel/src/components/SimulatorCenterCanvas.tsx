@@ -13,6 +13,7 @@ import {
   Layers,
   ListChecks,
   FileText,
+  Pin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
 import { SimulatorDeployConsolePanel } from "./SimulatorDeployConsolePanel";
@@ -43,6 +51,7 @@ export interface SimDocumentTab {
   type: "script" | "endpoint" | "write-action" | "config-pack" | "batch" | "pillar" | "migration" | "assessment" | "document";
   label: string;
   data: any;
+  pinned?: boolean;
 }
 
 const LS_OPEN_DOCS_KEY = "simulator-open-documents-v1";
@@ -270,6 +279,47 @@ export function SimulatorCenterCanvas({
           setActiveTab("sql");
         }
       }
+      return next;
+    });
+  };
+
+  const closeManyDocuments = (ids: string[]) => {
+    ids.forEach((docId) => handleCloseDocument(docId));
+  };
+
+  const handleCloseOthers = (id: string) => {
+    closeManyDocuments(
+      openDocuments.filter((d) => d.id !== id && !d.pinned).map((d) => d.id)
+    );
+  };
+
+  const handleCloseAll = () => {
+    closeManyDocuments(openDocuments.filter((d) => !d.pinned).map((d) => d.id));
+  };
+
+  const handleCloseToLeft = (id: string) => {
+    const index = openDocuments.findIndex((d) => d.id === id);
+    if (index < 0) return;
+    closeManyDocuments(
+      openDocuments.slice(0, index).filter((d) => !d.pinned).map((d) => d.id)
+    );
+  };
+
+  const handleCloseToRight = (id: string) => {
+    const index = openDocuments.findIndex((d) => d.id === id);
+    if (index < 0) return;
+    closeManyDocuments(
+      openDocuments.slice(index + 1).filter((d) => !d.pinned).map((d) => d.id)
+    );
+  };
+
+  const handleTogglePin = (id: string) => {
+    setOpenDocuments((prev) => {
+      const toggled = prev.map((d) => (d.id === id ? { ...d, pinned: !d.pinned } : d));
+      const next = [...toggled.filter((d) => d.pinned), ...toggled.filter((d) => !d.pinned)];
+      try {
+        localStorage.setItem(LS_OPEN_DOCS_KEY, JSON.stringify(next));
+      } catch {}
       return next;
     });
   };
@@ -562,37 +612,91 @@ export function SimulatorCenterCanvas({
                 (doc.type === "assessment" && activeTab === "assessment") ||
                 (doc.type === "document" && activeTab === "document"));
 
+            const docIndex = openDocuments.findIndex((d) => d.id === doc.id);
+            const hasLeft = openDocuments.slice(0, docIndex).some((d) => !d.pinned);
+            const hasRight = openDocuments.slice(docIndex + 1).some((d) => !d.pinned);
+
             return (
-              <div
-                key={doc.id}
-                onClick={() => handleSelectDocument(doc)}
-                className={`group flex items-center gap-1.5 h-7 px-2.5 text-xs rounded-t border border-b-0 transition-all cursor-pointer shrink-0 max-w-[240px] ${
-                  isDocActive
-                    ? "bg-background text-foreground font-medium border-border shadow-sm relative after:absolute after:inset-x-0 after:-bottom-[1px] after:h-[2px] after:bg-background"
-                    : "bg-card/40 text-muted-foreground hover:bg-card hover:text-foreground border-transparent hover:border-border/60"
-                }`}
-              >
-                {doc.type === "script" && <Terminal className="w-3 h-3 text-sky-400 shrink-0" />}
-                {doc.type === "migration" && <RefreshCw className="w-3 h-3 text-emerald-400 shrink-0" />}
-                {doc.type === "endpoint" && <Building2 className="w-3 h-3 text-indigo-400 shrink-0" />}
-                {doc.type === "batch" && <Play className="w-3 h-3 text-amber-400 shrink-0" />}
-                {doc.type === "pillar" && <Layers className="w-3 h-3 text-purple-400 shrink-0" />}
-                {doc.type === "assessment" && <ListChecks className="w-3 h-3 text-emerald-400 shrink-0" />}
-                {doc.type === "document" && <FileText className="w-3 h-3 text-sky-400 shrink-0" />}
-                <span className="truncate">{doc.label}</span>
-                <button
-                  type="button"
-                  onClick={(e) => handleCloseDocument(doc.id, e)}
-                  title="Close document"
-                  className={`w-4 h-4 rounded-sm flex items-center justify-center transition-colors shrink-0 ml-0.5 ${
-                    isDocActive
-                      ? "text-muted-foreground hover:bg-accent hover:text-foreground opacity-100"
-                      : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent hover:text-foreground"
-                  }`}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <ContextMenu key={doc.id}>
+                <ContextMenuTrigger asChild>
+                  <div
+                    onClick={() => handleSelectDocument(doc)}
+                    className={`group flex items-center gap-1.5 h-7 px-2.5 text-xs rounded-t border border-b-0 transition-all cursor-pointer shrink-0 max-w-[240px] ${
+                      isDocActive
+                        ? "bg-background text-foreground font-medium border-border shadow-sm relative after:absolute after:inset-x-0 after:-bottom-[1px] after:h-[2px] after:bg-background"
+                        : "bg-card/40 text-muted-foreground hover:bg-card hover:text-foreground border-transparent hover:border-border/60"
+                    }`}
+                  >
+                    {doc.type === "script" && <Terminal className="w-3 h-3 text-sky-400 shrink-0" />}
+                    {doc.type === "migration" && <RefreshCw className="w-3 h-3 text-emerald-400 shrink-0" />}
+                    {doc.type === "endpoint" && <Building2 className="w-3 h-3 text-indigo-400 shrink-0" />}
+                    {doc.type === "batch" && <Play className="w-3 h-3 text-amber-400 shrink-0" />}
+                    {doc.type === "pillar" && <Layers className="w-3 h-3 text-purple-400 shrink-0" />}
+                    {doc.type === "assessment" && <ListChecks className="w-3 h-3 text-emerald-400 shrink-0" />}
+                    {doc.type === "document" && <FileText className="w-3 h-3 text-sky-400 shrink-0" />}
+                    <span className="truncate">{doc.label}</span>
+                    {doc.pinned ? (
+                      <span
+                        title="Pinned"
+                        className="w-4 h-4 rounded-sm flex items-center justify-center shrink-0 ml-0.5 text-muted-foreground"
+                      >
+                        <Pin className="w-3 h-3 fill-current" />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => handleCloseDocument(doc.id, e)}
+                        title="Close document"
+                        className={`w-4 h-4 rounded-sm flex items-center justify-center transition-colors shrink-0 ml-0.5 ${
+                          isDocActive
+                            ? "text-muted-foreground hover:bg-accent hover:text-foreground opacity-100"
+                            : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent hover:text-foreground"
+                        }`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-44">
+                  <ContextMenuItem onSelect={() => handleCloseDocument(doc.id)} className="gap-2 text-xs">
+                    Close
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={openDocuments.length <= 1}
+                    onSelect={() => handleCloseOthers(doc.id)}
+                    className="gap-2 text-xs"
+                  >
+                    Close Others
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={openDocuments.length <= 1}
+                    onSelect={() => handleCloseAll()}
+                    className="gap-2 text-xs"
+                  >
+                    Close All
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    disabled={!hasLeft}
+                    onSelect={() => handleCloseToLeft(doc.id)}
+                    className="gap-2 text-xs"
+                  >
+                    Close to the Left
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={!hasRight}
+                    onSelect={() => handleCloseToRight(doc.id)}
+                    className="gap-2 text-xs"
+                  >
+                    Close to the Right
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={() => handleTogglePin(doc.id)} className="gap-2 text-xs">
+                    {doc.pinned ? "Unpin" : "Pin"}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             );
           })}
         </div>
