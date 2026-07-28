@@ -32,11 +32,12 @@ interface DocumentType {
   includedSignalCategories: string[];
 }
 
-interface ClientOption {
+interface TenantOption {
   id: number;
-  name: string | null;
-  company: string | null;
-  email: string;
+  name: string;
+  tenantId: string | null;
+  domain: string | null;
+  status: string;
 }
 
 interface ServiceOption {
@@ -89,8 +90,8 @@ export default function DocumentGeneratorIde() {
   const [docTypes, setDocTypes] = useState<DocumentType[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(true);
 
-  const [clients, setClients] = useState<ClientOption[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
@@ -156,9 +157,9 @@ export default function DocumentGeneratorIde() {
   useEffect(() => { void loadMissingTypes(); }, [loadMissingTypes]);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/clients")
+    fetchWithAuth("/api/admin/document-generator/tenants")
       .then(r => r.json())
-      .then((d: unknown) => setClients(Array.isArray(d) ? (d as ClientOption[]) : []))
+      .then((d: unknown) => setTenants(Array.isArray(d) ? (d as TenantOption[]) : []))
       .catch(() => { /* non-fatal */ });
   }, [fetchWithAuth]);
 
@@ -170,22 +171,22 @@ export default function DocumentGeneratorIde() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    if (selectedClientId == null) { setProjects([]); setSelectedProjectId(null); return; }
+    if (selectedCustomerId == null) { setProjects([]); setSelectedProjectId(null); return; }
     setSelectedProjectId(null);
-    fetchWithAuth(`/api/admin/document-generator/clients/${selectedClientId}/projects`)
+    fetchWithAuth(`/api/admin/document-generator/tenants/${selectedCustomerId}/projects`)
       .then(r => r.json())
       .then((d: unknown) => setProjects(Array.isArray(d) ? (d as ProjectOption[]) : []))
       .catch(() => setProjects([]));
-  }, [selectedClientId, fetchWithAuth]);
+  }, [selectedCustomerId, fetchWithAuth]);
 
   const openPreview = async (type: DocumentType) => {
-    if (selectedClientId == null) {
-      toast({ title: "Select a client first", description: "Preview needs a target client to scope real data against.", variant: "destructive" });
+    if (selectedCustomerId == null) {
+      toast({ title: "Select a tenant first", description: "Preview needs a target tenant to scope real data against.", variant: "destructive" });
       return;
     }
     setPreviewLoadingKey(type.key);
     try {
-      const qs = new URLSearchParams({ clientUserId: String(selectedClientId) });
+      const qs = new URLSearchParams({ mspCustomerId: String(selectedCustomerId) });
       if (selectedProjectId != null) qs.set("projectId", String(selectedProjectId));
       const res = await fetchWithAuth(`/api/admin/document-types/${encodeURIComponent(type.key)}/preview?${qs.toString()}`);
       const data = await res.json();
@@ -242,8 +243,8 @@ export default function DocumentGeneratorIde() {
   };
 
   const generateNow = async (type: DocumentType) => {
-    if (selectedClientId == null) {
-      toast({ title: "Select a client first", description: "Generation needs a target client.", variant: "destructive" });
+    if (selectedCustomerId == null) {
+      toast({ title: "Select a tenant first", description: "Generation needs a target tenant.", variant: "destructive" });
       return;
     }
     setGeneratingKey(type.key);
@@ -251,7 +252,7 @@ export default function DocumentGeneratorIde() {
       const res = await fetchWithAuth(`/api/admin/document-generator/document-types/${encodeURIComponent(type.key)}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientUserId: selectedClientId, projectId: selectedProjectId ?? 0 }),
+        body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Generation failed");
@@ -273,19 +274,19 @@ export default function DocumentGeneratorIde() {
         </div>
         <div className="flex items-center gap-2">
           <select
-            value={selectedClientId ?? ""}
-            onChange={e => setSelectedClientId(e.target.value ? parseInt(e.target.value, 10) : null)}
+            value={selectedCustomerId ?? ""}
+            onChange={e => setSelectedCustomerId(e.target.value ? parseInt(e.target.value, 10) : null)}
             className="bg-card border border-gray-700/50 rounded-lg px-3 py-1.5 text-sm text-white"
           >
-            <option value="">Select client…</option>
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.company || c.name || c.email}</option>
+            <option value="">Select tenant…</option>
+            {tenants.map(t => (
+              <option key={t.id} value={t.id}>{t.tenantId == null ? `⚠ ${t.name} (not yet connected)` : t.name}</option>
             ))}
           </select>
           <select
             value={selectedProjectId ?? ""}
             onChange={e => setSelectedProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-            disabled={selectedClientId == null}
+            disabled={selectedCustomerId == null}
             className="bg-card border border-gray-700/50 rounded-lg px-3 py-1.5 text-sm text-white disabled:opacity-50"
           >
             <option value="">No project</option>

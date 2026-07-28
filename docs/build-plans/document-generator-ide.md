@@ -78,7 +78,7 @@ Phase 3's create call path rather than a second one.
 | 7 | Simulator Studio Documents node | Done (ef7ba2a3) | — |
 | 8 | Tenant-first document generation signature | Done (b44f01fd) | #47 |
 | 8.5 | `insights_generated_documents` tenant FK (`msp_customer_id`) | Done (code) — **migration File B pending Shane** | — |
-| 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Open | — |
+| 9 | Tenant picker — admin generate/preview take `mspCustomerId` | Done | — |
 | 10 | Tenant-first workflow `generate_document` node (`customerId` in the payload) | Open | — |
 | 11 | Retire `documentOwnerUserId` — derive ownership from the customer only | Open | — |
 | 12 | Tenant-first `admin-ai-prompts` test-draft surface | Open | — |
@@ -332,6 +332,68 @@ task called for unmounting `admin-insights.ts` entirely from `routes/index.ts`
 on the basis that "nothing calls them". That is true of its three insert
 routes, but NOT of the router as a whole, so the three write routes were gated
 off (410 Gone) instead and the router stays mounted.
+
+## Phase 9 — Tenant picker: admin generate/preview take `mspCustomerId`
+
+**Numbering note.** The task that commissioned this work called it "Phase 10",
+but Phase 10 in the table above (`Tenant-first workflow generate_document node`)
+is a different, unrelated change and is still Open — marking that row Done
+would have been false. This is the tenant picker Phase 8 explicitly deferred,
+which is Phase 9. Same situation as Phase 8.5's numbering note above; this file
+is the source of truth over a task description's phase number.
+
+Closes the interim gap Phase 8 left open: the two admin document-generation
+HTTP boundaries (generate, preview) still took `clientUserId` because the
+Document Generator IDE's only picker (`GET /admin/clients`) was user-shaped —
+nothing in the UI could supply a real `mspCustomerId`. This phase gives the UI
+that picker and flips both routes onto it.
+
+**Built (`admin-document-generator.ts`):**
+- `GET /admin/document-generator/tenants` — every `msp_customers` row
+  (id, name, tenantId, domain, status), ordered by name. Rows with a null
+  `tenantId` (not yet connected to a real M365 tenant) are returned, not
+  filtered out, so the frontend can show the same amber "not yet connected"
+  warning convention already used elsewhere in this app instead of hiding an
+  onboarding-stage customer from the picker.
+- `GET /admin/document-generator/tenants/:mspCustomerId/projects` — resolves
+  every linked login for the tenant via `resolveCustomerUserIds()`
+  (tenant-signals.ts, already built in Phase 8) and returns projects across
+  the whole set via `inArray(projectsTable.clientUserId, userIds)`, ordered by
+  `updatedAt desc` — not just one arbitrary login's projects. Empty user-id set
+  (an unclaimed customer) short-circuits to `[]` rather than an unguarded
+  `inArray([])`.
+- The old `GET /admin/document-generator/clients/:id/projects` route is
+  removed outright — both of its only two callers (the two frontend surfaces
+  below) moved onto the tenant-scoped route in the same change, so nothing was
+  left depending on it.
+
+**Flipped (the two routes Phase 8 deliberately left on `clientUserId`):**
+- `POST /admin/document-generator/document-types/:key/generate`
+- `GET /admin/document-types/:key/preview` (`admin-document-types.ts`)
+
+Both now read `mspCustomerId` at the HTTP boundary directly and no longer call
+`resolveCustomerIdForPortalUser()` — that one-line translation is deleted from
+both routes, exactly as Phase 8 said it would be. Neither route passes
+`documentOwnerUserId` anymore either (there is no `clientUserId` left to pass);
+`document-engine.ts`/`document-engine-sow.ts` already fall back to
+`resolveDocumentOwnerUserId(mspCustomerId)` when it's omitted (Phase 8), so
+document ownership still resolves to the tenant's canonical active portal
+user rather than going unowned.
+
+**Frontend (`DocumentGeneratorIde.tsx`, `SimulatorDocumentCanvas.tsx`):** both
+surfaces' client dropdown (`GET /admin/clients`, showing a person's
+name/email) is replaced with the new tenant dropdown (showing
+`msp_customers.name` — the real company name), with the amber "⚠ … (not yet
+connected)" label for null-`tenantId` rows. Both surfaces' project fetch and
+every preview/generate call now send `mspCustomerId` instead of
+`clientUserId`. `GET /admin/clients` itself and its other callers (real
+account-management screens that legitimately list logins) were not touched —
+only these two document-generation surfaces moved off it.
+
+**Verified:** `npx tsc --noEmit` clean in both `api-server` and `admin-panel`.
+Existing `admin-document-generator.test.ts` (missing-types coverage) passes
+unchanged. Not live-verified — no `DATABASE_URL` in this environment per repo
+rule.
 
 ## Open Issues
 **Phase 8.5 — File B is NOT run.** The DB column is still nullable and the

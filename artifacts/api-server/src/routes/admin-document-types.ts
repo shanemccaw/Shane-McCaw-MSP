@@ -28,7 +28,6 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { invalidateDocumentTypeCache } from "../lib/document-types";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "system.core" });
 import { z } from "zod";
@@ -193,11 +192,11 @@ router.get("/admin/document-types/:key", requireAdmin, async (req: Request, res:
 
 router.get("/admin/document-types/:key/preview", requireAdmin, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "");
-  const clientUserId = parseInt(String(req.query["clientUserId"] ?? ""), 10);
+  const mspCustomerId = parseInt(String(req.query["mspCustomerId"] ?? ""), 10);
   const projectId = parseInt(String(req.query["projectId"] ?? "0"), 10);
 
-  if (isNaN(clientUserId)) {
-    res.status(400).json({ error: "clientUserId query parameter is required and must be a number" });
+  if (isNaN(mspCustomerId)) {
+    res.status(400).json({ error: "mspCustomerId query parameter is required and must be a number" });
     return;
   }
 
@@ -213,23 +212,13 @@ router.get("/admin/document-types/:key/preview", requireAdmin, async (req: Reque
       return;
     }
 
-    // Tenant-first engines: the users.id → msp_customers.id translation the
-    // engine used to do internally now happens here, at the route boundary.
-    // Interim, like the generate route — this preview's picker is still
-    // user-shaped (`clientUserId` query param) until the tenant picker lands.
-    const mspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
-    if (mspCustomerId == null) {
-      res.status(404).json({ error: `Client ${clientUserId} is not linked to an MSP customer — there is no tenant to preview against` });
-      return;
-    }
-
     const result = docTypeRow.pipelineCategory === "pipeline_output"
-      ? await generateSowDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
-      : await generateDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
+      ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
+      : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
 
     res.json({ preview: result });
   } catch (err) {
-    log.error({ err, key, clientUserId }, "GET /admin/document-types/:key/preview failed");
+    log.error({ err, key, mspCustomerId }, "GET /admin/document-types/:key/preview failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Preview generation failed" });
   }
 });

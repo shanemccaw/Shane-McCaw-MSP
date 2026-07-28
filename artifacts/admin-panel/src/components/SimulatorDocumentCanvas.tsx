@@ -1,9 +1,10 @@
 // artifacts/admin-panel/src/components/SimulatorDocumentCanvas.tsx
 //
-// Center view for the Simulator Studio's "Documents" node (Phase 7). Client/
-// project picker mirrors DocumentGeneratorIde.tsx's exact fetch pattern
-// (GET /api/admin/clients, GET /api/admin/document-generator/clients/:id/projects) —
-// no new backend routes. Dry-Run/Real AI toggle defaults to Dry-Run so a
+// Center view for the Simulator Studio's "Documents" node (Phase 7). Tenant/
+// project picker mirrors DocumentGeneratorIde.tsx's tenant-native fetch
+// pattern (GET /api/admin/document-generator/tenants,
+// GET /api/admin/document-generator/tenants/:mspCustomerId/projects), landed
+// alongside it in Phase 9. Dry-Run/Real AI toggle defaults to Dry-Run so a
 // stray click can't spend real AI tokens by accident:
 //   - Dry-Run → GET /api/admin/document-types/:key/preview, rendered through
 //     the shared DocumentTypePreviewContent (same component the modal dialog
@@ -30,11 +31,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import DocumentTypePreviewContent, { type DocumentTypePreviewData } from "./DocumentTypePreviewContent";
 import type { DocumentTypeNode } from "./SimulatorLeftTree";
 
-interface ClientOption {
+interface TenantOption {
   id: number;
-  name: string | null;
-  company: string | null;
-  email: string;
+  name: string;
+  tenantId: string | null;
+  domain: string | null;
+  status: string;
 }
 
 interface ProjectOption {
@@ -83,9 +85,9 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
 
   const [doc, setDoc] = useState<DocumentTypeNode>(documentType);
 
-  // Client / project picker
-  const [clients, setClients] = useState<ClientOption[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  // Tenant / project picker
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
@@ -113,9 +115,9 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
   }, [documentType]);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/clients")
+    fetchWithAuth("/api/admin/document-generator/tenants")
       .then((r) => r.json())
-      .then((d: unknown) => setClients(Array.isArray(d) ? (d as ClientOption[]) : []))
+      .then((d: unknown) => setTenants(Array.isArray(d) ? (d as TenantOption[]) : []))
       .catch(() => {
         /* non-fatal */
       });
@@ -133,22 +135,22 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    if (selectedClientId == null) {
+    if (selectedCustomerId == null) {
       setProjects([]);
       setSelectedProjectId(null);
       return;
     }
     setSelectedProjectId(null);
-    fetchWithAuth(`/api/admin/document-generator/clients/${selectedClientId}/projects`)
+    fetchWithAuth(`/api/admin/document-generator/tenants/${selectedCustomerId}/projects`)
       .then((r) => r.json())
       .then((d: unknown) => setProjects(Array.isArray(d) ? (d as ProjectOption[]) : []))
       .catch(() => setProjects([]));
-  }, [selectedClientId, fetchWithAuth]);
+  }, [selectedCustomerId, fetchWithAuth]);
 
   const runAction = async () => {
     if (running) return;
-    if (selectedClientId == null) {
-      toast.error("Select a client first");
+    if (selectedCustomerId == null) {
+      toast.error("Select a tenant first");
       return;
     }
     setRunning(true);
@@ -157,7 +159,7 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
     setGeneratedHtml(null);
     try {
       if (mode === "dry-run") {
-        const qs = new URLSearchParams({ clientUserId: String(selectedClientId) });
+        const qs = new URLSearchParams({ mspCustomerId: String(selectedCustomerId) });
         if (selectedProjectId != null) qs.set("projectId", String(selectedProjectId));
         const res = await fetchWithAuth(`/api/admin/document-types/${encodeURIComponent(doc.key)}/preview?${qs.toString()}`);
         const data = await res.json();
@@ -169,7 +171,7 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clientUserId: selectedClientId, projectId: selectedProjectId ?? 0 }),
+            body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0 }),
           },
         );
         const data = await res.json();
@@ -303,17 +305,17 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
         </div>
       )}
 
-      {/* Client / project picker + mode toggle + action */}
+      {/* Tenant / project picker + mode toggle + action */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select
           className={`${selectCls} max-w-[220px]`}
-          value={selectedClientId ?? ""}
-          onChange={(e) => setSelectedClientId(e.target.value ? parseInt(e.target.value, 10) : null)}
+          value={selectedCustomerId ?? ""}
+          onChange={(e) => setSelectedCustomerId(e.target.value ? parseInt(e.target.value, 10) : null)}
         >
-          <option value="">Select client…</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.company || c.name || c.email}
+          <option value="">Select tenant…</option>
+          {tenants.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.tenantId == null ? `⚠ ${t.name} (not yet connected)` : t.name}
             </option>
           ))}
         </select>
@@ -321,7 +323,7 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
           className={`${selectCls} max-w-[220px]`}
           value={selectedProjectId ?? ""}
           onChange={(e) => setSelectedProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-          disabled={selectedClientId == null}
+          disabled={selectedCustomerId == null}
         >
           <option value="">No project</option>
           {projects.map((p) => (
@@ -354,9 +356,9 @@ export function SimulatorDocumentCanvas({ documentType }: { documentType: Docume
 
         <button
           onClick={() => void runAction()}
-          disabled={running || selectedClientId == null}
+          disabled={running || selectedCustomerId == null}
           className="flex shrink-0 items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-          title={selectedClientId == null ? "Select a client first" : undefined}
+          title={selectedCustomerId == null ? "Select a tenant first" : undefined}
         >
           {running ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

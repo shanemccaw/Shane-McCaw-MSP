@@ -3,14 +3,15 @@
  *
  * Document Generator IDE — real, on-demand document generation for any
  * active document_types row, routed to generateDocument()/generateSowDocument()
- * by pipelineCategory, plus the client/project pickers and generation history
+ * by pipelineCategory, plus the tenant/project pickers and generation history
  * the admin page needs. Dry-run preview stays on the existing
  * GET /api/admin/document-types/:key/preview route (admin-document-types.ts);
  * this file only adds the real (persisting) trigger and read paths.
  *
  * Routes
  * ──────
- * GET  /api/admin/document-generator/clients/:id/projects — project picker for a client
+ * GET  /api/admin/document-generator/tenants                       — tenant picker (msp_customers)
+ * GET  /api/admin/document-generator/tenants/:mspCustomerId/projects — project picker for a tenant
  * GET  /api/admin/document-generator/missing-types           — document_generation services with no document_types row
  * POST /api/admin/document-generator/document-types/:key/generate — real generation
  * GET  /api/admin/document-generator/history                — recent generations
@@ -18,33 +19,64 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, mspCustomersTable, projectsTable, servicesTable, usersTable } from "@workspace/db";
+import { eq, desc, and, isNull, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
+import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 const missingTypesLog = logger.child({ channel: "engine.document-generator" });
 const router: IRouter = Router();
 
-// ── Project picker ──────────────────────────────────────────────────────────
+// ── Tenant picker ────────────────────────────────────────────────────────────
+// Every `msp_customers` row, including ones with no `tenantId` yet — those are
+// surfaced with a null `tenantId` rather than filtered out, so the frontend can
+// show the same amber "not yet connected" indicator convention used elsewhere
+// in this app instead of silently hiding an onboarding-stage tenant.
 
-router.get("/admin/document-generator/clients/:id/projects", requireAdmin, async (req: Request, res: Response) => {
-  const clientUserId = parseInt(String(req.params["id"] ?? ""), 10);
-  if (isNaN(clientUserId)) { res.status(400).json({ error: "Invalid client id" }); return; }
+router.get("/admin/document-generator/tenants", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: mspCustomersTable.id,
+        name: mspCustomersTable.name,
+        tenantId: mspCustomersTable.tenantId,
+        domain: mspCustomersTable.domain,
+        status: mspCustomersTable.status,
+      })
+      .from(mspCustomersTable)
+      .orderBy(asc(mspCustomersTable.name));
+    res.json(rows);
+  } catch (err) {
+    log.error({ err }, "admin-document-generator: list tenants failed");
+    res.status(500).json({ error: "Failed to fetch tenants" });
+  }
+});
+
+// ── Project picker (tenant-scoped) ──────────────────────────────────────────
+// Resolves every linked login for the tenant (resolveCustomerUserIds), then
+// returns projects across the whole set, ordered by updatedAt desc — not just
+// one arbitrary login's projects.
+
+router.get("/admin/document-generator/tenants/:mspCustomerId/projects", requireAdmin, async (req: Request, res: Response) => {
+  const mspCustomerId = parseInt(String(req.params["mspCustomerId"] ?? ""), 10);
+  if (isNaN(mspCustomerId)) { res.status(400).json({ error: "Invalid mspCustomerId" }); return; }
 
   try {
+    const userIds = await resolveCustomerUserIds(mspCustomerId);
+    if (userIds.length === 0) { res.json([]); return; }
+
     const rows = await db
       .select({ id: projectsTable.id, title: projectsTable.title, status: projectsTable.status })
       .from(projectsTable)
-      .where(eq(projectsTable.clientUserId, clientUserId))
+      .where(inArray(projectsTable.clientUserId, userIds))
       .orderBy(desc(projectsTable.updatedAt));
     res.json(rows);
   } catch (err) {
-    log.error({ err, clientUserId }, "admin-document-generator: list projects failed");
+    log.error({ err, mspCustomerId }, "admin-document-generator: list tenant projects failed");
     res.status(500).json({ error: "Failed to fetch projects" });
   }
 });
@@ -78,26 +110,17 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
 
 // ── Generate (real, persisting) ─────────────────────────────────────────────
 //
-// Still takes `clientUserId` — deliberately, as an INTERIM step.
-//
-// The document engines are now tenant-first (they take an `mspCustomerId`), and
-// the right end state for this route is to take one directly. It can't yet: the
-// only picker the Document Generator IDE has is `GET /admin/clients`, which is
-// user-shaped, so there is nothing in the UI that could supply a customer id.
-// Changing the contract now would break the page for the sake of a field no
-// caller can populate. So the users.id → msp_customers.id translation happens
-// here, at the route boundary, instead of hidden inside the engine — which is
-// the actual point of the change: the engine no longer does it, exactly one
-// caller-side line does, and it becomes a one-line deletion the moment the
-// tenant picker lands (Phase 10).
+// Takes `mspCustomerId` directly now that the tenant picker (Phase 9) gives the
+// UI a real customer id to supply — the interim `resolveCustomerIdForPortalUser()`
+// translation this route used to do at the boundary is gone.
 
 router.post("/admin/document-generator/document-types/:key/generate", requireAdmin, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "");
-  const clientUserId = parseInt(String(req.body?.clientUserId ?? ""), 10);
+  const mspCustomerId = parseInt(String(req.body?.mspCustomerId ?? ""), 10);
   const projectId = parseInt(String(req.body?.projectId ?? "0"), 10);
 
-  if (isNaN(clientUserId)) {
-    res.status(400).json({ error: "clientUserId is required and must be a number" });
+  if (isNaN(mspCustomerId)) {
+    res.status(400).json({ error: "mspCustomerId is required and must be a number" });
     return;
   }
 
@@ -111,22 +134,16 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
     if (!docTypeRow) { res.status(404).json({ error: `Unknown document type "${key}"` }); return; }
     if (!docTypeRow.isActive) { res.status(400).json({ error: `Document type "${key}" is not active` }); return; }
 
-    const mspCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
-    if (mspCustomerId == null) {
-      res.status(404).json({ error: `Client ${clientUserId} is not linked to an MSP customer — there is no tenant to generate a document against` });
-      return;
-    }
-
-    log.info({ key, clientUserId, mspCustomerId, projectId, actor: req.user?.email }, "admin-document-generator: generate requested");
+    log.info({ key, mspCustomerId, projectId, actor: req.user?.email }, "admin-document-generator: generate requested");
 
     const result = docTypeRow.pipelineCategory === "pipeline_output"
-      ? await generateSowDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key })
-      : await generateDocument({ mspCustomerId, documentOwnerUserId: clientUserId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key });
+      ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key })
+      : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key });
 
-    log.info({ key, clientUserId, mspCustomerId, documentId: result.documentId }, "admin-document-generator: generate completed");
+    log.info({ key, mspCustomerId, documentId: result.documentId }, "admin-document-generator: generate completed");
     res.json({ documentId: result.documentId, htmlContent: result.htmlContent, docTypeKey: key });
   } catch (err) {
-    log.error({ err, key, clientUserId }, "admin-document-generator: generate failed");
+    log.error({ err, key, mspCustomerId }, "admin-document-generator: generate failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
   }
 });
