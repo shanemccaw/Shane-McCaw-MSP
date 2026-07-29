@@ -104,6 +104,8 @@ import { executeZohoProjectsNode } from "./zoho-projects.js";
 import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.js";
 import { executeZohoBooksNode, handleZohoBooksDailyAiRollup } from "./zoho-books.js";
 import { getZohoBooksNodeSpec } from "./zoho-books-nodes.js";
+import { executeZohoDeskNode } from "./zoho-desk.js";
+import { getZohoDeskNodeSpec } from "./zoho-desk-nodes.js";
 import { handleEngageBayBatchDrain } from "./engagebay-batch-drain.js";
 import { executeEngageBayNode } from "./engagebay-nodes-exec.js";
 import Ajv from "ajv";
@@ -1267,6 +1269,19 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "zoho_books_daily_ai_rollup":
       return { dryRun: true, posted: false, note: "dry run — Zoho Books daily AI cost rollup skipped" };
+
+    // Zoho Desk (#89) — all 4 nodes. Same dry-run contract as CRM/Projects/Books
+    // above: the read reports a shaped empty result, writes report nothing
+    // queued.
+    case "zoho_desk_create_ticket": case "zoho_desk_upsert_contact":
+    case "zoho_desk_add_comment": {
+      const zdSpec = getZohoDeskNodeSpec(node.type);
+      const zdEntity = zdSpec?.entity ?? "Ticket";
+      return { dryRun: true, queued: false, jobId: null, jobType: node.type, entity: zdEntity, note: "dry run — Zoho Desk write not queued" };
+    }
+
+    case "zoho_desk_get_ticket":
+      return { dryRun: true, found: false, record: null, entity: "Ticket", note: "dry run — Zoho Desk read skipped" };
 
     case "engagebay_batch_drain": {
       const dryBatchSize = Number((node.data.batchSize as number | undefined) ?? 20);
@@ -6728,6 +6743,26 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // a seeded daily schedule workflow so every rollup is a visible,
         // logged run, same discipline zoho_batch_drain uses.
         output = await handleZohoBooksDailyAiRollup(node.data as Record<string, unknown>);
+        break;
+      }
+
+      // Zoho Desk (#89) — all 4 nodes route through one entry point, same
+      // queued split as CRM/Projects/Books: the read calls Zoho inline, writes
+      // enqueue an msp_job_queue row and return { queued: true, jobId }
+      // WITHOUT touching Zoho — the write lands on the next zoho_batch_drain.
+      // Also the entry point for the AI Support Chat's human-escalation path
+      // (escalateToAdmin() in support-chat.ts calls enqueueEscalationTicket()
+      // directly, not through this executor, but it queues the same
+      // zoho_desk_create_ticket job type this case dispatches for the
+      // workflow-builder-authored path).
+      case "zoho_desk_create_ticket": case "zoho_desk_upsert_contact":
+      case "zoho_desk_add_comment": case "zoho_desk_get_ticket": {
+        output = await executeZohoDeskNode(
+          node.type,
+          node.data as Record<string, unknown>,
+          (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
+        );
+        if (output.error) nodeError = true;
         break;
       }
 

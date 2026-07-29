@@ -6,10 +6,16 @@
  *   answered from real platform data (billing, signals, SOW/fulfillment, monitoring).
  *
  * Escalation:
- *   When the AI is not confident (or the user explicitly requests it), the conversation
- *   falls through to the existing message-thread + Notification Center mechanism:
- *   - A notification is broadcast via SSE to Shane's admin stream
- *   - For CustomerUser: a messagesTable row is also created so it shows in Shane's inbox
+ *   When the AI is not confident (or the user explicitly requests it — both the
+ *   automatic fallthrough here and the explicit /msp/support/escalate endpoint below
+ *   funnel through escalateToAdmin()), a Zoho Desk ticket is queued (#89) as the real
+ *   record of the escalation, and the resolved admin/MSP recipients are emailed once
+ *   that ticket is confirmed created (see zoho-desk.ts's handleCreateTicketJob):
+ *   - zoho_desk_create_ticket queued via the standard msp_job_queue/drain pattern
+ *   - Recipients are emailed by the job itself, with the real ticket link — never a
+ *     dead-end "log in" pointer sent from this request path
+ *   - For CustomerUser: a messagesTable row is also created so it shows in their own
+ *     inbox thread — unrelated to the admin side, untouched by #89
  *   - aiCostOwner: "msp" — logged in metadata
  *
  * Routes:
@@ -23,7 +29,6 @@ import {
   mspsTable,
   tenantsTable,
   mspEventStoreTable,
-  notificationsTable,
   messagesTable,
   usersTable,
 } from "@workspace/db";
@@ -31,7 +36,7 @@ import { eq, and, or, desc, count, gte, like } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
-import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-channels.ts";
+import { enqueueEscalationTicket } from "../lib/zoho-desk.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
@@ -313,64 +318,26 @@ async function escalateToAdmin(opts: {
       return;
     }
 
-    // One notification row per recipient (fan-out), matching the recipientType
-    // convention: "msp_user" carries mspUserId + mspId, "platform_admin"
-    // carries userId. See workflow-executor.ts's approval-gate handler.
-    const inserted = await db.insert(notificationsTable).values(
-      recipients.map((r) =>
-        r.kind === "msp_user"
-          ? {
-              mspUserId: r.mspUserId,
-              mspId: r.mspId,
-              recipientType: "msp_user" as const,
-              title,
-              body,
-              type: "message" as const,
-              category: "message",
-              severity: "warning" as const,
-              feedType: "personal" as const,
-            }
-          : {
-              userId: r.userId,
-              recipientType: "platform_admin" as const,
-              title,
-              body,
-              type: "message" as const,
-              category: "message",
-              severity: "warning" as const,
-              feedType: "personal" as const,
-              ...(opts.mspId ? { mspId: opts.mspId } : {}),
-            },
-      ),
-    ).returning({ id: notificationsTable.id, userId: notificationsTable.userId, createdAt: notificationsTable.createdAt });
-
-    // SSE push to each platform-admin recipient's stream (SSE channels are keyed
-    // on usersTable.id, which only platform-admin rows carry here).
-    for (const row of inserted) {
-      if (row.userId == null) continue;
-      broadcastNotification(row.userId, {
-        id: row.id,
-        title,
-        body,
-        type: "message",
-        category: "message",
-        severity: "warning",
-        feedType: "personal",
-        read: false,
-        createdAt: row.createdAt.toISOString(),
-      });
-      broadcastUnreadCount(row.userId, 1);
-    }
-
-    // Email every resolved recipient via Exchange Online / Microsoft Graph.
-    // Dynamic import (like workflow-executor.ts's approval-gate handler) so the
-    // mailer's Graph transport chain isn't pulled into this route's static
-    // import graph. sendEmail routes through mailer.ts → Graph; never Resend.
-    const { sendEmail } = await import("../lib/mailer.ts");
-    const emailBodyHtml = `<p>${title}</p><p style="white-space:pre-wrap">${body}</p><p>Log in to review and reply.</p>`;
-    for (const r of recipients) {
-      if (r.email) void sendEmail(r.email, title, emailBodyHtml, { templateName: "support-escalation" });
-    }
+    // Queue the Zoho Desk ticket (#89) — this IS the record of the escalation
+    // now, replacing the notificationsTable insert + SSE broadcast this route
+    // used to do. The resolved recipients' emails ride along as
+    // notifyEmails/notifySubject; zoho-desk.ts's handleCreateTicketJob sends
+    // the actual admin-notification email itself, once the ticket is
+    // confirmed created, so it can carry the real ticket link rather than a
+    // dead-end "log in" pointer sent before the write even happened.
+    const notifyEmails = recipients.map((r) => r.email).filter((e): e is string => Boolean(e));
+    await enqueueEscalationTicket(
+      {
+        subject: title,
+        description: body,
+        contactEmail: opts.userEmail,
+        contactName: displayName,
+        localUserId: opts.userId,
+        notifyEmails,
+        notifySubject: title,
+      },
+      { mspId: opts.mspId ?? undefined },
+    );
 
     // For CustomerUser: create a messagesTable row so it shows in the inbox thread.
     if (opts.isCustomerUser && opts.userId) {

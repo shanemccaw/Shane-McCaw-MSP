@@ -318,7 +318,7 @@ describe("POST /api/msp/support/escalate", () => {
     expect(res.status).toBe(401);
   });
 
-  it("creates escalation notification and returns ok", async () => {
+  it("queues escalation ticket and returns ok", async () => {
     const app = makeApp();
     const res = await request(app)
       .post("/api/msp/support/escalate")

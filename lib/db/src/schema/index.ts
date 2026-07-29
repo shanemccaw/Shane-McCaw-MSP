@@ -74,6 +74,11 @@ export const usersTable = pgTable("users", {
   // spaces, so a CRM Contact id is not a valid Books Contact id (or vice
   // versa). Nullable, populated on first zoho_books_upsert_contact sync.
   zohoBooksContactId: text("zoho_books_contact_id"),
+  // Zoho Desk Contact id (#89) — deliberately separate from zohoContactId
+  // (CRM) and zohoBooksContactId (Books) above: Desk is a distinct Zoho
+  // product with its own record space. Nullable, populated on first
+  // zoho_desk_upsert_contact sync (support-chat escalation or a manual node).
+  zohoDeskContactId: text("zoho_desk_contact_id"),
   pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   // ── absorbed from msp_users (Phase 0) ──────────────────────────────────────
@@ -2630,6 +2635,11 @@ export interface WfNode {
     | "zoho_books_upsert_contact" | "zoho_books_create_invoice"
     | "zoho_books_record_payment" | "zoho_books_create_expense"
     | "zoho_books_daily_ai_rollup"
+    // Zoho Desk (#89) — 4 nodes, draining on the same zoho_batch_drain. No
+    // delete node. Connects the AI Support Chat's human-escalation path
+    // (escalateToAdmin() in support-chat.ts) to a real ticket.
+    | "zoho_desk_create_ticket" | "zoho_desk_upsert_contact"
+    | "zoho_desk_add_comment" | "zoho_desk_get_ticket"
     // EngageBay Integration — queue drain (#105)
     | "engagebay_batch_drain"
     // EngageBay nodes (#105) — 4 write (queued) + 4 read (inline). No delete

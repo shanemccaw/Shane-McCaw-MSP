@@ -73,6 +73,7 @@ export type NodeTypeMeta =
 import { ZOHO_CRM_NODES } from "./zoho-crm-nodes.ts";
 import { ZOHO_PROJECTS_NODES } from "./zoho-projects-nodes.ts";
 import { ZOHO_BOOKS_NODES } from "./zoho-books-nodes.ts";
+import { ZOHO_DESK_NODES } from "./zoho-desk-nodes.ts";
 import { ENGAGEBAY_NODES } from "./engagebay-nodes.ts";
 
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
@@ -836,6 +837,15 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Sums the prior day's AI/Anthropic cost and posts one Zoho Books expense — no AI",
   },
+
+  // ── Zoho Desk (#89) — 4 nodes, none AI-dependent ──────────────────────────
+  // Same derivation discipline as CRM/Projects/Books above: catalog lives in
+  // zoho-desk-nodes.ts, this registry just maps over it.
+  ...ZOHO_DESK_NODES.map((n): NodeTypeMeta => ({
+    nodeType: n.nodeType,
+    isAIDependent: false,
+    description: n.description,
+  })),
 
   {
     nodeType: "engagebay_batch_drain",

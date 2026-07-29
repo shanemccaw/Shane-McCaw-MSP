@@ -1178,6 +1178,14 @@ export const zohoConnectionTable = pgTable("zoho_connection", {
   // (GET /books/v3/organizations) and cached here (#87), same pattern as
   // zohoPortalId.
   zohoBooksOrgId: text("zoho_books_org_id"),
+  // Zoho Desk's organization id — a fourth distinct Zoho identifier, separate
+  // from zohoOrgId (CRM), zohoPortalId (Projects) and zohoBooksOrgId (Books)
+  // above. Unlike those three, Zoho Desk requires this as an `orgId` HTTP
+  // header on every call, not a query param or path segment. Not known at
+  // OAuth callback time, so it is resolved lazily on first Zoho Desk call
+  // (GET /api/v1/organizations) and cached here (#89), same pattern as
+  // zohoBooksOrgId.
+  zohoDeskOrgId: text("zoho_desk_org_id"),
   // Key Vault secret NAME holding the refresh token — never the value itself
   keyVaultSecretName: text("key_vault_secret_name").notNull(),
   accessTokenCache: text("access_token_cache"),

@@ -177,6 +177,13 @@ export interface ZohoRequestOptions {
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   mspId?: number;
+  /**
+   * Extra request headers. Zoho Desk (#89) requires an `orgId` header on
+   * every call — a header, not a query param like Books' organization_id or
+   * a path segment like Projects' portal id — so this is generic rather than
+   * Desk-specific.
+   */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -202,6 +209,7 @@ export async function zohoFetch(
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(opts.headers ?? {}),
       },
       ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
     });
@@ -230,8 +238,9 @@ export async function zohoGet(
   path: string,
   query?: Record<string, string | number | undefined>,
   mspId?: number,
+  headers?: Record<string, string>,
 ): Promise<Record<string, unknown>> {
-  return zohoFetch("GET", path, { query, mspId });
+  return zohoFetch("GET", path, { query, mspId, headers });
 }
 
 export async function zohoPost(
