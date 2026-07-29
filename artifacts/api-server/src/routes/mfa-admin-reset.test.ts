@@ -63,13 +63,14 @@ vi.mock("@workspace/db", () => {
         }),
       })),
     },
-    usersTable: table("users", "id", "email", "name", "role"),
+    // msp_users was absorbed into users (#92) — its mspRole/mspId/customerId
+    // columns now live on this row as mspRole/mspId/tenantId.
+    usersTable: table("users", "id", "email", "name", "role", "mspRole", "mspId", "tenantId"),
     mfaEnrollmentsTable: table("mfa_enrollments", "userId", "method", "enabled", "encryptedSecret", "phone"),
     mfaChallengesTable: table("mfa_challenges", "id", "userId", "method", "expiresAt", "usedAt"),
     mfaBypassCodesTable: table("mfa_bypass_codes", "id", "userId", "usedAt", "expiresAt"),
     webauthnCredentialsTable: table("webauthn_credentials", "id", "userId", "credentialId"),
     webauthnChallengesTable: table("webauthn_challenges", "id", "userId", "purpose", "expiresAt"),
-    mspUsersTable: table("msp_users", "userId", "mspRole", "mspId", "customerId"),
     mspRefreshTokensTable: table("msp_refresh_tokens", "userId", "tokenHash"),
   };
 });

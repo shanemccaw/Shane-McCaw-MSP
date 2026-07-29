@@ -28,8 +28,7 @@ vi.mock("@workspace/db", () => ({
   aiPromptsTable: {},
   documentTypesTable: {},
   insightsGeneratedDocumentsTable: {},
-  mspCustomersTable: {},
-  mspUsersTable: {},
+  tenantsTable: {},
   mspsTable: {},
 }));
 // document-engine.ts also imports the cost-capture helpers (Phase 5); a mock

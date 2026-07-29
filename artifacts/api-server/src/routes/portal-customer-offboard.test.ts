@@ -36,7 +36,7 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: mockDb,
-    mspCustomersTable: { id: "id", mspId: "msp_id", status: "status", name: "name", domain: "domain" },
+    tenantsTable: { id: "id", mspId: "msp_id", status: "status", customerName: "customer_name", domain: "domain" },
     clientServicesTable: { id: "id", clientUserId: "client_user_id", status: "status", stripeSubscriptionId: "stripe_subscription_id" },
     servicesTable: { id: "id", name: "name", typeAttributes: "type_attributes", billingType: "billing_type", price: "price" },
     projectsTable: { id: "id", clientUserId: "client_user_id", status: "status" },
@@ -119,7 +119,7 @@ describe("Customer Offboarding & Export API", () => {
       expect(res.body.ok).toBe(true);
       expect(res.body.customerStatus).toBe("inactive");
 
-      // Verify db.update was called on clientServicesTable, mspSalesBundleAssignmentsTable, mspCustomersTable
+      // Verify db.update was called on clientServicesTable, mspSalesBundleAssignmentsTable, tenantsTable
       expect(db.update).toHaveBeenCalled();
     });
   });

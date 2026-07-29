@@ -11,7 +11,7 @@ import jwt from "jsonwebtoken";
  * queued result array off `mockResultQueue`. Tests that resolve a single metric
  * queue exactly the rows that metric's resolver reads, in order. `assertCustomerAccess`
  * (the cross-MSP ownership check) is exercised through its real code path against
- * a mocked mspCustomersTable lookup.
+ * a mocked tenantsTable lookup.
  */
 
 let mockResultQueue: any[][] = [];
@@ -48,7 +48,6 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: mockDb,
-    mspCustomersTable: tbl(["id", "mspId", "tenantId", "status", "industry"]),
     // Phase 1 (#94): assertCustomerAccess resolves its MSP-ownership check
     // against `tenants` now, so the guard tests below need this stub present.
     tenantsTable: tbl(["id", "mspId", "customerName", "tenantId"]),
@@ -141,7 +140,7 @@ describe("POST /api/dashboard/resolve", () => {
 
   // ── Cross-MSP ownership rejection (MSPOperator) ──
   it("403s when an operator requests a customer belonging to another MSP", async () => {
-    // assertCustomerAccess → mspCustomersTable lookup returns no row (not owned).
+    // assertCustomerAccess → tenantsTable lookup returns no row (not owned).
     mockResultQueue = [[]]; // ownership query → empty = not owned
     const res = await resolve(operatorToken({ mspId: 1 }), { metrics: ["engine.healthScore"], customerId: 999 });
     expect(res.status).toBe(403);

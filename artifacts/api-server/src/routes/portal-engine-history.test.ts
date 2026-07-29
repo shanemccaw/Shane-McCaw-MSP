@@ -36,7 +36,7 @@ function customerToken(customerId: number | undefined, mspRole: "CustomerUser" |
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  mspCustomersTable: { id: "id", mspId: "mspId" },
+  tenantsTable: { id: "id", mspId: "mspId" },
   mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId" },
 }));
 

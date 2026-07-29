@@ -30,7 +30,7 @@ process.env.JWT_SECRET = TEST_JWT_SECRET;
 //   1. select from impersonationTokensTable  → token record
 //   2. update impersonationTokensTable       → no return value
 //   3. select from usersTable               → target user
-//   4. select from mspUsersTable (getMspClaims) → msp_users row
+//   4. select from usersTable (getMspClaims) → the caller's own users row
 //   5. insert into mspAuditLogsTable        → non-fatal, ignored
 
 let dbSelectQueue: unknown[][] = [];
@@ -64,7 +64,6 @@ mock.module("@workspace/db", {
   namedExports: {
     db: makeMockDb(),
     usersTable: {},
-    mspUsersTable: {},
     mspsTable: {},
     mspRefreshTokensTable: {},
     passwordResetTokensTable: {},
@@ -74,7 +73,7 @@ mock.module("@workspace/db", {
     webauthnCredentialsTable: {},
     mspAuditLogsTable: {},
     mspServiceAccountsTable: {},
-    mspCustomersTable: {},
+    tenantsTable: {},
   },
 });
 
@@ -380,7 +379,7 @@ describe("impersonate-exchange — POST /api/auth/impersonate-exchange", () => {
     let decodedJwt: Record<string, unknown>;
 
     before(async () => {
-      // getMspClaims returns empty — mspUsersTable has no row for this user
+      // getMspClaims returns empty — usersTable carries no MSP claims for this user
       dbSelectQueue = [[makeTokenRecord()], [fakeTargetUser], [/* no msp_users row */]];
       ({ status, json } = await postExchange("test-impersonation-token-abc123"));
 

@@ -102,7 +102,7 @@ vi.mock("@workspace/db", () => {
     monitorCheckAuditLogTable: { createdAt: "created_at" },
     tenantMonitorProfilesTable: { collectedAt: "collected_at", tenantId: "tenant_id" },
     usersTable: { id: "id" },
-    mspCustomersTable: { tenantId: "tenant_id", name: "name", domain: "domain" },
+    tenantsTable: { tenantId: "tenant_id", customerName: "customer_name", domain: "domain" },
   };
 });
 

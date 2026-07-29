@@ -14,7 +14,7 @@ import jwt from "jsonwebtoken";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock("@workspace/db", () => ({ db: {}, mspCustomersTable: {} }));
+vi.mock("@workspace/db", () => ({ db: {}, tenantsTable: {}, mspStaffCustomerScopesTable: {} }));
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

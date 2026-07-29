@@ -34,10 +34,11 @@ const mockDb = {
 vi.mock("@workspace/db", () => ({
   db: mockDb,
   mspsTable: { id: "id", slug: "slug" },
-  mspCustomersTable: {
+  usersTable: { id: "id", tenantId: "tenant_id", mspId: "msp_id", email: "email", role: "role" },
+  tenantsTable: {
     id: "id",
     mspId: "msp_id",
-    name: "name",
+    customerName: "customer_name",
     domain: "domain",
     status: "status",
     industry: "industry",

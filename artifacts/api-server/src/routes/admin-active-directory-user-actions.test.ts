@@ -223,7 +223,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
 describe("GET /admin/active-directory/user/:id/entitlements", () => {
   it("returns inherited/overrides/effective for an account with no MSP linkage (no subscription query issued)", async () => {
     mockResultQueue = [
-      [], // mspUsersTable lookup — no mspId
+      [], // usersTable lookup — no mspId
       [{ capabilityKey: "betaFeature", enabled: true, grantedByUserId: 1, createdAt: new Date(), updatedAt: new Date() }], // overrides
     ];
     const res = await request(app)
@@ -256,7 +256,7 @@ describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
     mockResultQueue = [
       [], // select before override
       [], // insert...onConflictDoUpdate
-      [], // mspUsersTable lookup for the post-write view — no mspId
+      [], // usersTable lookup for the post-write view — no mspId
       [{ capabilityKey: "copilot", enabled: true, grantedByUserId: 1, createdAt: new Date(), updatedAt: new Date() }], // overrides
     ];
     const res = await request(app)
@@ -273,7 +273,7 @@ describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
     mockResultQueue = [
       [{ enabled: false }], // select before override — an existing revoke override
       [], // delete()
-      [], // mspUsersTable lookup for the post-write view
+      [], // usersTable lookup for the post-write view
       [], // overrides — now empty
     ];
     const res = await request(app)

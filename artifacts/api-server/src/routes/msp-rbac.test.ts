@@ -35,7 +35,8 @@ const mockSelect = () => ({ from: mockFrom });
 mock.module("@workspace/db", {
   namedExports: {
     db: { select: mockSelect },
-    mspCustomersTable: { id: "id_col", mspId: "mspId_col" },
+    tenantsTable: { id: "id_col", mspId: "mspId_col" },
+    mspStaffCustomerScopesTable: { customerId: "customerId_col", staffUserId: "staffUserId_col" },
   },
 });
 

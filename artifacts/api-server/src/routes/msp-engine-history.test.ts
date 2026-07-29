@@ -42,7 +42,7 @@ function mspToken(opts: { mspId?: number; mspRole?: "MSPOperator" | "MSPAdmin" |
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn(), selectDistinct: vi.fn() },
-  mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
+  tenantsTable: { id: "id", customerName: "customerName", mspId: "mspId" },
   tenantEngineSnapshotsTable: { customerId: "customerId", engineKey: "engineKey" },
   mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId" },
   mspsTable: { id: "id", slug: "slug" },

@@ -13,7 +13,7 @@ vi.mock("@workspace/db", () => ({
   db: {},
   servicesTable: {},
   mspSubscriptionsTable: {},
-  mspCustomersTable: {},
+  tenantsTable: {},
 }));
 
 vi.mock("./logger.ts", () => {

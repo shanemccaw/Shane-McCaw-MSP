@@ -213,7 +213,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
   });
 
   it("403s when the customer does not belong to the caller's MSP (assertCustomerAccess)", async () => {
-    mockSelect.mockReturnValueOnce(buildChain([])); // mspCustomersTable lookup finds nothing -> assertCustomerAccess false
+    mockSelect.mockReturnValueOnce(buildChain([])); // tenantsTable lookup finds nothing -> assertCustomerAccess false
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
       .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
@@ -234,7 +234,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
   it("404s when the target user is not linked to the given customer", async () => {
     mockSelect.mockReturnValueOnce(buildChain([{ id: 1 }])); // assertCustomerAccess: customer found
     mockSelect.mockReturnValueOnce(buildChain([])); // isCustomerBlockedByStaffScope: unrestricted
-    mockSelect.mockReturnValueOnce(buildChain([])); // mspUsersTable link lookup: none found
+    mockSelect.mockReturnValueOnce(buildChain([])); // usersTable link lookup: none found
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
       .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
@@ -246,7 +246,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
   it("delegates to the shared lib/data-rights.ts helper on success — the same code path portal.ts uses", async () => {
     mockSelect.mockReturnValueOnce(buildChain([{ id: 1 }])); // assertCustomerAccess: customer found
     mockSelect.mockReturnValueOnce(buildChain([])); // isCustomerBlockedByStaffScope: unrestricted
-    mockSelect.mockReturnValueOnce(buildChain([{ userId: 101 }])); // mspUsersTable link lookup: found
+    mockSelect.mockReturnValueOnce(buildChain([{ userId: 101 }])); // usersTable link lookup: found
     submitAdminInitiatedDeletionRequest.mockResolvedValueOnce({ ok: true, currentSchemaSummary: { customerId: 1, mspId: MSP_ID, customerName: "Acme Corp", diagnosticRuns: 3, diagnosticFindings: 5, sows: 1, mspDocuments: 2, engineSnapshots: 10 } });
 
     const res = await request(makeApp())

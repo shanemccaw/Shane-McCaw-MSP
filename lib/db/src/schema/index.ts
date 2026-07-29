@@ -926,7 +926,7 @@ export type InsertSignalDerivationRule = typeof signalDerivationRulesTable.$infe
 
 export const tenantSignalHistoryTable = pgTable("tenant_signal_history", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   signalKey: text("signal_key").notNull(),
   category: text("category"),
@@ -2144,7 +2144,7 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
    * without it, so this changes no runtime behavior; it only stops selects from
    * typing a column that can no longer be NULL as `number | null`.
    */
-  mspCustomerId: integer("msp_customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  mspCustomerId: integer("msp_customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   category: text("category", { enum: ["report", "consulting"] }).notNull().default("report"),
   docType: text("doc_type").notNull().default("other"),
@@ -3088,7 +3088,7 @@ export type MspScoreHistory = typeof mspScoreHistoryTable.$inferSelect;
 export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   engineKey: text("engine_key").notNull(),
   score: integer("score").notNull().default(0),
   previousScore: integer("previous_score"),
@@ -3122,7 +3122,7 @@ export type EngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferS
 
 export const engineScoreDailyRollupTable = pgTable("engine_score_daily_rollup", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   engineKey: text("engine_key").notNull(),
   day: date("day").notNull(),
@@ -3177,7 +3177,7 @@ export type PolicyRuleAuditLog = typeof policyRuleAuditLogTable.$inferSelect;
 export const policyRuleFiringsTable = pgTable("policy_rule_firings", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   firedAt: timestamp("fired_at").notNull().defaultNow(),
 }, (table) => ({
@@ -3190,7 +3190,7 @@ export type PolicyRuleFiring = typeof policyRuleFiringsTable.$inferSelect;
 export const policyRuleIncidentsTable = pgTable("policy_rule_incidents", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   currentLevel: integer("current_level").notNull().default(1),
@@ -3207,7 +3207,7 @@ export type PolicyRuleIncident = typeof policyRuleIncidentsTable.$inferSelect;
 export const policyRuleSuppressionsTable = pgTable("policy_rule_suppressions", {
   id: serial("id").primaryKey(),
   ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   reason: text("reason"),
   suppressedByUserId: integer("suppressed_by_user_id"),
@@ -3353,7 +3353,7 @@ export type LeadScoringConfig = typeof leadScoringConfigTable.$inferSelect;
 
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   engineKey: text("engine_key").notNull(),
   baselineScore: integer("baseline_score").notNull(),

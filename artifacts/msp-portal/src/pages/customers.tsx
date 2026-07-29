@@ -75,7 +75,8 @@ export interface Customer {
   name: string;
   domain?: string;
   status: "active" | "inactive" | "onboarding" | "archived";
-  tenantId?: string;
+  // NOT NULL on tenants.tenant_id and required by the server since Phase 2b.
+  tenantId: string;
   industry?: string;
   primaryContact?: string;
   primaryEmail?: string;
@@ -306,6 +307,12 @@ export default function CustomersPage() {
       setCreateError("Name must be at least 2 characters.");
       return;
     }
+    // tenants.tenant_id is NOT NULL and the server has required this since
+    // Phase 2b — sending undefined here just bought a 400 round-trip.
+    if (createForm.tenantId.trim().length === 0) {
+      setCreateError("M365 Tenant ID is required.");
+      return;
+    }
 
     setCreateError(null);
     setCreateSubmitting(true);
@@ -317,7 +324,7 @@ export default function CustomersPage() {
           name: createForm.name.trim(),
           domain: createForm.domain.trim() || undefined,
           industry: createForm.industry.trim() || undefined,
-          tenantId: createForm.tenantId.trim() || undefined,
+          tenantId: createForm.tenantId.trim(),
           status: createForm.status,
           primaryContact: createForm.primaryContact.trim() || undefined,
           primaryEmail: createForm.primaryEmail.trim() || undefined,
@@ -900,7 +907,7 @@ export default function CustomersPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="cust-tenant">M365 Tenant ID</Label>
+                <Label htmlFor="cust-tenant">M365 Tenant ID <span className="text-destructive">*</span></Label>
                 <Input
                   id="cust-tenant"
                   placeholder="72f988bf-..."

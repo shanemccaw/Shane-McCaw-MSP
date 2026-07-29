@@ -63,7 +63,8 @@ vi.mock("@workspace/db", () => {
     mspEventStoreTable: {},
     mspIdempotencyStoreTable: {},
     mspDlqStoreTable: {},
-    mspUsersTable: {},
+    tenantsTable: {},
+    mspStaffCustomerScopesTable: {},
     mspRefreshTokensTable: {},
   };
 });

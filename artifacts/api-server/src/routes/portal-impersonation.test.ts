@@ -143,8 +143,7 @@ mock.module("@workspace/db", {
     fulfillmentSlaConfigTable: {},
     FULFILLMENT_DELIVERY_STATUSES: ["not_started", "in_progress", "delivered", "blocked"],
     FULFILLMENT_SOURCE_TYPES: ["offer", "sow", "bundle"],
-    mspCustomersTable: {},
-    mspUsersTable: {},
+    tenantsTable: {},
     mspAuditLogsTable: {},
     monitorChecksTable: {},
   },
@@ -423,7 +422,8 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     let json: Record<string, unknown>;
 
     before(async () => {
-      // Handler makes 3 selects: mspCustomersTable, mspUsersTable, usersTable
+      // Handler makes 3 selects: tenantsTable (the customer), usersTable (the
+      // caller's MSP claims, absorbed from msp_users in #92), usersTable (target)
       dbSelectQueue = [[fakeCustomer], [fakeMspUserRow], [fakeTargetUser]];
       ({ status, json } = await postImpersonate(1, 10, mspAdminMsp1Token));
     });

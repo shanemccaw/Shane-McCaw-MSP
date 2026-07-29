@@ -107,7 +107,7 @@ vi.mock("@workspace/db", () => {
     db: mockDb,
     mspDiagnosticRunsTable: { runId: "run_id", customerId: "customer_id", status: "status", mspId: "msp_id" },
     mspDiagnosticFindingsTable: { runId: "run_id", severity: "severity", findingId: "finding_id", checkKey: "check_key", checkLabel: "check_label", title: "title", description: "description", checkStatus: "check_status", createdAt: "created_at" },
-    mspCustomersTable: { id: "id", mspId: "msp_id", name: "name", tenantId: "tenant_id" },
+    tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", tenantId: "tenant_id" },
     portalWfRunsTable: {},
     portalWfOperatorTasksTable: {},
   };

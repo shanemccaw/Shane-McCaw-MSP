@@ -31,7 +31,7 @@ vi.mock("../lib/sse-hub.ts", () => ({
 // router test only exercises JWT verification + routing, never a DB query.
 vi.mock("@workspace/db", () => ({
   db: {},
-  mspCustomersTable: {},
+  tenantsTable: {},
 }));
 
 const JWT_SECRET = "test-live-stream-secret";

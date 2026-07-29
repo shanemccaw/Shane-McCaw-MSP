@@ -51,7 +51,7 @@ mock.module("@workspace/db", {
     mspJobQueueTable: { mspId: "msp_id_col", status: "status_col", jobType: "jt_col", scheduledAt: "sa_col", jobId: "jid_col" },
     mspDlqStoreTable: {},
     mspsTable: { id: "id_col" },
-    mspCustomersTable: { id: "id_col", mspId: "msp_id_col", status: "status_col", name: "name_col", createdAt: "ca_col" },
+    tenantsTable: { id: "id_col", mspId: "msp_id_col", status: "status_col", customerName: "customer_name_col", createdAt: "ca_col" },
   },
 });
 

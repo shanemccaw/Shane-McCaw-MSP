@@ -113,7 +113,9 @@ export type InsertTenant = typeof tenantsTable.$inferInsert;
 
 export const tenantEngineOverridesTable = pgTable("tenant_engine_overrides", {
   id: serial("id").primaryKey(),
-  // Orphaned msp_customers id — FK dropped with the table (Phase 0); column removed in Phase 7 cleanup.
+  // tenants.id of the testbed customer — successor id-space after Phase 0
+  // absorbed msp_customers. FK dropped with that table and deliberately not
+  // recreated. Live: read by graph.ts, simulator-events.ts and admin-engines.ts.
   testbedCustomerId: integer("testbed_customer_id").notNull(),
   runId: text("run_id"),
   graphEndpoint: text("graph_endpoint").notNull(),
@@ -151,12 +153,16 @@ export type InsertTenantEngineOverride = typeof tenantEngineOverridesTable.$infe
 // msp_customers.id (the customer organisation). mspId is denormalized from the
 // staff member's MSP for fast per-MSP indexing and a defense-in-depth fence
 // (a scope row can only ever grant a customer within the same MSP).
+//
+// customerId is a tenants.id since Phase 0 absorbed msp_customers (the comment
+// above predates that). It is load-bearing for authorization — requireAuth.ts
+// reads it to narrow a scoped staff member's access — so it must not be dropped.
 
 export const mspStaffCustomerScopesTable = pgTable("msp_staff_customer_scopes", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   staffUserId: integer("staff_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -417,7 +423,7 @@ export const mspDocumentsTable = pgTable("msp_documents", {
   id: serial("id").primaryKey(),
   documentId: uuid("document_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   ownerType: text("owner_type", { enum: ["customer", "msp", "platform"] }).notNull().default("msp"),
   title: text("title").notNull(),
   documentType: text("document_type").notNull().default("general"),
@@ -487,7 +493,7 @@ export const mspAuditLogsTable = pgTable("msp_audit_logs", {
   actorServiceAccountId: integer("actor_service_account_id"),
   actorRole: text("actor_role"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   actionType: text("action_type").notNull(),
   entityType: text("entity_type"),
   entityId: text("entity_id"),
@@ -605,7 +611,7 @@ export type InsertFulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$infer
 export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
   token: text("token").primaryKey(),
   tenantId: text("tenant_id"),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   clientUserId: integer("client_user_id"),
   // Admin "add client" invites (#103): the email/name the admin specified for
   // a client with NO users row yet — consent-first means no account can exist
@@ -640,7 +646,7 @@ export const mspJobQueueTable = pgTable("msp_job_queue", {
   jobType: text("job_type").notNull(),
   status: text("status", { enum: MSP_JOB_STATUS }).notNull().default("pending"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   result: jsonb("result").$type<Record<string, unknown>>(),
   errorMessage: text("error_message"),
@@ -672,7 +678,7 @@ export const outboundWebhooksTable = pgTable("outbound_webhooks", {
   webhookId: uuid("webhook_id").notNull().unique().defaultRandom(),
   ownerType: text("owner_type", { enum: ["msp", "customer", "platform"] }).notNull(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   label: text("label").notNull(),
   url: text("url").notNull(),
   secret: text("secret").notNull(),
@@ -1621,7 +1627,7 @@ export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
   id: serial("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   graphMessageId: text("graph_message_id").notNull(),
   title: text("title").notNull(),
   category: text("category"),
@@ -1662,7 +1668,7 @@ export const m365ServiceHealthSamplesTable = pgTable("m365_service_health_sample
   id: serial("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   service: text("service").notNull(),
   status: text("status").notNull(),
   sampledAt: timestamp("sampled_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1698,7 +1704,7 @@ export const mspReportDefinitionsTable = pgTable("msp_report_definitions", {
   definitionId: uuid("definition_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   // Optional scope — null means "across all customers"
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   name: text("name").notNull(),
   description: text("description"),
   docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull().default("executive_summary"),
@@ -1734,7 +1740,7 @@ export const mspReportRunsTable = pgTable("msp_report_runs", {
   runId: uuid("run_id").notNull().unique().defaultRandom(),
   definitionId: uuid("definition_id").notNull().references(() => mspReportDefinitionsTable.definitionId, { onDelete: "cascade" }),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   title: text("title").notNull(),
   docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull(),
   status: text("status", { enum: REPORT_RUN_STATUSES }).notNull().default("pending"),
@@ -1843,7 +1849,7 @@ export const mspSalesBundleAssignmentsTable = pgTable("msp_sales_bundle_assignme
   assignmentId: uuid("assignment_id").notNull().unique().defaultRandom(),
   bundleId: uuid("bundle_id").notNull().references(() => mspSalesBundlesTable.bundleId, { onDelete: "restrict" }),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   /** M365 tenant GUID — drives package execution routing */
   tenantId: text("tenant_id"),
   status: text("status", { enum: MSP_BUNDLE_ASSIGNMENT_STATUS }).notNull().default("active"),
@@ -1881,7 +1887,7 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   id: serial("id").primaryKey(),
   runId: uuid("run_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   tenantId: text("tenant_id"),
   packageKey: text("package_key").notNull().default("core:security-baseline"),
   status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
@@ -2024,7 +2030,7 @@ export const mspSowsTable = pgTable("msp_sows", {
 
   // ── Parties ───────────────────────────────────────────────────────────────
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   // The end-customer user that signs the SOW (CustomerUser role)
   customerUserId: integer("customer_user_id"),
 
@@ -2157,7 +2163,7 @@ export type InsertMspCharge = typeof mspChargesTable.$inferInsert;
 export const mspCustomerClickwrapsTable = pgTable("msp_customer_clickwraps", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   customerUserId: integer("customer_user_id").notNull(),
   // Snapshot of the text shown at acceptance time
   agreementTextSnapshot: text("agreement_text_snapshot").notNull(),
@@ -2467,7 +2473,7 @@ export type InsertConfigPackTemplate = typeof configPackTemplatesTable.$inferIns
 export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secrets", {
   id: serial("id").primaryKey(),
   runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id),
-  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   encryptedValue: text("encrypted_value").notNull(),
   // The paused workflow node id, so the /acknowledge path can resume the run via
   // resumeWorkflowRun(runId, gateNodeId, ...). One pause per pending secret.
@@ -2519,7 +2525,7 @@ export type InsertBreakGlassVerificationAttempt = typeof breakGlassVerificationA
 
 export const breakGlassOverrideAuditTable = pgTable("break_glass_override_audit", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").notNull(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   adminUserId: integer("admin_user_id").notNull(),
   reason: text("reason").notNull(),
   oldPendingSecretId: integer("old_pending_secret_id").references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
@@ -2652,7 +2658,7 @@ export type InsertDashboardOverride = typeof dashboardOverridesTable.$inferInser
 
 export const dashboardExecutiveSummariesTable = pgTable("dashboard_executive_summaries", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").notNull().unique(), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
+  customerId: integer("customer_id").notNull().unique(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   headline: text("headline").notNull().default(""),
   bullets: jsonb("bullets").$type<Array<{ severity: "red" | "amber" | "green"; text: string }>>().notNull().default([]),

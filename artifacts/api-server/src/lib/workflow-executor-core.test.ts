@@ -77,7 +77,7 @@ vi.mock("@workspace/db", () => {
     "workflowStepsTable", "clientPresentationsTable", "deviceTokensTable",
     "insightsGeneratedDocumentsTable", "quickWinPresentationsTable",
     "campaignAssetsTable", "couponsTable",
-    "mspSubscriptionsTable", "mspsTable", "mspEventStoreTable", "mspCustomersTable",
+    "mspSubscriptionsTable", "mspsTable", "mspEventStoreTable", "tenantsTable",
     "servicesTable",
   ];
   for (const name of tableNames) {

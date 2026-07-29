@@ -38,7 +38,7 @@ vi.mock("@workspace/db", () => {
     },
     mspReportDefinitionsTable: { definitionId: "definitionId", mspId: "mspId", docType: "docType", deliveryMethod: "deliveryMethod", deliveryEmail: "deliveryEmail", fieldMappings: "fieldMappings", description: "description", customerId: "customerId", isActive: "isActive" },
     mspReportRunsTable: { runId: "runId", definitionId: "definitionId", mspId: "mspId", customerId: "customerId", title: "title", docType: "docType", status: "status", errorMessage: "errorMessage", pdfBase64: "pdfBase64", pdfSizeBytes: "pdfSizeBytes", htmlContent: "htmlContent", generatedAt: "generatedAt", deliveredAt: "deliveredAt", deliveryEmail: "deliveryEmail", updatedAt: "updatedAt", triggeredByUserId: "triggeredByUserId" },
-    mspCustomersTable: { id: "id", name: "name", domain: "domain", mspId: "mspId" },
+    tenantsTable: { id: "id", customerName: "customerName", domain: "domain", mspId: "mspId" },
     mspsTable: { id: "id", name: "name" },
     portalWfWorkflowsTable: { workflowKey: "workflowKey", isActive: "isActive", updatedAt: "updatedAt", label: "label", description: "description", graph: "graph", retryPolicy: "retryPolicy" },
     portalWfRunsTable: { runId: "runId", workflowKey: "workflowKey", status: "status", mspId: "mspId", customerId: "customerId", startedAt: "startedAt", completedAt: "completedAt", errorMessage: "errorMessage", tenantContext: "tenantContext", aiAdmitted: "aiAdmitted", inputPayload: "inputPayload", triggerEventId: "triggerEventId", triggerEventType: "triggerEventType", output: "output" },
