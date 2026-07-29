@@ -153,7 +153,7 @@ export default function Login() {
                   to create a new account.
                 </p>
                 <Link
-                  href="/assessment"
+                  href="/assessments?tab=free"
                   className="inline-flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                   data-track="cta"
