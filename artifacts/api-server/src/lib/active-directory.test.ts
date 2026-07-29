@@ -22,6 +22,7 @@ import {
   type UserMfaEnrollmentRow,
   type MspRow,
   type CustomerRow,
+  type DirectoryTreeUserRow,
   type SearchableUser,
   type MspProfileRow,
   type MspSubscriptionRow,
@@ -74,6 +75,33 @@ describe("buildMspTree", () => {
     const acme = tree.find((m) => m.id === 1)!;
     expect(acme).toMatchObject({ name: "Acme Consulting", slug: "acme-consulting", domain: "acme.com", status: "active" });
     expect(acme.customers[0]).toMatchObject({ id: 10, name: "Contoso Ltd", domain: "contoso.com", tenantId: "tenant-contoso", status: "active" });
+  });
+
+  it("defaults every customer's users to an empty array when none are passed", () => {
+    const tree = buildMspTree(MSPS, CUSTOMERS);
+    const acme = tree.find((m) => m.id === 1)!;
+    expect(acme.customers.every((c) => c.users)).toBe(true);
+    expect(acme.customers.find((c) => c.id === 10)!.users).toEqual([]);
+  });
+
+  it("nests real Users under their owning Tenant node (Phase 10, Issue #91)", () => {
+    const USERS: DirectoryTreeUserRow[] = [
+      { id: 100, tenantId: 10, email: "alice@contoso.com", name: "Alice", mspRole: "CustomerUser", isActive: true },
+      { id: 101, tenantId: 10, email: "bob@contoso.com", name: "Bob", mspRole: "CustomerUser", isActive: false },
+      { id: 102, tenantId: 12, email: "carol@globex.com", name: "Carol", mspRole: "Free", isActive: true },
+    ];
+    const tree = buildMspTree(MSPS, CUSTOMERS, USERS);
+
+    const acme = tree.find((m) => m.id === 1)!;
+    const contoso = acme.customers.find((c) => c.id === 10)!;
+    expect(contoso.users.map((u) => u.id)).toEqual([100, 101]);
+    expect(contoso.users[0]).toMatchObject({ email: "alice@contoso.com", name: "Alice", mspRole: "CustomerUser", isActive: true });
+
+    const fabrikam = acme.customers.find((c) => c.id === 11)!;
+    expect(fabrikam.users).toEqual([]);
+
+    const beacon = tree.find((m) => m.id === 2)!;
+    expect(beacon.customers.find((c) => c.id === 12)!.users.map((u) => u.id)).toEqual([102]);
   });
 });
 

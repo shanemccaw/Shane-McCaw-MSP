@@ -32,6 +32,7 @@ export interface CustomerSummary {
   domain: string | null;
   tenantId: string | null;
   status: string;
+  users: TreeUserSummary[];
 }
 
 export interface MspTreeNode {
@@ -43,16 +44,59 @@ export interface MspTreeNode {
   customers: CustomerSummary[];
 }
 
+// Phase 10 (Issue #91): a real user row, scoped to the tenant it nests under
+// in the tree. `tenantId` here is `users.tenantId` (the tenants.id FK) — not
+// to be confused with CustomerRow.tenantId, which is the AAD GUID string.
+// Only tenant-linked users (tenantId != null) are ever passed in; MSP staff
+// and PlatformAdmin accounts have no tenant to nest under and are not part of
+// this tree shape (they already surface via the Groups/RBAC nodes).
+export interface DirectoryTreeUserRow {
+  id: number;
+  tenantId: number;
+  email: string;
+  name: string | null;
+  mspRole: string;
+  isActive: boolean;
+}
+
+export interface TreeUserSummary {
+  id: number;
+  email: string;
+  name: string | null;
+  mspRole: string;
+  isActive: boolean;
+}
+
 /**
  * Groups every real customer under its owning MSP — MSP -> nested Customers,
  * never a flat parallel Customers list (locked initiative decision). MSPs with
- * zero customers still appear, with an empty `customers` array.
+ * zero customers still appear, with an empty `customers` array. As of Phase 10
+ * (Issue #91), each customer also nests its real Users — an empty `users`
+ * array for a customer with none, never omitted.
  */
-export function buildMspTree(msps: MspRow[], customers: CustomerRow[]): MspTreeNode[] {
+export function buildMspTree(
+  msps: MspRow[],
+  customers: CustomerRow[],
+  users: DirectoryTreeUserRow[] = [],
+): MspTreeNode[] {
+  const usersByCustomer = new Map<number, TreeUserSummary[]>();
+  for (const u of users) {
+    const list = usersByCustomer.get(u.tenantId) ?? [];
+    list.push({ id: u.id, email: u.email, name: u.name, mspRole: u.mspRole, isActive: u.isActive });
+    usersByCustomer.set(u.tenantId, list);
+  }
+
   const customersByMsp = new Map<number, CustomerSummary[]>();
   for (const c of customers) {
     const list = customersByMsp.get(c.mspId) ?? [];
-    list.push({ id: c.id, name: c.name, domain: c.domain, tenantId: c.tenantId, status: c.status });
+    list.push({
+      id: c.id,
+      name: c.name,
+      domain: c.domain,
+      tenantId: c.tenantId,
+      status: c.status,
+      users: usersByCustomer.get(c.id) ?? [],
+    });
     customersByMsp.set(c.mspId, list);
   }
   return msps.map((msp) => ({

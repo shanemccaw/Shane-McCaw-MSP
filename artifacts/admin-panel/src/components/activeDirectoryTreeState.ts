@@ -12,9 +12,17 @@ export interface AdPersistedTreeState {
   groupsOpen: boolean;
   ousOpen: boolean;
   expandedMspIds: number[];
+  // Phase 10 (Issue #91): expand state for each Tenant node's nested Users list.
+  expandedCustomerIds: number[];
 }
 
-const DEFAULTS: AdPersistedTreeState = { mspsOpen: true, groupsOpen: true, ousOpen: true, expandedMspIds: [] };
+const DEFAULTS: AdPersistedTreeState = {
+  mspsOpen: true,
+  groupsOpen: true,
+  ousOpen: true,
+  expandedMspIds: [],
+  expandedCustomerIds: [],
+};
 
 export function readAdTreeState(): AdPersistedTreeState {
   try {
@@ -22,13 +30,16 @@ export function readAdTreeState(): AdPersistedTreeState {
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return DEFAULTS;
-    const { mspsOpen, groupsOpen, ousOpen, expandedMspIds } = parsed as Record<string, unknown>;
+    const { mspsOpen, groupsOpen, ousOpen, expandedMspIds, expandedCustomerIds } = parsed as Record<string, unknown>;
     return {
       mspsOpen: typeof mspsOpen === "boolean" ? mspsOpen : DEFAULTS.mspsOpen,
       groupsOpen: typeof groupsOpen === "boolean" ? groupsOpen : DEFAULTS.groupsOpen,
       ousOpen: typeof ousOpen === "boolean" ? ousOpen : DEFAULTS.ousOpen,
       expandedMspIds: Array.isArray(expandedMspIds)
         ? expandedMspIds.filter((x): x is number => typeof x === "number")
+        : [],
+      expandedCustomerIds: Array.isArray(expandedCustomerIds)
+        ? expandedCustomerIds.filter((x): x is number => typeof x === "number")
         : [],
     };
   } catch {

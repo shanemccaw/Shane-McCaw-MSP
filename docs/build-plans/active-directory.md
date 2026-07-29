@@ -90,7 +90,7 @@ rather than a flat account list.
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
 | 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
 | 9 | User Object — dev-only cascading hard delete | In Progress | #69 |
-| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Not Started | #91 |
+| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | In Progress | #91 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase

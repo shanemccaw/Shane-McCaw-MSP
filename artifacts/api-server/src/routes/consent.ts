@@ -815,14 +815,25 @@ router.get("/admin/consent", requireAdmin, async (_req: Request, res: Response) 
 });
 
 // ── PATCH /api/admin/consent/:tenantId/revoke ──────────────────────────────────
+// Body: { key?: "graph" | "writeBack" | "sharepoint" }, defaulting to "graph"
+// to preserve every existing caller's behavior unchanged. Phase 10 (Issue
+// #91, amended-scope comment) unified what used to be described as separate
+// Graph/SharePoint revoke mechanisms into ONE route with a consent-type
+// selector — this is that selector. Still flips exactly one key via
+// mergeConsentKey; the other two grants are always left untouched.
+const CONSENT_REVOKE_KEYS: ConsentKey[] = ["graph", "writeBack", "sharepoint"];
 
 router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Request, res: Response) => {
   const tenantId = req.params["tenantId"] as string;
 
-  // Flips the `graph` key only — a force-revoke of the read grant says nothing
-  // about the write app or SharePoint, which are separate App Registrations /
-  // resources with their own revoke paths. mergeConsentKey keeps them intact.
-  const revoked = await stampConsent(eq(tenantsTable.tenantId, tenantId), "graph", {
+  const rawKey = (req.body as { key?: unknown } | undefined)?.key;
+  const key: ConsentKey = rawKey === undefined ? "graph" : (rawKey as ConsentKey);
+  if (!CONSENT_REVOKE_KEYS.includes(key)) {
+    res.status(400).json({ error: `key must be one of: ${CONSENT_REVOKE_KEYS.join(", ")}` });
+    return;
+  }
+
+  const revoked = await stampConsent(eq(tenantsTable.tenantId, tenantId), key, {
     status: "revoked",
     revokedAt: new Date().toISOString(),
   });
@@ -839,10 +850,10 @@ router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Reques
     actionType: "tenant_consent_revoked",
     entityType: "tenant_consent",
     entityId: tenantId,
-    metadata: { tenantId },
+    metadata: { tenantId, key },
   });
 
-  res.json({ ok: true, tenantId });
+  res.json({ ok: true, tenantId, key });
 });
 
 // ── Write-back consent (WRITE App Registration — MT_APP_WRITE_CLIENT_ID) ───────

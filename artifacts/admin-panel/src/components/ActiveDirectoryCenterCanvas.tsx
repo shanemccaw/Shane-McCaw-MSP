@@ -16,9 +16,12 @@ import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
 import { ActiveDirectoryOuPane } from "./ActiveDirectoryOuPane";
 import { ActiveDirectoryUserPane } from "./ActiveDirectoryUserPane";
 
+// Display labels only — "customer" is the internal ad-select-object type
+// identifier and stays unchanged (locked Phase 10 decision); only its shown
+// label became "Tenant".
 const TYPE_LABEL: Record<AdSelectedType, string> = {
   msp: "MSP",
-  customer: "Customer",
+  customer: "Tenant",
   group: "RBAC Group",
   user: "User",
   ou: "Organizational Unit",
@@ -39,7 +42,7 @@ export function ActiveDirectoryCenterCanvas() {
   if (!selected) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Select an MSP, Customer, or Group in the tree — or search — to view it here.
+        Select an MSP, Tenant, or Group in the tree — or search — to view it here.
       </div>
     );
   }

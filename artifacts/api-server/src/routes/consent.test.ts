@@ -350,7 +350,11 @@ describe("graph.ts — multi-tenant helpers", () => {
 import consentRouter from "./consent.ts";
 import type { IRouter } from "express";
 
-// Helper: extract handler from router stack
+// Helper: extract handler from router stack. Routes gated by requireAdmin
+// carry TWO stack entries for the same method (the guard, then the real
+// handler) — this returns only the FIRST, which is fine for ungated routes
+// but silently no-ops an admin-gated one (the guard calls next() and stops).
+// Use getHandlerChain below for any route mounted behind requireAdmin.
 function getHandler(
   router: IRouter,
   method: string,
@@ -364,6 +368,28 @@ function getHandler(
     }
   }
   return null;
+}
+
+// Runs every middleware/handler registered for (method, path) in order, the
+// same way Express itself would — required for requireAdmin-gated routes,
+// where the guard and the real handler are two separate stack entries under
+// the same method and a bare getHandler() would only ever run the guard.
+function getHandlerChain(router: IRouter, method: string, path: string): ((...args: unknown[]) => Promise<void>)[] {
+  const stack = (router as unknown as { stack: Array<{ route?: { path: string; stack: Array<{ method: string; handle: (...args: unknown[]) => Promise<void> }> } }> }).stack;
+  for (const layer of stack) {
+    if (layer.route?.path === path) {
+      return layer.route.stack.filter(h => h.method === method).map(h => h.handle);
+    }
+  }
+  return [];
+}
+
+async function runChain(handlers: ((...args: unknown[]) => Promise<void>)[], req: Request, res: Response): Promise<void> {
+  for (const handle of handlers) {
+    let calledNext = false;
+    await handle(req, res, () => { calledNext = true; });
+    if (!calledNext) return;
+  }
 }
 
 describe("consent route handlers", () => {
@@ -627,6 +653,65 @@ describe("consent route handlers", () => {
       expect(store.redirectUrl).toContain("/consent/success");
       expect(store.redirectUrl).toContain("write=1");
       expect(consentWasStamped()).toBe(true);
+    });
+  });
+
+  // Phase 10 (Issue #91): the AD Tenant pane's unified revoke action selects
+  // which of the three tenants.consent keys to flip via this one route's
+  // `key` body param — confirming the default stays "graph" (every pre-Phase-10
+  // caller never sent a body) and that the selector actually reaches
+  // mergeConsentKey rather than being silently ignored.
+  describe("PATCH /admin/consent/:tenantId/revoke — consent-type selector", () => {
+    beforeEach(() => {
+      mockUpdateSet.mockClear();
+      mockUpdateReturning.mockResolvedValue([{ tenantId: "tenant-abc" }]);
+    });
+
+    it("defaults to the graph key when no key is provided in the body", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({ params: { tenantId: "tenant-abc" }, body: {} });
+      const handlers = getHandlerChain(consentRouter, "patch", "/admin/consent/:tenantId/revoke");
+      expect(handlers.length).toBeGreaterThan(0);
+      await runChain(handlers, req, res);
+
+      expect(store.statusCode).toBe(200);
+      expect((store.jsonBody as { key: string }).key).toBe("graph");
+    });
+
+    it("flips the sharepoint key when key=sharepoint is passed", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({ params: { tenantId: "tenant-abc" }, body: { key: "sharepoint" } });
+      await runChain(getHandlerChain(consentRouter, "patch", "/admin/consent/:tenantId/revoke"), req, res);
+
+      expect(store.statusCode).toBe(200);
+      expect((store.jsonBody as { key: string }).key).toBe("sharepoint");
+    });
+
+    it("flips the writeBack key when key=writeBack is passed", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({ params: { tenantId: "tenant-abc" }, body: { key: "writeBack" } });
+      await runChain(getHandlerChain(consentRouter, "patch", "/admin/consent/:tenantId/revoke"), req, res);
+
+      expect(store.statusCode).toBe(200);
+      expect((store.jsonBody as { key: string }).key).toBe("writeBack");
+    });
+
+    it("rejects an invalid key with 400, writing nothing", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({ params: { tenantId: "tenant-abc" }, body: { key: "bogus" } });
+      await runChain(getHandlerChain(consentRouter, "patch", "/admin/consent/:tenantId/revoke"), req, res);
+
+      expect(store.statusCode).toBe(400);
+      expect(mockUpdateSet).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 when no tenants row matches the tenantId", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([]);
+      const { res, store } = mockRes();
+      const req = mockReq({ params: { tenantId: "tenant-missing" }, body: {} });
+      await runChain(getHandlerChain(consentRouter, "patch", "/admin/consent/:tenantId/revoke"), req, res);
+
+      expect(store.statusCode).toBe(404);
     });
   });
 });

@@ -84,7 +84,7 @@ import {
   type TenantConsentRecord,
 } from "@workspace/db";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { eq, asc, and, inArray, count, desc, or, type SQL } from "drizzle-orm";
+import { eq, asc, and, inArray, count, desc, or, isNotNull, type SQL } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -141,7 +141,7 @@ const IMPERSONATION_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 // Groups (one node per RBAC role, with a live count).
 router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [msps, customers, roleCountRows, ous] = await Promise.all([
+    const [msps, customers, tenantUserRows, roleCountRows, ous] = await Promise.all([
       db
         .select({
           id: mspsTable.id,
@@ -163,6 +163,21 @@ router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, r
         })
         .from(tenantsTable)
         .orderBy(asc(tenantsTable.customerName)),
+      // Phase 10 (Issue #91): real Users nested under each Tenant node. Only
+      // tenant-linked accounts (tenantId NOT NULL) belong in this tree shape —
+      // MSP staff/PlatformAdmin have no tenant to nest under.
+      db
+        .select({
+          id: usersTable.id,
+          tenantId: usersTable.tenantId,
+          email: usersTable.email,
+          name: usersTable.name,
+          mspRole: usersTable.mspRole,
+          isActive: usersTable.isActive,
+        })
+        .from(usersTable)
+        .where(isNotNull(usersTable.tenantId))
+        .orderBy(asc(usersTable.email)),
       db
         .select({ role: usersTable.mspRole, count: count() })
         .from(usersTable)
@@ -179,7 +194,11 @@ router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, r
     ]);
 
     res.json({
-      msps: buildMspTree(msps, customers),
+      msps: buildMspTree(
+        msps,
+        customers,
+        tenantUserRows.map((u) => ({ ...u, tenantId: u.tenantId as number })),
+      ),
       groups: buildGroupNodes(roleCountRows.map((r) => ({ role: r.role, count: Number(r.count) }))),
       ous: buildOuNodes(ous),
     });

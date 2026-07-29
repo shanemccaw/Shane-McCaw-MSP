@@ -5,10 +5,15 @@
 // expand/collapse persisted via a sibling *TreeState.ts helper, event-driven
 // hand-off to the center canvas) rather than inventing a second IDE paradigm.
 //
-// OU=MSPs (every real MSP, expandable to its real nested customers — never a
-// flat parallel Customers list) + Groups (one node per RBAC role). No
-// top-level Users node — users are reached via the universal search box only,
-// per the initiative's locked decision.
+// OU=MSPs (every real MSP, expandable to its real nested Tenants — never a
+// flat parallel list) + Groups (one node per RBAC role). Users are reached
+// via the universal search box AND, as of Phase 10 (Issue #91), nested as
+// tree children under each Tenant node — no separate top-level Users node.
+//
+// "Tenant" is a display-label-only rename (Phase 10, Issue #91) of what this
+// file and the wire payload still call "customer" — the internal
+// ad-select-object type identifier stays "customer" deliberately (locked
+// decision, avoids rippling through Phases 2-9's already-landed code).
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -29,12 +34,22 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { readAdTreeState, writeAdTreeState } from "./activeDirectoryTreeState";
 
+// Phase 10 (Issue #91): a real User nested under its owning Tenant node.
+export interface AdTreeUserSummary {
+  id: number;
+  email: string;
+  name: string | null;
+  mspRole: string;
+  isActive: boolean;
+}
+
 export interface AdCustomerSummary {
   id: number;
   name: string;
   domain: string | null;
   tenantId: string | null;
   status: string;
+  users: AdTreeUserSummary[];
 }
 
 export interface AdMspNode {
@@ -102,12 +117,21 @@ export function ActiveDirectoryTree() {
   const [expandedMspIds, setExpandedMspIds] = useState<Set<number>>(
     () => new Set(initialTreeState.expandedMspIds),
   );
+  const [expandedCustomerIds, setExpandedCustomerIds] = useState<Set<number>>(
+    () => new Set(initialTreeState.expandedCustomerIds),
+  );
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    writeAdTreeState({ mspsOpen, groupsOpen, ousOpen, expandedMspIds: [...expandedMspIds] });
-  }, [mspsOpen, groupsOpen, ousOpen, expandedMspIds]);
+    writeAdTreeState({
+      mspsOpen,
+      groupsOpen,
+      ousOpen,
+      expandedMspIds: [...expandedMspIds],
+      expandedCustomerIds: [...expandedCustomerIds],
+    });
+  }, [mspsOpen, groupsOpen, ousOpen, expandedMspIds, expandedCustomerIds]);
 
   const loadTree = async () => {
     setLoading(true);
@@ -140,6 +164,15 @@ export function ActiveDirectoryTree() {
     });
   };
 
+  const toggleCustomerExpanded = (customerId: number) => {
+    setExpandedCustomerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(customerId)) next.delete(customerId);
+      else next.add(customerId);
+      return next;
+    });
+  };
+
   const selectMsp = (msp: AdMspNode) => {
     setSelectedKey(`msp-${msp.id}`);
     dispatchSelect({ type: "msp", id: msp.id, label: msp.name });
@@ -152,7 +185,7 @@ export function ActiveDirectoryTree() {
     setSelectedKey(`group-${group.role}`);
     dispatchSelect({ type: "group", id: group.role, label: group.role });
   };
-  const selectUser = (user: AdSearchResults["users"][number]) => {
+  const selectUser = (user: { id: number; email: string; name: string | null }) => {
     setSelectedKey(`user-${user.id}`);
     dispatchSelect({ type: "user", id: user.id, label: user.name || user.email });
   };
@@ -262,7 +295,7 @@ export function ActiveDirectoryTree() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search MSPs, customers, users, roles..."
+            placeholder="Search MSPs, tenants, users, roles..."
             className="w-full rounded border border-border bg-background py-1 pl-7 pr-6 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
           />
           {searchQuery && (
@@ -285,7 +318,7 @@ export function ActiveDirectoryTree() {
             <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
               <Search className="mb-2 h-6 w-6 opacity-40" />
               <p className="text-xs font-medium text-foreground/80">No results found</p>
-              <p className="mt-0.5 text-[10px]">No MSPs, customers, users, or roles match "{searchQuery}"</p>
+              <p className="mt-0.5 text-[10px]">No MSPs, tenants, users, or roles match "{searchQuery}"</p>
             </div>
           ) : (
             <div>
@@ -307,7 +340,7 @@ export function ActiveDirectoryTree() {
                 </SearchGroup>
               )}
               {searchResults!.customers.length > 0 && (
-                <SearchGroup label="Customers">
+                <SearchGroup label="Tenants">
                   {searchResults!.customers.map((c) => (
                     <SearchRow
                       key={`customer-${c.id}`}
@@ -416,25 +449,77 @@ export function ActiveDirectoryTree() {
                             <div className="ml-[18px] border-l border-accent/60">
                               {msp.customers.length === 0 ? (
                                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
-                                  No customers
+                                  No tenants
                                 </div>
                               ) : (
-                                msp.customers.map((customer) => (
-                                  <div
-                                    key={customer.id}
-                                    onClick={() => selectCustomer(customer)}
-                                    className={`flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
-                                      selectedKey === `customer-${customer.id}`
-                                        ? "text-primary font-semibold"
-                                        : "text-foreground/85"
-                                    }`}
-                                  >
-                                    <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                    <span className="truncate" title={customer.name}>
-                                      {customer.name}
-                                    </span>
-                                  </div>
-                                ))
+                                msp.customers.map((customer) => {
+                                  const customerExpanded = expandedCustomerIds.has(customer.id);
+                                  return (
+                                    <div key={customer.id}>
+                                      <div
+                                        className={`group flex h-[22px] items-center gap-1 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                          selectedKey === `customer-${customer.id}`
+                                            ? "text-primary font-semibold"
+                                            : "text-foreground/85"
+                                        }`}
+                                      >
+                                        <button
+                                          onClick={() => toggleCustomerExpanded(customer.id)}
+                                          className="flex h-full items-center"
+                                          title={customerExpanded ? "Collapse" : "Expand"}
+                                        >
+                                          {customerExpanded ? (
+                                            <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                                          ) : (
+                                            <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                                          )}
+                                        </button>
+                                        <div
+                                          onClick={() => selectCustomer(customer)}
+                                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5"
+                                        >
+                                          <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                          <span className="truncate" title={customer.name}>
+                                            {customer.name}
+                                          </span>
+                                        </div>
+                                        <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground/60">
+                                          {customer.users.length}
+                                        </span>
+                                      </div>
+
+                                      {customerExpanded && (
+                                        <div className="ml-[18px] border-l border-accent/40">
+                                          {customer.users.length === 0 ? (
+                                            <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
+                                              No users
+                                            </div>
+                                          ) : (
+                                            customer.users.map((user) => (
+                                              <div
+                                                key={user.id}
+                                                onClick={() => selectUser(user)}
+                                                className={`flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                                  selectedKey === `user-${user.id}`
+                                                    ? "text-primary font-semibold"
+                                                    : "text-foreground/85"
+                                                } ${user.isActive ? "" : "opacity-60"}`}
+                                              >
+                                                <UserCircle className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                                <span className="truncate" title={user.email}>
+                                                  {user.name || user.email}
+                                                </span>
+                                                <span className="ml-auto shrink-0 truncate text-[9px] text-muted-foreground/60">
+                                                  {user.mspRole}
+                                                </span>
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
                               )}
                             </div>
                           )}
