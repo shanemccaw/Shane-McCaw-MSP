@@ -321,6 +321,14 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "pipe-zoho-accounts", label: "Zoho Accounts", path: "/pipeline/zoho-accounts", icon: Building2 },
         ],
       },
+      {
+        // EngageBay Admin Panel: Contacts (#106) — its own group, same
+        // reasoning as Zoho CRM's: this reads EngageBay, not the local tables.
+        id: "engagebay-crm", label: "EngageBay CRM", defaultOpen: true,
+        items: [
+          { id: "pipe-engagebay-contacts", label: "EngageBay Contacts", path: "/pipeline/engagebay-contacts", icon: Users },
+        ],
+      },
     ],
   },
   {

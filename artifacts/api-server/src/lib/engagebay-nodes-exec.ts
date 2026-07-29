@@ -25,6 +25,8 @@ import {
   getContactByEmail,
   searchContacts,
   listTags,
+  asRecordArray,
+  asRecordOrNull,
   EngageBayApiError,
   type EngageBayContactInput,
 } from "./engagebay-client.ts";
@@ -53,27 +55,8 @@ const log = logger.child({ channel: "integration.engagebay" });
 const NODE_SPECS = new Map(ENGAGEBAY_NODES.map((n) => [n.nodeType, n]));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Best-effort extraction of a record array out of an EngageBay list/search
- * response. The response body shape isn't pinned down beyond the confirmed
- * endpoint paths (#104/#105 audits), so this accepts either a bare array or a
- * `{ data: [...] }` envelope and falls back to empty rather than guessing.
- */
-function asRecordArray(body: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(body)) return body as Array<Record<string, unknown>>;
-  if (body && typeof body === "object" && Array.isArray((body as Record<string, unknown>).data)) {
-    return (body as Record<string, unknown>).data as Array<Record<string, unknown>>;
-  }
-  return [];
-}
-
-function asRecordOrNull(body: unknown): Record<string, unknown> | null {
-  if (body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length > 0) {
-    return body as Record<string, unknown>;
-  }
-  return null;
-}
+// asRecordArray/asRecordOrNull now live in engagebay-client.ts (moved there in
+// #106 so engagebay-crm.ts can share them instead of duplicating).
 
 /**
  * Only string/number/boolean field values are forwarded to EngageBay.

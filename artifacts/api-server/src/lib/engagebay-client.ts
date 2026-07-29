@@ -227,6 +227,16 @@ export async function engagebayPut(
 // ── Contacts ──────────────────────────────────────────────────────────────────
 // Paths confirmed against github.com/engagebay/restapi (README.md, §1.x).
 
+// FLAGGED (#106 audit, not fixed here — out of this phase's scope): a fresh
+// read of github.com/engagebay/restapi's worked create/update examples shows
+// EngageBay's real request body nests `properties` as an ARRAY of
+// { name, value, field_type, type } entries — including `email`/`name`
+// themselves as property rows — not the flat `{ email, name, properties }`
+// shape below. #104/#105 shipped this flat shape and it has never been
+// live-verified against a real account. Left AS SHIPPED for this phase
+// (only `listAllContacts` was in scope), but the create/update write path
+// this file's callers queue through should be re-verified against a live
+// account before relying on it.
 export interface EngageBayContactInput {
   email: string;
   name?: string;
@@ -269,6 +279,91 @@ export async function listContacts(query: string, mspId?: number): Promise<unkno
 /** Alias of listContacts — EngageBay's search endpoint is the same for list and search. */
 export async function searchContacts(query: string, mspId?: number): Promise<unknown> {
   return listContacts(query, mspId);
+}
+
+/**
+ * Best-effort extraction of a record array out of an EngageBay list/search
+ * response. The response body shape isn't pinned down beyond the confirmed
+ * endpoint paths (#104/#105 audits), so this accepts either a bare array or a
+ * `{ data: [...] }` envelope and falls back to empty rather than guessing.
+ * Shared by every EngageBay caller that reads a list — do not duplicate.
+ */
+export function asRecordArray(body: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(body)) return body as Array<Record<string, unknown>>;
+  if (body && typeof body === "object" && Array.isArray((body as Record<string, unknown>).data)) {
+    return (body as Record<string, unknown>).data as Array<Record<string, unknown>>;
+  }
+  return [];
+}
+
+export function asRecordOrNull(body: unknown): Record<string, unknown> | null {
+  if (body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length > 0) {
+    return body as Record<string, unknown>;
+  }
+  return null;
+}
+
+export interface EngageBayContactListResult {
+  records: Array<Record<string, unknown>>;
+  cursor: string | null;
+  /** Whether EngageBay reports a further page beyond this one (a non-null cursor). */
+  more: boolean;
+}
+
+const CONTACT_LIST_DEFAULT_PAGE_SIZE = 50;
+const CONTACT_LIST_MAX_PAGE_SIZE = 100;
+
+/** Clamps caller paging input to EngageBay's supported range (page_size max 100 per docs). */
+function normalizeContactListPageSize(pageSize?: number): number {
+  const raw = Number.isFinite(pageSize) && (pageSize as number) >= 1 ? Math.floor(pageSize as number) : CONTACT_LIST_DEFAULT_PAGE_SIZE;
+  return Math.min(raw, CONTACT_LIST_MAX_PAGE_SIZE);
+}
+
+/**
+ * Extracts the record array + next-page cursor out of a
+ * POST /dev/api/panel/subscribers response. Like the list/search envelope
+ * above, the exact response shape is not pinned down beyond the confirmed
+ * path and params — this accepts a bare array, `{ data: [...] }`, or
+ * `{ contacts: [...] }`, and reads a top-level `cursor` string when present.
+ */
+function extractContactBrowsePage(body: unknown): EngageBayContactListResult {
+  if (Array.isArray(body)) {
+    return { records: body as Array<Record<string, unknown>>, cursor: null, more: false };
+  }
+  if (body && typeof body === "object") {
+    const obj = body as Record<string, unknown>;
+    const records = Array.isArray(obj.data)
+      ? (obj.data as Array<Record<string, unknown>>)
+      : Array.isArray(obj.contacts)
+        ? (obj.contacts as Array<Record<string, unknown>>)
+        : [];
+    const cursor = typeof obj.cursor === "string" && obj.cursor ? obj.cursor : null;
+    return { records, cursor, more: cursor !== null };
+  }
+  return { records: [], cursor: null, more: false };
+}
+
+/**
+ * POST /dev/api/panel/subscribers — cursor-paginated unfiltered contact
+ * browse, confirmed against github.com/engagebay/restapi's worked curl example
+ * (form-encoded body: `page_size`/`sort_key`/`cursor` — NOT query params, NOT
+ * JSON). This is the correct endpoint for a default "browse all contacts"
+ * view; `listContacts`/`searchContacts` above hit `/dev/api/search`, a
+ * query-based search endpoint that is not confirmed to return all contacts
+ * when `q` is empty — do not use it for the no-search-term case.
+ */
+export async function listAllContacts(
+  cursor?: string,
+  pageSize?: number,
+  mspId?: number,
+): Promise<EngageBayContactListResult> {
+  const body: Record<string, string> = {
+    page_size: String(normalizeContactListPageSize(pageSize)),
+    sort_key: "-created_time",
+  };
+  if (cursor) body.cursor = cursor;
+  const responseBody = await engagebayPost("/dev/api/panel/subscribers", body, mspId, "form");
+  return extractContactBrowsePage(responseBody);
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────────────
