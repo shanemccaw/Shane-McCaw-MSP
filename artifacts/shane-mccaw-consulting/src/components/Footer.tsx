@@ -60,7 +60,6 @@ export function Footer() {
               <li><Link href="/retainers/architect-essentials" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Architect Essentials</Link></li>
               <li><Link href="/retainers/architect-growth" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Architect Growth</Link></li>
               <li><Link href="/retainers/architect-enterprise" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Architect Enterprise</Link></li>
-              <li><Link href="/status" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">System Status</Link></li>
               <li><Link href="/resources" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Resources</Link></li>
             </ul>
 
@@ -68,6 +67,7 @@ export function Footer() {
             <ul className="space-y-2.5 text-sm text-text-secondary">
               <li><Link href="/about" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">About</Link></li>
               <li><Link href="/trust-security" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Trust & Security</Link></li>
+              <li><Link href="/status" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">System Status</Link></li>
               <li><Link href="/contact" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Contact</Link></li>
               <li><ChatCTA className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Ask a Question</ChatCTA></li>
             </ul>
@@ -83,7 +83,7 @@ export function Footer() {
 
             <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Account</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/login" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Client Login</Link></li>
+              <li><a href="/portal/login" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Client Login</a></li>
             </ul>
           </div>
         </div>

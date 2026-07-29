@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
 
 const EFFECTIVE_DATE = "July 1, 2025";
 const CONTACT_EMAIL = "hello@shanemccawconsulting.com";
@@ -14,21 +15,21 @@ export default function LegalPrivacy() {
         description="Privacy policy for the Shane McCaw Consulting website — how we collect, use, and protect your information."
       />
 
-      <div className="bg-white pt-[130px] pb-20">
+      <div className="pt-[130px] pb-20">
         <div className="max-w-2xl mx-auto px-6">
           {/* Header */}
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Legal</p>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-2">
+          <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.1em] mb-3">Legal</p>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-text-primary mb-2">
             Privacy Policy
           </h1>
-          <p className="text-muted-foreground text-sm mb-10">
+          <p className="text-text-secondary text-sm mb-10">
             Effective date: {EFFECTIVE_DATE}
           </p>
 
-          <div className="prose prose-sm max-w-none text-[#0A2540]/80 space-y-8">
+          <div className="prose prose-sm max-w-none text-text-secondary space-y-8">
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">1. Introduction</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">1. Introduction</h2>
               <p>
                 Shane McCaw Consulting ("we," "us," or "our") operates the website at{" "}
                 <span className="font-semibold">{SITE_URL}</span> (the "Site"). This Privacy Policy
@@ -43,9 +44,9 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">2. Information We Collect</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">2. Information We Collect</h2>
 
-              <h3 className="font-bold text-[#0A2540] mt-4 mb-2">2.1 Information You Provide</h3>
+              <h3 className="font-bold text-text-primary mt-4 mb-2">2.1 Information You Provide</h3>
               <p>
                 When you submit a contact form or inquiry on the Site, we collect the information you
                 voluntarily provide, which may include:
@@ -58,7 +59,7 @@ export default function LegalPrivacy() {
                 <li>Any other information you choose to include in your submission</li>
               </ul>
 
-              <h3 className="font-bold text-[#0A2540] mt-4 mb-2">2.2 Information Collected Automatically</h3>
+              <h3 className="font-bold text-text-primary mt-4 mb-2">2.2 Information Collected Automatically</h3>
               <p>
                 When you visit the Site, certain information is collected automatically by our servers and
                 analytics tools. This may include:
@@ -78,7 +79,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">3. How We Use Your Information</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">3. How We Use Your Information</h2>
               <p>We use the information we collect for the following purposes:</p>
               <ul className="list-disc pl-6 mt-3 space-y-2">
                 <li>
@@ -106,7 +107,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">4. Cookies and Tracking Technologies</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">4. Cookies and Tracking Technologies</h2>
               <p>
                 The Site may use cookies and similar tracking technologies. Cookies are small text files
                 placed on your device by your browser when you visit a website.
@@ -131,7 +132,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">5. Third-Party Services</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">5. Third-Party Services</h2>
               <p>
                 We use a limited number of third-party services to operate the Site. These services may
                 process certain information on our behalf. We take reasonable steps to ensure that any
@@ -150,7 +151,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">6. Data Retention</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">6. Data Retention</h2>
               <p>
                 We retain contact form submissions for as long as necessary to respond to your inquiry and
                 for a reasonable period afterward in case of follow-up questions. If you would like us to
@@ -163,7 +164,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">7. Data Security</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">7. Data Security</h2>
               <p>
                 We implement reasonable technical and organizational measures to protect your information
                 against unauthorized access, alteration, disclosure, or destruction. However, no method of
@@ -174,7 +175,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">8. Children's Privacy</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">8. Children's Privacy</h2>
               <p>
                 This Site is not directed at individuals under the age of 18, and we do not knowingly
                 collect personal information from children. If you believe we have inadvertently collected
@@ -183,7 +184,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">9. Your Rights and Choices</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">9. Your Rights and Choices</h2>
               <p>
                 Depending on your location, you may have certain rights regarding your personal information,
                 including:
@@ -202,7 +203,7 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">10. Changes to This Policy</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">10. Changes to This Policy</h2>
               <p>
                 We may update this Privacy Policy from time to time. When we make changes, we will update
                 the effective date at the top of this page. Your continued use of the Site after any changes
@@ -212,35 +213,35 @@ export default function LegalPrivacy() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">11. Contact Us</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">11. Contact Us</h2>
               <p>
                 If you have questions about this Privacy Policy or wish to exercise your rights, please
                 contact us at:
               </p>
-              <div className="mt-3 bg-[#F7F9FC] border border-border rounded-xl p-5">
-                <p className="font-semibold text-[#0A2540]">Shane McCaw Consulting</p>
-                <p className="text-muted-foreground text-sm mt-1">
+              <GlassPanel className="mt-3 p-5">
+                <p className="font-semibold text-text-primary">Shane McCaw Consulting</p>
+                <p className="text-text-secondary text-sm mt-1">
                   Email:{" "}
                   <a
                     href={`mailto:${CONTACT_EMAIL}`}
-                    className="text-[#0078D4] hover:underline"
+                    className="text-accent-blue hover:underline"
                   >
                     {CONTACT_EMAIL}
                   </a>
                 </p>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-text-secondary text-sm">
                   Website:{" "}
-                  <a href={`https://${SITE_URL}`} className="text-[#0078D4] hover:underline">
+                  <a href={`https://${SITE_URL}`} className="text-accent-blue hover:underline">
                     {SITE_URL}
                   </a>
                 </p>
-              </div>
+              </GlassPanel>
             </section>
 
-            <div className="pt-6 border-t border-border">
-              <p className="text-muted-foreground text-sm">
+            <div className="pt-6 border-t border-white/[0.08]">
+              <p className="text-text-secondary text-sm">
                 See also:{" "}
-                <Link href="/legal/terms" className="text-[#0078D4] hover:underline">
+                <Link href="/terms" className="text-accent-blue hover:underline">
                   Terms of Service
                 </Link>
               </p>
