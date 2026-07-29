@@ -327,6 +327,8 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "engagebay-crm", label: "EngageBay CRM", defaultOpen: true,
         items: [
           { id: "pipe-engagebay-contacts", label: "EngageBay Contacts", path: "/pipeline/engagebay-contacts", icon: Users },
+          // EngageBay Admin Panel: Tags (#107) — list-only, same nav group.
+          { id: "pipe-engagebay-tags", label: "EngageBay Tags", path: "/pipeline/engagebay-tags", icon: Tags },
         ],
       },
     ],

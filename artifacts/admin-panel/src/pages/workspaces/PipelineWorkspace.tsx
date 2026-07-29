@@ -16,6 +16,8 @@ import ZohoAccountsPage from "@/pages/crm/zoho/ZohoAccounts";
 // EngageBay Admin Panel: Contacts (#106). Own nav group, same reasoning as
 // Zoho CRM above — these read EngageBay, not the local tables.
 import EngageBayContactsPage from "@/pages/crm/engagebay/EngageBayContacts";
+// EngageBay Admin Panel: Tags (#107) — list-only, no create/edit/detail exists.
+import EngageBayTagsPage from "@/pages/crm/engagebay/EngageBayTags";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -30,6 +32,7 @@ function getContent(section: string): ReactNode {
     case "zoho-contacts":       return <ZohoContactsPage />;
     case "zoho-accounts":       return <ZohoAccountsPage />;
     case "engagebay-contacts":  return <EngageBayContactsPage />;
+    case "engagebay-tags":      return <EngageBayTagsPage />;
     default:                    return <LeadsPage />;
   }
 }

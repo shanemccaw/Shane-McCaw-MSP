@@ -8,6 +8,7 @@
 // EngageBay write happens on the next 5-minute drain.
 
 import { useEffect, useState } from "react";
+import { useSearch } from "wouter";
 import {
   useEngageBayList,
   useEngageBayRecord,
@@ -167,12 +168,16 @@ export default function EngageBayEntityPage({ config }: { config: EngageBayEntit
   const detail = useEngageBayRecord(config.entity);
   const write = useQueuedWrite();
 
-  const [search, setSearch] = useState("");
+  // Seeds from ?search= when arriving via the Tags page's "search contacts"
+  // link (#107) — a convenience shortcut, not confirmed to actually filter
+  // by tag name (see EngageBayTags.tsx). Otherwise behaves exactly as before.
+  const initialSearch = useSearch();
+  const [search, setSearch] = useState(() => new URLSearchParams(initialSearch).get("search") ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<"none" | "create" | "edit">("none");
   const [tagText, setTagText] = useState("");
 
-  useEffect(() => { void list.load(""); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config.entity]);
+  useEffect(() => { void list.load(search); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config.entity]);
 
   const listFields = config.fields.filter((f) => f.inList !== false).slice(0, 5);
 
