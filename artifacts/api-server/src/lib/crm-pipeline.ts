@@ -17,6 +17,7 @@ import {
 } from "@workspace/db";
 import { eq, and, notInArray } from "drizzle-orm";
 import { logger } from "./logger";
+import { ensureLeadStagingForEmail } from "./lead-intent.ts";
 const log = logger.child({ channel: "crm" });
 
 /**
@@ -29,6 +30,7 @@ export async function ensureLeadForClient(
   email: string,
   name?: string,
   company?: string,
+  ga4ClientId?: string,
 ): Promise<number> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
@@ -39,7 +41,13 @@ export async function ensureLeadForClient(
       .where(eq(usersTable.id, userId))
       .limit(1);
 
-    if (user?.linkedLeadId) return user.linkedLeadId;
+    if (user?.linkedLeadId) {
+      // Zoho sync (#116): this path never staged/queued a Zoho push before —
+      // ensureLeadStagingForEmail is itself find-or-create, so this is a no-op
+      // if the email was already staged by an earlier funnel touch.
+      await ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "purchase", legacyLeadId: user.linkedLeadId, ga4ClientId });
+      return user.linkedLeadId;
+    }
 
     const [existingLead] = await db
       .select({ id: leadsTable.id })
@@ -70,6 +78,8 @@ export async function ensureLeadForClient(
       .set({ linkedLeadId: leadId })
       .where(eq(usersTable.id, userId));
 
+    await ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "purchase", legacyLeadId: leadId, ga4ClientId });
+
     log.info({ userId, leadId }, "crm-pipeline: linked client user to lead");
     return leadId;
   } catch (err) {
@@ -95,10 +105,16 @@ export async function ensureAssessmentFunnelLead(
   email: string,
   name?: string,
   company?: string,
+  ga4ClientId?: string,
 ): Promise<number> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
     if (!normalizedEmail) return 0;
+
+    // Zoho sync (#116): this is the funnel's earliest capture point, so it's
+    // where a GA4 client_id should be recorded first-touch. Non-fatal, staged
+    // regardless of whether the leadsTable row below is new or pre-existing.
+    void ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "assessment", ga4ClientId });
 
     const [existingLead] = await db
       .select({ id: leadsTable.id })
@@ -142,8 +158,9 @@ export async function convertLeadForClient(
   email: string,
   name?: string,
   company?: string,
+  ga4ClientId?: string,
 ): Promise<number> {
-  const leadId = await ensureLeadForClient(userId, email, name, company);
+  const leadId = await ensureLeadForClient(userId, email, name, company, ga4ClientId);
   if (!leadId) return 0;
   try {
     await db

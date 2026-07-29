@@ -94,7 +94,7 @@ export default function SharePoint() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessment"
+              href="/assessments?tab=free"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
@@ -231,7 +231,7 @@ export default function SharePoint() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessment"
+              href="/assessments?tab=free"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"

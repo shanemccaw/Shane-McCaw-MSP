@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
 
 const EFFECTIVE_DATE = "July 1, 2025";
 const CONTACT_EMAIL = "hello@shanemccawconsulting.com";
@@ -14,21 +15,21 @@ export default function Terms() {
         description="Terms of service for use of the Shane McCaw Consulting website, contact forms, and marketing materials."
       />
 
-      <div className="bg-white pt-[130px] pb-20">
+      <div className="pt-[130px] pb-20">
         <div className="max-w-2xl mx-auto px-6">
           {/* Header */}
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Legal</p>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-2">
+          <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.1em] mb-3">Legal</p>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-text-primary mb-2">
             Terms of Service
           </h1>
-          <p className="text-muted-foreground text-sm mb-10">
+          <p className="text-text-secondary text-sm mb-10">
             Effective date: {EFFECTIVE_DATE}
           </p>
 
-          <div className="prose prose-sm max-w-none text-[#0A2540]/80 space-y-8">
+          <div className="prose prose-sm max-w-none text-text-secondary space-y-8">
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">1. About These Terms</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">1. About These Terms</h2>
               <p>
                 These Terms of Service ("Terms") govern your access to and use of the website located at{" "}
                 <span className="font-semibold">{SITE_URL}</span> (the "Site"), operated by Shane McCaw
@@ -44,7 +45,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">2. Use of This Website</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">2. Use of This Website</h2>
               <p>You may use the Site for lawful purposes and in accordance with these Terms. You agree not to:</p>
               <ul className="list-disc pl-6 mt-3 space-y-2">
                 <li>Use the Site in any way that violates applicable laws or regulations</li>
@@ -68,7 +69,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">3. Contact Forms and Inquiries</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">3. Contact Forms and Inquiries</h2>
               <p>
                 The Site includes a contact form that allows you to send us a message. When you submit a
                 contact form, you consent to us collecting and using the information you provide (such as
@@ -83,7 +84,7 @@ export default function Terms() {
               <p className="mt-3">
                 We will not share your contact form submissions with third parties for their own marketing
                 purposes. See our{" "}
-                <Link href="/legal/privacy" className="text-[#0078D4] hover:underline">
+                <Link href="/privacy" className="text-accent-blue hover:underline">
                   Privacy Policy
                 </Link>{" "}
                 for full details on how your information is handled.
@@ -91,7 +92,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">4. Analytics and Cookies</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">4. Analytics and Cookies</h2>
               <p>
                 This Site uses analytics tools to understand how visitors interact with our content. These
                 tools may collect information such as your browser type, operating system, referring URLs,
@@ -107,7 +108,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">5. Intellectual Property</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">5. Intellectual Property</h2>
               <p>
                 All content on this Site — including text, graphics, logos, page layouts, and code — is
                 owned by or licensed to Shane McCaw Consulting and is protected by applicable intellectual
@@ -120,7 +121,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">6. Third-Party Links</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">6. Third-Party Links</h2>
               <p>
                 The Site may contain links to third-party websites or services that are not owned or
                 controlled by Shane McCaw Consulting. We have no control over, and assume no responsibility
@@ -130,7 +131,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">7. Disclaimer of Warranties</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">7. Disclaimer of Warranties</h2>
               <p>
                 The Site and its content are provided on an "as is" and "as available" basis without
                 warranties of any kind, either express or implied, including but not limited to warranties of
@@ -145,7 +146,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">8. Limitation of Liability</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">8. Limitation of Liability</h2>
               <p>
                 To the fullest extent permitted by applicable law, Shane McCaw Consulting shall not be
                 liable for any indirect, incidental, special, consequential, or punitive damages arising
@@ -155,7 +156,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">9. Changes to These Terms</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">9. Changes to These Terms</h2>
               <p>
                 We reserve the right to update or modify these Terms at any time. When we make changes, we
                 will update the effective date at the top of this page. Your continued use of the Site after
@@ -165,7 +166,7 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">10. Governing Law</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">10. Governing Law</h2>
               <p>
                 These Terms are governed by and construed in accordance with the laws of the United States,
                 without regard to its conflict of law provisions. Any disputes arising under these Terms
@@ -174,34 +175,34 @@ export default function Terms() {
             </section>
 
             <section>
-              <h2 className="text-xl font-extrabold text-[#0A2540] mb-3">11. Contact Us</h2>
+              <h2 className="text-xl font-extrabold text-text-primary mb-3">11. Contact Us</h2>
               <p>
                 If you have questions about these Terms, please contact us at:
               </p>
-              <div className="mt-3 bg-[#F7F9FC] border border-border rounded-xl p-5">
-                <p className="font-semibold text-[#0A2540]">Shane McCaw Consulting</p>
-                <p className="text-muted-foreground text-sm mt-1">
+              <GlassPanel className="mt-3 p-5">
+                <p className="font-semibold text-text-primary">Shane McCaw Consulting</p>
+                <p className="text-text-secondary text-sm mt-1">
                   Email:{" "}
                   <a
                     href={`mailto:${CONTACT_EMAIL}`}
-                    className="text-[#0078D4] hover:underline"
+                    className="text-accent-blue hover:underline"
                   >
                     {CONTACT_EMAIL}
                   </a>
                 </p>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-text-secondary text-sm">
                   Website:{" "}
-                  <a href={`https://${SITE_URL}`} className="text-[#0078D4] hover:underline">
+                  <a href={`https://${SITE_URL}`} className="text-accent-blue hover:underline">
                     {SITE_URL}
                   </a>
                 </p>
-              </div>
+              </GlassPanel>
             </section>
 
-            <div className="pt-6 border-t border-border">
-              <p className="text-muted-foreground text-sm">
+            <div className="pt-6 border-t border-white/[0.08]">
+              <p className="text-text-secondary text-sm">
                 See also:{" "}
-                <Link href="/legal/privacy" className="text-[#0078D4] hover:underline">
+                <Link href="/privacy" className="text-accent-blue hover:underline">
                   Privacy Policy
                 </Link>
               </p>

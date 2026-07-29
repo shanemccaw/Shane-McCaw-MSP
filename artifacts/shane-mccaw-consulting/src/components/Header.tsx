@@ -223,14 +223,14 @@ export function Header() {
 
           {/* Right actions */}
           <div className="hidden lg:flex items-center gap-2">
-            <Link
-              href="/login"
+            <a
+              href="/portal/login"
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
               data-track="nav"
             >
               <LogIn className="w-4 h-4" />
               <span>Client Login</span>
-            </Link>
+            </a>
             {isAssessmentsPage ? (
               <ChatCTA
                 className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -310,7 +310,7 @@ export function Header() {
           <Link href="/about" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
           <Link href="/trust-security" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Trust &amp; Security</Link>
           <Link href="/contact" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</Link>
-          <Link href="/login" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Client Login</Link>
+          <a href="/portal/login" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Client Login</a>
 
           <div className="pt-4">
             {isAssessmentsPage ? (

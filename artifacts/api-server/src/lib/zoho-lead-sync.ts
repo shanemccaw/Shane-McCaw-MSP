@@ -42,6 +42,10 @@ export function mapStagingToZohoLead(row: LeadStaging): Record<string, unknown> 
   if (row.companySize) fields.No_of_Employees = row.companySize;
   if (row.source) fields.Lead_Source = row.source;
   if (row.notes) fields.Description = row.notes;
+  // GA4_Client_ID must exist as a custom field on Zoho's Leads module (Setup >
+  // Customization > Fields) before this is set — same precondition #122's
+  // signal fields carry. The API rejects writes to a field that doesn't exist.
+  if (row.ga4ClientId) fields.GA4_Client_ID = row.ga4ClientId;
 
   return fields;
 }

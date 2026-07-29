@@ -22,6 +22,7 @@ import { createAuditLog } from "../lib/audit.ts";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf.ts";
 import { scoreLead, determineNextStep } from "../lib/lead-scorer.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { ensureLeadStagingForEmail } from "../lib/lead-intent.ts";
 import fs from "fs";
 import path from "path";
 
@@ -32,7 +33,7 @@ const UPLOADS_BASE = process.env.UPLOADS_DIR
 const router: IRouter = Router();
 
 router.post("/leads", async (req: Request, res: Response) => {
-  const { name, email, company, companySize, serviceArea, message, source, howFound } = req.body as {
+  const { name, email, company, companySize, serviceArea, message, source, howFound, ga4ClientId } = req.body as {
     name?: string;
     email?: string;
     company?: string;
@@ -41,6 +42,9 @@ router.post("/leads", async (req: Request, res: Response) => {
     message?: string;
     source?: string;
     howFound?: string;
+    // GA4's client_id (#116). Optional: no client-side GA4 instrumentation
+    // exists yet in this monorepo (#115), so no real caller sends this today.
+    ga4ClientId?: string;
   };
 
   if (!name || !email) {
@@ -69,6 +73,18 @@ router.post("/leads", async (req: Request, res: Response) => {
     howFound: howFound ?? null,
     status: "new",
   }).returning();
+
+  // Zoho sync (#116): this route only ever wrote to the legacy leadsTable and
+  // never staged/synced to Zoho at all — closing that gap here rather than
+  // leaving contact-form/lead-magnet leads as the one capture point Zoho never
+  // sees. Fire-and-forget, non-fatal.
+  void ensureLeadStagingForEmail(lead.email, {
+    name: lead.name,
+    company: lead.company ?? undefined,
+    source: leadSource,
+    legacyLeadId: lead.id,
+    ga4ClientId,
+  });
 
   if (isServiceOverviewDownload) {
     const adminEmail = process.env.CONTACT_NOTIFICATION_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";

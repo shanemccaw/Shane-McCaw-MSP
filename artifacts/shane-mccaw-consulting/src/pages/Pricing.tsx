@@ -219,7 +219,7 @@ export default function Pricing() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/assessment"
+              href="/assessments?tab=free"
               className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 inline-flex items-center justify-center gap-2"
               style={GRADIENT_BG}
               data-track="cta"
