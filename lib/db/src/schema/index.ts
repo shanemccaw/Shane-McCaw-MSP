@@ -1322,7 +1322,27 @@ export const quizAnalyticsEventsTable = pgTable("quiz_analytics_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Visitor identity bridge — resolves the durable smc_sid cookie session id to an
+// email once a visitor identifies themselves (quiz submit, lead capture). Kept
+// deliberately separate from the retired site-analytics tables below (issue #123)
+// — this is the personalization layer's (public-personalization.ts) sole path
+// from an anonymous cookie session to a known lead, not a traffic-analytics
+// artifact, so it survives the homegrown tracker's retirement.
+export const visitorIdentitiesTable = pgTable("visitor_identities", {
+  sessionId: text("session_id").primaryKey(),
+  email: text("email").notNull(),
+  identifiedAt: timestamp("identified_at").notNull().defaultNow(),
+});
+
+export type InsertVisitorIdentity = typeof visitorIdentitiesTable.$inferInsert;
+export type VisitorIdentity = typeof visitorIdentitiesTable.$inferSelect;
+
 // ── Site Analytics ─────────────────────────────────────────────────────────────
+// RETIRED (issue #123) — analytics_sessions/pageviews/site_events are no longer
+// written to (routes/analytics.ts was deleted); the Drizzle definitions and
+// tables themselves are left in place undropped because admin-marketing.ts's
+// dashboard metrics still read them and repointing that is out of this issue's
+// scope — see PLATFORM_BUILD.md's #123 entry for the full audit trail.
 export const analyticsSessionsTable = pgTable("analytics_sessions", {
   sessionId: text("session_id").primaryKey(),
   entryPage: text("entry_page").notNull().default("/"),

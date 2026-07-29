@@ -192,19 +192,32 @@ function NavItem({
           : "text-muted-foreground hover:bg-accent hover:text-foreground border-r-2 border-transparent"
       }`}
     >
-      <button
-        onClick={() => onNavigate(item)}
-        className="flex-1 flex items-center gap-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none min-w-0"
-        style={{ paddingLeft: `${depth * 12 + 34}px` }}
-      >
-        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
-        <span className="flex-1 truncate text-left">{item.label}</span>
-        {badge > 0 && (
-          <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
-            {badge > 99 ? "99+" : badge}
-          </span>
-        )}
-      </button>
+      {item.external ? (
+        <a
+          href={item.path}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center gap-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none min-w-0"
+          style={{ paddingLeft: `${depth * 12 + 34}px` }}
+        >
+          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+          <span className="flex-1 truncate text-left">{item.label}</span>
+        </a>
+      ) : (
+        <button
+          onClick={() => onNavigate(item)}
+          className="flex-1 flex items-center gap-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none min-w-0"
+          style={{ paddingLeft: `${depth * 12 + 34}px` }}
+        >
+          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+          <span className="flex-1 truncate text-left">{item.label}</span>
+          {badge > 0 && (
+            <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+        </button>
+      )}
       {onTogglePin && (
         <button
           type="button"
@@ -444,6 +457,10 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
   }, []);
 
   const handleNavigate = useCallback((path: string) => {
+    if (/^https?:\/\//.test(path)) {
+      window.open(path, "_blank", "noopener,noreferrer");
+      return;
+    }
     navigate(path);
   }, [navigate]);
 

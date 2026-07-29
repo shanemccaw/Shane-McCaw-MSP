@@ -4,7 +4,7 @@ import { z } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   db,
-  analyticsSessionsTable,
+  visitorIdentitiesTable,
   quizLeadsTable,
   engagementOfferFiringsTable,
   engagementOfferRulesTable,
@@ -21,6 +21,35 @@ const publicLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: t
 
 const stateQuerySchema = z.object({ sessionId: z.string().uuid() });
 
+const identifySchema = z.object({ sessionId: z.string().uuid(), email: z.string().email() });
+
+// ── POST /api/public/personalization/identify ───────────────────────────────────
+// Public — no auth required. Links the durable smc_sid cookie session (analytics.ts's
+// getAnalyticsSessionId) to a known email, the moment a visitor identifies themselves
+// (quiz submit — GenericQuizModal.tsx). Sole write path for visitor_identities, the
+// identity bridge GET /state and GET /engagement-offer below both resolve through.
+// Replaces the pre-#123 POST /api/analytics/identify (analytics_sessions.identified_email)
+// — same purpose, decoupled from the retired traffic-tracking tables.
+router.post("/public/personalization/identify", publicLimiter, async (req: Request, res: Response) => {
+  const parsed = identifySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid payload" });
+    return;
+  }
+  try {
+    await db
+      .insert(visitorIdentitiesTable)
+      .values({ sessionId: parsed.data.sessionId, email: parsed.data.email.toLowerCase().trim() })
+      .onConflictDoUpdate({
+        target: visitorIdentitiesTable.sessionId,
+        set: { email: parsed.data.email.toLowerCase().trim(), identifiedAt: new Date() },
+      });
+  } catch (err) {
+    log.error({ err }, "POST /public/personalization/identify error");
+  }
+  res.json({ ok: true });
+});
+
 // ── GET /api/public/personalization/state ──────────────────────────────────────
 // Public — no auth required. Resolves the durable, cookie-based session id (Stage 1's
 // smc_sid cookie, see analytics.ts) to a personalization confidence tier for a visitor
@@ -28,14 +57,14 @@ const stateQuerySchema = z.object({ sessionId: z.string().uuid() });
 // deliberately NOT resolved here — it always requires a real account, checked client-side
 // via the existing POST /api/auth/refresh + Authorization Bearer pattern (LandingPage.tsx).
 //
-// Resolution: session_id -> analytics_sessions.identified_email (set by the existing
-// POST /api/analytics/identify call quiz/lead-capture forms already make) -> most recent
-// quiz_leads row for that email. A hit means "quiz" tier; no hit (or no identified email
-// yet) means "cold". The quiz_leads.lead_offer_result the frontend actually wants to
-// render lives behind the real GET /api/quiz/results/:leadId route, which is token-gated
-// (verifyResendToken) — so this endpoint also mints a fresh resend token server-side
-// (same HMAC helper /quiz/resend-pdf and /quiz/results/:leadId already use) rather than
-// duplicating that route's response shape here.
+// Resolution: session_id -> visitor_identities.email (set by POST /identify above,
+// called on quiz/lead-capture submit) -> most recent quiz_leads row for that email. A hit
+// means "quiz" tier; no hit (or not yet identified) means "cold". The
+// quiz_leads.lead_offer_result the frontend actually wants to render lives behind the
+// real GET /api/quiz/results/:leadId route, which is token-gated (verifyResendToken) —
+// so this endpoint also mints a fresh resend token server-side (same HMAC helper
+// /quiz/resend-pdf and /quiz/results/:leadId already use) rather than duplicating that
+// route's response shape here.
 router.get("/public/personalization/state", publicLimiter, async (req: Request, res: Response) => {
   const parsed = stateQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -44,13 +73,13 @@ router.get("/public/personalization/state", publicLimiter, async (req: Request, 
   }
 
   try {
-    const [session] = await db
-      .select({ identifiedEmail: analyticsSessionsTable.identifiedEmail })
-      .from(analyticsSessionsTable)
-      .where(eq(analyticsSessionsTable.sessionId, parsed.data.sessionId))
+    const [identity] = await db
+      .select({ email: visitorIdentitiesTable.email })
+      .from(visitorIdentitiesTable)
+      .where(eq(visitorIdentitiesTable.sessionId, parsed.data.sessionId))
       .limit(1);
 
-    const email = session?.identifiedEmail;
+    const email = identity?.email;
     if (!email) {
       res.json({ tier: "cold" });
       return;
@@ -103,12 +132,11 @@ const engagementOfferQuerySchema = z
 //
 // Lead identity here is the engine's own real id space: leadIntentEventsTable.leadId
 // references leadsTable (the CRM leads table populated by the contact form / lead magnet /
-// admin actions) — NOT quizLeadsTable, and NOT msp_customers. The bridge is the same one
-// analytics.ts's maybeFireIntentEvent/maybeFireCtaFormIntentEvent already use to feed this
-// engine: analytics_sessions.identified_email -> findLeadByEmail(email) -> leads.id.
-// identifyLead() is called on quiz submit (GenericQuizModal.tsx), so a quiz-tier session's
-// identified_email is usually set — but quiz submission never creates a leads row, so a
-// quiz-only visitor who never separately submitted the contact form will honestly resolve
+// admin actions) — NOT quizLeadsTable, and NOT msp_customers. The bridge:
+// visitor_identities.email (set by POST /identify on quiz submit) -> findLeadByEmail(email)
+// -> leads.id. identifyLead() is called on quiz submit (GenericQuizModal.tsx), so a
+// quiz-tier session's identity is usually set — but quiz submission never creates a
+// leads row, so a quiz-only visitor who never separately submitted the contact form will honestly resolve
 // to { eligible: false } here, matching the engine's real (incomplete) reach today. For the
 // assessment tier we accept an explicit `email` (the visitor's real, refresh-token-verified
 // account email — same already-established pattern as usePortalUrl()'s POST
@@ -124,12 +152,12 @@ router.get("/public/personalization/engagement-offer", publicLimiter, async (req
     let email = parsed.data.email?.toLowerCase().trim() ?? null;
 
     if (!email && parsed.data.sessionId) {
-      const [session] = await db
-        .select({ identifiedEmail: analyticsSessionsTable.identifiedEmail })
-        .from(analyticsSessionsTable)
-        .where(eq(analyticsSessionsTable.sessionId, parsed.data.sessionId))
+      const [identity] = await db
+        .select({ email: visitorIdentitiesTable.email })
+        .from(visitorIdentitiesTable)
+        .where(eq(visitorIdentitiesTable.sessionId, parsed.data.sessionId))
         .limit(1);
-      email = session?.identifiedEmail ?? null;
+      email = identity?.email ?? null;
     }
 
     if (!email) {

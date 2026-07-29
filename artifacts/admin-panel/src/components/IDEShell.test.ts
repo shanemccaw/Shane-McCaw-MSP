@@ -40,20 +40,22 @@ describe("Workspace config integrity", () => {
     }
   });
 
-  it("every leaf has an absolute path and unique id", () => {
+  it("every in-app leaf has an absolute path and every leaf id is unique", () => {
     const ids = new Set<string>();
     for (const ws of WORKSPACES) {
       for (const leaf of workspaceLeaves(ws)) {
-        expect(leaf.path!.startsWith("/")).toBe(true);
+        // External leaves (e.g. Microsoft Clarity) point off-app on purpose.
+        if (!leaf.external) expect(leaf.path!.startsWith("/")).toBe(true);
         expect(ids.has(leaf.id)).toBe(false);
         ids.add(leaf.id);
       }
     }
   });
 
-  it("every query-less leaf resolves back to its own tab label", () => {
+  it("every query-less in-app leaf resolves back to its own tab label", () => {
     for (const ws of WORKSPACES) {
       for (const leaf of workspaceLeaves(ws)) {
+        if (leaf.external) continue; // external leaves don't route through tab resolution
         const [path, query] = leaf.path!.split("?");
         if (query) continue; // ?tab= leaves share their page's tab
         // Pages with ?tab= sections keep their canonical page label
