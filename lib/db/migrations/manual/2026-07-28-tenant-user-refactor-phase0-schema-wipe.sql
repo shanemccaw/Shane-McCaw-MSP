@@ -1,5 +1,15 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Tenant/User Refactor — Phase 0: Schema + wipe (Git #92 / #93)
+-- FIX: original version used a session-scoped TEMP TABLE and a pg_temp
+-- function, both of which are only visible within one physical connection.
+-- Errored as "relation wipe_kept_users does not exist" once a later
+-- statement landed on a different backend connection than the one that
+-- created it (pooled connection, or a runner that splits the script into
+-- separate exec calls). Fixed by using ordinary persistent objects instead
+-- (public.wipe_exec_if_exists, public.wipe_kept_users) — both real database
+-- objects, visible from any connection, both explicitly dropped by the
+-- script itself before COMMIT. No other logic changed from the signed-off
+-- version.
 --
 -- Signed-off plan (pinned comment on #92): direct cutover, no data
 -- preservation. Creates the real `tenants` table (consent folded into one
@@ -10,20 +20,37 @@
 -- tenant_sharepoint_consent.
 --
 -- Run manually in the SQL console. Single transaction — any failure rolls
--- the whole thing back. Defensive to_regclass guards throughout because the
--- live DB has known drift from the schema files (see
--- create-12-missing-tables.sql for precedent).
+-- the whole thing back, PROVIDED your connection/runner treats this whole
+-- script as one continuous transaction. If you're not certain of that,
+-- prefer running via `psql -f this-file.sql` (or `\i this-file.sql`) over a
+-- pooled/web SQL console for a script this destructive.
 --
--- Deliberate decisions (delete vs null), per referencing table, are inline
--- below. Surviving tables keep their now-orphaned integer customer_id/
--- msp_customer_id columns — the FK constraints die with DROP ... CASCADE,
--- the column drops are Phase 7 cleanup.
+-- Defensive to_regclass guards throughout because the live DB has known
+-- drift from the schema files (see create-12-missing-tables.sql for
+-- precedent). Deliberate decisions (delete vs null), per referencing table,
+-- are inline below. Surviving tables keep their now-orphaned integer
+-- customer_id/msp_customer_id columns — the FK constraints die with
+-- DROP ... CASCADE, the column drops are Phase 7 cleanup.
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- Idempotency: in case a prior partial run left these behind.
+DROP TABLE IF EXISTS public.wipe_kept_users;
+DROP FUNCTION IF EXISTS public.wipe_exec_if_exists(text, text);
 
 BEGIN;
 
+-- Idempotency (continued): a prior partial run may have already committed
+-- the role-scope CHECK constraint (section 3 below) before failing later.
+-- Even added NOT VALID, a CHECK constraint is enforced on every new
+-- INSERT/UPDATE from the moment it exists — only pre-existing rows are
+-- exempt. Drop it here so the backfill in section 2 can't be blocked by a
+-- constraint left over from an earlier attempt. Re-added fresh in section 3.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_scope_check;
+
 -- Helper: run a statement only if the target table exists (live-drift guard).
-CREATE FUNCTION pg_temp.exec_if_exists(p_table text, p_sql text) RETURNS void AS $fn$
+-- Persistent (public schema, not pg_temp) so it's visible to every statement
+-- below regardless of connection routing. Dropped again before COMMIT.
+CREATE FUNCTION public.wipe_exec_if_exists(p_table text, p_sql text) RETURNS void AS $fn$
 BEGIN
   IF to_regclass('public.' || p_table) IS NOT NULL THEN
     EXECUTE p_sql;
@@ -92,7 +119,7 @@ CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users (tenant_id);
 -- Backfill from msp_users (1:1 on user_id). users with no msp_users row keep
 -- the 'Free' default — they are all wiped below anyway. tenant_id stays NULL:
 -- tenants starts empty; there is nothing valid to map the old customer_id to.
-SELECT pg_temp.exec_if_exists('msp_users', $q$
+SELECT public.wipe_exec_if_exists('msp_users', $q$
   UPDATE users u SET
     msp_role              = mu.msp_role,
     msp_id                = mu.msp_id,
@@ -141,13 +168,13 @@ END $$;
 --    deletes — live FK cascade behaviors are NOT relied on.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-CREATE TEMP TABLE wipe_kept_users ON COMMIT DROP AS
+CREATE TABLE public.wipe_kept_users AS
   SELECT id FROM users WHERE msp_role = 'PlatformAdmin';
 
 DO $$
 DECLARE n integer;
 BEGIN
-  SELECT count(*) INTO n FROM wipe_kept_users;
+  SELECT count(*) INTO n FROM public.wipe_kept_users;
   IF n = 0 THEN
     RAISE EXCEPTION 'Wipe aborted: no PlatformAdmin user found after msp_users backfill — refusing to delete every login. Check msp_users.msp_role data before re-running.';
   END IF;
@@ -156,264 +183,271 @@ END $$;
 
 -- ── 4a. Rows of the five retired tables (clears their outgoing RESTRICT FKs
 --        on users/msps/msp_customers before those parents are touched).
-SELECT pg_temp.exec_if_exists('tenant_consent',            'DELETE FROM tenant_consent');
-SELECT pg_temp.exec_if_exists('tenant_write_consent',      'DELETE FROM tenant_write_consent');
-SELECT pg_temp.exec_if_exists('tenant_sharepoint_consent', 'DELETE FROM tenant_sharepoint_consent');
-SELECT pg_temp.exec_if_exists('msp_users',                 'DELETE FROM msp_users');
+SELECT public.wipe_exec_if_exists('tenant_consent',            'DELETE FROM tenant_consent');
+SELECT public.wipe_exec_if_exists('tenant_write_consent',      'DELETE FROM tenant_write_consent');
+SELECT public.wipe_exec_if_exists('tenant_sharepoint_consent', 'DELETE FROM tenant_sharepoint_consent');
+SELECT public.wipe_exec_if_exists('msp_users',                 'DELETE FROM msp_users');
 
 -- ── 4b. Grandchildren first (children of rows that die below).
 
 -- children of insights_generated_documents (ALL IGD rows die — the table is
 -- per-customer generated output and its msp_customer_id is NOT NULL into the
 -- dropped id-space):
-SELECT pg_temp.exec_if_exists('assessment_sow_agreements', 'DELETE FROM assessment_sow_agreements');
-SELECT pg_temp.exec_if_exists('presentation_doc_views',    'DELETE FROM presentation_doc_views');   -- per-customer view tracking: DELETE
-SELECT pg_temp.exec_if_exists('quick_win_result_shares',   'DELETE FROM quick_win_result_shares');  -- per-customer share links: DELETE
+SELECT public.wipe_exec_if_exists('assessment_sow_agreements', 'DELETE FROM assessment_sow_agreements');
+SELECT public.wipe_exec_if_exists('presentation_doc_views',    'DELETE FROM presentation_doc_views');   -- per-customer view tracking: DELETE
+SELECT public.wipe_exec_if_exists('quick_win_result_shares',   'DELETE FROM quick_win_result_shares');  -- per-customer share links: DELETE
 
 -- children of sales_offers rows that die (offers are per-customer engine output):
-SELECT pg_temp.exec_if_exists('sales_offer_events', $q$
+SELECT public.wipe_exec_if_exists('sales_offer_events', $q$
   DELETE FROM sales_offer_events WHERE offer_id IN
-    (SELECT id FROM sales_offers WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM wipe_kept_users))
+    (SELECT id FROM sales_offers WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM public.wipe_kept_users))
 $q$);
 
 -- children of tenant_engine_snapshots (ALL die — per-tenant runtime data):
-SELECT pg_temp.exec_if_exists('engine_score_signal_deltas', 'DELETE FROM engine_score_signal_deltas');
+SELECT public.wipe_exec_if_exists('engine_score_signal_deltas', 'DELETE FROM engine_score_signal_deltas');
 
 -- children of msp_diagnostic_runs (ALL die — per-tenant runtime output):
-SELECT pg_temp.exec_if_exists('msp_diagnostic_findings', 'DELETE FROM msp_diagnostic_findings');
+SELECT public.wipe_exec_if_exists('msp_diagnostic_findings', 'DELETE FROM msp_diagnostic_findings');
 
 -- children of break_glass_pending_secrets (ALL die — customer-scoped):
-SELECT pg_temp.exec_if_exists('break_glass_verification_attempts', 'DELETE FROM break_glass_verification_attempts');
+SELECT public.wipe_exec_if_exists('break_glass_verification_attempts', 'DELETE FROM break_glass_verification_attempts');
 
 -- children of msp_sows / msp-scoped billing rows that die (msp_id <> 1):
-SELECT pg_temp.exec_if_exists('msp_charges', $q$
+-- NOTE: msp_charges.sow_id / msp_sow_events.sow_id are uuid FKs to
+-- msp_sows.sow_id (a separate uuid column), not msp_sows.id (integer PK) —
+-- join on sow_id, not id.
+SELECT public.wipe_exec_if_exists('msp_charges', $q$
   DELETE FROM msp_charges WHERE msp_id <> 1
-    OR sow_id IN (SELECT id FROM msp_sows WHERE msp_id <> 1)
+    OR sow_id IN (SELECT sow_id FROM msp_sows WHERE msp_id <> 1)
 $q$);
-SELECT pg_temp.exec_if_exists('msp_sow_events', $q$
-  DELETE FROM msp_sow_events WHERE sow_id IN (SELECT id FROM msp_sows WHERE msp_id <> 1)
+SELECT public.wipe_exec_if_exists('msp_sow_events', $q$
+  DELETE FROM msp_sow_events WHERE sow_id IN (SELECT sow_id FROM msp_sows WHERE msp_id <> 1)
 $q$);
 
--- children of msp_documents rows that die (msp_id <> 1):
-SELECT pg_temp.exec_if_exists('msp_document_versions', $q$
-  DELETE FROM msp_document_versions WHERE document_id IN (SELECT id FROM msp_documents WHERE msp_id <> 1)
+-- children of msp_documents rows that die (msp_id <> 1). Same uuid/integer
+-- note as above: document_id is a uuid FK to msp_documents.document_id, not
+-- msp_documents.id.
+SELECT public.wipe_exec_if_exists('msp_document_versions', $q$
+  DELETE FROM msp_document_versions WHERE document_id IN (SELECT document_id FROM msp_documents WHERE msp_id <> 1)
 $q$);
 
 -- children of msp_report_canvases / dashboard_templates that die (msp_id <> 1):
-SELECT pg_temp.exec_if_exists('msp_report_schedules', $q$
+SELECT public.wipe_exec_if_exists('msp_report_schedules', $q$
   DELETE FROM msp_report_schedules WHERE msp_id <> 1
     OR canvas_id IN (SELECT id FROM msp_report_canvases WHERE msp_id <> 1)
 $q$);
-SELECT pg_temp.exec_if_exists('dashboard_overrides', $q$
+SELECT public.wipe_exec_if_exists('dashboard_overrides', $q$
   DELETE FROM dashboard_overrides WHERE template_id IN (SELECT id FROM dashboard_templates WHERE msp_id <> 1)
 $q$);
 
--- children of outbound_webhooks rows that die:
-SELECT pg_temp.exec_if_exists('outbound_webhook_deliveries', $q$
+-- children of outbound_webhooks rows that die. Same uuid/integer note:
+-- webhook_id is a uuid FK to outbound_webhooks.webhook_id, not
+-- outbound_webhooks.id.
+SELECT public.wipe_exec_if_exists('outbound_webhook_deliveries', $q$
   DELETE FROM outbound_webhook_deliveries WHERE webhook_id IN (
-    SELECT id FROM outbound_webhooks
+    SELECT webhook_id FROM outbound_webhooks
     WHERE customer_id IS NOT NULL OR (msp_id IS NOT NULL AND msp_id <> 1))
 $q$);
 
 -- children of engagement_offer_rules rows that die (msp_id <> 1):
-SELECT pg_temp.exec_if_exists('engagement_offer_firings', $q$
+SELECT public.wipe_exec_if_exists('engagement_offer_firings', $q$
   DELETE FROM engagement_offer_firings WHERE rule_id IN
     (SELECT id FROM engagement_offer_rules WHERE msp_id IS NOT NULL AND msp_id <> 1)
 $q$);
 
 -- children of policy_rules rows that die (msp_id <> 1) + per-tenant runtime
 -- firing data (DELETE ALL — it only describes wiped tenants):
-SELECT pg_temp.exec_if_exists('policy_rule_firings',     'DELETE FROM policy_rule_firings');
-SELECT pg_temp.exec_if_exists('policy_rule_incidents',   'DELETE FROM policy_rule_incidents');
-SELECT pg_temp.exec_if_exists('policy_rule_suppressions', $q$
+SELECT public.wipe_exec_if_exists('policy_rule_firings',     'DELETE FROM policy_rule_firings');
+SELECT public.wipe_exec_if_exists('policy_rule_incidents',   'DELETE FROM policy_rule_incidents');
+SELECT public.wipe_exec_if_exists('policy_rule_suppressions', $q$
   DELETE FROM policy_rule_suppressions WHERE customer_id IS NOT NULL OR msp_id <> 1
     OR rule_id IN (SELECT id FROM policy_rules WHERE msp_id IS NOT NULL AND msp_id <> 1)
 $q$);
 
 -- children of client_services rows that die: keep the workflow step (project/
 -- workflow data), NULL the link:
-SELECT pg_temp.exec_if_exists('workflow_steps', $q$
+SELECT public.wipe_exec_if_exists('workflow_steps', $q$
   UPDATE workflow_steps SET client_service_id = NULL WHERE client_service_id IN
-    (SELECT id FROM client_services WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users))
+    (SELECT id FROM client_services WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users))
 $q$);
 
 -- children of azure_tenant_credentials (ALL die — per-tenant credentials):
 -- keep runbook history rows (operational log), NULL the credential link:
-SELECT pg_temp.exec_if_exists('runbook_job_history',
+SELECT public.wipe_exec_if_exists('runbook_job_history',
   'UPDATE runbook_job_history SET credential_id = NULL WHERE credential_id IS NOT NULL');
 
 -- ── 4c. Customer-/tenant-scoped tables: DELETE (worthless post-wipe).
 
-SELECT pg_temp.exec_if_exists('tenant_engine_overrides',       'DELETE FROM tenant_engine_overrides');
-SELECT pg_temp.exec_if_exists('tenant_engine_snapshots',       'DELETE FROM tenant_engine_snapshots');
-SELECT pg_temp.exec_if_exists('tenant_signal_history',         'DELETE FROM tenant_signal_history');
-SELECT pg_temp.exec_if_exists('engine_baseline_history',       'DELETE FROM engine_baseline_history');
-SELECT pg_temp.exec_if_exists('engine_score_daily_rollup',     'DELETE FROM engine_score_daily_rollup');
-SELECT pg_temp.exec_if_exists('insights_generated_documents',  'DELETE FROM insights_generated_documents');
-SELECT pg_temp.exec_if_exists('m365_service_health_samples',   'DELETE FROM m365_service_health_samples');
-SELECT pg_temp.exec_if_exists('msp_message_center_items',      'DELETE FROM msp_message_center_items');
-SELECT pg_temp.exec_if_exists('msp_customer_clickwraps',       'DELETE FROM msp_customer_clickwraps');
-SELECT pg_temp.exec_if_exists('msp_diagnostic_runs',           'DELETE FROM msp_diagnostic_runs');
-SELECT pg_temp.exec_if_exists('msp_report_runs',               'DELETE FROM msp_report_runs');
-SELECT pg_temp.exec_if_exists('msp_job_queue',                 'DELETE FROM msp_job_queue');
-SELECT pg_temp.exec_if_exists('msp_sales_bundle_assignments',  'DELETE FROM msp_sales_bundle_assignments');
-SELECT pg_temp.exec_if_exists('msp_staff_customer_scopes',     'DELETE FROM msp_staff_customer_scopes');
-SELECT pg_temp.exec_if_exists('break_glass_pending_secrets',   'DELETE FROM break_glass_pending_secrets');
-SELECT pg_temp.exec_if_exists('break_glass_override_audit',    'DELETE FROM break_glass_override_audit');
-SELECT pg_temp.exec_if_exists('dashboard_executive_summaries', 'DELETE FROM dashboard_executive_summaries');
-SELECT pg_temp.exec_if_exists('consent_invite_tokens',         'DELETE FROM consent_invite_tokens');
-SELECT pg_temp.exec_if_exists('azure_tenant_credentials',      'DELETE FROM azure_tenant_credentials');
-SELECT pg_temp.exec_if_exists('outbound_webhooks', $q$
+SELECT public.wipe_exec_if_exists('tenant_engine_overrides',       'DELETE FROM tenant_engine_overrides');
+SELECT public.wipe_exec_if_exists('tenant_engine_snapshots',       'DELETE FROM tenant_engine_snapshots');
+SELECT public.wipe_exec_if_exists('tenant_signal_history',         'DELETE FROM tenant_signal_history');
+SELECT public.wipe_exec_if_exists('engine_baseline_history',       'DELETE FROM engine_baseline_history');
+SELECT public.wipe_exec_if_exists('engine_score_daily_rollup',     'DELETE FROM engine_score_daily_rollup');
+SELECT public.wipe_exec_if_exists('insights_generated_documents',  'DELETE FROM insights_generated_documents');
+SELECT public.wipe_exec_if_exists('m365_service_health_samples',   'DELETE FROM m365_service_health_samples');
+SELECT public.wipe_exec_if_exists('msp_message_center_items',      'DELETE FROM msp_message_center_items');
+SELECT public.wipe_exec_if_exists('msp_customer_clickwraps',       'DELETE FROM msp_customer_clickwraps');
+SELECT public.wipe_exec_if_exists('msp_diagnostic_runs',           'DELETE FROM msp_diagnostic_runs');
+SELECT public.wipe_exec_if_exists('msp_report_runs',               'DELETE FROM msp_report_runs');
+SELECT public.wipe_exec_if_exists('msp_job_queue',                 'DELETE FROM msp_job_queue');
+SELECT public.wipe_exec_if_exists('msp_sales_bundle_assignments',  'DELETE FROM msp_sales_bundle_assignments');
+SELECT public.wipe_exec_if_exists('msp_staff_customer_scopes',     'DELETE FROM msp_staff_customer_scopes');
+SELECT public.wipe_exec_if_exists('break_glass_pending_secrets',   'DELETE FROM break_glass_pending_secrets');
+SELECT public.wipe_exec_if_exists('break_glass_override_audit',    'DELETE FROM break_glass_override_audit');
+SELECT public.wipe_exec_if_exists('dashboard_executive_summaries', 'DELETE FROM dashboard_executive_summaries');
+SELECT public.wipe_exec_if_exists('consent_invite_tokens',         'DELETE FROM consent_invite_tokens');
+SELECT public.wipe_exec_if_exists('azure_tenant_credentials',      'DELETE FROM azure_tenant_credentials');
+SELECT public.wipe_exec_if_exists('outbound_webhooks', $q$
   DELETE FROM outbound_webhooks
   WHERE customer_id IS NOT NULL OR (msp_id IS NOT NULL AND msp_id <> 1)
 $q$);
 
 -- ── 4d. Non-kept-user-scoped tables: DELETE.
 
-SELECT pg_temp.exec_if_exists('account_setup_tokens',
-  'DELETE FROM account_setup_tokens WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_app_registrations',
-  'DELETE FROM client_app_registrations WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_automation_runs',
-  'DELETE FROM client_automation_runs WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_callback_tokens',
-  'DELETE FROM client_callback_tokens WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_documents',
-  'DELETE FROM client_documents WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_health_history',
-  'DELETE FROM client_health_history WHERE client_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_m365_profiles',
-  'DELETE FROM client_m365_profiles WHERE client_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_scores',
-  'DELETE FROM client_scores WHERE client_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('client_services',
-  'DELETE FROM client_services WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('account_setup_tokens',
+  'DELETE FROM account_setup_tokens WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_app_registrations',
+  'DELETE FROM client_app_registrations WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_automation_runs',
+  'DELETE FROM client_automation_runs WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_callback_tokens',
+  'DELETE FROM client_callback_tokens WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_documents',
+  'DELETE FROM client_documents WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_health_history',
+  'DELETE FROM client_health_history WHERE client_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_m365_profiles',
+  'DELETE FROM client_m365_profiles WHERE client_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_scores',
+  'DELETE FROM client_scores WHERE client_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('client_services',
+  'DELETE FROM client_services WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
 -- contracts of wiped users: DELETE (test-era client contracts, no value post-wipe — flagged in #93 completion comment)
-SELECT pg_temp.exec_if_exists('contracts',
-  'DELETE FROM contracts WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('customer_notification_preferences',
-  'DELETE FROM customer_notification_preferences WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('email_domain_rules',
-  'DELETE FROM email_domain_rules WHERE linked_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('impersonation_tokens', $q$
+SELECT public.wipe_exec_if_exists('contracts',
+  'DELETE FROM contracts WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('customer_notification_preferences',
+  'DELETE FROM customer_notification_preferences WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('email_domain_rules',
+  'DELETE FROM email_domain_rules WHERE linked_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('impersonation_tokens', $q$
   DELETE FROM impersonation_tokens
-  WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)
-     OR admin_user_id  NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
+     OR admin_user_id  NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('invoices',
-  'DELETE FROM invoices WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('messages', $q$
+SELECT public.wipe_exec_if_exists('invoices',
+  'DELETE FROM invoices WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('messages', $q$
   DELETE FROM messages
-  WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)
-     OR sender_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
+     OR sender_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('mfa_bypass_codes',
-  'DELETE FROM mfa_bypass_codes WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('mfa_challenges',
-  'DELETE FROM mfa_challenges WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('mfa_enrollments',
-  'DELETE FROM mfa_enrollments WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('notifications',
-  'DELETE FROM notifications WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('password_reset_tokens',
-  'DELETE FROM password_reset_tokens WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('push_subscriptions',
-  'DELETE FROM push_subscriptions WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('quick_win_presentations',
-  'DELETE FROM quick_win_presentations WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('reports',
-  'DELETE FROM reports WHERE client_user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('sales_offers',
-  'DELETE FROM sales_offers WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('script_download_tokens', $q$
+SELECT public.wipe_exec_if_exists('mfa_bypass_codes',
+  'DELETE FROM mfa_bypass_codes WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('mfa_challenges',
+  'DELETE FROM mfa_challenges WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('mfa_enrollments',
+  'DELETE FROM mfa_enrollments WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('notifications',
+  'DELETE FROM notifications WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('password_reset_tokens',
+  'DELETE FROM password_reset_tokens WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('push_subscriptions',
+  'DELETE FROM push_subscriptions WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('quick_win_presentations',
+  'DELETE FROM quick_win_presentations WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('reports',
+  'DELETE FROM reports WHERE client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('sales_offers',
+  'DELETE FROM sales_offers WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('script_download_tokens', $q$
   DELETE FROM script_download_tokens
-  WHERE (client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM wipe_kept_users))
-     OR (customer_id    IS NOT NULL AND customer_id    NOT IN (SELECT id FROM wipe_kept_users))
+  WHERE (client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM public.wipe_kept_users))
+     OR (customer_id    IS NOT NULL AND customer_id    NOT IN (SELECT id FROM public.wipe_kept_users))
 $q$);
-SELECT pg_temp.exec_if_exists('insights_automations',
-  'DELETE FROM insights_automations WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('user_entitlement_overrides',
-  'DELETE FROM user_entitlement_overrides WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('user_sessions',
-  'DELETE FROM user_sessions WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('webauthn_challenges',
-  'DELETE FROM webauthn_challenges WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM wipe_kept_users)');
-SELECT pg_temp.exec_if_exists('webauthn_credentials',
-  'DELETE FROM webauthn_credentials WHERE user_id NOT IN (SELECT id FROM wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('insights_automations',
+  'DELETE FROM insights_automations WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('user_entitlement_overrides',
+  'DELETE FROM user_entitlement_overrides WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('user_sessions',
+  'DELETE FROM user_sessions WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('webauthn_challenges',
+  'DELETE FROM webauthn_challenges WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
+SELECT public.wipe_exec_if_exists('webauthn_credentials',
+  'DELETE FROM webauthn_credentials WHERE user_id NOT IN (SELECT id FROM public.wipe_kept_users)');
 
 -- ── 4e. Preserved tables (platform / project / CRM / audit data): NULL the
 --        FKs that point at wiped users; keep the rows.
 
-SELECT pg_temp.exec_if_exists('audit_logs', $q$
+SELECT public.wipe_exec_if_exists('audit_logs', $q$
   UPDATE audit_logs SET actor_user_id = NULL
-  WHERE actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('audit_logs', $q$
+SELECT public.wipe_exec_if_exists('audit_logs', $q$
   UPDATE audit_logs SET client_id = NULL
-  WHERE client_id IS NOT NULL AND client_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE client_id IS NOT NULL AND client_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('documents', $q$
+SELECT public.wipe_exec_if_exists('documents', $q$
   UPDATE documents SET uploaded_by = NULL
-  WHERE uploaded_by IS NOT NULL AND uploaded_by NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE uploaded_by IS NOT NULL AND uploaded_by NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('client_documents', $q$
+SELECT public.wipe_exec_if_exists('client_documents', $q$
   UPDATE client_documents SET uploaded_by = NULL
-  WHERE uploaded_by IS NOT NULL AND uploaded_by NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE uploaded_by IS NOT NULL AND uploaded_by NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('emails', $q$
+SELECT public.wipe_exec_if_exists('emails', $q$
   UPDATE emails SET linked_user_id = NULL
-  WHERE linked_user_id IS NOT NULL AND linked_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE linked_user_id IS NOT NULL AND linked_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('inbox_message_links', $q$
+SELECT public.wipe_exec_if_exists('inbox_message_links', $q$
   UPDATE inbox_message_links SET customer_id = NULL
-  WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('projects', $q$
+SELECT public.wipe_exec_if_exists('projects', $q$
   UPDATE projects SET client_user_id = NULL
-  WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('projects', $q$
+SELECT public.wipe_exec_if_exists('projects', $q$
   UPDATE projects SET signed_off_by = NULL
-  WHERE signed_off_by IS NOT NULL AND signed_off_by NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE signed_off_by IS NOT NULL AND signed_off_by NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('project_updates', $q$
+SELECT public.wipe_exec_if_exists('project_updates', $q$
   UPDATE project_updates SET author_user_id = NULL
-  WHERE author_user_id IS NOT NULL AND author_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE author_user_id IS NOT NULL AND author_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('project_closures', $q$
+SELECT public.wipe_exec_if_exists('project_closures', $q$
   UPDATE project_closures SET signer_user_id = NULL
-  WHERE signer_user_id IS NOT NULL AND signer_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE signer_user_id IS NOT NULL AND signer_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('status_reports', $q$
+SELECT public.wipe_exec_if_exists('status_reports', $q$
   UPDATE status_reports SET client_user_id = NULL
-  WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE client_user_id IS NOT NULL AND client_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('script_run_results', $q$
+SELECT public.wipe_exec_if_exists('script_run_results', $q$
   UPDATE script_run_results SET customer_id = NULL
-  WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE customer_id IS NOT NULL AND customer_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('sales_offer_events', $q$
+SELECT public.wipe_exec_if_exists('sales_offer_events', $q$
   UPDATE sales_offer_events SET actor_user_id = NULL
-  WHERE actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('mfa_bypass_codes', $q$
+SELECT public.wipe_exec_if_exists('mfa_bypass_codes', $q$
   UPDATE mfa_bypass_codes SET created_by_user_id = NULL
-  WHERE created_by_user_id IS NOT NULL AND created_by_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE created_by_user_id IS NOT NULL AND created_by_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
-SELECT pg_temp.exec_if_exists('user_entitlement_overrides', $q$
+SELECT public.wipe_exec_if_exists('user_entitlement_overrides', $q$
   UPDATE user_entitlement_overrides SET granted_by_user_id = NULL
-  WHERE granted_by_user_id IS NOT NULL AND granted_by_user_id NOT IN (SELECT id FROM wipe_kept_users)
+  WHERE granted_by_user_id IS NOT NULL AND granted_by_user_id NOT IN (SELECT id FROM public.wipe_kept_users)
 $q$);
 
 -- NULL the customer_id columns that survive on preserved msp-scoped tables
 -- (the msp_customers id-space is destroyed below; Phase 7 drops the columns):
-SELECT pg_temp.exec_if_exists('msp_audit_logs',
+SELECT public.wipe_exec_if_exists('msp_audit_logs',
   'UPDATE msp_audit_logs SET customer_id = NULL WHERE customer_id IS NOT NULL');
-SELECT pg_temp.exec_if_exists('msp_documents',
+SELECT public.wipe_exec_if_exists('msp_documents',
   'UPDATE msp_documents SET customer_id = NULL WHERE customer_id IS NOT NULL');
-SELECT pg_temp.exec_if_exists('msp_report_definitions',
+SELECT public.wipe_exec_if_exists('msp_report_definitions',
   'UPDATE msp_report_definitions SET customer_id = NULL WHERE customer_id IS NOT NULL');
-SELECT pg_temp.exec_if_exists('msp_sows',
+SELECT public.wipe_exec_if_exists('msp_sows',
   'UPDATE msp_sows SET customer_id = NULL WHERE customer_id IS NOT NULL');
 
 -- ── 4f. MSP-scoped rows of every msps-referencing table, for MSPs other than
@@ -422,53 +456,53 @@ SELECT pg_temp.exec_if_exists('msp_sows',
 --        simulation_profiles) are PRESERVED as global by nulling msp_id,
 --        mirroring their declared ON DELETE SET NULL semantics.
 
-SELECT pg_temp.exec_if_exists('msp_agreement_acceptances',
+SELECT public.wipe_exec_if_exists('msp_agreement_acceptances',
   'DELETE FROM msp_agreement_acceptances WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_ai_purchases',            'DELETE FROM msp_ai_purchases WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_change_requests',         'DELETE FROM msp_change_requests WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_connector_configs',       'DELETE FROM msp_connector_configs WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_custom_domains',          'DELETE FROM msp_custom_domains WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_email_templates',         'DELETE FROM msp_email_templates WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_invites',                 'DELETE FROM msp_invites WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_mailbox_consent_states',  'DELETE FROM msp_mailbox_consent_states WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_mailbox_connectors',      'DELETE FROM msp_mailbox_connectors WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_onboarding_links',        'DELETE FROM msp_onboarding_links WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_overrides',               'DELETE FROM msp_overrides WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_partner_qbrs',            'DELETE FROM msp_partner_qbrs WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_report_canvases',         'DELETE FROM msp_report_canvases WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_report_definitions',      'DELETE FROM msp_report_definitions WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_risk_decisions',          'DELETE FROM msp_risk_decisions WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_sales_bundles',           'DELETE FROM msp_sales_bundles WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_score_history',           'DELETE FROM msp_score_history WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_service_accounts',        'DELETE FROM msp_service_accounts WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_sharepoint_connectors',   'DELETE FROM msp_sharepoint_connectors WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_sop_runs',                'DELETE FROM msp_sop_runs WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_sops',                    'DELETE FROM msp_sops WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_subscriptions',           'DELETE FROM msp_subscriptions WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_sows',                    'DELETE FROM msp_sows WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_documents',               'DELETE FROM msp_documents WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('msp_audit_logs',              'DELETE FROM msp_audit_logs WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('dashboard_templates',         'DELETE FROM dashboard_templates WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('zoho_connection',             'DELETE FROM zoho_connection WHERE msp_id <> 1');
-SELECT pg_temp.exec_if_exists('engagement_offer_rules',      'DELETE FROM engagement_offer_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('lead_offer_inference_rules',  'DELETE FROM lead_offer_inference_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('lead_offer_pricing_config',   'DELETE FROM lead_offer_pricing_config WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('lead_scoring_config',         'DELETE FROM lead_scoring_config WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('lead_scoring_rules',          'DELETE FROM lead_scoring_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('lead_scoring_tracked_pages',  'DELETE FROM lead_scoring_tracked_pages WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('policy_rules',                'DELETE FROM policy_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('signal_derivation_rules',
+SELECT public.wipe_exec_if_exists('msp_ai_purchases',            'DELETE FROM msp_ai_purchases WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_change_requests',         'DELETE FROM msp_change_requests WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_connector_configs',       'DELETE FROM msp_connector_configs WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_custom_domains',          'DELETE FROM msp_custom_domains WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_email_templates',         'DELETE FROM msp_email_templates WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_invites',                 'DELETE FROM msp_invites WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_mailbox_consent_states',  'DELETE FROM msp_mailbox_consent_states WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_mailbox_connectors',      'DELETE FROM msp_mailbox_connectors WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_onboarding_links',        'DELETE FROM msp_onboarding_links WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_overrides',               'DELETE FROM msp_overrides WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_partner_qbrs',            'DELETE FROM msp_partner_qbrs WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_report_canvases',         'DELETE FROM msp_report_canvases WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_report_definitions',      'DELETE FROM msp_report_definitions WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_risk_decisions',          'DELETE FROM msp_risk_decisions WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_sales_bundles',           'DELETE FROM msp_sales_bundles WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_score_history',           'DELETE FROM msp_score_history WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_service_accounts',        'DELETE FROM msp_service_accounts WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_sharepoint_connectors',   'DELETE FROM msp_sharepoint_connectors WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_sop_runs',                'DELETE FROM msp_sop_runs WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_sops',                    'DELETE FROM msp_sops WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_subscriptions',           'DELETE FROM msp_subscriptions WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_sows',                    'DELETE FROM msp_sows WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_documents',                'DELETE FROM msp_documents WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('msp_audit_logs',               'DELETE FROM msp_audit_logs WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('dashboard_templates',          'DELETE FROM dashboard_templates WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('zoho_connection',              'DELETE FROM zoho_connection WHERE msp_id <> 1');
+SELECT public.wipe_exec_if_exists('engagement_offer_rules',       'DELETE FROM engagement_offer_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('lead_offer_inference_rules',   'DELETE FROM lead_offer_inference_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('lead_offer_pricing_config',    'DELETE FROM lead_offer_pricing_config WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('lead_scoring_config',          'DELETE FROM lead_scoring_config WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('lead_scoring_rules',           'DELETE FROM lead_scoring_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('lead_scoring_tracked_pages',   'DELETE FROM lead_scoring_tracked_pages WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('policy_rules',                 'DELETE FROM policy_rules WHERE msp_id IS NOT NULL AND msp_id <> 1');
+SELECT public.wipe_exec_if_exists('signal_derivation_rules',
   'UPDATE signal_derivation_rules SET msp_id = NULL WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('signal_rule_groups',
+SELECT public.wipe_exec_if_exists('signal_rule_groups',
   'UPDATE signal_rule_groups SET msp_id = NULL WHERE msp_id IS NOT NULL AND msp_id <> 1');
-SELECT pg_temp.exec_if_exists('simulation_profiles',
+SELECT public.wipe_exec_if_exists('simulation_profiles',
   'UPDATE simulation_profiles SET msp_id = NULL WHERE msp_id IS NOT NULL AND msp_id <> 1');
 
 -- ── 4g. The parents.
 
-SELECT pg_temp.exec_if_exists('msp_customers', 'DELETE FROM msp_customers');
+SELECT public.wipe_exec_if_exists('msp_customers', 'DELETE FROM msp_customers');
 
-DELETE FROM users WHERE id NOT IN (SELECT id FROM wipe_kept_users);
+DELETE FROM users WHERE id NOT IN (SELECT id FROM public.wipe_kept_users);
 
 -- A kept PlatformAdmin pointing at a dying MSP would block the msps delete;
 -- PlatformAdmin requires no msp_id, so detach rather than abort:
@@ -508,5 +542,13 @@ DROP TABLE IF EXISTS tenant_write_consent      CASCADE;
 DROP TABLE IF EXISTS tenant_sharepoint_consent CASCADE;
 DROP TABLE IF EXISTS msp_users                 CASCADE;
 DROP TABLE IF EXISTS msp_customers             CASCADE;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 7. Clean up the persistent helper objects — they were only scaffolding for
+--    this script, not part of the target schema.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+DROP TABLE public.wipe_kept_users;
+DROP FUNCTION public.wipe_exec_if_exists(text, text);
 
 COMMIT;
