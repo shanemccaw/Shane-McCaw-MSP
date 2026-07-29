@@ -716,6 +716,14 @@ router.get("/admin/observability", requireAdmin, async (req: Request, res: Respo
 // ── Internal Synthetic Heartbeats & Alert Routing ──────────────────────────────
 
 let heartbeatInterval: NodeJS.Timeout | null = null;
+// Incident 2026-07-29: this loop sent an unbounded alert email every 5-minute
+// tick for as long as a threshold stayed breached (heap saturation, in this
+// case) — 1,875 emails in ~24h exhausted the Exchange tenant's daily external-
+// recipient rate limit, which then blocked unrelated real customer emails
+// (account-setup, password-reset) during a live purchase walkthrough. Gated
+// on a cooldown so a persisting condition alerts once, not on every tick.
+let lastHeartbeatAlertEmailAt = 0;
+const HEARTBEAT_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 function startInternalHeartbeat() {
   if (heartbeatInterval) return;
@@ -766,20 +774,35 @@ function startInternalHeartbeat() {
 
       if (alerts.length > 0) {
         log.warn({ alerts }, "Heartbeat alerts triggered");
-        
+
+        const now = Date.now();
+        const cooldownElapsed = now - lastHeartbeatAlertEmailAt > HEARTBEAT_ALERT_COOLDOWN_MS;
+        if (!cooldownElapsed) {
+          log.warn(
+            { alerts, minutesUntilNextEmail: Math.ceil((HEARTBEAT_ALERT_COOLDOWN_MS - (now - lastHeartbeatAlertEmailAt)) / 60000) },
+            "Heartbeat alert email suppressed — cooldown active (still logged above)",
+          );
+        }
+
         const mailUserId = process.env.GRAPH_MAIL_USER_ID;
-        if (mailUserId) {
+        if (mailUserId && cooldownElapsed) {
           const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph");
           if (graphCredentialsPresent()) {
+            lastHeartbeatAlertEmailAt = now;
             await sendMailViaGraph({
               fromUserId: mailUserId,
               to: mailUserId,
               subject: `[SYSTEM ALERT] Platform Threshold Breach`,
               htmlBody: `<p>The following synthetic heartbeat checks failed or breached thresholds:</p>
-                        <ul>${alerts.map(a => `<li>${a}</li>`).join("")}</ul>`,
+                        <ul>${alerts.map(a => `<li>${a}</li>`).join("")}</ul>
+                        <p style="color:#666;font-size:12px;">Further identical alerts are suppressed for 1 hour (still logged server-side) to avoid repeat-sending during a sustained breach.</p>`,
             }).catch(e => log.error({ err: e }, "Failed to route heartbeat alert via Graph"));
           }
         }
+      } else {
+        // Condition cleared — reset so the NEXT breach alerts immediately
+        // rather than waiting out a stale cooldown window.
+        lastHeartbeatAlertEmailAt = 0;
       }
     } catch (err) {
       log.error({ err }, "Internal synthetic heartbeat failed");
