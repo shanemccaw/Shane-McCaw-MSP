@@ -49,8 +49,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   mspsTable,
-  mspUsersTable,
-  mspCustomersTable,
+  tenantsTable,
   mspStaffCustomerScopesTable,
   mspServiceAccountsTable,
   mspConnectorConfigsTable,
@@ -539,20 +538,25 @@ router.get("/msp/settings/users", requireRole("MSPAdmin"), async (req: Request, 
 
   const users = await db
     .select({
-      id: mspUsersTable.id,
-      userId: mspUsersTable.userId,
-      mspRole: mspUsersTable.mspRole,
-      canApprovePurchases: mspUsersTable.canApprovePurchases,
-      isActive: mspUsersTable.isActive,
-      lastLoginAt: mspUsersTable.lastLoginAt,
-      createdAt: mspUsersTable.createdAt,
+      // id and userId were two DIFFERENT ids pre-refactor (msp_users.id and
+      // users.id). msp_users is gone, so both are the same users.id now. Both
+      // keys are kept in the payload rather than collapsed to one: the
+      // user-management page reads them interchangeably (u.userId ?? u.id, and
+      // u.userId === id || u.id === id), which was only ever correct by
+      // accident while the two id-spaces happened to overlap.
+      id: usersTable.id,
+      userId: usersTable.id,
+      mspRole: usersTable.mspRole,
+      canApprovePurchases: usersTable.canApprovePurchases,
+      isActive: usersTable.isActive,
+      lastLoginAt: usersTable.lastLoginAt,
+      createdAt: usersTable.createdAt,
       email: usersTable.email,
       name: usersTable.name,
     })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
-    .where(eq(mspUsersTable.mspId, mspId))
-    .orderBy(desc(mspUsersTable.createdAt));
+    .from(usersTable)
+    .where(eq(usersTable.mspId, mspId))
+    .orderBy(desc(usersTable.createdAt));
 
   // Real per-staff customer-scope counts (replaces the old mock
   // assignedCustomersCount). 0 rows = UNRESTRICTED (full MSP access) — the UI
@@ -586,18 +590,18 @@ router.get("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
 
   const [target] = await db
-    .select({ mspRole: mspUsersTable.mspRole })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ mspRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
   const [allCustomers, assigned] = await Promise.all([
     db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, status: mspCustomersTable.status })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.mspId, mspId))
-      .orderBy(mspCustomersTable.name),
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName, status: tenantsTable.status })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.mspId, mspId))
+      .orderBy(tenantsTable.customerName),
     db
       .select({ customerId: mspStaffCustomerScopesTable.customerId })
       .from(mspStaffCustomerScopesTable)
@@ -635,9 +639,9 @@ router.put("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"
 
   // Target must be a staff member in the caller's own MSP.
   const [target] = await db
-    .select({ mspRole: mspUsersTable.mspRole })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ mspRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
   if (target.mspRole !== "MSPAdmin" && target.mspRole !== "MSPOperator") {
@@ -649,9 +653,9 @@ router.put("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"
   // grant (or even reference) a customer outside the caller's own tenant.
   if (requestedIds.length > 0) {
     const owned = await db
-      .select({ id: mspCustomersTable.id })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, requestedIds)));
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.mspId, mspId), inArray(tenantsTable.id, requestedIds)));
     if (owned.length !== requestedIds.length) {
       apiError(res, 400, "One or more customers do not belong to this MSP");
       return;
@@ -707,10 +711,10 @@ router.patch("/msp/settings/users/:userId/role", requireRole("MSPAdmin"), async 
   }
 
   const [updated] = await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ mspRole: parsed.data.mspRole, updatedAt: new Date() })
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
-    .returning({ id: mspUsersTable.id });
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
+    .returning({ id: usersTable.id });
 
   if (!updated) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -742,10 +746,10 @@ router.patch("/msp/settings/users/:userId/approve-purchases", requireRole("MSPAd
   }
 
   const [updated] = await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ canApprovePurchases: parsed.data.canApprovePurchases, updatedAt: new Date() })
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
-    .returning({ id: mspUsersTable.id });
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
+    .returning({ id: usersTable.id });
 
   if (!updated) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -773,10 +777,10 @@ router.delete("/msp/settings/users/:userId", requireRole("MSPAdmin"), async (req
   }
 
   const [removed] = await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ isActive: false, updatedAt: new Date() })
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
-    .returning({ id: mspUsersTable.id });
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
+    .returning({ id: usersTable.id });
 
   if (!removed) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -803,10 +807,9 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -841,9 +844,9 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -869,10 +872,9 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -951,9 +953,9 @@ router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), asyn
   }
 
   await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ isActive, updatedAt: new Date() })
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)));
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)));
 
   await writeAuditLog({
     req,
@@ -973,9 +975,9 @@ router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), a
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
@@ -1526,9 +1528,9 @@ router.get("/msp/settings/sessions", requireRole("MSPAdmin"), async (req: Reques
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
   const users = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.isActive, true)));
+    .select({ userId: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.mspId, mspId), eq(usersTable.isActive, true)));
 
   const userIds = users.map((u) => u.userId);
   if (userIds.length === 0) {
@@ -1569,9 +1571,9 @@ router.delete("/msp/settings/sessions/:tokenHash", requireRole("MSPAdmin"), asyn
 
   // Verify the token belongs to a user in this MSP
   const users = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.isActive, true)));
+    .select({ userId: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.mspId, mspId), eq(usersTable.isActive, true)));
 
   const userIds = users.map((u) => u.userId);
 
@@ -1638,9 +1640,9 @@ router.post("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Reques
 
   if (existingUser) {
     const [existingMember] = await db
-      .select({ id: mspUsersTable.id })
-      .from(mspUsersTable)
-      .where(and(eq(mspUsersTable.userId, existingUser.id), eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.isActive, true)))
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, existingUser.id), eq(usersTable.mspId, mspId), eq(usersTable.isActive, true)))
       .limit(1);
     if (existingMember) {
       apiError(res, 409, "This user is already an active member of your MSP");

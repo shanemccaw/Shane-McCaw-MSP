@@ -29,7 +29,7 @@ import { randomBytes, createHash } from "crypto";
 import {
   db,
   mspsTable,
-  mspUsersTable,
+  tenantsTable,
   mspOnboardingLinksTable,
   mspInvitesTable,
   mspRefreshTokensTable,
@@ -209,14 +209,15 @@ router.get("/public/onboarding/link/:token", async (req: Request, res: Response)
 // ── POST /api/public/checkout/gate ─────────────────────────────────────────────
 //
 // Gate logic:
-//   1. Look up the email in users + msp_users.
-//   2. If a msp_users row exists and its MSP is active → redirect to that MSP's portal.
+//   1. Look up the email in users, and resolve the MSP that owns that account.
+//   2. If an owning MSP exists and is active → redirect to that MSP's portal.
 //      This includes the direct-business MSP itself (Shane's own book) — an
-//      existing direct-business customer has a real msp_users row like any
-//      reseller customer and must resolve the same way, just with mspDomain
-//      typically null (falls back to PORTAL_BASE_URL, the shared msp-portal).
-//   3. If no msp_users row, or the MSP is suspended/revoked → allow proceed
-//      (will be assigned to the direct-business MSP row at provisioning time).
+//      existing direct-business customer resolves the same way as any reseller
+//      customer, just with mspDomain typically null (falls back to
+//      PORTAL_BASE_URL, the shared msp-portal).
+//   3. If no owning MSP, the account is inactive, or the MSP is
+//      suspended/revoked → allow proceed (will be assigned to the
+//      direct-business MSP row at provisioning time).
 
 router.post(
   "/public/checkout/gate",
@@ -246,22 +247,42 @@ router.post(
       return;
     }
 
+    // The owning MSP hangs off EITHER side of the user row since #92: MSP staff
+    // carry users.mspId directly, while a customer login is tenant-scoped
+    // (users_role_scope_check requires tenantId, and does NOT require mspId) and
+    // reaches its MSP through tenants.mspId. The retired msp_users row carried
+    // mspId for both populations, so resolving this off users.mspId alone would
+    // silently stop recognising every existing CUSTOMER — exactly the population
+    // this gate exists to redirect — and push them down the new-signup path
+    // instead. Staff mspId wins when both are set; they are the same MSP in
+    // practice, and a staff account's own binding is the more direct statement.
+    const [owner] = await db
+      .select({
+        directMspId: usersTable.mspId,
+        tenantMspId: tenantsTable.mspId,
+        isActive: usersTable.isActive,
+      })
+      .from(usersTable)
+      .leftJoin(tenantsTable, eq(tenantsTable.id, usersTable.tenantId))
+      .where(eq(usersTable.id, user.id))
+      .limit(1);
+
+    const ownerMspId = owner?.isActive ? (owner.directMspId ?? owner.tenantMspId ?? null) : null;
+    if (ownerMspId === null) {
+      res.json({ action: "proceed" });
+      return;
+    }
+
     const [mspUser] = await db
       .select({
-        mspId: mspUsersTable.mspId,
+        mspId: mspsTable.id,
         mspStatus: mspsTable.status,
         mspSlug: mspsTable.slug,
         mspName: mspsTable.name,
         mspDomain: mspsTable.domain,
       })
-      .from(mspUsersTable)
-      .innerJoin(mspsTable, eq(mspsTable.id, mspUsersTable.mspId))
-      .where(
-        and(
-          eq(mspUsersTable.userId, user.id),
-          eq(mspUsersTable.isActive, true),
-        ),
-      )
+      .from(mspsTable)
+      .where(eq(mspsTable.id, ownerMspId))
       .limit(1);
 
     if (!mspUser) {
@@ -527,40 +548,49 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
         throw Object.assign(new Error("ALREADY_USED"), { status: 410 });
       }
 
-      // Create or reuse user
+      // Create or reuse the user, and stamp the invited MSP identity on the
+      // same row. Pre-refactor this was two steps (insert users, then upsert an
+      // msp_users extension row); msp_users is absorbed into users (#92), so
+      // there is one row and one write per branch.
+      //
+      // A brand-new row MUST carry mspRole/mspId inline: the schema default is
+      // mspRole "Free", and users_role_scope_check rejects Free with a null
+      // tenantId — a bare {email, name, passwordHash} insert would now be
+      // refused by Postgres. An MSP staff invite is MSP-scoped by definition,
+      // so the invited role and mspId are exactly the right values to carry.
+      const invitedRole = row.mspRole as "MSPAdmin" | "MSPOperator";
       let userId: number;
       if (existingUser) {
         userId = existingUser.id;
+        // Re-point an existing login at this MSP unless it is already there and
+        // active — the same condition (and the same no-op case) the old
+        // msp_users upsert used.
+        const [current] = await tx
+          .select({ mspId: usersTable.mspId, isActive: usersTable.isActive })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId))
+          .limit(1);
+
+        if (!(current?.mspId === row.mspId && current.isActive)) {
+          await tx
+            .update(usersTable)
+            .set({ mspId: row.mspId, mspRole: invitedRole, isActive: true, updatedAt: new Date() })
+            .where(eq(usersTable.id, userId));
+        }
       } else {
         const passwordHash = await bcrypt.hash(parsed.data.password!, 12);
         const [newUser] = await tx
           .insert(usersTable)
-          .values({ email, name: parsed.data.name!.trim(), passwordHash })
+          .values({
+            email,
+            name: parsed.data.name!.trim(),
+            passwordHash,
+            mspId: row.mspId,
+            mspRole: invitedRole,
+            isActive: true,
+          })
           .returning({ id: usersTable.id });
         userId = newUser!.id;
-      }
-
-      // Upsert msp_users
-      const [existingMspUser] = await tx
-        .select({ id: mspUsersTable.id, mspId: mspUsersTable.mspId, isActive: mspUsersTable.isActive })
-        .from(mspUsersTable)
-        .where(eq(mspUsersTable.userId, userId))
-        .limit(1);
-
-      if (existingMspUser) {
-        if (!(existingMspUser.mspId === row.mspId && existingMspUser.isActive)) {
-          await tx
-            .update(mspUsersTable)
-            .set({ mspId: row.mspId, mspRole: row.mspRole as "MSPAdmin" | "MSPOperator", isActive: true, updatedAt: new Date() })
-            .where(eq(mspUsersTable.id, existingMspUser.id));
-        }
-      } else {
-        await tx.insert(mspUsersTable).values({
-          userId,
-          mspId: row.mspId,
-          mspRole: row.mspRole as "MSPAdmin" | "MSPOperator",
-          isActive: true,
-        });
       }
 
       acceptedUserId = userId;
@@ -586,20 +616,17 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
         .where(eq(usersTable.id, acceptedUserId))
         .limit(1);
 
-      const [mspUserRow] = await db
-        .select()
-        .from(mspUsersTable)
-        .where(eq(mspUsersTable.userId, acceptedUserId))
-        .limit(1);
-
-      if (acceptedUserRow && mspUserRow) {
+      // The MSP claims come off the user's own row now — the second read of a
+      // separate msp_users row (and the "both rows present" guard it needed) is
+      // gone with the table.
+      if (acceptedUserRow) {
         const payload = {
           id: acceptedUserRow.id,
           email: acceptedUserRow.email,
           name: acceptedUserRow.name ?? undefined,
           role: acceptedUserRow.role,
-          mspRole: mspUserRow.mspRole ?? undefined,
-          mspId: mspUserRow.mspId ?? undefined,
+          mspRole: acceptedUserRow.mspRole ?? undefined,
+          mspId: acceptedUserRow.mspId ?? undefined,
           mspSlug: row.mspSlug,
         };
 

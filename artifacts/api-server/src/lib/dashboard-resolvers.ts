@@ -62,7 +62,7 @@
 
 import { db } from "@workspace/db";
 import {
-  mspCustomersTable,
+  tenantsTable,
   tenantMonitorProfilesTable,
   monitorChecksTable,
   mspAlertEventsTable,
@@ -202,9 +202,9 @@ function toNumber(v: unknown): number | null {
 /** Resolve integer customerId → text M365 tenantId. Null when the customer has no tenant_id. */
 async function resolveTenantId(customerId: number): Promise<string | null> {
   const [row] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   // NB: do NOT fall back to String(customerId) — tenant_monitor_profiles is keyed
   // by the real GUID; a fabricated key silently returns zero rows and would look
@@ -215,9 +215,9 @@ async function resolveTenantId(customerId: number): Promise<string | null> {
 /** All active customer ids for an MSP — the fan-out set for scope:"msp" per-tenant aggregation. */
 async function mspCustomerIds(mspId: number): Promise<number[]> {
   const rows = await db
-    .select({ id: mspCustomersTable.id })
-    .from(mspCustomersTable)
-    .where(and(eq(mspCustomersTable.mspId, mspId), eq(mspCustomersTable.status, "active")));
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(and(eq(tenantsTable.mspId, mspId), eq(tenantsTable.status, "active")));
   return rows.map((r) => r.id);
 }
 

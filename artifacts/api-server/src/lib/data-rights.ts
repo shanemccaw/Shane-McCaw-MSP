@@ -14,7 +14,7 @@
  * lives in docs/runbooks/data-subject-rights.md — this file does not
  * reimplement or alter that policy, only records that a request happened.
  */
-import { db, usersTable, mspCustomersTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, mspSowsTable, mspDocumentsTable, tenantEngineSnapshotsTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, mspSowsTable, mspDocumentsTable, tenantEngineSnapshotsTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { createAuditLog } from "./audit.ts";
 import { sendEmail } from "./mailer.ts";
@@ -45,9 +45,9 @@ type TargetUser = { id: number; name: string | null; email: string; company: str
 export async function resolveCurrentSchemaSummary(customerId: number | undefined): Promise<CurrentSchemaSummary | null> {
   if (typeof customerId !== "number") return null;
   const [mspCustomer] = await db
-    .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId, name: mspCustomersTable.name })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId, name: tenantsTable.customerName })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   if (!mspCustomer) return null;
 
@@ -78,7 +78,7 @@ function currentSchemaEmailBlock(summary: CurrentSchemaSummary | null): string {
   return `
     <p style="margin-top:16px;"><strong>Current-schema (MSP tenant) data — NOT reached by CRM → Delete Client today:</strong></p>
     <table style="border-collapse:collapse;width:100%;font-size:14px;">
-      <tr><td style="padding:6px 0;color:#64748b;">Customer ID (msp_customers.id)</td><td style="padding:6px 0;">${summary.customerId}</td></tr>
+      <tr><td style="padding:6px 0;color:#64748b;">Customer ID (tenants.id)</td><td style="padding:6px 0;">${summary.customerId}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">MSP ID</td><td style="padding:6px 0;">${summary.mspId ?? "—"}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Customer name</td><td style="padding:6px 0;">${summary.customerName ?? "—"}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Diagnostic runs</td><td style="padding:6px 0;">${summary.diagnosticRuns}</td></tr>

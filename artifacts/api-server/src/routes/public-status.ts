@@ -15,8 +15,7 @@ import {
   pool,
   platformIncidentsTable,
   monitorChecksTable,
-  tenantConsentTable,
-  mspCustomersTable,
+  tenantsTable,
   mspsTable,
 } from "@workspace/db";
 import { and, desc, eq, gte } from "drizzle-orm";
@@ -67,7 +66,7 @@ const M365_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
 let m365HealthCache: { value: M365HealthSection; expiresAt: number } | null = null;
 
 /**
- * Resolves Shane's own real M365 tenant: the single msp_customers row under
+ * Resolves Shane's own real M365 tenant: the single `tenants` row under
  * the isDirectBusiness MSP flagged isTestbed with granted Graph consent.
  * isTestbed=true is this codebase's established marker for "the one real
  * tenant it's safe to run live Graph writes/tests against, never a paying
@@ -84,19 +83,24 @@ let m365HealthCache: { value: M365HealthSection; expiresAt: number } | null = nu
  * (flagged, not solved here).
  */
 async function resolveOwnTenantId(): Promise<string | null> {
-  const [row] = await db
-    .select({ tenantId: tenantConsentTable.tenantId })
-    .from(tenantConsentTable)
-    .innerJoin(mspCustomersTable, eq(mspCustomersTable.id, tenantConsentTable.customerId))
-    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+  // Graph consent now lives in the tenants.consent jsonb column keyed by type.
+  // Only the `graph` key gates this page — writeBack/sharepoint are independent
+  // grants and neither implies a Graph read grant. The status is filtered in JS
+  // (matching every other consent reader in the codebase) rather than pushed
+  // into SQL, so the candidate set is deliberately narrowed by the two indexed
+  // boolean flags first; on a public, unauthenticated page a tenant without an
+  // explicitly granted `graph` record is never selected.
+  const rows = await db
+    .select({ tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .innerJoin(mspsTable, eq(mspsTable.id, tenantsTable.mspId))
     .where(and(
       eq(mspsTable.isDirectBusiness, true),
-      eq(mspCustomersTable.isTestbed, true),
-      eq(tenantConsentTable.consentStatus, "granted"),
-    ))
-    .limit(1);
+      eq(tenantsTable.isTestbed, true),
+    ));
 
-  return row?.tenantId ?? null;
+  const granted = rows.find((r) => r.consent?.graph?.status === "granted");
+  return granted?.tenantId ?? null;
 }
 
 async function fetchM365Health(): Promise<M365HealthSection> {

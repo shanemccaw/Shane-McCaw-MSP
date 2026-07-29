@@ -29,12 +29,12 @@ vi.mock("@workspace/db", () => {
   return {
     db: mockDb,
     mspsTable: { id: "id", name: "name", slug: "slug", status: "status", offboardingState: "offboarding_state", offboardingRequestedAt: "offboarding_requested_at", exportReadyAt: "export_ready_at", updatedAt: "updated_at" },
-    mspCustomersTable: { id: "id", mspId: "msp_id", status: "status", name: "name", domain: "domain", industry: "industry", tenantId: "tenant_id", ownerType: "owner_type", createdAt: "created_at" },
+    tenantsTable: { id: "id", mspId: "msp_id", status: "status", customerName: "customer_name", domain: "domain", industry: "industry", tenantId: "tenant_id", tenantUrl: "tenant_url", isTestbed: "is_testbed", consent: "consent", createdAt: "created_at", updatedAt: "updated_at" },
     mspEventStoreTable: { id: "id", mspId: "msp_id", customerId: "customer_id", eventType: "event_type", occurredAt: "occurred_at", source: "source", actor: "actor", meta: "meta", payload: "payload", ownerType: "owner_type" },
     mspAuditLogsTable: { id: "id" },
     salesOffersTable: { id: "id", mspId: "msp_id", state: "state", adjustedPriceCents: "adjusted_price_cents" },
     mspSalesBundlesTable: { id: "id", bundleId: "bundle_id", mspId: "msp_id", name: "name", status: "status", createdAt: "created_at" },
-    mspUsersTable: { id: "id" },
+    usersTable: { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
     mspSalesBundleAssignmentsTable: { id: "id", customerId: "customer_id", status: "status", revokedAt: "revoked_at" },
   };
 });

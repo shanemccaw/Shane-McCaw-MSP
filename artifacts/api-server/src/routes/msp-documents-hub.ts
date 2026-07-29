@@ -15,9 +15,9 @@
  * users.id) and has no path for MSP staff acting on a customer's behalf.
  *
  * Data-model note: insights_generated_documents.customerId is a users.id
- * (NOT msp_customers.id) — bridged to the caller's mspId via msp_users
- * (userId -> mspId/customerId), the same join omg-card-extractor.ts already
- * uses for billing telemetry attribution.
+ * (NOT tenants.id) — resolved to the caller's mspId through the user's own
+ * users.tenantId FK and that tenant's mspId, the same link omg-card-extractor.ts
+ * already uses for billing telemetry attribution.
  *
  * Distinct from msp-documents.ts, which backs a different table
  * (mspDocumentsTable/mspDocumentVersionsTable — the MSP's own SharePoint
@@ -36,8 +36,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   insightsGeneratedDocumentsTable,
-  mspUsersTable,
-  mspCustomersTable,
+  usersTable,
+  tenantsTable,
   projectsTable,
   quickWinResultSharesTable,
 } from "@workspace/db";
@@ -53,17 +53,29 @@ const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
-/** userId(users.id) -> { mspCustomerId, mspCustomerName } for every customer in mspId's book. */
+/**
+ * userId(users.id) -> { customerId(tenants.id), customerName } for every
+ * customer in mspId's book.
+ *
+ * The MSP scope comes off the TENANT row, not the user row. Pre-refactor
+ * msp_users carried both mspId and customerId so one predicate covered both;
+ * since #92 a tenant-scoped user (CustomerUser/Free/Assessment) is required to
+ * carry tenantId but NOT mspId (users_role_scope_check demands one or the
+ * other), so filtering on users.mspId would return an empty bridge and this
+ * whole hub would report zero documents. The join is likewise an INNER join:
+ * a user with no tenant is not in any MSP's customer book, and the old
+ * leftJoin's customerId=null rows only ever produced unattributable entries.
+ */
 async function loadCustomerBridge(mspId: number) {
   const rows = await db
     .select({
-      userId: mspUsersTable.userId,
-      customerId: mspUsersTable.customerId,
-      customerName: mspCustomersTable.name,
+      userId: usersTable.id,
+      customerId: usersTable.tenantId,
+      customerName: tenantsTable.customerName,
     })
-    .from(mspUsersTable)
-    .leftJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.mspId, mspId));
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(tenantsTable.mspId, mspId));
 
   const byUserId = new Map<number, { customerId: number | null; customerName: string | null }>();
   for (const row of rows) {
@@ -100,7 +112,7 @@ router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request
     const limit = Math.min(Number(req.query["limit"] ?? 50), 200);
     const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
-    // Filtering by customerId (msp_customers.id) means restricting the
+    // Filtering by customerId (tenants.id) means restricting the
     // eligible users.id set to whichever bridge row maps to that customer.
     let eligibleUserIds = [...bridge.keys()];
     if (scopedCustomerIds !== null) {
@@ -174,7 +186,7 @@ router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request
 /**
  * Loads a document and confirms it belongs to a customer within mspId's book.
  * Null if not found / not in the MSP. When `scopedCustomerIds` is non-null
- * (a scoped staff member), the document's owning msp_customers.id must also be
+ * (a scoped staff member), the document's owning tenants.id must also be
  * in that set — otherwise null (out of the caller's assigned scope).
  */
 async function loadScopedDocument(mspId: number, documentId: number, scopedCustomerIds: number[] | null) {
@@ -192,10 +204,15 @@ async function loadScopedDocument(mspId: number, documentId: number, scopedCusto
 
   if (!doc || doc.customerId === null) return null;
 
+  // The owning MSP is read off the owner's TENANT, not off users.mspId: a
+  // customer login is tenant-scoped and carries no mspId of its own, so reading
+  // it there would fail this gate for every real document. Inner join = a
+  // document whose owner has no tenant belongs to no MSP book and reads as 404.
   const [owner] = await db
-    .select({ mspId: mspUsersTable.mspId, mspCustomerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, doc.customerId));
+    .select({ mspId: tenantsTable.mspId, mspCustomerId: usersTable.tenantId })
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(usersTable.id, doc.customerId));
 
   if (!owner || owner.mspId !== mspId) return null;
   // Per-staff customer scoping: fence a scoped operator out of documents owned

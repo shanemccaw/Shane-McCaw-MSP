@@ -27,7 +27,7 @@ import {
   db,
   mspsTable,
   mspSubscriptionsTable,
-  mspUsersTable,
+  usersTable,
   mspOverridesTable,
   mspPlanCapabilitiesTable,
   mspRefreshTokensTable,
@@ -209,8 +209,8 @@ router.get("/admin/msps/:mspId", requireAdmin, async (req: Request, res: Respons
 
   const [userCount] = await db
     .select({ n: count() })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.mspId, mspId));
+    .from(usersTable)
+    .where(eq(usersTable.mspId, mspId));
 
   const [override] = await db
     .select()
@@ -479,9 +479,9 @@ router.get("/admin/msps/:mspId/sessions", requireAdmin, async (req: Request, res
   if (isNaN(mspId)) { apiError(res, 400, "mspId must be a number"); return; }
 
   const users = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.mspId, mspId));
+    .select({ userId: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.mspId, mspId));
 
   const userIds = users.map((u) => u.userId);
 

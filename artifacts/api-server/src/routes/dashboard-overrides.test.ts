@@ -41,7 +41,9 @@ vi.mock("@workspace/db", () => {
     db: mockDb,
     dashboardTemplatesTable: tbl(["id", "mspId", "templateType", "targetKey", "canvasLayout", "allowCustomerEdit", "isDefault", "createdAt", "updatedAt"]),
     dashboardOverridesTable: tbl(["id", "templateId", "scopeType", "scopeId", "overrideLayout", "createdAt", "updatedAt"]),
-    mspUsersTable: tbl(["id", "userId", "mspId", "customerId", "mspRole"]),
+    // No user/tenant table stub is needed any more: resolveCallerScope's
+    // msp_users lookup is gone (the scopeId for "msp_user" is the caller's own
+    // users.id straight off the JWT), so the route touches neither table.
     DASHBOARD_TEMPLATE_TYPES: ["assessment", "project", "monitoring_package", "msp_overview", "customer_default"],
     DASHBOARD_OVERRIDE_SCOPE_TYPES: ["customer", "msp_user"],
   };
@@ -162,9 +164,11 @@ describe("dashboard-overrides API", () => {
     expect(res.body.widgets).toHaveLength(2);
   });
 
-  it("resolves an MSPOperator's msp_overview dashboard via msp_users scope lookup", async () => {
+  // The scope id for an MSP viewer is now the caller's own users.id taken
+  // straight from the JWT — the msp_users lookup that used to consume the first
+  // queue entry here is gone with the table, so the queue starts at the template.
+  it("resolves an MSPOperator's msp_overview dashboard from the caller's own user id", async () => {
     mockResultQueue = [
-      [{ id: 42 }], // mspUsersTable lookup by userId -> msp_users.id
       [sampleTemplate({ templateType: "msp_overview" })], // findDefaultTemplate
       [], // findOverride -> none
     ];

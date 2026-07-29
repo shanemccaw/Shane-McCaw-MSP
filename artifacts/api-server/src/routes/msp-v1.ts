@@ -22,7 +22,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspJobQueueTable, pendingApprovalsTable, wfRunsTable, wfDefinitionsTable, mspUsersTable } from "@workspace/db";
+import { db, mspsTable, tenantsTable, mspJobQueueTable, pendingApprovalsTable, wfRunsTable, wfDefinitionsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
 import { requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import { mspRateLimit, mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
@@ -114,26 +114,47 @@ router.get(
     const sort = parseSort(req.query, ["name", "createdAt", "status"], "createdAt");
     const statusFilter = parseStringFilter(req.query, "status");
 
-    const conditions = [eq(mspCustomersTable.mspId, mspId)];
+    const conditions = [eq(tenantsTable.mspId, mspId)];
     if (statusFilter) {
-      conditions.push(eq(mspCustomersTable.status, statusFilter as "active" | "inactive" | "onboarding"));
+      conditions.push(eq(tenantsTable.status, statusFilter as "active" | "inactive" | "onboarding"));
     }
 
     const whereClause = and(...conditions);
 
     const [{ total }] = await db
       .select({ total: count() })
-      .from(mspCustomersTable)
+      .from(tenantsTable)
       .where(whereClause);
 
     const orderCol =
-      sort.sortBy === "name" ? mspCustomersTable.name
-      : sort.sortBy === "status" ? mspCustomersTable.status
-      : mspCustomersTable.createdAt;
+      sort.sortBy === "name" ? tenantsTable.customerName
+      : sort.sortBy === "status" ? tenantsTable.status
+      : tenantsTable.createdAt;
 
+    // Explicit projection rather than the bare `.select()` this used against
+    // msp_customers, for two reasons. (1) This is a VERSIONED public surface —
+    // aliasing `name: customerName` keeps the documented field name stable
+    // across the schema swap, the same discipline Phase 3 used for the
+    // admin-panel payloads. (2) `tenants` carries the consent jsonb (admin
+    // emails, granted scopes); a bare select would have started leaking it
+    // through a customer-list endpoint that never exposed it before.
+    // Columns with no successor on tenants — ownerType, tags, testbedMetadata —
+    // are dropped rather than synthesised; tenantUrl is new and included.
     const rows = await db
-      .select()
-      .from(mspCustomersTable)
+      .select({
+        id: tenantsTable.id,
+        mspId: tenantsTable.mspId,
+        name: tenantsTable.customerName,
+        domain: tenantsTable.domain,
+        industry: tenantsTable.industry,
+        tenantId: tenantsTable.tenantId,
+        tenantUrl: tenantsTable.tenantUrl,
+        status: tenantsTable.status,
+        isTestbed: tenantsTable.isTestbed,
+        createdAt: tenantsTable.createdAt,
+        updatedAt: tenantsTable.updatedAt,
+      })
+      .from(tenantsTable)
       .where(whereClause)
       .orderBy(sort.sortDir === "asc" ? asc(orderCol) : desc(orderCol))
       .limit(pg.pageSize)
@@ -243,7 +264,7 @@ router.get(
         )
         .orderBy(desc(pendingApprovalsTable.createdAt));
 
-      const { mspSowsTable, mspCustomersTable } = await import("@workspace/db");
+      const { mspSowsTable } = await import("@workspace/db");
       const enrichedRows = [];
 
       for (const r of rows) {
@@ -268,9 +289,9 @@ router.get(
 
             if (sow.customerId) {
               const [customer] = await db
-                .select({ name: mspCustomersTable.name })
-                .from(mspCustomersTable)
-                .where(eq(mspCustomersTable.id, sow.customerId))
+                .select({ name: tenantsTable.customerName })
+                .from(tenantsTable)
+                .where(eq(tenantsTable.id, sow.customerId))
                 .limit(1);
               if (customer) {
                 customerDetails = {
@@ -320,9 +341,9 @@ router.post(
       isAuthorized = true;
     } else if (user.mspRole === "MSPOperator") {
       const [dbUser] = await db
-        .select({ canApprovePurchases: mspUsersTable.canApprovePurchases })
-        .from(mspUsersTable)
-        .where(and(eq(mspUsersTable.userId, user.id), eq(mspUsersTable.mspId, mspId)))
+        .select({ canApprovePurchases: usersTable.canApprovePurchases })
+        .from(usersTable)
+        .where(and(eq(usersTable.id, user.id), eq(usersTable.mspId, mspId)))
         .limit(1);
       if (dbUser?.canApprovePurchases) {
         isAuthorized = true;

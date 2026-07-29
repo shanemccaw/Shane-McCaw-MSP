@@ -52,7 +52,6 @@ import { db } from "@workspace/db";
 import {
   dashboardTemplatesTable,
   dashboardOverridesTable,
-  mspUsersTable,
   mspSalesBundleAssignmentsTable,
   mspSalesBundlesTable,
   monitoringPackagesTable,
@@ -125,13 +124,14 @@ export async function resolveCallerScope(req: Request): Promise<ResolvedScope | 
   }
 
   if (effectiveRole === "MSPOperator" || effectiveRole === "MSPAdmin" || effectiveRole === "PlatformAdmin") {
-    const [mspUser] = await db
-      .select({ id: mspUsersTable.id })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, user.id))
-      .limit(1);
-    if (!mspUser) return { error: "No MSP user profile found for this session" };
-    return { templateType: "msp_overview", scopeType: "msp_user", scopeId: mspUser.id };
+    // `dashboard_overrides.scopeId` for scopeType "msp_user" used to hold an
+    // msp_users row id, which this resolved by looking the caller up in that
+    // extension table (and erroring when no row existed). With msp_users
+    // absorbed into users (#92) the successor id-space is users.id, and the row
+    // being looked for IS the caller's own row — so the lookup and its
+    // "no profile" branch are both gone rather than reproduced against a table
+    // that can no longer miss.
+    return { templateType: "msp_overview", scopeType: "msp_user", scopeId: user.id };
   }
 
   return null;

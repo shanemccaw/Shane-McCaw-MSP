@@ -17,9 +17,8 @@
 import { db } from "@workspace/db";
 import {
   monitorChecksTable,
-  tenantConsentTable,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
+  usersTable,
   mspMessageCenterItemsTable,
 } from "@workspace/db";
 import { eq, and, or } from "drizzle-orm";
@@ -62,9 +61,11 @@ export interface MessageCenterSyncResult {
 }
 
 /**
- * Syncs Message Center items for one tenant. Resolves mspId/customerId from
- * the tenant's msp_customers row (via tenant_consent -> customerId) so newly
- * seen posts can be routed to that MSP's admins.
+ * Syncs Message Center items for one tenant. Resolves mspId/customerId from the
+ * `tenants` row that owns the GUID, so newly seen posts can be routed to that
+ * MSP's admins. Pre-refactor this took two hops (tenant_consent -> customerId ->
+ * msp_customers); `tenants` carries the GUID and the mspId on one row, so the
+ * consent table hop is gone rather than reproduced.
  */
 export async function syncMessageCenterForTenant(tenantId: string): Promise<MessageCenterSyncResult> {
   const [check] = await db
@@ -78,25 +79,14 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
     return { tenantId, status: "no_check", itemCount: 0, newCount: 0 };
   }
 
-  const [consent] = await db
-    .select({ customerId: tenantConsentTable.customerId })
-    .from(tenantConsentTable)
-    .where(eq(tenantConsentTable.tenantId, tenantId))
-    .limit(1);
-
-  if (!consent?.customerId) {
-    log.warn({ tenantId }, "message-center-sync: no msp_customers row bridged for this tenant — skipping");
-    return { tenantId, status: "no_customer", itemCount: 0, newCount: 0 };
-  }
-
   const [customer] = await db
-    .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, consent.customerId))
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
     .limit(1);
 
   if (!customer) {
-    log.warn({ tenantId, customerId: consent.customerId }, "message-center-sync: msp_customers row missing — skipping");
+    log.warn({ tenantId }, "message-center-sync: no tenants row for this tenant GUID — skipping");
     return { tenantId, status: "no_customer", itemCount: 0, newCount: 0 };
   }
 
@@ -177,13 +167,15 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
  * cross-tenant Alerts page (msp-alerts.ts).
  */
 async function notifyMspAdminsOfNewMessages(mspId: number, messages: GraphServiceUpdateMessage[]): Promise<void> {
+  // `notifications.mspUserId` used to hold an msp_users row id; with that table
+  // gone the successor id-space is users.id, which this now sends.
   const admins = await db
-    .select({ mspUserId: mspUsersTable.id })
-    .from(mspUsersTable)
+    .select({ mspUserId: usersTable.id })
+    .from(usersTable)
     .where(and(
-      eq(mspUsersTable.mspId, mspId),
-      eq(mspUsersTable.isActive, true),
-      or(eq(mspUsersTable.mspRole, "MSPAdmin"), eq(mspUsersTable.mspRole, "MSPOperator")),
+      eq(usersTable.mspId, mspId),
+      eq(usersTable.isActive, true),
+      or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
     ));
 
   if (admins.length === 0) return;
@@ -218,13 +210,20 @@ function stripHtml(html: string): string {
  * Intended to be called on a daily schedule (see index.ts).
  */
 export async function syncMessageCenterForAllTenants(): Promise<MessageCenterSyncResult[]> {
-  const tenants = await db
-    .select({ tenantId: tenantConsentTable.tenantId })
-    .from(tenantConsentTable)
-    .where(eq(tenantConsentTable.consentStatus, "granted"));
+  // Consent now lives in the tenants.consent jsonb column, keyed by type. The
+  // Graph read grant is the one this sync depends on — writeBack/sharepoint are
+  // independent and prove nothing about it. The status is filtered in JS rather
+  // than in SQL to match every other consent reader in the codebase
+  // (graph.ts, workflow-executor.ts, portal.ts all select the column and
+  // inspect it), and because the jsonb path operator needs an explicit cast to
+  // be unambiguous in a parameterised query.
+  const tenantRows = await db
+    .select({ tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable);
 
   const results: MessageCenterSyncResult[] = [];
-  for (const t of tenants) {
+  for (const t of tenantRows) {
+    if (t.consent?.graph?.status !== "granted") continue;
     results.push(await syncMessageCenterForTenant(t.tenantId));
   }
   return results;

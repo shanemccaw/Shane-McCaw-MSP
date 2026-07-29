@@ -40,7 +40,7 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: mockDb,
-    mspCustomersTable: tbl(["id", "mspId", "tenantId", "status", "industry"]),
+    tenantsTable: tbl(["id", "mspId", "tenantId", "customerName", "status", "industry"]),
     tenantMonitorProfilesTable: tbl(["tenantId", "checkKey", "extractedProperties", "rawResponse", "collectedAt", "status"]),
     monitorChecksTable: tbl(["key", "mapping"]),
     mspAlertEventsTable: tbl(["mspId", "firedAt", "severity", "summary", "ruleKey", "deepLinkPath"]),

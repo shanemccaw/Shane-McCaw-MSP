@@ -23,13 +23,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
-  mspCustomersTable,
+  tenantsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
   policyRuleIncidentsTable,
   policyRulesTable,
   insightsGeneratedDocumentsTable,
-  mspUsersTable,
+  usersTable,
 } from "@workspace/db";
 import { eq, and, inArray, or, ilike, desc } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
@@ -83,12 +83,12 @@ router.get("/msp/staff-search", requireRole("MSPOperator"), async (req: Request,
     const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
 
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-      .from(mspCustomersTable)
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+      .from(tenantsTable)
       .where(
         scopedIds === null
-          ? eq(mspCustomersTable.mspId, mspId)
-          : and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, scopedIds)),
+          ? eq(tenantsTable.mspId, mspId)
+          : and(eq(tenantsTable.mspId, mspId), inArray(tenantsTable.id, scopedIds)),
       );
     const customerNameById = new Map(customers.map((c) => [c.id, c.name]));
 
@@ -194,14 +194,23 @@ router.get("/msp/staff-search", requireRole("MSPOperator"), async (req: Request,
       })),
     ].slice(0, RESULTS_PER_SOURCE);
 
-    // ── Documents: same mspUsers bridge as msp-documents-hub.ts, narrowed by q ──
-    const bridgeRows = await db
-      .select({
-        userId: mspUsersTable.userId,
-        customerId: mspUsersTable.customerId,
-      })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.mspId, mspId));
+    // ── Documents: same users→tenants link as msp-documents-hub.ts, by q ──
+    // Scoped on the already MSP- and staff-scoped customer set above rather
+    // than on `users.mspId`: since #92 a tenant-scoped user (CustomerUser/Free/
+    // Assessment) is required to carry tenantId but NOT mspId — the
+    // users_role_scope_check constraint demands one or the other — so the
+    // mspId filter the old msp_users query used would drop every customer login
+    // and return no documents at all.
+    const bookCustomerIds = [...customerNameById.keys()];
+    const bridgeRows = bookCustomerIds.length
+      ? await db
+          .select({
+            userId: usersTable.id,
+            customerId: usersTable.tenantId,
+          })
+          .from(usersTable)
+          .where(inArray(usersTable.tenantId, bookCustomerIds))
+      : [];
 
     let eligibleUserIds = bridgeRows.map((r) => r.userId);
     const customerIdByUserId = new Map(bridgeRows.map((r) => [r.userId, r.customerId]));

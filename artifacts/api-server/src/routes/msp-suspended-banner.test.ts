@@ -17,6 +17,7 @@ import jwt from "jsonwebtoken";
 const mockDb = {
   select: vi.fn().mockReturnThis(),
   from: vi.fn().mockReturnThis(),
+  innerJoin: vi.fn().mockReturnThis(),
   where: vi.fn().mockReturnThis(),
   limit: vi.fn().mockReturnThis(),
 };
@@ -28,11 +29,12 @@ vi.mock("@workspace/db", () => ({
     status: "status",
     suspendedAt: "suspended_at",
   },
-  mspUsersTable: {
-    userId: "user_id",
+  usersTable: {
+    id: "id",
     mspId: "msp_id",
+    tenantId: "tenant_id",
   },
-  mspCustomersTable: { id: "id", mspId: "msp_id" },
+  tenantsTable: { id: "id", mspId: "msp_id" },
   mspEventStoreTable: { id: "id" },
   mspAuditLogsTable: { id: "id" },
   salesOffersTable: { id: "id" },
@@ -101,7 +103,7 @@ describe("GET /api/portal/msp-suspension", () => {
   });
 
   it("returns suspended=true with daysSuspended≥7 when MSP was suspended 8 days ago", async () => {
-    // First call: mspUsersTable lookup skipped (mspId on token)
+    // First call: users->tenants lookup skipped (mspId on token)
     // Only call: mspsTable lookup
     mockDb.select.mockReturnThis();
     mockDb.from.mockReturnThis();
@@ -223,7 +225,9 @@ describe("GET /api/portal/msp-suspension", () => {
     // Token has no mspId
     const tokenWithoutMspId = makeCustomerToken({ mspId: undefined });
 
-    // First limit() call: mspUsersTable lookup returning mspId=5
+    // First limit() call: the users -> tenants lookup. The route reads the
+    // owning MSP off the customer's TENANT, since a tenant-scoped login carries
+    // no users.mspId of its own; the select still aliases it as mspId.
     mockDb.limit
       .mockResolvedValueOnce([{ mspId: 5 }])
       // Second limit() call: mspsTable lookup returning suspended 10 days ago

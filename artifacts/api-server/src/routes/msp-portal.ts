@@ -14,7 +14,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, mspUsersTable, mspSalesBundleAssignmentsTable } from "@workspace/db";
+import { db, mspsTable, tenantsTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, usersTable, mspSalesBundleAssignmentsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
@@ -153,12 +153,12 @@ router.get(
         mspId
           ? db
               .select({
-                status: mspCustomersTable.status,
+                status: tenantsTable.status,
                 n: count(),
               })
-              .from(mspCustomersTable)
-              .where(eq(mspCustomersTable.mspId, mspId))
-              .groupBy(mspCustomersTable.status)
+              .from(tenantsTable)
+              .where(eq(tenantsTable.mspId, mspId))
+              .groupBy(tenantsTable.status)
           : Promise.resolve([]),
 
         // Signals fired this month
@@ -486,17 +486,22 @@ router.post(
       // Gather customer data
       const customers = await db
         .select({
-          id: mspCustomersTable.id,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          industry: mspCustomersTable.industry,
-          tenantId: mspCustomersTable.tenantId,
-          status: mspCustomersTable.status,
-          ownerType: mspCustomersTable.ownerType,
-          createdAt: mspCustomersTable.createdAt,
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          status: tenantsTable.status,
+          // ownerType has no successor on `tenants` — msp_customers carried an
+          // owner_type enum and every tenants row IS a customer, so the field is
+          // dropped from this export rather than synthesised (same call Phase 3
+          // made for the admin-panel Customer Object pane). tenantUrl takes the
+          // slot as the one genuinely new per-customer field.
+          tenantUrl: tenantsTable.tenantUrl,
+          createdAt: tenantsTable.createdAt,
         })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.mspId, mspId));
+        .from(tenantsTable)
+        .where(eq(tenantsTable.mspId, mspId));
 
       // Event counts per customer
       const eventCountRows = await db
@@ -708,10 +713,10 @@ router.get(
           customerId: mspEventStoreTable.customerId,
           occurredAt: mspEventStoreTable.occurredAt,
           payload: mspEventStoreTable.payload,
-          customerName: mspCustomersTable.name,
+          customerName: tenantsTable.customerName,
         })
         .from(mspEventStoreTable)
-        .leftJoin(mspCustomersTable, eq(mspEventStoreTable.customerId, mspCustomersTable.id))
+        .leftJoin(tenantsTable, eq(mspEventStoreTable.customerId, tenantsTable.id))
         .where(baseConditions.length > 0 ? and(...(baseConditions as [ReturnType<typeof eq>])) : undefined)
         .orderBy(desc(mspEventStoreTable.occurredAt))
         .limit(limit);
@@ -793,16 +798,16 @@ router.post(
       // Verify all supplied IDs belong to this MSP
       const ownedRows = await db
         .select({
-          id: mspCustomersTable.id,
-          tenantId: mspCustomersTable.tenantId,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          status: mspCustomersTable.status,
-          industry: mspCustomersTable.industry,
-          createdAt: mspCustomersTable.createdAt,
+          id: tenantsTable.id,
+          tenantId: tenantsTable.tenantId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          status: tenantsTable.status,
+          industry: tenantsTable.industry,
+          createdAt: tenantsTable.createdAt,
         })
-        .from(mspCustomersTable)
-        .where(and(inArray(mspCustomersTable.id, ids), eq(mspCustomersTable.mspId, mspId)));
+        .from(tenantsTable)
+        .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
 
       const ownedIdSet = new Set(ownedRows.map((r) => r.id));
       const unauthorized = ids.filter((id) => !ownedIdSet.has(id));
@@ -941,7 +946,11 @@ router.post(
         const csvHeader = "id,name,domain,status,industry,tenantId,tags,createdAt\n";
         const csvRows = ownedRows
           .map((r) => {
-            const tagsValue = ""; // ownedRows doesn't include tags; fetched separately for export
+            // Always empty now: msp_customers.tags has no successor column on
+            // `tenants`, so there is nothing left to "fetch separately" as the
+            // old note here suggested. The column is kept in the header so the
+            // CSV shape stays stable for anything already parsing it.
+            const tagsValue = "";
             const row = [
               r.id,
               `"${(r.name ?? "").replace(/"/g, '""')}"`,
@@ -965,9 +974,9 @@ router.post(
       // ── archive ────────────────────────────────────────────────────────────────
       if (action === "archive") {
         await db
-          .update(mspCustomersTable)
+          .update(tenantsTable)
           .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
-          .where(and(inArray(mspCustomersTable.id, ids), eq(mspCustomersTable.mspId, mspId)));
+          .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
 
         req.log.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
         res.json({ action: "archive", updated: ids.length });
@@ -986,11 +995,17 @@ router.post(
 // Manually create a customer under the authenticated MSP.
 // PlatformAdmin may pass ?slug= to target a specific MSP.
 
+// tenantId is REQUIRED, unlike the pre-refactor msp_customers version of this
+// schema where it was optional. `tenants.tenant_id` is NOT NULL UNIQUE (#92) —
+// the M365 tenant GUID is the row's real identity, not a loose optional string.
+// Keeping it optional here would just move the failure from a 400 with a usable
+// message to a 500 out of a Postgres not-null violation. Nothing is synthesised
+// to fill it: a fabricated GUID would both be wrong and burn the unique index.
 const createCustomerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(200),
   domain: z.string().max(253).optional(),
   industry: z.string().max(120).optional(),
-  tenantId: z.string().max(36).optional(),
+  tenantId: z.string().min(1, "Microsoft 365 tenant ID is required").max(36),
   status: z.enum(["active", "onboarding", "inactive"]).default("onboarding"),
 });
 
@@ -1012,18 +1027,32 @@ router.post(
       }
       const data = parsed.data;
 
+      // Explicit `returning` projection so the 201 body keeps its `name` field
+      // (tenants calls the column customerName) and does NOT start echoing the
+      // consent jsonb, which a bare .returning() would now include.
       const [customer] = await db
-        .insert(mspCustomersTable)
+        .insert(tenantsTable)
         .values({
           mspId,
-          name: data.name,
+          customerName: data.name,
           domain: data.domain ?? undefined,
           industry: data.industry ?? undefined,
-          tenantId: data.tenantId ?? undefined,
+          tenantId: data.tenantId,
           status: data.status,
-          ownerType: "customer",
         })
-        .returning();
+        .returning({
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          tenantUrl: tenantsTable.tenantUrl,
+          status: tenantsTable.status,
+          isTestbed: tenantsTable.isTestbed,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
+        });
 
       await db.insert(mspAuditLogsTable).values({
         actorUserId: req.user!.id,
@@ -1070,47 +1099,47 @@ router.get(
 
       // Always scoped to the caller's own MSP
       const conditions = [];
-      conditions.push(eq(mspCustomersTable.mspId, mspId));
+      conditions.push(eq(tenantsTable.mspId, mspId));
 
       // Per-staff customer scoping: a scoped operator/admin only sees the
       // customers in their assigned set (null = unrestricted, historical default).
       const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
       if (scopedIds !== null) {
-        conditions.push(inArray(mspCustomersTable.id, scopedIds));
+        conditions.push(inArray(tenantsTable.id, scopedIds));
       }
 
       if (search) {
         conditions.push(
           or(
-            ilike(mspCustomersTable.name, `%${search}%`),
-            ilike(mspCustomersTable.domain, `%${search}%`),
+            ilike(tenantsTable.customerName, `%${search}%`),
+            ilike(tenantsTable.domain, `%${search}%`),
           ),
         );
       }
 
       if (statusFilter && statusFilter !== "all") {
         conditions.push(
-          eq(mspCustomersTable.status, statusFilter as "active" | "inactive" | "onboarding"),
+          eq(tenantsTable.status, statusFilter as "active" | "inactive" | "onboarding"),
         );
       }
 
       const whereClause = conditions.length > 0 ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined;
 
       const [[{ total }], customers] = await Promise.all([
-        db.select({ total: count() }).from(mspCustomersTable).where(whereClause),
+        db.select({ total: count() }).from(tenantsTable).where(whereClause),
         db
           .select({
-            id: mspCustomersTable.id,
-            name: mspCustomersTable.name,
-            domain: mspCustomersTable.domain,
-            status: mspCustomersTable.status,
-            tenantId: mspCustomersTable.tenantId,
-            mspId: mspCustomersTable.mspId,
-            createdAt: mspCustomersTable.createdAt,
+            id: tenantsTable.id,
+            name: tenantsTable.customerName,
+            domain: tenantsTable.domain,
+            status: tenantsTable.status,
+            tenantId: tenantsTable.tenantId,
+            mspId: tenantsTable.mspId,
+            createdAt: tenantsTable.createdAt,
           })
-          .from(mspCustomersTable)
+          .from(tenantsTable)
           .where(whereClause)
-          .orderBy(desc(mspCustomersTable.createdAt))
+          .orderBy(desc(tenantsTable.createdAt))
           .limit(limit)
           .offset(offset),
       ]);
@@ -1155,25 +1184,31 @@ router.get(
 
       const rows = await db
         .select({
-          id: mspCustomersTable.id,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          status: mspCustomersTable.status,
-          tenantId: mspCustomersTable.tenantId,
-          industry: mspCustomersTable.industry,
-          ownerType: mspCustomersTable.ownerType,
-          tags: mspCustomersTable.tags,
-          mspId: mspCustomersTable.mspId,
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          status: tenantsTable.status,
+          tenantId: tenantsTable.tenantId,
+          // `tenants` genuinely knows the tenant's URL; msp_customers did not.
+          tenantUrl: tenantsTable.tenantUrl,
+          industry: tenantsTable.industry,
+          isTestbed: tenantsTable.isTestbed,
+          // ownerType and tags are dropped, not synthesised: neither has a
+          // successor column on `tenants` (every tenants row IS a customer, and
+          // there is no tag array). Both were already unrendered by the
+          // customer-detail page — ownerType is an optional field on its TS type
+          // with no reader, tags had none at all — so no UI loses information.
+          mspId: tenantsTable.mspId,
           mspName: mspsTable.name,
-          createdAt: mspCustomersTable.createdAt,
-          updatedAt: mspCustomersTable.updatedAt,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
         })
-        .from(mspCustomersTable)
-        .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+        .from(tenantsTable)
+        .innerJoin(mspsTable, eq(mspsTable.id, tenantsTable.mspId))
         .where(
           and(
-            eq(mspCustomersTable.id, customerId),
-            eq(mspCustomersTable.mspId, mspId),
+            eq(tenantsTable.id, customerId),
+            eq(tenantsTable.mspId, mspId),
           ),
         )
         .limit(1);
@@ -1193,12 +1228,15 @@ router.get(
 
 // ── PATCH /api/msp/customers/:id ──────────────────────────────────────────────
 // Edit an existing customer. Strictly scoped to the authenticated MSP.
+// ownerType is gone from the editable set — `tenants` has no owner_type column
+// to write it to. Accepting the field and silently discarding it would report a
+// successful edit that changed nothing, so it is rejected as an unknown key
+// instead (zod strips it; nothing else read it).
 const editCustomerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(200).optional(),
   domain: z.string().max(253).nullable().optional(),
   industry: z.string().max(120).nullable().optional(),
   status: z.enum(["active", "inactive", "onboarding", "archived"]).optional(),
-  ownerType: z.enum(["customer", "msp", "platform"]).optional(),
 });
 
 router.patch(
@@ -1233,12 +1271,12 @@ router.patch(
 
       // Ensure customer exists and belongs to this MSP
       const [existing] = await db
-        .select()
-        .from(mspCustomersTable)
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
         .where(
           and(
-            eq(mspCustomersTable.id, customerId),
-            eq(mspCustomersTable.mspId, mspId),
+            eq(tenantsTable.id, customerId),
+            eq(tenantsTable.mspId, mspId),
           ),
         )
         .limit(1);
@@ -1248,20 +1286,33 @@ router.patch(
         return;
       }
 
-      const updateData: Partial<typeof mspCustomersTable.$inferInsert> = {
+      const updateData: Partial<typeof tenantsTable.$inferInsert> = {
         updatedAt: new Date(),
       };
-      if (data.name !== undefined) updateData.name = data.name;
+      if (data.name !== undefined) updateData.customerName = data.name;
       if (data.domain !== undefined) updateData.domain = data.domain;
       if (data.industry !== undefined) updateData.industry = data.industry;
       if (data.status !== undefined) updateData.status = data.status;
-      if (data.ownerType !== undefined) updateData.ownerType = data.ownerType;
 
+      // Same explicit projection as the create route: freeze the `name` field
+      // name and keep the consent jsonb out of the response body.
       const [updated] = await db
-        .update(mspCustomersTable)
+        .update(tenantsTable)
         .set(updateData)
-        .where(eq(mspCustomersTable.id, customerId))
-        .returning();
+        .where(eq(tenantsTable.id, customerId))
+        .returning({
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          tenantUrl: tenantsTable.tenantUrl,
+          status: tenantsTable.status,
+          isTestbed: tenantsTable.isTestbed,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
+        });
 
       // Audit log
       try {
@@ -1309,12 +1360,20 @@ router.get(
       let mspId: number | null = req.user!.mspId ?? null;
 
       if (!mspId) {
-        const [mspUserRow] = await db
-          .select({ mspId: mspUsersTable.mspId })
-          .from(mspUsersTable)
-          .where(eq(mspUsersTable.userId, userId))
+        // Resolved through the user's TENANT, not users.mspId. A CustomerUser is
+        // tenant-scoped: users_role_scope_check (#92) requires it to carry
+        // tenantId, and it is NOT required to carry an mspId of its own — the
+        // owning MSP is a property of the tenant. Reading users.mspId here would
+        // return null for essentially every real customer and this endpoint
+        // would answer "not suspended" unconditionally, silently disabling the
+        // suspension banner for the exact population it exists to warn.
+        const [tenantRow] = await db
+          .select({ mspId: tenantsTable.mspId })
+          .from(usersTable)
+          .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+          .where(eq(usersTable.id, userId))
           .limit(1);
-        mspId = mspUserRow?.mspId ?? null;
+        mspId = tenantRow?.mspId ?? null;
       }
 
       if (!mspId) {

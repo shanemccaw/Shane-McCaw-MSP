@@ -25,7 +25,7 @@ import {
   db,
   mspReportDefinitionsTable,
   mspReportRunsTable,
-  mspCustomersTable,
+  tenantsTable,
   clientM365ProfilesTable,
   REPORT_DOC_TYPES,
   REPORT_DELIVERY_METHODS,
@@ -368,7 +368,7 @@ router.post(
 
       const docTypeLabel = DOC_TYPE_LABELS[def.docType] ?? def.docType;
       const customerName = def.customerId
-        ? await db.select({ name: mspCustomersTable.name }).from(mspCustomersTable).where(eq(mspCustomersTable.id, def.customerId)).limit(1).then(r => r[0]?.name ?? "")
+        ? await db.select({ name: tenantsTable.customerName }).from(tenantsTable).where(eq(tenantsTable.id, def.customerId)).limit(1).then(r => r[0]?.name ?? "")
         : null;
 
       const title = customerName ? `${docTypeLabel} — ${customerName}` : `${docTypeLabel} — Portfolio`;
@@ -815,9 +815,9 @@ router.post(
       }
       if (!targetCustomerId) {
         const [firstCust] = await db
-          .select({ id: mspCustomersTable.id })
-          .from(mspCustomersTable)
-          .where(and(eq(mspCustomersTable.mspId, mspId), eq(mspCustomersTable.status, "active")))
+          .select({ id: tenantsTable.id })
+          .from(tenantsTable)
+          .where(and(eq(tenantsTable.mspId, mspId), eq(tenantsTable.status, "active")))
           .limit(1);
         if (firstCust) {
           targetCustomerId = firstCust.id;

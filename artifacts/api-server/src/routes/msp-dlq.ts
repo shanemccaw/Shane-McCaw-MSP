@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspDlqStoreTable, mspCustomersTable } from "@workspace/db";
+import { db, mspDlqStoreTable, tenantsTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -51,11 +51,11 @@ router.get(
           mspId: mspDlqStoreTable.mspId,
           customerId: mspDlqStoreTable.customerId,
           createdAt: mspDlqStoreTable.createdAt,
-          tenantId: mspCustomersTable.tenantId,
-          tenantName: mspCustomersTable.name,
+          tenantId: tenantsTable.tenantId,
+          tenantName: tenantsTable.customerName,
         })
         .from(mspDlqStoreTable)
-        .leftJoin(mspCustomersTable, eq(mspDlqStoreTable.customerId, mspCustomersTable.id))
+        .leftJoin(tenantsTable, eq(mspDlqStoreTable.customerId, tenantsTable.id))
         .where(eq(mspDlqStoreTable.mspId, mspId))
         .orderBy(desc(mspDlqStoreTable.createdAt));
 

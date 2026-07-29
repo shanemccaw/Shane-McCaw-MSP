@@ -36,8 +36,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
+  usersTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
   tenantEngineSnapshotsTable,
@@ -81,17 +81,29 @@ function engineLabel(engineKey: string): string {
   return ENGINE_LABELS[engineKey] ?? engineKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** userId(users.id) -> { mspCustomerId, mspCustomerName } for every customer in mspId's book. */
+/**
+ * userId(users.id) -> { customerId(tenants.id), customerName } for every
+ * customer in mspId's book.
+ *
+ * The MSP scope comes off the TENANT row, not the user row. Pre-refactor
+ * msp_users carried both mspId and customerId so one predicate covered both;
+ * since #92 a tenant-scoped user (CustomerUser/Free/Assessment) is required to
+ * carry tenantId but NOT mspId (users_role_scope_check demands one or the
+ * other), so filtering on users.mspId would return an empty bridge and this
+ * timeline would render permanently empty. Inner join for the same reason the
+ * old leftJoin's customerId=null rows were useless: a user with no tenant is
+ * in no MSP's customer book.
+ */
 async function loadCustomerBridge(mspId: number) {
   const rows = await db
     .select({
-      userId: mspUsersTable.userId,
-      customerId: mspUsersTable.customerId,
-      customerName: mspCustomersTable.name,
+      userId: usersTable.id,
+      customerId: usersTable.tenantId,
+      customerName: tenantsTable.customerName,
     })
-    .from(mspUsersTable)
-    .leftJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.mspId, mspId));
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(tenantsTable.mspId, mspId));
 
   const byUserId = new Map<number, { customerId: number | null; customerName: string | null }>();
   for (const row of rows) {
@@ -128,12 +140,12 @@ router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res
     const beforeValid = before && !isNaN(before.getTime()) ? before : undefined;
 
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-      .from(mspCustomersTable)
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+      .from(tenantsTable)
       .where(
         effectiveCustomerIds === null
-          ? eq(mspCustomersTable.mspId, mspId)
-          : and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, effectiveCustomerIds)),
+          ? eq(tenantsTable.mspId, mspId)
+          : and(eq(tenantsTable.mspId, mspId), inArray(tenantsTable.id, effectiveCustomerIds)),
       );
     const customerNameById = new Map(customers.map((c) => [c.id, c.name]));
 

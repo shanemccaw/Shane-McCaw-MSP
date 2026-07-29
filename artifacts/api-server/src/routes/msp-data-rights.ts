@@ -44,7 +44,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, auditLogsTable, mspCustomersTable, mspUsersTable, usersTable } from "@workspace/db";
+import { db, auditLogsTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -58,17 +58,29 @@ const DATA_RIGHTS_ACTION_TYPES = ["deletion_request_submitted", "data_export_dow
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-/** userId(users.id) -> { customerId, customerName } for every customer in mspId's book. */
+/**
+ * userId(users.id) -> { customerId(tenants.id), customerName } for every
+ * customer in mspId's book.
+ *
+ * The MSP scope comes off the TENANT row, not the user row. Pre-refactor
+ * msp_users carried both mspId and customerId so one predicate covered both;
+ * since #92 a tenant-scoped user (CustomerUser/Free/Assessment) is required to
+ * carry tenantId but NOT mspId (users_role_scope_check demands one or the
+ * other), so filtering on users.mspId would return an empty bridge and this
+ * page would show no data-rights activity at all. Inner join for the same
+ * reason the old leftJoin's customerId=null rows were dropped downstream
+ * anyway: a user with no tenant is in no MSP's customer book.
+ */
 async function loadCustomerBridge(mspId: number) {
   const rows = await db
     .select({
-      userId: mspUsersTable.userId,
-      customerId: mspUsersTable.customerId,
-      customerName: mspCustomersTable.name,
+      userId: usersTable.id,
+      customerId: usersTable.tenantId,
+      customerName: tenantsTable.customerName,
     })
-    .from(mspUsersTable)
-    .leftJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.mspId, mspId));
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(tenantsTable.mspId, mspId));
 
   const byUserId = new Map<number, { customerId: number | null; customerName: string | null }>();
   for (const row of rows) {
@@ -157,10 +169,9 @@ router.get("/msp/data-rights/customers/:customerId/users", requireRole("MSPAdmin
     }
 
     const rows = await db
-      .select({ userId: mspUsersTable.userId, name: usersTable.name, email: usersTable.email, isActive: mspUsersTable.isActive })
-      .from(mspUsersTable)
-      .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-      .where(eq(mspUsersTable.customerId, customerId));
+      .select({ userId: usersTable.id, name: usersTable.name, email: usersTable.email, isActive: usersTable.isActive })
+      .from(usersTable)
+      .where(eq(usersTable.tenantId, customerId));
 
     res.json({ users: rows.map((r) => ({ userId: r.userId, name: r.name, email: r.email, isActive: r.isActive })) });
   } catch (err) {
@@ -199,9 +210,9 @@ router.post("/msp/data-rights/customers/:customerId/deletion-request", requireRo
     // any user in the caller's MSP — prevents an admin from filing a
     // deletion request against an arbitrary userId via this route.
     const [link] = await db
-      .select({ userId: mspUsersTable.userId })
-      .from(mspUsersTable)
-      .where(and(eq(mspUsersTable.userId, targetUserId), eq(mspUsersTable.customerId, customerId)))
+      .select({ userId: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, targetUserId), eq(usersTable.tenantId, customerId)))
       .limit(1);
     if (!link) {
       res.status(404).json({ error: "That user is not linked to this customer" });

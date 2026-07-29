@@ -33,8 +33,8 @@ function mspToken(mspId: number, mspRole: "MSPOperator" | "MSPAdmin" | "Customer
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
-  mspUsersTable: { userId: "userId", customerId: "customerId", mspId: "mspId" },
+  tenantsTable: { id: "id", customerName: "customerName", mspId: "mspId" },
+  usersTable: { id: "id", tenantId: "tenantId", mspId: "mspId" },
   mspDiagnosticRunsTable: {
     runId: "runId", customerId: "customerId", status: "status", checksTotal: "checksTotal",
     checksOk: "checksOk", completedAt: "completedAt", createdAt: "createdAt", mspId: "mspId",
@@ -85,7 +85,7 @@ const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).selec
 /** Drizzle-style fluent chain, thenable at any point, resolving to `rows`. */
 function buildChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["from", "where", "orderBy", "limit", "leftJoin"]) {
+  for (const m of ["from", "where", "orderBy", "limit", "leftJoin", "innerJoin"]) {
     chain[m] = vi.fn().mockReturnValue(chain);
   }
   chain["then"] = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>

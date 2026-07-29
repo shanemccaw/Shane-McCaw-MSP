@@ -36,9 +36,8 @@ function mspToken(mspId: number, mspRole: "MSPOperator" | "MSPAdmin" | "Platform
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
   auditLogsTable: { id: "id", actionType: "actionType", actorRole: "actorRole", actorName: "actorName", clientId: "clientId", metadata: "metadata", createdAt: "createdAt" },
-  mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
-  mspUsersTable: { userId: "userId", customerId: "customerId", mspId: "mspId", isActive: "isActive" },
-  usersTable: { id: "id", name: "name", email: "email" },
+  tenantsTable: { id: "id", customerName: "customerName", mspId: "mspId" },
+  usersTable: { id: "id", name: "name", email: "email", tenantId: "tenantId", mspId: "mspId", isActive: "isActive" },
   // Per-staff customer-access scoping table (read by resolveStaffScopedCustomerIds).
   mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId", mspId: "mspId" },
 }));

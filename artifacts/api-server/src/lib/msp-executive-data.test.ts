@@ -22,8 +22,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn(), selectDistinctOn: vi.fn() },
-  mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
-  mspUsersTable: { userId: "userId", customerId: "customerId", mspId: "mspId" },
+  tenantsTable: { id: "id", customerName: "customerName", mspId: "mspId" },
+  usersTable: { id: "id", tenantId: "tenantId", mspId: "mspId" },
   salesOffersTable: {
     customerId: "customerId", title: "title", adjustedPriceCents: "adjustedPriceCents",
     basePriceCents: "basePriceCents", score: "score", state: "state", mspId: "mspId",

@@ -16,8 +16,9 @@
  *   - Opportunity ranking: the real Sales Offer Engine output (sales_offers) —
  *     open (draft/sent) offers, summed by their customer-facing adjusted price.
  *     We do NOT invent a new opportunity score. sales_offers.customerId is a
- *     users.id, so it's bridged back to msp_customers.id via msp_users (the same
- *     bridge omg-card-extractor.ts uses for billing attribution).
+ *     users.id, so it's resolved back to a tenants.id through the user's own
+ *     `users.tenantId` FK (the same link omg-card-extractor.ts uses for billing
+ *     attribution).
  *
  * Scoping: gatherExecutiveBook takes a pre-resolved scopedIds (from
  * resolveStaffScopedCustomerIds) and folds it into every query at the DB level,
@@ -27,12 +28,12 @@
 
 import {
   db,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
+  usersTable,
   salesOffersTable,
   tenantEngineSnapshotsTable,
 } from "@workspace/db";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -100,12 +101,12 @@ export async function gatherExecutiveBook(
 
   // ── The book of customers (scoped at the DB level) ──────────────────────────
   const customers = await db
-    .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-    .from(mspCustomersTable)
+    .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+    .from(tenantsTable)
     .where(
       scopedIds === null
-        ? eq(mspCustomersTable.mspId, mspId)
-        : and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, scopedIds)),
+        ? eq(tenantsTable.mspId, mspId)
+        : and(eq(tenantsTable.mspId, mspId), inArray(tenantsTable.id, scopedIds)),
     );
 
   const nameById = new Map(customers.map((c) => [c.id, c.name]));
@@ -161,12 +162,19 @@ export async function gatherExecutiveBook(
   risks.sort((a, b) => b.healthScore - a.healthScore);
   const topRisks = risks.slice(0, topN);
 
-  // ── Opportunity: open sales offers, bridged users.id → msp_customers.id ───────
-  // Build the userId → msp_customers.id bridge, restricted to this MSP + book.
+  // ── Opportunity: open sales offers, resolved users.id → tenants.id ────────────
+  // Restricted to the already-scoped book rather than to `users.mspId`: since the
+  // Tenant/User Refactor (#92) a tenant-scoped user (CustomerUser/Free/
+  // Assessment) is required to carry `tenantId` but is NOT required to carry
+  // `mspId` — the users_role_scope_check constraint only demands one or the
+  // other — so filtering these rows on `mspId` the way the old msp_users query
+  // did would silently drop every customer login and zero out the whole
+  // opportunity side of the book. `bookCustomerIds` is already MSP- and
+  // staff-scoped, so scoping on it is both correct and no wider.
   const bridgeRows = await db
-    .select({ userId: mspUsersTable.userId, customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.mspId, mspId), isNotNull(mspUsersTable.customerId)));
+    .select({ userId: usersTable.id, customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(inArray(usersTable.tenantId, bookCustomerIds));
 
   const userIdToCustomerId = new Map<number, number>();
   for (const b of bridgeRows) {

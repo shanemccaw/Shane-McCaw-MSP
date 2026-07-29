@@ -18,8 +18,6 @@ import {
   kanbanTasksTable,
   clientHealthHistoryTable,
   engagementProjectsTable,
-  mspUsersTable,
-  mspCustomersTable,
   documentTypesTable,
 } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
@@ -42,10 +40,13 @@ import { getRequestContext } from "./request-context";
 const AI_KILL_SWITCH_ENABLED = false;
 
 // ── Usage telemetry (fire-and-forget) ─────────────────────────────────────────
-// Mirrors omg-card-extractor.ts's trackUsage(): resolves the billing MSP via the
-// msp_users bridge (userId → mspId), keyed off clientUserId — the only identity
-// this module carries (there is no request-scoped acting user; generation is
-// triggered by an admin Test Draft call or another module's caller).
+// Mirrors omg-card-extractor.ts's trackUsage(): resolves the billing MSP off the
+// user's own row (users.mspId), keyed by clientUserId — the only identity this
+// module carries (there is no request-scoped acting user; generation is
+// triggered by an admin Test Draft call or another module's caller). Since the
+// Tenant/User Refactor (#92) mspId lives on `users` itself, so there is no
+// bridge row to be missing: a null here means the user is tenant-scoped
+// (CustomerUser/Free/Assessment), which is the normal case for this flow.
 function trackUsage(opts: {
   inputTokens: number;
   outputTokens: number;
@@ -58,14 +59,14 @@ function trackUsage(opts: {
 }): void {
   void (async () => {
     try {
-      const [mspUser] = await db
-        .select({ mspId: mspUsersTable.mspId })
-        .from(mspUsersTable)
-        .where(eq(mspUsersTable.userId, opts.clientUserId))
+      const [userRow] = await db
+        .select({ mspId: usersTable.mspId })
+        .from(usersTable)
+        .where(eq(usersTable.id, opts.clientUserId))
         .limit(1);
 
       await recordAiUsage({
-        mspId: mspUser?.mspId ?? null,
+        mspId: userRow?.mspId ?? null,
         nodeType: "document_generator",
         feature: `assessment_document:${opts.docType}:document:${opts.documentId}`,
         promptTokens: opts.inputTokens,
@@ -394,21 +395,22 @@ function formatScoresBlock(s: RealScores): string {
   ].join("\n");
 }
 
-// ── users.id → msp_customers.id bridge ────────────────────────────────────────
+// ── users.id → tenants.id ─────────────────────────────────────────────────────
 //
 // This module works entirely in the *portal user* id space (`clientUserId` is a
 // `usersTable.id`). The shared `buildTenantProfile()` is keyed by the *engine
-// customer* id (`mspCustomersTable.id`) — a DIFFERENT id space. Passing
+// customer* id (`tenantsTable.id`) — a DIFFERENT id space. Passing
 // `clientUserId` straight into `buildTenantProfile()` would look up a customer
 // row by the wrong id and silently return an empty profile (the exact failure
-// mode that produces generic, non-tenant-specific documents). We bridge the two
-// via `msp_users` (userId → customerId), mirroring consolidated-sow-generator.ts.
+// mode that produces generic, non-tenant-specific documents). Since the
+// Tenant/User Refactor (#92) the link is a real FK on the user's own row
+// (`users.tenantId` → `tenants.id`), so this is a single read with no bridge
+// table and no join — a null means the user is not tenant-scoped at all.
 async function resolveEngineCustomerId(clientUserId: number): Promise<number | null> {
   const [row] = await db
-    .select({ customerId: mspCustomersTable.id })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, clientUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, clientUserId))
     .limit(1);
   return row?.customerId ?? null;
 }
