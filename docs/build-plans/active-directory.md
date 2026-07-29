@@ -90,7 +90,7 @@ rather than a flat account list.
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
 | 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
 | 9 | User Object — dev-only cascading hard delete | Blocked (by #92) | #69 |
-| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Blocked (by #92) | #91 |
+| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Not Started | #91 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
@@ -169,3 +169,15 @@ current `msp_customers`/`msp_users`/loose-string-`tenant_id` schema; it
 would need a rewrite the moment #92 lands. Phase 10's issue body still
 references the pre-refactor schema and must be re-scoped against #92's
 real final shape before any implementation prompt is written for it.
+
+
+**Phase 10 UNBLOCKED (2026-07-28)** — #92 (tenant/user data model
+refactor) and all sub-issues closed and verified against real code
+(real `tenants` table, single `users` table, `mspCustomersTable`/
+`mspUsersTable` genuinely gone, AD's own route file already cut over).
+Phase 3 of that refactor (#96) was a straight table-swap only — the AD
+tree/pane still need Phase 10's actual work (relabel, nested Users,
+revoke/scores/telemetry actions), unchanged in substance. See the
+amendment comment on #91 for corrected mechanism references (consent
+revoke is now one route covering Graph+SharePoint via a key param, not
+two separate mechanisms as originally scoped). Ready to build.
