@@ -43,7 +43,6 @@ vi.mock("@workspace/db", () => ({
     stripeScheduleId: "stripe_schedule_id", pendingServiceId: "pending_service_id",
     pendingBillingInterval: "pending_billing_interval", stripeSubscriptionId: "stripe_subscription_id",
   },
-  mspUsersTable: {},
   usersTable: {},
   mspEventStoreTable: {},
   mspAgreementAcceptancesTable: {},

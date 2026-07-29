@@ -29,7 +29,7 @@ vi.mock("@workspace/db", () => ({
   monitoringPackagesTable: { key: "key", label: "label", platformCostCents: "platform_cost_cents", status: "status" },
   mspSalesBundlesTable: { bundleId: "bundle_id", mspId: "msp_id", status: "status" },
   mspSalesBundleAssignmentsTable: { bundleId: "bundle_id", mspId: "msp_id", assignmentId: "assignment_id", status: "status" },
-  mspCustomersTable: { id: "id", mspId: "msp_id" },
+  tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", domain: "domain", tenantId: "tenant_id" },
   mspEventStoreTable: { mspId: "msp_id" },
   mspAuditLogsTable: { actorUserId: "actor_user_id" },
 }));

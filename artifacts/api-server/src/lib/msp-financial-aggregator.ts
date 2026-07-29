@@ -7,7 +7,8 @@ import {
   tenantSignalHistoryTable,
   servicesTable,
   projectsTable,
-  mspUsersTable,
+  usersTable,
+  tenantsTable,
   workflowStepsTable,
   clientServicesTable,
 } from "@workspace/db";
@@ -141,17 +142,27 @@ export async function aggregateMspTelemetry(
   );
 
   // Category B: projectRevenue (Paid invoices for this MSP's customers)
+  //
+  // "This MSP's customers" is resolved user -> tenant -> msp, NOT off the user
+  // row's own mspId (#92 Phase 4). The retired msp_users bridge carried mspId
+  // AND customerId on the same row, so one predicate covered both; since Phase 0
+  // the users_role_scope_check constraint requires a tenant-scoped user
+  // (CustomerUser/Free/Assessment) to carry tenantId and does NOT require mspId,
+  // so eq(usersTable.mspId, mspId) would match no customer login at all. Every
+  // revenue figure below Category A would silently read $0.00 rather than
+  // erroring. Same pattern for Category C and the open-task metric.
   const invoices = await db
     .select({
       amount: invoicesTable.amount,
       projectType: projectsTable.projectType,
     })
     .from(invoicesTable)
-    .innerJoin(mspUsersTable, eq(invoicesTable.clientUserId, mspUsersTable.userId))
+    .innerJoin(usersTable, eq(invoicesTable.clientUserId, usersTable.id))
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .leftJoin(projectsTable, eq(invoicesTable.projectId, projectsTable.id))
     .where(
       and(
-        eq(mspUsersTable.mspId, mspId),
+        eq(tenantsTable.mspId, mspId),
         eq(invoicesTable.status, "paid"),
         startDate ? gte(invoicesTable.paidAt, startDate) : undefined,
       )
@@ -189,13 +200,14 @@ export async function aggregateMspTelemetry(
     })
     .from(kanbanTasksTable)
     .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
-    .innerJoin(mspUsersTable, eq(projectsTable.clientUserId, mspUsersTable.userId))
+    .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .innerJoin(workflowStepsTable, eq(kanbanTasksTable.workflowStepId, workflowStepsTable.id))
     .innerJoin(clientServicesTable, eq(workflowStepsTable.clientServiceId, clientServicesTable.id))
     .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
     .where(
       and(
-        eq(mspUsersTable.mspId, mspId),
+        eq(tenantsTable.mspId, mspId),
         eq(kanbanTasksTable.column, "completed"),
         startDate ? gte(kanbanTasksTable.updatedAt, startDate) : undefined,
       )
@@ -324,10 +336,11 @@ export async function aggregateMspTelemetry(
     .select({ count: count() })
     .from(kanbanTasksTable)
     .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
-    .innerJoin(mspUsersTable, eq(projectsTable.clientUserId, mspUsersTable.userId))
+    .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(
       and(
-        eq(mspUsersTable.mspId, mspId),
+        eq(tenantsTable.mspId, mspId),
         inArray(kanbanTasksTable.column, ["backlog", "in_progress", "review"]),
       )
     );

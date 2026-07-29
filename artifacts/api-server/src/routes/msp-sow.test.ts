@@ -73,7 +73,7 @@ vi.mock("@workspace/db", () => ({
   mspSubscriptionsTable:      { mspId: "msp_id", stripeCustomerId: "stripe_customer_id" },
   mspConnectorConfigsTable:   { mspId: "msp_id", customerAgreementTemplate: "customer_agreement_template" },
   mspsTable:                  { id: "id", name: "name", slug: "slug" },
-  mspCustomersTable:          { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
+  tenantsTable:               { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
   salesOffersTable:           { id: "id", state: "state", mspId: "msp_id", serviceId: "service_id", tenantId: "tenant_id", title: "title", adjustedPriceCents: "adjusted_price_cents" },
   servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days" },
   mspEventStoreTable:         { eventType: "event_type" },

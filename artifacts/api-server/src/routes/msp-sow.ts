@@ -37,7 +37,7 @@ import {
   mspSubscriptionsTable,
   mspConnectorConfigsTable,
   mspsTable,
-  mspCustomersTable,
+  tenantsTable,
   salesOffersTable,
   servicesTable,
   mspEventStoreTable,
@@ -227,13 +227,15 @@ router.post(
       let customerId: number | null = null;
       if (offer.customerId) {
         const [customer] = await db
-          .select({ id: mspCustomersTable.id })
-          .from(mspCustomersTable)
+          .select({ id: tenantsTable.id })
+          .from(tenantsTable)
           .where(and(
-            eq(mspCustomersTable.mspId, mspId),
+            eq(tenantsTable.mspId, mspId),
             or(
-              eq(mspCustomersTable.tenantId, offer.customerId.toString()),
-              eq(mspCustomersTable.id, offer.customerId),
+              // tenants.tenant_id is the M365 GUID (text); tenants.id is the
+              // serial PK. Same dual-shape lookup msp_customers carried.
+              eq(tenantsTable.tenantId, offer.customerId.toString()),
+              eq(tenantsTable.id, offer.customerId),
             ),
           ))
           .limit(1);
@@ -900,9 +902,9 @@ router.get(
 
     // Resolve MSP from customer
     const [customer] = await db
-      .select({ mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .select({ mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
 
     if (!customer) { apiErr(res, 404, "Customer not found"); return; }
@@ -951,9 +953,9 @@ router.post(
     const user = req.user!;
 
     const [customer] = await db
-      .select({ mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .select({ mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
 
     if (!customer) { apiErr(res, 404, "Customer not found"); return; }

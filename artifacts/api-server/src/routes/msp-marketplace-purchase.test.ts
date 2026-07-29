@@ -67,7 +67,7 @@ vi.mock("@workspace/db", () => ({
     id: "id", customerId: "customer_id", serviceId: "service_id", mspId: "msp_id",
     title: "title", state: "state",
   },
-  mspCustomersTable: { id: "id", mspId: "msp_id" },
+  tenantsTable: { id: "id", mspId: "msp_id" },
   mspStaffCustomerScopesTable: { customerId: "customer_id", staffUserId: "staff_user_id", mspId: "msp_id" },
   mspSubscriptionsTable: { mspId: "msp_id", stripeCustomerId: "stripe_customer_id" },
 }));

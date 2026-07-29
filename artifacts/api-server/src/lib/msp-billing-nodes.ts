@@ -7,7 +7,7 @@
  */
 
 import { db } from "@workspace/db";
-import { mspSubscriptionsTable, mspsTable, mspEventStoreTable, mspCustomersTable, servicesTable } from "@workspace/db";
+import { mspSubscriptionsTable, mspsTable, mspEventStoreTable, tenantsTable, servicesTable } from "@workspace/db";
 import { eq, and, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "billing" });
@@ -143,12 +143,16 @@ export async function handleMspOverageMeter(
   let totalOverageTenants = 0;
 
   for (const sub of activeSubscriptions) {
+    // Billable tenant count comes off the tenants table directly (#92 Phase 4).
+    // tenants.status keeps msp_customers' exact enum and semantics, so "active"
+    // still means the same thing it did — this is the number the overage charge
+    // below is computed from, so it must not drift.
     const [row] = await db
       .select({ n: count() })
-      .from(mspCustomersTable)
+      .from(tenantsTable)
       .where(and(
-        eq(mspCustomersTable.mspId, sub.mspId),
-        eq(mspCustomersTable.status, "active"),
+        eq(tenantsTable.mspId, sub.mspId),
+        eq(tenantsTable.status, "active"),
       ));
     const tenantCount = Number(row?.n ?? 0);
 

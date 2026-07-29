@@ -24,7 +24,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspSubscriptionsTable, mspUsersTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable } from "@workspace/db";
+import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
@@ -419,33 +419,52 @@ async function provisionMspAdminUser(
   _stripeCustomerId: string | undefined,
 ): Promise<number | null> {
   try {
-    // Upsert user account
+    // Upsert user account.
+    //
+    // The MSP scope columns are supplied ON THE INSERT ITSELF (#92 Phase 4), not
+    // written to a separate msp_users row afterwards. This is load-bearing, not
+    // cosmetic: since Phase 0 the users_role_scope_check constraint rejects any
+    // row whose mspRole is the schema default "Free" without a tenantId, so the
+    // bare {email, role, name} insert this used to do would be refused outright
+    // by Postgres. The catch below downgrades that to a warn and returns null,
+    // and a null userId makes handleCheckoutCompleted take its BLOCKED branch —
+    // so every brand-new MSP signup would have taken payment, written the
+    // msp_subscriptions row, then silently failed to create the admin login and
+    // never emitted msp.subscription.provisioned.
+    //
+    // The conflict path is a deliberate no-op on the scope columns: the old code
+    // only inserted an msp_users row when the user had none, and never rewrote
+    // an existing one. An already-scoped user (another MSP's staff, a customer
+    // login, or PlatformAdmin) keeps the role and scope they already have.
     const normalizedEmail = email.toLowerCase().trim();
     const [user] = await db
       .insert(usersTable)
-      .values({ email: normalizedEmail, role: "client", name: name.trim() || undefined })
+      .values({
+        email: normalizedEmail,
+        role: "client",
+        name: name.trim() || undefined,
+        mspRole: "MSPAdmin",
+        mspId,
+        isActive: true,
+      })
       .onConflictDoUpdate({
         target: usersTable.email,
         set: { email: sql`EXCLUDED.email` }, // no-op — forces RETURNING to yield the existing row
       })
-      .returning({ id: usersTable.id });
+      .returning({ id: usersTable.id, mspRole: usersTable.mspRole, mspId: usersTable.mspId });
 
     if (!user) return null;
 
-    // Upsert msp_users row with MSPAdmin role
-    const [existingMspUser] = await db
-      .select({ id: mspUsersTable.id })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, user.id))
-      .limit(1);
-
-    if (!existingMspUser) {
-      await db.insert(mspUsersTable).values({
-        userId: user.id,
-        mspId,
-        mspRole: "MSPAdmin",
-        isActive: true,
-      });
+    if (user.mspId !== mspId || user.mspRole !== "MSPAdmin") {
+      // Pre-existing account that already belongs to some other scope. Left
+      // exactly as it was, matching the old "msp_users row already exists →
+      // skip" behaviour, but logged loudly: this MSP's checkout completed
+      // without producing an MSPAdmin login of its own.
+      log.warn(
+        { mspId, userId: user.id, email: normalizedEmail, existingMspRole: user.mspRole, existingMspId: user.mspId },
+        "msp-billing-webhook: contact email already belongs to a scoped account — NOT re-scoped to this MSP",
+      );
+      return user.id;
     }
 
     log.info({ mspId, userId: user.id, email: normalizedEmail }, "msp-billing-webhook: MSPAdmin user provisioned");

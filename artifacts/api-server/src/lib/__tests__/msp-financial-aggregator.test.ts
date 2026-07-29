@@ -14,7 +14,8 @@ vi.mock("@workspace/db", () => {
     tenantSignalHistoryTable: {},
     servicesTable: {},
     projectsTable: {},
-    mspUsersTable: {},
+    usersTable: {},
+    tenantsTable: {},
     workflowStepsTable: {},
     clientServicesTable: {},
   };

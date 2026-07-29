@@ -44,7 +44,7 @@ import {
   db,
   servicesTable,
   salesOffersTable,
-  mspCustomersTable,
+  tenantsTable,
   mspSubscriptionsTable,
 } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -72,9 +72,9 @@ async function resolveScopedCustomer(
   customerId: number,
 ): Promise<{ id: number; mspId: number } | null> {
   const [customer] = await db
-    .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {

@@ -28,7 +28,7 @@ import {
   monitoringPackagesTable,
   mspSalesBundlesTable,
   mspSalesBundleAssignmentsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspEventStoreTable,
   mspAuditLogsTable,
 } from "@workspace/db";
@@ -583,13 +583,15 @@ router.get(
           trialExpiresAt: mspSalesBundleAssignmentsTable.trialExpiresAt,
           assignedAt: mspSalesBundleAssignmentsTable.assignedAt,
           revokedAt: mspSalesBundleAssignmentsTable.revokedAt,
-          customerName: mspCustomersTable.name,
-          customerDomain: mspCustomersTable.domain,
+          // Aliased to keep the HTTP payload field names frozen — tenants
+          // renamed msp_customers.name to customerName (#92 Phase 4).
+          customerName: tenantsTable.customerName,
+          customerDomain: tenantsTable.domain,
         })
         .from(mspSalesBundleAssignmentsTable)
         .leftJoin(
-          mspCustomersTable,
-          eq(mspCustomersTable.id, mspSalesBundleAssignmentsTable.customerId),
+          tenantsTable,
+          eq(tenantsTable.id, mspSalesBundleAssignmentsTable.customerId),
         )
         .where(eq(mspSalesBundleAssignmentsTable.bundleId, bundleId))
         .orderBy(sql`${mspSalesBundleAssignmentsTable.assignedAt} DESC`);
@@ -640,11 +642,11 @@ router.post(
 
       // Verify customer belongs to this MSP
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, tenantId: mspCustomersTable.tenantId })
-        .from(mspCustomersTable)
+        .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
         .where(and(
-          eq(mspCustomersTable.id, customerId),
-          eq(mspCustomersTable.mspId, mspId),
+          eq(tenantsTable.id, customerId),
+          eq(tenantsTable.mspId, mspId),
         ));
       if (!customer) { apiErr(res, 404, "Customer not found in this MSP"); return; }
 
@@ -786,11 +788,11 @@ router.get(
     if (isNaN(customerId)) { apiErr(res, 400, "Invalid customerId"); return; }
     try {
       const [customer] = await db
-        .select({ id: mspCustomersTable.id })
-        .from(mspCustomersTable)
+        .select({ id: tenantsTable.id })
+        .from(tenantsTable)
         .where(and(
-          eq(mspCustomersTable.id, customerId),
-          eq(mspCustomersTable.mspId, mspId),
+          eq(tenantsTable.id, customerId),
+          eq(tenantsTable.mspId, mspId),
         ));
       if (!customer) { apiErr(res, 404, "Customer not found in this MSP"); return; }
       // Per-staff customer scoping: fence a scoped operator out of an
