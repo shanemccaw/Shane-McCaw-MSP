@@ -16,9 +16,11 @@
 // the three real, audited write actions — forced password reset, MFA reset,
 // and impersonation launch into /portal/ — each posting to
 // /admin/active-directory/user/:id/{force-password-reset,mfa-reset,impersonate}.
-// The RBAC/MSP-reassignment/entitlement-grant actions (Phase 7) and delete
-// (Phase 9) remain visibly-disabled placeholder slots, so those phases stay
-// additive to this layout rather than a redesign of it.
+// Phase 9 (Issue #69) replaced the delete placeholder with the real
+// dev-environment-only cascading hard delete: an arm step, then a
+// type-the-account's-email confirmation — the DELETE request is not sent
+// until both are explicitly completed. The server enforces the actual
+// non-production gate (fail closed); the UI only describes it.
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -188,6 +190,16 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
   const [acBusy, setAcBusy] = useState(false);
   const [acOutcome, setAcOutcome] = useState<AccountControlOutcome | null>(null);
 
+  // ── Phase 9 hard delete — self-contained state, same convention as the
+  // Phase 7/8 blocks above. deleteArmed is confirmation #1 (an explicit
+  // "arm" click); deleteConfirmText must exactly match the account's email
+  // (confirmation #2) before the request can be sent.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteOutcome, setDeleteOutcome] = useState<ActionOutcome | null>(null);
+  const [deleted, setDeleted] = useState(false);
+
   const load = useCallback(async () => {
     const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}`);
     if (!res.ok) throw new Error(res.status === 404 ? "This user no longer exists." : "Failed to load user detail.");
@@ -203,6 +215,12 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
     // confirm prompt or result over when the tree selection changes.
     setPending(null);
     setOutcome(null);
+    // Same for the hard-delete flow: a half-armed delete must never survive
+    // a selection change onto a different account.
+    setDeleteArmed(false);
+    setDeleteConfirmText("");
+    setDeleteOutcome(null);
+    setDeleted(false);
 
     (async () => {
       try {
@@ -374,6 +392,40 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
     } finally {
       setBusy(false);
       setPending(null);
+    }
+  }
+
+  // ── Phase 9: the dev-only cascading hard delete. Only callable once both
+  // confirmations are complete; the server re-checks everything (admin JWT,
+  // non-production environment) regardless of what this client claims.
+  async function runDelete() {
+    if (!detail || deleteConfirmText !== detail.profile.email) return;
+    setDeleteBusy(true);
+    setDeleteOutcome(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/active-directory/user/${userId}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+      if (!res.ok) {
+        setDeleteOutcome({ tone: "error", message: (data.error as string) ?? "The delete failed. Nothing was removed." });
+        return;
+      }
+
+      const tables = (data.tables ?? {}) as Record<string, number>;
+      const removedRows = Object.values(tables).reduce((sum, n) => sum + (Number(n) || 0), 0);
+      setDeleted(true);
+      setDeleteOutcome({
+        tone: "ok",
+        message:
+          `${String(data.deletedEmail ?? detail.profile.email)} permanently deleted, along with ${removedRows} related row${removedRows === 1 ? "" : "s"} ` +
+          `across ${Object.keys(tables).length} explicitly-wiped tables (plus DB-cascaded rows). Refresh the tree to drop the stale node.`,
+      });
+    } catch {
+      setDeleteOutcome({ tone: "error", message: "The delete failed. Nothing was removed." });
+    } finally {
+      setDeleteBusy(false);
+      setDeleteArmed(false);
+      setDeleteConfirmText("");
     }
   }
 
@@ -751,9 +803,77 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
         )}
       </Section>
 
-      <Section title="Delete (Phase 9)" icon={<Trash2 className="h-4 w-4 text-muted-foreground" />}>
-        <p className="mb-2 text-[11px] italic text-muted-foreground">Coming soon — dev-environment-only cascading hard delete.</p>
-        <PlaceholderButton label="Delete account" danger />
+      <Section title="Delete" icon={<Trash2 className="h-4 w-4 text-red-500" />}>
+        <p className="mb-2 text-[11px] italic text-muted-foreground">
+          Dev-environment-only cascading hard delete. Permanently removes this account and everything tied to it — projects, documents,
+          invoices, messages, sessions, MFA, consent invites, and tenant telemetry. The server refuses this outside a dev environment.
+        </p>
+
+        {deleteOutcome && (
+          <div
+            className={`mb-2 rounded border px-2 py-1.5 text-[11px] ${
+              deleteOutcome.tone === "ok"
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
+            }`}
+          >
+            {deleteOutcome.message}
+          </div>
+        )}
+
+        {deleted ? null : !deleteArmed ? (
+          <button
+            type="button"
+            disabled={deleteBusy}
+            onClick={() => {
+              setDeleteOutcome(null);
+              setDeleteConfirmText("");
+              setDeleteArmed(true);
+            }}
+            className="flex items-center gap-1 rounded border border-red-500/40 px-2 py-1 text-[11px] text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete account…
+          </button>
+        ) : (
+          <div className="rounded border border-red-500/40 bg-red-500/10 px-2 py-2">
+            <p className="mb-2 text-[11px] text-red-800 dark:text-red-200">
+              This wipes <span className="font-semibold">{profile.email}</span> and every row tied to the account, permanently, in one
+              transaction. There is no undo. Type the account's email to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={profile.email}
+              autoComplete="off"
+              spellCheck={false}
+              className="mb-2 w-full rounded border border-red-500/40 bg-background px-2 py-1 text-[11px]"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy || deleteConfirmText !== profile.email}
+                onClick={() => void runDelete()}
+                className="flex items-center gap-1 rounded bg-red-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleteBusy && <Loader2 className="h-3 w-3 animate-spin" />}
+                Permanently delete
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => {
+                  setDeleteArmed(false);
+                  setDeleteConfirmText("");
+                }}
+                className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </Section>
     </div>
   );
@@ -819,21 +939,6 @@ function ConfirmRow({
         </button>
       </div>
     </div>
-  );
-}
-
-function PlaceholderButton({ label, danger }: { label: string; danger?: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled
-      title="Not yet built — see docs/build-plans/active-directory.md"
-      className={`cursor-not-allowed rounded border px-2 py-1 text-[11px] opacity-50 ${
-        danger ? "border-red-500/40 text-red-600 dark:text-red-400" : "border-border text-muted-foreground"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 

@@ -136,6 +136,7 @@ export default defineConfig({
       "src/routes/admin-active-directory-credential-ops.test.ts",
       "src/routes/mfa-admin-reset.test.ts",
       "src/routes/admin-active-directory-user-actions.test.ts",
+      "src/routes/admin-active-directory-delete.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
