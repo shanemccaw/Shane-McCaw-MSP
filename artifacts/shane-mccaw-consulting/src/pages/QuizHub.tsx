@@ -100,7 +100,7 @@ export default function QuizHub() {
             Ready to skip straight to a real, Graph-based scan of your actual tenant?
           </p>
           <Link
-            href="/assessment"
+            href="/assessments?tab=free"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
             style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
             data-track="cta"

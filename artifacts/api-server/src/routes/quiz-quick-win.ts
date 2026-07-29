@@ -65,6 +65,11 @@ const captureSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1).max(200).optional(),
   company: z.string().trim().max(200).optional(),
+  // GA4's client_id (from the `_ga` cookie / gtag getters). Optional: no
+  // client-side GA4 instrumentation exists yet in this monorepo (#115), so no
+  // real caller sends this today — accepted now so the field lights up the
+  // moment that instrumentation ships, with no route change required.
+  ga4ClientId: z.string().trim().max(200).optional(),
 });
 
 router.post("/quiz/quick-win/results/:resultId/identify", submitLimiter, async (req, res) => {
@@ -96,6 +101,7 @@ router.post("/quiz/quick-win/results/:resultId/identify", submitLimiter, async (
       name: parsed.data.name,
       company: parsed.data.company,
       source: "quick_win_quiz",
+      ga4ClientId: parsed.data.ga4ClientId,
     });
 
     if (!staged) {

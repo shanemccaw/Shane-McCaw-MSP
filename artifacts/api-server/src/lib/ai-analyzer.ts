@@ -19,6 +19,7 @@ export interface AiAnalyzerInput {
   aiInstructions: string;
   packageContext: string;
   mspId?: number;
+  /** A users.id (M365 Command Center's client-scoped login), not a tenants.id. */
   customerId?: number;
 }
 
@@ -34,6 +35,7 @@ export interface TrackAiUsageOpts {
   outputTokens: number;
   model: string;
   mspId?: number;
+  /** A tenants.id, matching ai_usage_events.customerId — already resolved by the caller. */
   customerId?: number;
 }
 
@@ -66,6 +68,7 @@ export function trackAiUsage(opts: TrackAiUsageOpts): void {
         costCents,
         costOwner: "msp",
         model: opts.model,
+        customerId: opts.customerId,
       });
     } catch (err) {
       log.error({ err }, "trackAiUsage background task failed to record telemetry");
@@ -171,30 +174,42 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
     const modelName = message.model || "claude-haiku-4-5";
 
     let resolvedMspId = input.mspId;
-    if (!resolvedMspId && input.customerId) {
+    // input.customerId is a users.id (the M365 Command Center's own
+    // "customer" concept — a client-scoped login, same id-space as
+    // clientScoresTable.clientId / scriptRunResultsTable.customerId
+    // elsewhere in this subsystem). That's distinct from the platform-wide
+    // "customerId" convention used by ai_usage_events, which is a tenants.id
+    // (see msp.ts's aiUsageEventsTable.customerId comment). Resolve the real
+    // tenants.id here via users.tenantId so usage telemetry joins correctly,
+    // without touching the users.id semantics the rest of this subsystem
+    // (score impacts, profile updates, callback linkage) depends on.
+    let resolvedTenantId: number | undefined;
+    if (input.customerId) {
       try {
-        // input.customerId is a users.id (the old bridge keyed on
-        // msp_users.user_id). The dropped msp_users row carried an mspId for
-        // EVERY linked login — staff and customer alike — so a naive rewrite
-        // onto users.mspId alone would silently drop MSP attribution for every
-        // AI call triggered by a customer login: since Phase 0 a tenant-scoped
-        // role (CustomerUser/Free/Assessment) carries tenantId and a NULL
-        // mspId. Resolve the MSP-scoped case from users.mspId and the
-        // tenant-scoped case through tenants.mspId, preferring the user's own
-        // direct linkage. Left join so an MSP staff user with no tenant still
-        // resolves. Under-attribution here is a silent AI-billing gap, not an
-        // error, which is exactly why it needs the two-source coalesce.
+        // The dropped msp_users row carried an mspId for EVERY linked login —
+        // staff and customer alike — so a naive rewrite onto users.mspId
+        // alone would silently drop MSP attribution for every AI call
+        // triggered by a customer login: since Phase 0 a tenant-scoped role
+        // (CustomerUser/Free/Assessment) carries tenantId and a NULL mspId.
+        // Resolve the MSP-scoped case from users.mspId and the tenant-scoped
+        // case through tenants.mspId, preferring the user's own direct
+        // linkage. Left join so an MSP staff user with no tenant still
+        // resolves. Under-attribution here is a silent AI-billing gap, not
+        // an error, which is exactly why it needs the two-source coalesce.
         const [row] = await db
-          .select({ userMspId: usersTable.mspId, tenantMspId: tenantsTable.mspId })
+          .select({ userMspId: usersTable.mspId, tenantMspId: tenantsTable.mspId, tenantId: usersTable.tenantId })
           .from(usersTable)
           .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
           .where(eq(usersTable.id, input.customerId))
           .limit(1);
         if (row) {
-          resolvedMspId = row.userMspId ?? row.tenantMspId ?? undefined;
+          resolvedTenantId = row.tenantId ?? undefined;
+          if (!resolvedMspId) {
+            resolvedMspId = row.userMspId ?? row.tenantMspId ?? undefined;
+          }
         }
       } catch (err) {
-        log.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId from customerId (non-fatal)");
+        log.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId/tenantId from customerId (non-fatal)");
       }
     }
 
@@ -203,7 +218,7 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
       outputTokens,
       model: modelName,
       mspId: resolvedMspId,
-      customerId: input.customerId,
+      customerId: resolvedTenantId,
     });
   } catch (err) {
     log.error({ err }, "ai-analyzer: Claude call failed");

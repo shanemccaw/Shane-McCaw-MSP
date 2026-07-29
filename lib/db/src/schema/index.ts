@@ -210,6 +210,13 @@ export const leadStagingTable = pgTable("lead_staging", {
   companySize: text("company_size"),
   notes: text("notes"),
 
+  // ── attribution (#116) ──
+  // GA4's client_id, carried in from whichever public capture point (quiz
+  // identify, contact form, assessment-funnel checkout-session) first saw the
+  // visitor. Set once at capture time and never overwritten by a later
+  // find-or-create — first-touch attribution, not last-touch.
+  ga4ClientId: text("ga4_client_id"),
+
   // ── Zoho linkage ──
   // Zoho record ids are 18-19 digit numeric strings — text, never integer.
   zohoLeadId: text("zoho_lead_id"),

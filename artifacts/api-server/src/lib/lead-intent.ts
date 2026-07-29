@@ -103,7 +103,7 @@ export async function findLeadByEmail(email: string): Promise<{ id: number } | n
  */
 export async function ensureLeadForEmail(
   email: string,
-  opts: { name?: string; company?: string; source: "quiz" | "portal_login" },
+  opts: { name?: string; company?: string; source: "quiz" | "portal_login"; ga4ClientId?: string },
 ): Promise<number> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
@@ -154,9 +154,10 @@ export async function ensureLeadStagingForEmail(
   opts: {
     name?: string;
     company?: string;
-    source: "quiz" | "portal_login" | "quick_win_quiz" | "contact_form" | "assessment";
+    source: "quiz" | "portal_login" | "quick_win_quiz" | "contact_form" | "assessment" | "purchase" | "lead_magnet";
     legacyLeadId?: number;
     legacyQuizLeadId?: number;
+    ga4ClientId?: string;
   },
 ): Promise<LeadStaging | null> {
   try {
@@ -182,6 +183,7 @@ export async function ensureLeadStagingForEmail(
         stage: "Cold",
         legacyLeadId: opts.legacyLeadId ?? null,
         legacyQuizLeadId: opts.legacyQuizLeadId ?? null,
+        ga4ClientId: opts.ga4ClientId?.trim() || null,
       })
       .returning();
 

@@ -59,6 +59,7 @@ export default defineConfig({
       "src/lib/ai-cost-anomaly.test.ts",
       "src/lib/ai-cost-capture.test.ts",
       "src/lib/document-engine-cost.test.ts",
+      "src/lib/cio-narrative-generator.test.ts",
       "src/routes/admin-ai-billing-analytics.test.ts",
       "src/lib/ai-usage-metering.test.ts",
       "src/lib/ai-usage-sink.test.ts",

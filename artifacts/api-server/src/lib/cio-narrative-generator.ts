@@ -30,7 +30,7 @@
 
 import { db, mspDiagnosticRunsTable, tenantsTable, industryBenchmarkReferenceTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
 import { calculateArchitectureHealthScore } from "./health-engine";
@@ -186,7 +186,7 @@ export async function generateCioNarrative(params: GenerateCioNarrativeParams): 
 
   try {
     const [customerRow] = await db
-      .select({ name: tenantsTable.customerName })
+      .select({ name: tenantsTable.customerName, mspId: tenantsTable.mspId })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, customerId))
       .limit(1);
@@ -205,11 +205,27 @@ export async function generateCioNarrative(params: GenerateCioNarrativeParams): 
       .replace(/\{\{benchmarkBlock\}\}/g, benchmarkBlock)
       .replace(/\{\{costBlock\}\}/g, costBlock);
 
-    const aiResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
-    });
+    // This runs as a fire-and-forget pseudo-node outside any workflow run, so
+    // unlike document-engine.ts (which refines an enclosing withAiAttribution
+    // set by workflow-executor.ts), there is no enclosing scope to inherit —
+    // mspId has to be resolved here, from the tenant this run is for.
+    const aiResponse = await withAiAttribution(
+      {
+        mspId: customerRow?.mspId ?? null,
+        costOwner: "msp",
+        nodeType: "cio_narrative",
+        feature: "cio_narrative",
+        customerId,
+        runId,
+        triggerSource: "cio-narrative-generator",
+      },
+      () =>
+        anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+    );
 
     if (aiResponse.stop_reason === "max_tokens") {
       log.warn({ runId, customerId }, "cio-narrative-generator: output hit max_tokens — narrative may be truncated");

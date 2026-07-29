@@ -428,7 +428,7 @@ export default function SolutionTopicPage() {
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-14">
             <Link
-              href="/assessment"
+              href="/assessments?tab=free"
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
               data-track="cta"

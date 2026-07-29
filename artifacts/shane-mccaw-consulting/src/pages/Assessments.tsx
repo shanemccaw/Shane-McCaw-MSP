@@ -430,9 +430,16 @@ export default function Assessments() {
   // {{db.assessments.list}}
   const { services, loading, error } = useServices({ category: 'assessment' });
 
-  // Retained only for backward-compatible link targets (/assessments/start, /assessments/premium);
-  // no visible tab bar — the filter narrows counts, tiles, search, and zone views alike.
-  const tierFilter = location.includes('/start') ? 'free' : location.includes('/premium') ? 'paid' : 'all';
+  // Backward-compatible link targets (/assessments/start, /assessments/premium) plus the
+  // ?tab=free / ?tab=paid query param CTAs used sitewide (e.g. Home.tsx's funnel stages) —
+  // both forms drive the same tierFilter, which narrows counts, tiles, search, and zone views alike.
+  const tierFilter = useMemo<'free' | 'paid' | 'all'>(() => {
+    if (location.includes('/start')) return 'free';
+    if (location.includes('/premium')) return 'paid';
+    const tab = new URLSearchParams(search).get('tab');
+    if (tab === 'free' || tab === 'paid') return tab;
+    return 'all';
+  }, [location, search]);
 
   // The dedicated per-zone view lives at ?zone=<key> — a query param because
   // every /assessments/* path segment is taken (/assessments/:slug is the
@@ -450,6 +457,9 @@ export default function Assessments() {
   const [scores, setScores] = useState<Record<ZoneKey, number>>(ZERO_SCORES);
   const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
+  // Zone chip filter for the index view's paid-tier grid (Home.tsx's renderAssessmentSplit
+  // pattern, ported onto this page's own tierServices/servicesByZone). null = all paid zones.
+  const [paidZone, setPaidZone] = useState<ZoneKey | null>(null);
   // Element id to land on after the next index render ('assessment-wizard' when
   // the zone view's finder CTA closes the zone); null means top of page.
   const pendingScrollRef = useRef<string | null>(null);
@@ -491,6 +501,25 @@ export default function Assessments() {
   // hardcoded (the 6-zone count is code-defined above, so that one is literal).
   // Tier-scoped so the hero agrees with every other count on /assessments/start.
   const freeCount = useMemo(() => tierServices.filter((s) => s.isFreeOffering).length, [tierServices]);
+
+  // The index view's free/paid breakout (Home.tsx's renderAssessmentSplit pattern, ported
+  // onto this page's own tierServices/servicesByZone rather than duplicating Home's fetch).
+  // tierServices is already tier-scoped, so a /start or /premium (or ?tab=) deep link
+  // naturally collapses this to a single section.
+  const freeServices = useMemo(() => tierServices.filter((s) => s.isFreeOffering), [tierServices]);
+  const paidServices = useMemo(() => tierServices.filter((s) => !s.isFreeOffering), [tierServices]);
+  const paidZoneCounts = useMemo(
+    () =>
+      ZONES.map((zone) => ({
+        zone,
+        count: paidServices.filter((s) => getZoneForService(s) === zone.key).length,
+      })).filter((z) => z.count > 0),
+    [paidServices],
+  );
+  const visiblePaidServices = useMemo(
+    () => (paidZone ? paidServices.filter((s) => getZoneForService(s) === paidZone) : paidServices),
+    [paidServices, paidZone],
+  );
 
   // The index's shortcut for people who already know the catalog: live substring
   // match on name/tagline/description, honoring the tier filter. null = inactive.
@@ -1055,7 +1084,66 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 3. Zone index — the lightweight catalog entry point: a search box
+          {/* 3. Free/paid breakout — the visible tab-like split this index view was
+                 missing (Home.tsx's renderAssessmentSplit pattern, ported onto this
+                 page's own tierServices/servicesByZone data rather than a copy of
+                 Home's fetch/card). A /start, /premium, or ?tab= deep link naturally
+                 collapses this to whichever single section its tierFilter selected. */}
+          {!loading && !error && services.length > 0 && (freeServices.length > 0 || paidServices.length > 0) && (
+            <section className="py-12 px-4 sm:px-6 lg:px-8">
+              <div className="max-w-5xl mx-auto space-y-12">
+                {freeServices.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
+                      Start here — no cost
+                    </p>
+                    <div className="space-y-3">{freeServices.map((service) => renderAssessmentCard(service))}</div>
+                  </div>
+                )}
+                {paidServices.length > 0 && (
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <p className="text-xs uppercase tracking-widest text-text-secondary">
+                        Go deeper — paid assessments
+                      </p>
+                      {paidZoneCounts.length > 1 && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setPaidZone(null)}
+                            aria-pressed={paidZone === null}
+                            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                              paidZone === null
+                                ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/40'
+                                : 'text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]'
+                            }`}
+                          >
+                            All
+                          </button>
+                          {paidZoneCounts.map(({ zone, count }) => (
+                            <button
+                              key={zone.key}
+                              onClick={() => setPaidZone(zone.key)}
+                              aria-pressed={paidZone === zone.key}
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                paidZone === zone.key
+                                  ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/40'
+                                  : 'text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]'
+                              }`}
+                            >
+                              {zone.label} <span className="opacity-70">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-3">{visiblePaidServices.map((service) => renderAssessmentCard(service))}</div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* 4. Zone index — the lightweight catalog entry point: a search box
                  for people who already know what they're after, and six
                  count-bearing tiles that each open the dedicated zone view.
                  Nothing renders expanded inline here. */}
@@ -1198,7 +1286,7 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 4. The shared construct — what every assessment hands back, whichever
+          {/* 5. The shared construct — what every assessment hands back, whichever
                  zone it lives in (consolidates the old "What These Assessments
                  Actually Do" and "What's Inside Each Assessment" prose blocks). */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
@@ -1244,7 +1332,7 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 5. Why these assessments matter — one card per zone, two columns:
+          {/* 6. Why these assessments matter — one card per zone, two columns:
                  the real risk story plus what a scan there actually turns up,
                  grounded in the catalog's real deliverables. */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
@@ -1314,7 +1402,7 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 6. How These Assessments Work */}
+          {/* 7. How These Assessments Work */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl mx-auto">
               <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
@@ -1332,7 +1420,7 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 7. Built by the CURRENT Microsoft 365 Architect for NASA */}
+          {/* 8. Built by the CURRENT Microsoft 365 Architect for NASA */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10 text-center">
@@ -1358,7 +1446,7 @@ export default function Assessments() {
             </div>
           </section>
 
-          {/* 8. Final CTA */}
+          {/* 9. Final CTA */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10 text-center">

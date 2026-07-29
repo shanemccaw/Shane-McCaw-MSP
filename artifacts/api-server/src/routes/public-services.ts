@@ -154,6 +154,9 @@ const createSessionSchema = z.object({
   fullName: z.string().min(1, "fullName is required"),
   email: z.string().email("email must be a valid email address"),
   seats: z.number().int().min(1).default(1),
+  // GA4's client_id (#116). Optional: no client-side GA4 instrumentation
+  // exists yet in this monorepo (#115), so no real caller sends this today.
+  ga4ClientId: z.string().trim().max(200).optional(),
 });
 
 router.post("/public/checkout-session", async (req: Request, res: Response) => {
@@ -163,7 +166,7 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
     return;
   }
 
-  const { productSlug, fullName, email, seats } = parsed.data;
+  const { productSlug, fullName, email, seats, ga4ClientId } = parsed.data;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const [row] = await db
@@ -176,7 +179,7 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
   // a bounced lead is still trackable, remarketable data. Converts to a Prospect
   // account at consent time (see provisionProspectAccount / convertLeadForClient).
   // Fire-and-forget, non-fatal — must never block session creation.
-  void ensureAssessmentFunnelLead(email, fullName);
+  void ensureAssessmentFunnelLead(email, fullName, undefined, ga4ClientId);
 
   res.json({ sessionId: row.id });
 });

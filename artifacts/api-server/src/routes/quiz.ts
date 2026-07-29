@@ -404,13 +404,16 @@ const submitSchema = z.object({
     content: z.string(),
   })),
   quizType: z.string().optional().default("copilot"),
+  // See quiz-quick-win.ts's captureSchema — same optional GA4 client_id field,
+  // no client-side sender exists yet (#115).
+  ga4ClientId: z.string().trim().max(200).optional(),
 });
 
 router.post("/quiz/submit", submitLimiter, async (req, res) => {
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
 
-  const { name, email, company, conversation, quizType } = parsed.data;
+  const { name, email, company, conversation, quizType, ga4ClientId } = parsed.data;
   const knownQuizTypes = Object.keys(SCORING_CONFIGS);
   if (!knownQuizTypes.includes(quizType)) {
     req.log.warn({ quizType }, "quiz/submit: unknown quizType — falling back to copilot scoring");
@@ -519,7 +522,7 @@ Respond ONLY with valid JSON in this exact shape:
   // Bridge into the CRM leads table (check-then-create by email) so the
   // Engagement Offer Engine's findLeadByEmail lookup has a real row to find —
   // quiz submission alone never created one before this.
-  void ensureLeadForEmail(email, { name, company: company ?? undefined, source: "quiz" });
+  void ensureLeadForEmail(email, { name, company: company ?? undefined, source: "quiz", ga4ClientId });
 
   if (leadId !== null) {
     try {
