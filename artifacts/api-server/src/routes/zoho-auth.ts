@@ -78,6 +78,15 @@ router.get("/zoho/auth/start", requireAdmin, (req: Request, res: Response) => {
   url.searchParams.set("state", mintState());
 
   log.info({ userId: req.user?.id }, "zoho-auth: starting OAuth consent flow");
+
+  // The Admin Panel calls this route via fetch (which must carry a Bearer
+  // token, since requireAdmin has no cookie fallback) rather than a bare
+  // <a href>, so it can't just be redirected to by the browser directly. It
+  // asks for JSON and does the navigation itself with the URL below.
+  if (req.headers.accept?.includes("application/json")) {
+    res.json({ authUrl: url.toString() });
+    return;
+  }
   res.redirect(url.toString());
 });
 

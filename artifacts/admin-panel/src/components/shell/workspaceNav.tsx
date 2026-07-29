@@ -22,6 +22,7 @@ import {
   Flag,
   CheckSquare,
   Link2,
+  Plug,
   UserPlus,
   HelpCircle,
   Target,
@@ -207,6 +208,12 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-security", label: "Security", path: "/system/security", icon: ShieldCheck },
           { id: "sys-signal-mappings", label: "Signal Mappings", path: "/system/signal-mappings", icon: SlidersHorizontal },
           { id: "sys-sow-debug", label: "SOW Debug", path: "/system/sow-debug", icon: FileSearch },
+        ],
+      },
+      {
+        id: "integrations", label: "Integrations", defaultOpen: true,
+        items: [
+          { id: "sys-integrations-zoho", label: "Zoho", path: "/system/integrations-zoho", icon: Plug },
         ],
       },
       {
