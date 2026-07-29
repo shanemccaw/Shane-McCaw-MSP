@@ -1159,6 +1159,31 @@ export const zohoConnectionTable = pgTable("zoho_connection", {
 export type ZohoConnection = typeof zohoConnectionTable.$inferSelect;
 export type InsertZohoConnection = typeof zohoConnectionTable.$inferInsert;
 
+// ── EngageBay Connection ─────────────────────────────────────────────────────
+// One row per MSP (single-tenant today: mspId 1 only, shaped for later).
+// EngageBay auth is a single static API key (no OAuth, no refresh, no expiry —
+// confirmed via github.com/engagebay/restapi), so unlike zoho_connection there
+// is no access-token cache: the key lives in Key Vault under
+// keyVaultSecretName and nowhere else.
+
+export const ENGAGEBAY_CONNECTION_STATUS = ["disconnected", "connected", "error"] as const;
+export type EngageBayConnectionStatus = typeof ENGAGEBAY_CONNECTION_STATUS[number];
+
+export const engagebayConnectionTable = pgTable("engagebay_connection", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().default(1).references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // Key Vault secret NAME holding the API key — never the value itself
+  keyVaultSecretName: text("key_vault_secret_name").notNull(),
+  status: text("status", { enum: ENGAGEBAY_CONNECTION_STATUS }).notNull().default("disconnected"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type EngageBayConnection = typeof engagebayConnectionTable.$inferSelect;
+export type InsertEngageBayConnection = typeof engagebayConnectionTable.$inferInsert;
+
 // ── Plan Capability Rules ──────────────────────────────────────────────────────
 // Data-driven mapping: (Stripe product/service tier) → (capability key → enabled).
 // Editable through the Admin Panel. Resolved at runtime by requirePlanFeature().
