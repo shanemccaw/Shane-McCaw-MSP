@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 /**
  * ensureLeadForEmail bridges quiz/portal-login identity into a real leadsTable
@@ -50,6 +50,23 @@ vi.mock("@workspace/db", () => {
 
 process.env.JWT_SECRET = "test-secret";
 
+/**
+ * Imported ONCE, in a hook with its own budget, rather than per-test.
+ *
+ * lead-intent.ts transitively pulls in the Zoho sync/client graph, and that load
+ * costs ~5s on a cold module registry. With `await import()` inside the first
+ * test, the whole cost was charged to that test's default 5s timeout, leaving it
+ * about 40ms of headroom — so it went red whenever the suite got marginally
+ * busier (adding any two test files anywhere was enough). The import still
+ * happens after the module body, so the env assignment above and the hoisted
+ * vi.mock both still apply.
+ */
+let ensureLeadForEmail: typeof import("./lead-intent").ensureLeadForEmail;
+
+beforeAll(async () => {
+  ({ ensureLeadForEmail } = await import("./lead-intent"));
+}, 60_000);
+
 beforeEach(() => {
   mockSelectQueue = [];
   mockInsertQueue = [];
@@ -59,7 +76,6 @@ beforeEach(() => {
 
 describe("ensureLeadForEmail", () => {
   it("returns the existing lead id without inserting when a lead already exists for the email", async () => {
-    const { ensureLeadForEmail } = await import("./lead-intent");
     mockSelectQueue.push([{ id: 42 }]);
 
     const leadId = await ensureLeadForEmail("Someone@Example.com", { name: "Someone", source: "quiz" });
@@ -69,7 +85,6 @@ describe("ensureLeadForEmail", () => {
   });
 
   it("creates a new lead with normalized email, honest source, and default CRM fields when none exists (quiz)", async () => {
-    const { ensureLeadForEmail } = await import("./lead-intent");
     mockSelectQueue.push([]);
     mockInsertQueue.push([{ id: 7 }]);
 
@@ -87,7 +102,6 @@ describe("ensureLeadForEmail", () => {
   });
 
   it("creates a new lead tagged portal_login for the Assessment first-login bridge", async () => {
-    const { ensureLeadForEmail } = await import("./lead-intent");
     mockSelectQueue.push([]);
     mockInsertQueue.push([{ id: 8 }]);
 
@@ -98,7 +112,6 @@ describe("ensureLeadForEmail", () => {
   });
 
   it("falls back to the normalized email as the lead name when no name is given", async () => {
-    const { ensureLeadForEmail } = await import("./lead-intent");
     mockSelectQueue.push([]);
     mockInsertQueue.push([{ id: 9 }]);
 
@@ -108,7 +121,6 @@ describe("ensureLeadForEmail", () => {
   });
 
   it("is non-fatal: swallows a DB error and returns 0 instead of throwing", async () => {
-    const { ensureLeadForEmail } = await import("./lead-intent");
     mockSelectQueue = undefined as any; // shift() on undefined throws inside the mocked chain
 
     const leadId = await ensureLeadForEmail("broken@example.com", { source: "quiz" });
