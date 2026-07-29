@@ -14,6 +14,9 @@
  *   customer.subscription.deleted      — cancel subscription, suspend MSP
  *   invoice.payment_succeeded          — clear dunning, update period
  *   invoice.payment_failed             — start dunning clock
+ *   invoice.finalized                  — Zoho Books sync (#87): queue invoice create
+ *   invoice.paid                       — Zoho Books sync (#87): queue invoice create + payment
+ *   charge.refunded                    — Zoho Books sync (#87): logged only, not synced (no credit-note node in scope)
  *   subscription_schedule.updated      — self-service plan change: finalize when the target phase becomes current
  *   subscription_schedule.completed    — self-service plan change: backstop finalize
  *   subscription_schedule.released     — self-service plan change: finalize or clear stale pending state
@@ -24,6 +27,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspSubscriptionsTable, mspUsersTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
+import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 
@@ -95,6 +99,24 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
 
       case "invoice.payment_failed":
         await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      // ── Zoho Books sync (#87) — audited fresh: this webhook previously had
+      // no invoice.finalized/invoice.paid/charge.refunded cases at all. Added
+      // as their own independent cases (rather than folded into
+      // payment_succeeded/payment_failed above) so the pre-existing dunning
+      // logic is untouched and Zoho sync can't double-fire off two Stripe
+      // events for the same invoice.
+      case "invoice.finalized":
+        await handleInvoiceFinalizedZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "invoice.paid":
+        await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "charge.refunded":
+        handleChargeRefundedZohoNote(event.data.object as import("stripe").Stripe.Charge);
         break;
 
       case "subscription_schedule.updated":
@@ -362,6 +384,27 @@ async function handleCheckoutCompleted(
     ownerType: "platform",
   });
 
+  // Zoho Books sync (#87) — invisible, no UI. This checkout already confirmed
+  // payment_status === "paid" at the top of handleCheckoutCompleted, so the
+  // first invoice + its payment are synced together in one queued job.
+  if (contactEmail) {
+    try {
+      await enqueueZohoBooksInvoiceSync({
+        referenceNumber: session.id,
+        contactEmail,
+        contactName: contactName || undefined,
+        amount: (session.amount_total ?? 0) / 100,
+        description: `MSP platform subscription — ${companyName}`,
+        invoiceDate: new Date().toISOString().slice(0, 10),
+        recordPayment: true,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        localUserId: provisionedUserId ?? undefined,
+      });
+    } catch (err) {
+      log.warn({ err, sessionId: session.id }, "msp-billing-webhook: Zoho Books invoice sync enqueue failed (non-fatal)");
+    }
+  }
+
   log.info(
     { mspId: msp.id, slug, subscriptionId, serviceId, agreementVersion: agreementVersion || null },
     "msp-billing-webhook: MSP provisioned successfully",
@@ -573,6 +616,93 @@ async function handlePaymentFailed(invoice: import("stripe").Stripe.Invoice): Pr
   log.info(
     { subscriptionId, mspId: sub.mspId, paymentFailedAt: failedAt.toISOString() },
     "msp-billing-webhook: payment failed — dunning clock started",
+  );
+}
+
+// ── Zoho Books sync (#87) — invisible, no UI ──────────────────────────────────
+//
+// This webhook's revenue (platform subscription billing) is Shane's own
+// business revenue same as the client/project invoicing portal.ts handles
+// separately — both stream into Zoho Books so his accountant never pulls
+// from Stripe directly. mspSubscriptionsTable.contactEmail is the only
+// contact identity available on renewal/finalize events (there is no
+// invoicesTable row in this billing stream to key off).
+
+function stripeInvoiceSubscriptionId(invoice: import("stripe").Stripe.Invoice): string | null {
+  const raw = (invoice as unknown as { subscription?: string | { id?: string } | null }).subscription;
+  return typeof raw === "string" ? raw : raw?.id ?? null;
+}
+
+async function findSubscriptionContactByStripeId(subscriptionId: string): Promise<{ contactEmail: string } | null> {
+  const [sub] = await db
+    .select({ contactEmail: mspSubscriptionsTable.contactEmail })
+    .from(mspSubscriptionsTable)
+    .where(eq(mspSubscriptionsTable.stripeSubscriptionId, subscriptionId))
+    .limit(1);
+  return sub?.contactEmail ? { contactEmail: sub.contactEmail } : null;
+}
+
+/** invoice.finalized — Stripe has finalized the invoice but it may not be paid yet (e.g. send_invoice collection). Creates the Zoho invoice only, no payment. */
+async function handleInvoiceFinalizedZohoSync(invoice: import("stripe").Stripe.Invoice): Promise<void> {
+  const subscriptionId = stripeInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+
+  const contact = await findSubscriptionContactByStripeId(subscriptionId);
+  if (!contact) {
+    log.info({ subscriptionId, invoiceId: invoice.id }, "msp-billing-webhook: invoice.finalized — no contact email on file, skipping Zoho Books sync");
+    return;
+  }
+
+  try {
+    await enqueueZohoBooksInvoiceSync({
+      referenceNumber: invoice.id ?? subscriptionId,
+      contactEmail: contact.contactEmail,
+      amount: (invoice.amount_due ?? 0) / 100,
+      description: "MSP platform subscription",
+      invoiceDate: new Date((invoice.created ?? Date.now() / 1000) * 1000).toISOString().slice(0, 10),
+    });
+  } catch (err) {
+    log.warn({ err, invoiceId: invoice.id }, "msp-billing-webhook: Zoho Books invoice.finalized sync enqueue failed (non-fatal)");
+  }
+}
+
+/** invoice.paid — the definitive "money collected" signal. Idempotent with invoice.finalized above via zoho_books_create_invoice's own reference_number lookup; also records the payment. */
+async function handleInvoicePaidZohoSync(invoice: import("stripe").Stripe.Invoice): Promise<void> {
+  const subscriptionId = stripeInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+
+  const contact = await findSubscriptionContactByStripeId(subscriptionId);
+  if (!contact) {
+    log.info({ subscriptionId, invoiceId: invoice.id }, "msp-billing-webhook: invoice.paid — no contact email on file, skipping Zoho Books sync");
+    return;
+  }
+
+  try {
+    await enqueueZohoBooksInvoiceSync({
+      referenceNumber: invoice.id ?? subscriptionId,
+      contactEmail: contact.contactEmail,
+      amount: (invoice.amount_paid ?? 0) / 100,
+      description: "MSP platform subscription",
+      invoiceDate: new Date((invoice.created ?? Date.now() / 1000) * 1000).toISOString().slice(0, 10),
+      recordPayment: true,
+      paymentDate: new Date().toISOString().slice(0, 10),
+    });
+  } catch (err) {
+    log.warn({ err, invoiceId: invoice.id }, "msp-billing-webhook: Zoho Books invoice.paid sync enqueue failed (non-fatal)");
+  }
+}
+
+/**
+ * charge.refunded — deliberately NOT synced to Zoho Books. #87's approved
+ * node set has no update-after-creation or credit-note node (Zoho Books is
+ * the accounting system of record; corrections happen manually there), so a
+ * refund is logged for visibility only rather than silently dropped.
+ */
+function handleChargeRefundedZohoNote(charge: import("stripe").Stripe.Charge): void {
+  const customerId = typeof charge.customer === "string" ? charge.customer : charge.customer?.id ?? null;
+  log.warn(
+    { chargeId: charge.id, customerId, amountRefunded: charge.amount_refunded, invoiceId: (charge as unknown as { invoice?: string | null }).invoice ?? null },
+    "msp-billing-webhook: charge.refunded — NOT synced to Zoho Books (no credit-note/update node in #87's scope); record the refund manually in Zoho",
   );
 }
 

@@ -69,6 +69,11 @@ export const usersTable = pgTable("users", {
   // zoho_webhook receiver, not local forms. They are NOT removed here —
   // removal is #84's job, gated on a real usage audit.
   zohoContactId: text("zoho_contact_id"),
+  // Zoho Books Contact id (#87) — deliberately separate from zohoContactId
+  // above: CRM and Books are different Zoho products with different record
+  // spaces, so a CRM Contact id is not a valid Books Contact id (or vice
+  // versa). Nullable, populated on first zoho_books_upsert_contact sync.
+  zohoBooksContactId: text("zoho_books_contact_id"),
   pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   // ── absorbed from msp_users (Phase 0) ──────────────────────────────────────
@@ -641,6 +646,10 @@ export const invoicesTable = pgTable("invoices", {
   billingCycleStart: timestamp("billing_cycle_start"),
   billingCycleEnd: timestamp("billing_cycle_end"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // Zoho Books Invoice id (#87) — nullable, populated once
+  // zoho_books_create_invoice has synced this invoice (idempotency tracking
+  // only, not display — Zoho Books has no in-platform UI).
+  zohoBooksInvoiceId: text("zoho_books_invoice_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -2616,6 +2625,11 @@ export interface WfNode {
     | "zoho_create_tasklist" | "zoho_get_tasklist"
     | "zoho_create_task" | "zoho_update_task" | "zoho_get_task" | "zoho_list_tasks"
     | "zoho_create_milestone" | "zoho_update_milestone" | "zoho_get_milestone" | "zoho_list_milestones"
+    // Zoho Books (#87) — 4 write-only nodes, draining on the same
+    // zoho_batch_drain. No read/list nodes (no UI to serve), no delete.
+    | "zoho_books_upsert_contact" | "zoho_books_create_invoice"
+    | "zoho_books_record_payment" | "zoho_books_create_expense"
+    | "zoho_books_daily_ai_rollup"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities

@@ -72,6 +72,7 @@ export type NodeTypeMeta =
 
 import { ZOHO_CRM_NODES } from "./zoho-crm-nodes.ts";
 import { ZOHO_PROJECTS_NODES } from "./zoho-projects-nodes.ts";
+import { ZOHO_BOOKS_NODES } from "./zoho-books-nodes.ts";
 
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // ── Meta-node ──────────────────────────────────────────────────────────────
@@ -820,6 +821,20 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: n.description,
   })),
+
+  // ── Zoho Books (#87) — 4 write-only nodes, none AI-dependent ──────────────
+  // Same derivation discipline as CRM/Projects above: catalog lives in
+  // zoho-books-nodes.ts, this registry just maps over it.
+  ...ZOHO_BOOKS_NODES.map((n): NodeTypeMeta => ({
+    nodeType: n.nodeType,
+    isAIDependent: false,
+    description: n.description,
+  })),
+  {
+    nodeType: "zoho_books_daily_ai_rollup",
+    isAIDependent: false,
+    description: "Sums the prior day's AI/Anthropic cost and posts one Zoho Books expense — no AI",
+  },
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

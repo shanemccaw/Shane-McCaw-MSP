@@ -2005,6 +2005,33 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Zoho Books Daily AI Cost Rollup (#87) ────────────────────────────────
+  {
+    name: "Zoho Books Daily AI Cost Rollup",
+    description: "Runs daily at 05:00 UTC. Sums the prior UTC day's ai_usage_events.costCents (reusing the Phase 4 AI Billing day-bucketing logic in ai-billing-analytics.ts) and posts ONE zoho_books_create_expense job for that day, idempotent via a reference_number of the date. A $0 day is skipped rather than posting a $0 expense. The actual Zoho write happens on the next Zoho Queue Drain, same as every other Zoho Books job.",
+    triggerType: "schedule",
+    cron: "0 5 * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Daily at 05:00 UTC" } },
+        {
+          id: "rollup",
+          type: "zoho_books_daily_ai_rollup",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "zoho_books_daily_ai_rollup",
+            label: "Sum prior day's AI cost, queue Zoho Books expense",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "rollup" },
+        { id: "e2", source: "rollup", target: "end" },
+      ],
+    },
+  },
   {
     name: "__system__: Signal Policy Evaluation",
     description: "Runs every 15 minutes. Evaluates all active Signal Policy Engine rules (policy_rules) against every customer with a currently-fired signal, firing configured workflow events for anything that qualifies — this is the final step connecting a fired/stabilized signal to a real dispatched alert.",

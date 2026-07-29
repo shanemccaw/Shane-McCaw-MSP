@@ -38,6 +38,7 @@ import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
+import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 const log = logger.child({ channel: "tenant.portal" });
 import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange, replayPhaseGenState } from "../lib/sse-channels.ts";
 import multer from "multer";
@@ -5964,6 +5965,52 @@ router.post("/admin/presentations/:id/simulate-payment", async (req: Request, re
   }
 });
 
+// ── Zoho Books sync (#87) — invisible, no UI ──────────────────────────────────
+// This is the client/project invoicing revenue stream — separate from
+// msp-billing-webhook.ts's platform subscription stream, both queue into the
+// same Zoho Books nodes. zoho_books_create_invoice is idempotent via
+// referenceNumber (Zoho-side lookup) even if this gets called twice for the
+// same invoice (e.g. a Stripe retry), so no extra local guard is needed here
+// beyond the invoicesTable.zohoBooksInvoiceId cache the job handler itself
+// writes back on success.
+async function syncPaidInvoiceToZohoBooks(invoice: {
+  id: number;
+  clientUserId: number | null;
+  description: string | null;
+  amount: string | number;
+  stripeSessionId?: string | null;
+  stripeInvoiceId?: string | null;
+}): Promise<void> {
+  if (!invoice.clientUserId) return;
+  try {
+    const [user] = await db
+      .select({ email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, invoice.clientUserId))
+      .limit(1);
+    if (!user?.email) {
+      log.info({ invoiceId: invoice.id, clientUserId: invoice.clientUserId }, "syncPaidInvoiceToZohoBooks: no user email on file, skipping Zoho Books sync");
+      return;
+    }
+    const referenceNumber = invoice.stripeInvoiceId || invoice.stripeSessionId || `INV-${invoice.id}`;
+    const today = new Date().toISOString().slice(0, 10);
+    await enqueueZohoBooksInvoiceSync({
+      referenceNumber,
+      contactEmail: user.email,
+      contactName: user.name ?? undefined,
+      amount: Number(invoice.amount),
+      description: invoice.description ?? `Invoice #${invoice.id}`,
+      invoiceDate: today,
+      recordPayment: true,
+      paymentDate: today,
+      localInvoiceId: invoice.id,
+      localUserId: invoice.clientUserId,
+    });
+  } catch (err) {
+    log.warn({ err, invoiceId: invoice.id }, "syncPaidInvoiceToZohoBooks: Zoho Books invoice sync enqueue failed (non-fatal)");
+  }
+}
+
 async function processStripeEvent(req: Request, event: import("stripe").Stripe.Event): Promise<void> {
   // Top-level guard: any unhandled error inside this function is logged with full
   // context (event type, session ID, message, stack) before being re-thrown so
@@ -5996,6 +6043,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           projectId: paidInvoice.projectId ?? undefined,
           metadata: { amountDollars: paidInvoice.amount, stripeSessionId: session.id },
         });
+        void syncPaidInvoiceToZohoBooks({ ...paidInvoice, stripeSessionId: session.id });
       }
     }
 
@@ -6036,6 +6084,13 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         discountAmount: svcDiscountAmount,
       }).returning({ id: invoicesTable.id });
       void uploadInvoiceToSharePoint(newInvoice.id);
+      void syncPaidInvoiceToZohoBooks({
+        id: newInvoice.id,
+        clientUserId: uid,
+        description: `${serviceName} — purchased via portal`,
+        amount: amountDollars,
+        stripeSessionId: session.id,
+      });
 
       // Look up the buyer for notifications and emails below
       const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, uid));
@@ -6660,14 +6715,16 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             "processStripeEvent: invoice.paid — already marked paid, skipping (idempotency)",
           );
         } else {
-          await db
+          const [markedPaid] = await db
             .update(invoicesTable)
             .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
-            .where(eq(invoicesTable.id, existingInvoice.id));
+            .where(eq(invoicesTable.id, existingInvoice.id))
+            .returning();
           req.log.info(
             { stripeInvoiceId, invoiceId: existingInvoice.id },
             "processStripeEvent: invoice.paid — marked invoice as paid",
           );
+          if (markedPaid) void syncPaidInvoiceToZohoBooks({ ...markedPaid, stripeInvoiceId });
         }
       } else if (stripeSubId) {
         // 2. No exact match — this is likely a renewal invoice (new Stripe
@@ -6710,6 +6767,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             { stripeInvoiceId, stripeSubId, newInvoiceId: renewalInvoice.id, clientUserId: priorInvoice.clientUserId },
             "processStripeEvent: invoice.paid — created renewal invoice row",
           );
+          void syncPaidInvoiceToZohoBooks({ ...renewalInvoice, stripeInvoiceId });
         }
       } else {
         req.log.info(

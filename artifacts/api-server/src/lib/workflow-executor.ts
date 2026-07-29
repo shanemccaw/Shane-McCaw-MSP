@@ -103,6 +103,8 @@ import { executeZohoCrmNode } from "./zoho-crm.js";
 import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.js";
 import { executeZohoProjectsNode } from "./zoho-projects.js";
 import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.js";
+import { executeZohoBooksNode, handleZohoBooksDailyAiRollup } from "./zoho-books.js";
+import { getZohoBooksNodeSpec } from "./zoho-books-nodes.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
@@ -1252,6 +1254,18 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       }
       return { dryRun: true, queued: false, jobId: null, jobType: node.type, entity: zpEntity, note: "dry run — Zoho Projects write not queued" };
     }
+
+    // Zoho Books (#87) — all 4 nodes are write-only, same dry-run contract:
+    // report nothing queued, never touch msp_job_queue.
+    case "zoho_books_upsert_contact": case "zoho_books_create_invoice":
+    case "zoho_books_record_payment": case "zoho_books_create_expense": {
+      const zbSpec = getZohoBooksNodeSpec(node.type);
+      const zbEntity = zbSpec?.entity ?? "Invoice";
+      return { dryRun: true, queued: false, jobId: null, jobType: node.type, entity: zbEntity, note: "dry run — Zoho Books write not queued" };
+    }
+
+    case "zoho_books_daily_ai_rollup":
+      return { dryRun: true, posted: false, note: "dry run — Zoho Books daily AI cost rollup skipped" };
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -6624,6 +6638,30 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
         );
         if (output.error) nodeError = true;
+        break;
+      }
+
+      // Zoho Books (#87) — all 4 write-only nodes route through one entry
+      // point, same queued split as CRM/Projects: enqueues an msp_job_queue
+      // row and returns { queued: true, jobId } WITHOUT touching Zoho — the
+      // write lands on the next zoho_batch_drain.
+      case "zoho_books_upsert_contact": case "zoho_books_create_invoice":
+      case "zoho_books_record_payment": case "zoho_books_create_expense": {
+        output = await executeZohoBooksNode(
+          node.type,
+          node.data as Record<string, unknown>,
+          (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
+        );
+        if (output.error) nodeError = true;
+        break;
+      }
+
+      case "zoho_books_daily_ai_rollup": {
+        // Promoted node type: computes the prior UTC day's ai_usage_events
+        // cost sum and posts ONE zoho_books_create_expense job — runs inside
+        // a seeded daily schedule workflow so every rollup is a visible,
+        // logged run, same discipline zoho_batch_drain uses.
+        output = await handleZohoBooksDailyAiRollup(node.data as Record<string, unknown>);
         break;
       }
 
