@@ -49,6 +49,9 @@ vi.mock("@workspace/db", () => {
   return {
     db: mockDb,
     mspCustomersTable: tbl(["id", "mspId", "tenantId", "status", "industry"]),
+    // Phase 1 (#94): assertCustomerAccess resolves its MSP-ownership check
+    // against `tenants` now, so the guard tests below need this stub present.
+    tenantsTable: tbl(["id", "mspId", "customerName", "tenantId"]),
     tenantMonitorProfilesTable: tbl(["tenantId", "checkKey", "extractedProperties", "rawResponse", "collectedAt", "status"]),
     monitorChecksTable: tbl(["key", "mapping"]),
     mspAlertEventsTable: tbl(["mspId", "firedAt", "severity", "summary", "ruleKey", "deepLinkPath"]),

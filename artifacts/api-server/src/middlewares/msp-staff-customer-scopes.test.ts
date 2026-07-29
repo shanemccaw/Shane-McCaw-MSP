@@ -21,7 +21,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  mspCustomersTable: { id: "id", mspId: "mspId" },
+  // Phase 1 (#94): assertCustomerAccess resolves the MSP-ownership check
+  // against `tenants` now — same {id, mspId} shape, dropped table renamed.
+  tenantsTable: { id: "id", mspId: "mspId" },
   mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId", mspId: "mspId" },
 }));
 

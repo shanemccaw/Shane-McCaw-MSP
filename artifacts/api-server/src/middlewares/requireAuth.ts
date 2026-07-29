@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, mspCustomersTable, mspStaffCustomerScopesTable, type MspRole } from "@workspace/db";
+import { db, tenantsTable, mspStaffCustomerScopesTable, type MspRole } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
 
@@ -16,9 +16,17 @@ export interface AuthUser {
    * MSP's balance — never to the actor's MSP or left unattributed.
    */
   impersonatedMspId?: number;
-  // MSP extended claims — present when the user has an msp_users row
+  // MSP extended claims, sourced from the user's own row in the single users
+  // table (Tenant/User Refactor Phase 1, #94 — msp_users no longer exists).
   mspRole?: MspRole;
   mspId?: number;
+  /**
+   * Frozen claim name carrying `users.tenantId` — the id of the tenant this
+   * user belongs to. Deliberately NOT renamed in Phase 1: the JWT wire format
+   * has to stay byte-compatible so live tokens/sessions survive the cutover,
+   * and the Phase 2-6 readers rename on their own schedule. Every check
+   * against it now resolves through `tenants`, not the dropped msp_customers.
+   */
   customerId?: number;
 }
 
@@ -201,14 +209,18 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
  * Tiered ownership check: is `user` permitted to act on `customerId`?
  *
  * - PlatformAdmin (`role === "admin"`)      → always.
- * - MSPAdmin / MSPOperator                  → iff the customer belongs to their MSP (DB IDOR check).
- * - CustomerUser / Free / Assessment        → iff it is their own customer (token claim).
+ * - MSPAdmin / MSPOperator                  → iff the tenant belongs to their MSP (DB IDOR check).
+ * - CustomerUser / Free / Assessment        → iff it is their own tenant (token claim).
  * - anything else                           → denied.
  *
  * The single source of truth for this rule. `requireCustomerScope` (which reads the
  * customerId from the request and answers 403) is a thin wrapper over it; callers
  * whose customerId is DB-resolved — e.g. break-glass, where denial must read as 404,
  * not 403 — call this directly.
+ *
+ * Phase 1 (#94): `customerId` here is a `tenants.id`. The parameter name and the
+ * exported symbol are frozen so Phase 2/3 callers keep compiling unchanged; only
+ * the table the IDOR check resolves against moved (msp_customers → tenants).
  */
 export async function assertCustomerAccess(user: AuthUser, customerId: number): Promise<boolean> {
   const effectiveRole: MspRole | undefined =
@@ -218,15 +230,15 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
 
   if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator") {
     if (!user.mspId) return false;
-    const [customer] = await db
-      .select({ id: mspCustomersTable.id })
-      .from(mspCustomersTable)
+    const [tenant] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
       .where(and(
-        eq(mspCustomersTable.id, customerId),
-        eq(mspCustomersTable.mspId, user.mspId),
+        eq(tenantsTable.id, customerId),
+        eq(tenantsTable.mspId, user.mspId),
       ))
       .limit(1);
-    if (!customer) return false;
+    if (!tenant) return false;
     // Per-staff-member tenant-access scoping (additive, opt-in). A staff member
     // with no scope rows is unrestricted (historical default); once scoped, they
     // may only reach customers in their assigned set — even within their own MSP.
@@ -243,10 +255,17 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
 
 // ── Per-staff-member customer-access scoping (msp_staff_customer_scopes) ────────
 /**
- * Returns the explicit set of `msp_customers.id` an MSP staff member is limited
+ * Returns the explicit set of customer ids an MSP staff member is limited
  * to, or `null` when the member is UNRESTRICTED. `null` means "no restriction"
  * — the historical default — and is returned both when the member has zero
  * scope rows and when their role is not MSP-staff.
+ *
+ * NOTE (Phase 1, #94): `msp_staff_customer_scopes.customerId` is a now-orphaned
+ * `msp_customers.id` — its FK went with the dropped table and the column is
+ * flagged for repoint/removal in Phase 7. It is deliberately left alone here:
+ * re-keying it onto `tenants.id` is a data migration, not a Phase 1 code edit.
+ * Until then a scoped staff member's set will not line up with the tenant ids
+ * `assertCustomerAccess` now compares against.
  *
  * Only MSPAdmin / MSPOperator can be scoped. PlatformAdmin is cross-MSP and is
  * never scoped here; CustomerUser / Free / Assessment are already pinned to

@@ -100,6 +100,12 @@ export async function processJobs(batchSize = 5): Promise<void> {
       const now = new Date();
 
       // Claim pending jobs that are due — SKIP LOCKED is essential for concurrency
+      //
+      // Zoho jobs are excluded: they belong to the zoho_batch_drain node
+      // (Foundation #82), whose handlers register on that drain's own registry,
+      // not on this worker's `handlers` map. Without the exclusion this worker
+      // would claim every CRM write, find no handler, and park it straight in
+      // the DLQ. Dormant today only because startJobWorker() has no callers.
       const jobs = await tx.execute<{
         id: number;
         job_id: string;
@@ -116,6 +122,8 @@ export async function processJobs(batchSize = 5): Promise<void> {
         FROM msp_job_queue
         WHERE status = 'pending'
           AND scheduled_at <= ${now.toISOString()}
+          AND job_type NOT LIKE 'zoho.%'
+          AND left(job_type, 5) <> 'zoho_'
         ORDER BY scheduled_at ASC
         LIMIT ${batchSize}
         FOR UPDATE SKIP LOCKED

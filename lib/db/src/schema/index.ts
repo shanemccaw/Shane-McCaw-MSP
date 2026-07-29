@@ -59,6 +59,16 @@ export const usersTable = pgTable("users", {
   onboardingWizardCompletedAt: timestamp("onboarding_wizard_completed_at"),
   quickWinCompletedAt: timestamp("quick_win_completed_at"),
   linkedLeadId: integer("linked_lead_id"),
+  // Zoho CRM Contact id (#83) — bare pointer, deliberately the same shape as
+  // linkedLeadId above: no FK, since the referenced record lives in Zoho, not
+  // in this database. Zoho record ids are 18-19 digit numeric strings, so this
+  // is text despite linkedLeadId being an integer.
+  //
+  // Once this is set, the contact/company columns above (name, company, phone,
+  // address*) are a Zoho-fed read cache: new writes to them arrive via the
+  // zoho_webhook receiver, not local forms. They are NOT removed here —
+  // removal is #84's job, gated on a real usage audit.
+  zohoContactId: text("zoho_contact_id"),
   pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   // ── absorbed from msp_users (Phase 0) ──────────────────────────────────────
@@ -150,6 +160,102 @@ export const leadsTable = pgTable("leads", {
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertLead = typeof leadsTable.$inferInsert;
 export type Lead = typeof leadsTable.$inferSelect;
+
+// ── Lead Staging (Zoho CRM, #83) ─────────────────────────────────────────────
+// The single pre-Zoho staging table that unifies `leads` and `quiz_leads`.
+// Zoho CRM is the system of record for a lead once `zohoLeadId` is set; this
+// table is where a lead lives *before* it has been pushed, plus the local
+// scoring/engine columns Zoho has no home for.
+//
+// Column set is the union of the real `leads` and `quiz_leads` shapes as they
+// exist today (audited against both, not the earlier architecture sketch) —
+// `leads`' qualification/profile/marketing columns and `quiz_leads`' quiz
+// result columns, with the two `createdAt`s collapsed into one.
+//
+// `quick_win_quiz_results` is deliberately NOT merged in: those rows carry no
+// identity at all (no name, no email — see that table's real shape), so they
+// cannot become lead rows. They stay where they are and gain a nullable
+// `leadStagingId` that identity capture sets when a result is promoted here.
+//
+// `legacyLeadId` / `legacyQuizLeadId` keep the pre-cutover row ids addressable
+// so the not-yet-migrated readers (28 files still on `leadsTable`, decommissioned
+// in #84) and this table can be reconciled during the overlap.
+export const leadStagingTable = pgTable("lead_staging", {
+  id: serial("id").primaryKey(),
+
+  // ── identity ──
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  company: text("company"),
+  phone: text("phone"),
+  role: text("role"),
+  location: text("location"),
+
+  // ── provenance (union of both tables' source enums) ──
+  source: text("source", { enum: ["contact_form", "lead_magnet", "ai_recommended", "ai_suggested", "purchase", "quiz", "portal_login", "assessment", "quick_win_quiz"] }).notNull().default("contact_form"),
+  status: text("status", { enum: ["new", "contacted", "qualified", "converted", "archived"] }).notNull().default("new"),
+  howFound: text("how_found"),
+  serviceArea: text("service_area"),
+  message: text("message"),
+  companySize: text("company_size"),
+  notes: text("notes"),
+
+  // ── Zoho linkage ──
+  // Zoho record ids are 18-19 digit numeric strings — text, never integer.
+  zohoLeadId: text("zoho_lead_id"),
+  // Set once zoho_convert_lead has run: the lead no longer lives in Zoho's
+  // Leads module and further writes must target Contacts/Deals instead.
+  zohoConvertedAt: timestamp("zoho_converted_at", { withTimezone: true }),
+  // Last queued/attempted push state, so the Admin Panel can show "syncing"
+  // rather than implying an instant write (the drain runs every 5 minutes).
+  zohoSyncState: text("zoho_sync_state", { enum: ["local", "queued", "synced", "error"] }).notNull().default("local"),
+  zohoSyncError: text("zoho_sync_error"),
+  zohoSyncedAt: timestamp("zoho_synced_at", { withTimezone: true }),
+
+  // ── Qualification / Scoring Engine (from `leads`) ──
+  score: integer("score").notNull().default(0),
+  previousScore: integer("previous_score").notNull().default(0),
+  stage: text("stage", { enum: ["Junk", "Cold", "Warm", "Hot"] }).notNull().default("Cold"),
+  lastQualifiedAt: timestamp("last_qualified_at"),
+  industry: text("industry"),
+  employeeCount: integer("employee_count"),
+  licenseTier: text("license_tier"),
+  tenantAge: integer("tenant_age"),
+  itTeamSize: integer("it_team_size"),
+  painPoints: jsonb("pain_points").$type<string[]>().notNull().default([]),
+  maturityIndicators: jsonb("maturity_indicators").$type<string[]>().notNull().default([]),
+  engagementSignals: jsonb("engagement_signals").$type<string[]>().notNull().default([]),
+  urgencySignals: jsonb("urgency_signals").$type<string[]>().notNull().default([]),
+  priorityScore: integer("priority_score").notNull().default(0),
+  pricingInfluenceScore: integer("pricing_influence_score").notNull().default(0),
+
+  // ── Quiz result columns (from `quiz_leads`) ──
+  quizType: text("quiz_type"),
+  totalScore: integer("total_score").notNull().default(0),
+  tier: text("tier"),
+  recommendedService: text("recommended_service"),
+  categoryScores: jsonb("category_scores").$type<Record<string, number>>().notNull().default({}),
+  analysisText: jsonb("analysis_text").$type<QuizAnalysisText>().default({ whatThisMeans: "", whyThisFits: "", roiProjection: "" }),
+  leadOfferResult: jsonb("lead_offer_result").$type<Record<string, unknown> | null>().default(null),
+  conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
+  detectedSeats: integer("detected_seats"),
+  contactedAt: timestamp("contacted_at"),
+
+  // ── pre-cutover row pointers (dropped in #84) ──
+  legacyLeadId: integer("legacy_lead_id"),
+  legacyQuizLeadId: integer("legacy_quiz_lead_id"),
+
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("lead_staging_email_idx").on(t.email),
+  index("lead_staging_zoho_lead_id_idx").on(t.zohoLeadId),
+  index("lead_staging_sync_state_idx").on(t.zohoSyncState),
+]);
+
+export type InsertLeadStaging = typeof leadStagingTable.$inferInsert;
+export type LeadStaging = typeof leadStagingTable.$inferSelect;
 
 // ── Fulfillment Types ──────────────────────────────────────────────────────────
 // Admin-extensible registry of fulfillment lifecycle kinds.
@@ -1299,6 +1405,10 @@ export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
   scores: jsonb("scores").$type<Record<string, number>>().notNull(),
   rankedSlugs: jsonb("ranked_slugs").$type<string[]>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set when identity capture promotes this anonymous result into a real
+  // staged lead (#83). Null is the normal steady state — these rows carry no
+  // name or email, so an unpromoted result has no identity to sync to Zoho.
+  leadStagingId: integer("lead_staging_id").references(() => leadStagingTable.id, { onDelete: "set null" }),
 });
 
 export type InsertQuickWinQuizResult = typeof quickWinQuizResultsTable.$inferInsert;
@@ -1465,6 +1575,15 @@ export const opportunitiesTable = pgTable("opportunities", {
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // ── Zoho CRM (#83) ──
+  // This row is now scoring EVIDENCE for a Zoho Deal, not the deal itself:
+  // Zoho owns the opportunity once zoho_convert_lead / zoho_create_deal fires
+  // and stamps the resulting Deal id here. The scoring columns above are
+  // unchanged — no scoring logic moves to Zoho.
+  zohoDealId: text("zoho_deal_id"),
+  // Staged lead this evidence was scored from. Nullable and additive: the
+  // existing leadId FK to `leads` stays live until #84 decommissions it.
+  leadStagingId: integer("lead_staging_id").references(() => leadStagingTable.id, { onDelete: "set null" }),
 });
 
 export type InsertOpportunity = typeof opportunitiesTable.$inferInsert;
@@ -1503,6 +1622,11 @@ export const leadQualificationsTable = pgTable("lead_qualifications", {
   snoozedUntil: timestamp("snoozed_until"),
   opportunityId: integer("opportunity_id").references(() => opportunitiesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // ── Zoho CRM (#83) ──
+  // Scoring-evidence side-record: engine output is unchanged, it just gains a
+  // pointer to the Zoho Deal the qualification ultimately produced.
+  zohoDealId: text("zoho_deal_id"),
+  leadStagingId: integer("lead_staging_id").references(() => leadStagingTable.id, { onDelete: "set null" }),
 });
 
 export type InsertLeadQualification = typeof leadQualificationsTable.$inferInsert;
@@ -1590,7 +1714,14 @@ export const recommendedLeadsTable = pgTable("recommended_leads", {
   recommendedService: text("recommended_service"),
   confidence: integer("confidence").notNull().default(0),
   status: text("status", { enum: ["pending", "converted", "dismissed"] }).notNull().default("pending"),
-  convertedLeadId: integer("converted_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  // ── Zoho CRM (#83) ──
+  // Was `convertedLeadId` (FK → leads.id). A converted recommendation now
+  // becomes a staged lead immediately (convertedLeadStagingId) and a Zoho Lead
+  // asynchronously (convertedZohoLeadId, stamped by the sync handler once the
+  // 5-minute drain has actually pushed it) — the local pointer is kept because
+  // at conversion time no Zoho id exists yet.
+  convertedZohoLeadId: text("converted_zoho_lead_id"),
+  convertedLeadStagingId: integer("converted_lead_staging_id").references(() => leadStagingTable.id, { onDelete: "set null" }),
   lastOutreachDraft: text("last_outreach_draft"),
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2461,6 +2592,20 @@ export interface WfNode {
     | "platform_log_stream_prune"
     // Zoho Integration — queue drain (Foundation, #82)
     | "zoho_batch_drain"
+    // Zoho CRM (#83) — 26 nodes. Reads (get_/find_/search_) execute inline
+    // against Zoho; writes enqueue onto msp_job_queue and are applied by the
+    // 5-minute zoho_batch_drain. There are deliberately no delete nodes:
+    // Zoho is the system of record and deletion stays a manual Zoho-side act.
+    | "zoho_create_lead" | "zoho_update_lead" | "zoho_upsert_lead"
+    | "zoho_find_lead_by_email" | "zoho_get_lead" | "zoho_add_lead_note"
+    | "zoho_attach_file_to_lead" | "zoho_convert_lead"
+    | "zoho_create_deal" | "zoho_update_deal" | "zoho_update_deal_stage"
+    | "zoho_update_deal_amount" | "zoho_get_deal" | "zoho_add_deal_note"
+    | "zoho_attach_file_to_deal" | "zoho_find_open_deal_for_contact"
+    | "zoho_create_contact" | "zoho_update_contact" | "zoho_upsert_contact"
+    | "zoho_find_contact_by_email" | "zoho_get_contact"
+    | "zoho_create_account" | "zoho_search_accounts" | "zoho_get_account"
+    | "zoho_update_account" | "zoho_attach_file_to_account"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities

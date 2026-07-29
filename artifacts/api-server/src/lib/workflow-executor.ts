@@ -99,6 +99,8 @@ import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
+import { executeZohoCrmNode } from "./zoho-crm.js";
+import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
@@ -1205,6 +1207,31 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const dryBatchSize = Number((node.data.batchSize as number | undefined) ?? 20);
       const dryConcurrency = Number((node.data.concurrency as number | undefined) ?? 5);
       return { dryRun: true, claimed: 0, succeeded: 0, failed: 0, retried: 0, batchSize: dryBatchSize, concurrency: dryConcurrency, note: "dry run — zoho queue drain skipped" };
+    }
+
+    // Zoho CRM (#83) — all 26 nodes. Reads report a shaped empty result, writes
+    // report that nothing was queued: a dry run must not create an
+    // msp_job_queue row, or the next drain would apply a "simulated" write to
+    // real Zoho data.
+    case "zoho_create_lead": case "zoho_update_lead": case "zoho_upsert_lead":
+    case "zoho_find_lead_by_email": case "zoho_get_lead": case "zoho_add_lead_note":
+    case "zoho_attach_file_to_lead": case "zoho_convert_lead":
+    case "zoho_create_deal": case "zoho_update_deal": case "zoho_update_deal_stage":
+    case "zoho_update_deal_amount": case "zoho_get_deal": case "zoho_add_deal_note":
+    case "zoho_attach_file_to_deal": case "zoho_find_open_deal_for_contact":
+    case "zoho_create_contact": case "zoho_update_contact": case "zoho_upsert_contact":
+    case "zoho_find_contact_by_email": case "zoho_get_contact":
+    case "zoho_create_account": case "zoho_search_accounts": case "zoho_get_account":
+    case "zoho_update_account": case "zoho_attach_file_to_account": {
+      const zSpec = getZohoCrmNodeSpec(node.type);
+      const zModule = zSpec?.module ?? "Leads";
+      if (zSpec?.mode === "read") {
+        if (node.type === "zoho_search_accounts") {
+          return { dryRun: true, records: [], count: 0, module: zModule, note: "dry run — Zoho search skipped" };
+        }
+        return { dryRun: true, found: false, record: null, module: zModule, note: "dry run — Zoho read skipped" };
+      }
+      return { dryRun: true, queued: false, jobId: null, jobType: node.type, module: zModule, note: "dry run — Zoho write not queued" };
     }
 
     case "send_browser_notification": {
@@ -6535,6 +6562,32 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // the seeded 5-minute "Zoho Queue Drain" schedule workflow so every
         // sync batch is a visible, logged run.
         output = await handleZohoBatchDrain(node.data as Record<string, unknown>);
+        break;
+      }
+
+      // Zoho CRM (#83) — all 26 nodes route through one entry point.
+      //
+      // The sync/queued split lives in zoho-crm.ts, not here: read nodes call
+      // Zoho inline and return records, write nodes enqueue an msp_job_queue
+      // row and return { queued: true, jobId } WITHOUT touching Zoho. A write
+      // node returning success therefore means "durably queued", not "written"
+      // — the write lands on the next zoho_batch_drain, within 5 minutes.
+      case "zoho_create_lead": case "zoho_update_lead": case "zoho_upsert_lead":
+      case "zoho_find_lead_by_email": case "zoho_get_lead": case "zoho_add_lead_note":
+      case "zoho_attach_file_to_lead": case "zoho_convert_lead":
+      case "zoho_create_deal": case "zoho_update_deal": case "zoho_update_deal_stage":
+      case "zoho_update_deal_amount": case "zoho_get_deal": case "zoho_add_deal_note":
+      case "zoho_attach_file_to_deal": case "zoho_find_open_deal_for_contact":
+      case "zoho_create_contact": case "zoho_update_contact": case "zoho_upsert_contact":
+      case "zoho_find_contact_by_email": case "zoho_get_contact":
+      case "zoho_create_account": case "zoho_search_accounts": case "zoho_get_account":
+      case "zoho_update_account": case "zoho_attach_file_to_account": {
+        output = await executeZohoCrmNode(
+          node.type,
+          node.data as Record<string, unknown>,
+          (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
+        );
+        if (output.error) nodeError = true;
         break;
       }
 

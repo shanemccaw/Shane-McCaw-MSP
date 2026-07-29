@@ -308,6 +308,19 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "pipe-diagnostic-shares", label: "Diagnostic Shares", path: "/pipeline/diagnostic-shares", icon: Share2 },
         ],
       },
+      {
+        // Zoho CRM (#83) — its own group rather than mixed into Leads/Deals/
+        // Accounts above, because those read the local tables and these read
+        // Zoho. Showing both under one heading would make it impossible to tell
+        // which system a given row came from until the old pages retire in #84.
+        id: "zoho-crm", label: "Zoho CRM", defaultOpen: true,
+        items: [
+          { id: "pipe-zoho-leads", label: "Zoho Leads", path: "/pipeline/zoho-leads", icon: UserPlus },
+          { id: "pipe-zoho-deals", label: "Zoho Deals", path: "/pipeline/zoho-deals", icon: Target },
+          { id: "pipe-zoho-contacts", label: "Zoho Contacts", path: "/pipeline/zoho-contacts", icon: Users },
+          { id: "pipe-zoho-accounts", label: "Zoho Accounts", path: "/pipeline/zoho-accounts", icon: Building2 },
+        ],
+      },
     ],
   },
   {

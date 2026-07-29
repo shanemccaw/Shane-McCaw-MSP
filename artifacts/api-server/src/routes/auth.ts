@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspUsersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -130,8 +130,15 @@ async function writeAuthAuditLog(
 }
 
 /**
- * Look up the msp_users row for a given user and return MSP claims.
- * Returns null values when no MSP record exists (e.g. legacy admin user).
+ * MSP claims for a user, read straight off their own row in the single users
+ * table. Tenant/User Refactor Phase 1 (#94): msp_users is gone — mspRole,
+ * mspId and tenantId are columns on `users` now, so there is no join left to
+ * do. Returns null values only when the user id doesn't resolve at all.
+ *
+ * `customerId` is deliberately kept as the claim name while carrying
+ * `users.tenantId`. The JWT wire format is frozen for this phase so live
+ * tokens/sessions survive the cutover and Phases 2-6 can rename their readers
+ * on their own schedule; both sides are the same id-space (tenants.id).
  */
 async function getMspClaims(userId: number): Promise<{
   mspRole: MspRole | null;
@@ -139,28 +146,32 @@ async function getMspClaims(userId: number): Promise<{
   customerId: number | null;
   mspSlug: string | null;
 }> {
-  const [mspUser] = await db
-    .select()
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+  const [user] = await db
+    .select({
+      mspRole: usersTable.mspRole,
+      mspId: usersTable.mspId,
+      tenantId: usersTable.tenantId,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
 
-  if (!mspUser) return { mspRole: null, mspId: null, customerId: null, mspSlug: null };
+  if (!user) return { mspRole: null, mspId: null, customerId: null, mspSlug: null };
 
   let mspSlug: string | null = null;
-  if (mspUser.mspId) {
+  if (user.mspId) {
     const [msp] = await db
       .select({ slug: mspsTable.slug })
       .from(mspsTable)
-      .where(eq(mspsTable.id, mspUser.mspId))
+      .where(eq(mspsTable.id, user.mspId))
       .limit(1);
     mspSlug = msp?.slug ?? null;
   }
 
   return {
-    mspRole: mspUser.mspRole as MspRole,
-    mspId: mspUser.mspId ?? null,
-    customerId: mspUser.customerId ?? null,
+    mspRole: user.mspRole,
+    mspId: user.mspId ?? null,
+    customerId: user.tenantId ?? null,
     mspSlug,
   };
 }
@@ -251,52 +262,43 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
-  // Fetched once, up front, for both the lockout check below and the
-  // mfaEnforced check further down.
-  const [mspUserRow] = await db
-    .select({
-      mfaEnforced: mspUsersTable.mfaEnforced,
-      failedLoginAttempts: mspUsersTable.failedLoginAttempts,
-      lastFailedLoginAt: mspUsersTable.lastFailedLoginAt,
-      lockedUntil: mspUsersTable.lockedUntil,
-    })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, user.id))
-    .limit(1);
-
+  // Lockout state and mfaEnforced are columns on the user's own row now
+  // (Phase 1 — msp_users absorbed into users), so the row fetched above
+  // already carries them and there is no second lookup. They are also
+  // NOT NULL with defaults, so every account is lockout-tracked — the old
+  // "no msp_users row ⇒ no lockout tracking at all" hole is closed by the
+  // schema itself rather than by a guard here.
   const now = new Date();
-  if (mspUserRow?.lockedUntil && mspUserRow.lockedUntil > now) {
+  if (user.lockedUntil && user.lockedUntil > now) {
     res.status(423).json({
       error: "This account is locked due to repeated failed login attempts. Contact your administrator to unlock it.",
       accountLocked: true,
-      lockedUntil: mspUserRow.lockedUntil.toISOString(),
+      lockedUntil: user.lockedUntil.toISOString(),
     });
     return;
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    if (mspUserRow) {
-      const withinWindow =
-        mspUserRow.lastFailedLoginAt !== null &&
-        now.getTime() - mspUserRow.lastFailedLoginAt.getTime() < LOCKOUT_WINDOW_MS;
-      const nextAttempts = (withinWindow ? mspUserRow.failedLoginAttempts : 0) + 1;
-      const willLock = nextAttempts >= LOCKOUT_THRESHOLD;
-      const newLockedUntil = willLock ? new Date(now.getTime() + LOCKOUT_DURATION_MS) : null;
+    const withinWindow =
+      user.lastFailedLoginAt !== null &&
+      now.getTime() - user.lastFailedLoginAt.getTime() < LOCKOUT_WINDOW_MS;
+    const nextAttempts = (withinWindow ? user.failedLoginAttempts : 0) + 1;
+    const willLock = nextAttempts >= LOCKOUT_THRESHOLD;
+    const newLockedUntil = willLock ? new Date(now.getTime() + LOCKOUT_DURATION_MS) : null;
 
-      await db
-        .update(mspUsersTable)
-        .set({ failedLoginAttempts: nextAttempts, lastFailedLoginAt: now, lockedUntil: newLockedUntil })
-        .where(eq(mspUsersTable.userId, user.id));
+    await db
+      .update(usersTable)
+      .set({ failedLoginAttempts: nextAttempts, lastFailedLoginAt: now, lockedUntil: newLockedUntil })
+      .where(eq(usersTable.id, user.id));
 
-      if (willLock) {
-        res.status(423).json({
-          error: "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.",
-          accountLocked: true,
-          lockedUntil: newLockedUntil!.toISOString(),
-        });
-        return;
-      }
+    if (willLock) {
+      res.status(423).json({
+        error: "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.",
+        accountLocked: true,
+        lockedUntil: newLockedUntil!.toISOString(),
+      });
+      return;
     }
 
     res.status(401).json({ error: "Invalid email or password" });
@@ -305,11 +307,11 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
 
   // Correct password — clear any failed-attempt count/lockout so a
   // legitimate user who mistyped once or twice is never left half-tripped.
-  if (mspUserRow && (mspUserRow.failedLoginAttempts > 0 || mspUserRow.lockedUntil !== null)) {
+  if (user.failedLoginAttempts > 0 || user.lockedUntil !== null) {
     await db
-      .update(mspUsersTable)
+      .update(usersTable)
       .set({ failedLoginAttempts: 0, lastFailedLoginAt: null, lockedUntil: null })
-      .where(eq(mspUsersTable.userId, user.id));
+      .where(eq(usersTable.id, user.id));
   }
 
   // Check for active MFA enrollments
@@ -338,7 +340,7 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   // on for this user (customer-team.tsx toggle), block login until they set
   // one up rather than letting them in unprotected — an enforced-but-unenrolled
   // user is distinct from mfaRequired (which implies enrollment already exists).
-  if (mspUserRow?.mfaEnforced) {
+  if (user.mfaEnforced) {
     const mfaToken = signMfaToken(user.id, []);
     res.json({ mfaSetupRequired: true, mfaToken });
     return;
@@ -968,35 +970,32 @@ export async function seedAdminUser(): Promise<void> {
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase())).limit(1);
   if (existing) {
-    // Ensure the existing admin user has a PlatformAdmin msp_users row
-    const [existingMspUser] = await db
-      .select()
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, existing.id))
-      .limit(1);
-    if (!existingMspUser) {
-      await db.insert(mspUsersTable).values({
-        userId: existing.id,
-        mspRole: "PlatformAdmin",
-        isActive: true,
-      });
+    // Ensure the existing admin user actually carries the PlatformAdmin role.
+    // Pre-Phase-1 this meant "insert a msp_users row if one is missing"; with
+    // msp_users absorbed into users there is no missing row to detect, so the
+    // equivalent signal is the column still sitting at its default "Free" —
+    // i.e. the account has never been given an explicit MSP identity. An
+    // account already carrying an explicit role is left alone, exactly as the
+    // old "row already exists" branch did.
+    if (existing.mspRole === "Free") {
+      await db
+        .update(usersTable)
+        .set({ mspRole: "PlatformAdmin", isActive: true })
+        .where(eq(usersTable.id, existing.id));
     }
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const [newUser] = await db
+  await db
     .insert(usersTable)
-    .values({ email: email.toLowerCase(), passwordHash, role: "admin" })
-    .returning({ id: usersTable.id });
-
-  if (newUser) {
-    await db.insert(mspUsersTable).values({
-      userId: newUser.id,
+    .values({
+      email: email.toLowerCase(),
+      passwordHash,
+      role: "admin",
       mspRole: "PlatformAdmin",
       isActive: true,
     });
-  }
 }
 
 // ─── ServiceAccount API key issuance ──────────────────────────────────────────

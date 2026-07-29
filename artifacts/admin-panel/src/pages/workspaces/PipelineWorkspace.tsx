@@ -6,6 +6,13 @@ import OpportunitiesPage from "@/pages/crm/Opportunities";
 import ClientsPage from "@/pages/crm/Clients";
 import M365IntelligencePage from "@/pages/crm/M365Intelligence";
 import DiagnosticSharesPage from "@/pages/crm/DiagnosticShares";
+// Zoho CRM (#83). These sit alongside the existing local-DB pages rather than
+// replacing them — decommissioning the old CRM pages is #84's job, gated on
+// this phase landing.
+import ZohoLeadsPage from "@/pages/crm/zoho/ZohoLeads";
+import ZohoDealsPage from "@/pages/crm/zoho/ZohoDeals";
+import ZohoContactsPage from "@/pages/crm/zoho/ZohoContacts";
+import ZohoAccountsPage from "@/pages/crm/zoho/ZohoAccounts";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -15,6 +22,10 @@ function getContent(section: string): ReactNode {
     case "clients":             return <ClientsPage />;
     case "m365-intelligence":   return <M365IntelligencePage />;
     case "diagnostic-shares":   return <DiagnosticSharesPage />;
+    case "zoho-leads":          return <ZohoLeadsPage />;
+    case "zoho-deals":          return <ZohoDealsPage />;
+    case "zoho-contacts":       return <ZohoContactsPage />;
+    case "zoho-accounts":       return <ZohoAccountsPage />;
     default:                    return <LeadsPage />;
   }
 }

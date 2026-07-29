@@ -728,9 +728,22 @@ export default function TriggersPage({ defId }: { defId: number }) {
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                     >
                       <option value="">None — generic webhook URL</option>
+                      {/*
+                        Foundation (#82) shipped the first three. #83 adds the
+                        rest of the events its 26 CRM nodes can actually cause,
+                        so a workflow can react to any of them — in particular
+                        Contacts.create, which is how a converted lead's Zoho
+                        contact id gets back to users.zoho_contact_id.
+                      */}
                       <option value="Leads.create">Zoho: Leads.create</option>
+                      <option value="Leads.update">Zoho: Leads.update</option>
+                      <option value="Leads.convert">Zoho: Leads.convert</option>
+                      <option value="Deals.create">Zoho: Deals.create</option>
                       <option value="Deals.update">Zoho: Deals.update</option>
+                      <option value="Contacts.create">Zoho: Contacts.create</option>
                       <option value="Contacts.update">Zoho: Contacts.update</option>
+                      <option value="Accounts.create">Zoho: Accounts.create</option>
+                      <option value="Accounts.update">Zoho: Accounts.update</option>
                     </select>
                     <p className="text-[11px] text-muted-foreground/60">
                       Selecting a Zoho event makes this trigger fire from the platform's /api/zoho/webhook receiver when that event arrives.
