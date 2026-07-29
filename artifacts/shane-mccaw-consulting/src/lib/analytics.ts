@@ -627,6 +627,11 @@ export async function trackPageview(page: string): Promise<void> {
 // /api/analytics/event. This is the fix for the old tracker's confirmed bug:
 // it fired eventType strings ("assessment_started", etc.) that were never in the
 // backend's validated enum and were silently rejected every time.
+// The gtag guard below is the entire GA4-forwarding path for every named event: it fires
+// whenever window.gtag exists, and index.html only ever defines window.gtag once a real GA4
+// Measurement ID is configured. So this function needs no changes as that script comes online,
+// and none later either if the sendBeacon call below is ever replaced by something else —
+// the exported function signatures and this gtag call are the part that stays stable.
 function sendNamedEvent(name: string, properties: Record<string, unknown> = {}): void {
   if (typeof window.gtag === "function") window.gtag("event", name, properties);
   beacon("/api/quiz/analytics-event", { name, properties });
