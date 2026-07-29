@@ -2630,6 +2630,14 @@ export interface WfNode {
     | "zoho_books_upsert_contact" | "zoho_books_create_invoice"
     | "zoho_books_record_payment" | "zoho_books_create_expense"
     | "zoho_books_daily_ai_rollup"
+    // EngageBay Integration — queue drain (#105)
+    | "engagebay_batch_drain"
+    // EngageBay nodes (#105) — 4 write (queued) + 4 read (inline). No delete
+    // nodes: EngageBay is the system of record and deletion stays manual.
+    | "engagebay_create_contact" | "engagebay_update_contact"
+    | "engagebay_add_tag" | "engagebay_start_sequence"
+    | "engagebay_get_contact" | "engagebay_get_contact_by_email"
+    | "engagebay_search_contacts" | "engagebay_list_tags"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities

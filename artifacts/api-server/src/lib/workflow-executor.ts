@@ -104,6 +104,8 @@ import { executeZohoProjectsNode } from "./zoho-projects.js";
 import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.js";
 import { executeZohoBooksNode, handleZohoBooksDailyAiRollup } from "./zoho-books.js";
 import { getZohoBooksNodeSpec } from "./zoho-books-nodes.js";
+import { handleEngageBayBatchDrain } from "./engagebay-batch-drain.js";
+import { executeEngageBayNode } from "./engagebay-nodes-exec.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
@@ -1265,6 +1267,28 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "zoho_books_daily_ai_rollup":
       return { dryRun: true, posted: false, note: "dry run — Zoho Books daily AI cost rollup skipped" };
+
+    case "engagebay_batch_drain": {
+      const dryBatchSize = Number((node.data.batchSize as number | undefined) ?? 20);
+      const dryConcurrency = Number((node.data.concurrency as number | undefined) ?? 5);
+      return { dryRun: true, claimed: 0, succeeded: 0, failed: 0, retried: 0, batchSize: dryBatchSize, concurrency: dryConcurrency, note: "dry run — engagebay queue drain skipped" };
+    }
+
+    // EngageBay (#105) — all 8 nodes. Reads report a shaped empty result,
+    // writes report that nothing was queued: a dry run must not create an
+    // msp_job_queue row, or the next drain would apply a "simulated" write to
+    // a real EngageBay account.
+    case "engagebay_search_contacts":
+      return { dryRun: true, records: [], count: 0, note: "dry run — EngageBay search skipped" };
+    case "engagebay_list_tags":
+      return { dryRun: true, tags: [], count: 0, note: "dry run — EngageBay list skipped" };
+    case "engagebay_get_contact": case "engagebay_get_contact_by_email":
+      return { dryRun: true, found: false, record: null, note: "dry run — EngageBay read skipped" };
+    case "engagebay_create_contact": case "engagebay_update_contact":
+    case "engagebay_add_tag": case "engagebay_start_sequence": {
+      return { dryRun: true, queued: false, jobId: null, jobType: node.type, note: "dry run — EngageBay write not queued" };
+    }
+
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -6645,6 +6669,36 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "zoho_create_task": case "zoho_update_task": case "zoho_get_task": case "zoho_list_tasks":
       case "zoho_create_milestone": case "zoho_update_milestone": case "zoho_get_milestone": case "zoho_list_milestones": {
         output = await executeZohoProjectsNode(
+          node.type,
+          node.data as Record<string, unknown>,
+          (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
+        );
+        if (output.error) nodeError = true;
+        break;
+      }
+
+      case "engagebay_batch_drain": {
+        // Promoted node type: drains a bounded batch of pending engagebay_*
+        // jobs from msp_job_queue (EngageBay Webhooks + Workflow Nodes, #105)
+        // — runs inside the seeded 5-minute "EngageBay Queue Drain" schedule
+        // workflow so every sync batch is a visible, logged run.
+        output = await handleEngageBayBatchDrain(node.data as Record<string, unknown>);
+        break;
+      }
+
+      // EngageBay (#105) — all 8 nodes route through one entry point.
+      //
+      // The sync/queued split lives in engagebay-nodes-exec.ts, not here: read
+      // nodes call EngageBay inline and return records, write nodes enqueue an
+      // msp_job_queue row and return { queued: true, jobId } WITHOUT touching
+      // EngageBay. A write node returning success therefore means "durably
+      // queued", not "written" — the write lands on the next
+      // engagebay_batch_drain, within 5 minutes.
+      case "engagebay_create_contact": case "engagebay_update_contact":
+      case "engagebay_add_tag": case "engagebay_start_sequence":
+      case "engagebay_get_contact": case "engagebay_get_contact_by_email":
+      case "engagebay_search_contacts": case "engagebay_list_tags": {
+        output = await executeEngageBayNode(
           node.type,
           node.data as Record<string, unknown>,
           (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),

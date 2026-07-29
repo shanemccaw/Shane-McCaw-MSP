@@ -73,6 +73,7 @@ export type NodeTypeMeta =
 import { ZOHO_CRM_NODES } from "./zoho-crm-nodes.ts";
 import { ZOHO_PROJECTS_NODES } from "./zoho-projects-nodes.ts";
 import { ZOHO_BOOKS_NODES } from "./zoho-books-nodes.ts";
+import { ENGAGEBAY_NODES } from "./engagebay-nodes.ts";
 
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // ── Meta-node ──────────────────────────────────────────────────────────────
@@ -835,6 +836,24 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Sums the prior day's AI/Anthropic cost and posts one Zoho Books expense — no AI",
   },
+
+  {
+    nodeType: "engagebay_batch_drain",
+    isAIDependent: false,
+    description: "Drains a bounded batch of pending engagebay_* jobs from msp_job_queue — no AI",
+  },
+
+  // ── EngageBay (#105) — 8 nodes, none AI-dependent ──────────────────────────
+  // Derived from the single catalog in engagebay-nodes.ts rather than restated
+  // here, so a node can never be registered in one place and missing from the
+  // other. The completeness assertions in ai-usage-metering.test.ts check
+  // isRegisteredNodeType() at runtime, which this satisfies.
+  ...ENGAGEBAY_NODES.map((n): NodeTypeMeta => ({
+    nodeType: n.nodeType,
+    isAIDependent: false,
+    description: n.description,
+  })),
+
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {
