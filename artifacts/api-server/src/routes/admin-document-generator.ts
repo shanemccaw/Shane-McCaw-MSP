@@ -22,8 +22,8 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, tenantsTable, projectsTable, servicesTable, usersTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
-import { eq, desc, and, isNull, inArray, asc } from "drizzle-orm";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, tenantsTable, projectsTable, servicesTable, usersTable, aiUsageEventsTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
+import { eq, desc, and, isNull, inArray, asc, sql } from "drizzle-orm";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
@@ -242,11 +242,22 @@ router.get("/admin/document-generator/history", requireAdmin, async (req: Reques
         projectId: insightsGeneratedDocumentsTable.projectId,
         projectTitle: projectsTable.title,
         docTypeLabel: documentTypesTable.label,
+        // Null when no ai_usage_events row matches — a document generated
+        // before #50 added these columns, or one whose usage recording
+        // failed, reads as "unknown" (#53), never a fabricated $0.00.
+        costCents: aiUsageEventsTable.costCents,
       })
       .from(insightsGeneratedDocumentsTable)
       .leftJoin(usersTable, eq(insightsGeneratedDocumentsTable.customerId, usersTable.id))
       .leftJoin(projectsTable, eq(insightsGeneratedDocumentsTable.projectId, projectsTable.id))
       .leftJoin(documentTypesTable, eq(insightsGeneratedDocumentsTable.docType, documentTypesTable.key))
+      .leftJoin(
+        aiUsageEventsTable,
+        and(
+          eq(aiUsageEventsTable.generatedArtifactType, insightsGeneratedDocumentsTable.docType),
+          sql`${aiUsageEventsTable.generatedArtifactId} = ${insightsGeneratedDocumentsTable.id}::text`,
+        ),
+      )
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
       .limit(limit);

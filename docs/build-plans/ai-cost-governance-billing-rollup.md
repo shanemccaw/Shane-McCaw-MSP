@@ -49,7 +49,7 @@ Done, so Phases 4 and 5 are unblocked.
 | 3 | PlatformAdmin AI Billing page + live StatusBar segments (SSE) | Done | #51 |
 | 4 | Analytics/trends layer (cost-per-customer/MSP/doc-type, trend charts, anomaly flagging) | Done | #52 |
 | 4.1 | Cost-per-lead analytics (unblocked 2026-07-29 — Zoho CRM #82/#83 closed, `lead_staging` built; live verification #133 still pending but non-blocking) | Done | #81 |
-| 5 | Document Engine cost return value | Not Started | #53 |
+| 5 | Document Engine cost return value | Done | #53 |
 
 ## Notes
 Phase 3 uses SSE push for the two StatusBar cost segments, not the
@@ -193,3 +193,20 @@ Two attribution gaps found during the audit and deliberately NOT fixed here
 Phase 4.1 is not live-verified either: `lead_staging` may be near-empty until
 #133 exercises the Zoho sync end to end. That is handled as a genuine empty
 state — a null headline figure renders as "No figure yet", never as `$0.00`.
+
+### Phase 5 — what shipped
+
+The engine-side plumbing (`generateDocument()`/`generateSowDocument()`
+returning `costCents`/`costStatus`, already flowing through the generate
+route's JSON response) landed earlier in `19339c18` and was left unbookended
+until this session; this phase is purely the display half. Two changes: the
+Document Generator IDE's generation-success toast now shows the cost
+alongside the document id, wording it per `costStatus` ("recorded" → a real
+figure via the shared `formatCents()`, "no-ai-call" → "no AI call (reused)",
+"unknown" → "cost unknown" — never a bare `$0.00` for either non-recorded
+case); and the generation history endpoint (`admin-document-generator.ts`)
+gains a `LEFT JOIN ai_usage_events` on `generatedArtifactType = docType` AND
+`generatedArtifactId = id::text`, selecting `costCents` (null on no match —
+a pre-Phase-2 document or a failed usage recording — rendered in the history
+table as "—", not `$0.00`). Not live-verified — no `DATABASE_URL` in this
+environment.

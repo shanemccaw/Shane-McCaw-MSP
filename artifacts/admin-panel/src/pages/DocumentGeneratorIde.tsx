@@ -6,9 +6,25 @@ import { useToast } from "@/hooks/use-toast";
 import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap, Sparkles, Trash2 } from "lucide-react";
 import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
 import DocumentScopingEditor from "@/components/DocumentScopingEditor";
+import { formatCents } from "@/components/ai-billing/format";
 
 function slugifyKey(input: string): string {
   return input.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "type";
+}
+
+/**
+ * Generation-success toast wording for #53's three cost states. "recorded" is
+ * the only state with a real figure — "no-ai-call" (drift-gate reuse) and
+ * "unknown" (recording failure) must read distinctly from it and from each
+ * other, never as a bare $0.00 standing in for "free" or "unavailable".
+ */
+export function formatGenerationCostLabel(
+  costStatus: "recorded" | "no-ai-call" | "unknown" | undefined,
+  costCents: number | null | undefined,
+): string {
+  if (costStatus === "recorded") return formatCents(costCents ?? 0);
+  if (costStatus === "no-ai-call") return "no AI call (reused)";
+  return "cost unknown";
 }
 
 // Net-new admin surface — zero code, logic, or UI ported from admin-insights.ts /
@@ -70,6 +86,8 @@ interface HistoryRow {
   customerCompany: string | null;
   projectId: number | null;
   projectTitle: string | null;
+  /** Null when no ai_usage_events row matches this document — unknown, never $0.00. */
+  costCents: number | null;
 }
 
 const STATUS_STYLES: Record<HistoryRow["status"], string> = {
@@ -255,7 +273,8 @@ export default function DocumentGeneratorIde() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Generation failed");
-      toast({ title: "Document generated", description: `${type.label} — document #${data.documentId}` });
+      const costLabel = formatGenerationCostLabel(data.costStatus, data.costCents);
+      toast({ title: "Document generated", description: `${type.label} — document #${data.documentId} — ${costLabel}` });
       void loadHistory();
     } catch (err) {
       toast({ title: "Generation failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -411,6 +430,7 @@ export default function DocumentGeneratorIde() {
                     <th className="text-left px-4 py-2 font-medium">Document</th>
                     <th className="text-left px-4 py-2 font-medium">Target</th>
                     <th className="text-left px-4 py-2 font-medium">Status</th>
+                    <th className="text-left px-4 py-2 font-medium">Cost</th>
                     <th className="text-left px-4 py-2 font-medium">Generated</th>
                     <th className="text-left px-4 py-2 font-medium"></th>
                   </tr>
@@ -432,6 +452,7 @@ export default function DocumentGeneratorIde() {
                           <div className="text-xs text-red-400/80 mt-1 max-w-xs truncate" title={row.errorMessage}>{row.errorMessage}</div>
                         )}
                       </td>
+                      <td className="px-4 py-2 text-gray-400">{row.costCents != null ? formatCents(row.costCents) : "—"}</td>
                       <td className="px-4 py-2 text-gray-400">{new Date(row.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-2 text-right">
                         <a
