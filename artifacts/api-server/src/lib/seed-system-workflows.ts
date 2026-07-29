@@ -653,39 +653,6 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
-    name: "__system__: Orphan Reconciliation",
-    description: "Runs once on server startup to recover kanban cards orphaned by a mid-run restart and detect stalled phases.",
-    triggerType: "startup",
-    graph: {
-      nodes: [
-        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Startup" } },
-        { id: "act", type: "reconcile_orphaned_runs", position: { x: 100, y: 230 }, data: { nodeType: "reconcile_orphaned_runs", label: "Reconcile Orphaned Runs", task: "reconcile_orphaned_runs" } },
-        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
-      ],
-      edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act", target: "end" },
-      ],
-    },
-  },
-  {
-    name: "__system__: Late Auto-Fire Reconciliation",
-    description: "Runs every 5 minutes to correct kanban cards that were falsely marked failed by the stuck-queued bail-out if Azure has since completed the job.",
-    triggerType: "schedule",
-    cron: "*/5 * * * *",
-    graph: {
-      nodes: [
-        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
-        { id: "act", type: "reconcile_orphaned_runs", position: { x: 100, y: 230 }, data: { nodeType: "reconcile_orphaned_runs", label: "Reconcile Late Stuck-Queued", task: "reconcile_late_stuck_queued" } },
-        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
-      ],
-      edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act", target: "end" },
-      ],
-    },
-  },
-  {
     name: "__system__: Alert Rule Evaluation",
     description: "Runs every 5 minutes to evaluate platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate) and deliver alerts via Exchange Online email and browser push. Replaces the old alert-engine.ts setInterval poller.",
     triggerType: "schedule",
@@ -832,36 +799,6 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         { id: "e4", source: "branch", target: "notify", sourceHandle: "true" },
         { id: "e5", source: "branch", target: "end_skip", sourceHandle: "false" },
         { id: "e6", source: "notify", target: "end" },
-      ],
-    },
-  },
-  {
-    name: "__system__: Kanban Auto-fire",
-    description: "Handles kanban.card_moved events to auto-fire scripts and document generation for client cards.",
-    triggerType: "startup",
-    graph: {
-      nodes: [
-        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "kanban.card_moved" } },
-        {
-          id: "guard",
-          type: "condition",
-          position: { x: 100, y: 230 },
-          data: { nodeType: "condition", label: "Has Client?", expression: "clientUserId > 0" },
-        },
-        {
-          id: "execute",
-          type: "kanban_auto_fire",
-          position: { x: 100, y: 360 },
-          data: { nodeType: "kanban_auto_fire", label: "Auto-fire Card", clientId: "{{clientUserId}}", action: "{{action}}" },
-        },
-        { id: "end", type: "end", position: { x: 100, y: 490 }, data: { nodeType: "end", label: "Done" } },
-        { id: "end_skip", type: "end", position: { x: 250, y: 230 }, data: { nodeType: "end", label: "No client — skip" } },
-      ],
-      edges: [
-        { id: "e1", source: "start", target: "guard" },
-        { id: "e2", source: "guard", target: "execute", sourceHandle: "true" },
-        { id: "e3", source: "guard", target: "end_skip", sourceHandle: "false" },
-        { id: "e4", source: "execute", target: "end" },
       ],
     },
   },
@@ -2974,67 +2911,6 @@ export async function seedSystemWorkflows(): Promise<void> {
           ],
         );
         log.info({ defId }, "seed-system-workflows: patched Presentation Phase Generator — replaced system_action nodes with sql_query");
-      } else if (seed.name === "__system__: Orphan Reconciliation") {
-        // Patch v1: replace system_action node with reconcile_orphaned_runs typed node.
-        // Guard: fires when the act node still uses type:"system_action".
-        await pool.query(
-          `UPDATE wf_versions
-              SET graph = jsonb_set(
-                graph,
-                '{nodes}',
-                (
-                  SELECT jsonb_agg(
-                    CASE
-                      WHEN node->>'id' = 'act' AND node->>'type' = 'system_action'
-                      THEN jsonb_build_object(
-                             'id', 'act', 'type', 'reconcile_orphaned_runs',
-                             'position', node->'position',
-                             'data', jsonb_build_object(
-                               'nodeType', 'reconcile_orphaned_runs',
-                               'label', 'Reconcile Orphaned Runs',
-                               'task', 'reconcile_orphaned_runs'
-                             ))
-                      ELSE node
-                    END
-                  )
-                  FROM jsonb_array_elements(graph->'nodes') AS node
-                )
-              )
-           WHERE definition_id = $1
-             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
-          [defId],
-        );
-        log.info({ defId }, "seed-system-workflows: patched Orphan Reconciliation — replaced system_action with reconcile_orphaned_runs");
-      } else if (seed.name === "__system__: Late Auto-Fire Reconciliation") {
-        // Patch v1: replace system_action node with reconcile_orphaned_runs typed node (task: reconcile_late_stuck_queued).
-        await pool.query(
-          `UPDATE wf_versions
-              SET graph = jsonb_set(
-                graph,
-                '{nodes}',
-                (
-                  SELECT jsonb_agg(
-                    CASE
-                      WHEN node->>'id' = 'act' AND node->>'type' = 'system_action'
-                      THEN jsonb_build_object(
-                             'id', 'act', 'type', 'reconcile_orphaned_runs',
-                             'position', node->'position',
-                             'data', jsonb_build_object(
-                               'nodeType', 'reconcile_orphaned_runs',
-                               'label', 'Reconcile Late Stuck-Queued',
-                               'task', 'reconcile_late_stuck_queued'
-                             ))
-                      ELSE node
-                    END
-                  )
-                  FROM jsonb_array_elements(graph->'nodes') AS node
-                )
-              )
-           WHERE definition_id = $1
-             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
-          [defId],
-        );
-        log.info({ defId }, "seed-system-workflows: patched Late Auto-Fire Reconciliation — replaced system_action with reconcile_orphaned_runs");
       } else if (seed.name === "__system__: Workflow Cleanup") {
         // Patch v1: replace system_action node with sql_query DELETE and replace edges.
         // Guard: fires when the act node still uses type:"system_action".
@@ -3071,29 +2947,6 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         log.info({ defId }, "seed-system-workflows: patched Monthly Insights — replaced system_action with sql_query + condition + notification graph");
-      } else if (seed.name === "__system__: Kanban Auto-fire") {
-        // Patch v1: replace single system_action node with condition + monitor_execute_package graph.
-        // Guard: fires when the act node still uses type:"system_action".
-        await pool.query(
-          `UPDATE wf_versions
-              SET graph = $2::jsonb
-           WHERE definition_id = $1
-             AND version_number = 1
-             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
-          [defId, JSON.stringify(seed.graph)],
-        );
-        log.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + kanban_auto_fire");
-        // Patch v2: rename monitor_execute_package execute node → kanban_auto_fire (type collision fix).
-        // Guard: fires only when execute node still has the old type name.
-        await pool.query(
-          `UPDATE wf_versions
-              SET graph = $2::jsonb
-           WHERE definition_id = $1
-             AND version_number = 1
-             AND graph->'nodes' @> '[{"id":"execute","type":"monitor_execute_package"}]'`,
-          [defId, JSON.stringify(seed.graph)],
-        );
-        log.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire v2 — renamed execute node type monitor_execute_package → kanban_auto_fire");
       } else if (seed.name === "MSP Dunning State Machine") {
         // Patch v1: replace system_action node with msp_dunning_advance typed node.
         // Guard: fires when the dunning node still uses type:"system_action".
@@ -3198,20 +3051,11 @@ export async function seedSystemWorkflows(): Promise<void> {
           }
         } else if (seed.triggerType === "startup") {
           // Startup trigger: fire once on init, no next_run_at
-          // Special case: Kanban Auto-fire uses event trigger, not startup
-          if (seed.name.includes("Kanban")) {
-            await pool.query(
-              `INSERT INTO wf_triggers (definition_id, type, config, enabled)
-               VALUES ($1, 'event', '{"eventName":"kanban.card_moved"}'::jsonb, true)`,
-              [defId],
-            );
-          } else {
-            await pool.query(
-              `INSERT INTO wf_triggers (definition_id, type, config, enabled)
-               VALUES ($1, 'startup', '{}'::jsonb, true)`,
-              [defId],
-            );
-          }
+          await pool.query(
+            `INSERT INTO wf_triggers (definition_id, type, config, enabled)
+             VALUES ($1, 'startup', '{}'::jsonb, true)`,
+            [defId],
+          );
         } else if (seed.triggerType === "schedule" && seed.cron) {
           const nextRun = computeNextCronRun(seed.cron);
           await pool.query(

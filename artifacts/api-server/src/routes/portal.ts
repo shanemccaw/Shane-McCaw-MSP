@@ -28,8 +28,6 @@ import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, next
 import { computeTenantSignals, getAdjustmentSignalDefinitions, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
-import { autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
-import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient, convertLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
@@ -8521,74 +8519,6 @@ router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res:
   res.json({ deleted: id });
 });
 
-// ─── ADMIN: Retry auto-fire for an exhausted/failed kanban card ───────────────
-router.post("/admin/kanban-tasks/:id/retry-auto-fire", requireAdmin, async (req: Request, res: Response) => {
-  if (!isAzureConfigured()) {
-    res.status(503).json({
-      error: "Azure script execution is not configured. Add the required Azure credentials in Replit Secrets.",
-      configured: false,
-    });
-    return;
-  }
-
-  const id = parseInt(String(req.params.id ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
-
-  const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
-  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
-
-  const allowedStatuses = ["auto_fire_exhausted", "auto_fire_failed"];
-  if (!task.completionStatus || !allowedStatuses.includes(task.completionStatus)) {
-    res.status(400).json({ error: `Task completionStatus must be one of: ${allowedStatuses.join(", ")} (got: ${task.completionStatus ?? "null"})` });
-    return;
-  }
-
-  if (!task.projectId) { res.status(400).json({ error: "Task has no associated project" }); return; }
-
-  const [project] = await db.select({ clientUserId: projectsTable.clientUserId })
-    .from(projectsTable).where(eq(projectsTable.id, task.projectId));
-  if (!project?.clientUserId) { res.status(400).json({ error: "Project has no associated client" }); return; }
-
-  const currentMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
-  const resetMeta: Record<string, unknown> = { ...currentMeta };
-  delete resetMeta.autoFireFailureCount;
-  delete resetMeta.lastFailureReason;
-
-  const [updated] = await db
-    .update(kanbanTasksTable)
-    .set({
-      column: "backlog",
-      completionStatus: null,
-      taskMetadata: resetMeta,
-      updatedAt: new Date(),
-    })
-    .where(eq(kanbanTasksTable.id, id))
-    .returning();
-
-  if (!updated) { res.status(404).json({ error: "Task not found after update" }); return; }
-
-  void createAuditLog({
-    actorUserId: req.user!.id,
-    actorName: req.user!.name ?? req.user!.email,
-    actorRole: "admin",
-    actionType: "kanban_task_moved",
-    entityType: "kanban_task",
-    entityId: updated.id,
-    entityLabel: updated.title,
-    projectId: updated.projectId ?? undefined,
-    clientId: project.clientUserId,
-    metadata: { retryAutoFire: true, previousStatus: task.completionStatus },
-  });
-
-  broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
-
-  autoFireRunWorkflowCards(project.clientUserId).catch(err => {
-    req.log.warn({ err, taskId: id, clientUserId: project.clientUserId }, "retry-auto-fire: autoFireRunWorkflowCards error (non-fatal)");
-  });
-
-  res.json(updated);
-});
-
 // ─── ADMIN: Documents ────────────────────────────────────────────────────────
 router.get("/admin/documents", requireAdmin, async (_req: Request, res: Response) => {
   const docs = await db.select().from(documentsTable).orderBy(desc(documentsTable.createdAt));
@@ -14038,32 +13968,46 @@ async function provisionFreeOnboarding(opts: {
       );
       return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
     }
-    // Real catalog convention (see portal-marketplace.ts ASSESSMENT_SERVICE_TYPES):
-    // serviceType "assessment" is how the Assessment product family is identified.
-    // Only assign the Assessment role when every purchased service is assessment-typed.
-    const isAssessmentOrder = orderedServices.every(s => s.serviceType === "assessment");
-
-    // Resolve user: authenticated session or guest email
+    // Resolve user: authenticated session or guest email.
+    //
+    // Consent-first (#95/#103): a guest email can only RESOLVE the account
+    // provisionProspectAccount already created at M365-consent time — it can
+    // never create one. Every real order (assessments included) goes through
+    // consent before this function runs, and the consent callback already
+    // assigned the correct role (Assessment vs CustomerUser, from the ordered
+    // product's serviceType) and tenant scope. A guest email with NO account
+    // therefore means something upstream skipped the consent flow: that used
+    // to fall through to a bare, unscoped users row (no tenant, no msp link —
+    // the exact non-functional-account failure mode, and now also a
+    // users_role_scope_check violation), so it fails loudly instead.
     let resolvedUserId: number;
     if (authedUserId) {
       resolvedUserId = authedUserId;
     } else {
       const guestEmail = opts.guestEmail?.trim();
       if (!guestEmail) return { ok: false, status: 401, error: "Please provide your email address to complete registration." };
-      const acct = await ensureClientAccount(guestEmail);
-      resolvedUserId = acct.id;
-      // Link any pre-signed guest contracts to the newly resolved account
+      const [guestAccount] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, guestEmail.toLowerCase()))
+        .limit(1);
+      if (!guestAccount) {
+        reqLog.error(
+          { guestEmail },
+          "free-checkout: guest order for an email with NO consent-provisioned account — the consent-first flow was skipped upstream; refusing to create an unscoped account",
+        );
+        return {
+          ok: false,
+          status: 409,
+          error: "Your Microsoft 365 connection hasn't been set up yet. Please complete the connection step first so your order can be linked to your organization.",
+        };
+      }
+      resolvedUserId = guestAccount.id;
+      // Link any pre-signed guest contracts to the resolved account
       if (contractIds.length > 0) {
         await db.update(contractsTable)
           .set({ userId: resolvedUserId })
           .where(and(inArray(contractsTable.id, contractIds), isNull(contractsTable.userId)));
-      }
-      // Ensure the free-checkout client account has an msp_users row (no tenantId available here)
-      try {
-        const directCustomerId = await ensureDirectCustomerRecord(resolvedUserId);
-        await ensureClientMspUser(resolvedUserId, undefined, directCustomerId, isAssessmentOrder ? "Assessment" : undefined);
-      } catch (mspErr) {
-        reqLog.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
       }
     }
 

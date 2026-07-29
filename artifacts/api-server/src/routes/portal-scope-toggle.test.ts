@@ -226,14 +226,6 @@ mock.module("../lib/kanban-phase-advance.ts", {
   },
 });
 
-mock.module("../lib/kanban-auto-fire.ts", {
-  namedExports: {
-    autoFireFirstBacklogScript: async () => {},
-    autoFireDocumentCard: async () => {},
-    autoFireRunWorkflowCards: async () => {},
-  },
-});
-
 mock.module("../lib/crm-pipeline.ts", {
   namedExports: { ensureLeadForClient: async () => {} },
 });

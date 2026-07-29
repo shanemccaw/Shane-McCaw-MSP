@@ -2388,8 +2388,6 @@ export interface WfNode {
     | "find_object"
     | "compose"
     // System (internal / seeded workflows)
-    | "reconcile_orphaned_runs"
-    | "kanban_auto_fire"
     | "msp_dunning_advance"
     | "msp_overage_meter"
     | "alert_evaluate_rules"

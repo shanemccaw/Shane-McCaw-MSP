@@ -189,20 +189,9 @@ vi.mock("@workspace/integrations-openai-ai-server/image", () => ({
   }),
 }));
 
-vi.mock("./kanban-auto-fire", () => ({
-  autoFireFirstBacklogScript: async () => {},
-  autoFireDocumentCard:       async () => {},
-  reconcileOrphanedRuns:      async () => {},
-  reconcileStalledPhases:     async () => {},
-}));
-
 vi.mock("../routes/admin-insights", () => ({
   executeAutomation: async () => {},
   nextRunFromCron:   () => new Date(),
-}));
-
-vi.mock("./manual-script-escalation", () => ({
-  checkManualScriptEscalations: async () => ({ alerted: 0, checked: 0, cardIds: [] }),
 }));
 
 vi.mock("./mailer", () => ({

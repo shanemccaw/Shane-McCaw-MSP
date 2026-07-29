@@ -153,9 +153,8 @@ async function resolveTemplateTaskMetadata(
  *     bulk-insert into kanban_tasks.
  *  4. Sync project progress.
  *
- * Intentionally does NOT call autoFireFirstBacklogScript, autoFireDocumentCard, or
- * autoFireRunWorkflowCards — those automations are only triggered from the existing
- * route handler path and must remain excluded here.
+ * Intentionally does not auto-fire any kanban cards it creates — per policy, kanban
+ * never fires anything automatically. Cards are seeded straight to backlog.
  *
  * Returns { seeded: boolean; taskCount: number }.
  * Never throws — all errors are caught and logged.
