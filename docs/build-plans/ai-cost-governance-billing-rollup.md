@@ -48,7 +48,7 @@ Done, so Phases 4 and 5 are unblocked.
 | 2 | Expand ai_usage_events schema for full traceability | Done | #50 |
 | 3 | PlatformAdmin AI Billing page + live StatusBar segments (SSE) | Done | #51 |
 | 4 | Analytics/trends layer (cost-per-customer/MSP/doc-type, trend charts, anomaly flagging) | Done | #52 |
-| 4.1 | Cost-per-lead analytics (BLOCKED — depends on lead-table unification, itself depends on the not-yet-scoped Zoho CRM lead-integration initiative) | Blocked | #81 |
+| 4.1 | Cost-per-lead analytics (unblocked 2026-07-29 — Tenant/User Refactor #92 complete, lead unification landed via Zoho's `lead_staging`) | Not Started | #81 |
 | 5 | Document Engine cost return value | Not Started | #53 |
 
 ## Notes
