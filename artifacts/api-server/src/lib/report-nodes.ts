@@ -40,7 +40,7 @@ import {
   db,
   mspReportDefinitionsTable,
   mspReportRunsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -199,9 +199,9 @@ export async function handleGenerateReport(ctx: NodeExecutionContext): Promise<R
     // 2. Resolve customer + MSP context
     const [customer, msp] = await Promise.all([
       customerId
-        ? db.select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain })
-            .from(mspCustomersTable)
-            .where(eq(mspCustomersTable.id, customerId))
+        ? db.select({ id: tenantsTable.id, name: tenantsTable.customerName, domain: tenantsTable.domain })
+            .from(tenantsTable)
+            .where(eq(tenantsTable.id, customerId))
             .limit(1)
             .then(rows => rows[0] ?? null)
         : Promise.resolve(null),

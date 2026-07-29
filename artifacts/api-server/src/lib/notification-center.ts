@@ -6,7 +6,7 @@
  * and fires SSE events so open tabs update in real time.
  */
 
-import { db, notificationsTable, usersTable, mspUsersTable, customerNotificationPreferencesTable } from "@workspace/db";
+import { db, notificationsTable, usersTable, customerNotificationPreferencesTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
 import { logger } from "./logger";
@@ -38,12 +38,12 @@ async function getCustomerPreference(
   }
 }
 
-/** Bridge users.id -> (mspId, customerId) via msp_users, for webhook fan-out scoping. */
+/** Read users.id -> (mspId, tenantId) off the user's own row, for webhook fan-out scoping. */
 async function resolveMspUserContext(userId: number): Promise<{ mspId: number; customerId: number } | null> {
   const [row] = await db
-    .select({ mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+    .select({ mspId: usersTable.mspId, customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
   if (!row || row.mspId == null || row.customerId == null) return null;
   return { mspId: row.mspId, customerId: row.customerId };

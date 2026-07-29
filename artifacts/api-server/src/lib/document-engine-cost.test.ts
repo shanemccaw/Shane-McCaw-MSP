@@ -77,7 +77,7 @@ vi.mock("@workspace/db", () => ({
   aiPromptsTable: {},
   documentTypesTable: { key: "key" },
   insightsGeneratedDocumentsTable: { id: "id" },
-  mspCustomersTable: { id: "id", mspId: "mspId" },
+  tenantsTable: { id: "id", mspId: "mspId" },
   mspsTable: { id: "id", name: "name", primaryColor: "primaryColor" },
 }));
 

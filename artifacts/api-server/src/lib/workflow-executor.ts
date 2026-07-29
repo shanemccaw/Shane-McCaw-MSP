@@ -29,8 +29,7 @@ import {
   baselineActionTemplateAuditLogTable,
   leadsTable,
   usersTable,
-  mspUsersTable,
-  mspCustomersTable,
+  tenantsTable,
   tenantMonitorProfilesTable,
   projectsTable,
   opportunitiesTable,
@@ -2639,8 +2638,17 @@ async function executeNode(
           // `msp_users WHERE customerId = X LIMIT 1` picked an arbitrary user
           // per run (the confirmed customerId=4 → users.id=21 bug), landing the
           // whole document set on a login the real customer never uses.
+          // `tenant_consent` is gone (Tenant/User Refactor #92): the tenant row
+          // itself now carries consent in its `consent` jsonb, so the consent
+          // lookups below resolve against `tenants` directly. The one column
+          // with no successor is `tenant_consent.clientUserId` — the exact human
+          // who consented was a user id, and the jsonb record only keeps their
+          // adminEmail. Step 1 of the owner-resolution chain below therefore
+          // matches on that email instead; when it doesn't resolve to an active
+          // member of the customer, the chain falls through to step 2 exactly as
+          // a stale/deactivated consent row always did.
           const { clientServicesTable: gClientSvc, userSessionsTable: gSessions,
-                  mspDiagnosticRunsTable: gRuns, tenantConsentTable: gConsent } =
+                  mspDiagnosticRunsTable: gRuns } =
             await import("@workspace/db");
 
           const gUserIdRaw   = interp(node.data.userId as string | undefined, payload) ?? "";
@@ -2652,17 +2660,17 @@ async function executeNode(
           let gTenantId: string | null = gTenantIdRaw || null;
 
           // ── Resolve the CUSTOMER first (the pipeline's real subject) ─────────
-          // From the payload's customerId, else bridged from the payload's
-          // userId (msp_users.userId is UNIQUE — deterministic), else from
-          // tenant consent by tenantId.
+          // From the payload's customerId, else read off the payload user's own
+          // row (users.id is the PK — deterministic), else from the tenant row
+          // matching the tenant GUID (tenants.tenantId is UNIQUE).
           if (isNaN(gCustomerId) && !isNaN(gPayloadUserId)) {
-            const [gmu] = await db.select({ customerId: mspUsersTable.customerId })
-              .from(mspUsersTable).where(eq(mspUsersTable.userId, gPayloadUserId)).limit(1);
+            const [gmu] = await db.select({ customerId: usersTable.tenantId })
+              .from(usersTable).where(eq(usersTable.id, gPayloadUserId)).limit(1);
             if (gmu?.customerId != null) gCustomerId = gmu.customerId;
           }
           if (isNaN(gCustomerId) && gTenantId) {
-            const [gcn] = await db.select({ customerId: gConsent.customerId })
-              .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
+            const [gcn] = await db.select({ customerId: tenantsTable.id })
+              .from(tenantsTable).where(eq(tenantsTable.tenantId, gTenantId)).limit(1);
             if (gcn?.customerId != null) gCustomerId = gcn.customerId;
           }
 
@@ -2679,30 +2687,28 @@ async function executeNode(
           }
 
           // ── Resolve the stable document-owner users.id (deterministic) ───────
-          // 1. tenant_consent.clientUserId — the exact human who consented —
-          //    but only if that user is still an ACTIVE member of this customer
-          //    (a stale/deactivated consent row must not own new documents).
+          // 1. The consenting admin — identified now by tenants.consent.graph
+          //    .adminEmail rather than the dropped tenant_consent.clientUserId —
+          //    but only if that email still maps to an ACTIVE member of this
+          //    customer (a stale/deactivated consent must not own new documents).
           // 2. resolveCustomerPortalUserId — canonical active user (role-ranked,
           //    earliest-created, deterministic).
-          // 3. The payload's userId (login side, when no customer bridge exists).
+          // 3. The payload's userId (login side, when no customer linkage exists).
           let gClientUserId = NaN;
-          if (gTenantId) {
-            const [gc] = await db.select({ clientUserId: gConsent.clientUserId })
-              .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
-            if (gc?.clientUserId != null) {
-              if (isNaN(gCustomerId)) {
-                gClientUserId = gc.clientUserId;
-              } else {
-                const [gActive] = await db.select({ id: mspUsersTable.id })
-                  .from(mspUsersTable)
-                  .where(and(
-                    eq(mspUsersTable.userId, gc.clientUserId),
-                    eq(mspUsersTable.customerId, gCustomerId),
-                    eq(mspUsersTable.isActive, true),
-                  ))
-                  .limit(1);
-                if (gActive) gClientUserId = gc.clientUserId;
-              }
+          if (gTenantId && !isNaN(gCustomerId)) {
+            const [gc] = await db.select({ consent: tenantsTable.consent })
+              .from(tenantsTable).where(eq(tenantsTable.tenantId, gTenantId)).limit(1);
+            const gConsentEmail = gc?.consent?.graph?.adminEmail;
+            if (gConsentEmail) {
+              const [gActive] = await db.select({ id: usersTable.id })
+                .from(usersTable)
+                .where(and(
+                  eq(usersTable.email, gConsentEmail),
+                  eq(usersTable.tenantId, gCustomerId),
+                  eq(usersTable.isActive, true),
+                ))
+                .limit(1);
+              if (gActive) gClientUserId = gActive.id;
             }
           }
           if (isNaN(gClientUserId) && !isNaN(gCustomerId)) {
@@ -2717,16 +2723,22 @@ async function executeNode(
             output = { eligible: false, reason: "could not resolve client users.id from payload" };
             log.info({ runId, gCustomerId: !isNaN(gCustomerId) ? gCustomerId : null }, "assessment_doc_gate: no resolvable client user — skip");
           } else {
-            // Backfill tenant context (needed for the scan-scoping query).
+            // Backfill tenant context (needed for the scan-scoping query). The
+            // owner's own users row carries the customer linkage now, so this
+            // no longer needs a consent-row lookup keyed by clientUserId.
             if (!gTenantId) {
-              const [gcn] = await db.select({ tenantId: gConsent.tenantId, customerId: gConsent.customerId })
-                .from(gConsent).where(eq(gConsent.clientUserId, gClientUserId)).limit(1);
+              const [gcn] = await db
+                .select({ tenantId: tenantsTable.tenantId, customerId: tenantsTable.id })
+                .from(usersTable)
+                .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+                .where(eq(usersTable.id, gClientUserId))
+                .limit(1);
               if (gcn?.tenantId != null) gTenantId = gcn.tenantId;
               if (isNaN(gCustomerId) && gcn?.customerId != null) gCustomerId = gcn.customerId;
             }
             if (!gTenantId && !isNaN(gCustomerId)) {
-              const [gcust] = await db.select({ tenantId: mspCustomersTable.tenantId })
-                .from(mspCustomersTable).where(eq(mspCustomersTable.id, gCustomerId)).limit(1);
+              const [gcust] = await db.select({ tenantId: tenantsTable.tenantId })
+                .from(tenantsTable).where(eq(tenantsTable.id, gCustomerId)).limit(1);
               if (gcust?.tenantId != null) gTenantId = gcust.tenantId;
             }
 
@@ -2856,8 +2868,8 @@ async function executeNode(
             let gCustomerName: string | null = null;
             if (!isNaN(gCustomerId)) {
               const [gCustRow] = await db
-                .select({ name: mspCustomersTable.name })
-                .from(mspCustomersTable).where(eq(mspCustomersTable.id, gCustomerId)).limit(1);
+                .select({ name: tenantsTable.customerName })
+                .from(tenantsTable).where(eq(tenantsTable.id, gCustomerId)).limit(1);
               gCustomerName = gCustRow?.name ?? null;
             }
 
@@ -3878,17 +3890,17 @@ async function executeNode(
           };
         } else {
           try {
-            // Resolve usersTable.id -> mspCustomersTable.tenantId via the same join
-            // pattern used in portal.ts's ensureDirectCustomerRecord/ensureClientMspUser.
+            // Resolve usersTable.id -> tenantsTable.tenantId. One join now:
+            // users.tenantId is the direct FK the msp_users bridge used to be.
             const [customerRow] = await db
               .select({
-                tenantId: mspCustomersTable.tenantId,
-                customerId: mspCustomersTable.id,
-                mspId: mspCustomersTable.mspId,
+                tenantId: tenantsTable.tenantId,
+                customerId: tenantsTable.id,
+                mspId: tenantsTable.mspId,
               })
-              .from(mspUsersTable)
-              .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-              .where(eq(mspUsersTable.userId, gtsClientId))
+              .from(usersTable)
+              .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+              .where(eq(usersTable.id, gtsClientId))
               .limit(1);
             const gtsTenantId = customerRow?.tenantId ?? null;
 
@@ -7251,13 +7263,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             const notifLink = `/pending-approvals`;
             try {
               const approvers = await db
-                .select({ userId: mspUsersTable.userId, email: usersTable.email, name: usersTable.name })
-                .from(mspUsersTable)
-                .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
+                .select({ userId: usersTable.id, email: usersTable.email, name: usersTable.name })
+                .from(usersTable)
                 .where(and(
-                  eq(mspUsersTable.mspId, gateMspId),
-                  eq(mspUsersTable.isActive, true),
-                  or(eq(mspUsersTable.mspRole, "MSPAdmin"), eq(mspUsersTable.canApprovePurchases, true)),
+                  eq(usersTable.mspId, gateMspId),
+                  eq(usersTable.isActive, true),
+                  or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
                 ));
 
               if (approvers.length > 0) {
@@ -8713,7 +8724,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           gwoBody = gwoBodyRaw;
         }
 
-        // Resolve customerId → tenantId directly from mspCustomersTable
+        // Resolve customerId → tenantId directly from tenantsTable
         const gwoCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
         const gwoCustomerId = gwoCustomerIdRaw ? parseInt(gwoCustomerIdRaw, 10) : NaN;
         if (isNaN(gwoCustomerId)) {
@@ -8723,9 +8734,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         const [gwoCustomerRow] = await db
-          .select({ tenantId: mspCustomersTable.tenantId })
-          .from(mspCustomersTable)
-          .where(eq(mspCustomersTable.id, gwoCustomerId))
+          .select({ tenantId: tenantsTable.tenantId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, gwoCustomerId))
           .limit(1);
 
         if (!gwoCustomerRow?.tenantId) {
@@ -8797,7 +8808,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        const [emcCustomerRow] = await db.select({ tenantId: mspCustomersTable.tenantId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, emcCustomerId)).limit(1);
+        const [emcCustomerRow] = await db.select({ tenantId: tenantsTable.tenantId }).from(tenantsTable).where(eq(tenantsTable.id, emcCustomerId)).limit(1);
         if (!emcCustomerRow?.tenantId) {
           nodeError = true;
           output = { error: `execute_monitor_check: no tenant found for customerId ${emcCustomerId}` };
@@ -8863,9 +8874,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         const [ebtCustomerRow] = await db
-          .select({ tenantId: mspCustomersTable.tenantId })
-          .from(mspCustomersTable)
-          .where(eq(mspCustomersTable.id, ebtCustomerId))
+          .select({ tenantId: tenantsTable.tenantId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, ebtCustomerId))
           .limit(1);
 
         if (!ebtCustomerRow?.tenantId) {

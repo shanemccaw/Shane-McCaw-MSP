@@ -16,7 +16,7 @@
  * themselves, admin UI (MSP console dashboard), workflow nodes, SOW wiring.
  */
 
-import { db, usersTable, mspUsersTable, mspCustomersTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger.ts";
 
@@ -180,19 +180,21 @@ function getSignalWeightsFromRulesAndGroups(
 
 /**
  * Fetches every active client/tenant record managed by a specific MSP.
- * The canonical path is: usersTable -> mspUsersTable -> mspCustomersTable
+ * The canonical path is now usersTable -> tenantsTable, one join shorter: the
+ * msp_users bridge that used to sit in the middle collapsed into
+ * `users.tenantId`. The row shape is unchanged — still one row per linked
+ * client login, with the customer id and that login's display name.
  */
 async function fetchActiveTenants(mspId: number, allowedCustomerIds?: number[] | null): Promise<{ id: number; name: string | null }[]> {
   return db
-    .select({ id: mspCustomersTable.id, name: usersTable.name })
+    .select({ id: tenantsTable.id, name: usersTable.name })
     .from(usersTable)
-    .innerJoin(mspUsersTable, eq(usersTable.id, mspUsersTable.userId))
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(
       and(
         eq(usersTable.role, "client"),
-        eq(mspCustomersTable.mspId, mspId),
-        ...(allowedCustomerIds ? [inArray(mspCustomersTable.id, allowedCustomerIds)] : [])
+        eq(tenantsTable.mspId, mspId),
+        ...(allowedCustomerIds ? [inArray(tenantsTable.id, allowedCustomerIds)] : [])
       )
     );
 }
@@ -202,10 +204,9 @@ async function fetchActiveTenants(mspId: number, allowedCustomerIds?: number[] |
  */
 async function fetchAllActiveTenantsPlatformWide(): Promise<{ id: number; name: string | null }[]> {
   return db
-    .select({ id: mspCustomersTable.id, name: usersTable.name })
+    .select({ id: tenantsTable.id, name: usersTable.name })
     .from(usersTable)
-    .innerJoin(mspUsersTable, eq(usersTable.id, mspUsersTable.userId))
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(eq(usersTable.role, "client"));
 }
 

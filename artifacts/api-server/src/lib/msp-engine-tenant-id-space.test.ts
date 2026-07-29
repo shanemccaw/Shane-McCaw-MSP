@@ -6,7 +6,7 @@
  *
  * The bug (2026-07-18): commit 1690819 consolidated tenant profile resolution
  * into the shared buildTenantProfile(customerId), which strictly expects an
- * `msp_customers.id` — but fetchActiveTenants()/fetchAllActiveTenantsPlatformWide()
+ * `tenants.id` — but fetchActiveTenants()/fetchAllActiveTenantsPlatformWide()
  * still selected `id: usersTable.id` (a portal user id). Every tenant in the
  * MSP/platform portfolio-risk views would resolve to empty profile/findings
  * unless a customer's numeric id happened to coincide with its portal user's
@@ -14,7 +14,7 @@
  * eliminate, reintroduced by omission in this one spot.
  *
  * This test proves the tenant `id` fed into buildTenantProfile is the
- * msp_customers.id, not the users.id, for a fixture where the two differ.
+ * tenants.id, not the users.id, for a fixture where the two differ.
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
@@ -25,9 +25,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Module mocks (must precede the import of the code under test) ──────────
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  usersTable: { __table: "users", id: "id", name: "name", role: "role" },
-  mspUsersTable: { __table: "msp_users", userId: "userId", customerId: "customerId" },
-  mspCustomersTable: { __table: "msp_customers", id: "id", mspId: "mspId" },
+  usersTable: { __table: "users", id: "id", tenantId: "tenantId", name: "name", role: "role" },
+  tenantsTable: { __table: "tenants", id: "id", mspId: "mspId" },
   mspsTable: { __table: "msps", id: "id", status: "status" },
   mspScoreHistoryTable: { __table: "msp_score_history" },
   mspEventStoreTable: { __table: "msp_event_store" },
@@ -70,7 +69,7 @@ import { buildTenantProfile } from "./tenant-signals.ts";
 import { calculateMspPortfolioRisk, calculatePlatformPortfolioRisk } from "./msp-engine.ts";
 
 // The regression fixture: a portal user id that DIFFERS from the
-// msp_customers.id it maps to. The old buggy code would select the former.
+// tenants.id it maps to. The old buggy code would select the former.
 const PORTAL_USER_ID = 777;
 const MSP_CUSTOMER_ID = 42;
 
@@ -91,7 +90,7 @@ beforeEach(() => {
 });
 
 describe("msp-engine tenant id-space regression", () => {
-  it("calculateMspPortfolioRisk feeds buildTenantProfile the msp_customers.id, not the users.id", async () => {
+  it("calculateMspPortfolioRisk feeds buildTenantProfile the tenants.id, not the users.id", async () => {
     const output = await calculateMspPortfolioRisk(1);
 
     expect(buildTenantProfile).toHaveBeenCalledWith(MSP_CUSTOMER_ID);
@@ -99,7 +98,7 @@ describe("msp-engine tenant id-space regression", () => {
     expect(output.breakdown[0]?.customerId).toBe(MSP_CUSTOMER_ID);
   });
 
-  it("calculatePlatformPortfolioRisk feeds buildTenantProfile the msp_customers.id, not the users.id", async () => {
+  it("calculatePlatformPortfolioRisk feeds buildTenantProfile the tenants.id, not the users.id", async () => {
     const output = await calculatePlatformPortfolioRisk();
 
     expect(buildTenantProfile).toHaveBeenCalledWith(MSP_CUSTOMER_ID);

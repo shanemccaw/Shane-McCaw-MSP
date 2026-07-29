@@ -39,11 +39,11 @@ vi.mock("@workspace/db", () => ({
     returning: vi.fn().mockResolvedValue([{ id: 99, createdAt: new Date() }]),
   },
   mspsTable: { id: "id", name: "name", status: "status", slug: "slug" },
-  mspCustomersTable: { id: "id", mspId: "msp_id", name: "name", domain: "domain", status: "status", tenantId: "tenant_id" },
+  tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", domain: "domain", status: "status", tenantId: "tenant_id" },
   mspEventStoreTable: { id: "id", mspId: "msp_id", customerId: "customer_id", eventType: "event_type", occurredAt: "occurred_at", payload: "payload" },
   notificationsTable: { id: "id", userId: "user_id", title: "title", body: "body", type: "type", read: "read", linkPath: "link_path" },
   messagesTable: { id: "id", clientUserId: "client_user_id", senderUserId: "sender_user_id", body: "body", readByAdmin: "read_by_admin", readByClient: "read_by_client" },
-  usersTable: { id: "id", role: "role" },
+  usersTable: { id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", mspRole: "msp_role", isActive: "is_active", canApprovePurchases: "can_approve_purchases" },
 }));
 
 vi.mock("../lib/sse-channels.ts", () => ({

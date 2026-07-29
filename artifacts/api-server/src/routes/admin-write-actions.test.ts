@@ -38,8 +38,8 @@ let templates: Row[] = [];
 let auditLog: Row[] = [];
 let catalog: Row[] = [];
 
-const TESTBED_CUSTOMER = { id: 42, name: "Testbed Co", tenantId: "tenant-guid-abc", isTestbed: true, status: "active" };
-const LIVE_CUSTOMER = { id: 99, name: "Real Paying Customer", tenantId: "tenant-guid-live", isTestbed: false, status: "active" };
+const TESTBED_CUSTOMER = { id: 42, customerName: "Testbed Co", tenantId: "tenant-guid-abc", isTestbed: true, status: "active" };
+const LIVE_CUSTOMER = { id: 99, customerName: "Real Paying Customer", tenantId: "tenant-guid-live", isTestbed: false, status: "active" };
 
 const DISABLE_SIGNIN = {
   templateId: "users.disable_enable_signin",
@@ -106,7 +106,7 @@ vi.mock("@workspace/db", () => {
     ...Object.fromEntries(cols.map((c) => [c, col(name, c)])),
   });
 
-  const mspCustomersTable = table("msp_customers", ["id", "name", "tenantId", "isTestbed", "status"]);
+  const tenantsTable = table("tenants", ["id", "customerName", "tenantId", "isTestbed", "status"]);
   const baselineActionTemplatesTable = table("baseline_action_templates", [
     "templateId", "label", "description", "category", "endpoint", "method", "bodyTemplate",
     "requiredVariables", "successCriteria", "dependsOn", "requiresVerificationGate",
@@ -121,7 +121,7 @@ vi.mock("@workspace/db", () => {
   ]);
 
   const fixturesFor = (name: string): Row[] =>
-    name === "msp_customers" ? customers
+    name === "tenants" ? customers
       : name === "baseline_action_templates" ? templates
       : name === "baseline_action_template_audit_log" ? auditLog
       : name === "write_action_catalog" ? catalog
@@ -186,7 +186,7 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: { select: vi.fn((projection?: Record<string, any>) => chainFor(projection)) },
-    mspCustomersTable,
+    tenantsTable,
     baselineActionTemplatesTable,
     baselineActionTemplateAuditLogTable,
     writeActionCatalogTable,

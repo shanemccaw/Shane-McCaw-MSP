@@ -30,7 +30,7 @@ import {
   breakGlassPendingSecretsTable,
   breakGlassVerificationAttemptsTable,
   breakGlassOverrideAuditTable,
-  mspCustomersTable,
+  tenantsTable,
   mspsTable,
   wfRunsTable,
 } from "@workspace/db";
@@ -153,7 +153,7 @@ function escapeHtml(s: string): string {
 }
 
 // ── Shared context resolver: pendingSecretId → customer / MSP / tenant / branding ──
-// Single query — extends the standard customerId → mspCustomersTable.mspId →
+// Single query — extends the standard customerId → tenantsTable.mspId →
 // mspsTable lookup pattern (same shape used elsewhere for MSP branding, e.g.
 // msp-onboarding.ts) with one more join so callers get white-label branding for
 // free alongside tenant/domain context, without a second round-trip.
@@ -168,16 +168,16 @@ async function resolvePendingContext(pendingSecretId: number): Promise<PendingCo
   const [row] = await db
     .select({
       secret: breakGlassPendingSecretsTable,
-      mspId: mspCustomersTable.mspId,
-      tenantId: mspCustomersTable.tenantId,
-      domain: mspCustomersTable.domain,
+      mspId: tenantsTable.mspId,
+      tenantId: tenantsTable.tenantId,
+      domain: tenantsTable.domain,
       mspName: mspsTable.name,
       mspLogoUrl: mspsTable.logoUrl,
       mspPrimaryColor: mspsTable.primaryColor,
     })
     .from(breakGlassPendingSecretsTable)
-    .innerJoin(mspCustomersTable, eq(breakGlassPendingSecretsTable.customerId, mspCustomersTable.id))
-    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+    .innerJoin(tenantsTable, eq(breakGlassPendingSecretsTable.customerId, tenantsTable.id))
+    .innerJoin(mspsTable, eq(mspsTable.id, tenantsTable.mspId))
     .where(eq(breakGlassPendingSecretsTable.id, pendingSecretId))
     .limit(1);
   if (!row) return null;

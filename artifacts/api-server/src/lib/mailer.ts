@@ -1,4 +1,4 @@
-import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, mspUsersTable, failedNotificationsTable } from "@workspace/db";
+import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, usersTable, failedNotificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "comms.email" });
@@ -330,21 +330,21 @@ export async function canSendAutomatedCustomerEmail(mspId: number): Promise<bool
 
 /**
  * Convenience wrapper for canSendAutomatedCustomerEmail when the caller only
- * has a usersTable id (the customer_user recipient) and needs their mspId
- * resolved via mspUsersTable first.
+ * has a usersTable id (the customer_user recipient) and needs their mspId,
+ * which now lives on that same users row.
  *
- * Mirrors ensureClientMspUser's own mspId default (portal.ts) for the case
- * where no mspUsersTable row exists yet — e.g. a brand-new buyer's purchase
- * confirmation fires before that row is provisioned. Defaulting to mspId=1
- * (Shane's own direct business) rather than failing closed avoids silently
- * dropping the confirmation email for every first-time direct purchase.
+ * Keeps the historical mspId default for the case where the column is still
+ * null — e.g. a brand-new buyer's purchase confirmation fires before their
+ * MSP linkage is stamped. Defaulting to mspId=1 (Shane's own direct business)
+ * rather than failing closed avoids silently dropping the confirmation email
+ * for every first-time direct purchase.
  */
 export async function canSendAutomatedCustomerEmailForUser(userId: number): Promise<boolean> {
   try {
     const [row] = await db
-      .select({ mspId: mspUsersTable.mspId })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
+      .select({ mspId: usersTable.mspId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
       .limit(1);
     return canSendAutomatedCustomerEmail(row?.mspId ?? 1);
   } catch (err) {

@@ -1,7 +1,7 @@
 import {
   db,
   savedSqlScripts,
-  mspCustomersTable,
+  tenantsTable,
   testSuitesTable,
   testSuiteRunsTable,
 } from "@workspace/db";
@@ -48,9 +48,9 @@ export class TestSuiteRunError extends Error {
 
 export async function requireTestbedCustomer(customerId: number): Promise<{ id: number; mspId: number }> {
   const [customer] = await db
-    .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.isTestbed, true)))
     .limit(1);
   if (!customer) {
     throw new Error(`Testbed customer ${customerId} not found or is not flagged is_testbed`);

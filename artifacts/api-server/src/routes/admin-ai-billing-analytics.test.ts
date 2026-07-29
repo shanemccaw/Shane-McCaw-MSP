@@ -60,7 +60,7 @@ vi.mock("@workspace/db", () => {
       runId: "run_id", correlationId: "correlation_id",
     },
     mspsTable: { id: "id", name: "name" },
-    mspCustomersTable: { id: "id", name: "name" },
+    tenantsTable: { id: "id", customerName: "customer_name" },
   };
 });
 

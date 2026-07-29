@@ -354,10 +354,16 @@ export function buildMspDetail(params: {
 // (id/name only — a link-out via the tree's ad-select-object mechanism, not a
 // duplicated MSP detail render), linked users with roles, Graph/SharePoint/
 // write consent status, purchased services (client_services, reached via the
-// msp_users -> users.id bridge — client_services has no msp_customers FK of
+// users.tenantId bridge — client_services has no tenants FK of
 // its own), and a summary of the N most recent diagnostic runs. Read-only, no
 // customer-level edit actions belong in this phase (Issue #63).
 
+// `ownerType` is gone as of the Tenant/User Refactor (#96): the dropped
+// msp_customers table carried it, and the tenants table that replaced it has
+// no analogue — every tenants row IS a customer, so the column had no
+// remaining meaning. `tenantUrl` takes its place in the pane. `tenantId` is
+// now NOT NULL on tenants, but stays nullable here so the pure builder keeps
+// working against older fixtures.
 export interface CustomerProfileRow {
   id: number;
   mspId: number;
@@ -365,8 +371,8 @@ export interface CustomerProfileRow {
   domain: string | null;
   industry: string | null;
   tenantId: string | null;
+  tenantUrl: string | null;
   status: string;
-  ownerType: string;
   isTestbed: boolean;
   createdAt: Date;
 }
@@ -490,7 +496,7 @@ export function buildOuNodes(ous: OuRow[]): OuNode[] {
 //
 // Everything the platform holds about one account: base profile (users
 // table — note `users.role` is only ["admin","client"], NOT the real
-// platform role), the real role/MSP/customer linkage (msp_users.mspRole,
+// platform role), the real role/MSP/customer linkage (users.mspRole,
 // same source-of-truth Phases 2/4 already query), entitlements inherited
 // from the linked MSP's subscription tier (there is no separate per-user
 // entitlements table — this reuses Phase 2's deriveEntitlements() rather
@@ -571,9 +577,9 @@ function isSessionActive(session: UserSessionRow, now: Date): boolean {
 
 /**
  * Assembles the full User Object detail payload — pure, DB-free so it can be
- * unit-tested against plain fixtures. A user with no msp_users row (linkage
- * null), zero sessions, or zero MFA enrollments still returns real honest
- * empty values, never placeholders.
+ * unit-tested against plain fixtures. A user the caller could not resolve
+ * (linkage null), zero sessions, or zero MFA enrollments still returns real
+ * honest empty values, never placeholders.
  */
 export function buildUserDetail(params: {
   profile: UserProfileRow;
@@ -613,27 +619,35 @@ export function buildUserDetail(params: {
 // ── User Object write actions (Phase 7) ──────────────────────────────────────
 //
 // RBAC role change, MSP/customer reassignment, and entitlement grant/revoke —
-// Issue #67. mspUsersTable has no DB-level CHECK constraint tying mspRole to
-// mspId/customerId nullability; the real constraint is enforced here, derived
-// from the actual observed pattern across the codebase (auth.ts's PlatformAdmin
-// seeding, every JWT-claim test fixture): PlatformAdmin carries neither
-// linkage; MSPAdmin/MSPOperator/ServiceAccount carry mspId only; CustomerUser
-// carries customerId (with mspId denormalized to that customer's owning MSP);
-// Free/Assessment are the floor tier and carry no linkage requirement.
+// Issue #67. This mapping is no longer app-level discipline alone: as of the
+// Tenant/User Refactor (#92 Phase 0) the single users table carries a real
+// Postgres CHECK constraint, `users_role_scope_check`, and these rules MUST
+// stay identical to it or every plan this module approves gets rejected by
+// the database:
+//
+//   CustomerUser / Free / Assessment       -> tenant_id NOT NULL
+//   MSPAdmin / MSPOperator / ServiceAccount -> msp_id    NOT NULL
+//   PlatformAdmin                           -> neither required
+//
+// Free/Assessment therefore moved from "none" to "customer" here — under the
+// old msp_users table they were a linkage-free floor tier, but the constraint
+// now requires them to sit under a tenant like any other customer-side role.
+// ("customer" means tenant linkage; the wire/field name customerId is kept
+// deliberately — see admin-active-directory.ts's header.)
 
 export type RoleLinkageRequirement = "none" | "msp" | "customer";
 
 export function roleLinkageRequirement(role: DirectoryGroupRole): RoleLinkageRequirement {
   switch (role) {
     case "PlatformAdmin":
-    case "Free":
-    case "Assessment":
       return "none";
     case "MSPAdmin":
     case "MSPOperator":
     case "ServiceAccount":
       return "msp";
     case "CustomerUser":
+    case "Free":
+    case "Assessment":
       return "customer";
   }
 }
@@ -643,8 +657,8 @@ export type RoleChangeResult =
   | { ok: false; error: string };
 
 /**
- * Computes the resulting mspId/customerId for a role change on an account
- * that already has an msp_users row. Never invents a new mspId/customerId —
+ * Computes the resulting mspId/customerId for a role change on an existing
+ * users row. Never invents a new mspId/customerId —
  * a role that requires linkage the account doesn't currently have is
  * rejected, telling the caller to reassign MSP/customer linkage first via
  * planAssignmentChange. A role change to an MSP-scoped role from a
@@ -698,7 +712,7 @@ export type AssignmentChangeResult =
 export function planAssignmentChange(input: {
   currentRole: DirectoryGroupRole;
   target: { mspId?: number | null; customerId?: number | null };
-  /** The target customer's real owning mspId, resolved by the caller from mspCustomersTable — required when target.customerId is provided. */
+  /** The target customer's real owning mspId, resolved by the caller from tenantsTable — required when target.customerId is provided. */
   customerOwningMspId?: number | null;
 }): AssignmentChangeResult {
   const requirement = roleLinkageRequirement(input.currentRole);
@@ -719,10 +733,10 @@ export function planAssignmentChange(input: {
 
   // requirement === "customer"
   if (input.target.mspId != null) {
-    return { ok: false, error: "CustomerUser accounts are reassigned by customerId only — the owning MSP is derived automatically." };
+    return { ok: false, error: `${input.currentRole} accounts are reassigned by customerId only — the owning MSP is derived automatically.` };
   }
   if (input.target.customerId == null) {
-    return { ok: false, error: "Reassigning a CustomerUser account requires a target customerId." };
+    return { ok: false, error: `Reassigning a ${input.currentRole} account requires a target customerId.` };
   }
   if (input.customerOwningMspId == null) {
     return { ok: false, error: "Could not resolve the owning MSP for the target customer." };

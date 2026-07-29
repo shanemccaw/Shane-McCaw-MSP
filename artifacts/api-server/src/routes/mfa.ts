@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
-import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, mspUsersTable, mspRefreshTokensTable } from "@workspace/db";
+import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, mspRefreshTokensTable } from "@workspace/db";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -1195,16 +1195,19 @@ async function getMspClaimsForUser(userId: number): Promise<{
   mspId: number | null;
   customerId: number | null;
 }> {
+  // Same shape auth.ts's getMspClaims() reads post-refactor: one users row,
+  // no bridge. `customerId` stays the claim name while carrying users.tenantId
+  // — the JWT wire format was deliberately frozen in Phase 1.
   const [mspUser] = await db
     .select()
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
   if (!mspUser) return { mspRole: null, mspId: null, customerId: null };
   return {
     mspRole: mspUser.mspRole as import("@workspace/db").MspRole,
     mspId: mspUser.mspId ?? null,
-    customerId: mspUser.customerId ?? null,
+    customerId: mspUser.tenantId ?? null,
   };
 }
 

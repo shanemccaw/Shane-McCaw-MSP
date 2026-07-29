@@ -5,7 +5,7 @@
  * when a live Graph API call returns a response whose BODY carries a documented
  * consent-failure signature (invalid_grant / AADSTS65001 / consent_required /
  * AADSTS700016) the system must atomically:
- *   (a) flip tenantConsentTable.consentStatus → "revoked"  \
+ *   (a) flip tenants.consent -> graph.status = "revoked"          \
  *       and tenantMonitorProfilesTable rows → "consent_revoked"  }  single transaction
  *   (b) emit a canonical audit log entry (actionType=tenant_consent_revoked)
  *   (c) throw ConsentRevokedError (typed, never a raw Error)
@@ -51,7 +51,7 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: { transaction, insert, tx },
-    tenantConsentTable: {},
+    tenantsTable: { tenantId: "tenant_id", consent: "consent" },
     tenantMonitorProfilesTable: {},
     auditLogsTable: {},
   };
@@ -59,6 +59,10 @@ vi.mock("@workspace/db", () => {
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn((a: unknown, b: unknown) => ({ op: "eq", a, b })),
+  // graph.ts builds the tenants.consent jsonb merge with a sql`` template, so
+  // the stub records the interpolated values (consent key + JSON patch) for the
+  // assertions below to read.
+  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: "sql", strings: [...strings], values })),
   ne: vi.fn((a: unknown, b: unknown) => ({ op: "ne", a, b })),
   and: vi.fn((...args: unknown[]) => ({ op: "and", args })),
 }));
@@ -97,6 +101,22 @@ function getTxSetCalls(): Array<Record<string, unknown>> {
     .filter((r) => r.type === "return")
     .map((r) => r.value.set)
     .flatMap((setFn) => setFn.mock.calls.map((args) => args[0] as Record<string, unknown>));
+}
+
+/**
+ * True when a `.set()` payload is the tenants.consent merge for `key`, carrying
+ * a revoked status. The three grants share one jsonb column now, so asserting
+ * on "revoked" alone would no longer prove WHICH grant was flipped — the key
+ * must be checked too, or a write-side revoke could satisfy a read-side test.
+ */
+function consentPatchHasRevokedKey(setCall: Record<string, unknown> | undefined, key: string): boolean {
+  const consent = setCall?.["consent"] as { op?: string; values?: unknown[] } | undefined;
+  if (consent?.op !== "sql" || !Array.isArray(consent.values)) return false;
+  const hasKey = consent.values.includes(key);
+  const hasRevoked = consent.values.some(
+    (v) => typeof v === "string" && v.includes('"status":"revoked"'),
+  );
+  return hasKey && hasRevoked;
 }
 
 // ── fetch stub ────────────────────────────────────────────────────────────────
@@ -189,11 +209,11 @@ describe("graphFetchForTenant — consent auto-revoke (body signature, not bare 
     expect(mockDb.transaction).toHaveBeenCalledOnce();
   });
 
-  it("flips tenantConsentTable.consentStatus to revoked inside transaction", async () => {
+  it("flips the tenants.consent graph key to revoked inside transaction", async () => {
     mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
     await expect(graphFetchForTenant("tenant-revoke-4", "/users")).rejects.toThrow(ConsentRevokedError);
     const setCalls = getTxSetCalls();
-    expect(setCalls.some((c) => c?.consentStatus === "revoked")).toBe(true);
+    expect(setCalls.some((c) => consentPatchHasRevokedKey(c, "graph"))).toBe(true);
   });
 
   it("flips monitor profiles to consent_revoked inside transaction", async () => {
@@ -444,10 +464,10 @@ describe("markTenantConsentRevoked", () => {
     expect(mockDb.tx.update).toHaveBeenCalledTimes(2);
   });
 
-  it("updates tenantConsentTable with consentStatus=revoked inside transaction", async () => {
+  it("updates tenants.consent with graph.status=revoked inside transaction", async () => {
     await markTenantConsentRevoked("tenant-direct");
     const setCalls = getTxSetCalls();
-    expect(setCalls.some((c) => c?.consentStatus === "revoked")).toBe(true);
+    expect(setCalls.some((c) => consentPatchHasRevokedKey(c, "graph"))).toBe(true);
   });
 
   it("updates tenantMonitorProfilesTable with status=consent_revoked inside transaction", async () => {
@@ -458,7 +478,7 @@ describe("markTenantConsentRevoked", () => {
 
   it("excludes already-classified license_gap rows from the monitor-profile bulk update", async () => {
     await markTenantConsentRevoked("tenant-direct");
-    // tenantConsentTable is updated first, tenantMonitorProfilesTable second — same order as the source.
+    // tenants.consent is updated first, tenantMonitorProfilesTable second — same order as the source.
     const monitorWhereCall = txUpdateWhere.mock.calls[1]?.[0] as { op: string; args: Array<{ op: string; b: unknown }> };
     expect(monitorWhereCall.op).toBe("and");
     expect(monitorWhereCall.args.some((c) => c.op === "ne" && c.b === "license_gap")).toBe(true);

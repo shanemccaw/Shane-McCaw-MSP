@@ -34,7 +34,7 @@ import {
   baselineActionTemplateAuditLogTable,
   configPacksTable,
   configPackTemplatesTable,
-  mspCustomersTable,
+  tenantsTable,
   monitorChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
@@ -155,10 +155,10 @@ router.get("/admin/baseline-templates/audit-log", requireAdmin, async (req: Requ
 router.get("/admin/baseline-templates/testbed-customers", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, tenantId: mspCustomersTable.tenantId })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.isTestbed, true), eq(mspCustomersTable.status, "active")))
-      .orderBy(mspCustomersTable.name);
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName, tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.isTestbed, true), eq(tenantsTable.status, "active")))
+      .orderBy(tenantsTable.customerName);
     res.json({ customers: customers.filter(c => Boolean(c.tenantId)) });
   } catch (err) {
     log.error({ err }, "admin-baseline-templates: list testbed customers failed");
@@ -333,9 +333,9 @@ router.post("/admin/baseline-templates/:templateId/test", requireAdmin, async (r
     }
 
     const [customer] = await db
-      .select({ id: mspCustomersTable.id, tenantId: mspCustomersTable.tenantId, isTestbed: mspCustomersTable.isTestbed, name: mspCustomersTable.name })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, body.customerId))
+      .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId, isTestbed: tenantsTable.isTestbed, name: tenantsTable.customerName })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, body.customerId))
       .limit(1);
 
     if (!customer?.tenantId) {

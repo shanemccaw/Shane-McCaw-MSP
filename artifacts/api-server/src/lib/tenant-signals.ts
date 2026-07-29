@@ -3,8 +3,8 @@ import {
   clientM365ProfilesTable,
   insightsGeneratedDocumentsTable,
   scriptRunResultsTable,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
+  usersTable,
   tenantMonitorProfilesTable,
   signalDerivationRulesTable,
   monitorChecksTable,
@@ -101,25 +101,25 @@ export async function getDisabledSignalKeys(): Promise<Set<string>> {
  *      land on MSP staff or machine identities when a real customer login exists.
  *   2. Earliest created_at — the original account-holder (the person who
  *      actually signed up / consented first), not whoever was invited latest.
- *   3. Lowest msp_users.id — a total-order tiebreak so two rows created in the
+ *   3. Lowest users.id — a total-order tiebreak so two rows created in the
  *      same instant still resolve identically every time.
  */
 // Built lazily (a function, not a module-level const) so importing this module
 // never evaluates drizzle operators at load time — several test files partial-
 // mock drizzle-orm and import tenant-signals only transitively.
 const canonicalPortalUserOrder = () => [
-  sql`CASE ${mspUsersTable.mspRole}
+  sql`CASE ${usersTable.mspRole}
     WHEN 'CustomerUser' THEN 0
     WHEN 'Assessment' THEN 1
     WHEN 'Free' THEN 2
     ELSE 3 END`,
-  asc(mspUsersTable.createdAt),
-  asc(mspUsersTable.id),
+  asc(usersTable.createdAt),
+  asc(usersTable.id),
 ];
 
 /**
  * Resolve the canonical active portal user (`usersTable.id`) for an engine
- * customerId (`mspCustomersTable.id`) via the `msp_users` bridge. Returns null
+ * customerId (`tenantsTable.id`) via `users.tenantId`. Returns null
  * when the customer has no active portal user — a valid state for an unclaimed
  * customer, not an error.
  *
@@ -133,9 +133,9 @@ const canonicalPortalUserOrder = () => [
  */
 export async function resolveCustomerPortalUserId(customerId: number): Promise<number | null> {
   const [row] = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+    .select({ userId: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
     .orderBy(...canonicalPortalUserOrder())
     .limit(1);
   return row?.userId ?? null;
@@ -155,17 +155,17 @@ export async function resolveCustomerPortalUserId(customerId: number): Promise<n
  */
 export async function resolveCustomerUserIds(customerId: number): Promise<number[]> {
   const rows = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.customerId, customerId))
+    .select({ userId: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.tenantId, customerId))
     .orderBy(...canonicalPortalUserOrder());
   return rows.map((r) => r.userId);
 }
 
 /**
  * The full users.id set of the CUSTOMER a given portal user belongs to —
- * i.e. the user plus every sibling login linked to the same msp_customers row.
- * Always includes the input user itself (even when it has no msp_users bridge
+ * i.e. the user plus every sibling login linked to the same tenants row.
+ * Always includes the input user itself (even when it carries no tenantId
  * or no customer — a direct-business/unclaimed user degrades to a one-element
  * set), so it is always safe as an `inArray` read key wherever a single
  * `eq(column, clientUserId)` used to be. Use this to answer "the customer's
@@ -174,9 +174,9 @@ export async function resolveCustomerUserIds(customerId: number): Promise<number
  */
 export async function resolveSiblingUserIds(clientUserId: number): Promise<number[]> {
   const [bridge] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, clientUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, clientUserId))
     .limit(1);
   if (bridge?.customerId == null) return [clientUserId];
   const siblings = await resolveCustomerUserIds(bridge.customerId);
@@ -184,8 +184,8 @@ export async function resolveSiblingUserIds(clientUserId: number): Promise<numbe
 }
 
 /**
- * The engine customerId (`mspCustomersTable.id`) a portal user (`usersTable.id`)
- * belongs to, via the `msp_users` bridge. The exact inverse of
+ * The engine customerId (`tenantsTable.id`) a portal user (`usersTable.id`)
+ * belongs to, read straight off `users.tenantId`. The exact inverse of
  * `resolveCustomerPortalUserId` above, and the single shared implementation of a
  * translation that used to be duplicated privately inside `document-engine.ts`,
  * `document-engine-sow.ts`, and `document-generator.ts`.
@@ -194,18 +194,18 @@ export async function resolveSiblingUserIds(clientUserId: number): Promise<numbe
  * boundary, not inside an engine: an engine that takes a users.id and silently
  * translates it can only ever serve user-shaped entry points, which is what kept
  * document generation from being drivable by tenant. Callers holding a
- * `mspCustomersTable.id` already (an admin tenant picker, a tenant-scoped job)
+ * `tenantsTable.id` already (an admin tenant picker, a tenant-scoped job)
  * must NOT round-trip through a user id — they pass the customer id straight in.
  *
- * Returns null when the user has no bridge row (a direct-business or unclaimed
+ * Returns null when the user has no tenantId (a direct-business or unclaimed
  * user with no engine customer) — a real state, not an error, and the caller
  * decides how to report it.
  */
 export async function resolveCustomerIdForPortalUser(clientUserId: number): Promise<number | null> {
   const [row] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, clientUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, clientUserId))
     .limit(1);
   return row?.customerId ?? null;
 }
@@ -257,7 +257,7 @@ export interface ReusableDocument {
  *   (b) `client_m365_profiles.updatedAt` across every login linked to the
  *       customer, and
  *   (c) `script_run_results.createdAt` across the same login set.
- * A customer with no linked M365 tenant (`msp_customers.tenantId` NULL) simply
+ * A customer with no linked M365 tenant (`tenants.tenantId` unset) simply
  * skips (a) rather than erroring — (b)/(c) can still be meaningful, and for
  * some document types they are the only inputs there are.
  *
@@ -293,7 +293,7 @@ export async function findReusableDocument(
 ): Promise<ReusableDocument | null> {
   // Direct tenant-scoped read — `msp_customer_id` is a real column now (Phase
   // 8.5) with a (msp_customer_id, doc_type, created_at) index behind exactly
-  // this query, so no `msp_users` fan-out join is involved.
+  // this query, so no per-user fan-out join is involved.
   const [existing] = await db
     .select({
       id: insightsGeneratedDocumentsTable.id,
@@ -316,9 +316,9 @@ export async function findReusableDocument(
   }
 
   const [customerRow] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, mspCustomerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, mspCustomerId))
     .limit(1);
   const tenantId = customerRow?.tenantId ?? null;
 
@@ -651,18 +651,18 @@ export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Pr
 // mergeMonitorProfileRows / deriveMonitorFindings) so no site can drift on the
 // Graph-data merge again.
 //
-// The input is a *customer id* (`mspCustomersTable.id`) — the id every real
+// The input is a *customer id* (`tenantsTable.id`) — the id every real
 // engine caller already carries (runForTenant / admin-engines testbed flow).
 //
 // Two independent id spaces are in play, and this function bridges them
 // explicitly rather than assuming they coincide (the old per-engine copies
 // assumed they did, which is what silently zeroed signals in production):
 //
-//   • tenantId / mspId live on `msp_customers`, keyed by the customer id
+//   • tenantId / mspId live on `tenants`, keyed by the customer id
 //     directly — resolved with one `WHERE id = customerId` lookup.
 //   • `client_m365_profiles` and `script_run_results` are keyed by
 //     `users.id` (a *portal user* id), NOT the customer id. So we first
-//     resolve the customer's active portal user via `msp_users`
+//     resolve the customer's active portal user via `users.tenantId`
 //     (`resolveCustomerPortalUserId`) and key those two tables by that id.
 //
 // A customer with no active portal user (unclaimed) is valid: the profile /
@@ -712,9 +712,9 @@ export async function buildTenantProfile(customerId: number): Promise<{
 }> {
   // tenant/msp — keyed directly by the customer id (no user involved).
   const [customerRow] = await db
-    .select({ tenantId: mspCustomersTable.tenantId, mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   const tenantId = customerRow?.tenantId ?? null;
   const mspId = customerRow?.mspId ?? null;
@@ -787,7 +787,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
   } else {
     log.warn(
       { customerId },
-      "buildTenantProfile: no tenantId on msp_customers row — monitor-derived threshold signals cannot fire for this customer",
+      "buildTenantProfile: no tenantId on tenants row — monitor-derived threshold signals cannot fire for this customer",
     );
   }
 
@@ -1356,10 +1356,10 @@ async function recordSignalTransitions(
  */
 export async function getStabilizedSignals(customerId: number): Promise<Set<string>> {
   try {
-    // customerId here is a REAL msp_customers.id (the Signal Policy Engine's
+    // customerId here is a REAL tenants.id (the Signal Policy Engine's
     // enumeration space) — but tenant_signal_history.customer_id rows are
     // written in users.id space (see recordSignalTransitions). Bridge via
-    // msp_users and read across ALL of the customer's linked users so history
+    // users.tenantId and read across ALL of the customer's linked users so history
     // written under any login (including the pre-determinism arbitrary picks)
     // still counts for the customer.
     const historyUserIds = await resolveCustomerUserIds(customerId);

@@ -42,7 +42,7 @@ import {
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
   writeActionCatalogTable,
-  mspCustomersTable,
+  tenantsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -90,13 +90,13 @@ async function assertTestbedCustomer(customerId: unknown): Promise<TestbedResolu
 
   const [customer] = await db
     .select({
-      id: mspCustomersTable.id,
-      name: mspCustomersTable.name,
-      tenantId: mspCustomersTable.tenantId,
-      isTestbed: mspCustomersTable.isTestbed,
+      id: tenantsTable.id,
+      name: tenantsTable.customerName,
+      tenantId: tenantsTable.tenantId,
+      isTestbed: tenantsTable.isTestbed,
     })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
@@ -217,10 +217,10 @@ router.get("/admin/write-actions", requireAdmin, async (_req: Request, res: Resp
 router.get("/admin/write-actions/testbed-customers", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, tenantId: mspCustomersTable.tenantId })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.isTestbed, true), eq(mspCustomersTable.status, "active")))
-      .orderBy(mspCustomersTable.name);
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName, tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.isTestbed, true), eq(tenantsTable.status, "active")))
+      .orderBy(tenantsTable.customerName);
     res.json({ customers: customers.filter(c => Boolean(c.tenantId)) });
   } catch (err) {
     log.error({ err }, "admin-write-actions: list testbed customers failed");

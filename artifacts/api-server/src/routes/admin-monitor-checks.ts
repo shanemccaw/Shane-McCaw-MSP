@@ -34,7 +34,7 @@ import {
   monitorCheckAuditLogTable,
   tenantMonitorProfilesTable,
   usersTable,
-  mspCustomersTable,
+  tenantsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -525,8 +525,8 @@ router.get("/admin/monitor-checks/profiles", requireAdmin, async (req: Request, 
       .limit(limit);
 
     const clients = await db
-      .select({ tenantId: mspCustomersTable.tenantId, name: mspCustomersTable.name, company: mspCustomersTable.domain })
-      .from(mspCustomersTable);
+      .select({ tenantId: tenantsTable.tenantId, name: tenantsTable.customerName, company: tenantsTable.domain })
+      .from(tenantsTable);
 
     const clientMap = new Map(clients.map(c => [c.tenantId, c]));
 

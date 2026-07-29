@@ -100,6 +100,9 @@ vi.mock("@workspace/db", () => ({
   consentInviteTokensTable: { token: "cit.token", customerId: "cit.customer_id", clientUserId: "cit.client_user_id", usedAt: "cit.used_at", expiresAt: "cit.expires_at", tenantId: "cit.tenant_id" },
   mspsTable: { id: "m.id", isDirectBusiness: "m.is_direct_business" },
   mspCustomersTable: { id: "mc.id", mspId: "mc.msp_id", tenantId: "mc.tenant_id", status: "mc.status" },
+  // graph.ts's revoke path writes the tenants.consent jsonb now (Phase 3);
+  // consent.ts itself is still on the old tables until Phase 6.
+  tenantsTable: { id: "t.id", tenantId: "t.tenant_id", consent: "t.consent", updatedAt: "t.updated_at" },
   checkoutSessionsTable: { id: "cs.id", email: "cs.email", productSlug: "cs.product_slug", status: "cs.status", tenantId: "cs.tenant_id", expiresAt: "cs.expires_at", updatedAt: "cs.updated_at" },
   servicesTable: { slug: "s.slug" },
   usersTable: { id: "u.id", email: "u.email" },

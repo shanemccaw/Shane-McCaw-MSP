@@ -65,7 +65,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, monitorChecksTable, mspCustomersTable, type MonitorCheck } from "@workspace/db";
+import { db, monitorChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
 import { and, eq, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -268,9 +268,9 @@ async function resolveCustomer(
   customerId: number,
 ): Promise<{ ok: true; tenantId: string } | { ok: false; status: number; error: string }> {
   const [customer] = await db
-    .select({ id: mspCustomersTable.id, tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   if (!customer) return { ok: false, status: 404, error: "Customer not found" };
   if (!customer.tenantId) {

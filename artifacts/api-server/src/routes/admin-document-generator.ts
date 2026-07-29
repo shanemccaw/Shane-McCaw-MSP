@@ -22,7 +22,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, mspCustomersTable, projectsTable, servicesTable, usersTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
+import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, tenantsTable, projectsTable, servicesTable, usersTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
 import { eq, desc, and, isNull, inArray, asc } from "drizzle-orm";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -46,14 +46,14 @@ router.get("/admin/document-generator/tenants", requireAdmin, async (_req: Reque
   try {
     const rows = await db
       .select({
-        id: mspCustomersTable.id,
-        name: mspCustomersTable.name,
-        tenantId: mspCustomersTable.tenantId,
-        domain: mspCustomersTable.domain,
-        status: mspCustomersTable.status,
+        id: tenantsTable.id,
+        name: tenantsTable.customerName,
+        tenantId: tenantsTable.tenantId,
+        domain: tenantsTable.domain,
+        status: tenantsTable.status,
       })
-      .from(mspCustomersTable)
-      .orderBy(asc(mspCustomersTable.name));
+      .from(tenantsTable)
+      .orderBy(asc(tenantsTable.customerName));
     res.json(rows);
   } catch (err) {
     log.error({ err }, "admin-document-generator: list tenants failed");

@@ -215,7 +215,7 @@ vi.mock("@workspace/db", () => {
     db: mockDb,
     simulatorCheckRunsTable,
     monitorChecksTable: table("monitor_checks", ["key", "status"]),
-    mspCustomersTable: table("msp_customers", ["id", "tenantId"]),
+    tenantsTable: table("tenants", ["id", "tenantId"]),
   };
 });
 

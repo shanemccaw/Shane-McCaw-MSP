@@ -1,4 +1,4 @@
-import { db, mspsTable, tenantSignalHistoryTable, tenantEngineOverridesTable, monitorChecksTable, mspCustomersTable, projectsTable, mspUsersTable, kanbanTasksTable } from "@workspace/db";
+import { db, mspsTable, tenantSignalHistoryTable, tenantEngineOverridesTable, monitorChecksTable, tenantsTable, projectsTable, usersTable, kanbanTasksTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -46,9 +46,9 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     demoSpeakerNote: "Notice how the moment billing fails, the entire customer portal locks down and prompts for card update.",
     execute: async (testbedCustomerId) => {
       const [customer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, testbedCustomerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, testbedCustomerId))
         .limit(1);
 
       if (!customer) {
@@ -73,9 +73,9 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     description: "Injects an active MFA_DISABLED signal directly into the tenant to trigger a score drop and sales offer.",
     execute: async (testbedCustomerId) => {
       const [customer] = await db
-        .select({ tenantId: mspCustomersTable.tenantId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, testbedCustomerId))
+        .select({ tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, testbedCustomerId))
         .limit(1);
 
       if (!customer) {
@@ -166,9 +166,9 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     description: "Ages all open Kanban tasks for this MSP past 48 hours to trigger escalation rules.",
     execute: async (testbedCustomerId) => {
       const [customer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, testbedCustomerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, testbedCustomerId))
         .limit(1);
 
       if (!customer) {
@@ -197,8 +197,8 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
       const projects = await db
         .select({ id: projectsTable.id })
         .from(projectsTable)
-        .innerJoin(mspUsersTable, eq(projectsTable.clientUserId, mspUsersTable.userId))
-        .where(eq(mspUsersTable.customerId, testbedCustomerId));
+        .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+        .where(eq(usersTable.tenantId, testbedCustomerId));
 
       const projectIds = projects.map(p => p.id);
 
@@ -237,9 +237,9 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     description: "Wipes all generated signals, clears suspensions, and restores baseline health scores.",
     execute: async (testbedCustomerId) => {
       const [customer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, testbedCustomerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, testbedCustomerId))
         .limit(1);
 
       let mspMutated = 0;

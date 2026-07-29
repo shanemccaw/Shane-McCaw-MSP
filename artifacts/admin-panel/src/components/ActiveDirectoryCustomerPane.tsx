@@ -62,8 +62,11 @@ interface CustomerDetail {
     domain: string | null;
     industry: string | null;
     tenantId: string | null;
+    // Replaces the dropped `ownerType` — msp_customers carried an owner_type
+    // enum, the tenants table that replaced it has no analogue (every tenants
+    // row IS a customer), so the pane shows the tenant's URL in that slot.
+    tenantUrl: string | null;
     status: string;
-    ownerType: string;
     isTestbed: boolean;
     createdAt: string;
   };
@@ -167,7 +170,7 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
         <Field label="Domain" value={customer.domain ?? "—"} />
         <Field label="Industry" value={customer.industry ?? "—"} />
         <Field label="Tenant ID" value={customer.tenantId ?? "Not connected"} highlight={!customer.tenantId} />
-        <Field label="Owner type" value={customer.ownerType} />
+        <Field label="Tenant URL" value={customer.tenantUrl ?? "—"} />
         <Field label="Testbed" value={customer.isTestbed ? "Yes" : "No"} />
         <Field label="Created" value={formatDate(customer.createdAt)} />
       </Section>

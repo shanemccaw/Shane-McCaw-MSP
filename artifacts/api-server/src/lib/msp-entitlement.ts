@@ -9,7 +9,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { db, servicesTable, mspSubscriptionsTable, mspCustomersTable } from "@workspace/db";
+import { db, servicesTable, mspSubscriptionsTable, tenantsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
@@ -161,10 +161,10 @@ export function requirePlanFeature(feature: string) {
 export async function countActiveTenants(mspId: number): Promise<number> {
   const [row] = await db
     .select({ n: count() })
-    .from(mspCustomersTable)
+    .from(tenantsTable)
     .where(and(
-      eq(mspCustomersTable.mspId, mspId),
-      eq(mspCustomersTable.status, "active"),
+      eq(tenantsTable.mspId, mspId),
+      eq(tenantsTable.status, "active"),
     ));
   return Number(row?.n ?? 0);
 }

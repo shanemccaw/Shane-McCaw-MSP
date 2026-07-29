@@ -3,7 +3,7 @@ import {
   aiPromptsTable,
   documentTypesTable,
   insightsGeneratedDocumentsTable,
-  mspCustomersTable,
+  tenantsTable,
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
@@ -34,7 +34,7 @@ const MAX_PRIOR_FINDINGS = 30;
 
 export interface GenerateSowParams {
   /**
-   * The engine customer (`mspCustomersTable.id`) this SOW is generated FOR — the
+   * The engine customer (`tenantsTable.id`) this SOW is generated FOR — the
    * PRIMARY identity of the request. The Sales Offer Engine, the tenant's mspId,
    * and the prior-document grounding set are all customer-scoped, so the customer
    * is what this function actually needs; a users.id was only ever a way to look
@@ -160,7 +160,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     }
 
     if (params.dryRun) {
-      const [customerRowDry] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerId)).limit(1);
+      const [customerRowDry] = await db.select({ mspId: tenantsTable.mspId }).from(tenantsTable).where(eq(tenantsTable.id, mspCustomerId)).limit(1);
       const resolvedMspIdDry = customerRowDry?.mspId ?? null;
 
       const groundingOwnerUserIdsDry = await resolveGroundingOwnerUserIds(mspCustomerId, params.documentOwnerUserId);
@@ -331,9 +331,9 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
     // inputs to run it. The customer id now arrives as a parameter rather than
     // being translated out of a users.id here.
     const [customerRow] = await db
-      .select({ mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, mspCustomerId))
+      .select({ mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, mspCustomerId))
       .limit(1);
     const resolvedMspId = customerRow?.mspId ?? null;
 

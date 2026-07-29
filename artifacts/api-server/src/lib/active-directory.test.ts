@@ -406,8 +406,8 @@ const CUSTOMER_PROFILE: CustomerProfileRow = {
   domain: "contoso.com",
   industry: "Manufacturing",
   tenantId: "tenant-contoso",
+  tenantUrl: "https://contoso.sharepoint.com",
   status: "active",
-  ownerType: "customer",
   isTestbed: false,
   createdAt: new Date("2026-02-01T00:00:00Z"),
 };
@@ -713,10 +713,11 @@ describe("buildUserDetail", () => {
 // ── User Object write actions (Phase 7) ──────────────────────────────────────
 
 describe("roleLinkageRequirement", () => {
-  it("requires no linkage for PlatformAdmin/Free/Assessment", () => {
+  // These three cases ARE the `users_role_scope_check` CHECK constraint the
+  // Tenant/User Refactor added — if they drift apart, every plan this module
+  // approves gets rejected by Postgres.
+  it("requires no linkage for PlatformAdmin only", () => {
     expect(roleLinkageRequirement("PlatformAdmin")).toBe("none");
-    expect(roleLinkageRequirement("Free")).toBe("none");
-    expect(roleLinkageRequirement("Assessment")).toBe("none");
   });
 
   it("requires MSP linkage for MSPAdmin/MSPOperator/ServiceAccount", () => {
@@ -725,8 +726,10 @@ describe("roleLinkageRequirement", () => {
     expect(roleLinkageRequirement("ServiceAccount")).toBe("msp");
   });
 
-  it("requires customer linkage for CustomerUser", () => {
+  it("requires customer (tenant) linkage for CustomerUser/Free/Assessment", () => {
     expect(roleLinkageRequirement("CustomerUser")).toBe("customer");
+    expect(roleLinkageRequirement("Free")).toBe("customer");
+    expect(roleLinkageRequirement("Assessment")).toBe("customer");
   });
 });
 
@@ -762,9 +765,20 @@ describe("planRoleChange", () => {
     expect(result).toEqual({ ok: true, mspRole: "CustomerUser", mspId: 1, customerId: 10 });
   });
 
-  it("leaves Free/Assessment role changes with no linkage regardless of current state", () => {
+  it("keeps the tenant linkage on a Free/Assessment role change (the CHECK constraint requires it)", () => {
     const result = planRoleChange({ newRole: "Assessment", currentMspId: 1, currentCustomerId: 10 });
-    expect(result).toEqual({ ok: true, mspRole: "Assessment", mspId: null, customerId: null });
+    expect(result).toEqual({ ok: true, mspRole: "Assessment", mspId: 1, customerId: 10 });
+  });
+
+  it("refuses a Free/Assessment role change on an account with no tenant linkage", () => {
+    const result = planRoleChange({ newRole: "Free", currentMspId: 1, currentCustomerId: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/no customer linkage yet/i);
+  });
+
+  it("clears both linkages when promoting to PlatformAdmin", () => {
+    const result = planRoleChange({ newRole: "PlatformAdmin", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "PlatformAdmin", mspId: null, customerId: null });
   });
 });
 
@@ -807,11 +821,16 @@ describe("planAssignmentChange", () => {
     if (!result.ok) expect(result.error).toMatch(/derived automatically/i);
   });
 
-  it("rejects reassignment for roles with no linkage concept", () => {
-    for (const role of ["PlatformAdmin", "Free", "Assessment"] as const) {
-      const result = planAssignmentChange({ currentRole: role, target: { mspId: 1 } });
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error).toMatch(/no MSP\/customer linkage/i);
+  it("rejects reassignment for PlatformAdmin — the one role with no linkage concept", () => {
+    const result = planAssignmentChange({ currentRole: "PlatformAdmin", target: { mspId: 1 } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/no MSP\/customer linkage/i);
+  });
+
+  it("reassigns Free/Assessment by customerId, deriving the owning MSP server-side", () => {
+    for (const role of ["Free", "Assessment"] as const) {
+      const result = planAssignmentChange({ currentRole: role, target: { customerId: 10 }, customerOwningMspId: 3 });
+      expect(result).toEqual({ ok: true, mspId: 3, customerId: 10 });
     }
   });
 });

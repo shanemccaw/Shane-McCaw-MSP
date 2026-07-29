@@ -28,7 +28,7 @@
  *     narrative never renders a "fix this now" action link.
  */
 
-import { db, mspDiagnosticRunsTable, mspCustomersTable, industryBenchmarkReferenceTable } from "@workspace/db";
+import { db, mspDiagnosticRunsTable, tenantsTable, industryBenchmarkReferenceTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
@@ -186,9 +186,9 @@ export async function generateCioNarrative(params: GenerateCioNarrativeParams): 
 
   try {
     const [customerRow] = await db
-      .select({ name: mspCustomersTable.name })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .select({ name: tenantsTable.customerName })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
     const clientName = customerRow?.name ?? "your organization";
 

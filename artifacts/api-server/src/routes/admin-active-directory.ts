@@ -2,24 +2,28 @@
 //
 // Active Directory admin surface (initiative: active-directory,
 // docs/build-plans/active-directory.md). Phase 1 (Issue #61): read-only tree
-// + universal search over real msps/msp_customers/msp_users/users rows.
+// + universal search over real msps/tenants/users rows.
 // Phase 2 (Issue #62): MSP Object detail pane. No write actions — those are
 // Phases 7-9.
+//
+// Tenant/User Refactor Phase 3 (#96): the "customer" object this surface
+// browses IS a `tenants` row, and every RBAC/linkage column it reads or writes
+// lives on `users` directly — msp_customers/msp_users are gone. The HTTP
+// payloads deliberately keep their old field names (`name`, `customerId`) via
+// select aliases so the admin-panel panes and lib/active-directory.ts's pure
+// builders need no rename; only `ownerType` disappears, because the new
+// tenants table has no analogue for it.
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   mspsTable,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
   usersTable,
   mspSubscriptionsTable,
   servicesTable,
   platformAgreementsTable,
   mspAgreementAcceptancesTable,
-  tenantConsentTable,
-  tenantSharePointConsentTable,
-  tenantWriteConsentTable,
   clientServicesTable,
   mspDiagnosticRunsTable,
   activeDirectoryOusTable,
@@ -29,6 +33,7 @@ import {
   accountSetupTokensTable,
   impersonationTokensTable,
   mspAuditLogsTable,
+  type TenantConsentRecord,
 } from "@workspace/db";
 import { eq, asc, and, inArray, count, desc } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
@@ -53,6 +58,7 @@ import {
   buildOuNodes,
   buildUserDetail,
   type UserMspLinkage,
+  type CustomerConsentStatus,
   deriveEntitlements,
   planRoleChange,
   planAssignmentChange,
@@ -99,20 +105,20 @@ router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, r
         .orderBy(asc(mspsTable.name)),
       db
         .select({
-          id: mspCustomersTable.id,
-          mspId: mspCustomersTable.mspId,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          tenantId: mspCustomersTable.tenantId,
-          status: mspCustomersTable.status,
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          tenantId: tenantsTable.tenantId,
+          status: tenantsTable.status,
         })
-        .from(mspCustomersTable)
-        .orderBy(asc(mspCustomersTable.name)),
+        .from(tenantsTable)
+        .orderBy(asc(tenantsTable.customerName)),
       db
-        .select({ role: mspUsersTable.mspRole, count: count() })
-        .from(mspUsersTable)
-        .where(inArray(mspUsersTable.mspRole, [...DIRECTORY_GROUP_ROLES]))
-        .groupBy(mspUsersTable.mspRole),
+        .select({ role: usersTable.mspRole, count: count() })
+        .from(usersTable)
+        .where(inArray(usersTable.mspRole, [...DIRECTORY_GROUP_ROLES]))
+        .groupBy(usersTable.mspRole),
       db
         .select({
           id: activeDirectoryOusTable.id,
@@ -157,25 +163,24 @@ router.get("/admin/active-directory/search", requireAdmin, async (req: Request, 
         .from(mspsTable),
       db
         .select({
-          id: mspCustomersTable.id,
-          mspId: mspCustomersTable.mspId,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          tenantId: mspCustomersTable.tenantId,
-          status: mspCustomersTable.status,
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          tenantId: tenantsTable.tenantId,
+          status: tenantsTable.status,
         })
-        .from(mspCustomersTable),
+        .from(tenantsTable),
       db
         .select({
           id: usersTable.id,
           email: usersTable.email,
           name: usersTable.name,
-          mspRole: mspUsersTable.mspRole,
-          mspId: mspUsersTable.mspId,
-          customerId: mspUsersTable.customerId,
+          mspRole: usersTable.mspRole,
+          mspId: usersTable.mspId,
+          customerId: usersTable.tenantId,
         })
-        .from(mspUsersTable)
-        .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id)),
+        .from(usersTable),
     ]);
 
     const mspNameById = new Map(msps.map((m) => [m.id, m.name]));
@@ -259,27 +264,26 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
         .limit(1),
       db
         .select({
-          id: mspCustomersTable.id,
-          name: mspCustomersTable.name,
-          domain: mspCustomersTable.domain,
-          tenantId: mspCustomersTable.tenantId,
-          status: mspCustomersTable.status,
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          tenantId: tenantsTable.tenantId,
+          status: tenantsTable.status,
         })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.mspId, mspId))
-        .orderBy(asc(mspCustomersTable.name)),
+        .from(tenantsTable)
+        .where(eq(tenantsTable.mspId, mspId))
+        .orderBy(asc(tenantsTable.customerName)),
       db
         .select({
           id: usersTable.id,
           email: usersTable.email,
           name: usersTable.name,
-          mspRole: mspUsersTable.mspRole,
-          isActive: mspUsersTable.isActive,
-          lastLoginAt: mspUsersTable.lastLoginAt,
+          mspRole: usersTable.mspRole,
+          isActive: usersTable.isActive,
+          lastLoginAt: usersTable.lastLoginAt,
         })
-        .from(mspUsersTable)
-        .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-        .where(eq(mspUsersTable.mspId, mspId))
+        .from(usersTable)
+        .where(eq(usersTable.mspId, mspId))
         .orderBy(asc(usersTable.email)),
       db
         .select({
@@ -315,7 +319,7 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
 
 // ─── GET /admin/active-directory/group/:role?q= ──────────────────────────────
 // RBAC/Group Object detail pane (Phase 4): every real account holding a given
-// role (source-of-truth column is mspUsersTable.mspRole, same column Phase
+// role (source-of-truth column is usersTable.mspRole, same column Phase
 // 1/2 already query against — no second role-lookup path), a live member
 // count, and an optional server-side name/email search filter. Read-only —
 // role reassignment is Phase 7.
@@ -333,14 +337,13 @@ router.get("/admin/active-directory/group/:role", requireAdmin, async (req: Requ
         id: usersTable.id,
         email: usersTable.email,
         name: usersTable.name,
-        mspId: mspUsersTable.mspId,
-        customerId: mspUsersTable.customerId,
-        isActive: mspUsersTable.isActive,
-        lastLoginAt: mspUsersTable.lastLoginAt,
+        mspId: usersTable.mspId,
+        customerId: usersTable.tenantId,
+        isActive: usersTable.isActive,
+        lastLoginAt: usersTable.lastLoginAt,
       })
-      .from(mspUsersTable)
-      .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-      .where(eq(mspUsersTable.mspRole, role))
+      .from(usersTable)
+      .where(eq(usersTable.mspRole, role))
       .orderBy(asc(usersTable.email));
 
     const mspIds = [...new Set(memberRows.map((m) => m.mspId).filter((id): id is number => id != null))];
@@ -352,9 +355,9 @@ router.get("/admin/active-directory/group/:role", requireAdmin, async (req: Requ
         : Promise.resolve([]),
       customerIds.length
         ? db
-            .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-            .from(mspCustomersTable)
-            .where(inArray(mspCustomersTable.id, customerIds))
+            .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+            .from(tenantsTable)
+            .where(inArray(tenantsTable.id, customerIds))
         : Promise.resolve([]),
     ]);
 
@@ -384,10 +387,32 @@ router.get("/admin/active-directory/group/:role", requireAdmin, async (req: Requ
 // Customer Object detail pane (Phase 3): profile, owning MSP (id/name only —
 // link-out via the tree's ad-select-object mechanism, no duplicated MSP
 // detail render here), linked users with roles, Graph/SharePoint/write
-// consent status, purchased services (client_services, reached via the
-// msp_users -> users.id bridge since client_services has no msp_customers FK
-// of its own), and a summary of the most recent diagnostic runs. Read-only —
-// no customer-level edit actions here (those live on the User Object phases).
+// consent status, purchased services (client_services, reached via
+// users.tenantId since client_services has no tenants FK of its own), and a
+// summary of the most recent diagnostic runs. Read-only — no customer-level
+// edit actions here (those live on the User Object phases).
+//
+// The three consent panes now read the three keys of the tenant's single
+// `consent` jsonb column instead of three separate tables. The grants stay
+// independent — an absent key means "never asked", which is why each pane
+// still resolves to null rather than a synthesized "pending" record.
+// Projects one key of tenants.consent into the flat consent-pane shape the
+// Customer Object pane has always rendered. Returns null for an absent key
+// (never asked) rather than fabricating a "pending" record — the three grants
+// are independent and an absent key must not read as a real consent state.
+// The jsonb stores ISO strings, so the timestamps are rehydrated to Dates here
+// to keep CustomerConsentStatus's contract unchanged.
+function consentPane(tenantGuid: string, record: TenantConsentRecord | undefined): CustomerConsentStatus | null {
+  if (!record) return null;
+  return {
+    tenantId: tenantGuid,
+    consentStatus: record.status,
+    consentedAt: record.consentedAt ? new Date(record.consentedAt) : null,
+    revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
+    adminEmail: record.adminEmail ?? null,
+  };
+}
+
 router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Request, res: Response) => {
   const customerId = Number(req.params.id);
   if (!Number.isInteger(customerId)) {
@@ -398,19 +423,20 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
   try {
     const [customerRow] = await db
       .select({
-        id: mspCustomersTable.id,
-        mspId: mspCustomersTable.mspId,
-        name: mspCustomersTable.name,
-        domain: mspCustomersTable.domain,
-        industry: mspCustomersTable.industry,
-        tenantId: mspCustomersTable.tenantId,
-        status: mspCustomersTable.status,
-        ownerType: mspCustomersTable.ownerType,
-        isTestbed: mspCustomersTable.isTestbed,
-        createdAt: mspCustomersTable.createdAt,
+        id: tenantsTable.id,
+        mspId: tenantsTable.mspId,
+        name: tenantsTable.customerName,
+        domain: tenantsTable.domain,
+        industry: tenantsTable.industry,
+        tenantId: tenantsTable.tenantId,
+        tenantUrl: tenantsTable.tenantUrl,
+        status: tenantsTable.status,
+        isTestbed: tenantsTable.isTestbed,
+        consent: tenantsTable.consent,
+        createdAt: tenantsTable.createdAt,
       })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
 
     if (!customerRow) {
@@ -418,14 +444,16 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
       return;
     }
 
+    // The raw consent blob feeds the three panes below; it is deliberately kept
+    // out of the `customer` profile payload so the pane renders exactly one
+    // representation of consent, not two.
+    const { consent, ...customerProfile } = customerRow;
+
     const customerUserIds = await resolveCustomerUserIds(customerId);
 
     const [
       [owningMsp],
       userRows,
-      [graphConsent],
-      [sharePointConsent],
-      [writeConsent],
       purchasedServiceRows,
       diagnosticRunRows,
     ] = await Promise.all([
@@ -435,47 +463,13 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
           id: usersTable.id,
           email: usersTable.email,
           name: usersTable.name,
-          mspRole: mspUsersTable.mspRole,
-          isActive: mspUsersTable.isActive,
-          lastLoginAt: mspUsersTable.lastLoginAt,
+          mspRole: usersTable.mspRole,
+          isActive: usersTable.isActive,
+          lastLoginAt: usersTable.lastLoginAt,
         })
-        .from(mspUsersTable)
-        .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-        .where(eq(mspUsersTable.customerId, customerId))
+        .from(usersTable)
+        .where(eq(usersTable.tenantId, customerId))
         .orderBy(asc(usersTable.email)),
-      db
-        .select({
-          tenantId: tenantConsentTable.tenantId,
-          consentStatus: tenantConsentTable.consentStatus,
-          consentedAt: tenantConsentTable.consentedAt,
-          revokedAt: tenantConsentTable.revokedAt,
-          adminEmail: tenantConsentTable.adminEmail,
-        })
-        .from(tenantConsentTable)
-        .where(eq(tenantConsentTable.customerId, customerId))
-        .limit(1),
-      db
-        .select({
-          tenantId: tenantSharePointConsentTable.tenantId,
-          consentStatus: tenantSharePointConsentTable.consentStatus,
-          consentedAt: tenantSharePointConsentTable.consentedAt,
-          revokedAt: tenantSharePointConsentTable.revokedAt,
-          adminEmail: tenantSharePointConsentTable.adminEmail,
-        })
-        .from(tenantSharePointConsentTable)
-        .where(eq(tenantSharePointConsentTable.customerId, customerId))
-        .limit(1),
-      db
-        .select({
-          tenantId: tenantWriteConsentTable.tenantId,
-          consentStatus: tenantWriteConsentTable.consentStatus,
-          consentedAt: tenantWriteConsentTable.consentedAt,
-          revokedAt: tenantWriteConsentTable.revokedAt,
-          adminEmail: tenantWriteConsentTable.adminEmail,
-        })
-        .from(tenantWriteConsentTable)
-        .where(eq(tenantWriteConsentTable.customerId, customerId))
-        .limit(1),
       customerUserIds.length === 0
         ? Promise.resolve([])
         : db
@@ -506,12 +500,12 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
 
     res.json(
       buildCustomerDetail({
-        customer: customerRow,
+        customer: customerProfile,
         owningMsp: owningMsp ?? null,
         users: userRows,
-        graphConsent: graphConsent ?? null,
-        sharePointConsent: sharePointConsent ?? null,
-        writeConsent: writeConsent ?? null,
+        graphConsent: consentPane(customerProfile.tenantId, consent.graph),
+        sharePointConsent: consentPane(customerProfile.tenantId, consent.sharepoint),
+        writeConsent: consentPane(customerProfile.tenantId, consent.writeBack),
         purchasedServices: purchasedServiceRows,
         recentDiagnosticRuns: diagnosticRunRows,
       }),
@@ -524,7 +518,7 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
 
 // ─── GET /admin/active-directory/user/:id ────────────────────────────────────
 // User Object detail pane (Phase 6): full profile (users), current role +
-// MSP/customer linkage (msp_users.mspRole — the real role source of truth,
+// MSP/customer linkage (users.mspRole — the real role source of truth,
 // NOT users.role which is only ["admin","client"]), entitlements inherited
 // from the linked MSP's subscription tier (reuses Phase 2's
 // deriveEntitlements() — no per-user entitlements table exists), active
@@ -539,6 +533,8 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
   }
 
   try {
+    // One row now carries both the base profile and the RBAC/MSP/tenant
+    // linkage — the msp_users join this route used to do is gone.
     const [userRow] = await db
       .select({
         id: usersTable.id,
@@ -548,6 +544,14 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
         phone: usersTable.phone,
         baseRole: usersTable.role,
         createdAt: usersTable.createdAt,
+        mspId: usersTable.mspId,
+        tenantId: usersTable.tenantId,
+        mspRole: usersTable.mspRole,
+        isActive: usersTable.isActive,
+        mfaEnforced: usersTable.mfaEnforced,
+        department: usersTable.department,
+        jobTitle: usersTable.jobTitle,
+        lastLoginAt: usersTable.lastLoginAt,
       })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
@@ -558,20 +562,37 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
       return;
     }
 
-    const [mspUserRow] = await db
-      .select({
-        mspId: mspUsersTable.mspId,
-        customerId: mspUsersTable.customerId,
-        mspRole: mspUsersTable.mspRole,
-        isActive: mspUsersTable.isActive,
-        mfaEnforced: mspUsersTable.mfaEnforced,
-        department: mspUsersTable.department,
-        jobTitle: mspUsersTable.jobTitle,
-        lastLoginAt: mspUsersTable.lastLoginAt,
-      })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
-      .limit(1);
+    // The `profile` half of the payload keeps exactly the fields it always
+    // had — the linkage columns fetched alongside it are rendered by the
+    // linkage pane below, not duplicated into the profile block.
+    const profile = {
+      id: userRow.id,
+      email: userRow.email,
+      name: userRow.name,
+      company: userRow.company,
+      phone: userRow.phone,
+      baseRole: userRow.baseRole,
+      createdAt: userRow.createdAt,
+    };
+
+    // The linkage is no longer a second row to fetch — it lives on the users
+    // row already loaded above. It is still modelled as a nullable value so
+    // buildUserDetail()'s "no linkage" branch keeps its meaning: an account
+    // with neither an MSP nor a tenant (a bare PlatformAdmin) renders the same
+    // honest-empty linkage pane it always did.
+    const mspUserRow =
+      userRow.mspId == null && userRow.tenantId == null
+        ? null
+        : {
+            mspId: userRow.mspId,
+            customerId: userRow.tenantId,
+            mspRole: userRow.mspRole,
+            isActive: userRow.isActive,
+            mfaEnforced: userRow.mfaEnforced,
+            department: userRow.department,
+            jobTitle: userRow.jobTitle,
+            lastLoginAt: userRow.lastLoginAt,
+          };
 
     const [[mspRow], [customerRow], subRows, sessionRows, mfaRows] = await Promise.all([
       mspUserRow?.mspId != null
@@ -579,9 +600,9 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
         : Promise.resolve([]),
       mspUserRow?.customerId != null
         ? db
-            .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-            .from(mspCustomersTable)
-            .where(eq(mspCustomersTable.id, mspUserRow.customerId))
+            .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+            .from(tenantsTable)
+            .where(eq(tenantsTable.id, mspUserRow.customerId))
             .limit(1)
         : Promise.resolve([]),
       mspUserRow?.mspId != null
@@ -640,7 +661,7 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
 
     res.json(
       buildUserDetail({
-        profile: userRow,
+        profile,
         linkage,
         subscriptionForEntitlements: subRows[0] ?? null,
         sessions: sessionRows,
@@ -656,7 +677,7 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
 
 // ─── User Object write actions (Phase 7, Issue #67) ──────────────────────────
 // RBAC role change, MSP/customer reassignment, and entitlement grant/revoke.
-// All three mutate msp_users (or the new user_entitlement_overrides table) and
+// All three mutate users (or the user_entitlement_overrides table) and
 // additionally emit to the platform-wide `audit` channel via createAuditLog()
 // — the same cross-subsystem audit convention graph.ts/data-rights.ts already
 // use, as distinct from the MSP-self-service-scoped mspAuditLogsTable/
@@ -670,10 +691,11 @@ function auditActor(req: Request): { actorUserId: number; actorName: string; act
 
 // PATCH /admin/active-directory/user/:id/role
 // Body: { mspRole: DirectoryGroupRole }. Validated against the account's
-// CURRENT mspId/customerId via planRoleChange() (lib/active-directory.ts) —
-// see that function's header comment for the real linkage rule audited from
-// the codebase. Takes effect on the account's next JWT refresh: auth.ts's
-// getMspClaims() already reads msp_users live at every token mint, so no
+// CURRENT mspId/tenantId via planRoleChange() (lib/active-directory.ts) —
+// see that function's header comment for the linkage rule, which as of the
+// Tenant/User Refactor mirrors the real `users_role_scope_check` CHECK
+// constraint. Takes effect on the account's next JWT refresh: auth.ts's
+// getMspClaims() already reads the users row live at every token mint, so no
 // token-side change is needed here.
 router.patch("/admin/active-directory/user/:id/role", requireAdmin, async (req: Request, res: Response) => {
   const userId = Number(req.params.id);
@@ -690,13 +712,13 @@ router.patch("/admin/active-directory/user/:id/role", requireAdmin, async (req: 
 
   try {
     const [current] = await db
-      .select({ mspRole: mspUsersTable.mspRole, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
+      .select({ mspRole: usersTable.mspRole, mspId: usersTable.mspId, customerId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
       .limit(1);
 
     if (!current) {
-      res.status(404).json({ error: "This account has no msp_users linkage record — role assignment is not available for it." });
+      res.status(404).json({ error: "User not found" });
       return;
     }
 
@@ -711,14 +733,14 @@ router.patch("/admin/active-directory/user/:id/role", requireAdmin, async (req: 
     }
 
     await db
-      .update(mspUsersTable)
-      .set({ mspRole: plan.mspRole, mspId: plan.mspId, customerId: plan.customerId, updatedAt: new Date() })
-      .where(eq(mspUsersTable.userId, userId));
+      .update(usersTable)
+      .set({ mspRole: plan.mspRole, mspId: plan.mspId, tenantId: plan.customerId, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
 
     await createAuditLog({
       ...auditActor(req),
       actionType: "user.role.update",
-      entityType: "msp_user",
+      entityType: "user",
       entityId: userId,
       metadata: {
         before: { mspRole: current.mspRole, mspId: current.mspId, customerId: current.customerId },
@@ -759,22 +781,22 @@ router.patch("/admin/active-directory/user/:id/assignment", requireAdmin, async 
 
   try {
     const [current] = await db
-      .select({ mspRole: mspUsersTable.mspRole, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
+      .select({ mspRole: usersTable.mspRole, mspId: usersTable.mspId, customerId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
       .limit(1);
 
     if (!current) {
-      res.status(404).json({ error: "This account has no msp_users linkage record — reassignment is not available for it." });
+      res.status(404).json({ error: "User not found" });
       return;
     }
 
     let customerOwningMspId: number | null = null;
     if (bodyCustomerId != null) {
       const [targetCustomer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, bodyCustomerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, bodyCustomerId))
         .limit(1);
       if (!targetCustomer) {
         res.status(404).json({ error: "Target customer not found" });
@@ -801,14 +823,14 @@ router.patch("/admin/active-directory/user/:id/assignment", requireAdmin, async 
     }
 
     await db
-      .update(mspUsersTable)
-      .set({ mspId: plan.mspId, customerId: plan.customerId, updatedAt: new Date() })
-      .where(eq(mspUsersTable.userId, userId));
+      .update(usersTable)
+      .set({ mspId: plan.mspId, tenantId: plan.customerId, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
 
     await createAuditLog({
       ...auditActor(req),
       actionType: "user.assignment.update",
-      entityType: "msp_user",
+      entityType: "user",
       entityId: userId,
       metadata: {
         before: { mspId: current.mspId, customerId: current.customerId },
@@ -829,9 +851,9 @@ router.patch("/admin/active-directory/user/:id/assignment", requireAdmin, async 
 // the Account Control entitlements UI can view/act on it directly.
 async function loadUserEntitlementsView(userId: number) {
   const [mspUserRow] = await db
-    .select({ mspId: mspUsersTable.mspId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+    .select({ mspId: usersTable.mspId })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
 
   const [subRows, overrideRows] = await Promise.all([
@@ -1218,13 +1240,13 @@ router.post("/admin/active-directory/user/:id/impersonate", requireAdmin, async 
 
     const [linkage] = await db
       .select({
-        mspId: mspUsersTable.mspId,
-        customerId: mspUsersTable.customerId,
-        mspRole: mspUsersTable.mspRole,
-        isActive: mspUsersTable.isActive,
+        mspId: usersTable.mspId,
+        customerId: usersTable.tenantId,
+        mspRole: usersTable.mspRole,
+        isActive: usersTable.isActive,
       })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
       .limit(1);
 
     if (linkage?.mspRole === "PlatformAdmin") {

@@ -39,8 +39,8 @@ vi.mock("@workspace/db", () => ({
   },
   clientM365ProfilesTable: { __table: "client_m365_profiles", clientId: "clientId", profile: "profile" },
   scriptRunResultsTable: { __table: "script_run_results", customerId: "customerId", status: "status", parsedFindings: "parsedFindings", profileUpdates: "profileUpdates", createdAt: "createdAt" },
-  mspCustomersTable: { __table: "msp_customers", id: "id", tenantId: "tenantId", mspId: "mspId" },
-  mspUsersTable: { __table: "msp_users", userId: "userId", customerId: "customerId", isActive: "isActive" },
+  tenantsTable: { __table: "tenants", id: "id", tenantId: "tenantId", mspId: "mspId" },
+  usersTable: { __table: "users", id: "id", tenantId: "tenantId", isActive: "isActive" },
   tenantMonitorProfilesTable: { __table: "tenant_monitor_profiles", checkKey: "checkKey", extractedProperties: "extractedProperties", tenantId: "tenantId", collectedAt: "collectedAt" },
   // Joined pair behind categorizedFindings' checkKey → signal-category lookup.
   signalDerivationRulesTable: { __table: "signal_derivation_rules", signalKey: "signalKey", sourceKey: "sourceKey" },
@@ -98,8 +98,8 @@ function makeDb(canned: {
 }) {
   const rowsFor = (table: { __table?: string } | undefined): Rows => {
     switch (table?.__table) {
-      case "msp_customers": return canned.mspCustomers;
-      case "msp_users": return canned.mspUsers;
+      case "tenants": return canned.mspCustomers;
+      case "users": return canned.mspUsers;
       case "client_m365_profiles": return canned.clientM365Profiles;
       case "script_run_results": return canned.scriptRunResults;
       case "tenant_monitor_profiles": return canned.tenantMonitorProfiles;

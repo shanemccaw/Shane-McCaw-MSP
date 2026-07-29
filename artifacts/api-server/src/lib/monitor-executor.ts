@@ -18,7 +18,7 @@ import {
   monitoringPackagesTable,
   monitoringPackageChecksTable,
   tenantMonitorProfilesTable,
-  mspCustomersTable,
+  tenantsTable,
   type MonitorCheck,
   type MonitoringPackage,
 } from "@workspace/db";
@@ -1420,9 +1420,9 @@ export interface MonitoringEngineOutput {
 export async function computeMonitoringEngine(customerId: number): Promise<MonitoringEngineOutput> {
   // Resolve tenant GUID from customer ID
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   const resolvedTenantId = customer?.tenantId ?? String(customerId);

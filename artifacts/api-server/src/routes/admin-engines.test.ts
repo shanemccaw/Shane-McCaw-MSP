@@ -40,11 +40,11 @@ vi.mock("@workspace/db", () => ({
       release: vi.fn(),
     }),
   },
-  usersTable: { id: "id", role: "role", email: "email" },
+  usersTable: { id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", isActive: "is_active" },
   engagementProjectsTable: {},
   signalRuleGroupsTable: {},
   signalDerivationRulesTable: {},
-  mspCustomersTable: {},
+  tenantsTable: {},
   mspsTable: { id: "id", isTestbed: "is_testbed", testbedMetadata: "testbed_metadata" },
   savedSqlScripts: { id: "id" },
 }));

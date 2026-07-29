@@ -21,9 +21,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   mspsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspEventStoreTable,
-  mspUsersTable,
   notificationsTable,
   messagesTable,
   usersTable,
@@ -81,10 +80,10 @@ async function buildMspContext(mspId: number): Promise<GroundedContext> {
     db.select({ name: mspsTable.name, status: mspsTable.status, slug: mspsTable.slug })
       .from(mspsTable).where(eq(mspsTable.id, mspId)).limit(1),
 
-    db.select({ status: mspCustomersTable.status, n: count() })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.mspId, mspId))
-      .groupBy(mspCustomersTable.status),
+    db.select({ status: tenantsTable.status, n: count() })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.mspId, mspId))
+      .groupBy(tenantsTable.status),
 
     db.select({
       eventType: mspEventStoreTable.eventType,
@@ -129,13 +128,13 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
 
   const [customerRow, signalRows] = await Promise.all([
     db.select({
-      name: mspCustomersTable.name,
-      domain: mspCustomersTable.domain,
-      status: mspCustomersTable.status,
-      tenantId: mspCustomersTable.tenantId,
+      name: tenantsTable.customerName,
+      domain: tenantsTable.domain,
+      status: tenantsTable.status,
+      tenantId: tenantsTable.tenantId,
     })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1),
 
     mspId
@@ -272,13 +271,12 @@ async function resolveEscalationRecipients(opts: {
 
   const mspId = opts.mspId as number;
   const mspAdmins = await db
-    .select({ userId: mspUsersTable.userId, email: usersTable.email })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
+    .select({ userId: usersTable.id, email: usersTable.email })
+    .from(usersTable)
     .where(and(
-      eq(mspUsersTable.mspId, mspId),
-      eq(mspUsersTable.isActive, true),
-      or(eq(mspUsersTable.mspRole, "MSPAdmin"), eq(mspUsersTable.canApprovePurchases, true)),
+      eq(usersTable.mspId, mspId),
+      eq(usersTable.isActive, true),
+      or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
     ));
 
   if (mspAdmins.length === 0) {

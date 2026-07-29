@@ -25,7 +25,7 @@ import {
   db,
   aiUsageEventsTable,
   mspsTable,
-  mspCustomersTable,
+  tenantsTable,
 } from "@workspace/db";
 import { and, count, desc, eq, gte, lt, lte, sum, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -169,7 +169,7 @@ router.get("/admin/ai-billing/events", requireAdmin, async (req: Request, res: R
         .select({
           ...EVENT_COLUMNS,
           mspName: mspsTable.name,
-          customerName: mspCustomersTable.name,
+          customerName: tenantsTable.customerName,
         })
         .from(aiUsageEventsTable)
         // LEFT joins, not inner: a platform-owned call legitimately has a null
@@ -177,7 +177,7 @@ router.get("/admin/ai-billing/events", requireAdmin, async (req: Request, res: R
         // join here would silently drop exactly the rows this page exists to
         // make visible.
         .leftJoin(mspsTable, eq(mspsTable.id, aiUsageEventsTable.mspId))
-        .leftJoin(mspCustomersTable, eq(mspCustomersTable.id, aiUsageEventsTable.customerId))
+        .leftJoin(tenantsTable, eq(tenantsTable.id, aiUsageEventsTable.customerId))
         .where(where)
         .orderBy(desc(aiUsageEventsTable.occurredAt), desc(aiUsageEventsTable.id))
         .limit(limit)
@@ -285,11 +285,11 @@ router.get("/admin/ai-billing/recent", requireAdmin, async (req: Request, res: R
       .select({
         ...EVENT_COLUMNS,
         mspName: mspsTable.name,
-        customerName: mspCustomersTable.name,
+        customerName: tenantsTable.customerName,
       })
       .from(aiUsageEventsTable)
       .leftJoin(mspsTable, eq(mspsTable.id, aiUsageEventsTable.mspId))
-      .leftJoin(mspCustomersTable, eq(mspCustomersTable.id, aiUsageEventsTable.customerId))
+      .leftJoin(tenantsTable, eq(tenantsTable.id, aiUsageEventsTable.customerId))
       .orderBy(desc(aiUsageEventsTable.occurredAt), desc(aiUsageEventsTable.id))
       .limit(limit);
 
@@ -344,12 +344,12 @@ router.get("/admin/ai-billing/analytics", requireAdmin, async (req: Request, res
         customerId: aiUsageEventsTable.customerId,
         mspId: aiUsageEventsTable.mspId,
         generatedArtifactType: aiUsageEventsTable.generatedArtifactType,
-        customerName: mspCustomersTable.name,
+        customerName: tenantsTable.customerName,
         mspName: mspsTable.name,
       })
       .from(aiUsageEventsTable)
       .leftJoin(mspsTable, eq(mspsTable.id, aiUsageEventsTable.mspId))
-      .leftJoin(mspCustomersTable, eq(mspCustomersTable.id, aiUsageEventsTable.customerId))
+      .leftJoin(tenantsTable, eq(tenantsTable.id, aiUsageEventsTable.customerId))
       .where(and(...conditions))
       .orderBy(desc(aiUsageEventsTable.occurredAt))
       .limit(MAX_ANALYTICS_ROWS + 1);

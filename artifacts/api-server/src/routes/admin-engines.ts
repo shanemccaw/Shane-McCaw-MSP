@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { db, pool, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
+import { db, pool, usersTable, engagementProjectsTable, tenantsTable, mspsTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
 import { splitSqlStatements } from "../lib/sql-statement-splitter";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
@@ -110,26 +110,30 @@ router.get("/admin/plan-features", requireAdmin, (_req: Request, res: Response) 
 router.get("/admin/testbeds", requireAdmin, async (req: Request, res: Response) => {
   try {
     const mspIdStr = typeof req.query.mspId === "string" ? req.query.mspId : undefined;
-    const conditions = [eq(mspCustomersTable.isTestbed, true)];
+    const conditions = [eq(tenantsTable.isTestbed, true)];
     if (mspIdStr) {
       const mspId = parseInt(mspIdStr, 10);
       if (isNaN(mspId)) {
         res.status(400).json({ error: "Invalid mspId" });
         return;
       }
-      conditions.push(eq(mspCustomersTable.mspId, mspId));
+      conditions.push(eq(tenantsTable.mspId, mspId));
     }
 
     const testbeds = await db
       .select({
-        id: mspCustomersTable.id,
-        mspId: mspCustomersTable.mspId,
-        name: mspCustomersTable.name,
-        domain: mspCustomersTable.domain,
-        isTestbed: mspCustomersTable.isTestbed,
-        testbedMetadata: mspCustomersTable.testbedMetadata,
+        id: tenantsTable.id,
+        mspId: tenantsTable.mspId,
+        name: tenantsTable.customerName,
+        domain: tenantsTable.domain,
+        isTestbed: tenantsTable.isTestbed,
+        // `testbedMetadata` is not carried forward: msp_customers had a
+        // per-customer testbed_metadata jsonb, tenants has no analogue, and
+        // nothing on the admin-panel side ever read this field (the
+        // testbedMetadata the Simulator actually uses is msps.testbed_metadata,
+        // which is untouched).
       })
-      .from(mspCustomersTable)
+      .from(tenantsTable)
       .where(and(...conditions));
     res.json({ testbeds });
   } catch (err) {
@@ -150,8 +154,8 @@ router.post("/admin/simulator/overrides", requireAdmin, async (req: Request, res
     const { testbedCustomerId } = parsed.data;
     const [testbedCustomer] = await db
       .select()
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
 
     if (!testbedCustomer) {
@@ -233,12 +237,12 @@ router.post("/admin/simulator/monitor-checks/:key/run-now", requireAdmin, async 
     }
     const [customer] = await db
       .select({
-        id: mspCustomersTable.id,
-        isTestbed: mspCustomersTable.isTestbed,
-        tenantId: mspCustomersTable.tenantId,
+        id: tenantsTable.id,
+        isTestbed: tenantsTable.isTestbed,
+        tenantId: tenantsTable.tenantId,
       })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
 
     if (!customer) {
@@ -302,8 +306,8 @@ router.post("/admin/simulator/run", requireAdmin, async (req: Request, res: Resp
     // 2. Ensure we do not touch production customers
     const [testbedCustomer] = await db
       .select()
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
 
     if (!testbedCustomer) {
@@ -366,8 +370,8 @@ router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, re
   try {
     const [testbedCustomer] = await db
       .select()
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
     if (!testbedCustomer) {
       return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
@@ -421,9 +425,9 @@ router.post("/simulator/orchestrated-pipeline/run", requireAdmin, async (req: Re
     }
 
     const [testbedCustomer] = await db
-      .select({ id: mspCustomersTable.id })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
     if (!testbedCustomer) {
       return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
@@ -464,8 +468,8 @@ router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", require
   try {
     const [customer] = await db
       .select()
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.isTestbed, true)))
       .limit(1);
     if (!customer) {
       return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
@@ -510,18 +514,18 @@ router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin
   }
   try {
     const [customer] = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName, domain: tenantsTable.domain, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.isTestbed, true)))
       .limit(1);
     if (!customer) {
       return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
     }
 
     const [portalUser] = await db
-      .select({ userId: mspUsersTable.userId })
-      .from(mspUsersTable)
-      .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+      .select({ userId: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
       .limit(1);
 
     // Owning MSP scopes the policy-firings query; it lives on the customer row.
@@ -844,17 +848,17 @@ router.get("/admin/engines/:key/history", requireAdmin, async (req: Request, res
 // ── Route 2: GET /api/admin/engines/:key/history-customers ──────────────────
 // Lists only customers who actually have snapshot rows for this engine, so the
 // picker dropdown isn't full of empty customers. Keyed on the REAL customerId
-// (mspCustomersTable.id) — do NOT reuse the dashboard route's `usersTable`
+// (tenantsTable.id) — do NOT reuse the dashboard route's `usersTable`
 // client list for this, they are different id spaces.
 router.get("/admin/engines/:key/history-customers", requireAdmin, async (req: Request, res: Response) => {
   const { key } = req.params;
   try {
     const rows = await db
-      .selectDistinct({ id: mspCustomersTable.id, name: mspCustomersTable.name, mspId: mspCustomersTable.mspId })
+      .selectDistinct({ id: tenantsTable.id, name: tenantsTable.customerName, mspId: tenantsTable.mspId })
       .from(tenantEngineSnapshotsTable)
-      .innerJoin(mspCustomersTable, eq(tenantEngineSnapshotsTable.customerId, mspCustomersTable.id))
+      .innerJoin(tenantsTable, eq(tenantEngineSnapshotsTable.customerId, tenantsTable.id))
       .where(eq(tenantEngineSnapshotsTable.engineKey, String(key)))
-      .orderBy(mspCustomersTable.name)
+      .orderBy(tenantsTable.customerName)
       .limit(200);
     res.json({ customers: rows });
   } catch (err) {
@@ -1538,9 +1542,9 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
     }
 
     const [customer] = await db
-      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, Number(testbedCustomerId)), eq(tenantsTable.isTestbed, true)))
       .limit(1);
 
     if (!customer) {
@@ -1564,10 +1568,12 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
     // (same one the NotificationBell in app-shell.tsx already listens to).
     // Non-fatal: the scenario itself already ran regardless of this.
     try {
+      // `notifications.mspUserId` used to hold an msp_users row id; with that
+      // table gone the successor id-space is users.id, which this now sends.
       const watchingUsers = await db
-        .select({ id: mspUsersTable.id })
-        .from(mspUsersTable)
-        .where(and(eq(mspUsersTable.mspId, customer.mspId), eq(mspUsersTable.isActive, true)));
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.mspId, customer.mspId), eq(usersTable.isActive, true)));
 
       for (const mu of watchingUsers) {
         await createNotification({

@@ -51,16 +51,14 @@ vi.mock("@workspace/db", () => {
   return {
     db: mockDb,
     mspsTable: tbl(["id", "name", "slug"]),
-    mspCustomersTable: tbl(["id", "mspId", "name"]),
-    mspUsersTable: tbl(["id", "userId", "mspId", "customerId", "mspRole", "isActive", "mfaEnforced", "department", "jobTitle", "lastLoginAt", "updatedAt"]),
-    usersTable: tbl(["id", "email", "name", "company", "phone", "role", "createdAt"]),
+    tenantsTable: tbl(["id", "mspId", "customerName", "domain", "industry", "tenantId", "tenantUrl", "status", "isTestbed", "consent", "createdAt"]),
+    // Post-refactor the RBAC/linkage columns live on `users` itself, so the
+    // users stub carries what the msp_users stub used to.
+    usersTable: tbl(["id", "email", "name", "company", "phone", "role", "createdAt", "mspId", "tenantId", "mspRole", "isActive", "mfaEnforced", "canApprovePurchases", "department", "jobTitle", "lastLoginAt", "updatedAt"]),
     mspSubscriptionsTable: tbl(["mspId", "serviceId", "status", "billingInterval", "currentPeriodStart", "currentPeriodEnd", "dunningState", "paymentFailedAt", "tenantCountSnapshot", "contactEmail"]),
     servicesTable: tbl(["id", "name", "typeAttributes"]),
     platformAgreementsTable: tbl(["version", "isCurrentVersion"]),
     mspAgreementAcceptancesTable: tbl(["mspId", "agreementVersion", "acceptedAt", "checkboxConfirmed"]),
-    tenantConsentTable: tbl(["customerId", "tenantId", "consentStatus", "consentedAt", "revokedAt", "adminEmail"]),
-    tenantSharePointConsentTable: tbl(["customerId", "tenantId", "consentStatus", "consentedAt", "revokedAt", "adminEmail"]),
-    tenantWriteConsentTable: tbl(["customerId", "tenantId", "consentStatus", "consentedAt", "revokedAt", "adminEmail"]),
     clientServicesTable: tbl(["id", "clientUserId", "serviceId", "status", "billingInterval", "purchasedAt"]),
     mspDiagnosticRunsTable: tbl(["runId", "customerId", "packageKey", "status", "startedAt", "completedAt", "createdAt"]),
     activeDirectoryOusTable: tbl(["id", "name", "createdAt", "updatedAt"]),

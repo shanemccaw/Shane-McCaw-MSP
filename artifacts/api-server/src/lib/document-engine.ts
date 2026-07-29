@@ -3,7 +3,7 @@ import {
   aiPromptsTable,
   documentTypesTable,
   insightsGeneratedDocumentsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -69,7 +69,7 @@ const AI_KILL_SWITCH_ENABLED = false;
 
 export interface GenerateDocumentParams {
   /**
-   * The engine customer (`mspCustomersTable.id`) this document is generated FOR.
+   * The engine customer (`tenantsTable.id`) this document is generated FOR.
    * This is the PRIMARY identity of a generation request: every real input the
    * document is built from — the tenant profile, the findings, the MSP branding
    * — is customer-scoped, never user-scoped.
@@ -179,9 +179,9 @@ function matchesProfilePattern(key: string, pattern: string): boolean {
  */
 async function resolveMspBranding(mspCustomerId: number): Promise<{ mspName: string | null; mspPrimaryColor: string | null }> {
   const [customerRow] = await db
-    .select({ mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, mspCustomerId))
+    .select({ mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, mspCustomerId))
     .limit(1);
   if (customerRow?.mspId == null) return { mspName: null, mspPrimaryColor: null };
   const [msp] = await db

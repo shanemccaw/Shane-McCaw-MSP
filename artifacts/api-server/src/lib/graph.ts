@@ -1,11 +1,33 @@
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
-import { db, tenantConsentTable, tenantWriteConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable, usersTable, mspsTable } from "@workspace/db";
-import { eq, ne, and, or, gt, isNull } from "drizzle-orm";
+import { db, tenantsTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, usersTable, mspsTable, type TenantConsentMap } from "@workspace/db";
+import { eq, ne, and, or, gt, isNull, sql } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
 import { createAuditLog } from "./audit";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+
+/**
+ * Merge a partial consent record into ONE key of `tenants.consent`, leaving the
+ * other keys and that key's untouched fields exactly as they were.
+ *
+ * The three grants (graph read / writeBack / sharepoint) used to live in three
+ * separate tables and were independent by construction; folding them into one
+ * jsonb column (Tenant/User Refactor, #92) must not quietly couple them. A
+ * plain `.set({ consent: ... })` would overwrite the whole column and destroy
+ * the other two grants, so every write goes through this concat-merge instead.
+ *
+ * `a || b` on jsonb is a shallow merge, hence the inner `->` + `||`: the outer
+ * merge replaces the whole key, so the key's existing object is re-merged with
+ * the patch to preserve fields the caller didn't mention. An absent key starts
+ * from '{}' rather than failing (jsonb_set would no-op on a missing path).
+ */
+function mergeConsentKey(key: keyof TenantConsentMap, patch: Record<string, unknown>) {
+  // Both `key` bindings carry an explicit ::text cast — an untyped parameter on
+  // the right of `->` makes Postgres reject the statement as an ambiguous
+  // operator (jsonb -> unknown matches both the ->(text) and ->(int) forms).
+  return sql`${tenantsTable.consent} || jsonb_build_object(${key}::text, coalesce(${tenantsTable.consent} -> ${key}::text, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb)`;
+}
 
 interface TokenCache {
   token: string;
@@ -186,12 +208,12 @@ export async function getAccessTokenForTenant(tenantId: string): Promise<string>
  *
  * Deliberately a SEPARATE function from getAccessTokenForTenant, not a branching
  * parameter on it: the read and write apps are different App Registrations with
- * independent consent state (tenant_consent vs tenant_write_consent), and
+ * independent consent state (the `graph` vs `writeBack` keys of tenants.consent), and
  * conflating them risks a read-consented tenant silently passing a write-token
  * request (or vice versa). Uses its own token cache for the same reason.
  *
  * On a consent-signature failure from the token endpoint, flips the tenant's
- * tenant_write_consent row to "revoked" (never the read-side tenant_consent —
+ * writeBack consent key to "revoked" (never the read-side `graph` key —
  * the two consents are independent) and throws WriteConsentRequiredError.
  */
 export async function getWriteAccessTokenForTenant(tenantId: string): Promise<string> {
@@ -312,11 +334,15 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
 
     // Atomic: flip consent row + all monitor profiles in one transaction
     await db.transaction(async (tx) => {
-      // 1. Flip tenant consent row
+      // 1. Flip the tenant's `graph` consent key — the read grant only. The
+      //    writeBack/sharepoint keys in the same column are untouched.
       await tx
-        .update(tenantConsentTable)
-        .set({ consentStatus: "revoked", revokedAt: now, updatedAt: now })
-        .where(eq(tenantConsentTable.tenantId, tenantId));
+        .update(tenantsTable)
+        .set({
+          consent: mergeConsentKey("graph", { status: "revoked", revokedAt: now.toISOString() }),
+          updatedAt: now,
+        })
+        .where(eq(tenantsTable.tenantId, tenantId));
 
       // 2. Mark all non-revoked monitor profile rows for this tenant as consent_revoked
       //    so the MSP portal can surface "re-authorize" without waiting for a re-run.
@@ -386,7 +412,7 @@ export class WriteBackNotEnabledError extends Error {
 }
 
 /**
- * The tenant has no tenant_write_consent row with consentStatus "granted" —
+ * The tenant's `writeBack` consent key is not status "granted" —
  * the customer's admin has not (or no longer) consented to the WRITE app.
  * Also thrown from getWriteAccessTokenForTenant when the token endpoint itself
  * reports the consent signature (`detail: "revoked_at_token_endpoint"`), after
@@ -405,20 +431,23 @@ export class WriteConsentRequiredError extends Error {
 }
 
 /**
- * Flip a tenant's WRITE consent row to "revoked" and evict the write token cache.
+ * Flip a tenant's WRITE consent to "revoked" and evict the write token cache.
  * The write-side mirror of markTenantConsentRevoked — deliberately narrower: it
- * touches ONLY tenant_write_consent (never the read-side tenant_consent, whose
- * consent state is independent) and does not reclassify monitor profiles (reads
- * are unaffected by a write-consent revocation). Never throws.
+ * touches ONLY the `writeBack` consent key (never the read-side `graph` key,
+ * whose consent state is independent) and does not reclassify monitor profiles
+ * (reads are unaffected by a write-consent revocation). Never throws.
  */
 export async function markTenantWriteConsentRevoked(tenantId: string): Promise<void> {
   tenantWriteTokenCache.delete(tenantId);
   try {
     const now = new Date();
     await db
-      .update(tenantWriteConsentTable)
-      .set({ consentStatus: "revoked", revokedAt: now, updatedAt: now })
-      .where(eq(tenantWriteConsentTable.tenantId, tenantId));
+      .update(tenantsTable)
+      .set({
+        consent: mergeConsentKey("writeBack", { status: "revoked", revokedAt: now.toISOString() }),
+        updatedAt: now,
+      })
+      .where(eq(tenantsTable.tenantId, tenantId));
 
     await createAuditLog({
       actorUserId: null,
@@ -624,7 +653,7 @@ export function applyGraphResponseOverride(endpoint: string, rawData: any, overr
  * consent-failure signature (invalid_grant, AADSTS65001, consent_required,
  * AADSTS700016). On detection:
  *   1. Token cache evicted.
- *   2. markTenantConsentRevoked() called — flips tenant_consent + monitor profiles + audit log.
+ *   2. markTenantConsentRevoked() called — flips the `graph` consent key + monitor profiles + audit log.
  *   3. ConsentRevokedError thrown — callers must NOT silently swallow it.
  * A bare 401 with a NON-consent body (expired token, wrong-audience token,
  * missing app scope) is NOT a revocation signal: the token cache is evicted and
@@ -727,9 +756,9 @@ export async function graphFetchForTenant(
   if (res.ok) {
     try {
       const [customer] = await db
-        .select({ id: mspCustomersTable.id })
-        .from(mspCustomersTable)
-        .where(and(eq(mspCustomersTable.tenantId, tenantId), eq(mspCustomersTable.isTestbed, true)))
+        .select({ id: tenantsTable.id })
+        .from(tenantsTable)
+        .where(and(eq(tenantsTable.tenantId, tenantId), eq(tenantsTable.isTestbed, true)))
         .limit(1);
 
       if (customer) {
@@ -787,7 +816,7 @@ export interface GraphWriteResult {
  *   1. The customer's MSP must have msps.write_back_enabled = true
  *      (else WriteBackNotEnabledError; unresolvable customer →
  *      WriteBackCustomerNotFoundError).
- *   2. The tenant must have a tenant_write_consent row with consentStatus
+ *   2. The tenant's `writeBack` consent key must have status
  *      "granted" (else WriteConsentRequiredError).
  * All three failure modes are distinct, identifiable error types (stable `name`
  * + `reason`) so graph_write_operation can surface WHICH gate blocked the write.
@@ -808,12 +837,12 @@ export async function graphWriteForTenant(
   // ── Gate 1: MSP write-back toggle (resolved from customerId) ────────────────
   const [gateRow] = await db
     .select({
-      mspId: mspCustomersTable.mspId,
+      mspId: tenantsTable.mspId,
       writeBackEnabled: mspsTable.writeBackEnabled,
     })
-    .from(mspCustomersTable)
-    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
-    .where(eq(mspCustomersTable.id, customerId))
+    .from(tenantsTable)
+    .innerJoin(mspsTable, eq(mspsTable.id, tenantsTable.mspId))
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!gateRow) {
@@ -826,18 +855,23 @@ export async function graphWriteForTenant(
   }
 
   // ── Gate 2: tenant write consent must be granted ────────────────────────────
-  const [writeConsent] = await db
-    .select({ consentStatus: tenantWriteConsentTable.consentStatus })
-    .from(tenantWriteConsentTable)
-    .where(eq(tenantWriteConsentTable.tenantId, tenantId))
+  // Deliberately still keyed on the tenant GUID, not on the customerId row
+  // fetched for Gate 1: the two arguments are independent inputs, and a caller
+  // that pairs a customerId with someone else's tenantId must fail this gate
+  // rather than be silently granted the customer row's own consent.
+  const [writeConsentRow] = await db
+    .select({ consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
     .limit(1);
 
-  if (writeConsent?.consentStatus !== "granted") {
+  const writeConsentStatus = writeConsentRow?.consent?.writeBack?.status;
+  if (writeConsentStatus !== "granted") {
     log.warn(
-      { customerId, tenantId, path, method, writeConsentStatus: writeConsent?.consentStatus ?? "no_row" },
+      { customerId, tenantId, path, method, writeConsentStatus: writeConsentStatus ?? "no_row" },
       "Graph tenant write BLOCKED: tenant write consent not granted",
     );
-    throw new WriteConsentRequiredError(tenantId, writeConsent ? `status_${writeConsent.consentStatus}` : "no_row");
+    throw new WriteConsentRequiredError(tenantId, writeConsentStatus ? `status_${writeConsentStatus}` : "no_row");
   }
 
   const token = await getWriteAccessTokenForTenant(tenantId);
@@ -851,7 +885,7 @@ export async function graphWriteForTenant(
   });
 
   // Consent-signature errors mid-call flip the WRITE consent row only — the read
-  // app's tenant_consent is a separate app with independent state and must never
+  // app's `graph` consent key is a separate app with independent state and must never
   // be revoked by a write-side failure. A bare 401 without the documented
   // signature is NOT treated as revocation (same rationale as graphFetchForTenant):
   // the token endpoint is the authoritative revocation signal, and

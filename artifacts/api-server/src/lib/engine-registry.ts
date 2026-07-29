@@ -14,7 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
+import { tenantsTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 import {
@@ -308,9 +308,9 @@ async function writeEngineSnapshot(
 ): Promise<void> {
   try {
     const [customerRow] = await db
-      .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .select({ customerId: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
     const resolvedCustomerId = customerRow?.customerId ?? null;
     const mspId = customerRow?.mspId ?? null;

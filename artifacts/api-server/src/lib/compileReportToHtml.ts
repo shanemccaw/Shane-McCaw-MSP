@@ -3,7 +3,6 @@ import {
   clientServicesTable,
   servicesTable,
   usersTable,
-  mspCustomersTable,
   kanbanTasksTable,
   projectsTable,
   fulfillmentQueueTable,
@@ -11,6 +10,14 @@ import {
   clientM365ProfilesTable
 } from "@workspace/db";
 import { eq, and, ne } from "drizzle-orm";
+
+// Every widget below resolves "which users belong to this customer" through
+// `users.tenantId`, the real FK introduced by the Tenant/User Refactor (#92).
+// It replaces the old join chain, which matched `users.company` against
+// `msp_customers.name` as free text — a customer whose display name was ever
+// edited, or two customers sharing a name, silently produced wrong or empty
+// widgets. Same customerId argument, same widget contract; only the linkage
+// stops being a string comparison.
 
 interface CanvasWidget {
   i: string;
@@ -207,10 +214,9 @@ async function renderBillingWidget(customerId: number): Promise<string> {
       .from(clientServicesTable)
       .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
       .innerJoin(usersTable, eq(clientServicesTable.clientUserId, usersTable.id))
-      .innerJoin(mspCustomersTable, eq(usersTable.company, mspCustomersTable.name))
       .where(
         and(
-          eq(mspCustomersTable.id, customerId),
+          eq(usersTable.tenantId, customerId),
           eq(clientServicesTable.status, "active"),
           eq(servicesTable.billingType, "recurring_monthly")
         )
@@ -291,10 +297,9 @@ async function renderOpenItemsWidget(customerId: number): Promise<string> {
       .from(kanbanTasksTable)
       .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
       .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
-      .innerJoin(mspCustomersTable, eq(usersTable.company, mspCustomersTable.name))
       .where(
         and(
-          eq(mspCustomersTable.id, customerId),
+          eq(usersTable.tenantId, customerId),
           ne(kanbanTasksTable.column, "completed")
         )
       );
@@ -444,8 +449,7 @@ async function renderTelemetryWidget(customerId: number): Promise<string> {
       })
       .from(clientScoresTable)
       .innerJoin(usersTable, eq(clientScoresTable.clientId, usersTable.id))
-      .innerJoin(mspCustomersTable, eq(usersTable.company, mspCustomersTable.name))
-      .where(eq(mspCustomersTable.id, customerId))
+      .where(eq(usersTable.tenantId, customerId))
       .limit(1);
     if (scoreRows && scoreRows.length > 0) {
       score = scoreRows[0];
@@ -461,8 +465,7 @@ async function renderTelemetryWidget(customerId: number): Promise<string> {
       })
       .from(clientM365ProfilesTable)
       .innerJoin(usersTable, eq(clientM365ProfilesTable.clientId, usersTable.id))
-      .innerJoin(mspCustomersTable, eq(usersTable.company, mspCustomersTable.name))
-      .where(eq(mspCustomersTable.id, customerId))
+      .where(eq(usersTable.tenantId, customerId))
       .limit(1);
     if (profileRows && profileRows.length > 0) {
       profileData = profileRows[0].profile || {};
