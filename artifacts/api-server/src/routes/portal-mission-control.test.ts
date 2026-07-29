@@ -40,7 +40,7 @@ function customerToken(customerId: number, userId = 1): string {
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  mspCustomersTable: { id: "id", isTestbed: "is_testbed" },
+  tenantsTable: { id: "id", isTestbed: "is_testbed" },
   mspDiagnosticRunsTable: { customerId: "customer_id", createdAt: "created_at", status: "status", runId: "run_id" },
   mspDiagnosticFindingsTable: { runId: "run_id", severity: "severity", createdAt: "created_at" },
   salesOffersTable: { id: "id", customerId: "customer_id", state: "state", score: "score" },

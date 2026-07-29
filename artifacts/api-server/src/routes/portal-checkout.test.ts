@@ -97,7 +97,7 @@ vi.mock("@workspace/db", () => ({
   mspConnectorConfigsTable: {
     mspId: "msp_id", customerAgreementTemplate: "customer_agreement_template",
   },
-  mspCustomersTable: { id: "id", mspId: "msp_id" },
+  tenantsTable: { id: "id", mspId: "msp_id" },
   mspEventStoreTable: { id: "id" },
   freeCheckoutAttemptsTable: {
     id: "id", offerId: "offer_id", customerEmail: "customer_email",
@@ -112,8 +112,8 @@ vi.mock("@workspace/db", () => ({
   mspSubscriptionsTable: {
     id: "id", mspId: "msp_id", stripeCustomerId: "stripe_customer_id",
   },
-  mspUsersTable: {
-    id: "id", userId: "user_id", mspId: "msp_id",
+  usersTable: {
+    id: "id", mspId: "msp_id",
   },
 }));
 

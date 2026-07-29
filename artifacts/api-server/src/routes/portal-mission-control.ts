@@ -26,7 +26,7 @@
  *   POST /api/portal/mission-control/remediate
  *     — Triggers the Quick-Start Config Pack for an instant-remediation
  *       offer. HARD server-side guard: only customers whose
- *       msp_customers.isTestbed is true may execute (the orchestrator
+ *       tenants.isTestbed is true may execute (the orchestrator
  *       enforces the same rule again as a second layer) — pack runs perform
  *       REAL Graph writes against the tenant.
  */
@@ -35,7 +35,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import {
   db,
-  mspCustomersTable,
+  tenantsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
   salesOffersTable,
@@ -284,9 +284,9 @@ export async function listRemediableOffers(customerId: number): Promise<Remediab
   // Testbed gate first — mirrors the remediate endpoint. A non-testbed tenant
   // has zero remediable offers by definition, so nothing is ever proposable.
   const [customer] = await db
-    .select({ isTestbed: mspCustomersTable.isTestbed })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ isTestbed: tenantsTable.isTestbed })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   if (customer?.isTestbed !== true) return [];
 
@@ -419,9 +419,9 @@ router.get(
         : [];
 
       const [customer] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ isTestbed: tenantsTable.isTestbed })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       const isTestbed = customer?.isTestbed === true;
 
@@ -551,9 +551,9 @@ router.post(
       // enforced here AND again inside runConfigPackForCustomer
       // (customer_not_testbed), so a UI bug can never reach a live tenant.
       const [customer] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ isTestbed: tenantsTable.isTestbed })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (customer?.isTestbed !== true) {
         log.warn(

@@ -32,13 +32,13 @@ import {
   mspSowsTable,
   mspSowEventsTable,
   mspConnectorConfigsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspEventStoreTable,
   freeCheckoutAttemptsTable,
   platformAgreementsTable,
   mspAgreementAcceptancesTable,
   mspSubscriptionsTable,
-  mspUsersTable,
+  usersTable,
   mspsTable,
 } from "@workspace/db";
 import { eq, and, count, gte, or } from "drizzle-orm";
@@ -483,13 +483,13 @@ router.post(
       let mspCustomerId: number | null = null;
       if (mspId && customerId) {
         const [customer] = await db
-          .select({ id: mspCustomersTable.id })
-          .from(mspCustomersTable)
+          .select({ id: tenantsTable.id })
+          .from(tenantsTable)
           .where(
             and(
-              eq(mspCustomersTable.mspId, mspId),
+              eq(tenantsTable.mspId, mspId),
               or(
-                eq(mspCustomersTable.id, customerId),
+                eq(tenantsTable.id, customerId),
               ),
             ),
           )
@@ -593,20 +593,20 @@ router.post(
       // 1. Determine target mspId associated with customer or logged-in session
       let targetMspId = offerRow.mspId;
       if (!targetMspId && actorId) {
-        const [mspUser] = await db
-          .select({ mspId: mspUsersTable.mspId })
-          .from(mspUsersTable)
-          .where(eq(mspUsersTable.userId, actorId))
+        const [actorUser] = await db
+          .select({ mspId: usersTable.mspId })
+          .from(usersTable)
+          .where(eq(usersTable.id, actorId))
           .limit(1);
-        if (mspUser?.mspId) {
-          targetMspId = mspUser.mspId;
+        if (actorUser?.mspId) {
+          targetMspId = actorUser.mspId;
         }
       }
       if (!targetMspId && customerId) {
         const [cust] = await db
-          .select({ mspId: mspCustomersTable.mspId })
-          .from(mspCustomersTable)
-          .where(eq(mspCustomersTable.id, customerId))
+          .select({ mspId: tenantsTable.mspId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, customerId))
           .limit(1);
         if (cust?.mspId) {
           targetMspId = cust.mspId;

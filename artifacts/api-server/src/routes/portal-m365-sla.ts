@@ -14,7 +14,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspCustomersTable } from "@workspace/db";
+import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT, type SlaWindowDays } from "../lib/sla-uptime";
@@ -44,9 +44,9 @@ router.get("/portal/m365-sla/summary", requireRole("CustomerUser"), async (req: 
     }
 
     const [customer] = await db
-      .select({ tenantId: mspCustomersTable.tenantId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, customerId))
+      .select({ tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
 
     if (!customer?.tenantId) {

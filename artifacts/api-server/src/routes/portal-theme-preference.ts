@@ -4,13 +4,17 @@
  *   GET /api/portal/theme-preference — get the caller's own stored preference (or null)
  *   PUT /api/portal/theme-preference — update the caller's own preference
  *
- * Self-scoped to req.user's own msp_users row only — every authenticated
- * role gets this (not CustomerUser-specific), and there is no target-user
+ * Self-scoped to req.user's own users row only — every authenticated role
+ * gets this (not CustomerUser-specific), and there is no target-user
  * override; a caller can only ever read/write their own row.
+ *
+ * Tenant/User Refactor Phase 2a (#102): themePreference lives on usersTable
+ * directly now (msp_users absorbed into users in Phase 0), so this is a plain
+ * read/write on the caller's own row — no join.
  */
 
 import { Router, type IRouter, type Response } from "express";
-import { db, mspUsersTable } from "@workspace/db";
+import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
@@ -31,9 +35,9 @@ router.get("/portal/theme-preference", requireAuth, async (req, res) => {
   const userId = req.user!.id;
 
   const [row] = await db
-    .select({ themePreference: mspUsersTable.themePreference })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+    .select({ themePreference: usersTable.themePreference })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
 
   res.json({ theme: row?.themePreference ?? null });
@@ -49,13 +53,13 @@ router.put("/portal/theme-preference", requireAuth, async (req, res) => {
   }
 
   const [updated] = await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ themePreference: parsed.data.theme, updatedAt: new Date() })
-    .where(eq(mspUsersTable.userId, userId))
-    .returning({ themePreference: mspUsersTable.themePreference });
+    .where(eq(usersTable.id, userId))
+    .returning({ themePreference: usersTable.themePreference });
 
   if (!updated) {
-    apiError(res, 404, "No MSP user profile found for this account");
+    apiError(res, 404, "No user account found for this session");
     return;
   }
 

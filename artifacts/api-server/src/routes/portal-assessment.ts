@@ -46,8 +46,7 @@ import {
   insightsGeneratedDocumentsTable,
   mfaEnrollmentsTable,
   webauthnCredentialsTable,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
   clientServicesTable,
   servicesTable,
   usersTable,
@@ -253,9 +252,9 @@ router.get(
       // isTestbed is exposed here only so the wizard can show the debug scan
       // trigger button to testbed customers. Remove alongside that button.
       const [customerRow] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ isTestbed: tenantsTable.isTestbed })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       // ── Real pillar coverage (radar) + real stat cards ────────────────────
@@ -521,9 +520,9 @@ router.get(
       // isTestbed is exposed here only so the shell-wide scan-trigger button can
       // gate itself to testbed customers. Remove alongside that button.
       const [customerRow] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed, tenantId: mspCustomersTable.tenantId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ isTestbed: tenantsTable.isTestbed, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       let consentStatus: string | null = null;
@@ -850,9 +849,9 @@ router.post(
       // Hard server-side testbed guard — this check is what actually prevents
       // real customers from triggering scans, not the button's visibility.
       const [customer] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed, mspId: mspCustomersTable.mspId, tenantId: mspCustomersTable.tenantId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ isTestbed: tenantsTable.isTestbed, mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       if (!customer || customer.isTestbed !== true) {
@@ -864,12 +863,12 @@ router.post(
       // Same packageKey resolution as msp-diagnostics.ts's diagnostics/run route.
       const [pkgRow] = await db
         .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
-        .from(mspUsersTable)
-        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+        .from(usersTable)
+        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, usersTable.id))
         .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
         .where(
           and(
-            eq(mspUsersTable.customerId, customerId),
+            eq(usersTable.tenantId, customerId),
             eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
             eq(clientServicesTable.status, "active"),
           )
@@ -943,9 +942,9 @@ router.get(
 
     try {
       const [customer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       const [engineOutput, { rules }] = await Promise.all([
@@ -1522,13 +1521,13 @@ async function resolveStripeCustomerForUser(
   }
 }
 
-/** Resolve msp_customers.id + msp_id for tenant scoping on the agreement row. */
+/** Resolve tenants.id + msp_id for tenant scoping on the agreement row. */
 async function resolveTenantForCustomer(customerId: number | null): Promise<{ customerId: number | null; mspId: number | null }> {
   if (customerId === null) return { customerId: null, mspId: null };
   const [row] = await db
-    .select({ mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
   return { customerId, mspId: row?.mspId ?? null };
 }

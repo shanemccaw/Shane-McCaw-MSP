@@ -91,6 +91,16 @@ export const tenantsTable = pgTable("tenants", {
   tenantUrl: text("tenant_url"),
   tenantId: text("tenant_id").notNull().unique(),
   consent: jsonb("consent").$type<TenantConsentMap>().notNull().default({}),
+  // Restored from the dropped msp_customers table (Phase 0 didn't carry these
+  // forward; re-added here in Phase 2a once portal-* consumers turned out to
+  // still need them — domain/industry/status/isTestbed have no analogue
+  // elsewhere on tenants). status/isTestbed keep the exact old semantics,
+  // including isTestbed gating real Graph writes in the config-pack
+  // orchestrator — per-tenant, deliberately independent of mspsTable.isTestbed.
+  domain: text("domain"),
+  industry: text("industry"),
+  status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
+  isTestbed: boolean("is_testbed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

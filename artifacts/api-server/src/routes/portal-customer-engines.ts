@@ -24,7 +24,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
@@ -352,9 +352,9 @@ router.get(
         : (enabledModules.size > 0 ? Array.from(enabledModules) : ["priority-health", "security", "copilot", "cost"]);
 
       const [customer] = await db
-        .select({ status: mspCustomersTable.status })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ status: tenantsTable.status })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
@@ -597,12 +597,12 @@ router.post(
 
       // 5. Set customer status to inactive
       await db
-        .update(mspCustomersTable)
+        .update(tenantsTable)
         .set({
           status: "inactive",
           updatedAt: new Date(),
         })
-        .where(eq(mspCustomersTable.id, customerId));
+        .where(eq(tenantsTable.id, customerId));
 
       // 6. Write Audit logs
       void createAuditLog({
@@ -654,8 +654,8 @@ router.get(
     try {
       const [customer] = await db
         .select()
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       const clientServices = await db
@@ -694,7 +694,7 @@ router.get(
       const exportData = {
         exportedAt: new Date().toISOString(),
         customer: {
-          name: customer?.name,
+          name: customer?.customerName,
           domain: customer?.domain,
           industry: customer?.industry,
           tenantId: customer?.tenantId,
