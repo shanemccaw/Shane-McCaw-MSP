@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, tenantsTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents, resolveEffectiveChargeCents, seatBandViolationMessage } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
@@ -32,6 +32,7 @@ import { ensureLeadForClient, convertLeadForClient } from "../lib/crm-pipeline.t
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
+import { createConsentInviteForEmail, mtAppCredentialsPresent } from "../lib/consent-invite.ts";
 import { fireWorkflowsForEvent, emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
@@ -108,15 +109,33 @@ router.get("/portal/projects/:id/kanban-events", async (req: Request, res: Respo
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Upsert a client account keyed by email. Returns the user id. */
-async function ensureClientAccount(email: string, name?: string): Promise<{ id: number }> {
+/**
+ * Upsert a client account keyed by email. Returns the user id.
+ *
+ * `scope` stamps tenant/MSP scope inline on a NEWLY-created row — needed
+ * because users_role_scope_check forbids a bare row (the default mspRole
+ * "Free" is tenant-scoped and demands a non-null tenant_id), so an insert for
+ * a genuinely-new email without scope will be rejected by the database.
+ * Existing rows are returned as-is; ON CONFLICT deliberately never re-stamps
+ * scope on an account that already exists.
+ */
+async function ensureClientAccount(
+  email: string,
+  name?: string,
+  scope?: { tenantId: number; mspId: number | null; mspRole: "Assessment" | "CustomerUser" },
+): Promise<{ id: number }> {
   const normalizedEmail = email.toLowerCase().trim();
   // Atomic upsert — if the email already exists the ON CONFLICT clause returns
   // the existing row without modifying anything, making this race-safe under
   // concurrent Stripe webhook + success-page double-firing.
   const [upserted] = await db
     .insert(usersTable)
-    .values({ email: normalizedEmail, role: "client", name: name?.trim() || undefined })
+    .values({
+      email: normalizedEmail,
+      role: "client",
+      name: name?.trim() || undefined,
+      ...(scope ? { tenantId: scope.tenantId, mspId: scope.mspId, mspRole: scope.mspRole } : {}),
+    })
     .onConflictDoUpdate({
       target: usersTable.email,
       set: { email: sql`EXCLUDED.email` }, // no-op — forces RETURNING to yield the existing row
@@ -126,40 +145,29 @@ async function ensureClientAccount(email: string, name?: string): Promise<{ id: 
 }
 
 /**
- * Ensures an active msp_customers row exists for a direct-business customer.
+ * Resolve-or-create the `tenants` row for a direct-business customer, keyed by
+ * the real M365 tenant GUID. tenants.tenant_id is NOT NULL UNIQUE — a tenant
+ * row CANNOT exist without a consented GUID, which is the schema-level form of
+ * the consent-first rule (no account/tenant creation before M365 consent; #95).
  *
- * Business rule: anyone who buys directly from the public website is always
- * "active" immediately — there is no "onboarding" stage for direct customers.
- * (Contrast with MSP-channel customers, who start "onboarding" and flip to
- * "active" only once M365 consent is granted — see consent.ts.)
+ * Business rule (unchanged): anyone who buys directly from the public website
+ * is "active" immediately — there is no "onboarding" stage for direct
+ * customers. (Contrast with MSP-channel customers, who start "onboarding" and
+ * flip to "active" only once M365 consent is granted — see consent.ts.)
  *
- * Idempotent, in order:
- *   1. If this user is already linked to a customer (msp_users.customerId), reuse it.
- *   2. Else if tenantId is provided and a customer with that tenantId already exists
- *      (e.g. from a retried/duplicate purchase attempt), reuse it.
- *   3. Else create a new msp_customers row under the MSP flagged isDirectBusiness=true.
- *
- * Returns the resolved/created msp_customers.id, or null only in the genuine
+ * Returns { id, mspId } of the tenants row, or null only in the genuine
  * no-isDirectBusiness-MSP-configured case (nothing to attach to).
- *
- * Must be called BEFORE ensureClientMspUser so its own tenantId lookup finds this row.
  */
-async function ensureDirectCustomerRecord(userId: number, tenantId?: string | null): Promise<number | null> {
-  const [existingLink] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+async function resolveOrCreateDirectTenant(
+  tenantGuid: string,
+  fallbackCustomerName: string,
+): Promise<{ id: number; mspId: number } | null> {
+  const [existingByTenant] = await db
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantGuid))
     .limit(1);
-  if (existingLink?.customerId != null) return existingLink.customerId;
-
-  if (tenantId) {
-    const [existingByTenant] = await db
-      .select({ id: mspCustomersTable.id })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.tenantId, tenantId))
-      .limit(1);
-    if (existingByTenant) return existingByTenant.id;
-  }
+  if (existingByTenant) return existingByTenant;
 
   const [directMsp] = await db
     .select({ id: mspsTable.id })
@@ -168,40 +176,81 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
     .limit(1);
   if (!directMsp) return null; // no MSP flagged isDirectBusiness=true — nothing to attach to
 
-  const [buyer] = await db
-    .select({ name: usersTable.name, company: usersTable.company })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
-
-  const [created] = await db.insert(mspCustomersTable).values({
+  const [created] = await db.insert(tenantsTable).values({
     mspId: directMsp.id,
-    name: buyer?.company?.trim() || buyer?.name?.trim() || "Direct Customer",
-    tenantId: tenantId ?? undefined,
+    customerName: fallbackCustomerName,
+    tenantId: tenantGuid,
     status: "active",
-    ownerType: "customer",
-  }).returning({ id: mspCustomersTable.id });
+  })
+    .onConflictDoNothing({ target: tenantsTable.tenantId }) // race-safe under the UNIQUE tenant_id
+    .returning({ id: tenantsTable.id, mspId: tenantsTable.mspId });
+  if (created) return created;
 
-  return created.id;
+  // Conflict path: another request inserted this GUID between lookup and insert.
+  const [raced] = await db
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantGuid))
+    .limit(1);
+  return raced ?? null;
 }
 
 /**
- * Ensures a msp_users row exists for the given client userId.
- * Idempotent — if a row already exists for this userId, does nothing.
+ * Resolves the tenants row for a direct-business buyer. Idempotent, in order:
+ *   1. If this user is already linked to a tenant (users.tenantId), reuse it.
+ *   2. Else if tenantId (M365 GUID) is provided, resolve-or-create the tenants
+ *      row for it (e.g. from a retried/duplicate purchase attempt).
  *
- * mspId resolution order:
- *   1. If explicitCustomerId is provided, use it directly (and look up its real
- *      owning mspId) — takes precedence over tenantId-based resolution.
- *   2. Else if tenantId is provided and an msp_customers row matches it, use that
- *      customer's mspId and customerId.
- *   3. Otherwise default to mspId=1 (Shane's own MSP) with no customerId.
+ * A tenant can no longer be created WITHOUT a consented GUID (tenants.tenant_id
+ * is NOT NULL UNIQUE — consent-first, #95/#103). Callers that used to reach
+ * this with no GUID and get a bare "active" msp_customers row now get null;
+ * the account-creation paths that relied on that were removed in Phase 2b.
  *
- * Should be called AFTER provisionOnboardingProject so that the msp_customers
- * row created during provisioning is available for the tenantId lookup.
+ * Returns the resolved/created tenants.id, or null when the user has no link
+ * and no GUID was provided (or no isDirectBusiness MSP is configured).
  *
- * desiredRole controls the mspRole assigned to a newly-created row only (existing
- * rows are never role-patched here) — defaults to "CustomerUser" so every caller
- * that doesn't pass it keeps the historical behavior.
+ * Must be called BEFORE ensureClientMspUser so its own tenantId lookup finds this row.
+ */
+async function ensureDirectCustomerRecord(userId: number, tenantId?: string | null): Promise<number | null> {
+  const [buyer] = await db
+    .select({ tenantId: usersTable.tenantId, name: usersTable.name, company: usersTable.company })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (buyer?.tenantId != null) return buyer.tenantId;
+
+  if (!tenantId) return null;
+
+  const tenant = await resolveOrCreateDirectTenant(
+    tenantId,
+    buyer?.company?.trim() || buyer?.name?.trim() || "Direct Customer",
+  );
+  return tenant?.id ?? null;
+}
+
+/**
+ * Ensures the given client user's own row carries its tenant/MSP scope.
+ * (msp_users was absorbed into `users` — Tenant/User Refactor #92 — so the old
+ * "create the msp_users row" step is now "fill in the scope columns on the
+ * user's own row".) Idempotent — a user already tenant-linked is never
+ * re-pointed here.
+ *
+ * Scope resolution order (unchanged from the msp_users era):
+ *   1. If explicitCustomerId (a tenants.id) is provided, use it directly (and
+ *      look up its real owning mspId) — takes precedence over tenantId.
+ *   2. Else if tenantId (M365 GUID) is provided and a tenants row matches it,
+ *      use that tenant's id and mspId.
+ *   3. Otherwise NO tenant is resolvable — and since tenant-scoped roles
+ *      require users.tenant_id (users_role_scope_check), nothing can be
+ *      linked. The old "default to mspId=1 with no customerId" bare bridge is
+ *      gone on purpose: log at error level (consent-first was skipped
+ *      upstream) and leave the user unscoped.
+ *
+ * desiredRole is applied only when the row is still at its wholly-unbridged
+ * default (mspRole "Free", no mspId, no tenantId — i.e. what used to be "no
+ * msp_users row exists yet"); an account already carrying an explicit role or
+ * link is never role-patched here (promoteMspUserToCustomer owns upgrades).
+ * Defaults to "CustomerUser", keeping the historical behavior.
  */
 export async function ensureClientMspUser(
   userId: number,
@@ -209,76 +258,88 @@ export async function ensureClientMspUser(
   explicitCustomerId?: number | null,
   desiredRole?: "CustomerUser" | "Assessment",
 ): Promise<void> {
-  // Resolve target mspId + customerId — explicitCustomerId takes precedence over tenantId.
-  let mspId = 1; // default: Shane's own MSP
+  // Resolve target mspId + tenants.id — explicitCustomerId takes precedence over tenantId.
+  let mspId: number | null = null;
   let customerId: number | undefined = undefined;
   if (explicitCustomerId != null) {
-    const [customer] = await db
-      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, explicitCustomerId))
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, explicitCustomerId))
       .limit(1);
-    if (customer) {
-      mspId = customer.mspId;
-      customerId = customer.id;
+    if (tenant) {
+      mspId = tenant.mspId;
+      customerId = tenant.id;
     }
   } else if (tenantId) {
-    const [customer] = await db
-      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.tenantId, tenantId))
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantId))
       .limit(1);
-    if (customer) {
-      mspId = customer.mspId;
-      customerId = customer.id;
+    if (tenant) {
+      mspId = tenant.mspId;
+      customerId = tenant.id;
     }
   }
 
-  // Check whether a row already exists
   const [existing] = await db
-    .select({ id: mspUsersTable.id, existingCustomerId: mspUsersTable.customerId, existingMspId: mspUsersTable.mspId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
+    .select({ existingCustomerId: usersTable.tenantId, existingMspId: usersTable.mspId, existingRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
+  if (!existing) return; // no users row at all — nothing to scope
+  if (existing.existingCustomerId != null) return; // already tenant-linked — done
 
-  if (existing) {
-    // Row exists — patch customer_id if it is still null and we resolved one.
-    // This handles users created before the customer record was provisioned.
-    if (existing.existingCustomerId == null && customerId != null) {
-      // Cross-MSP boundary backstop (defense in depth — the consent-time check in
-      // consent.ts should reject this before payment; see "Reject cross-MSP tenant
-      // consent conflicts"). The resolved customerId comes from a tenantId match; if
-      // that customer belongs to a DIFFERENT MSP than this user's existing msp_users
-      // row, patching would link the user across the tenant boundary and leak the
-      // other MSP's engine history/findings/SOWs (confirmed live: user 92 mspId 89 →
-      // customer 1 mspId 1). Refuse the patch, leave customerId untouched (null), and
-      // log at error level for manual admin follow-up. This should never fire if the
-      // consent-time guard is intact — treat any occurrence as a gap in that guard.
-      if (existing.existingMspId != null && existing.existingMspId !== mspId) {
-        log.error(
-          {
-            userId,
-            tenantId,
-            conflictingCustomerId: customerId,
-            existingMspId: existing.existingMspId,
-            resolvedMspId: mspId,
-          },
-          "ensureClientMspUser: REFUSED cross-MSP customerId patch — tenantId resolves to a customer under a different MSP than the user's existing msp_users row; leaving customerId unchanged (payment already succeeded, manual admin follow-up required)",
-        );
-        return;
-      }
-      await db
-        .update(mspUsersTable)
-        .set({ customerId, updatedAt: new Date() })
-        .where(eq(mspUsersTable.userId, userId));
-    }
+  if (customerId == null) {
+    // No tenants row resolvable. users_role_scope_check makes a tenant-scoped
+    // role without users.tenant_id impossible, so there is no bare-bridge
+    // fallback anymore — a customer account reaching here means the
+    // consent-first flow (provisionProspectAccount at M365-consent time) was
+    // skipped upstream. Loud and greppable, never routine.
+    log.error(
+      { userId, tenantId: tenantId ?? null, explicitCustomerId: explicitCustomerId ?? null },
+      "ensureClientMspUser: no tenants row resolvable — cannot link user to a tenant (consent-first flow skipped upstream?); leaving user unscoped",
+    );
     return;
   }
 
+  // Cross-MSP boundary backstop (defense in depth — the consent-time check in
+  // consent.ts should reject this before payment; see "Reject cross-MSP tenant
+  // consent conflicts"). If the resolved tenant belongs to a DIFFERENT MSP
+  // than this user's existing msp_id, patching would link the user across the
+  // tenant boundary and leak the other MSP's engine history/findings/SOWs
+  // (confirmed live pre-refactor: user 92 mspId 89 → customer 1 mspId 1).
+  // Refuse the patch, leave the tenant link untouched (null), and log at error
+  // level for manual admin follow-up. This should never fire if the
+  // consent-time guard is intact — treat any occurrence as a gap in that guard.
+  if (existing.existingMspId != null && existing.existingMspId !== mspId) {
+    log.error(
+      {
+        userId,
+        tenantId,
+        conflictingCustomerId: customerId,
+        existingMspId: existing.existingMspId,
+        resolvedMspId: mspId,
+      },
+      "ensureClientMspUser: REFUSED cross-MSP customerId patch — tenantId resolves to a customer under a different MSP than the user's existing msp_users row; leaving customerId unchanged (payment already succeeded, manual admin follow-up required)",
+    );
+    return;
+  }
+
+  // What used to be "no msp_users row yet → insert with desiredRole": post-
+  // merge, a wholly-unbridged row (all three scope columns at their defaults)
+  // is that same state, so it takes desiredRole; anything else keeps its role.
+  const stillAtUnbridgedDefault = existing.existingRole === "Free" && existing.existingMspId == null;
   await db
-    .insert(mspUsersTable)
-    .values({ userId, mspId, customerId, mspRole: desiredRole ?? "CustomerUser", isActive: true })
-    .onConflictDoNothing(); // race-safe: unique(user_id)
+    .update(usersTable)
+    .set({
+      tenantId: customerId,
+      mspId: existing.existingMspId ?? mspId,
+      ...(stillAtUnbridgedDefault ? { mspRole: desiredRole ?? "CustomerUser" } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, userId));
 }
 
 /**
@@ -288,11 +349,14 @@ export async function ensureClientMspUser(
  * admin-recoverable via /auth/forgot-password) the instant consent is granted.
  *
  * Creates, idempotently and in order:
- *   1. a `users` row (role "client", passwordHash left NULL — no usable password
- *      yet; the customer sets one via the account-setup / password flow),
- *   2. an active `msp_customers` row stamped with the consented tenantId, and
- *   3. an `msp_users` row linking the two with `role` — "Assessment" for the
- *      assessment funnel (promoted to "CustomerUser" on payment; see
+ *   1. a `tenants` row keyed by the consented tenant GUID (tenants.tenant_id
+ *      is NOT NULL UNIQUE — the tenant must exist BEFORE the account can,
+ *      because users_role_scope_check forbids a tenant-scoped users row with
+ *      no tenant link; this is the schema-level consent-first rule), then
+ *   2. a `users` row (role "client", passwordHash left NULL — no usable
+ *      password yet; the customer sets one via the account-setup / password
+ *      flow) stamped inline with tenantId/mspId and `role` — "Assessment" for
+ *      the assessment funnel (promoted to "CustomerUser" on payment; see
  *      promoteMspUserToCustomer), else "CustomerUser".
  * It also converts the funnel-entry lead (name+email capture) new → converted.
  *
@@ -313,7 +377,18 @@ export async function provisionProspectAccount(opts: {
   const email = opts.email?.toLowerCase().trim();
   if (!email) return null;
 
-  const acct = await ensureClientAccount(email, opts.fullName ?? undefined);
+  // Consent-first inversion (#103): resolve/create the tenants row BEFORE the
+  // users row, so a genuinely-new account can be inserted with its tenant
+  // scope inline — users_role_scope_check rejects a bare row outright.
+  const tenant = opts.tenantId
+    ? await resolveOrCreateDirectTenant(opts.tenantId, opts.fullName?.trim() || "Direct Customer")
+    : null;
+
+  const acct = await ensureClientAccount(
+    email,
+    opts.fullName ?? undefined,
+    tenant ? { tenantId: tenant.id, mspId: tenant.mspId, mspRole: opts.role } : undefined,
+  );
   const userId = acct.id;
 
   let customerId: number | null = null;
@@ -322,8 +397,8 @@ export async function provisionProspectAccount(opts: {
     await ensureClientMspUser(userId, opts.tenantId ?? undefined, customerId, opts.role);
   } catch (err) {
     // error (not warn): a swallowed failure here leaves a users row with NO
-    // msp_customers/msp_users bridge — a fully non-functional account that can
-    // still complete a paid checkout (confirmed live: "Seven Hundred",
+    // tenant link — a fully non-functional account that can still complete a
+    // paid checkout (confirmed live pre-refactor: "Seven Hundred",
     // users.id=21). The caller keeps going (idempotent retry happens on the
     // payment webhook, which verifies and alerts), but this is never routine.
     log.error({ err, userId, tenantId: opts.tenantId }, "provisionProspectAccount: ensure customer/msp_user FAILED — user exists without a customer bridge");
@@ -331,7 +406,7 @@ export async function provisionProspectAccount(opts: {
   if (customerId == null) {
     log.error(
       { userId, tenantId: opts.tenantId },
-      "provisionProspectAccount: no msp_customers id resolved for Prospect — account has no customer bridge yet",
+      "provisionProspectAccount: no tenants id resolved for Prospect — account has no tenant link yet",
     );
   }
 
@@ -348,15 +423,14 @@ export async function provisionProspectAccount(opts: {
  *
  * Idempotent and guarded: only rows currently at "Assessment" or "Free" are
  * touched, so an existing CustomerUser / MSPAdmin / etc. is never downgraded or
- * re-stamped, and re-delivered webhooks are safe. No-op if the user has no
- * msp_users row. Non-fatal.
+ * re-stamped, and re-delivered webhooks are safe. Non-fatal.
  */
 export async function promoteMspUserToCustomer(userId: number): Promise<void> {
   try {
     await db
-      .update(mspUsersTable)
+      .update(usersTable)
       .set({ mspRole: "CustomerUser", updatedAt: new Date() })
-      .where(and(eq(mspUsersTable.userId, userId), inArray(mspUsersTable.mspRole, ["Assessment", "Free"])));
+      .where(and(eq(usersTable.id, userId), inArray(usersTable.mspRole, ["Assessment", "Free"])));
   } catch (err) {
     log.warn({ err, userId }, "promoteMspUserToCustomer: role promotion failed (non-fatal)");
   }
@@ -389,9 +463,9 @@ export async function verifyCustomerBridge(
 ): Promise<{ ok: boolean; customerId: number | null }> {
   try {
     const [link] = await db
-      .select({ customerId: mspUsersTable.customerId, mspId: mspUsersTable.mspId })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.userId, userId))
+      .select({ customerId: usersTable.tenantId, mspId: usersTable.mspId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
       .limit(1);
 
     if (link?.customerId != null) return { ok: true, customerId: link.customerId };
@@ -752,9 +826,9 @@ router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request,
   }
 
   const [targetMspUser] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
 
   if (!targetMspUser?.customerId) {
@@ -774,12 +848,13 @@ router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request,
 
 // ─── CLIENT: Team member invite ───────────────────────────────────────────────
 // Lets a customer team member invite a colleague into their OWN customer's
-// portal scope. Reuses the same users + msp_users + account-setup-token +
-// account-setup email convention as /admin/clients (the platform-admin
-// client-creation route) rather than inventing a second invite mechanism.
-// New user is always created as mspRole "CustomerUser", customerId pinned to
-// the inviter's own customerId — never caller-supplied, so this can't be used
-// to plant a user in a different tenant.
+// portal scope, using the account-setup-token + account-setup email
+// convention rather than inventing a second invite mechanism.
+// New user is always created as mspRole "CustomerUser", tenantId pinned to
+// the inviter's own tenantId — never caller-supplied, so this can't be used
+// to plant a user in a different tenant. (This is an intra-tenant teammate
+// invite into an ALREADY-consented tenant — not a new-customer signup — so
+// the consent-first rule (#95/#103) is inherently satisfied here.)
 router.post("/portal/team/invite", requireAuth, async (req: Request, res: Response) => {
   const inviterCustomerId = req.user!.customerId;
   const inviterMspId = req.user!.mspId;
@@ -812,17 +887,13 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
     passwordHash: null,
     role: "client",
     name: name?.trim() || null,
-  }).returning();
-
-  await db.insert(mspUsersTable).values({
-    userId: newUser.id,
     mspId: inviterMspId,
-    customerId: inviterCustomerId,
+    tenantId: inviterCustomerId,
     mspRole: "CustomerUser",
     isActive: true,
     department: department?.trim() || null,
     jobTitle: jobTitle?.trim() || null,
-  });
+  }).returning();
 
   void createAuditLog({
     actorUserId: req.user!.id,
@@ -856,7 +927,7 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
 // customerId (never a client-supplied one). MFA status mirrors the same
 // mfaEnrollmentsTable + webauthnCredentialsTable read used by the platform-admin
 // /admin/clients/:id/mfa-status route. Session counts/last-login are derived
-// from user_sessions (mspUsersTable.lastLoginAt is never written anywhere in
+// from user_sessions (usersTable.lastLoginAt is never written anywhere in
 // this codebase, so it can't be trusted as a data source).
 function reduceMfaStatus(methods: string[]): "TOTP" | "FIDO2" | "SMS" | "Disabled" {
   if (methods.includes("passkey")) return "FIDO2";
@@ -874,20 +945,19 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
 
   const members = await db
     .select({
-      userId: mspUsersTable.userId,
+      userId: usersTable.id,
       email: usersTable.email,
       name: usersTable.name,
       phone: usersTable.phone,
-      isActive: mspUsersTable.isActive,
-      mfaEnforced: mspUsersTable.mfaEnforced,
-      lockedUntil: mspUsersTable.lockedUntil,
-      department: mspUsersTable.department,
-      jobTitle: mspUsersTable.jobTitle,
-      createdAt: mspUsersTable.createdAt,
+      isActive: usersTable.isActive,
+      mfaEnforced: usersTable.mfaEnforced,
+      lockedUntil: usersTable.lockedUntil,
+      department: usersTable.department,
+      jobTitle: usersTable.jobTitle,
+      createdAt: usersTable.createdAt,
     })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .where(eq(mspUsersTable.customerId, customerId));
+    .from(usersTable)
+    .where(eq(usersTable.tenantId, customerId));
 
   if (members.length === 0) {
     res.json([]);
@@ -967,9 +1037,9 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
   }
 
   const [targetMspUser] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!targetMspUser?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -987,7 +1057,7 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
     return;
   }
 
-  await db.update(mspUsersTable).set({ isActive }).where(eq(mspUsersTable.userId, targetUserId));
+  await db.update(usersTable).set({ isActive }).where(eq(usersTable.id, targetUserId));
 
   void createAuditLog({
     actorUserId: req.user!.id,
@@ -1021,9 +1091,9 @@ router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Re
   }
 
   const [targetMspUser] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!targetMspUser?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -1036,7 +1106,7 @@ router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Re
     return;
   }
 
-  await db.update(mspUsersTable).set({ mfaEnforced: enforced }).where(eq(mspUsersTable.userId, targetUserId));
+  await db.update(usersTable).set({ mfaEnforced: enforced }).where(eq(usersTable.id, targetUserId));
 
   void createAuditLog({
     actorUserId: req.user!.id,
@@ -1053,7 +1123,7 @@ router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Re
 // ─── CLIENT: Team member account unlock ───────────────────────────────────────
 // Real backend for customer-team.tsx's "Unlock Account" button. Clears the
 // lockout /auth/login set after too many failed passwords (see
-// mspUsersTable.failedLoginAttempts/lockedUntil) so the member can log in
+// usersTable.failedLoginAttempts/lockedUntil) so the member can log in
 // again immediately, without waiting out the lockout window.
 router.post("/portal/team/:userId/unlock", requireAuth, async (req: Request, res: Response) => {
   const targetUserId = parseInt(req.params.userId as string, 10);
@@ -1063,9 +1133,9 @@ router.post("/portal/team/:userId/unlock", requireAuth, async (req: Request, res
   }
 
   const [targetMspUser] = await db
-    .select({ customerId: mspUsersTable.customerId })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!targetMspUser?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -1079,9 +1149,9 @@ router.post("/portal/team/:userId/unlock", requireAuth, async (req: Request, res
   }
 
   await db
-    .update(mspUsersTable)
+    .update(usersTable)
     .set({ failedLoginAttempts: 0, lastFailedLoginAt: null, lockedUntil: null })
-    .where(eq(mspUsersTable.userId, targetUserId));
+    .where(eq(usersTable.id, targetUserId));
 
   void createAuditLog({
     actorUserId: req.user!.id,
@@ -1109,10 +1179,9 @@ router.post("/portal/team/:userId/reset-password", requireAuth, async (req: Requ
   }
 
   const [target] = await db
-    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!target?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -1166,10 +1235,9 @@ router.post("/portal/team/:userId/temp-password", requireAuth, async (req: Reque
   }
 
   const [target] = await db
-    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!target?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -1213,10 +1281,9 @@ router.post("/portal/team/:userId/reset-mfa", requireAuth, async (req: Request, 
   }
 
   const [target] = await db
-    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!target?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -1293,10 +1360,9 @@ router.post("/portal/team/:userId/emergency-bypass", requireAuth, async (req: Re
   }
 
   const [target] = await db
-    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .where(eq(mspUsersTable.userId, targetUserId))
+    .select({ customerId: usersTable.tenantId, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
     .limit(1);
   if (!target?.customerId) {
     res.status(404).json({ error: "Team member not found" });
@@ -2679,8 +2745,8 @@ router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response)
   const customerId = req.user!.customerId;
   let customerStatus: string | null = null;
   if (customerId != null) {
-    const [customer] = await db.select({ status: mspCustomersTable.status })
-      .from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1);
+    const [customer] = await db.select({ status: tenantsTable.status })
+      .from(tenantsTable).where(eq(tenantsTable.id, customerId)).limit(1);
     customerStatus = customer?.status ?? null;
   }
 
@@ -6168,8 +6234,6 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             .where(and(eq(contractsTable.guestEmail, guestEmailMeta), isNull(contractsTable.userId)));
 
           // Mark checkout_session as paid (if one was created for this email).
-          // Also back-populate tenant_consent with the new client user ID so that
-          // admins can see which Microsoft tenant the buyer's organisation is on.
           const now = new Date();
           const [paidSession] = await db
             .update(checkoutSessionsTable)
@@ -6184,18 +6248,10 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             .returning({ tenantId: checkoutSessionsTable.tenantId });
 
           if (paidSession?.tenantId) {
-            // Populate tenant_consent.client_user_id with the newly-created account.
-            // Note: tenant_consent.customer_id references msp_customers.id (FK constrained).
-            // For direct-buyer checkout flows there is no msp_customers record, so
-            // customer_id remains null. client_user_id is the correct field to link here.
-            await db
-              .update(tenantConsentTable)
-              .set({ clientUserId: acct.id, updatedAt: now })
-              .where(eq(tenantConsentTable.tenantId, paidSession.tenantId))
-              .catch((linkErr: unknown) => {
-                req.log.warn({ err: linkErr, tenantId: paidSession.tenantId }, "onboarding_purchase: failed to link clientUserId to tenant_consent (non-fatal)");
-              });
-            req.log.info({ tenantId: paidSession.tenantId, userId: acct.id }, "onboarding_purchase: checkout_session marked paid, tenant_consent linked");
+            // (The old tenant_consent.client_user_id back-link is gone with the
+            // tenant_consent table — the buyer↔tenant linkage IS users.tenant_id
+            // now, written by the ensureClientMspUser call below.)
+            req.log.info({ tenantId: paidSession.tenantId, userId: acct.id }, "onboarding_purchase: checkout_session marked paid");
             purchaseTenantId = paidSession.tenantId;
           }
         }
@@ -6342,9 +6398,9 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         void (async () => {
           try {
             const [customer] = await db
-              .select({ id: mspCustomersTable.id })
-              .from(mspCustomersTable)
-              .where(eq(mspCustomersTable.tenantId, purchaseTenantId!))
+              .select({ id: tenantsTable.id })
+              .from(tenantsTable)
+              .where(eq(tenantsTable.tenantId, purchaseTenantId!))
               .limit(1);
             if (customer) {
               const updated = await db
@@ -6383,9 +6439,9 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         void (async () => {
           try {
             const [customer] = await db
-              .select({ id: mspCustomersTable.id })
-              .from(mspCustomersTable)
-              .where(eq(mspCustomersTable.tenantId, purchaseTenantId!))
+              .select({ id: tenantsTable.id })
+              .from(tenantsTable)
+              .where(eq(tenantsTable.tenantId, purchaseTenantId!))
               .limit(1);
             const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
             await runDiagnostics({
@@ -6954,8 +7010,19 @@ router.get("/admin/clients/:id", requireAdmin, async (req: Request, res: Respons
   res.json({ ...client, passwordHash: undefined });
 });
 
+// Consent-first (#95/#103): an admin can no longer create a client account
+// directly — accounts exist only once M365 consent has been granted
+// (provisionProspectAccount in the consent callback), with no exceptions
+// until MSP-initiated manual onboarding ships (v1.3+). "Add client" now mints
+// a single-use consent invite carrying the admin-specified email (reusing
+// consent.ts's invite-token mechanism, NOT a parallel one) and emails it to
+// the client; the real account is created when their tenant admin approves,
+// same as every other signup. The old direct users-row insert would also
+// violate users_role_scope_check outright (no tenant to scope it to).
+// company/phone from the old form are deliberately not captured — there is no
+// row to put them on yet, and those columns are Zoho-fed post-#83 anyway.
 router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) => {
-  const { email, name, company, phone } = req.body as { email?: string; name?: string; company?: string; phone?: string };
+  const { email, name } = req.body as { email?: string; name?: string };
   if (!email) { res.status(400).json({ error: "email is required" }); return; }
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -6964,51 +7031,48 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     .where(eq(usersTable.email, normalizedEmail)).limit(1);
   if (existing) { res.status(409).json({ error: "An account with this email already exists" }); return; }
 
-  const [client] = await db.insert(usersTable).values({
-    email: normalizedEmail,
-    passwordHash: null,
-    role: "client",
-    name: name ?? null,
-    company: company ?? null,
-    phone: phone ?? null,
-  }).returning();
+  if (!mtAppCredentialsPresent()) {
+    res.status(503).json({
+      error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET)",
+    });
+    return;
+  }
+
+  const invite = await createConsentInviteForEmail(req, { email: normalizedEmail, name });
 
   void createAuditLog({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
     actorRole: "admin",
-    actionType: "client_created",
-    entityType: "user",
-    entityId: client.id,
-    entityLabel: client.name ?? client.email,
+    actionType: "consent_invite_created",
+    entityType: "consent_invite",
+    entityLabel: normalizedEmail,
+    metadata: { invitedEmail: normalizedEmail, invitedName: name ?? null, expiresAt: invite.expiresAt, source: "admin_add_client" },
   });
 
-  // Ensure the manually-created client account has an msp_users row, linked to the
-  // direct-business msp_customers row so customer-scoped routes work immediately.
+  // Send the consent invite to the client (Exchange Online / Graph mailer).
   try {
-    const directCustomerId = await ensureDirectCustomerRecord(client.id);
-    await ensureClientMspUser(client.id, undefined, directCustomerId);
-  } catch (mspErr) {
-    req.log.warn({ err: mspErr, clientId: client.id }, "admin-create-client: ensureClientMspUser failed (non-fatal)");
-  }
-
-  // Generate a setup token and send the portal invite email
-  try {
-    const { token: setupToken } = await ensureClientSetupToken(client.id);
-    const baseUrl = getPortalBaseUrl();
-    const setupUrl = buildAccountSetupUrl(setupToken);
     void sendEmailFromTemplate(
-      "account-setup",
-      client.email,
-      { setupLink: setupUrl, clientName: client.name ?? client.email },
-      "You've been invited to Shane McCaw Consulting — set up your portal",
-      `<p>Hi ${client.name ?? ""},</p><p>Shane McCaw has set up a client portal for you. Click the link below to create your password and access your workspace:</p><p style="margin:24px 0;"><a href="${setupUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p><p style="color:#888;font-size:13px;">This link expires in 72 hours. If it expires, you can request a new one from the login page.</p><p>— Shane McCaw</p>`,
-    ).catch((e) => req.log.warn({ err: e, clientId: client.id, template: "account-setup" }, "client-create: invite email failed (non-fatal)"));
+      "consent-invite",
+      normalizedEmail,
+      { clientName: name ?? normalizedEmail, consentLink: invite.consentUrl },
+      "Connect your Microsoft 365 to get started with Shane McCaw Consulting",
+      `<p>Hi ${name ?? ""},</p><p>Shane McCaw Consulting uses a secure connection to your Microsoft 365 environment to set up your client workspace. Ask your Microsoft 365 administrator to open the link below and approve the connection — your portal account is created the moment it's approved:</p><p style="margin:24px 0;"><a href="${invite.consentUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Connect Microsoft 365 →</a></p><p style="color:#888;font-size:13px;">This link is single-use and expires in 72 hours.</p><p>— Shane McCaw</p>`,
+    ).catch((e) => req.log.warn({ err: e, invitedEmail: normalizedEmail, template: "consent-invite" }, "admin-add-client: consent invite email failed (non-fatal)"));
   } catch (err) {
-    req.log.warn({ err, clientId: client.id }, "Failed to send invite email after client creation");
+    req.log.warn({ err, invitedEmail: normalizedEmail }, "admin-add-client: failed to send consent invite email");
   }
 
-  res.status(201).json({ ...client, passwordHash: undefined });
+  // 202, not 201: nothing exists yet — the account is created at consent
+  // time. consentUrl is returned so the admin can also share the link
+  // directly (e.g. if the email lands in spam).
+  res.status(202).json({
+    ok: true,
+    invited: true,
+    email: normalizedEmail,
+    consentUrl: invite.consentUrl,
+    expiresAt: invite.expiresAt,
+  });
 });
 
 // ─── Resend portal invite ─────────────────────────────────────────────────────
@@ -7095,7 +7159,6 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       azureCredRows,
       quizLeadRows,
       generatedDocRows,
-      mspUserRows,
     ] = await Promise.all([
       db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.clientUserId, id)),
       db.select({ id: invoicesTable.id, status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.clientUserId, id)),
@@ -7109,7 +7172,6 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       db.select({ id: azureTenantCredentialsTable.id }).from(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id)),
       db.select({ id: quizLeadsTable.id }).from(quizLeadsTable).where(eq(quizLeadsTable.email, client.email)),
       db.select({ id: insightsGeneratedDocumentsTable.id }).from(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.customerId, id)),
-      db.select({ id: mspUsersTable.id }).from(mspUsersTable).where(eq(mspUsersTable.userId, id)),
     ]);
 
     const unpaidInvoices = invoiceRows.filter(inv => inv.status === "due" || inv.status === "overdue").length;
@@ -7129,7 +7191,10 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       azureCredentials: azureCredRows.length,
       quizLeads: quizLeadRows.length,
       generatedDocuments: generatedDocRows.length,
-      mspUsers: mspUserRows.length,
+      // msp_users was absorbed into users (#92) — deleting the users row IS the
+      // msp_users deletion now, so there is no separate row to count. Kept at 0
+      // (not dropped) so the admin delete-preview UI shape is unchanged.
+      mspUsers: 0,
     });
   } catch (err) {
     req.log.error(err, "Failed to fetch client delete preview");
@@ -7206,7 +7271,6 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     if (client.email) {
       await db.delete(quizLeadsTable).where(eq(quizLeadsTable.email, client.email));
     }
-    await db.delete(mspUsersTable).where(eq(mspUsersTable.userId, id));
     await db.delete(usersTable).where(eq(usersTable.id, id));
 
     res.status(204).end();
@@ -7401,8 +7465,8 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
     return;
   }
 
-  const [mspAdmin] = await db.select().from(mspUsersTable)
-    .where(and(eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.mspRole, "MSPAdmin")))
+  const [mspAdmin] = await db.select({ userId: usersTable.id }).from(usersTable)
+    .where(and(eq(usersTable.mspId, mspId), eq(usersTable.mspRole, "MSPAdmin")))
     .limit(1);
   if (!mspAdmin) {
     log.warn(
@@ -7463,19 +7527,18 @@ router.get("/admin/view-as/accounts", requireAdmin, async (req: Request, res: Re
       userId: usersTable.id,
       email: usersTable.email,
       name: usersTable.name,
-      mspRole: mspUsersTable.mspRole,
-      mspId: mspUsersTable.mspId,
+      mspRole: usersTable.mspRole,
+      mspId: usersTable.mspId,
       mspName: mspsTable.name,
       mspSlug: mspsTable.slug,
     })
-    .from(mspUsersTable)
-    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
-    .leftJoin(mspsTable, eq(mspUsersTable.mspId, mspsTable.id))
+    .from(usersTable)
+    .leftJoin(mspsTable, eq(usersTable.mspId, mspsTable.id))
     .where(and(
-      inArray(mspUsersTable.mspRole, ["Assessment", "CustomerUser", "MSPAdmin"]),
-      eq(mspUsersTable.isActive, true),
+      inArray(usersTable.mspRole, ["Assessment", "CustomerUser", "MSPAdmin"]),
+      eq(usersTable.isActive, true),
     ))
-    .orderBy(asc(mspUsersTable.mspRole), asc(usersTable.email));
+    .orderBy(asc(usersTable.mspRole), asc(usersTable.email));
 
   res.json({
     accounts: rows.map(r => ({
@@ -7510,8 +7573,8 @@ router.post(
     // Confirm the customer record belongs to this MSP (IDOR prevention)
     const [customer] = await db
       .select()
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.mspId, mspId)))
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
       .limit(1);
     if (!customer) {
       log.warn(
@@ -7592,7 +7655,7 @@ router.post(
         actionType: "IMPERSONATION_TOKEN_ISSUED",
         entityType: "customer",
         entityId: String(customerId),
-        entityLabel: customer.name,
+        entityLabel: customer.customerName,
         correlationId: getRequestContext()?.traceId ?? randomUUID(),
         ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
         userAgent: req.headers["user-agent"] ?? null,
@@ -7617,7 +7680,7 @@ router.post(
     res.json({
       token,
       targetSlug: ownerMsp.slug,
-      customer: { id: customer.id, name: customer.name },
+      customer: { id: customer.id, name: customer.customerName },
       targetUser: { id: targetUser.id, email: targetUser.email, name: targetUser.name },
     });
   },
@@ -13933,9 +13996,7 @@ async function provisionFreeOnboarding(opts: {
     const { authedUserId, contractIds, serviceIds, log: reqLog } = opts;
     if (serviceIds.length === 0) return { ok: false, status: 400, error: "No service IDs provided" };
 
-    // Fetch and validate services — server-side price guard. Done before user
-    // resolution below so the purchased serviceType is known in time to pick the
-    // correct msp_users role for a newly-provisioned guest account.
+    // Fetch and validate services — server-side price guard.
     const fetchedServices = await db.select().from(servicesTable)
       .where(inArray(servicesTable.id, serviceIds));
     if (fetchedServices.length === 0) return { ok: false, status: 400, error: "Services not found" };
@@ -15427,19 +15488,20 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       log.error({ err, sourceType, sourceId }, "admin: fulfillment-queue sync insert failed");
     };
 
-    // Resolve mspId/customerId for a batch of client user ids via the canonical
-    // client_user_id -> msp_users join (same pattern as ensureClientMspUser /
-    // getMspIdFromRequest). Returns a map keyed by userId; a userId with no
-    // msp_users row is simply absent, and the caller logs a warning + inserts
-    // mspId NULL rather than failing (so orphaned rows are visible, not silent).
+    // Resolve mspId/customerId for a batch of client user ids straight off the
+    // users rows (msp_users was absorbed into users — #92; customerId here is
+    // users.tenant_id, the tenants.id every customer-scoped read keys on).
+    // Returns a map keyed by userId; an unscoped user resolves to nulls, and
+    // the caller logs a warning + inserts mspId NULL rather than failing (so
+    // orphaned rows are visible, not silent).
     const resolveMspLinks = async (
       userIds: number[],
     ): Promise<Map<number, { mspId: number | null; customerId: number | null }>> => {
       if (userIds.length === 0) return new Map();
       const rows = await db
-        .select({ userId: mspUsersTable.userId, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
-        .from(mspUsersTable)
-        .where(inArray(mspUsersTable.userId, userIds));
+        .select({ userId: usersTable.id, mspId: usersTable.mspId, customerId: usersTable.tenantId })
+        .from(usersTable)
+        .where(inArray(usersTable.id, userIds));
       return new Map(rows.map(r => [r.userId, { mspId: r.mspId, customerId: r.customerId }]));
     };
 
@@ -15793,10 +15855,10 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
     // ── Current-schema (MSP tenant) data ────────────────────────────────────────
     // The legacy queries above are keyed by usersTable.id. Customers provisioned
     // under the current schema hold their real data (diagnostics, engine scores,
-    // SOWs, MSP documents, consent, monitoring history) keyed by mspCustomers.id.
-    // req.user.customerId is that id (resolved from msp_users at login); it is
-    // undefined for staff/admin accounts and for legacy-only clients, in which
-    // case this whole section is omitted.
+    // SOWs, MSP documents, consent, monitoring history) keyed by tenants.id.
+    // req.user.customerId is that id (the JWT claim carries users.tenantId —
+    // Phase 1 froze the wire name); it is undefined for staff/admin accounts
+    // and for legacy-only clients, in which case this whole section is omitted.
     const customerId = req.user!.customerId;
     let currentSchema: Record<string, unknown> | null = null;
     if (typeof customerId === "number") {
@@ -15817,9 +15879,9 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
         mspAudit,
       ] = await Promise.all([
         db.select({
-          id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain,
-          industry: mspCustomersTable.industry, status: mspCustomersTable.status, createdAt: mspCustomersTable.createdAt,
-        }).from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1),
+          id: tenantsTable.id, name: tenantsTable.customerName, domain: tenantsTable.domain,
+          industry: tenantsTable.industry, status: tenantsTable.status, createdAt: tenantsTable.createdAt,
+        }).from(tenantsTable).where(eq(tenantsTable.id, customerId)).limit(1),
         db.select({
           runId: mspDiagnosticRunsTable.runId, packageKey: mspDiagnosticRunsTable.packageKey,
           status: mspDiagnosticRunsTable.status, checksTotal: mspDiagnosticRunsTable.checksTotal,
@@ -15867,11 +15929,10 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
           agreementTextSnapshot: mspCustomerClickwrapsTable.agreementTextSnapshot,
           ipAddress: mspCustomerClickwrapsTable.ipAddress, acceptedAt: mspCustomerClickwrapsTable.acceptedAt,
         }).from(mspCustomerClickwrapsTable).where(eq(mspCustomerClickwrapsTable.customerId, customerId)).orderBy(desc(mspCustomerClickwrapsTable.acceptedAt)),
-        db.select({
-          consentStatus: tenantConsentTable.consentStatus, adminEmail: tenantConsentTable.adminEmail,
-          adminDisplayName: tenantConsentTable.adminDisplayName, scopesGranted: tenantConsentTable.scopesGranted,
-          consentedAt: tenantConsentTable.consentedAt, revokedAt: tenantConsentTable.revokedAt,
-        }).from(tenantConsentTable).where(eq(tenantConsentTable.customerId, customerId)),
+        // Consent lives on tenants.consent (jsonb keyed by type — graph /
+        // writeBack / sharepoint) since Phase 0 folded the three consent
+        // tables into it; export the whole map rather than one row per type.
+        db.select({ consent: tenantsTable.consent }).from(tenantsTable).where(eq(tenantsTable.id, customerId)).limit(1),
         db.select({
           status: mspSalesBundleAssignmentsTable.status, activatedAt: mspSalesBundleAssignmentsTable.activatedAt,
           trialExpiresAt: mspSalesBundleAssignmentsTable.trialExpiresAt, assignedAt: mspSalesBundleAssignmentsTable.assignedAt,
@@ -15895,7 +15956,7 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
         sows,
         reportRuns,
         clickwrapAcceptances: clickwraps,
-        tenantConsent: consent,
+        tenantConsent: consent[0]?.consent ?? {},
         salesBundleAssignments: bundleAssignments,
         auditActivity: mspAudit,
       };

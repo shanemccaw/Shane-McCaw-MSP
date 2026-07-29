@@ -81,7 +81,7 @@ vi.mock("@workspace/db", () => {
     messagesTable: table("messages"),
     notificationsTable: table("notifications"),
     projectUpdatesTable: table("projectUpdates"),
-    usersTable: { id: "id", email: "email", role: "role", name: "name" },
+    usersTable: { id: "id", email: "email", role: "role", name: "name", tenantId: "tenant_id", mspId: "msp_id", mspRole: "msp_role" },
     contractsTable: table("contracts"),
     passwordResetTokensTable: table("passwordResetTokens"),
     workflowTemplateStepsTable: table("workflowTemplateSteps"),
@@ -126,12 +126,10 @@ vi.mock("@workspace/db", () => {
     fulfillmentSlaConfigTable: table("fulfillmentSlaConfig"),
     FULFILLMENT_DELIVERY_STATUSES: ["queued", "delivered"],
     FULFILLMENT_SOURCE_TYPES: ["manual", "automated"],
-    mspCustomersTable: { id: "id", mspId: "msp_id", tenantId: "tenant_id", status: "status", name: "name", domain: "domain" },
-    mspUsersTable: { id: "id", userId: "user_id", mspId: "msp_id", customerId: "customer_id", mspRole: "msp_role" },
+    tenantsTable: { id: "id", mspId: "msp_id", tenantId: "tenant_id", status: "status", customerName: "customer_name", domain: "domain", industry: "industry", consent: "consent", createdAt: "created_at" },
     mspAuditLogsTable: table("mspAuditLogs"),
     monitorChecksTable: table("monitorChecks"),
     checkoutSessionsTable: table("checkoutSessions"),
-    tenantConsentTable: table("tenantConsent"),
     mspDiagnosticRunsTable: table("mspDiagnosticRuns"),
     mspsTable: table("msps"),
   };
@@ -192,6 +190,10 @@ vi.mock("../lib/graph.ts", () => ({
   createProjectFolder: vi.fn(),
   uploadFileToClientContracts: vi.fn(),
   getDriveItemDownloadUrl: vi.fn(),
+  // consent-invite.ts (imported by portal.ts since #103) pulls these three:
+  buildAdminConsentUrl: vi.fn().mockReturnValue("https://login.microsoftonline.com/common/adminconsent?test=1"),
+  mtAppCredentialsPresent: vi.fn().mockReturnValue(false),
+  REQUIRED_MT_SCOPES: [],
 }));
 
 vi.mock("../lib/azure-keyvault.ts", () => ({
@@ -307,7 +309,7 @@ vi.mock("pdf-lib", () => ({
 }));
 
 import router, { ensureClientMspUser } from "./portal.ts";
-import { db, mspUsersTable, usersTable, mspCustomersTable } from "@workspace/db";
+import { db, usersTable } from "@workspace/db";
 
 const app = express();
 app.use(express.json());
@@ -334,7 +336,7 @@ describe("DELETE /api/portal/admin/clients/:id", () => {
     deleteCalls.length = 0;
   });
 
-  it("deletes both usersTable and mspUsersTable rows for a client with an active msp_users row", async () => {
+  it("deletes the users row (msp_users was absorbed into users — #92, so one delete IS the whole account)", async () => {
     const clientId = 42;
     const token = makeAdminToken();
 
@@ -353,31 +355,28 @@ describe("DELETE /api/portal/admin/clients/:id", () => {
 
     expect(res.status).toBe(204);
 
-    // The core regression assertion: db.delete was called with mspUsersTable,
-    // scoped by the deleted client's id, in addition to usersTable.
-    expect(db.delete).toHaveBeenCalledWith(mspUsersTable);
+    // Post-#92 there is no separate msp_users row: deleting the users row is
+    // the complete account deletion. The regression this file originally
+    // guarded (an orphaned msp_users row surviving the user delete) is now
+    // structurally impossible, so the assertion inverts: exactly one delete
+    // against usersTable, and no delete against any dropped bridge table.
     expect(db.delete).toHaveBeenCalledWith(usersTable);
-
-    const mspUsersDeleteIndex = (db.delete as any).mock.calls.findIndex(
-      (call: unknown[]) => call[0] === mspUsersTable
-    );
-    const usersDeleteIndex = (db.delete as any).mock.calls.findIndex(
+    const usersDeleteCalls = (db.delete as any).mock.calls.filter(
       (call: unknown[]) => call[0] === usersTable
     );
-    expect(mspUsersDeleteIndex).toBeGreaterThanOrEqual(0);
-    expect(usersDeleteIndex).toBeGreaterThanOrEqual(0);
-    // mspUsersTable delete happens before the usersTable delete (FK-safe ordering).
-    expect(mspUsersDeleteIndex).toBeLessThan(usersDeleteIndex);
+    expect(usersDeleteCalls).toHaveLength(1);
   });
 });
 
 // Cross-MSP tenant boundary backstop in ensureClientMspUser. This is the
 // post-payment defense-in-depth half of "Reject cross-MSP tenant consent
 // conflicts" (the consent-time check in routes/consent.ts is the primary gate).
-// When a tenantId resolves to a customer under a DIFFERENT MSP than the user's
-// existing msp_users row, the customerId patch must be REFUSED so the user is
-// never cross-linked to another MSP's customer (which would leak that MSP's
-// engine history / findings / SOWs — confirmed live for user 92).
+// When a tenantId resolves to a tenants row under a DIFFERENT MSP than the
+// user's own msp_id, the tenant-link patch must be REFUSED so the user is
+// never cross-linked to another MSP's tenant (which would leak that MSP's
+// engine history / findings / SOWs — confirmed live pre-refactor for user 92).
+// Post-#92 the "existing msp_users row" is the user's own row: the second
+// mocked select is the users-row read (tenantId/mspId/mspRole projection).
 describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -385,39 +384,39 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
     mockDefaultSelectResult = [];
   });
 
-  it("REFUSES to patch customerId when the tenantId customer is under a different MSP", async () => {
+  it("REFUSES to patch the tenant link when the tenantId tenant is under a different MSP", async () => {
     mockSelectResultsQueue = [
-      // 1. tenantId → customer lookup: customer 1 lives under mspId 1
+      // 1. tenantId → tenants lookup: tenant 1 lives under mspId 1
       [{ id: 1, mspId: 1 }],
-      // 2. existing msp_users row for this user: under mspId 89, customerId still null
-      [{ id: 500, existingCustomerId: null, existingMspId: 89 }],
+      // 2. the user's own row: under mspId 89, not tenant-linked yet
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: "CustomerUser" }],
     ];
 
     await ensureClientMspUser(92, "tenant-conflict");
 
-    // The buggy patch must NOT run — leave the existing row's customerId untouched.
+    // The buggy patch must NOT run — leave the user's tenant link untouched.
     expect(db.update).not.toHaveBeenCalled();
   });
 
-  it("patches customerId when the tenantId customer is under the SAME MSP", async () => {
+  it("patches the tenant link when the tenantId tenant is under the SAME MSP", async () => {
     mockSelectResultsQueue = [
-      // 1. tenantId → customer lookup: customer 5 under mspId 89 (matches the user's MSP)
+      // 1. tenantId → tenants lookup: tenant 5 under mspId 89 (matches the user's MSP)
       [{ id: 5, mspId: 89 }],
-      // 2. existing msp_users row: under mspId 89, customerId null → safe to patch
-      [{ id: 500, existingCustomerId: null, existingMspId: 89 }],
+      // 2. the user's own row: under mspId 89, not tenant-linked → safe to patch
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: "CustomerUser" }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");
 
-    // No conflict → the customerId patch proceeds on mspUsersTable.
-    expect(db.update).toHaveBeenCalledWith(mspUsersTable);
+    // No conflict → the tenant-link patch proceeds on the user's own row.
+    expect(db.update).toHaveBeenCalledWith(usersTable);
   });
 
-  it("does not patch (nothing to do) when the existing row already has a customerId", async () => {
+  it("does not patch (nothing to do) when the user is already tenant-linked", async () => {
     mockSelectResultsQueue = [
       [{ id: 5, mspId: 89 }],
-      // existing row already linked → no patch regardless of MSP
-      [{ id: 500, existingCustomerId: 5, existingMspId: 89 }],
+      // already linked → no patch regardless of MSP
+      [{ existingCustomerId: 5, existingMspId: 89, existingRole: "CustomerUser" }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");

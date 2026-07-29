@@ -607,6 +607,13 @@ export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
   tenantId: text("tenant_id"),
   customerId: integer("customer_id"), // orphaned msp_customers id — FK dropped in Phase 0, column removed in Phase 7
   clientUserId: integer("client_user_id"),
+  // Admin "add client" invites (#103): the email/name the admin specified for
+  // a client with NO users row yet — consent-first means no account can exist
+  // before M365 consent, so the invite itself must carry the identity. The
+  // consent callback provisions the account (provisionProspectAccount) with
+  // these once the tenant admin approves.
+  invitedEmail: text("invited_email"),
+  invitedName: text("invited_name"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

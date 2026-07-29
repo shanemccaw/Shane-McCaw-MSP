@@ -253,11 +253,18 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   }
 
   // Validate and burn the invite token (only for non-UUID state values)
-  let inviteRecord: { customerId: number | null; clientUserId: number | null } | null = null;
+  let inviteRecord: { customerId: number | null; clientUserId: number | null; invitedEmail: string | null; invitedName: string | null } | null = null;
   if (state && !isCheckoutSession) {
     const now = new Date();
     const [row] = await db
-      .select({ customerId: consentInviteTokensTable.customerId, clientUserId: consentInviteTokensTable.clientUserId })
+      .select({
+        customerId: consentInviteTokensTable.customerId,
+        clientUserId: consentInviteTokensTable.clientUserId,
+        // Admin "add client" invites (#103) carry the identity of a client
+        // with no account yet — provisioned below once consent is granted.
+        invitedEmail: consentInviteTokensTable.invitedEmail,
+        invitedName: consentInviteTokensTable.invitedName,
+      })
       .from(consentInviteTokensTable)
       .where(
         and(
@@ -490,6 +497,29 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       }
     }
     // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context) → baseline fallback
+
+    // Admin "add client" invite path (#103): the token carries the email the
+    // admin specified and no clientUserId (no account existed when it was
+    // minted). Provision the real account NOW, exactly like the
+    // checkout-session path above — provisionProspectAccount is the single
+    // account-creation door, and it needs the real tenant GUID we just got.
+    if (!isCheckoutSession && inviteRecord && clientId == null && inviteRecord.invitedEmail) {
+      const { provisionProspectAccount } = await import("./portal.js");
+      const prospect = await provisionProspectAccount({
+        email: inviteRecord.invitedEmail,
+        fullName: inviteRecord.invitedName,
+        tenantId: tenant,
+        role: "CustomerUser",
+      });
+      if (prospect) {
+        clientId = prospect.userId;
+        prospectCustomerId = prospect.customerId;
+        log.info(
+          { tenant, userId: prospect.userId, customerId: prospect.customerId },
+          "consent callback: provisioned admin-invited client account at consent time",
+        );
+      }
+    }
 
     resolvedPackageKey = packageKey ?? "core:security-baseline";
 
