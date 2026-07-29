@@ -70,6 +70,8 @@ export type NodeTypeMeta =
       description?: string;
     };
 
+import { ZOHO_CRM_NODES } from "./zoho-crm-nodes.ts";
+
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // ── Meta-node ──────────────────────────────────────────────────────────────
   {
@@ -807,6 +809,17 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Drains a bounded batch of pending zoho.* jobs from msp_job_queue — no AI",
   },
+
+  // ── Zoho CRM (#83) — 26 nodes, none AI-dependent ──────────────────────────
+  // Derived from the single catalog in zoho-crm-nodes.ts rather than restated
+  // here, so a node can never be registered in one place and missing from the
+  // other. The completeness assertions in ai-usage-metering.test.ts check
+  // isRegisteredNodeType() at runtime, which this satisfies.
+  ...ZOHO_CRM_NODES.map((n): NodeTypeMeta => ({
+    nodeType: n.nodeType,
+    isAIDependent: false,
+    description: n.description,
+  })),
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

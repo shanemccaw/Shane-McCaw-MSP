@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { db, quickWinQuizResultsTable, servicesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { ensureLeadStagingForEmail } from "../lib/lead-intent";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "growth.quiz" });
 
@@ -52,6 +53,66 @@ router.post("/quiz/quick-win/submit", submitLimiter, async (req, res) => {
   } catch (err) {
     log.error({ err }, "Failed to save quick win quiz result");
     res.status(500).json({ error: "Failed to save result" });
+  }
+});
+
+// Identity capture (#83). A quick-win result is anonymous by construction —
+// the table has no name or email column at all — so these rows cannot be
+// staged leads on their own. This is the promotion point: once a visitor gives
+// an email against a result, the result is linked to a lead_staging row and
+// that lead (not the anonymous result) is what syncs to Zoho.
+const captureSchema = z.object({
+  email: z.string().email(),
+  name: z.string().trim().min(1).max(200).optional(),
+  company: z.string().trim().max(200).optional(),
+});
+
+router.post("/quiz/quick-win/results/:resultId/identify", submitLimiter, async (req, res) => {
+  const id = parseInt(String(req.params.resultId), 10);
+  if (isNaN(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid result ID" });
+    return;
+  }
+
+  const parsed = captureSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid identity", details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const [result] = await db
+      .select({ id: quickWinQuizResultsTable.id, leadStagingId: quickWinQuizResultsTable.leadStagingId })
+      .from(quickWinQuizResultsTable)
+      .where(eq(quickWinQuizResultsTable.id, id))
+      .limit(1);
+
+    if (!result) {
+      res.status(404).json({ error: "Result not found" });
+      return;
+    }
+
+    const staged = await ensureLeadStagingForEmail(parsed.data.email, {
+      name: parsed.data.name,
+      company: parsed.data.company,
+      source: "quick_win_quiz",
+    });
+
+    if (!staged) {
+      // Staging is non-fatal by design; the visitor still gets their results.
+      res.status(202).json({ resultId: id, leadStagingId: null, synced: false });
+      return;
+    }
+
+    await db
+      .update(quickWinQuizResultsTable)
+      .set({ leadStagingId: staged.id })
+      .where(eq(quickWinQuizResultsTable.id, id));
+
+    res.json({ resultId: id, leadStagingId: staged.id, synced: true, zohoSyncState: staged.zohoSyncState });
+  } catch (err) {
+    log.error({ err }, "Failed to capture identity for quick win quiz result");
+    res.status(500).json({ error: "Failed to capture identity" });
   }
 });
 

@@ -1,13 +1,17 @@
 import {
   db,
   leadsTable,
+  leadStagingTable,
   leadIntentEventsTable,
   leadScoringRulesTable,
   leadScoringTrackedPagesTable,
   leadScoringConfigTable,
+  type LeadStaging,
 } from "@workspace/db";
 import { eq, and, gte, isNull } from "drizzle-orm";
 import { logger } from "./logger";
+import { queueLeadStagingPush } from "./zoho-lead-sync.ts";
+import { ZOHO_DEFAULT_MSP_ID } from "./zoho-client.ts";
 
 const log = logger.child({ channel: "crm" });
 
@@ -120,9 +124,72 @@ export async function ensureLeadForEmail(
       .returning({ id: leadsTable.id });
 
     log.info({ leadId: newLead!.id, source: opts.source }, "lead-intent: created lead from identity bridge");
+
+    // Zoho CRM (#83): the same identity is staged and queued for Zoho. Awaited
+    // but self-contained — ensureLeadStagingForEmail never throws, so a Zoho
+    // outage cannot break the quiz/login flow that called us.
+    await ensureLeadStagingForEmail(normalizedEmail, { ...opts, legacyLeadId: newLead!.id });
+
     return newLead!.id;
   } catch (err) {
     log.warn({ err, email }, "lead-intent: ensureLeadForEmail failed (non-fatal)");
     return 0;
+  }
+}
+
+/**
+ * The lead_staging half of the identity bridge (#83), and the single place a
+ * captured identity becomes a Zoho-bound lead.
+ *
+ * Find-or-create by email, then queue an upsert push. Returns the staged row,
+ * or null if staging failed — callers treat that as "no Zoho sync", never as a
+ * reason to fail their own flow.
+ *
+ * An already-staged email is NOT re-queued: `zoho_upsert_lead` is idempotent,
+ * but re-queueing on every login would put one job per login on the drain for
+ * no new information.
+ */
+export async function ensureLeadStagingForEmail(
+  email: string,
+  opts: {
+    name?: string;
+    company?: string;
+    source: "quiz" | "portal_login" | "quick_win_quiz" | "contact_form" | "assessment";
+    legacyLeadId?: number;
+    legacyQuizLeadId?: number;
+  },
+): Promise<LeadStaging | null> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) return null;
+
+    const [existing] = await db
+      .select()
+      .from(leadStagingTable)
+      .where(eq(leadStagingTable.email, normalizedEmail))
+      .limit(1);
+
+    if (existing) return existing;
+
+    const [staged] = await db
+      .insert(leadStagingTable)
+      .values({
+        name: opts.name?.trim() || normalizedEmail,
+        email: normalizedEmail,
+        company: opts.company?.trim() || null,
+        source: opts.source,
+        status: "new",
+        stage: "Cold",
+        legacyLeadId: opts.legacyLeadId ?? null,
+        legacyQuizLeadId: opts.legacyQuizLeadId ?? null,
+      })
+      .returning();
+
+    log.info({ leadStagingId: staged?.id, source: opts.source }, "lead-intent: staged lead for Zoho sync");
+    await queueLeadStagingPush(staged, { mspId: ZOHO_DEFAULT_MSP_ID });
+    return staged ?? null;
+  } catch (err) {
+    log.warn({ err, email }, "lead-intent: ensureLeadStagingForEmail failed (non-fatal)");
+    return null;
   }
 }

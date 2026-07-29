@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import {
-  db, leadsTable, recommendedLeadsTable, outreachTemplatesTable,
+  db, leadsTable, leadStagingTable, recommendedLeadsTable, outreachTemplatesTable,
   marketingTasksTable, campaignsTable, campaignAssetsTable,
   analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
   settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
@@ -10,6 +10,8 @@ import {
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
 import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { queueLeadStagingPush } from "../lib/zoho-lead-sync.ts";
+import { ZOHO_DEFAULT_MSP_ID } from "../lib/zoho-client.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
 import { fetchTopQueries } from "../lib/search-console";
@@ -381,11 +383,37 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
       notes: noteParts.join(" | "),
     }).returning();
 
+    // Zoho CRM (#83): the staged row is now the canonical one — it is what
+    // gets pushed to Zoho. The legacy `leads` row above is still written
+    // because ~28 files (leads.ts, opportunities.ts, inbox.ts, …) still read
+    // that table; both are decommissioned together in #84, so this overlap is
+    // deliberate and temporary rather than a second source of truth.
+    const [staged] = await db.insert(leadStagingTable).values({
+      name: rec.name,
+      email: rec.email ?? emailFallback,
+      company: rec.company ?? null,
+      companySize: rec.companySize ?? null,
+      industry: rec.industry ?? null,
+      role: rec.role ?? null,
+      phone: rec.phone ?? null,
+      location: rec.location ?? null,
+      painPoints: rec.painPoints,
+      source: "ai_recommended",
+      status: "contacted",
+      stage: "Warm",
+      notes: noteParts.join(" | "),
+      legacyLeadId: newLead?.id ?? null,
+    }).returning();
+
+    // convertedZohoLeadId stays null until the drain reports the real Zoho id —
+    // no Zoho record exists yet at this point in the request.
     await db.update(recommendedLeadsTable)
-      .set({ status: "converted", convertedLeadId: newLead?.id })
+      .set({ status: "converted", convertedLeadStagingId: staged?.id ?? null })
       .where(eq(recommendedLeadsTable.id, id));
 
-    res.json({ success: true, lead: newLead });
+    await queueLeadStagingPush(staged, { mspId: ZOHO_DEFAULT_MSP_ID });
+
+    res.json({ success: true, lead: newLead, leadStagingId: staged?.id ?? null });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

@@ -84,6 +84,23 @@ interface ClaimedZohoJob {
 const STALE_RUNNING_MINUTES = 15;
 
 /**
+ * Which msp_job_queue rows belong to this drain.
+ *
+ * Foundation shipped `job_type LIKE 'zoho.%'`, written when the plan still used
+ * dot-notation job types. #83 locked the naming to snake_case (`zoho_create_lead`),
+ * matching node-type-registry.ts and msp-jobs.ts, and node type === jobType. A
+ * `zoho_*` job does NOT match `'zoho.%'` — `.` is a literal in LIKE — so every
+ * CRM write would have sat pending forever, claimed by nobody and reported by
+ * nothing. Both prefixes are accepted so any dot-notation job already queued
+ * before this landed still drains.
+ *
+ * Deliberately not written as LIKE 'zoho\_%': `_` is a single-character
+ * wildcard in LIKE, so the underscore form needs an ESCAPE clause to be exact,
+ * and left()= is unambiguous without one.
+ */
+const ZOHO_JOB_TYPE_PREDICATE = "(job_type LIKE 'zoho.%' OR left(job_type, 5) = 'zoho_')";
+
+/**
  * The zoho_batch_drain node handler. Claims up to `batchSize` (default 20)
  * due pending zoho.* jobs with FOR UPDATE SKIP LOCKED, marks them running,
  * then executes them with at most `concurrency` (default 5) simultaneous Zoho
@@ -102,7 +119,7 @@ export async function handleZohoBatchDrain(
       UPDATE msp_job_queue
       SET status = 'pending', started_at = NULL
       WHERE status = 'running'
-        AND job_type LIKE 'zoho.%'
+        AND ${sql.raw(ZOHO_JOB_TYPE_PREDICATE)}
         AND started_at < NOW() - INTERVAL '${sql.raw(String(STALE_RUNNING_MINUTES))} minutes'
       RETURNING id
     `);
@@ -118,7 +135,7 @@ export async function handleZohoBatchDrain(
                attempt_count, max_attempts
         FROM msp_job_queue
         WHERE status = 'pending'
-          AND job_type LIKE 'zoho.%'
+          AND ${sql.raw(ZOHO_JOB_TYPE_PREDICATE)}
           AND scheduled_at <= NOW()
         ORDER BY scheduled_at ASC
         LIMIT ${batchSize}
