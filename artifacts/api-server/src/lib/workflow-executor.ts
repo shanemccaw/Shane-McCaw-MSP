@@ -94,8 +94,6 @@ const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
-import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
-import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
@@ -1180,14 +1178,8 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, soundPlayed: false, soundTarget: psTarget, skipped: true };
     }
 
-    case "reconcile_orphaned_runs":
-      return { dryRun: true, reconciled: false, task: (node.data.task as string | undefined) ?? "reconcile_orphaned_runs", note: "dry run — reconciliation skipped" };
-
     case "alert_evaluate_rules":
       return { dryRun: true, evaluated: false, note: "dry run — alert rule evaluation skipped" };
-
-    case "kanban_auto_fire":
-      return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
 
     case "monitor_subscription_ensure": {
       const mseContentTypeDry = (node.data.contentType as string | undefined) ?? "Audit.AzureActiveDirectory";
@@ -1868,7 +1860,7 @@ function aiAttributionFor(
 //   1. An internal script-library UUID (workflow_template_step_tasks.runbook_id
 //      is a FK to powershell_scripts.id or script_modules.id — see
 //      admin-ps-scripts.ts "single source of truth" comments and the same
-//      resolution pattern in kanban-auto-fire.ts's resolveRunbook()).
+//      resolution pattern used elsewhere for Azure Automation runbook IDs).
 //   2. A literal Azure Automation ARM resource ID, if the user typed/piped one
 //      in manually via the builder's Runbook ID field.
 // Internal UUIDs never match Azure's ARM-style `rb.id` values, so they must be
@@ -2198,7 +2190,7 @@ async function executeNode(
               // Resolve App Registration credentials from Key Vault so the
               // runbook receives the real Azure AD TenantId, ClientId (app
               // registration client ID), and ClientSecret — not raw DB integers.
-              // This mirrors the exact same pattern used in kanban-auto-fire.ts.
+              // This mirrors the Key Vault credential-resolution pattern used elsewhere for Azure Automation.
               const clientIdRaw = interp(node.data.clientId as string | undefined, payload);
               const clientUserId = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
               if (!isNaN(clientUserId)) {
@@ -6599,58 +6591,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
-      case "reconcile_orphaned_runs": {
-        // Promoted node type: inspects live process state after a restart to recover
-        // orphaned kanban runs, stalled phases, and late stuck-queued completions.
-        // This is the one legitimate "internal" node because inspecting live process
-        // state is not expressible generically with sql_query or other node types.
-        const rorTask = (node.data.task as string | undefined) ?? "reconcile_orphaned_runs";
-        if (rorTask === "reconcile_late_stuck_queued") {
-          await reconcileLateStuckQueuedCompletions();
-          log.info("wf-executor: reconcile_orphaned_runs — reconcile_late_stuck_queued completed");
-          output = { reconciled: true, task: rorTask };
-        } else {
-          await reconcileOrphanedRuns();
-          await reconcileStalledPhases();
-          await reconcileLateStuckQueuedCompletions();
-          log.info("wf-executor: reconcile_orphaned_runs completed");
-          output = { reconciled: true, task: rorTask };
-        }
-        break;
-      }
-
       case "alert_evaluate_rules": {
         await runAlertRuleEvaluation();
         log.info("wf-executor: alert_evaluate_rules completed");
         output = { evaluated: true };
-        break;
-      }
-
-      case "kanban_auto_fire": {
-        // Fires the kanban auto-fire function based on the `action` field in the
-        // node data / payload (set by the upstream kanban.card_moved event).
-        // Script and document actions were removed — both are superseded by the
-        // real, event-driven flow (consent -> event emitted -> login -> workflow
-        // verifies telemetry -> generates documents).
-        //   action = "workflow" → autoFireRunWorkflowCards (child workflow launch)
-        //   action = ""         → defaults to "workflow"
-        // Delegated to handleAutoFireKanban for testable, isolated dispatch logic.
-        const mepClientIdRaw = interp(node.data.clientId as string | undefined, payload)
-          ?? String((payload.clientUserId as number | string | undefined) ?? "");
-        const mepClientId = mepClientIdRaw ? parseInt(mepClientIdRaw, 10) : NaN;
-        const mepAction   = (interp(node.data.action as string | undefined, payload)
-          ?? String(payload.action ?? "")) as string;
-
-        if (isNaN(mepClientId)) {
-          log.warn({ runId, nodeId: node.id }, "kanban_auto_fire: no clientId — skipping");
-          output = { skipped: true, reason: "no clientId" };
-          break;
-        }
-
-        // Empty action defaults to "workflow" (only remaining action after
-        // script/document removal).
-        output = await handleAutoFireKanban({ clientUserId: mepClientId, action: mepAction || "workflow" });
-        log.info({ runId, mepClientId, mepAction, output }, "wf-executor: kanban_auto_fire dispatched");
         break;
       }
 

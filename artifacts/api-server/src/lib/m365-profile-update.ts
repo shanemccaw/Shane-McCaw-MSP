@@ -2,8 +2,7 @@
  * m365-profile-update.ts
  *
  * Shared helpers for writing M365 profile data and snapshotting health scores.
- * Imported by both admin-m365-run.ts (manual script runs) and kanban-auto-fire.ts
- * (automated kanban card script runs) so both code paths keep the profile and
+ * Imported by admin-m365-run.ts (manual script runs) to keep the profile and
  * health history in sync after every script run.
  */
 

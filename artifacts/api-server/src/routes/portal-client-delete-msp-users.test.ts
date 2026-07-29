@@ -233,12 +233,6 @@ vi.mock("../lib/kanban-phase-advance.ts", () => ({
   seedKanbanCardsForPhase: vi.fn(),
 }));
 
-vi.mock("../lib/kanban-auto-fire.ts", () => ({
-  autoFireFirstBacklogScript: vi.fn(),
-  autoFireDocumentCard: vi.fn(),
-  autoFireRunWorkflowCards: vi.fn(),
-}));
-
 vi.mock("../lib/azure-automation.ts", () => ({
   isAzureConfigured: vi.fn().mockReturnValue(false),
 }));

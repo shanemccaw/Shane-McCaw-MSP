@@ -3,7 +3,7 @@
  *
  * Azure script execution was retired as part of the Script Runner rework.
  * All functions in this file are no-ops / permanent-false guards so that
- * existing callers (workflow-executor, kanban-auto-fire, client-script-sequence)
+ * existing callers (workflow-executor, client-script-sequence)
  * continue to compile and run safely.  Their internal guards all check
  * `isAzureConfigured()` before calling any job APIs, so returning `false`
  * there causes them to skip the Azure path entirely.

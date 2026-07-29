@@ -174,7 +174,6 @@ for (const mod of [
   "../lib/tenant-signals.ts",
   "../lib/client-script-sequence.ts",
   "../lib/kanban-phase-advance.ts",
-  "../lib/kanban-auto-fire.ts",
   "../lib/azure-automation.ts",
   "../lib/crm-pipeline.ts",
   "../lib/invoice-sharepoint.ts",

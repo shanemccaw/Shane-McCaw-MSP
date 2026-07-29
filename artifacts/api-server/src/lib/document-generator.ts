@@ -2,10 +2,7 @@
  * document-generator.ts
  *
  * Shared helper for auto-generating and auto-delivering an Insights document
- * (report or consulting deliverable) directly from a kanban workflow task.
- *
- * Called by kanban-auto-fire.ts when a card with taskType="document_generation"
- * becomes the first backlog item in an active phase.
+ * (report or consulting deliverable).
  *
  * The document is written to insights_generated_documents with
  * status="delivered" and deliveredAt set, making it immediately visible in the
@@ -48,7 +45,7 @@ const AI_KILL_SWITCH_ENABLED = false;
 // Mirrors omg-card-extractor.ts's trackUsage(): resolves the billing MSP via the
 // msp_users bridge (userId → mspId), keyed off clientUserId — the only identity
 // this module carries (there is no request-scoped acting user; generation is
-// triggered by kanban-auto-fire.ts or an admin Test Draft call).
+// triggered by an admin Test Draft call or another module's caller).
 function trackUsage(opts: {
   inputTokens: number;
   outputTokens: number;

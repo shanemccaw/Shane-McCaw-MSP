@@ -170,8 +170,6 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Scripts ──
   generate_script:      { bg: "#0D1A10", border: "#22C55E", icon: "📜", label: "Generate Script"       },
   check_script_output:  { bg: "#041A18", border: "#2DD4BF", icon: "🔬", label: "Check Script Output"   },
-  // ── Kanban (internal — not in library) ──
-  kanban_auto_fire: { bg: "#1A1020", border: "#7C3AED", icon: "⚡", label: "Auto-fire Card" },
   // ── Monitoring ──
   monitor_get_package:         { bg: "#0F2A2A", border: "#00B4D8", icon: "📦", label: "Get Monitor Package"        },
   monitor_execute_package:     { bg: "#0F2A2A", border: "#00B4D8", icon: "📡", label: "Execute Monitor Package"    },
