@@ -55,8 +55,6 @@ import {
   wfRunsTable,
   wfDefinitionsTable,
   presentationDocViewsTable,
-  tenantConsentTable,
-  tenantSharePointConsentTable,
 } from "@workspace/db";
 
 /**
@@ -519,8 +517,12 @@ router.get(
       // ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
       // isTestbed is exposed here only so the shell-wide scan-trigger button can
       // gate itself to testbed customers. Remove alongside that button.
+      // Both consent grants come off this same row — they are two keys of the
+      // tenant's `consent` jsonb column since Phase 0 folded the three consent
+      // tables into it (#92/#99), so the two extra per-type lookups this used
+      // to do are gone.
       const [customerRow] = await db
-        .select({ isTestbed: tenantsTable.isTestbed, tenantId: tenantsTable.tenantId })
+        .select({ isTestbed: tenantsTable.isTestbed, tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, customerId))
         .limit(1);
@@ -529,56 +531,36 @@ router.get(
       let scopesStale = false;
       // SharePoint Online is a SEPARATE Azure resource from Graph
       // (00000003-0000-0ff1-ce00-000000000000), consented independently and
-      // recorded in its own tenant_sharepoint_consent row. It is deliberately
-      // NOT derived from tenantConsentTable: a granted Graph consent says
-      // nothing about whether Sites.FullControl.All was ever approved, so
-      // reading it off the Graph row would report every pre-existing tenant as
-      // SharePoint-consented when none of them are.
-      // null = no row (genuinely never consented, a reportable state);
+      // recorded under its own `sharepoint` key. It is deliberately NOT derived
+      // from the `graph` key: a granted Graph consent says nothing about whether
+      // Sites.FullControl.All was ever approved, so reading it off the Graph
+      // grant would report every pre-existing tenant as SharePoint-consented
+      // when none of them are.
+      // null = key absent (genuinely never consented, a reportable state);
       // undefined = could not be read at all (omitted from the payload → unknown).
       let sharePointConsentStatus: string | null | undefined = null;
       let sharePointPermissionsStale = false;
       if (customerRow?.tenantId) {
-        const [consentRow] = await db
-          .select({ consentStatus: tenantConsentTable.consentStatus, scopesGranted: tenantConsentTable.scopesGranted })
-          .from(tenantConsentTable)
-          .where(eq(tenantConsentTable.tenantId, customerRow.tenantId))
-          .limit(1);
-        consentStatus = consentRow?.consentStatus ?? null;
+        const consent = customerRow.consent ?? {};
+        consentStatus = consent.graph?.status ?? null;
         // Only a "granted" tenant can be scope-stale — revoked/declined/pending
         // are already surfaced via consentStatus itself and take priority.
         if (consentStatus === "granted") {
-          const granted = new Set(consentRow?.scopesGranted ?? []);
+          const granted = new Set(consent.graph?.grants ?? []);
           scopesStale = REQUIRED_MT_SCOPES.some((scope) => !granted.has(scope));
         }
 
-        // Guarded separately from the Graph read above: tenant_sharepoint_consent
-        // is created by a manual migration (repo policy — no drizzle-kit push), so
-        // between this deploy and that SQL running the table may not exist yet. A
-        // failure here must NOT take down the whole scan-status payload, which the
-        // shell's scan indicator and the Graph reconsent pill both depend on.
-        try {
-          const [spConsentRow] = await db
-            .select({
-              consentStatus: tenantSharePointConsentTable.consentStatus,
-              permissionsGranted: tenantSharePointConsentTable.permissionsGranted,
-            })
-            .from(tenantSharePointConsentTable)
-            .where(eq(tenantSharePointConsentTable.tenantId, customerRow.tenantId))
-            .limit(1);
-          // null = no row at all = this tenant has never been through the
-          // SharePoint consent flow. That is a real, reportable state (not
-          // "unknown"), and is what every tenant reads as until an admin consents.
-          sharePointConsentStatus = spConsentRow?.consentStatus ?? null;
-          if (sharePointConsentStatus === "granted") {
-            const grantedPerms = new Set(spConsentRow?.permissionsGranted ?? []);
-            sharePointPermissionsStale = REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !grantedPerms.has(p));
-          }
-        } catch (spErr) {
-          // Report "unknown" (undefined), never a fabricated "granted" — the pill
-          // stays silent rather than claiming a consent state we couldn't read.
-          log.warn({ spErr, customerId }, "scan-status: tenant_sharepoint_consent read failed (migration not yet run?) — omitting SharePoint consent state");
-          sharePointConsentStatus = undefined;
+        // No separate try/catch any more: the SharePoint grant is a key of a
+        // NOT NULL column on a row already read, so it can no longer fail
+        // independently of the payload it belongs to. The "unknown"
+        // (undefined → key omitted) branch guarded against
+        // tenant_sharepoint_consent not existing yet; that table is gone. An
+        // absent key now means exactly one thing — never consented — which is
+        // the real state, so the pill nudges instead of staying silent.
+        sharePointConsentStatus = consent.sharepoint?.status ?? null;
+        if (sharePointConsentStatus === "granted") {
+          const grantedPerms = new Set(consent.sharepoint?.grants ?? []);
+          sharePointPermissionsStale = REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !grantedPerms.has(p));
         }
       }
 

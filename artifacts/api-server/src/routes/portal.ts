@@ -158,8 +158,14 @@ async function ensureClientAccount(
  *
  * Returns { id, mspId } of the tenants row, or null only in the genuine
  * no-isDirectBusiness-MSP-configured case (nothing to attach to).
+ *
+ * Exported for consent.ts's OAuth callback: consent now lives ON the tenants
+ * row (tenants.consent jsonb, #99), so the row has to exist before a grant can
+ * be stamped. The callback therefore calls this the moment Microsoft confirms
+ * the GUID, and provisionProspectAccount's own call below then finds it — one
+ * tenant-creation door, still consent-first.
  */
-async function resolveOrCreateDirectTenant(
+export async function resolveOrCreateDirectTenant(
   tenantGuid: string,
   fallbackCustomerName: string,
 ): Promise<{ id: number; mspId: number } | null> {

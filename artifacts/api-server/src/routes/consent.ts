@@ -9,8 +9,9 @@
  *
  *   GET  /api/consent/callback
  *     Microsoft redirects here after the customer's admin approves (or declines).
- *     Burns the single-use token, upserts tenant_consent, redirects to a result page.
- *     Also handles checkout-session state (UUID) — marks the session consented.
+ *     Burns the single-use token, stamps tenants.consent.graph, redirects to a
+ *     result page. Also handles checkout-session state (UUID) — marks the
+ *     session consented.
  *
  *   GET  /api/consent/declined
  *     Shown when the admin clicked "No" at the Microsoft screen — never a blank page.
@@ -20,15 +21,44 @@
  *
  *   PATCH /api/admin/consent/:tenantId/revoke
  *     Force-revoke a tenant's consent (admin only).
+ *
+ * ── Storage (Tenant/User Refactor Phase 6, #99) ────────────────────────────────
+ * All three grants recorded here — Graph read (`graph`), the separate write App
+ * Registration (`writeBack`), and SharePoint Online (`sharepoint`) — used to
+ * live in three tables keyed by tenant GUID (tenant_consent /
+ * tenant_write_consent / tenant_sharepoint_consent). Those are dropped; the
+ * three now occupy three keys of the single `tenants.consent` jsonb column.
+ *
+ * Two consequences that shape every route below:
+ *
+ *   1. A grant can only be recorded ON a tenants row. tenants has NOT NULL
+ *      msp_id / customer_name / tenant_id, so a consent record can no longer
+ *      spring into existence keyed by a bare GUID. Every callback therefore
+ *      resolves its target row before stamping anything — by customerId where
+ *      one is known (and then only if the GUID Microsoft returned agrees with
+ *      it), or via portal.ts's single resolveOrCreateDirectTenant door on the
+ *      self-service path, which is the only path allowed to create one. See
+ *      resolveCallbackTenant below for why those two are not interchangeable.
+ *
+ *   2. Every write goes through graph.ts's mergeConsentKey() — never a plain
+ *      `.set({ consent })`, which would overwrite the whole column and destroy
+ *      the other two grants. The three grants stayed independent for a reason
+ *      (three different App Registrations / resources, consented separately);
+ *      that guarantee now lives in exactly one helper.
+ *
+ * "customerId" throughout this file is `tenants.id` — the same integer id-space
+ * the old msp_customers.id occupied, which every migrated consumer
+ * (graphWriteForTenant, admin-active-directory, portal scan-status) already
+ * resolves with `eq(tenantsTable.id, customerId)`.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
-import { db, tenantConsentTable, tenantWriteConsentTable, tenantSharePointConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
+import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
-import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
@@ -40,6 +70,90 @@ const router: IRouter = Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Which key of tenants.consent a flow writes. */
+type ConsentKey = "graph" | "writeBack" | "sharepoint";
+
+/**
+ * Stamp one grant onto one tenants row, merging into the rest of the column.
+ *
+ * Returns false when NO tenants row matched — the caller must treat that as a
+ * real failure and say so, never as a silent success. Under the old schema an
+ * upsert would simply have created a consent row for any GUID; there is no such
+ * fallback now, and a grant that lands nowhere is exactly the kind of silent
+ * hole this refactor must not introduce.
+ */
+async function stampConsent(
+  where: ReturnType<typeof eq>,
+  key: ConsentKey,
+  patch: Partial<TenantConsentRecord>,
+): Promise<boolean> {
+  const [row] = await db
+    .update(tenantsTable)
+    .set({ consent: mergeConsentKey(key, patch), updatedAt: new Date() })
+    .where(where)
+    .returning({ id: tenantsTable.id });
+  return row != null;
+}
+
+/**
+ * Resolves which tenants row a consent callback is allowed to write to, for
+ * every path that already knows WHICH customer it is about: the write-back and
+ * SharePoint callbacks (customerId HMAC-signed into the state and cross-checked
+ * against the single-use token row), and the read callback's invite path (the
+ * customerId stamped on the invite token).
+ *
+ * In all three, `customerId` is the authoritative identity and the `tenant`
+ * GUID Microsoft appends to the redirect is unsigned — treated purely as a
+ * consistency check: it must match the customer's own tenants.tenant_id. Any
+ * disagreement means the admin who approved is in a different Microsoft tenant
+ * than the link was minted for, and NEITHER row gets the grant.
+ *
+ * Not usable by the read callback's self-service path, whose whole job is to
+ * accept a GUID that may legitimately have no customer object yet.
+ */
+async function resolveCallbackTenant(
+  customerId: number,
+  tenantFromMicrosoft: string | undefined,
+): Promise<
+  | { ok: true; id: number; tenantId: string }
+  | { ok: false; reason: "not_found" | "tenant_mismatch"; expectedTenantId?: string }
+> {
+  const [row] = await db
+    .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
+    .limit(1);
+
+  if (!row) return { ok: false, reason: "not_found" };
+
+  const returned = tenantFromMicrosoft?.trim();
+  if (returned && returned.toLowerCase() !== row.tenantId.trim().toLowerCase()) {
+    return { ok: false, reason: "tenant_mismatch", expectedTenantId: row.tenantId };
+  }
+
+  return { ok: true, id: row.id, tenantId: row.tenantId };
+}
+
+/**
+ * Projects one key of tenants.consent into the flat row shape the old
+ * per-type consent tables exposed, so the admin-facing payloads below keep
+ * their existing field names (customer-detail.tsx reads writeConsent
+ * .consentStatus/.consentedAt/.revokedAt verbatim).
+ *
+ * `undefined` in, `null` out: an absent key means this tenant has never been
+ * through that flow. That is a real, reportable "never granted" state and must
+ * never be inferred from a sibling key — the three grants are independent.
+ */
+function consentRow(record: TenantConsentRecord | undefined) {
+  if (!record) return null;
+  return {
+    consentStatus: record.status,
+    consentedAt: record.consentedAt ?? null,
+    revokedAt: record.revokedAt ?? null,
+    grants: record.grants ?? [],
+  };
+}
 
 /** Returns the protocol+host base (e.g. "https://example.replit.app") from request headers. */
 function getHostBase(req: Request): string {
@@ -109,7 +223,7 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
 // ── POST /api/portal/consent/reconsent-link ────────────────────────────────────
 //
 // Customer-scoped equivalent of invite-link above, for a logged-in customer
-// whose own tenant_consent has gone revoked/declined. Reuses the exact same
+// whose own `graph` consent has gone revoked/declined. Reuses the exact same
 // invite-token + buildAdminConsentUrl mechanism — no second consent mechanism.
 // tenantId/customerId are resolved server-side from the JWT, never trusted
 // from the request body.
@@ -128,9 +242,9 @@ router.post("/portal/consent/reconsent-link", requireRole("Assessment"), async (
   }
 
   const [customerRow] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   const token = randomBytes(32).toString("hex");
@@ -183,18 +297,19 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         .where(eq(consentInviteTokensTable.token, state));
     }
 
+    // Record the decline on the tenant's existing row only. Deliberately does
+    // NOT create one: a tenants row is a real customer object (NOT NULL msp_id
+    // + customer_name, appears in every customer list), and an admin who
+    // declined at the Microsoft screen has no relationship to record. The old
+    // schema could park an orphan consent row against a bare GUID; that is not
+    // a state worth resurrecting. An unmatched decline is logged, not silent.
     if (tenant) {
-      await db
-        .insert(tenantConsentTable)
-        .values({
-          tenantId: tenant,
-          consentStatus: "declined",
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: tenantConsentTable.tenantId,
-          set: { consentStatus: "declined", updatedAt: new Date() },
-        });
+      const stamped = await stampConsent(eq(tenantsTable.tenantId, tenant), "graph", {
+        status: "declined",
+      });
+      if (!stamped) {
+        log.info({ tenant }, "Consent callback: decline from a tenant with no tenants row — nothing to record (no customer object exists for it)");
+      }
     }
 
     res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
@@ -228,10 +343,13 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .where(eq(mspsTable.isDirectBusiness, true))
       .limit(1);
 
+    // tenants.tenant_id is NOT NULL UNIQUE, so this is now an exact lookup —
+    // there can be at most one customer object per Microsoft tenant, which is
+    // precisely the invariant this guard used to have to enforce by hand.
     const [conflictingCustomer] = await db
-      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.tenantId, tenant))
+      .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenant))
       .limit(1);
 
     if (directMsp && conflictingCustomer && conflictingCustomer.mspId !== directMsp.id) {
@@ -289,74 +407,29 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .where(eq(consentInviteTokensTable.token, state));
   }
 
-  // Upsert tenant_consent record
-  await db
-    .insert(tenantConsentTable)
-    .values({
-      tenantId: tenant,
-      customerId: inviteRecord?.customerId ?? null,
-      clientUserId: inviteRecord?.clientUserId ?? null,
-      consentStatus: "granted",
-      consentedAt: new Date(),
-      scopesGranted: [...REQUIRED_MT_SCOPES],
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: tenantConsentTable.tenantId,
-      set: {
-        consentStatus: "granted",
-        consentedAt: new Date(),
-        revokedAt: null,
-        scopesGranted: [...REQUIRED_MT_SCOPES],
-        updatedAt: new Date(),
-        ...(inviteRecord?.customerId != null ? { customerId: inviteRecord.customerId } : {}),
-        ...(inviteRecord?.clientUserId != null ? { clientUserId: inviteRecord.clientUserId } : {}),
-      },
-    });
-
-  log.info({ tenant, customerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
-
-  // MSP-channel customers start "onboarding" and flip to "active" exactly on
-  // consent granted (business rule, confirmed). Only applies to the invite-token
-  // path (inviteRecord set) — direct website checkout customers are already
-  // "active" from creation (see ensureDirectCustomerRecord in portal.ts) and
-  // never go through this branch since isCheckoutSession customers have no
-  // inviteRecord. Guarded to only flip customers currently "onboarding" so an
-  // admin's deliberate "inactive"/"archived" status is never silently overwritten.
-  if (inviteRecord?.customerId != null) {
-    await db
-      .update(mspCustomersTable)
-      .set({ status: "active", updatedAt: new Date() })
-      .where(
-        and(
-          eq(mspCustomersTable.id, inviteRecord.customerId),
-          eq(mspCustomersTable.status, "onboarding"),
-        ),
-      )
-      .catch((err: unknown) => {
-        log.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
-      });
-  }
-
-  // If the state was a checkout session UUID, mark it consented and thread it
-  // into the redirect so ConsentSuccessPage can show the "Continue to payment" CTA.
+  // ── Mark the checkout session consented ─────────────────────────────────────
+  // Moved AHEAD of the consent stamp by Phase 6 (#99). The stamp now needs a
+  // tenants row to write onto, and creating that row wants the buyer's real
+  // name — which only this update returns. Nothing here depends on the consent
+  // stamp, and the cross-MSP boundary guard above (the actual safety gate)
+  // has already run and returned on conflict.
   let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
   // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
   let updatedSession: { id: string; email: string; fullName: string; productSlug: string } | undefined;
 
   if (isCheckoutSession && state) {
-    const now = new Date();
+    const sessionNow = new Date();
     [updatedSession] = await db
       .update(checkoutSessionsTable)
       .set({
         status: "consented",
         tenantId: tenant,
-        updatedAt: now,
+        updatedAt: sessionNow,
       })
       .where(
         and(
           eq(checkoutSessionsTable.id, state),
-          gte(checkoutSessionsTable.expiresAt, now),
+          gte(checkoutSessionsTable.expiresAt, sessionNow),
         ),
       )
       .returning({
@@ -367,20 +440,112 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       });
 
     if (updatedSession) {
-      // Copy the session admin email onto the tenant_consent row so it's available for provisioning
-      await db
-        .update(tenantConsentTable)
-        .set({ adminEmail: updatedSession.email, updatedAt: new Date() })
-        .where(eq(tenantConsentTable.tenantId, tenant))
-        .catch(() => {
-          // adminEmail column may not exist in all environments — non-fatal
-        });
-
       successRedirect += `&session=${encodeURIComponent(state)}`;
       log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
     } else {
       log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
     }
+  }
+
+  // ── Resolve the tenants row, then stamp the `graph` grant on it ─────────────
+  // Consent lives ON the tenant now, so the row has to exist first. Which row,
+  // and whether one may be CREATED, depends on the path — these two cases are
+  // not interchangeable and must not be collapsed:
+  //
+  //   (a) The invite token already names a customer (inviteRecord.customerId, a
+  //       tenants.id). That customer is the authoritative identity and it
+  //       already belongs to an MSP. Resolve by id and require the GUID
+  //       Microsoft returned to match that customer's own tenant_id. Creating
+  //       here instead would be a real defect: resolveOrCreateDirectTenant
+  //       attaches new rows to the isDirectBusiness MSP, so an MSP-channel
+  //       customer consenting from an unexpected tenant would silently spawn a
+  //       second customer object under the WRONG MSP while the status flip
+  //       below still pointed at the original — split-brain across a tenant
+  //       boundary. Mismatch fails closed instead.
+  //
+  //   (b) No customer named (self-service checkout, or an invite minted for a
+  //       client with no account yet). This GUID legitimately may have no
+  //       customer object, and creating one under the direct-business MSP is
+  //       exactly right — it is the same door provisionProspectAccount uses
+  //       below, called here so the grant is recorded even on paths that never
+  //       reach provisioning (a token or session with no email), each of which
+  //       is still a real Microsoft consent every later Graph call depends on.
+  //
+  // Dynamic import (not a static one) keeps the large portal.ts route module
+  // out of consent.ts's module graph and avoids circular-load ordering issues;
+  // provisionProspectAccount, used further down, comes from the same import.
+  const { resolveOrCreateDirectTenant, provisionProspectAccount } = await import("./portal.js");
+
+  let consentTenant: { id: number } | null;
+  if (inviteRecord?.customerId != null) {
+    const bound = await resolveCallbackTenant(inviteRecord.customerId, tenant);
+    if (!bound.ok) {
+      log.warn(
+        { tenant, customerId: inviteRecord.customerId, expectedTenantId: bound.expectedTenantId, reason: bound.reason },
+        bound.reason === "tenant_mismatch"
+          ? "Consent callback: REFUSED — the Microsoft tenant that consented is not the invited customer's tenant; no grant recorded and no second customer object created"
+          : "Consent callback: invited customer row no longer exists — no grant recorded",
+      );
+      res.status(400).send("This consent link was issued for a different Microsoft organisation. Please ask your provider for a new link.");
+      return;
+    }
+    consentTenant = { id: bound.id };
+  } else {
+    consentTenant = await resolveOrCreateDirectTenant(
+      tenant,
+      updatedSession?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
+    );
+  }
+
+  if (!consentTenant) {
+    // resolveOrCreateDirectTenant returns null only when no MSP is flagged
+    // isDirectBusiness — a platform misconfiguration, not a customer problem.
+    // The admin genuinely approved at Microsoft and there is nowhere to record
+    // it; that must be loud, and the buyer must not be told everything is fine.
+    log.error(
+      { tenant, isCheckoutSession },
+      "Consent callback: admin consent GRANTED but no tenants row could be created (no isDirectBusiness MSP configured) — grant NOT recorded",
+    );
+    res.status(500).send("Consent was approved, but this platform could not record it. Please contact support — do not retry the link.");
+    return;
+  }
+
+  // Single write, through mergeConsentKey — the writeBack/sharepoint keys in
+  // the same column are untouched. adminEmail is only known on the checkout
+  // path; omitting it leaves any previously-captured value intact rather than
+  // blanking it (workflow-executor reads consent.graph.adminEmail).
+  const consentPatch: Partial<TenantConsentRecord> = {
+    status: "granted",
+    consentedAt: new Date().toISOString(),
+    revokedAt: null,
+    grants: [...REQUIRED_MT_SCOPES],
+  };
+  if (updatedSession?.email) consentPatch.adminEmail = updatedSession.email;
+
+  await stampConsent(eq(tenantsTable.id, consentTenant.id), "graph", consentPatch);
+
+  log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
+
+  // MSP-channel customers start "onboarding" and flip to "active" exactly on
+  // consent granted (business rule, confirmed). Only applies to the invite-token
+  // path (inviteRecord set) — direct website checkout customers are already
+  // "active" from creation (see resolveOrCreateDirectTenant in portal.ts) and
+  // never go through this branch since isCheckoutSession customers have no
+  // inviteRecord. Guarded to only flip customers currently "onboarding" so an
+  // admin's deliberate "inactive"/"archived" status is never silently overwritten.
+  if (inviteRecord?.customerId != null) {
+    await db
+      .update(tenantsTable)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(
+        and(
+          eq(tenantsTable.id, inviteRecord.customerId),
+          eq(tenantsTable.status, "onboarding"),
+        ),
+      )
+      .catch((err: unknown) => {
+        log.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
+      });
   }
 
   // ── Provision the Prospect account + emit consent.granted workflow event ─────
@@ -451,14 +616,12 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         serviceType = svcRow?.serviceType ?? null;
       }
 
-      // Create the real Prospect account NOW (users + msp_customers + msp_users),
-      // converting the funnel-entry lead new → converted. Idempotent — the
-      // downstream free-checkout / paid-webhook paths find it already linked.
-      // Dynamic import mirrors the runDiagnostics import below — avoids pulling the
-      // large portal.ts route module into consent.ts's static module graph (and any
-      // circular-load ordering issues).
+      // Create the real Prospect account NOW (the users row, carrying its
+      // tenant/MSP scope inline — msp_customers/msp_users were absorbed into
+      // tenants/users by #92). Converts the funnel-entry lead new → converted.
+      // Idempotent — the downstream free-checkout / paid-webhook paths find it
+      // already linked, and the tenants row resolved above is the one it reuses.
       if (sessionEmail) {
-        const { provisionProspectAccount } = await import("./portal.js");
         const prospect = await provisionProspectAccount({
           email: sessionEmail,
           fullName: sessionFullName,
@@ -482,14 +645,14 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
             // it must never pass silently.
             log.error(
               { tenant, sessionId: state, userId: prospect.userId },
-              "consent callback: Prospect user was created WITHOUT an msp_customers bridge — customer provisioning failed; payment webhook will retry and alert",
+              "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
           }
         }
       } else {
-        // A checkout-session consent with no resolvable email means NO account and
-        // NO msp_customers/msp_users bridge is created here, and the paid webhook
-        // used to assume this step had already run. Never skip this silently.
+        // A checkout-session consent with no resolvable email means NO account
+        // and NO users→tenants link is created here, and the paid webhook used
+        // to assume this step had already run. Never skip this silently.
         log.error(
           { tenant, sessionId: state, hadUpdatedSession: !!updatedSession },
           "consent callback: checkout session resolved with NO email — Prospect provisioning SKIPPED; bridge now depends entirely on the payment webhook (which verifies and alerts)",
@@ -504,7 +667,6 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     // checkout-session path above — provisionProspectAccount is the single
     // account-creation door, and it needs the real tenant GUID we just got.
     if (!isCheckoutSession && inviteRecord && clientId == null && inviteRecord.invitedEmail) {
-      const { provisionProspectAccount } = await import("./portal.js");
       const prospect = await provisionProspectAccount({
         email: inviteRecord.invitedEmail,
         fullName: inviteRecord.invitedName,
@@ -566,16 +728,17 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
       await runDiagnostics({
         tenantId: tenant,
-        // Pass the msp_customers id so the run is associated with the customer
+        // Pass the tenants.id so the run is associated with the customer
         // directly. Invite-link path (Assessment/MSP-channel) carries it on the
-        // token; checkout-session path now has the Prospect's customerId created
-        // at consent time above. Without it, runDiagnostics resolves the customer
-        // by tenantId, which orphans the run (customerId=null) when
-        // msp_customers.tenant_id was not yet stamped — leaving the Assessment
-        // wizard (scoped to the customerId JWT claim) unable to stream its own
-        // scan until the purchase-time backfill runs, which a pure-assessment
-        // customer may never reach.
-        customerId: inviteRecord?.customerId ?? prospectCustomerId ?? undefined,
+        // token; checkout-session path has the Prospect's customerId created at
+        // consent time above. `consentTenant.id` is the final fallback and is
+        // never null now — it is the row this callback just stamped consent on
+        // for this exact GUID. That closes the orphaned-run case the previous
+        // `?? undefined` left open (runDiagnostics falling back to a tenantId
+        // lookup and recording customerId=null), which left the Assessment
+        // wizard — scoped to the customerId JWT claim — unable to stream its
+        // own scan.
+        customerId: inviteRecord?.customerId ?? prospectCustomerId ?? consentTenant.id,
         packageKey: resolvedPackageKey ?? undefined,
         triggeredByUserId: undefined,
         // This is the initial post-consent scan for a purchased order —
@@ -617,12 +780,38 @@ to the platform until an admin approves the consent request.</p>
 
 // ── GET /api/admin/consent ─────────────────────────────────────────────────────
 
+// One row per tenant that has been through the Graph consent flow. Projected
+// explicitly rather than `select()`-ing the tenants row: a bare select would
+// ship the whole consent jsonb, including the writeBack/sharepoint grants and
+// their captured admin emails, to a list view that only asks about Graph.
+// Tenants that have never been through this flow are filtered out in JS (no
+// jsonb-path SQL predicate — every other consent reader in the codebase
+// selects the column and inspects it), preserving "one row per consent record".
+
 router.get("/admin/consent", requireAdmin, async (_req: Request, res: Response) => {
   const rows = await db
-    .select()
-    .from(tenantConsentTable)
-    .orderBy(desc(tenantConsentTable.updatedAt));
-  res.json(rows);
+    .select({
+      tenantId: tenantsTable.tenantId,
+      customerId: tenantsTable.id,
+      customerName: tenantsTable.customerName,
+      consent: tenantsTable.consent,
+      updatedAt: tenantsTable.updatedAt,
+    })
+    .from(tenantsTable)
+    .orderBy(desc(tenantsTable.updatedAt));
+
+  res.json(
+    rows
+      .filter((r) => r.consent?.graph != null)
+      .map((r) => ({
+        tenantId: r.tenantId,
+        customerId: r.customerId,
+        customerName: r.customerName,
+        adminEmail: r.consent?.graph?.adminEmail ?? null,
+        updatedAt: r.updatedAt,
+        ...consentRow(r.consent?.graph),
+      })),
+  );
 });
 
 // ── PATCH /api/admin/consent/:tenantId/revoke ──────────────────────────────────
@@ -630,13 +819,15 @@ router.get("/admin/consent", requireAdmin, async (_req: Request, res: Response) 
 router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Request, res: Response) => {
   const tenantId = req.params["tenantId"] as string;
 
-  const [updated] = await db
-    .update(tenantConsentTable)
-    .set({ consentStatus: "revoked", revokedAt: new Date(), updatedAt: new Date() })
-    .where(eq(tenantConsentTable.tenantId, tenantId))
-    .returning({ tenantId: tenantConsentTable.tenantId });
+  // Flips the `graph` key only — a force-revoke of the read grant says nothing
+  // about the write app or SharePoint, which are separate App Registrations /
+  // resources with their own revoke paths. mergeConsentKey keeps them intact.
+  const revoked = await stampConsent(eq(tenantsTable.tenantId, tenantId), "graph", {
+    status: "revoked",
+    revokedAt: new Date().toISOString(),
+  });
 
-  if (!updated) {
+  if (!revoked) {
     res.status(404).json({ error: "Tenant consent record not found" });
     return;
   }
@@ -657,8 +848,9 @@ router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Reques
 // ── Write-back consent (WRITE App Registration — MT_APP_WRITE_CLIENT_ID) ───────
 //
 // Separate consent flow for the dedicated write App Registration, recorded in
-// tenant_write_consent — fully independent of the read-only flow above (which
-// stays untouched). PlatformAdmin-triggered only: an admin generates the consent
+// the `writeBack` key of tenants.consent — fully independent of the read-only
+// flow above (which stays untouched, in its own `graph` key, and is never
+// inferred from this one). PlatformAdmin-triggered only: an admin generates the consent
 // URL for a specific customer, sends/opens it, and Microsoft redirects to the
 // single FIXED callback below (/api/admin/write-consent/callback) — one URL to
 // register in the write app's Azure Redirect URIs, regardless of customer count.
@@ -712,9 +904,9 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
   }
 
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
@@ -773,9 +965,9 @@ router.post("/portal/consent/debug-write-reconsent-link", requireRole("Assessmen
   }
 
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId, isTestbed: mspCustomersTable.isTestbed })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId, isTestbed: tenantsTable.isTestbed })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
@@ -825,9 +1017,20 @@ router.post("/portal/consent/debug-write-reconsent-link", requireRole("Assessmen
 // WRITE app. One FIXED URL for every customer (registered once in Azure);
 // the customerId is recovered from the HMAC-signed state and cross-checked
 // against the single-use token row. Mirrors the read callback above: burn the
-// token, upsert tenant_write_consent, land on a result page. Unauthenticated by
-// necessity (Microsoft's redirect carries no session) — trust comes from the
+// token, stamp tenants.consent.writeBack, land on a result page. Unauthenticated
+// by necessity (Microsoft's redirect carries no session) — trust comes from the
 // HMAC-bound, DB-backed single-use state.
+//
+// Phase 6 (#99) scope resolution — read this before touching the writes below.
+// The grant is written to the tenants row identified by `customerId`, which is
+// HMAC-signed and cross-checked against the token row. The `tenant` GUID in the
+// query string is Microsoft's, unsigned, and is used ONLY as a check: if it
+// disagrees with that customer's own tenants.tenant_id, the admin who approved
+// belongs to a different Microsoft tenant than the link was minted for, and the
+// grant is REFUSED rather than stamped on either row. Writing by GUID instead
+// would let an unsigned query parameter pick which tenant receives write
+// permissions; writing by customerId without the check would record a grant the
+// consenting tenant never actually gave. Fails closed on both.
 
 router.get("/admin/write-consent/callback", async (req: Request, res: Response) => {
   const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
@@ -866,18 +1069,25 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     .set({ usedAt: now, ...(tenant ? { tenantId: tenant } : {}) })
     .where(eq(consentInviteTokensTable.token, token));
 
+  // Resolve the ONE tenants row this callback may write to, before any branch
+  // below writes anything. Fails closed on both a missing customer and a
+  // tenant-GUID disagreement.
+  const target = await resolveCallbackTenant(customerId, tenant);
+  if (!target.ok) {
+    log.warn(
+      { customerId, tenant, expectedTenantId: target.expectedTenantId, reason: target.reason },
+      target.reason === "tenant_mismatch"
+        ? "Write-consent callback: REFUSED — the Microsoft tenant that consented is not this customer's tenant; no grant recorded on either row"
+        : "Write-consent callback: customer row no longer exists — no grant recorded",
+    );
+    res.status(400).send("This consent link does not match the Microsoft organisation that approved it. Please request a new link.");
+    return;
+  }
+
   // Declined at the Microsoft screen
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ customerId, tenant, error, error_subcode }, "Write-consent callback: admin declined");
-    if (tenant) {
-      await db
-        .insert(tenantWriteConsentTable)
-        .values({ tenantId: tenant, customerId, consentStatus: "declined", updatedAt: now })
-        .onConflictDoUpdate({
-          target: tenantWriteConsentTable.tenantId,
-          set: { consentStatus: "declined", customerId, updatedAt: now },
-        });
-    }
+    await stampConsent(eq(tenantsTable.id, target.id), "writeBack", { status: "declined" });
     res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
     return;
   }
@@ -888,28 +1098,17 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     return;
   }
 
-  // Upsert tenant_write_consent as granted. scopesGranted is deliberately left
-  // at its default — the write app's manifest is the source of truth for what
-  // was granted; no scope list is fabricated here.
-  await db
-    .insert(tenantWriteConsentTable)
-    .values({
-      tenantId: tenant,
-      customerId,
-      consentStatus: "granted",
-      consentedAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: tenantWriteConsentTable.tenantId,
-      set: {
-        consentStatus: "granted",
-        consentedAt: now,
-        revokedAt: null,
-        customerId,
-        updatedAt: now,
-      },
-    });
+  // Stamp the `writeBack` key as granted. `grants` is deliberately NOT written —
+  // the write app's manifest is the source of truth for what was granted; no
+  // permission list is fabricated here. (Contrast the read and SharePoint flows,
+  // which each have a declared REQUIRED_* constant to snapshot.) Omitting it
+  // from the patch also leaves any existing value untouched rather than
+  // blanking it, which is what mergeConsentKey's field-level merge is for.
+  await stampConsent(eq(tenantsTable.id, target.id), "writeBack", {
+    status: "granted",
+    consentedAt: now.toISOString(),
+    revokedAt: null,
+  });
 
   await createAuditLog({
     actorUserId: null,
@@ -926,8 +1125,10 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
 });
 
 // ── GET /api/admin/customers/:customerId/write-consent ─────────────────────────
-// Status read for the admin UI — current tenant_write_consent state for the
-// customer's tenant (or null when the tenant has no row / customer has no tenant).
+// Status read for the admin UI — the customer's current `writeBack` grant, or
+// null when it has never been through this flow. One row read now that consent
+// lives on the tenant. Payload shape is frozen: customer-detail.tsx reads
+// writeConsent.consentStatus / .consentedAt / .revokedAt verbatim.
 
 router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (req: Request, res: Response) => {
   const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -937,31 +1138,17 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
   }
 
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
-  if (!customer.tenantId) {
-    res.json({ tenantId: null, writeConsent: null });
-    return;
-  }
 
-  const [row] = await db
-    .select({
-      consentStatus: tenantWriteConsentTable.consentStatus,
-      consentedAt: tenantWriteConsentTable.consentedAt,
-      revokedAt: tenantWriteConsentTable.revokedAt,
-    })
-    .from(tenantWriteConsentTable)
-    .where(eq(tenantWriteConsentTable.tenantId, customer.tenantId))
-    .limit(1);
-
-  res.json({ tenantId: customer.tenantId, writeConsent: row ?? null });
+  res.json({ tenantId: customer.tenantId, writeConsent: consentRow(customer.consent?.writeBack) });
 });
 
 // ── SharePoint consent (Office 365 SharePoint Online resource) ─────────────────
@@ -971,12 +1158,14 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
 // (appId 00000003-0000-0ff1-ce00-000000000000), NOT Microsoft Graph.
 //
 // Why this is not just "add scopes to the Graph flow": a tenant's granted
-// tenant_consent row is a snapshot of REQUIRED_MT_SCOPES (Graph .default) and
+// `graph` consent key is a snapshot of REQUIRED_MT_SCOPES (Graph .default) and
 // says nothing about the SharePoint resource. Every tenant that consented before
 // Sites.FullControl.All was added to the app registration has a perfectly valid
 // Graph consent and NO SharePoint grant, so re-consent detection needs its own
-// per-tenant record (tenant_sharepoint_consent) to diff against — reusing the
-// Graph row would report those tenants as SharePoint-consented when they aren't.
+// per-tenant record (the `sharepoint` key) to diff against — reusing the Graph
+// key would report those tenants as SharePoint-consented when they aren't. This
+// is exactly the independence mergeConsentKey exists to protect now that all
+// three share one jsonb column.
 //
 // The permission lives on the SAME multi-tenant app as Graph (MT_APP_CLIENT_ID),
 // so this reuses that client id rather than a separate registration — unlike the
@@ -1018,9 +1207,9 @@ router.get("/admin/customers/:customerId/sharepoint-consent/start", requireAdmin
   }
 
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
@@ -1082,9 +1271,9 @@ router.post("/portal/consent/sharepoint-link", requireRole("Assessment"), async 
   }
 
   const [customerRow] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   const token = randomBytes(32).toString("hex");
@@ -1162,18 +1351,25 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
     .set({ usedAt: now, ...(tenant ? { tenantId: tenant } : {}) })
     .where(eq(consentInviteTokensTable.token, token));
 
+  // Same fail-closed scope resolution as the write callback above — see the
+  // note there. customerId is the signed identity; the GUID Microsoft returned
+  // must agree with it or nothing is written.
+  const target = await resolveCallbackTenant(customerId, tenant);
+  if (!target.ok) {
+    log.warn(
+      { customerId, tenant, expectedTenantId: target.expectedTenantId, reason: target.reason },
+      target.reason === "tenant_mismatch"
+        ? "SharePoint-consent callback: REFUSED — the Microsoft tenant that consented is not this customer's tenant; no grant recorded on either row"
+        : "SharePoint-consent callback: customer row no longer exists — no grant recorded",
+    );
+    res.status(400).send("This consent link does not match the Microsoft organisation that approved it. Please request a new link.");
+    return;
+  }
+
   // Declined at the Microsoft screen
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ customerId, tenant, error, error_subcode }, "SharePoint-consent callback: admin declined");
-    if (tenant) {
-      await db
-        .insert(tenantSharePointConsentTable)
-        .values({ tenantId: tenant, customerId, consentStatus: "declined", updatedAt: now })
-        .onConflictDoUpdate({
-          target: tenantSharePointConsentTable.tenantId,
-          set: { consentStatus: "declined", customerId, updatedAt: now },
-        });
-    }
+    await stampConsent(eq(tenantsTable.id, target.id), "sharepoint", { status: "declined" });
     res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
     return;
   }
@@ -1184,33 +1380,19 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
     return;
   }
 
-  // Stamp the permission snapshot the same way the Graph callback stamps
-  // scopesGranted: what the app registration asked for at this moment IS what
-  // the admin approved on this screen (admin_consent=true is tenant-wide for
-  // every Application permission the app currently declares on that resource).
-  // Storing the snapshot — rather than a bare boolean — is what makes drift
-  // detectable later when REQUIRED_SHAREPOINT_APP_PERMISSIONS grows.
-  await db
-    .insert(tenantSharePointConsentTable)
-    .values({
-      tenantId: tenant,
-      customerId,
-      consentStatus: "granted",
-      consentedAt: now,
-      permissionsGranted: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: tenantSharePointConsentTable.tenantId,
-      set: {
-        consentStatus: "granted",
-        consentedAt: now,
-        revokedAt: null,
-        customerId,
-        permissionsGranted: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
-        updatedAt: now,
-      },
-    });
+  // Stamp the permission snapshot into `grants`, the same field the Graph
+  // callback stamps REQUIRED_MT_SCOPES into (one field, two resources — the key
+  // it sits under is what says which). What the app registration asked for at
+  // this moment IS what the admin approved on this screen (admin_consent=true is
+  // tenant-wide for every Application permission the app currently declares on
+  // that resource). Storing the snapshot — rather than a bare boolean — is what
+  // makes drift detectable later when REQUIRED_SHAREPOINT_APP_PERMISSIONS grows.
+  await stampConsent(eq(tenantsTable.id, target.id), "sharepoint", {
+    status: "granted",
+    consentedAt: now.toISOString(),
+    revokedAt: null,
+    grants: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+  });
 
   await createAuditLog({
     actorUserId: null,
@@ -1227,8 +1409,8 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
 });
 
 // ── GET /api/admin/customers/:customerId/sharepoint-consent ────────────────────
-// Status read for the admin UI — current tenant_sharepoint_consent state for the
-// customer's tenant, plus the same staleness verdict the portal pill uses.
+// Status read for the admin UI — the customer's current `sharepoint` grant,
+// plus the same staleness verdict the portal pill uses.
 
 router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, async (req: Request, res: Response) => {
   const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -1238,38 +1420,30 @@ router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, asyn
   }
 
   const [customer] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({ tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
-  if (!customer.tenantId) {
-    res.json({ tenantId: null, sharePointConsent: null, permissionsStale: false, requiredPermissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
-    return;
-  }
 
-  const [row] = await db
-    .select({
-      consentStatus: tenantSharePointConsentTable.consentStatus,
-      consentedAt: tenantSharePointConsentTable.consentedAt,
-      revokedAt: tenantSharePointConsentTable.revokedAt,
-      permissionsGranted: tenantSharePointConsentTable.permissionsGranted,
-    })
-    .from(tenantSharePointConsentTable)
-    .where(eq(tenantSharePointConsentTable.tenantId, customer.tenantId))
-    .limit(1);
-
+  const record = customer.consent?.sharepoint;
+  // Only a "granted" tenant can be permission-stale — revoked/declined/absent
+  // are already surfaced by the status itself and take priority.
   const permissionsStale =
-    row?.consentStatus === "granted" &&
-    REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !(row.permissionsGranted ?? []).includes(p));
+    record?.status === "granted" &&
+    REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !(record.grants ?? []).includes(p));
 
   res.json({
     tenantId: customer.tenantId,
-    sharePointConsent: row ?? null,
+    // `permissionsGranted` is kept as an alias of the stored `grants` snapshot
+    // so the field name this route has always returned stays stable.
+    sharePointConsent: record
+      ? { ...consentRow(record), permissionsGranted: record.grants ?? [] }
+      : null,
     permissionsStale,
     requiredPermissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS,
   });

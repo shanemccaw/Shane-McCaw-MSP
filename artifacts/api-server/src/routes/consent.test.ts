@@ -8,13 +8,20 @@
  *   4. mtAppCredentialsPresent — env var checks
  *   5. markTenantConsentRevoked — evicts cache + calls db.update
  *   6. POST /consent/invite-link route handler — generates token & consent URL
- *   7. GET  /consent/callback success — burns token, upserts consent record
+ *   7. GET  /consent/callback success — burns token, stamps the consent record
  *   8. GET  /consent/callback declined — marks declined, redirects
  *   9. GET  /consent/callback expired token — 400
  *  10. PATCH /admin/consent/:tenantId/revoke — flips status or 404
+ *
+ * Storage note (Phase 6, #99): the three consent tables are gone — every grant
+ * is now an UPDATE stamping one key of the tenants.consent jsonb, never an
+ * INSERT/upsert keyed by tenant GUID. Assertions below track db.update for the
+ * consent write accordingly; db.insert on these paths now only ever means the
+ * consent_invite_tokens row.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
 // ── Environment ────────────────────────────────────────────────────────────────
@@ -96,13 +103,16 @@ vi.mock("@workspace/db", () => ({
         update: (...args: unknown[]) => mockUpdate(...args),
       }),
   },
-  tenantConsentTable: { tenantId: "tc.tenantId", consentStatus: "tc.consent_status", updatedAt: "tc.updated_at", customerId: "tc.customer_id" },
   consentInviteTokensTable: { token: "cit.token", customerId: "cit.customer_id", clientUserId: "cit.client_user_id", usedAt: "cit.used_at", expiresAt: "cit.expires_at", tenantId: "cit.tenant_id" },
   mspsTable: { id: "m.id", isDirectBusiness: "m.is_direct_business" },
-  mspCustomersTable: { id: "mc.id", mspId: "mc.msp_id", tenantId: "mc.tenant_id", status: "mc.status" },
-  // graph.ts's revoke path writes the tenants.consent jsonb now (Phase 3);
-  // consent.ts itself is still on the old tables until Phase 6.
-  tenantsTable: { id: "t.id", tenantId: "t.tenant_id", consent: "t.consent", updatedAt: "t.updated_at" },
+  // Phase 6 (#99): tenant_consent / tenant_write_consent /
+  // tenant_sharepoint_consent and msp_customers are dropped — both graph.ts's
+  // revoke path and every consent write in consent.ts now go through this one
+  // table's `consent` jsonb column.
+  tenantsTable: {
+    id: "t.id", mspId: "t.msp_id", customerName: "t.customer_name", tenantId: "t.tenant_id",
+    consent: "t.consent", status: "t.status", isTestbed: "t.is_testbed", updatedAt: "t.updated_at",
+  },
   checkoutSessionsTable: { id: "cs.id", email: "cs.email", productSlug: "cs.product_slug", status: "cs.status", tenantId: "cs.tenant_id", expiresAt: "cs.expires_at", updatedAt: "cs.updated_at" },
   servicesTable: { slug: "s.slug" },
   usersTable: { id: "u.id", email: "u.email" },
@@ -130,6 +140,17 @@ vi.mock("../lib/workflow-executor.ts", () => ({
 
 vi.mock("../lib/audit.ts", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
+// The consent callback dynamically imports portal.ts for the two functions it
+// needs (resolveOrCreateDirectTenant — the single tenant-creation door the
+// consent stamp now depends on — and provisionProspectAccount). Mocked so the
+// test doesn't pull in the 15k-line route module and its whole dependency
+// graph; the real behaviour of both is covered by portal.ts's own tests.
+const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1 });
+vi.mock("./portal.js", () => ({
+  resolveOrCreateDirectTenant: (...args: unknown[]) => mockResolveOrCreateDirectTenant(...args),
+  provisionProspectAccount: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../lib/logger.ts", () => {
@@ -350,6 +371,7 @@ describe("consent route handlers", () => {
     mockInsert.mockClear();
     mockUpdate.mockClear();
     mockSelect.mockClear();
+    mockResolveOrCreateDirectTenant.mockClear();
     dbSelectQueue = [];
   });
 
@@ -410,8 +432,9 @@ describe("consent route handlers", () => {
   });
 
   describe("GET /consent/callback — success", () => {
-    it("upserts consent and redirects to /consent/success", async () => {
-      dbSelectQueue.push([{ customerId: 5, clientUserId: null }]); // valid token row
+    it("stamps consent on the invited customer's own tenant and redirects to /consent/success", async () => {
+      dbSelectQueue.push([{ customerId: 5, clientUserId: null }]);      // valid token row, names customer 5
+      dbSelectQueue.push([{ id: 5, tenantId: "tenant-success" }]);      // customer 5's tenant — matches
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-success", admin_consent: "True", state: "valid-tok" },
@@ -420,7 +443,48 @@ describe("consent route handlers", () => {
       await handler!(req, res, (() => {}) as NextFunction);
       expect(store.redirectUrl).toContain("/consent/success");
       expect(store.redirectUrl).toContain("tenant=tenant-success");
-      expect(mockInsert).toHaveBeenCalled();
+      // A token that names a customer resolves to THAT customer's existing row.
+      // It must never take the create path — resolveOrCreateDirectTenant
+      // attaches new rows to the isDirectBusiness MSP, which would put an
+      // MSP-channel customer under the wrong MSP.
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+      // The grant itself is an UPDATE on tenants.consent, not an upsert.
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    // The security boundary on the invite path: the customerId on the token is
+    // authoritative, the GUID Microsoft returns is not. If an admin from some
+    // other Microsoft tenant walks an invite minted for customer 5, nothing may
+    // be granted and no second customer object may be created for their GUID.
+    it("REFUSES when the consenting tenant is not the invited customer's tenant", async () => {
+      dbSelectQueue.push([{ customerId: 5, clientUserId: null }]);
+      dbSelectQueue.push([{ id: 5, tenantId: "tenant-on-record" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-someone-else", admin_consent: "True", state: "valid-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+      expect(store.statusCode).toBe(400);
+      expect(store.redirectUrl).toBeNull();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    // Regression: resolveOrCreateDirectTenant returns null only when the
+    // platform has no isDirectBusiness MSP configured. The admin genuinely
+    // approved at Microsoft and there is nowhere to record it — that must fail
+    // loudly rather than redirect the buyer to a success page.
+    it("fails loudly (500, no success redirect) when no tenants row can be created", async () => {
+      dbSelectQueue.push([{ customerId: null, clientUserId: null }]);   // no customer named → create path
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce(null);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-orphan", admin_consent: "True", state: "valid-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+      expect(store.statusCode).toBe(500);
+      expect(store.redirectUrl).toBeNull();
     });
 
     it("accepts admin_consent=TRUE (case-insensitive)", async () => {
@@ -432,6 +496,9 @@ describe("consent route handlers", () => {
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
       expect(store.redirectUrl).toContain("/consent/success");
+      // No customer on the token — this GUID legitimately may not have a
+      // customer object yet, so the create path is correct here.
+      expect(mockResolveOrCreateDirectTenant).toHaveBeenCalledWith("tenant-case", expect.any(String));
     });
   });
 
@@ -456,9 +523,12 @@ describe("consent route handlers", () => {
 
       expect(store.redirectUrl).toContain("/consent/tenant-conflict");
       expect(store.redirectUrl).toContain("tenant=tenant-conflict");
-      // Session must NOT be marked consented and tenant_consent must NOT be written.
+      // Session must NOT be marked consented and no grant may be stamped.
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockInsert).not.toHaveBeenCalled();
+      // The guard must also run BEFORE any tenants row is created for the
+      // conflicting GUID — rejecting must not leave a customer object behind.
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
     });
 
     it("proceeds when the checkout tenant's existing customer is under the SAME (direct) MSP", async () => {
@@ -487,6 +557,76 @@ describe("consent route handlers", () => {
 
       expect(store.redirectUrl).not.toContain("/consent/tenant-conflict");
       expect(store.redirectUrl).toContain("/consent/success");
+    });
+  });
+
+  // Phase 6 (#99) scope resolution on the write-back callback. The grant is
+  // written to the tenants row named by the HMAC-signed customerId; the `tenant`
+  // GUID Microsoft appends to the redirect is unsigned and is only a check. If
+  // the two disagree, the admin who approved belongs to a different Microsoft
+  // tenant than the link was minted for, and NEITHER row may be granted write
+  // permissions. This is the case that could otherwise hand one customer's
+  // write-back grant to another tenant, so it is asserted directly.
+  describe("GET /admin/write-consent/callback — tenant/customer scope binding", () => {
+    /** Mirrors signWriteConsentState() in consent.ts (not exported). */
+    function writeState(customerId: number, token: string): string {
+      const mac = createHmac("sha256", process.env.JWT_SECRET as string)
+        .update(`write-consent:${customerId}:${token}`)
+        .digest("hex");
+      return `wc.${customerId}.${token}.${mac}`;
+    }
+
+    /** True if any db.update(...).set(...) in this test wrote the consent column. */
+    function consentWasStamped(): boolean {
+      return mockUpdateSet.mock.calls.some(
+        (args) => args[0] != null && typeof args[0] === "object" && "consent" in (args[0] as object),
+      );
+    }
+
+    beforeEach(() => { mockUpdateSet.mockClear(); });
+
+    it("REFUSES when the consenting Microsoft tenant is not this customer's tenant", async () => {
+      dbSelectQueue.push([{ customerId: 7 }]);                          // token row, bound to customer 7
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);        // customer 7's real tenant
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-someone-else", admin_consent: "True", state: writeState(7, "tok-w") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      expect(handler).not.toBeNull();
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(400);
+      expect(consentWasStamped()).toBe(false);
+    });
+
+    it("REFUSES when the customer row no longer exists", async () => {
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([]);                                           // customer gone
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: writeState(7, "tok-w") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(400);
+      expect(consentWasStamped()).toBe(false);
+    });
+
+    it("grants when the consenting tenant matches the customer's own tenant", async () => {
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: writeState(7, "tok-w") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/consent/success");
+      expect(store.redirectUrl).toContain("write=1");
+      expect(consentWasStamped()).toBe(true);
     });
   });
 });

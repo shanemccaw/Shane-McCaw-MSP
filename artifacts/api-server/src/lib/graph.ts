@@ -21,8 +21,14 @@ const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
  * merge replaces the whole key, so the key's existing object is re-merged with
  * the patch to preserve fields the caller didn't mention. An absent key starts
  * from '{}' rather than failing (jsonb_set would no-op on a missing path).
+ *
+ * Exported so the consent OAuth callbacks (routes/consent.ts) grant through the
+ * exact same expression this module revokes through — the three-grant-
+ * independence guarantee lives here and nowhere else. Only ever valid inside
+ * `db.update(tenantsTable).set({ consent: ... })`; it names tenantsTable.consent
+ * on both sides of the merge.
  */
-function mergeConsentKey(key: keyof TenantConsentMap, patch: Record<string, unknown>) {
+export function mergeConsentKey(key: keyof TenantConsentMap, patch: Record<string, unknown>) {
   // Both `key` bindings carry an explicit ::text cast — an untyped parameter on
   // the right of `->` makes Postgres reject the statement as an ambiguous
   // operator (jsonb -> unknown matches both the ->(text) and ->(int) forms).
