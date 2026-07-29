@@ -329,6 +329,9 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "pipe-engagebay-contacts", label: "EngageBay Contacts", path: "/pipeline/engagebay-contacts", icon: Users },
           // EngageBay Admin Panel: Tags (#107) — list-only, same nav group.
           { id: "pipe-engagebay-tags", label: "EngageBay Tags", path: "/pipeline/engagebay-tags", icon: Tags },
+          // EngageBay Admin Panel: Activity Log + Settings (#109).
+          { id: "pipe-engagebay-activity", label: "EngageBay Activity Log", path: "/pipeline/engagebay-activity", icon: History },
+          { id: "pipe-engagebay-settings", label: "EngageBay Settings", path: "/pipeline/engagebay-settings", icon: Settings },
         ],
       },
     ],

@@ -18,6 +18,9 @@ import ZohoAccountsPage from "@/pages/crm/zoho/ZohoAccounts";
 import EngageBayContactsPage from "@/pages/crm/engagebay/EngageBayContacts";
 // EngageBay Admin Panel: Tags (#107) — list-only, no create/edit/detail exists.
 import EngageBayTagsPage from "@/pages/crm/engagebay/EngageBayTags";
+// EngageBay Admin Panel: Activity Log + Settings (#109).
+import EngageBayActivityLogPage from "@/pages/crm/engagebay/EngageBayActivityLog";
+import EngageBaySettingsPage from "@/pages/crm/engagebay/EngageBaySettings";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -33,6 +36,8 @@ function getContent(section: string): ReactNode {
     case "zoho-accounts":       return <ZohoAccountsPage />;
     case "engagebay-contacts":  return <EngageBayContactsPage />;
     case "engagebay-tags":      return <EngageBayTagsPage />;
+    case "engagebay-activity":  return <EngageBayActivityLogPage />;
+    case "engagebay-settings":  return <EngageBaySettingsPage />;
     default:                    return <LeadsPage />;
   }
 }
