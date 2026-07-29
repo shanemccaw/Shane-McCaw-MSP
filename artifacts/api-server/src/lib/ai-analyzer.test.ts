@@ -25,13 +25,21 @@ vi.mock("@workspace/db", () => {
     db: {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn(() => Promise.resolve([{ mspId: 10, customerId: 20 }])),
+          // Tenant/User Refactor Phase 5: the mspId lookup now left-joins
+          // tenants onto users. A tenant-scoped user (CustomerUser/Free/
+          // Assessment) carries a NULL users.mspId, so the MSP must come from
+          // tenants.mspId — the row shape below models exactly that case,
+          // which is the one a naive users.mspId-only rewrite would break.
+          leftJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn(() => Promise.resolve([{ userMspId: null, tenantMspId: 10 }])),
+            })),
           })),
         })),
       })),
     },
-    mspUsersTable: {},
+    usersTable: {},
+    tenantsTable: {},
   };
 });
 
@@ -93,9 +101,11 @@ describe("ai-analyzer", () => {
       // Wait a tick for trackAiUsage to complete
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      // It should query mspUsersTable to resolve mspId when customerId is present but mspId is not
+      // It should resolve mspId from the caller's users row (falling through to
+      // tenants.mspId for a tenant-scoped user) when customerId is present but
+      // mspId is not.
       expect(recordAiUsage).toHaveBeenCalledWith(expect.objectContaining({
-        mspId: 10, // resolved from db select mock
+        mspId: 10, // resolved from db select mock (tenants.mspId)
         promptTokens: 150,
         completionTokens: 250,
         model: "claude-haiku-4-5",

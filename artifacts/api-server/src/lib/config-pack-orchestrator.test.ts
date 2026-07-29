@@ -21,7 +21,7 @@ interface Row {
 }
 let configPacks: Row[] = [];
 let configPackTemplates: Row[] = [];
-let mspCustomers: Row[] = [];
+let tenants: Row[] = [];
 
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
@@ -42,7 +42,7 @@ vi.mock("@workspace/db", () => {
     configPacksTable: table("config_packs"),
     configPackTemplatesTable: table("config_pack_templates"),
     baselineActionTemplatesTable: table("baseline_action_templates"),
-    mspCustomersTable: table("msp_customers"),
+    tenantsTable: table("tenants"),
     wfDefinitionsTable: table("wf_definitions"),
     wfVersionsTable: table("wf_versions"),
   };
@@ -52,8 +52,8 @@ vi.mock("@workspace/db", () => {
       ? configPacks
       : name === "config_pack_templates"
         ? configPackTemplates
-        : name === "msp_customers"
-          ? mspCustomers
+        : name === "tenants"
+          ? tenants
           : [];
 
   const chainFor = () => {
@@ -111,7 +111,7 @@ beforeEach(() => {
   // The db mock resolves the customer lookup to the first fixture row (it does
   // not evaluate the where clause), so each test seeds exactly the one customer
   // it targets. TESTBED_CUSTOMER is only referenced by the no-tenant case below.
-  mspCustomers = [{ ...LIVE_CUSTOMER }];
+  tenants = [{ ...LIVE_CUSTOMER }];
   fireWorkflowForDefinition.mockReset();
 });
 
@@ -132,7 +132,7 @@ describe("runConfigPackForCustomer testbed enforcement", () => {
   });
 
   it("refuses a customer with no connected tenant before any testbed/write attempt", async () => {
-    mspCustomers = [{ ...TESTBED_CUSTOMER, id: 7, tenantId: null }];
+    tenants = [{ ...TESTBED_CUSTOMER, id: 7, tenantId: null }];
     await expect(
       runConfigPackForCustomer({ packKey: "sample-pack", customerId: 7 }),
     ).rejects.toMatchObject({ code: "customer_not_connected" });

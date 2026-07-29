@@ -12,7 +12,7 @@
  *    don't spam the same event for the same customer.
  */
 
-import { db, policyRulesTable, policyRuleFiringsTable, policyRuleIncidentsTable, tenantEngineSnapshotsTable, mspCustomersTable } from "@workspace/db";
+import { db, policyRulesTable, policyRuleFiringsTable, policyRuleIncidentsTable, tenantEngineSnapshotsTable, tenantsTable } from "@workspace/db";
 import { sql, eq, and, or, isNull, desc } from "drizzle-orm";
 import { getStabilizedSignals } from "./tenant-signals";
 import { emitWorkflowEvent } from "./workflow-executor";
@@ -239,16 +239,17 @@ export async function evaluateAllPolicies(): Promise<{ customersChecked: number;
   // tenant_signal_history.customer_id rows are written in users.id space (its
   // live FK targets users.id despite the column name — see tenant-signals.ts's
   // recordSignalTransitions). The policy engine's own queries (engine
-  // snapshots, suppressions, firings) are all keyed by REAL msp_customers.id —
-  // so bridge each open-history user through msp_users to the real customer it
-  // belongs to, and evaluate per distinct customer. The old enumeration passed
-  // the raw users.id straight into `WHERE msp_customers.id = ...`, which only
-  // worked when the two id spaces happened to coincide numerically.
+  // snapshots, suppressions, firings) are all keyed by REAL customer id, which
+  // since Phase 0 is tenants.id — so bridge each open-history user through
+  // users.tenant_id to the tenant it belongs to, and evaluate per distinct
+  // customer. The old enumeration passed the raw users.id straight into
+  // `WHERE msp_customers.id = ...`, which only worked when the two id spaces
+  // happened to coincide numerically.
   const customerRows = await db.execute(sql`
-    SELECT DISTINCT mu.customer_id AS "customerId"
+    SELECT DISTINCT u.tenant_id AS "customerId"
     FROM tenant_signal_history tsh
-    JOIN msp_users mu ON mu.user_id = tsh.customer_id
-    WHERE tsh.resolved_at IS NULL AND mu.customer_id IS NOT NULL
+    JOIN users u ON u.id = tsh.customer_id
+    WHERE tsh.resolved_at IS NULL AND u.tenant_id IS NOT NULL
   `);
   const customerIds = (customerRows.rows as { customerId: number }[]).map(r => r.customerId);
 
@@ -257,10 +258,12 @@ export async function evaluateAllPolicies(): Promise<{ customersChecked: number;
 
   for (const customerId of customerIds) {
     try {
+      // MSP ownership is a property of the tenant (tenants.mspId), never of
+      // the customer's own logins — a tenant-scoped user carries a NULL mspId.
       const [customer] = await db
-        .select({ mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       if (!customer) {

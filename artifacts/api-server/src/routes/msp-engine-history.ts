@@ -27,7 +27,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspCustomersTable, tenantEngineSnapshotsTable } from "@workspace/db";
+import { db, tenantsTable, tenantEngineSnapshotsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireRole, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
@@ -67,18 +67,21 @@ router.get(
     try {
       if (customerId === undefined) {
         const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+        // MSP ownership resolves through tenants.mspId — the snapshot's
+        // customerId is a tenants.id, and the owning MSP is a property of the
+        // tenant, never of the customer's own login rows.
         const conditions = [
-          eq(mspCustomersTable.mspId, mspId),
+          eq(tenantsTable.mspId, mspId),
           eq(tenantEngineSnapshotsTable.engineKey, String(key)),
         ];
-        if (scopedIds !== null) conditions.push(inArray(mspCustomersTable.id, scopedIds));
+        if (scopedIds !== null) conditions.push(inArray(tenantsTable.id, scopedIds));
 
         const rows = await db
-          .selectDistinct({ id: mspCustomersTable.id, name: mspCustomersTable.name })
+          .selectDistinct({ id: tenantsTable.id, name: tenantsTable.customerName })
           .from(tenantEngineSnapshotsTable)
-          .innerJoin(mspCustomersTable, eq(tenantEngineSnapshotsTable.customerId, mspCustomersTable.id))
+          .innerJoin(tenantsTable, eq(tenantEngineSnapshotsTable.customerId, tenantsTable.id))
           .where(and(...conditions))
-          .orderBy(mspCustomersTable.name)
+          .orderBy(tenantsTable.customerName)
           .limit(200);
 
         res.json({ engineKey: key, customers: rows });

@@ -35,7 +35,10 @@ function mspToken(mspId: number, mspRole: "MSPOperator" | "MSPAdmin" | "Customer
 
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
-  mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
+  // Tenant/User Refactor Phase 5: the route reads tenants, not msp_customers.
+  // customerName is the column; the route still aliases it to `name` in its
+  // select, so the mocked row shape ({ id, name }) is unchanged.
+  tenantsTable: { id: "id", customerName: "customerName", mspId: "mspId" },
   mspDiagnosticRunsTable: {
     runId: "runId", customerId: "customerId", completedAt: "completedAt", mspId: "mspId", status: "status",
     checksOk: "checksOk", checksLicenseGap: "checksLicenseGap", checksError: "checksError", checksTotal: "checksTotal",

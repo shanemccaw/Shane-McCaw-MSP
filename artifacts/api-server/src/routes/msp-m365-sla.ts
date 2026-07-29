@@ -18,8 +18,8 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspCustomersTable } from "@workspace/db";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { db, tenantsTable } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT } from "../lib/sla-uptime";
@@ -43,17 +43,21 @@ router.get("/msp/m365-sla", requireRole("MSPOperator"), async (req: Request, res
     // Per-staff customer scoping, same chokepoint as msp-alerts.ts. null = unrestricted.
     const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
 
-    const conditions = [eq(mspCustomersTable.mspId, mspId), isNotNull(mspCustomersTable.tenantId)];
-    if (scopedIds !== null) conditions.push(inArray(mspCustomersTable.id, scopedIds));
-    if (customerIdFilter !== undefined) conditions.push(eq(mspCustomersTable.id, customerIdFilter));
+    // tenants.tenant_id is NOT NULL UNIQUE, so the old isNotNull(tenantId)
+    // predicate that guarded msp_customers' nullable tenant GUID is now a
+    // tautology and has been dropped rather than left as misleading noise.
+    const conditions = [eq(tenantsTable.mspId, mspId)];
+    if (scopedIds !== null) conditions.push(inArray(tenantsTable.id, scopedIds));
+    if (customerIdFilter !== undefined) conditions.push(eq(tenantsTable.id, customerIdFilter));
 
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, tenantId: mspCustomersTable.tenantId })
-      .from(mspCustomersTable)
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName, tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
       .where(and(...conditions));
 
     const results = [];
     for (const customer of customers) {
+      // Cheap empty-string defense only — a NULL tenant GUID is no longer possible.
       if (!customer.tenantId) continue;
       const services = await computeM365UptimeForTenant(customer.tenantId);
       results.push({

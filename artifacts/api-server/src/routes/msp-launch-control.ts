@@ -15,7 +15,7 @@
  *   - MSP-side: services.type_attributes.tierCapabilities, via
  *     launch_control_safe_write / launch_control_gated_write (msp-entitlement.ts).
  *   - Customer-side: the customer's purchased Monitoring tier (services.tier,
- *     resolved via msp_customers -> msp_users -> client_services -> services —
+ *     resolved via tenants -> users -> client_services -> services —
  *     NOT the MSP sales-bundle path, which can't distinguish Enhanced from
  *     Premium) against a catalog action's min_bundled_tier.
  * write_action_catalog.required_capability_key is intentionally never read —
@@ -37,7 +37,7 @@ import {
   writeActionCatalogTable,
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
-  mspCustomersTable,
+  tenantsTable,
   clientServicesTable,
   servicesTable,
   type WriteActionCatalog,
@@ -76,7 +76,7 @@ function resolveTierRank(tierName: string | null | undefined): number | null {
 
 /**
  * Resolve a customer's purchased Monitoring tier (services.tier) via the
- * real join chain: msp_customers.id -> ALL msp_users of the customer ->
+ * real join chain: tenants.id -> ALL users carrying that tenantId ->
  * users.id -> client_services.clientUserId -> client_services.serviceId ->
  * services.id. Deliberately NOT the MSP sales-bundle / monitoring_packages
  * path — that path can't distinguish an Enhanced customer from a Premium one,
@@ -233,15 +233,21 @@ router.post(
         return;
       }
 
+      // Explicit column list (never a bare .select() — tenants carries the
+      // consent jsonb). Scoped by mspId as well as id: assertCustomerAccess
+      // above already fenced cross-MSP access, but this is the row whose
+      // isTestbed flag authorizes a REAL Graph write against a live tenant, so
+      // it is re-scoped to the caller's own MSP at the point of read rather
+      // than trusting an earlier check.
       const [customer] = await db
         .select({
-          id: mspCustomersTable.id,
-          tenantId: mspCustomersTable.tenantId,
-          isTestbed: mspCustomersTable.isTestbed,
-          name: mspCustomersTable.name,
+          id: tenantsTable.id,
+          tenantId: tenantsTable.tenantId,
+          isTestbed: tenantsTable.isTestbed,
+          name: tenantsTable.customerName,
         })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .from(tenantsTable)
+        .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
         .limit(1);
       if (!customer?.tenantId) {
         res.status(400).json({ error: "Selected customer has no connected tenant" });
@@ -251,6 +257,9 @@ router.post(
       // testbed-flagged customer for now — this is a real Graph write, and
       // lifting this restriction for live customer tenants is a separate,
       // later task (out of scope here).
+      //
+      // tenants.is_testbed is NOT NULL DEFAULT false, so a tenant created by
+      // any path that doesn't set it explicitly fails CLOSED here.
       if (!customer.isTestbed) {
         res.status(403).json({ error: "Launch Control is only available for a customer flagged isTestbed" });
         return;

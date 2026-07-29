@@ -16,14 +16,14 @@
  *
  * When customerId is null (pre-customer / orphaned run), findings and the
  * report document are still persisted. The portal backfill in portal.ts
- * will update customer_id once the purchase creates the msp_customers row.
+ * will update customer_id once the purchase creates the tenants row.
  */
 
 import { db } from "@workspace/db";
 import {
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
-  mspCustomersTable,
+  tenantsTable,
   mspDocumentsTable,
   portalWfRunsTable,
   portalWfOperatorTasksTable,
@@ -489,41 +489,45 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // Manual trigger path — customer record already exists
     const [customer] = await db
       .select({
-        id: mspCustomersTable.id,
-        name: mspCustomersTable.name,
-        mspId: mspCustomersTable.mspId,
-        tenantId: mspCustomersTable.tenantId,
+        id: tenantsTable.id,
+        name: tenantsTable.customerName,
+        mspId: tenantsTable.mspId,
+        tenantId: tenantsTable.tenantId,
       })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.id, opts.customerId))
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, opts.customerId))
       .limit(1);
 
     if (!customer) throw new Error(`Customer ${opts.customerId} not found`);
+    // mspId comes from tenants.mspId — the tenant owns the MSP linkage.
     mspId = customer.mspId;
     customerId = customer.id;
     // No fallback to opts.customerId here — a bare customer-id string is not a
     // real tenant GUID and would reach Graph's OAuth endpoint as garbage (see
     // the null-tenantId pre-flight check below, which fails the run instead).
-    resolvedTenantId = customer.tenantId ?? opts.tenantId ?? null;
+    // The old `?? opts.tenantId ?? null` chain covered msp_customers' nullable
+    // tenant GUID; tenants.tenant_id is NOT NULL, so it is now unreachable.
+    resolvedTenantId = customer.tenantId;
     customerName = customer.name;
   } else {
     // Consent / self-serve path — look up by tenantId
     const [customer] = await db
       .select({
-        id: mspCustomersTable.id,
-        name: mspCustomersTable.name,
-        mspId: mspCustomersTable.mspId,
-        tenantId: mspCustomersTable.tenantId,
+        id: tenantsTable.id,
+        name: tenantsTable.customerName,
+        mspId: tenantsTable.mspId,
+        tenantId: tenantsTable.tenantId,
       })
-      .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.tenantId, opts.tenantId!))
+      .from(tenantsTable)
+      // tenants.tenant_id is UNIQUE, so this GUID lookup can match at most one row.
+      .where(eq(tenantsTable.tenantId, opts.tenantId!))
       .limit(1);
 
     if (customer) {
       // Customer exists (re-consent, or race-condition where purchase completed first)
       mspId = customer.mspId;
       customerId = customer.id;
-      resolvedTenantId = customer.tenantId!;
+      resolvedTenantId = customer.tenantId;
       customerName = customer.name;
     } else {
       // Brand-new self-serve tenant — orphaned run until purchase backfill runs

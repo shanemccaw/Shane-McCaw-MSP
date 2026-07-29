@@ -10,7 +10,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 const log = logger.child({ channel: "admin.content" });
 import { getPrompt } from "./prompt-loader";
-import { db, mspUsersTable } from "@workspace/db";
+import { db, usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { recordAiUsage, computeTokenCostCents } from "./ai-billing";
 
@@ -173,13 +173,25 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
     let resolvedMspId = input.mspId;
     if (!resolvedMspId && input.customerId) {
       try {
-        const [mspUser] = await db
-          .select({ mspId: mspUsersTable.mspId })
-          .from(mspUsersTable)
-          .where(eq(mspUsersTable.userId, input.customerId))
+        // input.customerId is a users.id (the old bridge keyed on
+        // msp_users.user_id). The dropped msp_users row carried an mspId for
+        // EVERY linked login — staff and customer alike — so a naive rewrite
+        // onto users.mspId alone would silently drop MSP attribution for every
+        // AI call triggered by a customer login: since Phase 0 a tenant-scoped
+        // role (CustomerUser/Free/Assessment) carries tenantId and a NULL
+        // mspId. Resolve the MSP-scoped case from users.mspId and the
+        // tenant-scoped case through tenants.mspId, preferring the user's own
+        // direct linkage. Left join so an MSP staff user with no tenant still
+        // resolves. Under-attribution here is a silent AI-billing gap, not an
+        // error, which is exactly why it needs the two-source coalesce.
+        const [row] = await db
+          .select({ userMspId: usersTable.mspId, tenantMspId: tenantsTable.mspId })
+          .from(usersTable)
+          .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+          .where(eq(usersTable.id, input.customerId))
           .limit(1);
-        if (mspUser) {
-          resolvedMspId = mspUser.mspId ?? undefined;
+        if (row) {
+          resolvedMspId = row.userMspId ?? row.tenantMspId ?? undefined;
         }
       } catch (err) {
         log.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId from customerId (non-fatal)");

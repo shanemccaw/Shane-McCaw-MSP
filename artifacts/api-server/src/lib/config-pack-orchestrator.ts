@@ -17,7 +17,7 @@ import {
   baselineActionTemplatesTable,
   configPacksTable,
   configPackTemplatesTable,
-  mspCustomersTable,
+  tenantsTable,
   wfDefinitionsTable,
   wfVersionsTable,
   type ConfigPack,
@@ -185,7 +185,7 @@ export async function persistConfigPackWorkflow(
 
 // ── Variable resolution ────────────────────────────────────────────────────────
 
-/** Resolve the tenant's default domain via Graph when msp_customers.domain is
+/** Resolve the tenant's default domain via Graph when tenants.domain is
  *  NULL (it is nullable and neither customer-creation path requires it). */
 async function resolveDefaultDomainViaGraph(tenantId: string): Promise<string | null> {
   try {
@@ -228,10 +228,18 @@ export async function runConfigPackForCustomer(opts: {
 
   const { pack, templates } = await loadConfigPack(packKey);
 
+  // Explicit column list rather than the previous bare .select() — tenants
+  // carries the consent jsonb, and nothing here needs it.
   const [customer] = await db
-    .select()
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.customerName,
+      tenantId: tenantsTable.tenantId,
+      domain: tenantsTable.domain,
+      isTestbed: tenantsTable.isTestbed,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
   if (!customer) throw new ConfigPackError("customer_not_found", `Customer ${customerId} not found`);
@@ -244,6 +252,12 @@ export async function runConfigPackForCustomer(opts: {
   // v1 guard, mirroring POST /admin/baseline-templates/:templateId/test: pack
   // runs perform REAL Graph writes, so until purchase/consent-triggered
   // automation ships, only testbed customers are runnable.
+  //
+  // Reads tenants.is_testbed (NOT NULL DEFAULT false, restored by Phase 2a and
+  // deliberately independent of msps.is_testbed — an MSP-level testbed flag
+  // must never authorize a write against a production tenant). Because the
+  // column is NOT NULL with a false default, a tenant created by any path that
+  // doesn't set it explicitly fails CLOSED here.
   if (!customer.isTestbed) {
     throw new ConfigPackError(
       "customer_not_testbed",
@@ -260,8 +274,8 @@ export async function runConfigPackForCustomer(opts: {
   }
 
   // ── Initial payload ──
-  // tenantName: msp_customers.name is NOT NULL — reliable.
-  // tenantDomain: msp_customers.domain is nullable — fall back to the Graph
+  // tenantName: tenants.customer_name is NOT NULL — reliable.
+  // tenantDomain: tenants.domain is nullable — fall back to the Graph
   //   default domain of the connected tenant.
   // organizationId: the Graph organization object id IS the tenant GUID, so no
   //   lookup is needed — customer.tenant_id is supplied directly.

@@ -33,8 +33,8 @@ import {
   db,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
-  mspCustomersTable,
-  mspUsersTable,
+  tenantsTable,
+  usersTable,
   clientServicesTable,
   servicesTable,
   industryBenchmarkReferenceTable,
@@ -63,11 +63,37 @@ const router: IRouter = Router();
 async function assertCustomerBelongsToMsp(customerId: number, mspId: number): Promise<void> {
   if (!mspId) return;
   const [row] = await db
-    .select({ id: mspCustomersTable.id })
-    .from(mspCustomersTable)
-    .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.mspId, mspId)))
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
     .limit(1);
   if (!row) throw Object.assign(new Error("Customer not found"), { status: 404 });
+}
+
+/**
+ * The caller's own customer id (a tenants.id), for the customer-facing portal
+ * routes below. Primary source is the JWT's customerId claim; the DB fallback
+ * covers the stale-JWT window where the claim is absent because the user had
+ * no tenant linkage at login time.
+ *
+ * Post-refactor this is simply users.tenantId — the dropped msp_users bridge
+ * table's customer_id column. Deliberately NOT users.mspId: these are
+ * tenant-scoped roles, which carry a tenantId and a NULL mspId, so reading the
+ * MSP column here would resolve null for every real customer and silently
+ * blank out their diagnostics, scripts and benchmark views.
+ *
+ * Replaces four copies of this lookup that each dynamically re-imported
+ * mspUsersTable; usersTable is statically imported, so the dynamic import is
+ * no longer needed.
+ */
+async function resolveCallerCustomerId(user: AuthUser): Promise<number | null> {
+  if (user.customerId) return user.customerId;
+  const [row] = await db
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  return row?.customerId ?? null;
 }
 
 // ── POST /api/msp/customers/:customerId/diagnostics/run ───────────────────────
@@ -85,9 +111,9 @@ router.post(
       // 1. Look up the customer record — mspId must come from here, NOT from the
       //    caller's JWT (which is legitimately absent/zero for PlatformAdmin).
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId, tenantId: mspCustomersTable.tenantId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
 
@@ -103,18 +129,21 @@ router.post(
       // 3. Resolve packageKey.  Body override is accepted (useful for testing),
       //    but "default" and empty strings are treated as "not provided".
       //    Primary source: the customer's active monitoring subscription
-      //    (msp_users → client_services → services.type_attributes->>'packageKey').
+      //    (users → client_services → services.type_attributes->>'packageKey').
+      //    The customer's logins are every users row carrying this tenantId —
+      //    the same set resolveCustomerUserIds() returns — so the subscription
+      //    is found no matter which sibling login it hangs off.
       //    Fallback: core:security-baseline (always exists, has real checks).
       let packageKey = String((req.body as Record<string, unknown>).packageKey ?? "").trim();
       if (!packageKey || packageKey === "default") {
         const [pkgRow] = await db
           .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
-          .from(mspUsersTable)
-          .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+          .from(usersTable)
+          .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, usersTable.id))
           .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
           .where(
             and(
-              eq(mspUsersTable.customerId, customerId),
+              eq(usersTable.tenantId, customerId),
               eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
               eq(clientServicesTable.status, "active"),
             )
@@ -175,9 +204,9 @@ router.get(
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
 
@@ -194,12 +223,12 @@ router.get(
           serviceId: servicesTable.id,
           serviceName: servicesTable.name,
         })
-        .from(mspUsersTable)
-        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+        .from(usersTable)
+        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, usersTable.id))
         .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
         .where(
           and(
-            eq(mspUsersTable.customerId, customerId),
+            eq(usersTable.tenantId, customerId),
             eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
             eq(clientServicesTable.status, "active"),
           )
@@ -234,9 +263,9 @@ router.get(
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
       // Ownership + per-staff scoping via the shared source of truth (was a
@@ -285,9 +314,9 @@ router.get(
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
       // Ownership + per-staff scoping via the shared source of truth (was a
@@ -326,9 +355,9 @@ router.get(
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
       const [customer] = await db
-        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-        .from(mspCustomersTable)
-        .where(eq(mspCustomersTable.id, customerId))
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
       // Ownership + per-staff scoping via the shared source of truth (was a
@@ -469,10 +498,11 @@ router.get(
 // and a summary of findings (no raw extracted_properties).
 //
 // customerId may be null in the JWT when:
-//   a) msp_users.customer_id was null at login time (stale JWT / data-gap window)
-//   b) The user is a pre-purchase orphaned tenant with no msp_customers row yet
+//   a) users.tenant_id was null at login time (stale JWT / data-gap window)
+//   b) The user is a pre-purchase orphaned tenant with no tenants row yet
 //
-// Fallback: do a fresh msp_users lookup so a stale JWT doesn't hide real data.
+// Fallback: resolveCallerCustomerId() does a fresh users lookup so a stale JWT
+// doesn't hide real data.
 
 router.get(
   "/portal/diagnostics/latest",
@@ -482,16 +512,7 @@ router.get(
       const user = req.user!;
 
       // Primary: use customerId from JWT. Fallback: fresh DB read (stale-JWT window).
-      let customerId = user.customerId ?? null;
-      if (!customerId) {
-        const { mspUsersTable: muTable } = await import("@workspace/db");
-        const [freshMu] = await db
-          .select({ customerId: muTable.customerId })
-          .from(muTable)
-          .where(eq(muTable.userId, user.id))
-          .limit(1);
-        customerId = freshMu?.customerId ?? null;
-      }
+      const customerId = await resolveCallerCustomerId(user);
 
       if (!customerId) { res.json({ run: null, findings: [] }); return; }
 
@@ -548,15 +569,7 @@ router.get(
       const user = req.user!;
       const { checkKey } = req.params as { checkKey: string };
 
-      let customerId = user.customerId ?? null;
-      if (!customerId) {
-        const [freshMu] = await db
-          .select({ customerId: mspUsersTable.customerId })
-          .from(mspUsersTable)
-          .where(eq(mspUsersTable.userId, user.id))
-          .limit(1);
-        customerId = freshMu?.customerId ?? null;
-      }
+      const customerId = await resolveCallerCustomerId(user);
 
       if (!customerId) {
         res.status(404).json({ error: "No script available for this check" });
@@ -633,16 +646,7 @@ router.get(
     try {
       const user = req.user!;
 
-      let customerId = user.customerId ?? null;
-      if (!customerId) {
-        const { mspUsersTable: muTable } = await import("@workspace/db");
-        const [freshMu] = await db
-          .select({ customerId: muTable.customerId })
-          .from(muTable)
-          .where(eq(muTable.userId, user.id))
-          .limit(1);
-        customerId = freshMu?.customerId ?? null;
-      }
+      const customerId = await resolveCallerCustomerId(user);
 
       if (!customerId) {
         res.json({ pillars: [], asOfDate: null });
@@ -747,16 +751,7 @@ router.get(
       const user = req.user!;
       const serviceSlug = req.params["serviceSlug"] as string;
 
-      let customerId = user.customerId ?? null;
-      if (!customerId) {
-        const { mspUsersTable: muTable } = await import("@workspace/db");
-        const [freshMu] = await db
-          .select({ customerId: muTable.customerId })
-          .from(muTable)
-          .where(eq(muTable.userId, user.id))
-          .limit(1);
-        customerId = freshMu?.customerId ?? null;
-      }
+      const customerId = await resolveCallerCustomerId(user);
 
       if (!customerId) {
         res.json({

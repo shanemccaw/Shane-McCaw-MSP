@@ -23,11 +23,10 @@
 import { db } from "@workspace/db";
 import {
   monitorChecksTable,
-  tenantConsentTable,
-  mspCustomersTable,
+  tenantsTable,
   m365ServiceHealthSamplesTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, markTenantConsentRevoked } from "./graph";
 import { logger } from "./logger";
 
@@ -50,9 +49,13 @@ export interface M365HealthSampleResult {
 
 /**
  * Samples current per-service health for one tenant and inserts one row per
- * service into m365_service_health_samples. Resolves mspId/customerId from
- * the tenant's msp_customers row (via tenant_consent -> customerId), same
- * bridge message-center-sync.ts uses.
+ * service into m365_service_health_samples.
+ *
+ * Resolves mspId/customerId directly from the tenants row: the tenant GUID is
+ * now first-class on tenants (tenant_id, NOT NULL UNIQUE), so the old two-hop
+ * tenant_consent -> customerId -> msp_customers bridge collapses into a single
+ * lookup. The `no_customer` status is retained verbatim for "no tenants row
+ * exists for this GUID" so the caller-visible contract is unchanged.
  */
 export async function sampleM365ServiceHealthForTenant(tenantId: string): Promise<M365HealthSampleResult> {
   const [check] = await db
@@ -66,25 +69,14 @@ export async function sampleM365ServiceHealthForTenant(tenantId: string): Promis
     return { tenantId, status: "no_check", serviceCount: 0 };
   }
 
-  const [consent] = await db
-    .select({ customerId: tenantConsentTable.customerId })
-    .from(tenantConsentTable)
-    .where(eq(tenantConsentTable.tenantId, tenantId))
-    .limit(1);
-
-  if (!consent?.customerId) {
-    log.warn({ tenantId }, "m365-health-sample: no msp_customers row bridged for this tenant — skipping");
-    return { tenantId, status: "no_customer", serviceCount: 0 };
-  }
-
   const [customer] = await db
-    .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, consent.customerId))
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
     .limit(1);
 
   if (!customer) {
-    log.warn({ tenantId, customerId: consent.customerId }, "m365-health-sample: msp_customers row missing — skipping");
+    log.warn({ tenantId }, "m365-health-sample: no tenants row for this tenant GUID — skipping");
     return { tenantId, status: "no_customer", serviceCount: 0 };
   }
 
@@ -133,10 +125,14 @@ export async function sampleM365ServiceHealthForTenant(tenantId: string): Promis
  * frequency) via the seeded workflow's m365_health_sample node.
  */
 export async function sampleM365ServiceHealthForAllTenants(): Promise<M365HealthSampleResult[]> {
+  // Consent now lives in the tenants.consent jsonb, keyed by consent type. Only
+  // the `graph` (read) grant authorizes this sampling call — writeBack and
+  // sharepoint are independent grants and one key's state proves nothing about
+  // another's, so this must never widen to "has any granted consent".
   const tenants = await db
-    .select({ tenantId: tenantConsentTable.tenantId })
-    .from(tenantConsentTable)
-    .where(eq(tenantConsentTable.consentStatus, "granted"));
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(sql`${tenantsTable.consent} -> 'graph' ->> 'status' = 'granted'`);
 
   const results: M365HealthSampleResult[] = [];
   for (const t of tenants) {

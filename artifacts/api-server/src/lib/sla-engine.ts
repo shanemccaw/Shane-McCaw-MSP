@@ -13,7 +13,7 @@
  *    logged via the server logger for auditability.
  */
 
-import { db, mspUsersTable, mspCustomersTable } from "@workspace/db";
+import { db, usersTable, tenantsTable } from "@workspace/db";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
@@ -274,11 +274,16 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
 }
 
 export async function runSlaEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
+  // `customerId` here is a users.id despite the name (the old bridge keyed on
+  // msp_users.user_id). Resolve the owning tenant through users.tenantId, and
+  // take the MSP from tenants.mspId — NOT users.mspId, which is NULL for every
+  // tenant-scoped role and would silently degrade every customer SLA run to the
+  // "no customer" branch below (empty timers, default 50/50 weights).
   const [customerRow] = await db
-    .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, customerId))
+    .select({ customerId: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(usersTable.id, customerId))
     .limit(1);
   const resolvedCustomerId = customerRow?.customerId ?? null;
   const resolvedMspId = customerRow?.mspId ?? null;

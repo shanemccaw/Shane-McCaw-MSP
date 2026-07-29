@@ -24,7 +24,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
-  mspCustomersTable,
+  tenantsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
   policyRuleIncidentsTable,
@@ -82,13 +82,15 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
     // never even loaded into memory.
     const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
 
+    // Explicit column list, never a bare .select() — tenants carries the
+    // consent jsonb, which has no business in an alerts payload.
     const customers = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
-      .from(mspCustomersTable)
+      .select({ id: tenantsTable.id, name: tenantsTable.customerName })
+      .from(tenantsTable)
       .where(
         scopedIds === null
-          ? eq(mspCustomersTable.mspId, mspId)
-          : and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, scopedIds)),
+          ? eq(tenantsTable.mspId, mspId)
+          : and(eq(tenantsTable.mspId, mspId), inArray(tenantsTable.id, scopedIds)),
       );
     const customerNameById = new Map(customers.map((c) => [c.id, c.name]));
 
