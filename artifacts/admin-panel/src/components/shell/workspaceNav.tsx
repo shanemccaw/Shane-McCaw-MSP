@@ -328,6 +328,19 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "pipe-zoho-accounts", label: "Zoho Accounts", path: "/pipeline/zoho-accounts", icon: Building2 },
         ],
       },
+      {
+        // EngageBay Admin Panel: Contacts (#106) — its own group, same
+        // reasoning as Zoho CRM's: this reads EngageBay, not the local tables.
+        id: "engagebay-crm", label: "EngageBay CRM", defaultOpen: true,
+        items: [
+          { id: "pipe-engagebay-contacts", label: "EngageBay Contacts", path: "/pipeline/engagebay-contacts", icon: Users },
+          // EngageBay Admin Panel: Tags (#107) — list-only, same nav group.
+          { id: "pipe-engagebay-tags", label: "EngageBay Tags", path: "/pipeline/engagebay-tags", icon: Tags },
+          // EngageBay Admin Panel: Activity Log + Settings (#109).
+          { id: "pipe-engagebay-activity", label: "EngageBay Activity Log", path: "/pipeline/engagebay-activity", icon: History },
+          { id: "pipe-engagebay-settings", label: "EngageBay Settings", path: "/pipeline/engagebay-settings", icon: Settings },
+        ],
+      },
     ],
   },
   {
