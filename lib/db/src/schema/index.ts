@@ -494,6 +494,10 @@ export const projectsTable = pgTable("projects", {
   signedOffAt: timestamp("signed_off_at"),
   signedOffBy: integer("signed_off_by").references(() => usersTable.id),
   quickWinElapsedSeconds: integer("quick_win_elapsed_seconds"),
+  // Links this local project to a Zoho Project (#85). Nullable — set by an
+  // admin via the Zoho Projects board link/create flow, independent of
+  // kanban_tasks/project-kanban.tsx's local delivery board.
+  zohoProjectId: text("zoho_project_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -2606,6 +2610,12 @@ export interface WfNode {
     | "zoho_find_contact_by_email" | "zoho_get_contact"
     | "zoho_create_account" | "zoho_search_accounts" | "zoho_get_account"
     | "zoho_update_account" | "zoho_attach_file_to_account"
+    // Zoho Projects (#85) — 14 nodes, same read/write split as Zoho CRM above,
+    // draining on the same zoho_batch_drain. No delete nodes.
+    | "zoho_create_project" | "zoho_update_project" | "zoho_get_project" | "zoho_list_projects"
+    | "zoho_create_tasklist" | "zoho_get_tasklist"
+    | "zoho_create_task" | "zoho_update_task" | "zoho_get_task" | "zoho_list_tasks"
+    | "zoho_create_milestone" | "zoho_update_milestone" | "zoho_get_milestone" | "zoho_list_milestones"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Utilities

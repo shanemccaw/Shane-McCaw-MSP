@@ -101,6 +101,8 @@ import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
 import { executeZohoCrmNode } from "./zoho-crm.js";
 import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.js";
+import { executeZohoProjectsNode } from "./zoho-projects.js";
+import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
@@ -1232,6 +1234,23 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         return { dryRun: true, found: false, record: null, module: zModule, note: "dry run — Zoho read skipped" };
       }
       return { dryRun: true, queued: false, jobId: null, jobType: node.type, module: zModule, note: "dry run — Zoho write not queued" };
+    }
+
+    // Zoho Projects (#85) — all 14 nodes. Same dry-run contract as Zoho CRM
+    // above: reads report a shaped empty result, writes report nothing queued.
+    case "zoho_create_project": case "zoho_update_project": case "zoho_get_project": case "zoho_list_projects":
+    case "zoho_create_tasklist": case "zoho_get_tasklist":
+    case "zoho_create_task": case "zoho_update_task": case "zoho_get_task": case "zoho_list_tasks":
+    case "zoho_create_milestone": case "zoho_update_milestone": case "zoho_get_milestone": case "zoho_list_milestones": {
+      const zpSpec = getZohoProjectsNodeSpec(node.type);
+      const zpEntity = zpSpec?.entity ?? "Project";
+      if (zpSpec?.mode === "read") {
+        if (node.type.startsWith("zoho_list_")) {
+          return { dryRun: true, records: [], count: 0, entity: zpEntity, note: "dry run — Zoho Projects list skipped" };
+        }
+        return { dryRun: true, found: false, record: null, entity: zpEntity, note: "dry run — Zoho Projects read skipped" };
+      }
+      return { dryRun: true, queued: false, jobId: null, jobType: node.type, entity: zpEntity, note: "dry run — Zoho Projects write not queued" };
     }
 
     case "send_browser_notification": {
@@ -6583,6 +6602,23 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "zoho_create_account": case "zoho_search_accounts": case "zoho_get_account":
       case "zoho_update_account": case "zoho_attach_file_to_account": {
         output = await executeZohoCrmNode(
+          node.type,
+          node.data as Record<string, unknown>,
+          (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),
+        );
+        if (output.error) nodeError = true;
+        break;
+      }
+
+      // Zoho Projects (#85) — all 14 nodes route through one entry point, same
+      // sync/queued split as Zoho CRM above: reads call Zoho inline, writes
+      // enqueue an msp_job_queue row and return { queued: true, jobId }
+      // WITHOUT touching Zoho — the write lands on the next zoho_batch_drain.
+      case "zoho_create_project": case "zoho_update_project": case "zoho_get_project": case "zoho_list_projects":
+      case "zoho_create_tasklist": case "zoho_get_tasklist":
+      case "zoho_create_task": case "zoho_update_task": case "zoho_get_task": case "zoho_list_tasks":
+      case "zoho_create_milestone": case "zoho_update_milestone": case "zoho_get_milestone": case "zoho_list_milestones": {
+        output = await executeZohoProjectsNode(
           node.type,
           node.data as Record<string, unknown>,
           (value) => (typeof value === "string" ? interp(value, payload) : value === undefined || value === null ? undefined : String(value)),

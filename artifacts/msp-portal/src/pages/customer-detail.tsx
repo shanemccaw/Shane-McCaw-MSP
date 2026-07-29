@@ -62,6 +62,7 @@ import {
   Edit,
   ExternalLink,
   FileText,
+  FolderKanban,
   Globe,
   Info,
   Kanban,
@@ -1238,6 +1239,17 @@ export default function CustomerDetailPage() {
                     <p className="text-xs text-muted-foreground">3 / 5 phases complete</p>
                   </div>
                   <Link href={`/project-kanban/${customer.id}`}>
+                    <Button size="sm" variant="outline" className="gap-1 rounded-lg">
+                      Open Board <ExternalLink className="size-3" />
+                    </Button>
+                  </Link>
+                </div>
+                <div className="p-4 bg-slate-950/40 border border-slate-800/40 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-slate-100 flex items-center gap-1.5"><FolderKanban className="size-4 text-purple-400" />Zoho Projects Board</p>
+                    <p className="text-xs text-muted-foreground">Live-fed from Zoho — tasks, tasklists, milestones</p>
+                  </div>
+                  <Link href={`/zoho-project-board/${customer.id}`}>
                     <Button size="sm" variant="outline" className="gap-1 rounded-lg">
                       Open Board <ExternalLink className="size-3" />
                     </Button>

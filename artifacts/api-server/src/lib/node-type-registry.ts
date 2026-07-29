@@ -71,6 +71,7 @@ export type NodeTypeMeta =
     };
 
 import { ZOHO_CRM_NODES } from "./zoho-crm-nodes.ts";
+import { ZOHO_PROJECTS_NODES } from "./zoho-projects-nodes.ts";
 
 const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // ── Meta-node ──────────────────────────────────────────────────────────────
@@ -806,6 +807,15 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // other. The completeness assertions in ai-usage-metering.test.ts check
   // isRegisteredNodeType() at runtime, which this satisfies.
   ...ZOHO_CRM_NODES.map((n): NodeTypeMeta => ({
+    nodeType: n.nodeType,
+    isAIDependent: false,
+    description: n.description,
+  })),
+
+  // ── Zoho Projects (#85) — 14 nodes, none AI-dependent ─────────────────────
+  // Same derivation discipline as Zoho CRM above: catalog lives in
+  // zoho-projects-nodes.ts, this registry just maps over it.
+  ...ZOHO_PROJECTS_NODES.map((n): NodeTypeMeta => ({
     nodeType: n.nodeType,
     isAIDependent: false,
     description: n.description,

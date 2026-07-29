@@ -138,6 +138,7 @@ export default defineConfig({
       "src/routes/admin-active-directory-user-actions.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
+      "src/lib/zoho-projects.test.ts",
     ],
     coverage: {
       provider: "v8",

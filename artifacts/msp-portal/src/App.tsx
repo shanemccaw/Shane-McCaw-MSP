@@ -84,6 +84,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
+import ZohoProjectBoardPage from "@/pages/zoho-project-board";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import DevStyleGuidePage from "@/pages/dev-style-guide";
@@ -487,6 +488,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/project-kanban/:id">
         <ProtectedRoute component={ProjectKanbanPage} />
+      </Route>
+      <Route path="/zoho-project-board/:id">
+        <ProtectedRoute component={ZohoProjectBoardPage} />
       </Route>
 
       {/* Assessment Results Dashboard — one page for all 13 assessment products.

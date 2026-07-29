@@ -1161,6 +1161,11 @@ export const zohoConnectionTable = pgTable("zoho_connection", {
   mspId: integer("msp_id").notNull().default(1).references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
   // Zoho's own org identifier, captured at OAuth callback time (best-effort)
   zohoOrgId: text("zoho_org_id"),
+  // Zoho Projects' portal id — a distinct concept from zohoOrgId above (CRM's
+  // org identifier). Not known at OAuth callback time, so it is resolved
+  // lazily on first Zoho Projects call (GET /projects/v3/portals/) and cached
+  // here rather than re-fetched on every request (#85).
+  zohoPortalId: text("zoho_portal_id"),
   // Key Vault secret NAME holding the refresh token — never the value itself
   keyVaultSecretName: text("key_vault_secret_name").notNull(),
   accessTokenCache: text("access_token_cache"),
