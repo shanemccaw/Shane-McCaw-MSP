@@ -89,7 +89,7 @@ rather than a flat account list.
 | 6 | User Object detail pane (full read view) | In Progress | #66 |
 | 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
 | 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
-| 9 | User Object — dev-only cascading hard delete | Not Started | #69 |
+| 9 | User Object — dev-only cascading hard delete | Blocked (by #92) | #69 |
 | 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Blocked (by #92) | #91 |
 
 ## Notes
@@ -137,6 +137,26 @@ manual scan trigger, and a re-consent invite-link generator, all
 confirmed to have existing reusable backend mechanisms rather than being
 built from scratch. Depends on Phase 3 (Done) for the pane it extends.
 
+
+**Phase 9 is BLOCKED (2026-07-28) by the same Issue #92 refactor, which has
+now PARTIALLY LANDED on main** (commit `91b1c8b9` "Tenant/User Refactor
+Phase 0: Schema + wipe", merged via `e654d547`). A Phase 9 build session
+started, ran the mandatory pre-delete table-footprint audit, and stopped at
+the audit stage per this phase's own stop-don't-guess rule, because the
+schema the cascade must be audited against changed out from under the spec:
+`msp_users`, `msp_customers`, `tenant_consent`, `tenant_write_consent`, and
+`tenant_sharepoint_consent` no longer exist in `lib/db/src/schema` —
+msp_users was absorbed into a single expanded `users` table, and consent is
+now a `jsonb` column on the new `tenants` table. Issue #69's candidate table
+list is therefore stale, and `admin-active-directory.ts` (Phases 1–8) itself
+still imports the dropped tables — it currently typechecks ONLY because the
+built declarations in `lib/db/dist` are stale and still declare them; a
+decls rebuild will surface the breakage across the whole api-server. Phase 9
+must be re-scoped and its table-footprint audit re-run from scratch against
+#92's final schema, after the Phases 1–8 surface has been migrated to it.
+Do not build the cascade against either schema until then — the live DB's
+actual state cannot be verified from a Claude Code session (no DB access),
+and a wrong guess here is unrecoverable data loss.
 
 **Phase 10 is BLOCKED (2026-07-28) by Issue #92** ("Fix database to
 have a true Tenant Customer hierarchy") in a separate initiative,
