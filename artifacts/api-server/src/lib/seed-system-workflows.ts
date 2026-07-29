@@ -2005,6 +2005,35 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── EngageBay Queue Drain (EngageBay Webhooks + Workflow Nodes, #105) ───────
+  {
+    name: "EngageBay Queue Drain",
+    description: "Runs every 5 minutes. Claims a bounded batch (20) of pending engagebay_* jobs from msp_job_queue with FOR UPDATE SKIP LOCKED and dispatches each to its registered EngageBay job handler with at most 5 concurrent EngageBay API calls (conservative — EngageBay publishes no per-org concurrency limit, unlike Zoho's documented 5–25). Every EngageBay write in the platform is queued and drained through this workflow so each sync batch is a visible, logged run — never a bare setInterval loop.",
+    triggerType: "schedule",
+    cron: "*/5 * * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Every 5 minutes" } },
+        {
+          id: "drain",
+          type: "engagebay_batch_drain",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "engagebay_batch_drain",
+            label: "Drain pending engagebay_* jobs (batch 20, concurrency 5)",
+            batchSize: 20,
+            concurrency: 5,
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "drain" },
+        { id: "e2", source: "drain", target: "end" },
+      ],
+    },
+  },
   {
     name: "__system__: Signal Policy Evaluation",
     description: "Runs every 15 minutes. Evaluates all active Signal Policy Engine rules (policy_rules) against every customer with a currently-fired signal, firing configured workflow events for anything that qualifies — this is the final step connecting a fired/stabilized signal to a real dispatched alert.",

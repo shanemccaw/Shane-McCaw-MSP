@@ -313,6 +313,11 @@ function TriggerCard({
             zoho event: <span className="text-foreground">{t.config.zohoEventType}</span>
           </div>
         )}
+        {t.type === "webhook" && typeof t.config.engagebayEventType === "string" && t.config.engagebayEventType && (
+          <div className="text-xs text-muted-foreground/60 font-mono bg-background border border-border rounded-lg px-3 py-2 mb-2">
+            engagebay event: <span className="text-foreground">{t.config.engagebayEventType}</span>
+          </div>
+        )}
         {t.type === "webhook" && t.webhookToken && (
           <div className="flex items-center gap-2">
             <code className="flex-1 text-[10px] bg-background border border-border rounded-lg px-3 py-2 text-muted-foreground font-mono truncate">
@@ -522,6 +527,9 @@ export default function TriggersPage({ defId }: { defId: number }) {
   const [eventName, setEventName] = useState("");
 
   const [zohoEventType, setZohoEventType] = useState("");
+  // Free-text, not a fixed dropdown: EngageBay's full webhook event catalog is
+  // unconfirmed (#105 audit) — the receiver matches whatever string arrives.
+  const [engagebayEventType, setEngagebayEventType] = useState("");
 
   const [schedulePayloadMode, setSchedulePayloadMode] = useState<"static" | "per_record" | "batched">("static");
   const [staticPayload, setStaticPayload] = useState("{}");
@@ -564,6 +572,10 @@ export default function TriggersPage({ defId }: { defId: number }) {
         // Zoho-listening webhook triggers carry the event type they match;
         // generic webhook triggers keep an empty config.
         config = { zohoEventType };
+      } else if (newType === "webhook" && engagebayEventType) {
+        // EngageBay-listening webhook triggers carry the event type they
+        // match, same as Zoho above.
+        config = { engagebayEventType: engagebayEventType.trim() };
       }
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`, {
         method: "POST",
@@ -747,6 +759,18 @@ export default function TriggersPage({ defId }: { defId: number }) {
                     </select>
                     <p className="text-[11px] text-muted-foreground/60">
                       Selecting a Zoho event makes this trigger fire from the platform's /api/zoho/webhook receiver when that event arrives.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">EngageBay Event (optional)</label>
+                    <input
+                      value={engagebayEventType}
+                      onChange={e => setEngagebayEventType(e.target.value)}
+                      placeholder="e.g. contact.created"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground/60">
+                      Free-text — EngageBay's full webhook event catalog isn't confirmed yet, so this matches whatever event name your EngageBay account actually sends. Makes this trigger fire from the platform's /api/engagebay/webhook receiver when that event arrives.
                     </p>
                   </div>
                   <div className="bg-background border border-border rounded-lg p-3 text-xs text-muted-foreground">
