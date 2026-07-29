@@ -17,10 +17,34 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "integration.zoho" });
 
 /**
- * Maps a staged lead onto Zoho Lead API field names. Only fields Zoho actually
- * owns are sent — the local scoring columns (score, stage, painPoints, …) stay
- * in Postgres, since the engines that produce them are unchanged by this phase
- * and Zoho has no home for them.
+ * Collapses a jsonb string[] signal column into the single-line text Zoho's
+ * custom fields hold. Defensive against a null/non-array column value: these
+ * are NOT NULL DEFAULT '[]' in the schema, but LeadStaging rows also reach this
+ * function from callers that build them in memory.
+ */
+function joinSignals(values: string[] | null | undefined): string | undefined {
+  if (!Array.isArray(values)) return undefined;
+  const joined = values
+    .map((v) => String(v).trim())
+    .filter(Boolean)
+    .join("; ");
+  return joined || undefined;
+}
+
+/**
+ * Maps a staged lead onto Zoho Lead API field names.
+ *
+ * The three signal arrays (painPoints, engagementSignals, urgencySignals) are
+ * synced into Zoho custom Lead fields as "; "-delimited text — Zoho has no
+ * array type on a text field, and these are the part a human reads on the
+ * record. The scoring columns proper (score, stage) still stay in Postgres,
+ * since the engines that produce them are unchanged by this phase and Zoho has
+ * no home for them.
+ *
+ * The custom field API names below (Pain_Points / Engagement_Signals /
+ * Urgency_Signals) are the ones Shane created on the Leads module and confirmed
+ * directly — not inferred from the display labels, since Zoho derives the API
+ * name from the label and a mismatch fails silently.
  */
 export function mapStagingToZohoLead(row: LeadStaging): Record<string, unknown> {
   // Zoho requires Last_Name on Leads. A single-word name has no surname to
@@ -42,6 +66,16 @@ export function mapStagingToZohoLead(row: LeadStaging): Record<string, unknown> 
   if (row.companySize) fields.No_of_Employees = row.companySize;
   if (row.source) fields.Lead_Source = row.source;
   if (row.notes) fields.Description = row.notes;
+
+  // Signal arrays → delimited text. Omitted entirely when empty rather than
+  // sent as "", so a lead staged before the engines have run can't blank out
+  // signals a previous upsert already wrote onto the Zoho record.
+  const painPoints = joinSignals(row.painPoints);
+  const engagementSignals = joinSignals(row.engagementSignals);
+  const urgencySignals = joinSignals(row.urgencySignals);
+  if (painPoints) fields.Pain_Points = painPoints;
+  if (engagementSignals) fields.Engagement_Signals = engagementSignals;
+  if (urgencySignals) fields.Urgency_Signals = urgencySignals;
 
   return fields;
 }
