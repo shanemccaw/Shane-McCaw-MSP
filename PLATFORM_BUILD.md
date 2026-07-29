@@ -566,3 +566,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-07-29 | ⏳ IN FLIGHT | Phase 2: Home/Assessments Navigation Unification (#140, parent #132) |  |
 | 2026-07-29 | ⏳ IN FLIGHT | cio-narrative-generator.ts AI attribution (#149) |  |
 | 2026-07-29 | ⏳ IN FLIGHT | Decommission Legacy CRM Phase A (#135, parent #77) |  |
+| 2026-07-29 | ⏳ IN FLIGHT | ai-analyzer.ts customerId type fix (#150) |  |
