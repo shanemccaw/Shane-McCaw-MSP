@@ -77,6 +77,12 @@ export function mapStagingToZohoLead(row: LeadStaging): Record<string, unknown> 
   if (engagementSignals) fields.Engagement_Signals = engagementSignals;
   if (urgencySignals) fields.Urgency_Signals = urgencySignals;
 
+  // GA4 client_id (#116) — custom field name NOT confirmed against Zoho yet
+  // (same manual prerequisite as Pain_Points/Engagement_Signals/Urgency_Signals
+  // were under #122): Shane must create this field on the Leads module and
+  // confirm its exact API name before this is live-testable.
+  if (row.ga4ClientId) fields.GA4_Client_ID = row.ga4ClientId;
+
   return fields;
 }
 

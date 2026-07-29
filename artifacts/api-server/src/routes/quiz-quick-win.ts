@@ -65,6 +65,7 @@ const captureSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1).max(200).optional(),
   company: z.string().trim().max(200).optional(),
+  ga4ClientId: z.string().trim().max(200).optional(),
 });
 
 router.post("/quiz/quick-win/results/:resultId/identify", submitLimiter, async (req, res) => {
@@ -96,6 +97,7 @@ router.post("/quiz/quick-win/results/:resultId/identify", submitLimiter, async (
       name: parsed.data.name,
       company: parsed.data.company,
       source: "quick_win_quiz",
+      ga4ClientId: parsed.data.ga4ClientId,
     });
 
     if (!staged) {

@@ -89,6 +89,39 @@ export async function identifyLead(email: string): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
+// ─── GA4 client_id lookup ──────────────────────────────────────────────────────
+// The GA4-assigned visitor id, used to attribute a staged lead (#116) back to
+// its GA4 session once it lands in Zoho. `gtag('get', ...)` is callback-based
+// and can hang indefinitely if an ad-blocker has silenced gtag.js, so this
+// races the callback against a short timeout and resolves null on either "no
+// gtag" (VITE_GA4_MEASUREMENT_ID not configured yet, #137) or a timeout —
+// never throws, and never blocks whatever form is calling it.
+const GA4_CLIENT_ID_TIMEOUT_MS = 1000;
+
+export function getGa4ClientId(): Promise<string | null> {
+  const measurementId = import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined;
+  if (typeof window.gtag !== "function" || !measurementId) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => settle(null), GA4_CLIENT_ID_TIMEOUT_MS);
+    try {
+      window.gtag!("get", measurementId, "client_id", (clientId: unknown) => {
+        clearTimeout(timer);
+        settle(typeof clientId === "string" && clientId ? clientId : null);
+      });
+    } catch {
+      clearTimeout(timer);
+      settle(null);
+    }
+  });
+}
+
 function beacon(path: string, body: unknown): void {
   const payload = JSON.stringify(body);
   if (typeof navigator.sendBeacon === "function") {

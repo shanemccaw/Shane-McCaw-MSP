@@ -157,6 +157,7 @@ export async function ensureLeadStagingForEmail(
     source: "quiz" | "portal_login" | "quick_win_quiz" | "contact_form" | "assessment";
     legacyLeadId?: number;
     legacyQuizLeadId?: number;
+    ga4ClientId?: string;
   },
 ): Promise<LeadStaging | null> {
   try {
@@ -182,6 +183,7 @@ export async function ensureLeadStagingForEmail(
         stage: "Cold",
         legacyLeadId: opts.legacyLeadId ?? null,
         legacyQuizLeadId: opts.legacyQuizLeadId ?? null,
+        ga4ClientId: opts.ga4ClientId?.trim() || null,
       })
       .returning();
 

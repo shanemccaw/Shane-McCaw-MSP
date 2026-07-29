@@ -250,6 +250,11 @@ export const leadStagingTable = pgTable("lead_staging", {
   legacyLeadId: integer("legacy_lead_id"),
   legacyQuizLeadId: integer("legacy_quiz_lead_id"),
 
+  // GA4 client_id (#116) — links this staged lead back to its GA4 visitor/session
+  // for attribution once the lead lands in Zoho. First-write-wins, same as the
+  // rest of this row: an existing staged email is never re-captured.
+  ga4ClientId: text("ga4_client_id"),
+
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
