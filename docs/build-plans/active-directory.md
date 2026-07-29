@@ -1,7 +1,7 @@
 # Initiative: Active Directory (Admin Panel)
 
 **Slug:** active-directory
-**Status:** In Progress
+**Status:** Done — all 10 phases landed and verified, initiative complete (2026-07-29)
 **Iteration:** 1
 **Area:** admin-panel
 **Owner:** Shane McCaw Consulting
@@ -81,16 +81,16 @@ rather than a flat account list.
 ## Phases
 | Phase | Title | Status | Issue |
 |-------|-------|--------|-------|
-| 1 | IDE shell + tree skeleton (OU containers, MSP/Customer/Group nodes) + universal search + nav registration | In Progress | #61 |
-| 2 | MSP Object detail pane | In Progress | #62 |
+| 1 | IDE shell + tree skeleton (OU containers, MSP/Customer/Group nodes) + universal search + nav registration | Done | #61 |
+| 2 | MSP Object detail pane | Done | #62 |
 | 3 | Customer Object detail pane | Done | #63 |
-| 4 | RBAC/Group Object detail pane (members, search, count) | In Progress | #64 |
-| 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | In Progress | #65 |
-| 6 | User Object detail pane (full read view) | In Progress | #66 |
-| 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | In Progress | #67 |
-| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | In Progress | #68 |
-| 9 | User Object — dev-only cascading hard delete | In Progress | #69 |
-| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | In Progress | #91 |
+| 4 | RBAC/Group Object detail pane (members, search, count) | Done | #64 |
+| 5 | Organizational Unit placeholder objects (creatable/browsable stub, no policy logic yet) | Done | #65 |
+| 6 | User Object detail pane (full read view) | Done | #66 |
+| 7 | User Object — RBAC + MSP/customer reassignment + entitlement grant/revoke | Done | #67 |
+| 8 | User Object — credential ops (forced password reset + admin MFA reset) + impersonation launch into /portal/ | Done | #68 |
+| 9 | User Object — dev-only cascading hard delete | Done | #69 |
+| 10 | Tree relabel to Tenant + nested Users + Tenant admin actions (consent revoke, scores, telemetry) | Done | #91 |
 
 ## Notes
 Phase count/order may change (decimal insertion, e.g. 2.5, if a phase
