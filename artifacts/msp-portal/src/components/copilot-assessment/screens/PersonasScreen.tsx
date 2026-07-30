@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PersonaStory } from '../../types';
+import { PersonaStory } from '../types';
 import { 
   Users, 
   ArrowRight, 

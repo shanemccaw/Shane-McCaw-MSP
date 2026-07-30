@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 
 import { UnifiedTelemetryCarousel, ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTelemetryCarousel';
-import { TELEMETRY_ENGINES, TELEMETRY_DOCS } from '../../data/telemetryCatalog';
+import { TELEMETRY_ENGINES, TELEMETRY_DOCS } from '../telemetryCatalog';
 import { TransformationSurface, TransformationData } from '../telemetry/TransformationSurface';
 
 export interface ExtendedUseCaseData {

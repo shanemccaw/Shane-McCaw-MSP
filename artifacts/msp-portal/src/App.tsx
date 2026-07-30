@@ -86,6 +86,7 @@ import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
 import ZohoProjectBoardPage from "@/pages/zoho-project-board";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
+import CopilotAssessmentPage from "@/pages/copilot-assessment";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
@@ -498,6 +499,13 @@ function SlugInnerSwitch() {
           services table row — no per-assessment page needed. */}
       <Route path="/assessment-results/:serviceSlug">
         <ProtectedRoute component={AssessmentDashboardPage} />
+      </Route>
+
+      {/* Copilot Assessment — new AI-Studio-designed exemplar UI (mechanical
+          import-path fix + routing only; still on static/mock data, real
+          telemetry wiring is future work). */}
+      <Route path="/copilot-assessment">
+        <ProtectedRoute component={CopilotAssessmentPage} />
       </Route>
 
       {/* Reports */}

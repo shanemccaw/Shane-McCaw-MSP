@@ -26,7 +26,7 @@ import {
   ADAPTIVE_OUTCOME_PRIORITIES,
   UNIVERSAL_CHANGE_MGMT,
   QuizOptionTile
-} from '../../data/quizCatalog';
+} from '../quizCatalog';
 import { ScoringPanel } from '../quiz/ScoringPanel';
 
 interface QuizScreenProps {

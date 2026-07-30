@@ -46,7 +46,7 @@ import {
   generateTop3Mismatches,
   TelemetryEngineDef,
   TelemetryDocDef
-} from '../../data/telemetryCatalog';
+} from '../telemetryCatalog';
 
 interface TelemetryScreenProps {
   quizAnswers?: Record<string, string>;

@@ -7,35 +7,35 @@ import {
   GovernanceState, 
   RoiState,
   EngineStatus
-} from './types';
+} from '@/components/copilot-assessment/types';
 import { 
   QUIZ_QUESTIONS, 
   INITIAL_ENGINES, 
   PERSONA_STORIES, 
   USE_CASE_TILES, 
   DOCUMENT_DELIVERABLES 
-} from './data/assessmentData';
+} from '@/components/copilot-assessment/assessmentData';
 
-import { TopToolbar } from './components/TopToolbar';
-import { LeftPanel } from './components/LeftPanel';
-import { RightPanel } from './components/RightPanel';
+import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
+import { LeftPanel } from '@/components/copilot-assessment/LeftPanel';
+import { RightPanel } from '@/components/copilot-assessment/RightPanel';
 
-import { HomeScreen } from './components/screens/HomeScreen';
-import { QuizScreen } from './components/screens/QuizScreen';
-import { TelemetryScreen } from './components/screens/TelemetryScreen';
-import { PersonasScreen } from './components/screens/PersonasScreen';
-import { UseCasesScreen } from './components/screens/UseCasesScreen';
-import { SecurityScreen } from './components/screens/SecurityScreen';
-import { Security2Screen } from './components/screens/Security2Screen';
-import { GovernanceScreen } from './components/screens/GovernanceScreen';
-import { RoiScreen } from './components/screens/RoiScreen';
-import { FinalReportScreen } from './components/screens/FinalReportScreen';
-import { DocumentsScreen } from './components/screens/DocumentsScreen';
-import { SowScreen } from './components/screens/SowScreen';
+import { HomeScreen } from '@/components/copilot-assessment/screens/HomeScreen';
+import { QuizScreen } from '@/components/copilot-assessment/screens/QuizScreen';
+import { TelemetryScreen } from '@/components/copilot-assessment/screens/TelemetryScreen';
+import { PersonasScreen } from '@/components/copilot-assessment/screens/PersonasScreen';
+import { UseCasesScreen } from '@/components/copilot-assessment/screens/UseCasesScreen';
+import { SecurityScreen } from '@/components/copilot-assessment/screens/SecurityScreen';
+import { Security2Screen } from '@/components/copilot-assessment/screens/Security2Screen';
+import { GovernanceScreen } from '@/components/copilot-assessment/screens/GovernanceScreen';
+import { RoiScreen } from '@/components/copilot-assessment/screens/RoiScreen';
+import { FinalReportScreen } from '@/components/copilot-assessment/screens/FinalReportScreen';
+import { DocumentsScreen } from '@/components/copilot-assessment/screens/DocumentsScreen';
+import { SowScreen } from '@/components/copilot-assessment/screens/SowScreen';
 
-import { PersonaModal } from './components/PersonaModal';
-import { DocumentModal } from './components/DocumentModal';
-import { ArchitectureDocModal } from './components/ArchitectureDocModal';
+import { PersonaModal } from '@/components/copilot-assessment/PersonaModal';
+import { DocumentModal } from '@/components/copilot-assessment/DocumentModal';
+import { ArchitectureDocModal } from '@/components/copilot-assessment/ArchitectureDocModal';
 
 const STEP_ORDER: AssessmentStep[] = [
   'home',

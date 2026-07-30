@@ -1,5 +1,5 @@
 import React from 'react';
-import { GovernanceState } from '../../types';
+import { GovernanceState } from '../types';
 import { SecurityBlastRadiusReactor } from '../reactor/SecurityBlastRadiusReactor';
 
 interface SecurityScreenProps {

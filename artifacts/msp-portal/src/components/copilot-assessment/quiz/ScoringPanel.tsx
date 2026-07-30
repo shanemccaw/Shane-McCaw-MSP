@@ -20,7 +20,7 @@ import {
   UNIVERSAL_ADOPTION_SPEED,
   ADAPTIVE_OUTCOME_PRIORITIES,
   UNIVERSAL_CHANGE_MGMT
-} from '../../data/quizCatalog';
+} from '../quizCatalog';
 
 interface ScoringPanelProps {
   answers: Record<string, string>;

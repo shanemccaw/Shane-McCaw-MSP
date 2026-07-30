@@ -1,4 +1,4 @@
-import { QuizQuestion, EngineStatus, PersonaStory, UseCaseTile, DocumentDeliverable } from '../types';
+import { QuizQuestion, EngineStatus, PersonaStory, UseCaseTile, DocumentDeliverable } from './types';
 
 export const QUIZ_QUESTIONS: QuizQuestion[] = [
   {

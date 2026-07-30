@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DocumentDeliverable } from '../types';
+import { DocumentDeliverable } from './types';
 import { 
   X, 
   Download, 

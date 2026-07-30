@@ -1,5 +1,5 @@
 import React from 'react';
-import { AssessmentStep, GovernanceState, RoiState } from '../types';
+import { AssessmentStep, GovernanceState, RoiState } from './types';
 import { 
   Info, 
   Lightbulb, 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GovernanceState, RoiState } from '../../types';
+import { GovernanceState, RoiState } from '../types';
 import { 
   Award, 
   ShieldCheck, 
