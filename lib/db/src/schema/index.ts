@@ -337,6 +337,62 @@ export const documentTypesTable = pgTable("document_types", {
 export type InsertDocumentType = typeof documentTypesTable.$inferInsert;
 export type DocumentType = typeof documentTypesTable.$inferSelect;
 
+// ── Results Template Registry ──────────────────────────────────────────────────
+// Admin-extensible registry backing the Assessment Results page redesign
+// (#162, parent #161). Modeled directly on document_types above: one row per
+// registry entry, one entry per assessment product (services row), admin
+// CRUD via admin-results-templates.ts, in-process cache via
+// results-templates.ts. Registry infra only — this table defines WHICH of the
+// 4 fixed template families each product renders as and holds family-specific
+// jsonb config; the actual results-page rendering is a separate phase (#163)
+// and is not built here.
+
+export const RESULTS_TEMPLATE_FAMILIES = [
+  // Pillar/module scores against the platform's health-pillar taxonomy
+  // (HEALTH_PILLARS in health-engine.ts) — closest to the current shared
+  // results shape, e.g. Tenant Health Audit, Security Posture.
+  "pillar_scored",
+  // Control-by-control gap list matching a named compliance framework's own
+  // structure (SOC 2 / NIST CSF / ISO 27001 / CMMC) rather than pillar scores.
+  "framework_gap_list",
+  // Decision-relevant data shown directly, not pillar-scored (mailbox sizes,
+  // CA policy tiers, license SKU waste) — Migration Readiness, Conditional
+  // Access, License & Cost Optimization.
+  "readiness_logistics",
+  // Copilot-specific shape: oversharing exposure + licensing/adoption fit.
+  "copilot",
+] as const;
+export type ResultsTemplateFamily = typeof RESULTS_TEMPLATE_FAMILIES[number];
+
+export const resultsTemplatesTable = pgTable("results_templates", {
+  id: serial("id").primaryKey(),
+  // Stable identifier independent of the mapped service's slug/name changing.
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  family: text("family", { enum: RESULTS_TEMPLATE_FAMILIES }).notNull(),
+  // One results template maps to exactly one assessment product row.
+  serviceId: integer("service_id").notNull().unique().references((): AnyPgColumn => servicesTable.id, { onDelete: "cascade" }),
+  // Family-specific structure: pillar subset override (pillar_scored),
+  // framework control list (framework_gap_list), decision-field list
+  // (readiness_logistics), exposure/licensing config (copilot). Shape is
+  // validated in application code per `family`, not by a DB constraint —
+  // mirrors document_types.sections' admin-authorable-jsonb approach.
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  // Product-tailored narrative copy overrides, keyed by module/section id,
+  // meant to replace the raw signal .finding/.message/.label text pulled
+  // verbatim today (portal-customer-engines.ts) with product-specific
+  // wording. Consumed by the rendering phase (#163), not written here.
+  narrativeCopyHints: jsonb("narrative_copy_hints").$type<Record<string, string>>().notNull().default({}),
+  sortOrder: integer("sort_order").notNull().default(0),
+  // Soft-toggle without deleting the record (mirrors document_types).
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertResultsTemplate = typeof resultsTemplatesTable.$inferInsert;
+export type ResultsTemplate = typeof resultsTemplatesTable.$inferSelect;
+
 // ── Fulfillment Idempotency Store ──────────────────────────────────────────────
 // Deduplicates resolve_fulfillment calls by (Stripe session ID | signal-fire event ID).
 // A row present means the event has already been emitted; callers skip silently.
