@@ -24,7 +24,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
@@ -276,6 +276,26 @@ router.get(
         .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
         .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
 
+      // Free-tier paywall (#164, Phase 3 of #161): a customer only sees the raw
+      // findings/recommendations text once they've paid (or been free-activated)
+      // for an assessment SOW. Composite/pillar SCORES are never gated — only the
+      // finding/recommendation strings themselves. Same paid/free_activated status
+      // set portal-assessment.ts already gates on (see its SOW-checkout dedupe
+      // check) — this route has no single docId to scope to (it aggregates every
+      // engine snapshot for the customer), so it's keyed on "has this customer
+      // paid/activated ANY assessment SOW" rather than a specific document.
+      const [paidAgreement] = await db
+        .select({ id: assessmentSowAgreementsTable.id })
+        .from(assessmentSowAgreementsTable)
+        .where(
+          and(
+            eq(assessmentSowAgreementsTable.clientUserId, req.user!.id),
+            inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
+          ),
+        )
+        .limit(1);
+      const isPaidTier = !!paidAgreement;
+
       const scores: Record<string, number> = {};
       const pillars: Record<string, any> = {};
       let compositeScore = 0;
@@ -309,12 +329,9 @@ router.get(
             }
           }
 
-          pillars[snap.engineKey] = {
-            score: snap.score,
-            status: "complete",
-            findings,
-            recommendations,
-          };
+          pillars[snap.engineKey] = isPaidTier
+            ? { score: snap.score, status: "complete", findings, recommendations }
+            : { score: snap.score, status: "complete", findingsCount: findings.length, recommendationsCount: recommendations.length };
         }
       }
 
