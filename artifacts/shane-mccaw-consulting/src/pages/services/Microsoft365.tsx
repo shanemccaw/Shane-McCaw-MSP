@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, ChevronRight, Shield, Users, Building2, Zap,
 } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
@@ -65,6 +66,13 @@ const SCOPE_OF_WORK = [
 ];
 
 export default function Microsoft365() {
+  // {{db.assessments.list}}
+  const { services } = useServices({ category: "assessment" });
+  const assessment = services.find((s) => s.name === "License Waste Audit");
+  const assessmentHref = assessment
+    ? `/assessments/${encodeURIComponent(assessment.slug ?? String(assessment.id))}`
+    : "/assessments?tab=free";
+
   return (
     <Layout>
       <SEOMeta
@@ -117,7 +125,7 @@ export default function Microsoft365() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessments?tab=free"
+              href={assessmentHref}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
@@ -239,7 +247,7 @@ export default function Microsoft365() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessments?tab=free"
+              href={assessmentHref}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
