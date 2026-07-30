@@ -7,16 +7,25 @@
  *
  * How it works:
  * 1. Fetches the service catalogue entry for this slug from /api/catalog/assessments
- *    to get the service name, description, and type_attributes.
- * 2. Reads type_attributes.dashboardModules: string[] to know which modules to show
- *    and in what order. Falls back to all 8 modules if the key is absent.
+ *    to get the service name, description, type_attributes, and resultsTemplateFamily
+ *    (the product's results_templates.family mapping, #162/#163, parent #161).
+ * 2. Resolves which module keys to render:
+ *    a. resultsTemplateFamily === 'framework_gap_list' | 'readiness_logistics' —
+ *       renders that family's single dedicated module, bypassing dashboardModules
+ *       entirely (see FAMILY_MODULE_OVERRIDES). These two families don't fit the
+ *       pillar-module system, per #161's architecture doc.
+ *    b. Otherwise (pillar_scored/copilot family, or unmapped) — falls back to the
+ *       original behaviour: type_attributes.dashboardModules: string[] from the
+ *       service row, or DEFAULT_MODULE_ORDER (the 8 pillar modules) if absent.
  * 3. Fetches assessment results from /api/portal/assessment-results/:serviceSlug.
  * 4. Renders each listed module key via <AssessmentModulePanel> — one fetch, shared
  *    results prop; no per-module re-fetching.
  * 5. Shows the document download link from results.document if available.
  *
- * No per-assessment branching in this page. Adding support for a new assessment
- * product requires only seeding type_attributes.dashboardModules on the service row.
+ * No per-assessment branching in this page. Adding support for a new pillar_scored/
+ * copilot assessment product requires only seeding type_attributes.dashboardModules
+ * on the service row; adding a framework_gap_list/readiness_logistics product
+ * requires only a results_templates row (#162's admin CRUD).
  *
  * type_attributes.dashboardModules format (JSON array of module keys):
  *   ["priority-health", "findings", "governance", "security", "compliance"]
@@ -33,12 +42,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Download, RefreshCw, Loader2 } from "lucide-react";
 import AssessmentModulePanel from "@/components/assessment-modules/AssessmentModulePanel";
-import { ASSESSMENT_MODULE_DEFS } from "@/components/assessment-modules/module-registry";
+import { PILLAR_FAMILY_MODULE_KEYS } from "@/components/assessment-modules/module-registry";
 import type { AssessmentResultsPayload } from "@/components/assessment-modules/module-registry";
 import { toast } from "sonner";
 
-// ── All 8 module keys in default display order ─────────────────────────────────
-const DEFAULT_MODULE_ORDER = ASSESSMENT_MODULE_DEFS.map((d) => d.key);
+// ── Default module order for the `pillar_scored`/`copilot` families (or any
+//    product with no resultsTemplateFamily mapped yet) ─────────────────────────
+const DEFAULT_MODULE_ORDER = PILLAR_FAMILY_MODULE_KEYS;
+
+// ── Results Template family → module routing (#162/#163, parent #161) ──────────
+// `framework_gap_list` and `readiness_logistics` don't fit the pillar-module
+// system at all, so a product mapped to either bypasses type_attributes.
+// dashboardModules entirely and renders its single dedicated module.
+// `pillar_scored`/`copilot` (or an unmapped/null family) fall through to the
+// existing dashboardModules-or-default-8 logic below, unchanged.
+const FAMILY_MODULE_OVERRIDES: Record<string, string[]> = {
+  framework_gap_list: ["framework-gap-list"],
+  readiness_logistics: ["readiness-logistics"],
+};
 
 // ── Catalogue service shape (subset we need from /api/catalog/assessments) ─────
 interface CatalogService {
@@ -47,6 +68,7 @@ interface CatalogService {
   description: string | null;
   tagline: string | null;
   type_attributes: Record<string, unknown> | null;
+  resultsTemplateFamily: string | null;
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -132,11 +154,21 @@ export default function AssessmentDashboardPage() {
   useEffect(() => { fetchResults(); }, [fetchResults]);
 
   // ── Resolve which module keys to render ───────────────────────────────────
-  // Reads type_attributes.dashboardModules from the service row.
-  // Falls back to DEFAULT_MODULE_ORDER (all 8) if the key is missing or empty.
+  // 1. If the product's results_templates row maps it to `framework_gap_list`
+  //    or `readiness_logistics`, that family's single dedicated module wins —
+  //    those two don't fit the pillar-module system, so dashboardModules is
+  //    not consulted at all for them.
+  // 2. Otherwise (pillar_scored/copilot family, or no mapping yet), fall back
+  //    to the pre-existing behaviour: type_attributes.dashboardModules from
+  //    the service row, or DEFAULT_MODULE_ORDER (the 8 pillar modules) if
+  //    that key is missing or empty.
+  const familyOverride = service?.resultsTemplateFamily
+    ? FAMILY_MODULE_OVERRIDES[service.resultsTemplateFamily]
+    : undefined;
   const rawModules = service?.type_attributes?.dashboardModules;
-  const moduleKeys: string[] =
-    Array.isArray(rawModules) && rawModules.length > 0
+  const moduleKeys: string[] = familyOverride
+    ? familyOverride
+    : Array.isArray(rawModules) && rawModules.length > 0
       ? (rawModules as string[])
       : DEFAULT_MODULE_ORDER;
 
