@@ -99,10 +99,15 @@ const mockCustomersSearch = vi.fn().mockResolvedValue({ data: [] });
 const mockCustomersCreate = vi.fn().mockResolvedValue({ id: "cus_test_123" });
 const mockCustomersUpdate = vi.fn().mockResolvedValue({});
 
+const mockBillingPortalSessionsCreate = vi.fn().mockResolvedValue({ id: "bps_test_123", url: "https://billing.stripe.com/test" });
+const mockSubscriptionsRetrieve = vi.fn();
+
 vi.mock("stripe", () => ({
   default: vi.fn().mockImplementation(function () {
     return {
       checkout: { sessions: { create: mockCheckoutSessionsCreate } },
+      billingPortal: { sessions: { create: mockBillingPortalSessionsCreate } },
+      subscriptions: { retrieve: mockSubscriptionsRetrieve },
       customers: {
         search: mockCustomersSearch,
         create: mockCustomersCreate,
@@ -192,5 +197,46 @@ describe("POST /api/portal/billing/subscriptions/:id/resubscribe (#175)", () => 
     expect(sessionArgs.cancel_url.startsWith(`${REAL_PORTAL_BASE_URL}/portal/billing`)).toBe(true);
     expect(sessionArgs.success_url).not.toContain("/crm");
     expect(sessionArgs.cancel_url).not.toContain("/crm");
+  });
+});
+
+// #177 (follow-up to #175): the Stripe customer-portal route
+// (POST /portal/billing/customer-portal, a separate route from the
+// resubscribe one covered above) still hardcoded its return_url off a
+// retired `/crm/portal/billing` artifact path. Guard against that dead path
+// coming back.
+describe("POST /api/portal/billing/customer-portal (#177)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSelectResultsQueue = [];
+    mockDefaultSelectResult = [];
+    mockBillingPortalSessionsCreate.mockResolvedValue({ id: "bps_test_123", url: "https://billing.stripe.com/test" });
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      customer: { id: "cus_test_123", deleted: false },
+    });
+  });
+
+  it("builds the Stripe billing portal session's return_url off getMspPortalBaseUrl(), never the retired /crm path", async () => {
+    const userId = 21;
+    const token = makeClientToken(userId);
+
+    mockSelectResultsQueue = [
+      // clientServicesTable innerJoin servicesTable lookup for an active subscription
+      [{
+        client_services: { id: 7, clientUserId: userId, stripeSubscriptionId: "sub_test_123" },
+        services: { id: 3, billingType: "recurring_monthly" },
+      }],
+    ];
+
+    const res = await request(app)
+      .post("/api/portal/billing/customer-portal")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(mockBillingPortalSessionsCreate).toHaveBeenCalledTimes(1);
+
+    const [sessionArgs] = mockBillingPortalSessionsCreate.mock.calls[0];
+    expect(sessionArgs.return_url).toBe(`${REAL_PORTAL_BASE_URL}/portal/billing`);
+    expect(sessionArgs.return_url).not.toContain("/crm");
   });
 });

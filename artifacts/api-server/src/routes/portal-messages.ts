@@ -6,6 +6,7 @@ import { sendEmailFromTemplate, getTenantHealthBlockHtml, canSendAutomatedCustom
 import { sendPushNotifications } from "../lib/push";
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { logger } from "../lib/logger";
+import { getMspPortalBaseUrl } from "../lib/portal-url";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "tenant.portal" });
@@ -90,7 +91,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
         {
           clientName: clientUser.name ?? "",
           messageBody: body.trim(),
-          portalLink: "https://shanemccaw.consulting/crm/portal/messages",
+          portalLink: `${getMspPortalBaseUrl()}/messages`,
           tenantHealthBlockHtml: await getTenantHealthBlockHtml(clientUserId),
         },
         "New message from Shane McCaw Consulting",
@@ -98,7 +99,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
         <p>Hello ${clientUser.name ?? ""},</p>
         <p>You have a new message from Shane McCaw Consulting:</p>
         <blockquote style="border-left:3px solid #0078D4;padding:8px 12px;color:#333;margin:12px 0;">${body.trim()}</blockquote>
-        <p><a href="https://shanemccaw.consulting/crm/portal/messages" style="color:#0078D4;font-weight:bold;">View in your portal →</a></p>
+        <p><a href="${getMspPortalBaseUrl()}/messages" style="color:#0078D4;font-weight:bold;">View in your portal →</a></p>
         `,
       );
     }

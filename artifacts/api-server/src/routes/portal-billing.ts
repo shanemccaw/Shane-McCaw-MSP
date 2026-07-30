@@ -488,10 +488,9 @@ router.post("/portal/billing/customer-portal", requireAuth, async (req: Request,
     return;
   }
 
-  const baseUrl = req.headers.origin ?? `${req.protocol}://${req.hostname}`;
   const session = await stripe.billingPortal.sessions.create({
     customer: customer.id,
-    return_url: `${baseUrl}/crm/portal/billing`,
+    return_url: `${getMspPortalBaseUrl()}/billing`,
   });
 
   req.log.info({ userId, customerId: customer.id }, "billing-portal: session created");
