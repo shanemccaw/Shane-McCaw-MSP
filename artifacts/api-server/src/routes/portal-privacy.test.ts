@@ -55,70 +55,38 @@ function makeMockDb() {
   };
 }
 
-// ── Mocks (must run before portal.ts import) ──────────────────────────────────
+// ── Mocks (must run before portal-privacy.ts import) ──────────────────────────
 mock.module("@workspace/db", {
   namedExports: {
     db: makeMockDb(),
+    usersTable: {},
     projectsTable: {},
-    clientServicesTable: {},
-    servicesTable: {},
-    workflowStepsTable: {},
-    kanbanTasksTable: {},
     documentsTable: {},
-    reportsTable: {},
     invoicesTable: {},
     messagesTable: {},
-    notificationsTable: {},
-    projectUpdatesTable: {},
-    usersTable: {},
-    contractsTable: {},
-    passwordResetTokensTable: {},
-    workflowTemplateStepsTable: {},
-    workflowTemplateStepTasksTable: {},
-    workflowTemplatesTable: {},
-    contractTemplatesTable: {},
-    impersonationTokensTable: {},
-    statusReportsTable: {},
-    deviceTokensTable: {},
-    projectClosuresTable: {},
-    auditLogsTable: {},
-    instructionSetsTable: {},
-    checklistsTable: {},
-    artifactSetsTable: {},
-    deliverableSetsTable: {},
-    emailsTable: {},
-    emailDomainRulesTable: {},
     clientM365ProfilesTable: {},
-    couponsTable: {},
-    clientAppRegistrationsTable: {},
-    accountSetupTokensTable: {},
-    mfaEnrollmentsTable: {},
-    mfaChallengesTable: {},
-    webauthnCredentialsTable: {},
-    webauthnChallengesTable: {},
-    clientHealthHistoryTable: {},
-    quizLeadsTable: {},
-    scriptRunResultsTable: {},
-    powershellScriptsTable: {},
-    clientScoresTable: {},
-    clientAutomationRunsTable: {},
-    scriptPackagesTable: {},
-    scriptModulesTable: {},
-    azureTenantCredentialsTable: {},
     clientDocumentsTable: {},
-    serviceScriptSetsTable: {},
-    clientCallbackTokensTable: {},
-    insightsGeneratedDocumentsTable: {},
-    quickWinPresentationsTable: {},
-    presentationDocViewsTable: {},
-    quickWinResultSharesTable: {},
+    auditLogsTable: {},
+    quizLeadsTable: {},
+    tenantsTable: {},
+    mspDiagnosticRunsTable: {},
+    mspDiagnosticFindingsTable: {},
+    tenantEngineSnapshotsTable: {},
+    engineScoreDailyRollupTable: {},
+    engineBaselineHistoryTable: {},
+    tenantSignalHistoryTable: {},
+    mspDocumentsTable: {},
+    mspSowsTable: {},
+    mspReportRunsTable: {},
+    mspCustomerClickwrapsTable: {},
+    mspSalesBundleAssignmentsTable: {},
+    mspAuditLogsTable: {},
   },
 });
 
 mock.module("../middlewares/requireAuth.ts", {
   namedExports: {
     requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
-    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
   },
 });
 
@@ -132,23 +100,13 @@ mock.module("../lib/logger.ts", {
   namedExports: { logger: noopLogger },
 });
 
+// ../lib/data-rights.ts (called by the route's deletion-request handler) sends
+// its admin notification via ../lib/mailer.ts's sendEmail — that call is not
+// mocked away, so it flows through here for the test to observe.
 const sentEmails: { to: string; subject: string; html: string }[] = [];
 mock.module("../lib/mailer.ts", {
   namedExports: {
     sendEmail: async (to: string, subject: string, html: string) => { sentEmails.push({ to, subject, html }); },
-    sendEmailFromTemplate: async () => {},
-    getEmailTemplateOrFallback: async () => ({ subject: "", html: "" }),
-    purchaseConfirmationEmail: () => ({ subject: "", html: "" }),
-    onboardingConfirmationEmail: () => ({ subject: "", html: "" }),
-    adminPurchaseAlertEmail: () => ({ subject: "", html: "" }),
-    closureRequestEmail: () => ({ subject: "", html: "" }),
-    statusReportReplyEmail: () => ({ subject: "", html: "" }),
-    clientThreadReplyEmail: () => ({ subject: "", html: "" }),
-    adminThreadReplyEmail: () => ({ subject: "", html: "" }),
-    retainerResumedEmail: () => ({ subject: "", html: "" }),
-    appRegExpiryAlertEmail: () => ({ subject: "", html: "" }),
-    brandedEmail: () => ({ subject: "", html: "" }),
-    getTenantHealthBlockHtml: async () => "",
   },
 });
 
@@ -158,86 +116,8 @@ mock.module("../lib/audit.ts", {
   },
 });
 
-// All other heavy deps — no-ops
-const noopMod = { default: {}, namedExports: {} };
-for (const mod of [
-  "../lib/sms.ts",
-  "../lib/push.ts",
-  "../lib/web-push.ts",
-  "../lib/stripe.ts",
-  "../lib/graph.ts",
-  "../lib/azure-keyvault.ts",
-  "../lib/azure-credentials.ts",
-  "../lib/probe-graph-permissions.ts",
-  "../lib/sow-pricing.ts",
-  "../lib/tenant-signals.ts",
-  "../lib/client-script-sequence.ts",
-  "../lib/kanban-phase-advance.ts",
-  "../lib/azure-automation.ts",
-  "../lib/crm-pipeline.ts",
-  "../lib/invoice-sharepoint.ts",
-  "../lib/portal-url.ts",
-  "../lib/workflow-executor.ts",
-  "../lib/m365-profile-pdf.ts",
-  "../lib/manual-script-package.ts",
-  "../lib/insight-pdf.ts",
-  "../lib/sse-channels.ts",
-]) {
-  mock.module(mod, {
-    namedExports: {
-      sendAdminSms: noop,
-      sendPushNotifications: noop,
-      sendWebPushToAdmins: noop,
-      getStripeKey: () => "sk_test_fake",
-      listDriveItems: async () => [],
-      graphCredentialsPresent: () => false,
-      createProjectFolder: async () => null,
-      uploadFileToClientContracts: async () => null,
-      getDriveItemDownloadUrl: async () => null,
-      setSecretValue: async () => {},
-      getSecretValue: async () => null,
-      getSecretMetadata: async () => null,
-      testClientCredentials: async () => ({ ok: false }),
-      probeGraphPermissions: async () => ({}),
-      stripStagedForReviewBanner: (s: string) => s,
-      stripTierDetectionText: (s: string) => s,
-      extractAiHtml: () => "",
-      nextBusinessMonday: () => new Date(),
-      WORKSTREAM_ADJ_MAP: {},
-      ADJ_SIGNAL_PATTERNS: [],
-      computeTenantSignals: async () => [],
-      getAdjustmentSignalDefinitions: async () => [],
-      getDisabledSignalKeys: async () => new Set(),
-      runClientScriptSequence: async () => {},
-      advancePhaseIfComplete: async () => {},
-      syncProjectProgress: async () => {},
-      seedKanbanCardsForPhase: async () => {},
-      autoFireFirstBacklogScript: async () => {},
-      autoFireDocumentCard: async () => {},
-      autoFireRunWorkflowCards: async () => {},
-      isAzureConfigured: () => false,
-      ensureLeadForClient: async () => {},
-      uploadInvoiceToSharePoint: async () => {},
-      getPortalBaseUrl: () => "https://test.example",
-      getMspPortalBaseUrl: () => "https://test.example/portal",
-      fireWorkflowsForEvent: async () => {},
-      emitWorkflowEvent: async () => {},
-      generateM365ProfilePdf: async () => Buffer.from(""),
-      generateManualScriptPackage: async () => Buffer.from(""),
-      injectCallbackVars: (s: string) => s,
-      buildHtmlDoc: () => "",
-      htmlToPdf: async () => Buffer.from(""),
-      broadcastKanbanChange: noop,
-      registerSSEClient: noop,
-      registerPresentationSSEClient: noop,
-      broadcastPresentationScopeChange: noop,
-      replayPhaseGenState: noop,
-    },
-  });
-}
-
 // ── Import app under test ─────────────────────────────────────────────────────
-const { default: router } = await import("./portal.ts");
+const { default: router } = await import("./portal-privacy.ts");
 import express from "express";
 
 function makeApp(userId = 42, customerId?: number) {

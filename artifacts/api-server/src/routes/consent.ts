@@ -36,7 +36,7 @@
  *      spring into existence keyed by a bare GUID. Every callback therefore
  *      resolves its target row before stamping anything — by customerId where
  *      one is known (and then only if the GUID Microsoft returned agrees with
- *      it), or via portal.ts's single resolveOrCreateDirectTenant door on the
+ *      it), or via lib/direct-tenant-provisioning.ts's single resolveOrCreateDirectTenant door on the
  *      self-service path, which is the only path allowed to create one. See
  *      resolveCallbackTenant below for why those two are not interchangeable.
  *
@@ -61,6 +61,7 @@ import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
+import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
 
@@ -335,7 +336,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // (confirmed live: user 92 under mspId 89 saw customer 1's data under mspId 1).
   // Reject BEFORE marking the session consented and before payment ever happens.
   // Do not cross-link, do not create a duplicate customer. The equivalent check in
-  // ensureClientMspUser (portal.ts) is a post-payment backstop for this same case.
+  // ensureClientMspUser (lib/direct-tenant-provisioning.ts) is a post-payment backstop for this same case.
   if (isCheckoutSession && state) {
     const [directMsp] = await db
       .select({ id: mspsTable.id })
@@ -473,10 +474,11 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   //       reach provisioning (a token or session with no email), each of which
   //       is still a real Microsoft consent every later Graph call depends on.
   //
-  // Dynamic import (not a static one) keeps the large portal.ts route module
-  // out of consent.ts's module graph and avoids circular-load ordering issues;
-  // provisionProspectAccount, used further down, comes from the same import.
-  const { resolveOrCreateDirectTenant, provisionProspectAccount } = await import("./portal.js");
+  // resolveOrCreateDirectTenant / provisionProspectAccount (used further down)
+  // now live in lib/direct-tenant-provisioning.ts (#175, portal.ts route
+  // decommission) — a small, router-free module, so a static top-level import
+  // is safe (no more large-route-module / circular-load concern that used to
+  // justify a dynamic import of portal.ts here).
 
   let consentTenant: { id: number } | null;
   if (inviteRecord?.customerId != null) {
@@ -532,7 +534,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // MSP-channel customers start "onboarding" and flip to "active" exactly on
   // consent granted (business rule, confirmed). Only applies to the invite-token
   // path (inviteRecord set) — direct website checkout customers are already
-  // "active" from creation (see resolveOrCreateDirectTenant in portal.ts) and
+  // "active" from creation (see resolveOrCreateDirectTenant in lib/direct-tenant-provisioning.ts) and
   // never go through this branch since isCheckoutSession customers have no
   // inviteRecord. Guarded to only flip customers currently "onboarding" so an
   // admin's deliberate "inactive"/"archived" status is never silently overwritten.

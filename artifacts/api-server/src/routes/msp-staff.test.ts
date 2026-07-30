@@ -1,6 +1,6 @@
 /**
  * Tests for MSP impersonation token issuance:
- *   POST /api/msp/:mspId/customers/:customerId/impersonate  (portal.ts)
+ *   POST /api/msp/:mspId/customers/:customerId/impersonate  (msp-staff.ts)
  *
  * Critical behaviours verified:
  *   1. MSPAdmin can impersonate a customer within their own MSP → 200 + token
@@ -80,72 +80,23 @@ function makeMockDb() {
   };
 }
 
-// ── Register all mocks BEFORE portal.ts is imported ──────────────────────────
+// ── Register all mocks BEFORE msp-staff.ts is imported ─────────────────────────
 // NOTE: requireAuth.ts is NOT mocked — we rely on the real middleware.
 
 mock.module("@workspace/db", {
   namedExports: {
     db: makeMockDb(),
-    projectsTable: {},
-    clientServicesTable: {},
-    servicesTable: {},
-    workflowStepsTable: {},
-    kanbanTasksTable: {},
-    documentsTable: {},
-    reportsTable: {},
-    invoicesTable: {},
-    messagesTable: {},
-    notificationsTable: {},
-    projectUpdatesTable: {},
+    tenantsTable: {},
+    mspsTable: {},
     usersTable: {},
-    contractsTable: {},
-    passwordResetTokensTable: {},
-    workflowTemplateStepsTable: {},
-    workflowTemplateStepTasksTable: {},
-    contractTemplatesTable: {},
+    // Not used by msp-staff.ts itself, but required because requireAuth.ts
+    // (intentionally left unmocked below) imports it from @workspace/db too.
+    mspStaffCustomerScopesTable: {},
     impersonationTokensTable: {},
-    statusReportsTable: {},
-    deviceTokensTable: {},
-    projectClosuresTable: {},
-    auditLogsTable: {},
-    instructionSetsTable: {},
-    checklistsTable: {},
-    artifactSetsTable: {},
-    deliverableSetsTable: {},
-    emailsTable: {},
-    emailDomainRulesTable: {},
-    clientM365ProfilesTable: {},
-    couponsTable: {},
-    clientAppRegistrationsTable: {},
-    accountSetupTokensTable: {},
-    mfaEnrollmentsTable: {},
-    mfaChallengesTable: {},
-    webauthnCredentialsTable: {},
-    webauthnChallengesTable: {},
-    clientHealthHistoryTable: {},
-    quizLeadsTable: {},
-    scriptRunResultsTable: {},
-    powershellScriptsTable: {},
-    clientScoresTable: {},
-    clientAutomationRunsTable: {},
-    scriptPackagesTable: {},
-    scriptModulesTable: {},
-    azureTenantCredentialsTable: {},
-    workflowTemplatesTable: {},
-    serviceScriptSetsTable: {},
-    clientCallbackTokensTable: {},
-    insightsGeneratedDocumentsTable: {},
-    quickWinPresentationsTable: {},
-    presentationDocViewsTable: {},
-    quickWinResultSharesTable: {},
-    clientDocumentsTable: {},
+    mspAuditLogsTable: {},
     fulfillmentQueueTable: {},
-    fulfillmentSlaConfigTable: {},
     FULFILLMENT_DELIVERY_STATUSES: ["not_started", "in_progress", "delivered", "blocked"],
     FULFILLMENT_SOURCE_TYPES: ["offer", "sow", "bundle"],
-    tenantsTable: {},
-    mspAuditLogsTable: {},
-    monitorChecksTable: {},
   },
 });
 
@@ -157,175 +108,19 @@ const noopLogger = {
 };
 mock.module("../lib/logger.ts", { namedExports: { logger: noopLogger } });
 
-mock.module("../lib/mailer.ts", {
-  namedExports: {
-    sendEmail: async () => {},
-    sendEmailFromTemplate: async () => {},
-    getEmailTemplateOrFallback: async () => ({ subject: "", html: "" }),
-    getTenantHealthBlockHtml: async () => "",
-    purchaseConfirmationEmail: () => ({ subject: "", html: "" }),
-    onboardingConfirmationEmail: () => ({ subject: "", html: "" }),
-    adminPurchaseAlertEmail: () => ({ subject: "", html: "" }),
-    closureRequestEmail: () => ({ subject: "", html: "" }),
-    statusReportReplyEmail: () => ({ subject: "", html: "" }),
-    clientThreadReplyEmail: () => ({ subject: "", html: "" }),
-    adminThreadReplyEmail: () => ({ subject: "", html: "" }),
-    retainerResumedEmail: () => ({ subject: "", html: "" }),
-    appRegExpiryAlertEmail: () => ({ subject: "", html: "" }),
-    brandedEmail: () => ({ subject: "", html: "" }),
-  },
-});
-
-mock.module("../lib/sms.ts", { namedExports: { sendAdminSms: async () => {} } });
-mock.module("../lib/push.ts", { namedExports: { sendPushNotifications: async () => {} } });
-mock.module("../lib/web-push.ts", { namedExports: { sendWebPushToAdmins: async () => {} } });
-mock.module("../lib/audit.ts", { namedExports: { createAuditLog: async () => {} } });
-
-mock.module("../lib/stripe.ts", {
-  namedExports: {
-    getStripeKey: () => { throw new Error("Stripe not configured in tests"); },
-    processStripeEvent: async () => {},
-    syncWebhookEndpoints: async () => {},
-  },
-});
-
-mock.module("../lib/graph.ts", {
-  namedExports: {
-    listDriveItems: async () => [],
-    graphCredentialsPresent: () => false,
-    createProjectFolder: async () => null,
-    uploadFileToClientContracts: async () => null,
-    getDriveItemDownloadUrl: async () => null,
-  },
-});
-
-mock.module("../lib/azure-keyvault.ts", {
-  namedExports: {
-    setSecretValue: async () => {},
-    getSecretValue: async () => null,
-    getSecretMetadata: async () => null,
-  },
-});
-
-mock.module("../lib/azure-credentials.ts", {
-  namedExports: { testClientCredentials: async () => ({ ok: false }) },
-});
-
-mock.module("../lib/probe-graph-permissions.ts", {
-  namedExports: { probeGraphPermissions: async () => ({ ok: false }) },
-});
-
-mock.module("../lib/client-script-sequence.ts", {
-  namedExports: { runClientScriptSequence: async () => {} },
-});
-
-mock.module("../lib/kanban-phase-advance.ts", {
-  namedExports: {
-    advancePhaseIfComplete: async () => {},
-    syncProjectProgress: async () => {},
-    seedKanbanCardsForPhase: async () => {},
-  },
-});
-
-mock.module("../lib/crm-pipeline.ts", {
-  namedExports: { ensureLeadForClient: async () => {} },
-});
-
-mock.module("../lib/invoice-sharepoint.ts", {
-  namedExports: { uploadInvoiceToSharePoint: async () => {} },
-});
-
-mock.module("../lib/portal-url.ts", {
-  namedExports: {
-    getPortalBaseUrl: () => "https://example.com",
-    getMspPortalBaseUrl: () => "https://example.com/portal",
-  },
-});
-
-mock.module("../lib/m365-profile-pdf.ts", {
-  namedExports: { generateM365ProfilePdf: async () => Buffer.from("") },
-});
-
-mock.module("../lib/manual-script-package.ts", {
-  namedExports: {
-    generateManualScriptPackage: async () => Buffer.from(""),
-    injectCallbackVars: (script: string) => script,
-  },
-});
-
-mock.module("../lib/insight-pdf.ts", {
-  namedExports: {
-    buildHtmlDoc: () => "",
-    htmlToPdf: async () => Buffer.from(""),
-  },
-});
-
-mock.module("../lib/sse-channels.ts", {
-  namedExports: {
-    broadcastKanbanChange: () => {},
-    registerSSEClient: () => {},
-    registerPresentationSSEClient: () => {},
-    broadcastPresentationScopeChange: () => {},
-    replayPhaseGenState: () => {},
-  },
-});
-
-mock.module("../lib/workflow-executor.ts", {
-  namedExports: {
-    fireWorkflowsForEvent: async () => {},
-    emitWorkflowEvent: async () => {},
-    fireWorkflowForDefinition: async () => {},
-    executeWorkflowRun: async () => {},
-    triggerScheduledWorkflows: async () => {},
-    computeNextCronRun: () => null,
-  },
-});
-
-mock.module("../lib/azure-automation.ts", {
-  namedExports: { isAzureConfigured: () => false },
-});
-
-mock.module("../lib/sow-pricing.ts", {
-  namedExports: {
-    stripStagedForReviewBanner: (h: string) => h,
-    stripTierDetectionText: (h: string) => h,
-    extractAiHtml: (h: string) => h,
-    nextBusinessMonday: () => new Date(),
-    WORKSTREAM_ADJ_MAP: {},
-    ADJ_SIGNAL_PATTERNS: [],
-  },
-});
-
+// The handler dynamically imports resolveCustomerPortalUserId to look up the
+// customer's active portal user. Its real implementation orders by
+// canonicalPortalUserOrder() via db.select(...).orderBy(...), which the
+// queue-based mock db above does not model — so it is mocked directly here
+// to resolve to the same target-user id (50) used by fakeTargetUser below.
 mock.module("../lib/tenant-signals.ts", {
   namedExports: {
-    computeTenantSignals: async () => [],
-    getAdjustmentSignalDefinitions: async () => [],
-    getDisabledSignalKeys: async () => new Set(),
+    resolveCustomerPortalUserId: async (_customerId: number) => 50,
   },
 });
 
-const noopMulterMiddleware = (_req: unknown, _res: unknown, next: () => void) => next();
-const noopMulter = Object.assign(
-  () => ({
-    single: () => noopMulterMiddleware,
-    array: () => noopMulterMiddleware,
-    fields: () => noopMulterMiddleware,
-    none: () => noopMulterMiddleware,
-  }),
-  { diskStorage: () => ({}), memoryStorage: () => ({}) },
-);
-mock.module("multer", { defaultExport: noopMulter });
-
-mock.module("pdf-lib", {
-  namedExports: {
-    PDFDocument: { create: async () => ({ save: async () => Buffer.from("") }) },
-    rgb: () => ({}),
-    StandardFonts: {},
-  },
-});
-
-// ── Import real portal router AFTER all mocks are registered ──────────────────
-const { default: portalRouter } = await import("./portal.ts");
+// ── Import real msp-staff router AFTER all mocks are registered ───────────────
+const { default: mspStaffRouter } = await import("./msp-staff.ts");
 
 const { default: express } = await import("express");
 const app = express();
@@ -334,7 +129,7 @@ app.use((_req: unknown, _res: unknown, next: () => void) => {
   ((_req as Record<string, unknown>).log = noopLogger);
   next();
 });
-app.use("/api", portalRouter);
+app.use("/api", mspStaffRouter);
 
 let server: http.Server;
 let baseUrl: string;
@@ -363,7 +158,7 @@ after(
 const fakeCustomer = {
   id: 10,
   mspId: 1,
-  name: "Acme Corp",
+  customerName: "Acme Corp",
   domain: "acme.com",
   status: "active",
   ownerType: "customer",
@@ -372,13 +167,17 @@ const fakeCustomer = {
 const fakeCustomerMsp2 = {
   id: 20,
   mspId: 2,
-  name: "Beta Inc",
+  customerName: "Beta Inc",
   domain: "beta.com",
   status: "active",
   ownerType: "customer",
 };
 
-const fakeMspUserRow = { userId: 50 };
+// The owning MSP's slug row, read via mspsTable — resolveImpersonationTarget
+// itself is mocked above, so this only feeds the ownerMsp lookup that happens
+// before it.
+const fakeOwnerMsp = { slug: "msp1" };
+const fakeOwnerMspMsp2 = { slug: "msp2" };
 
 const fakeTargetUser = {
   id: 50,
@@ -424,9 +223,10 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     let json: Record<string, unknown>;
 
     before(async () => {
-      // Handler makes 3 selects: tenantsTable (the customer), usersTable (the
-      // caller's MSP claims, absorbed from msp_users in #92), usersTable (target)
-      dbSelectQueue = [[fakeCustomer], [fakeMspUserRow], [fakeTargetUser]];
+      // Handler makes 3 selects: tenantsTable (the customer), mspsTable (the
+      // owning MSP's slug), usersTable (target user; resolveCustomerPortalUserId
+      // itself is mocked separately above and does not consume this queue).
+      dbSelectQueue = [[fakeCustomer], [fakeOwnerMsp], [fakeTargetUser]];
       ({ status, json } = await postImpersonate(1, 10, mspAdminMsp1Token));
     });
 
@@ -444,7 +244,7 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     it("returns customer info", () => {
       const customer = json.customer as Record<string, unknown>;
       assert.equal(customer?.id, fakeCustomer.id);
-      assert.equal(customer?.name, fakeCustomer.name);
+      assert.equal(customer?.name, fakeCustomer.customerName);
     });
 
     it("returns target user info", () => {
@@ -485,7 +285,7 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     let json: Record<string, unknown>;
 
     before(async () => {
-      dbSelectQueue = [[fakeCustomerMsp2], [fakeMspUserRow], [fakeTargetUser]];
+      dbSelectQueue = [[fakeCustomerMsp2], [fakeOwnerMspMsp2], [fakeTargetUser]];
       ({ status, json } = await postImpersonate(2, 20, platformAdminToken));
     });
 
@@ -506,7 +306,7 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     let json: Record<string, unknown>;
 
     before(async () => {
-      dbSelectQueue = [];
+      dbSelectQueue = [[fakeCustomer], [fakeOwnerMsp], [fakeTargetUser]];
       ({ status, json } = await postImpersonate(1, 10, mspOperatorMsp1Token));
     });
 
