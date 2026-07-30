@@ -84,7 +84,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
-import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
 
 const router: IRouter = Router();
@@ -817,7 +817,7 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
   const expiresAt = new Date(Date.now() + MSP_RESET_TOKEN_TTL_MS);
   await db.insert(passwordResetTokensTable).values({ userId, token, expiresAt });
 
-  const resetUrl = `${getPortalBaseUrl()}/reset-password?token=${token}`;
+  const resetUrl = `${getMspPortalBaseUrl()}/reset-password?token=${token}`;
   void sendEmailFromTemplate(
     "password-reset",
     target.email,
@@ -1316,7 +1316,7 @@ router.post("/msp/settings/connector/mailbox/connect", requireRole("MSPAdmin"), 
   });
 
   // Build callback URL — uses the same base-URL helper as the consent flow
-  const portalBase = getPortalBaseUrl();
+  const portalBase = getMspPortalBaseUrl();
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
   const host = req.headers["x-forwarded-host"] ?? req.headers.host;
   const callbackBase = portalBase ?? `${proto}://${host}`;
@@ -1341,7 +1341,7 @@ router.post("/msp/settings/connector/mailbox/connect", requireRole("MSPAdmin"), 
 router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res: Response) => {
   const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
 
-  const portalBase = getPortalBaseUrl() ?? "";
+  const portalBase = getMspPortalBaseUrl();
 
   // ── Declined ────────────────────────────────────────────────────────────────
   if (error === "access_denied" || error_subcode === "cancel") {
@@ -1352,7 +1352,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
         .set({ usedAt: new Date() })
         .where(eq(mspMailboxConsentStatesTable.state, state));
     }
-    res.redirect(`${portalBase}/portal/settings/connector?mailbox_consent=declined`);
+    res.redirect(`${portalBase}/settings/connector?mailbox_consent=declined`);
     return;
   }
 
@@ -1418,7 +1418,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
   log.info({ mspId: stateRow.mspId, tenant, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
 
   const returnPath = stateRow.returnPath ?? "/settings/connector";
-  res.redirect(`${portalBase}/portal${returnPath}?mailbox_consent=success`);
+  res.redirect(`${portalBase}${returnPath}?mailbox_consent=success`);
 });
 
 router.delete("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
