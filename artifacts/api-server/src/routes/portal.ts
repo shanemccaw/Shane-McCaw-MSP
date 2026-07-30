@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, tenantsTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, checkoutVerificationCodesTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, tenantsTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents, resolveEffectiveChargeCents, seatBandViolationMessage } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
@@ -570,6 +570,84 @@ async function ensureClientSetupToken(userId: number): Promise<{ token: string; 
     await tx.insert(accountSetupTokensTable).values({ userId, token, expiresAt });
     return { token, isNew: true };
   });
+}
+
+// ── Checkout verification codes (#143) ────────────────────────────────────────
+// 6-digit email codes gating the public checkout's inline account setup. A
+// correct code mints a normal accountSetupTokensTable entry (ensureClientSetupToken
+// above) and the client proceeds through the unchanged /auth/setup-password flow.
+const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
+const VERIFICATION_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+const VERIFICATION_CODE_MAX_ATTEMPTS = 3;
+
+/**
+ * Atomically issues a fresh 6-digit checkout verification code for a user.
+ *
+ * Mirrors ensureClientSetupToken's advisory-locked pattern (namespace 43084 =
+ * 43083 + 1, key=userId) so concurrent webhook + resend calls serialize at the
+ * DB level. Unlike setup tokens an existing code can never be re-sent (only its
+ * bcrypt hash is stored), so idempotency is a cooldown keyed on the latest
+ * row's createdAt: within the cooldown nothing is minted or emailed.
+ *
+ * Returns { sent: true, code } when a fresh code was minted — the caller owns
+ * emailing it, and the plaintext must never be logged or returned anywhere
+ * else — or { sent: false, retryAfterSeconds } when the cooldown suppressed
+ * the mint. opts.force bypasses the cooldown (paid-flow 3-strike auto-resend).
+ */
+async function ensureClientVerificationCode(
+  userId: number,
+  purchaseType: "free" | "paid",
+  opts: { force?: boolean } = {},
+): Promise<{ sent: true; code: string } | { sent: false; retryAfterSeconds: number }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(43084, ${userId})`);
+
+    const [latest] = await tx
+      .select({ createdAt: checkoutVerificationCodesTable.createdAt })
+      .from(checkoutVerificationCodesTable)
+      .where(eq(checkoutVerificationCodesTable.userId, userId))
+      .orderBy(desc(checkoutVerificationCodesTable.createdAt))
+      .limit(1);
+
+    if (!opts.force && latest) {
+      const elapsedMs = Date.now() - latest.createdAt.getTime();
+      if (elapsedMs < VERIFICATION_CODE_RESEND_COOLDOWN_MS) {
+        return {
+          sent: false,
+          retryAfterSeconds: Math.ceil((VERIFICATION_CODE_RESEND_COOLDOWN_MS - elapsedMs) / 1000),
+        };
+      }
+    }
+
+    // One active code per user: purge every prior row (stale, consumed, or a
+    // free-flow lockout tombstone) before minting. The public verify/resend
+    // endpoints refuse locked rows before ever reaching this helper — a locked
+    // free flow is only revived through the captcha-gated checkout restart.
+    await tx.delete(checkoutVerificationCodesTable)
+      .where(eq(checkoutVerificationCodesTable.userId, userId));
+
+    const { randomInt } = await import("crypto");
+    const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    const codeHash = await bcrypt.hash(code, 12);
+    await tx.insert(checkoutVerificationCodesTable).values({
+      userId,
+      codeHash,
+      purchaseType,
+      expiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+    });
+    return { sent: true, code };
+  });
+}
+
+/** Emails a freshly-minted verification code. The plaintext code goes into this email and nowhere else. */
+function sendVerificationCodeEmail(toEmail: string, clientName: string, code: string, reqLog: Request["log"]): void {
+  void sendEmailFromTemplate(
+    "checkout-verification-code",
+    toEmail,
+    { code, clientName },
+    `${code} is your Shane McCaw Consulting verification code`,
+    `<p>Hi ${clientName},</p><p>Enter this code on the checkout confirmation screen to verify your email and finish setting up your account:</p><p style="margin:24px 0;text-align:center;"><span style="display:inline-block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 32px;font-size:32px;font-weight:700;letter-spacing:8px;color:#0f172a;">${code}</span></p><p style="color:#64748b;font-size:13px;">This code expires in <strong>10 minutes</strong>. If you didn't request it, you can safely ignore this email.</p><p>— Shane McCaw</p>`,
+  ).catch((e) => reqLog.warn({ template: "checkout-verification-code", err: e }, "verification-code email failed (non-fatal)"));
 }
 
 /**
@@ -6465,10 +6543,12 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
         const sids = sidsStr.split(",").map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
         let serviceLabel = "Onboarding";
+        let purchasedServiceTypes: Array<string | null> = [];
         if (sids.length > 0) {
-          const svcs = await db.select({ name: servicesTable.name }).from(servicesTable)
+          const svcs = await db.select({ name: servicesTable.name, serviceType: servicesTable.serviceType }).from(servicesTable)
             .where(inArray(servicesTable.id, sids));
           if (svcs.length > 0) serviceLabel = svcs.map(s => s.name).join(", ");
+          purchasedServiceTypes = svcs.map(s => s.serviceType);
         }
         const totalDollars = session.amount_total ? (session.amount_total / 100).toFixed(2) : "—";
         sendAdminSms(
@@ -6531,18 +6611,38 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           const clientBaseUrl = getPortalBaseUrl();
 
           if (!buyer.passwordHash) {
-            // Atomic: advisory-locked transaction finds an existing valid token or
-            // creates one — concurrent webhook + success-page calls produce exactly one.
-            const { token: setupToken, isNew: tokenIsNew } = await ensureClientSetupToken(buyer.id);
-            if (tokenIsNew) {
-              const setupUrl = buildAccountSetupUrl(setupToken);
-              void sendEmailFromTemplate(
-                "account-setup",
-                buyer.email,
-                { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
-                "Set up your Shane McCaw Consulting portal",
-                `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-              ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "account-setup" }, "processStripeEvent: account-setup email failed (non-fatal)"));
+            // #143: self-serve purchases made on the public checkout verify with a
+            // 6-digit code entered inline on the redesigned confirmed step, instead
+            // of the emailed setup link. metadata.codeVerification is stamped by
+            // create-session only when the requesting surface (Checkout.tsx) can
+            // render the code-entry UI — sessions from other origins (CRM
+            // onboarding, resubscribe) never carry it and keep the link email, as
+            // do signature-required (project/retainer) purchases.
+            const requiresSignature = purchasedServiceTypes.some(
+              t => t === "project" || t === "retainer",
+            );
+            const codeVerificationUx = session.metadata?.codeVerification === "1";
+            if (codeVerificationUx && !requiresSignature) {
+              // Cooldown inside the helper makes replayed webhooks / racing resend
+              // calls produce exactly one emailed code.
+              const minted = await ensureClientVerificationCode(buyer.id, "paid");
+              if (minted.sent) {
+                sendVerificationCodeEmail(buyer.email, buyer.name ?? buyer.email, minted.code, req.log);
+              }
+            } else {
+              // Atomic: advisory-locked transaction finds an existing valid token or
+              // creates one — concurrent webhook + success-page calls produce exactly one.
+              const { token: setupToken, isNew: tokenIsNew } = await ensureClientSetupToken(buyer.id);
+              if (tokenIsNew) {
+                const setupUrl = buildAccountSetupUrl(setupToken);
+                void sendEmailFromTemplate(
+                  "account-setup",
+                  buyer.email,
+                  { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
+                  "Set up your Shane McCaw Consulting portal",
+                  `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+                ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "account-setup" }, "processStripeEvent: account-setup email failed (non-fatal)"));
+              }
             }
           } else if (await canSendAutomatedCustomerEmailForUser(buyer.id)) {
             // Returning client — send "project is ready" email.
@@ -10363,6 +10463,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     successUrl: bodySuccessUrl,
     cancelUrl: bodyCancelUrl,
     seats: rawSeats,
+    supportsVerificationCode,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
@@ -10373,6 +10474,11 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     successUrl?: string;
     cancelUrl?: string;
     seats?: number;
+    // #143: the requesting surface renders the inline 6-digit code UI on its
+    // confirmed step. Stamped into session metadata so the webhook can send a
+    // verification-code email instead of the account-setup link for self-serve
+    // purchases. Callers that don't send it (CRM onboarding) keep link emails.
+    supportsVerificationCode?: boolean;
   };
   const resolvedSeats = Math.max(1, Number(rawSeats) || 1);
 
@@ -10642,6 +10748,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
           startDate: startDateStr,
           servicePrices: oneTimeServices.map(s => ((rawPriceCents.get(s.id) ?? 0) / 100).toFixed(2)).join(","),
           ...(validatedCouponCode ? { couponCode: validatedCouponCode } : {}),
+          ...(supportsVerificationCode === true ? { codeVerification: "1" } : {}),
         },
       });
       oneTimeUrl = session.url;
@@ -10682,6 +10789,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
           // webhook only increments usesCount once (idempotency is also backed by
           // coupon_redemptions.checkout_session_id UNIQUE).
           ...(validatedCouponCode && oneTimeServices.length === 0 ? { couponCode: validatedCouponCode } : {}),
+          ...(supportsVerificationCode === true ? { codeVerification: "1" } : {}),
         },
       });
       subscriptionUrl = session.url;
@@ -13969,7 +14077,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
  * ok:false → res.status(status).json({ error }); ok:true → 200 success body.
  */
 type FreeOnboardingResult =
-  | { ok: true; sentSetupEmail: boolean; alreadyProvisioned: boolean; projectId?: number }
+  | { ok: true; sentSetupEmail: boolean; alreadyProvisioned: boolean; projectId?: number; codeSent?: boolean; hasPassword?: boolean }
   | { ok: false; status: number; error: string };
 
 /**
@@ -13990,6 +14098,12 @@ async function provisionFreeOnboarding(opts: {
   contractIds: number[];
   serviceIds: number[];
   log: Request["log"];
+  // #143: the calling surface renders the inline 6-digit code UI on its
+  // confirmed step (public Checkout.tsx only). When true, a passwordless buyer
+  // of a non-signature service gets the verification-code email instead of the
+  // account-setup link. Callers that don't pass it (CRM claim-free,
+  // consent-success inline finalize) keep the link email unchanged.
+  verificationCodeUx?: boolean;
 }): Promise<FreeOnboardingResult> {
     const { authedUserId, contractIds, serviceIds, log: reqLog } = opts;
     if (serviceIds.length === 0) return { ok: false, status: 400, error: "No service IDs provided" };
@@ -14073,11 +14187,35 @@ async function provisionFreeOnboarding(opts: {
     const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, resolvedUserId)).limit(1);
     if (!buyer) return { ok: false, status: 404, error: "Account not found" };
 
+    // Signature-required (project/retainer) purchases keep the link-based
+    // account-setup email and the existing confirmed-step copy; everything else
+    // is eligible for the inline code UX when the caller opted in (#143).
+    const requiresSignature = orderedServices.some(
+      s => s.serviceType === "project" || s.serviceType === "retainer",
+    );
+    const codeUxActive = opts.verificationCodeUx === true && !requiresSignature;
+
     // Idempotency: deterministic invoice number — retry-safe
     const freeInvoiceNumber = `FREE-ONB-${resolvedUserId}-${[...serviceIds].sort().join("-")}`;
     const [existingInvoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
       .where(eq(invoicesTable.invoiceNumber, freeInvoiceNumber)).limit(1);
-    if (existingInvoice) return { ok: true, sentSetupEmail: false, alreadyProvisioned: true };
+    if (existingInvoice) {
+      // Already provisioned but the buyer still has no password: for the code
+      // UX this re-run IS the recovery path (expired code, or a restart after
+      // the free-flow 3-strike lockout — this endpoint is captcha-gated, which
+      // is the friction that makes post-lockout re-issue acceptable). Mint and
+      // email a fresh code so the confirmed step the caller is about to render
+      // can actually verify. The helper's cooldown absorbs double-submits.
+      let codeSent = false;
+      if (codeUxActive && !buyer.passwordHash && buyer.email) {
+        const minted = await ensureClientVerificationCode(resolvedUserId, "free");
+        if (minted.sent) {
+          sendVerificationCodeEmail(buyer.email, buyer.name ?? buyer.email, minted.code, reqLog);
+          codeSent = true;
+        }
+      }
+      return { ok: true, sentSetupEmail: false, alreadyProvisioned: true, codeSent, hasPassword: !!buyer.passwordHash };
+    }
 
     void ensureLeadForClient(resolvedUserId, buyer.email, buyer.name ?? undefined, buyer.company ?? undefined);
 
@@ -14198,8 +14336,17 @@ async function provisionFreeOnboarding(opts: {
     // Setup email for new accounts / confirmation for returning clients
     const baseUrl = getPortalBaseUrl();
     let sentSetupEmail = false;
+    let codeSent = false;
     const hasPassword = !!(buyer.passwordHash);
-    if (!hasPassword && buyer.email) {
+    if (!hasPassword && buyer.email && codeUxActive) {
+      // #143: inline code UX — the caller's confirmed step verifies a 6-digit
+      // code instead of handing off to the emailed account-setup link.
+      const minted = await ensureClientVerificationCode(resolvedUserId, "free");
+      if (minted.sent) {
+        sendVerificationCodeEmail(buyer.email, buyer.name ?? buyer.email, minted.code, reqLog);
+        codeSent = true;
+      }
+    } else if (!hasPassword && buyer.email) {
       const { token: activeToken, isNew: tokenIsNew } = await ensureClientSetupToken(resolvedUserId);
       sentSetupEmail = tokenIsNew;
       if (tokenIsNew) {
@@ -14294,7 +14441,7 @@ async function provisionFreeOnboarding(opts: {
       serviceIds,
     });
 
-    return { ok: true, sentSetupEmail, alreadyProvisioned: false, projectId: project.id };
+    return { ok: true, sentSetupEmail, alreadyProvisioned: false, projectId: project.id, codeSent, hasPassword };
 }
 
 // POST /portal/onboarding/claim-free — finalise a zero-price onboarding without Stripe
@@ -14328,7 +14475,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
 // verification used by the authenticated offer checkout; no Stripe interaction.
 router.post("/portal/checkout/free", async (req: Request, res: Response) => {
   try {
-    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string; captchaToken?: string };
+    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string; captchaToken?: string; supportsVerificationCode?: boolean };
 
     // CAPTCHA gate — reuses lib/captcha verifyCaptchaToken, which transparently
     // bypasses when TURNSTILE_SECRET_KEY is unset (dev/preview) and enforces
@@ -14347,12 +14494,155 @@ router.post("/portal/checkout/free", async (req: Request, res: Response) => {
       contractIds,
       serviceIds,
       log: req.log,
+      verificationCodeUx: body.supportsVerificationCode === true,
     });
     if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
-    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail });
+    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail, codeSent: result.codeSent === true, hasPassword: result.hasPassword === true });
   } catch (err) {
     req.log.error({ err }, "portal: failed to process free checkout");
     res.status(500).json({ error: "We couldn't complete your free registration. Please try again in a moment." });
+  }
+});
+
+// ─── PUBLIC CHECKOUT: 6-digit code verification (#143) ────────────────────────
+// Both endpoints are keyed by the public checkout-session UUID — the same
+// unguessable identifier the checkout's confirmed step already holds in
+// sessionStorage (see public-services.ts /public/checkout-session). The UUID
+// gates remote attackers: without it neither endpoint reveals whether an
+// email/account exists, and codes can only be tried against the session's own
+// buyer. Codes verify here, then flow into the UNCHANGED /auth/setup-password
+// endpoint via a normal account-setup token minted by ensureClientSetupToken.
+
+const CHECKOUT_SESSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Resolves a live checkout session to the buyer account behind its email. */
+async function resolveVerificationTarget(sessionId: string): Promise<
+  | { ok: true; user: { id: number; email: string; name: string | null; passwordHash: string | null }; productSlug: string }
+  | { ok: false }
+> {
+  if (!CHECKOUT_SESSION_UUID_RE.test(sessionId)) return { ok: false };
+  const [cs] = await db
+    .select({ email: checkoutSessionsTable.email, productSlug: checkoutSessionsTable.productSlug })
+    .from(checkoutSessionsTable)
+    .where(and(eq(checkoutSessionsTable.id, sessionId), gte(checkoutSessionsTable.expiresAt, new Date())))
+    .limit(1);
+  if (!cs) return { ok: false };
+  const [user] = await db
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, passwordHash: usersTable.passwordHash })
+    .from(usersTable)
+    .where(eq(usersTable.email, cs.email.toLowerCase().trim()))
+    .limit(1);
+  if (!user) return { ok: false };
+  return { ok: true, user, productSlug: cs.productSlug };
+}
+
+// POST /api/public/checkout/verify-code — the gate in front of /auth/setup-password.
+// Correct code → consume the row, mint a normal account-setup token, return it.
+// Wrong code → increment attemptCount; the 3rd strike locks the free flow
+// (buyer restarts checkout) or auto-resends a fresh code for paid buyers, who
+// must never be dead-ended after paying (behavior confirmed with Shane, #143).
+router.post("/public/checkout/verify-code", async (req: Request, res: Response) => {
+  try {
+    const { sessionId, code } = req.body as { sessionId?: string; code?: string };
+    if (typeof sessionId !== "string" || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      res.status(400).json({ ok: false, reason: "invalid_session" });
+      return;
+    }
+    const target = await resolveVerificationTarget(sessionId);
+    if (!target.ok) { res.status(400).json({ ok: false, reason: "invalid_session" }); return; }
+    const { user } = target;
+    if (user.passwordHash) { res.json({ ok: false, reason: "already_set" }); return; }
+
+    const [row] = await db.select().from(checkoutVerificationCodesTable)
+      .where(and(eq(checkoutVerificationCodesTable.userId, user.id), isNull(checkoutVerificationCodesTable.consumedAt)))
+      .orderBy(desc(checkoutVerificationCodesTable.createdAt))
+      .limit(1);
+    if (!row) { res.json({ ok: false, reason: "expired" }); return; }
+    if (row.purchaseType === "free" && row.attemptCount >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+      res.json({ ok: false, reason: "locked" });
+      return;
+    }
+    if (row.expiresAt < new Date()) { res.json({ ok: false, reason: "expired" }); return; }
+
+    if (await bcrypt.compare(code, row.codeHash)) {
+      await db.update(checkoutVerificationCodesTable)
+        .set({ consumedAt: new Date() })
+        .where(eq(checkoutVerificationCodesTable.id, row.id));
+      const { token } = await ensureClientSetupToken(user.id);
+      res.json({ ok: true, setupToken: token });
+      return;
+    }
+
+    // Wrong code — atomic increment so concurrent guesses can't dodge the cap.
+    const [updated] = await db.update(checkoutVerificationCodesTable)
+      .set({ attemptCount: sql`${checkoutVerificationCodesTable.attemptCount} + 1` })
+      .where(eq(checkoutVerificationCodesTable.id, row.id))
+      .returning({ attemptCount: checkoutVerificationCodesTable.attemptCount });
+    const attempts = updated?.attemptCount ?? row.attemptCount + 1;
+    if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+      if (row.purchaseType === "paid") {
+        const minted = await ensureClientVerificationCode(user.id, "paid", { force: true });
+        if (minted.sent) sendVerificationCodeEmail(user.email, user.name ?? user.email, minted.code, req.log);
+        res.json({ ok: false, reason: "resent" });
+        return;
+      }
+      res.json({ ok: false, reason: "locked" });
+      return;
+    }
+    res.json({ ok: false, reason: "incorrect", attemptsRemaining: VERIFICATION_CODE_MAX_ATTEMPTS - attempts });
+  } catch (err) {
+    req.log.error({ err }, "portal: checkout verify-code failed");
+    res.status(500).json({ error: "Verification failed. Please try again." });
+  }
+});
+
+// POST /api/public/checkout/resend-code — invalidates any unconsumed code and
+// issues a fresh one. Cooldown (60s, keyed on the latest row's createdAt inside
+// ensureClientVerificationCode) prevents email spam; a free-flow lockout is
+// terminal for this session and only a captcha-gated checkout restart revives it.
+router.post("/public/checkout/resend-code", async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (typeof sessionId !== "string") { res.status(400).json({ ok: false, reason: "invalid_session" }); return; }
+    const target = await resolveVerificationTarget(sessionId);
+    if (!target.ok) { res.status(400).json({ ok: false, reason: "invalid_session" }); return; }
+    const { user } = target;
+    if (user.passwordHash) { res.json({ ok: false, reason: "already_set" }); return; }
+
+    const [latest] = await db.select().from(checkoutVerificationCodesTable)
+      .where(eq(checkoutVerificationCodesTable.userId, user.id))
+      .orderBy(desc(checkoutVerificationCodesTable.createdAt))
+      .limit(1);
+    if (
+      latest && !latest.consumedAt &&
+      latest.purchaseType === "free" &&
+      latest.attemptCount >= VERIFICATION_CODE_MAX_ATTEMPTS
+    ) {
+      res.json({ ok: false, reason: "locked" });
+      return;
+    }
+
+    // purchaseType for the fresh code: carry the latest row's forward; when no
+    // row exists yet (resend clicked before the Stripe webhook landed), infer
+    // from the session's product. Default 'paid' — its 3-strike behavior
+    // (auto-resend) can never dead-end a buyer.
+    let purchaseType: "free" | "paid" = latest?.purchaseType ?? "paid";
+    if (!latest) {
+      const [svc] = await db.select().from(servicesTable)
+        .where(eq(servicesTable.slug, target.productSlug)).limit(1);
+      if (svc && isServiceFree(svc)) purchaseType = "free";
+    }
+
+    const minted = await ensureClientVerificationCode(user.id, purchaseType);
+    if (!minted.sent) {
+      res.status(429).json({ ok: false, reason: "cooldown", retryAfterSeconds: minted.retryAfterSeconds });
+      return;
+    }
+    sendVerificationCodeEmail(user.email, user.name ?? user.email, minted.code, req.log);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "portal: checkout resend-code failed");
+    res.status(500).json({ error: "Could not resend the code. Please try again." });
   }
 });
 

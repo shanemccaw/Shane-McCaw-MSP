@@ -870,6 +870,31 @@ export const accountSetupTokensTable = pgTable("account_setup_tokens", {
 export type InsertAccountSetupToken = typeof accountSetupTokensTable.$inferInsert;
 export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
 
+// ── Checkout Verification Codes (#143) ─────────────────────────────────────────
+// Short-lived 6-digit codes for the public checkout's inline account setup.
+// A code is a GATE in front of the existing account-setup token flow, not a
+// parallel password path: on a correct code the server mints a normal
+// account_setup_tokens entry and the client proceeds through /auth/setup-password
+// unchanged. Only the bcrypt hash is stored; the plaintext leaves the server in
+// the "checkout-verification-code" email exactly once. purchaseType drives the
+// 3-strike lockout behavior: 'free' locks the flow (buyer restarts checkout),
+// 'paid' auto-resends a fresh code (a paying buyer is never dead-ended).
+export const checkoutVerificationCodesTable = pgTable("checkout_verification_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  purchaseType: text("purchase_type", { enum: ["free", "paid"] }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("checkout_verification_codes_user_idx").on(t.userId),
+]);
+
+export type InsertCheckoutVerificationCode = typeof checkoutVerificationCodesTable.$inferInsert;
+export type CheckoutVerificationCode = typeof checkoutVerificationCodesTable.$inferSelect;
+
 // Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
 export const engagementProjectsTable = pgTable("engagement_projects", {
   id: serial("id").primaryKey(),
