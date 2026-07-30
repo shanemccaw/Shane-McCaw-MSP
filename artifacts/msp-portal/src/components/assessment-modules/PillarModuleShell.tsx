@@ -7,10 +7,12 @@
  * modules only need to supply their pillar-specific content slot.
  */
 
+import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Clock, Info, MinusCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, CheckCircle2, Clock, Info, Lock, MinusCircle } from "lucide-react";
 import type { PillarResult, AssessmentRunStatus } from "./module-registry";
 
 // ── Shared severity colour helper ─────────────────────────────────────────────
@@ -116,6 +118,71 @@ export function PillarSkeleton() {
   );
 }
 
+// ── Free-tier locked-content detection ─────────────────────────────────────────
+// Server-side redaction (#164, Phase 3 of #161) replaces a pillar's `findings`/
+// `recommendations` string arrays with `findingsCount`/`recommendationsCount`
+// integers when the customer has no paid/free_activated assessment SOW
+// (portal-customer-engines.ts's `GET /api/portal/dashboard`). PillarResult's
+// declared type still says `findings: string[]` — module-registry.ts's own
+// comment says to keep these flexible since the backend shape "may shift" — so
+// this checks the actual runtime shape rather than trusting the static type.
+
+interface LockedPillarCounts {
+  findingsCount: number;
+  recommendationsCount: number;
+}
+
+function getLockedCounts(pillar: PillarResult): LockedPillarCounts | null {
+  const raw = pillar as unknown as Record<string, unknown>;
+  if (Array.isArray(raw["findings"])) return null;
+  const findingsCount = raw["findingsCount"];
+  const recommendationsCount = raw["recommendationsCount"];
+  if (typeof findingsCount !== "number" && typeof recommendationsCount !== "number") return null;
+  return {
+    findingsCount: typeof findingsCount === "number" ? findingsCount : 0,
+    recommendationsCount: typeof recommendationsCount === "number" ? recommendationsCount : 0,
+  };
+}
+
+// ── Locked block ──────────────────────────────────────────────────────────────
+// Contextual per-pillar upgrade CTA — deliberately not a page-level banner.
+// Score is unaffected (rendered by the shell above this), only the findings/
+// recommendations detail is gated. CTA goes to /assessment, which resolves the
+// customer's active SOW server-side and drives them to its "payment" step
+// (AssessmentWizard -> AssessmentPaymentPlan) — the real, existing checkout
+// entry point for unlocking assessment results; there is no per-pillar or
+// per-service checkout, since the redaction gate itself is customer-wide
+// ("has this customer paid/activated ANY assessment SOW"), not per-document.
+
+export function PillarLockedState({ label, counts }: { label: string; counts: LockedPillarCounts }) {
+  const [, navigate] = useLocation();
+  const parts: string[] = [];
+  if (counts.findingsCount > 0) {
+    parts.push(`${counts.findingsCount} finding${counts.findingsCount === 1 ? "" : "s"}`);
+  }
+  if (counts.recommendationsCount > 0) {
+    parts.push(`${counts.recommendationsCount} recommendation${counts.recommendationsCount === 1 ? "" : "s"}`);
+  }
+
+  return (
+    <div className="flex flex-col items-center text-center gap-3 py-6 px-4 rounded-lg border border-dashed border-border/60 bg-muted/20">
+      <Lock className="size-6 text-muted-foreground/50" />
+      <p className="text-sm font-medium text-foreground">
+        {parts.length > 0
+          ? `${parts.join(" and ")} identified in ${label} — locked`
+          : `${label} results are locked`}
+      </p>
+      <p className="text-xs text-muted-foreground max-w-xs">
+        Unlock your full assessment to see the detailed {label.toLowerCase()} findings and
+        recommended next steps.
+      </p>
+      <Button size="sm" className="mt-1" onClick={() => navigate("/assessment")}>
+        Unlock full {label} results
+      </Button>
+    </div>
+  );
+}
+
 // ── Main shell ────────────────────────────────────────────────────────────────
 
 interface PillarModuleShellProps {
@@ -155,7 +222,12 @@ export function PillarModuleShell({
         ) : (
           <div className="space-y-4">
             {pillar.score !== null && <ScoreBar score={pillar.score} />}
-            {children(pillar)}
+            {(() => {
+              const lockedCounts = getLockedCounts(pillar);
+              return lockedCounts
+                ? <PillarLockedState label={label} counts={lockedCounts} />
+                : children(pillar);
+            })()}
           </div>
         )}
       </CardContent>
