@@ -444,10 +444,17 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
 
           <button
             onClick={onContinue}
-            className="flex items-center space-x-2 bg-[linear-gradient(90deg,#0A84FF_0%,#22D3EE_35%,#A855F7_70%,#EC4899_100%)] hover:brightness-110 text-white font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-primary/30 cursor-pointer"
+            style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+            className="group relative flex items-center gap-2.5 px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 rounded-full bg-[linear-gradient(135deg,#3B82F6_0%,#8B5CF6_50%,#D8B4FE_100%)] animate-copilot-pulse-glow hover:shadow-2xl hover:-translate-y-0.5 active:scale-95 overflow-hidden border border-white/20 cursor-pointer"
           >
-            <span>Evaluate Use-Case Stories</span>
-            <ArrowRight className="w-4 h-4" />
+            {/* Shimmer sweep */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-copilot-shimmer z-[5]" />
+            {/* Glossy hover overlay */}
+            <div className="absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100 bg-gradient-to-tr from-transparent via-white/10 to-white/20 z-10" />
+            <span className="relative z-20 tracking-tight">Evaluate Use-Case Stories</span>
+            <ArrowRight className="relative z-20 w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
+            {/* Ambient light line */}
+            <div className="absolute -inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-50 z-20" />
           </button>
 
           {onExitClick && (
