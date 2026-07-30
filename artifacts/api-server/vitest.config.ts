@@ -131,6 +131,7 @@ export default defineConfig({
       "src/routes/msp-marketplace-purchase.test.ts",
       "src/routes/portal-engine-history.test.ts",
       "src/routes/portal-customer-engines-assessment-redaction.test.ts",
+      "src/routes/portal-customer-engines-assessment-telemetry.test.ts",
       "src/routes/msp-engine-history.test.ts",
       "src/routes/admin-monitor-check-runs.test.ts",
       "src/routes/admin-monitor-checks-crud.test.ts",

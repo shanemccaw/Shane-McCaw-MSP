@@ -12,9 +12,11 @@ import {
   ExternalLink,
   AlertCircle,
   Clock,
+  Mail,
   Users,
   XCircle,
 } from "lucide-react";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { ChatCTA } from "@/components/ChatCTA";
@@ -23,6 +25,7 @@ import { GradientText } from "@/components/design-system/GradientText";
 import { Button } from "@/components/ui/button";
 import { CaptchaGate } from "@/components/CaptchaGate";
 import { Input } from "@/components/ui/input";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -169,6 +172,10 @@ interface CheckoutSessionInfo {
   productSlug: string;
   status: string;
   seats: number;
+  // #143: true when the resolved buyer already has a portal password. The paid
+  // Stripe-return path uses this so a returning buyer sees "log in" instead of a
+  // code-entry screen (the webhook never emails a code to a password-holder).
+  hasPassword?: boolean;
 }
 
 async function fetchCheckoutSession(
@@ -223,6 +230,475 @@ function fmtPrice(cents: number): string {
     currency: "USD",
     minimumFractionDigits: 0,
   });
+}
+
+// ── Confirmed step, self-serve variant (#143) ─────────────────────────────────
+// Netflix-style finish for non-signature services: verify the emailed 6-digit
+// code and set the portal password inline, all on this screen. The code only
+// GATES the existing flow — a correct code returns a normal account-setup token
+// and the password submit goes through the unchanged /api/auth/setup-password.
+// Signature-required services (project/retainer) never render this component.
+
+const passwordSetupSchema = z
+  .object({
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+type PasswordSetupForm = z.infer<typeof passwordSetupSchema>;
+
+type VerifyPhase = "code" | "password" | "done" | "locked" | "already-set";
+
+function ConfirmedSelfServeStep({
+  service,
+  slug,
+  sessionId,
+  guestEmail,
+  initialHasPassword,
+  priceDisplay,
+}: {
+  service: ReturnType<typeof tierToService>;
+  slug: string;
+  sessionId: string;
+  guestEmail: string | null;
+  initialHasPassword: boolean;
+  priceDisplay: string | null;
+}) {
+  const [phase, setPhase] = useState<VerifyPhase>(initialHasPassword ? "already-set" : "code");
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // The first code was just emailed (free endpoint / Stripe webhook), so the
+  // resend button starts inside the 60s cooldown and counts down visibly.
+  const [cooldownLeft, setCooldownLeft] = useState(60);
+  const [resending, setResending] = useState(false);
+  const [setupToken, setSetupToken] = useState<string | null>(null);
+  const [portalUrl, setPortalUrl] = useState("/portal/");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const t = setTimeout(() => setCooldownLeft((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldownLeft]);
+
+  // The paid Stripe-return path resolves hasPassword asynchronously (the
+  // checkout-session GET lands after this component has already mounted in the
+  // "code" phase). When it arrives true, flip a still-pristine code screen to the
+  // log-in state so a returning buyer isn't shown a code entry for an email that
+  // never comes. Never override a phase the buyer has already progressed past.
+  useEffect(() => {
+    if (initialHasPassword) setPhase((p) => (p === "code" ? "already-set" : p));
+  }, [initialHasPassword]);
+
+  const form = useForm<PasswordSetupForm>({
+    resolver: zodResolver(passwordSetupSchema),
+    defaultValues: { password: "", confirmPassword: "" },
+  });
+
+  async function handleVerify(codeValue: string) {
+    if (codeValue.length !== 6 || verifying) return;
+    setVerifying(true);
+    setCodeError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/public/checkout/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, code: codeValue }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        setupToken?: string;
+        reason?: string;
+        attemptsRemaining?: number;
+      };
+      if (json.ok && json.setupToken) {
+        setSetupToken(json.setupToken);
+        setPhase("password");
+        return;
+      }
+      switch (json.reason) {
+        case "incorrect":
+          setCode("");
+          setCodeError(
+            json.attemptsRemaining === 1
+              ? "That code isn't right — 1 attempt remaining."
+              : `That code isn't right — ${json.attemptsRemaining ?? 0} attempts remaining.`,
+          );
+          break;
+        case "expired":
+          setCodeError("That code has expired. Use “Resend code” below to get a fresh one.");
+          break;
+        case "resent":
+          // Paid flow, 3rd wrong attempt: the server already emailed a new code.
+          setCode("");
+          setCooldownLeft(60);
+          setNotice("Too many incorrect attempts — we've emailed you a brand-new code. Use the code from the newest email.");
+          break;
+        case "locked":
+          setPhase("locked");
+          break;
+        case "already_set":
+          setPhase("already-set");
+          break;
+        default:
+          setCodeError("Verification failed. Please try again.");
+      }
+    } catch {
+      setCodeError("Network error. Check your connection and try again.");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleResend() {
+    if (cooldownLeft > 0 || resending) return;
+    setResending(true);
+    setCodeError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/public/checkout/resend-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        reason?: string;
+        retryAfterSeconds?: number;
+      };
+      if (json.ok) {
+        setCode("");
+        setCooldownLeft(60);
+        setNotice(
+          guestEmail ? `A fresh code is on its way to ${guestEmail}.` : "A fresh code is on its way.",
+        );
+      } else if (json.reason === "not_ready") {
+        // Paid buyer resending before the provisioning webhook has minted the
+        // first code — it's on the way from the trusted path, just not yet.
+        setNotice(
+          guestEmail
+            ? `Your code is on its way to ${guestEmail} — give it a moment and check your inbox.`
+            : "Your code is on its way — give it a moment and check your inbox.",
+        );
+        setCooldownLeft(60);
+      } else if (json.reason === "cooldown") {
+        setCooldownLeft(Math.max(1, json.retryAfterSeconds ?? 60));
+      } else if (json.reason === "locked") {
+        setPhase("locked");
+      } else if (json.reason === "already_set") {
+        setPhase("already-set");
+      } else {
+        setCodeError("Couldn't resend the code. Please try again.");
+      }
+    } catch {
+      setCodeError("Network error. Check your connection and try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  async function handleSetPassword(data: PasswordSetupForm) {
+    if (!setupToken) return;
+    setPasswordError(null);
+    try {
+      const res = await fetch("/api/auth/setup-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: setupToken, password: data.password }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        accessToken?: string;
+        error?: string;
+        user?: { mspSlug?: string | null; mspRole?: string | null };
+      };
+      if (!res.ok) {
+        setPasswordError(json.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      // Mirror account-setup.tsx's role-based landing, under the portal base path.
+      const mspSlug = json.user?.mspSlug ?? null;
+      const landing =
+        json.user?.mspRole === "Assessment"
+          ? "assessment"
+          : json.user?.mspRole === "CustomerUser"
+            ? "m365-health"
+            : "dashboard";
+      setPortalUrl(mspSlug ? `/portal/${mspSlug}/${landing}` : "/portal/");
+      clearGuestInfoCache(sessionId);
+      clearSessionId();
+      setPhase("done");
+    } catch {
+      setPasswordError("A network error occurred. Please try again.");
+    }
+  }
+
+  function handleStartOver() {
+    clearGuestInfoCache(sessionId);
+    clearSessionId();
+    window.location.href = `/checkout/${encodeURIComponent(slug)}`;
+  }
+
+  if (phase === "locked") {
+    // Free-flow 3-strike lockout: explain and restart — never a silent redirect.
+    return (
+      <div className="flex flex-col items-center gap-4 py-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mb-2">
+          <AlertCircle className="size-8 text-amber-400" />
+        </div>
+        <h2 className="font-display text-2xl font-semibold text-text-primary">Verification locked</h2>
+        <p className="text-text-secondary max-w-sm">
+          For security, we locked this verification after 3 incorrect codes. Your order went through
+          and nothing was lost — but you'll need to start checkout again with the same email to get a
+          fresh code.
+        </p>
+        <button
+          onClick={handleStartOver}
+          className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+        >
+          <ArrowLeft className="mr-2 size-4" /> Start checkout again
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "already-set") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-2">
+          <CheckCircle2 className="size-8 text-accent-blue" />
+        </div>
+        <h2 className="font-display text-2xl font-semibold text-text-primary">
+          Order <GradientText>confirmed</GradientText>!
+        </h2>
+        <p className="text-text-secondary max-w-sm">
+          Your <strong className="text-text-primary">{service.name}</strong> is confirmed, and your
+          account already has a password — just log in to see it in your portal.
+        </p>
+        <a
+          href="/portal/"
+          className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+          style={GRADIENT_BG}
+        >
+          Log in to my portal <ArrowRight className="ml-2 size-4" />
+        </a>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-2">
+          <CheckCircle2 className="size-8 text-accent-blue" />
+        </div>
+        <h2 className="font-display text-2xl font-semibold text-text-primary">
+          You're <GradientText>all set</GradientText>!
+        </h2>
+        <p className="text-text-secondary max-w-sm">
+          Your password is saved and you're signed in. Your{" "}
+          <strong className="text-text-primary">{service.name}</strong> workspace is waiting.
+        </p>
+        <a
+          href={portalUrl}
+          className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+          style={GRADIENT_BG}
+        >
+          Go to my portal <ArrowRight className="ml-2 size-4" />
+        </a>
+      </div>
+    );
+  }
+
+  // phase === "code" | "password"
+  return (
+    <div className="flex flex-col items-center gap-5 py-8 text-center">
+      <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-1">
+        <CheckCircle2 className="size-8 text-accent-blue" />
+      </div>
+      <div className="space-y-2">
+        <h2 className="font-display text-3xl font-semibold text-text-primary">
+          Thank you — <GradientText>order confirmed</GradientText>!
+        </h2>
+        <p className="text-text-secondary max-w-md">
+          {service.isFree
+            ? "Your free service is confirmed and your Microsoft 365 scan is already underway."
+            : "Your payment went through and your workspace is being prepared right now."}
+        </p>
+      </div>
+
+      <div className="w-full rounded-xl border border-white/[0.06] bg-charcoal-1 p-4 flex items-center justify-between gap-4">
+        <div className="text-left">
+          <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-0.5">Your order</p>
+          <p className="font-semibold text-text-primary">{service.name}</p>
+        </div>
+        {priceDisplay && (
+          <p className="font-numeric text-text-primary font-bold text-lg shrink-0">{priceDisplay}</p>
+        )}
+      </div>
+
+      {phase === "code" ? (
+        <div className="w-full space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-accent-blue/20 bg-accent-blue/5 p-4 text-left">
+            <Mail className="size-5 text-accent-blue shrink-0 mt-0.5" />
+            <p className="text-sm text-text-secondary leading-snug">
+              We've emailed a 6-digit verification code
+              {guestEmail ? (
+                <>
+                  {" "}to <strong className="text-text-primary">{guestEmail}</strong>
+                </>
+              ) : null}
+              . Enter it below to verify your email and set your portal password — no waiting, no
+              extra links.
+            </p>
+          </div>
+
+          {notice && (
+            <div className="rounded-xl border border-accent-blue/20 bg-accent-blue/5 p-3 text-sm text-text-primary">
+              {notice}
+            </div>
+          )}
+          {codeError && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 flex items-start gap-2 text-left">
+              <AlertCircle className="size-4 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-300/90">{codeError}</p>
+            </div>
+          )}
+
+          <div className="flex justify-center">
+            <InputOTP
+              maxLength={6}
+              value={code}
+              pattern={REGEXP_ONLY_DIGITS}
+              onChange={setCode}
+              onComplete={(v: string) => handleVerify(v)}
+              disabled={verifying}
+            >
+              <InputOTPGroup>
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <InputOTPSlot
+                    key={i}
+                    index={i}
+                    className="h-12 w-10 text-lg font-semibold bg-white/[0.04] border-white/[0.12] text-text-primary"
+                  />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
+
+          <Button
+            onClick={() => handleVerify(code)}
+            disabled={verifying || code.length !== 6}
+            className="w-full text-white"
+            style={GRADIENT_BG}
+          >
+            {verifying ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" /> Verifying…
+              </>
+            ) : (
+              <>
+                Verify code <ArrowRight className="ml-2 size-4" />
+              </>
+            )}
+          </Button>
+
+          <button
+            onClick={handleResend}
+            disabled={cooldownLeft > 0 || resending}
+            className="text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {resending
+              ? "Sending…"
+              : cooldownLeft > 0
+                ? `Resend code (${cooldownLeft}s)`
+                : "Resend code"}
+          </button>
+        </div>
+      ) : (
+        <div className="w-full space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-accent-blue/20 bg-accent-blue/5 p-4 text-left">
+            <ShieldCheck className="size-5 text-accent-blue shrink-0 mt-0.5" />
+            <p className="text-sm text-text-secondary leading-snug">
+              <strong className="text-text-primary">Email verified.</strong> Last step: choose your
+              portal password and you're in.
+            </p>
+          </div>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSetPassword)} className="space-y-4 text-left">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="At least 8 characters"
+                        className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-secondary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Re-enter your password"
+                        className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-secondary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {passwordError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 flex items-start gap-2">
+                  <AlertCircle className="size-4 text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-300/90">{passwordError}</p>
+                </div>
+              )}
+              <Button
+                type="submit"
+                disabled={form.formState.isSubmitting}
+                className="w-full text-white"
+                style={GRADIENT_BG}
+              >
+                {form.formState.isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Creating your password…
+                  </>
+                ) : (
+                  <>
+                    Create password &amp; enter portal <ArrowRight className="ml-2 size-4" />
+                  </>
+                )}
+              </Button>
+            </form>
+          </Form>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StepIndicator({ current }: { current: Step }) {
@@ -299,8 +775,19 @@ export default function Checkout() {
   // expired/invalid (it will never hand out a state-less URL for this flow).
   const [consentSessionGone, setConsentSessionGone] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // The resolved buyer already has a portal password, so the confirmed step
+  // shows a log-in prompt instead of the code-verification UX (#143). Set from
+  // the free-checkout response (free path) or the checkout-session GET (paid
+  // Stripe-return path) — the webhook never emails a code to a password-holder.
+  const [confirmedHasPassword, setConfirmedHasPassword] = useState(false);
   const { toast } = useToast();
   const contractIdRef = useRef<number | null>(null);
+
+  // Self-serve (non-signature) services finish with inline code verification on
+  // the confirmed step (#143); project/retainer keep the manual-onboarding copy
+  // and the drawn-signature contract path.
+  const requiresSignature =
+    service ? service.serviceType === "project" || service.serviceType === "retainer" : false;
 
   // Fire analytics on mount
   useEffect(() => { trackCheckoutStarted("service_catalog"); }, []);
@@ -352,7 +839,11 @@ export default function Checkout() {
           setTermsAccepted(cachedInfo.termsAccepted === true);
         }
         fetchCheckoutSession(storedSessionId).then((info) => {
-          if (info && info.seats > 1) setRecoveredSeats(info.seats);
+          if (!info) return;
+          if (info.seats > 1) setRecoveredSeats(info.seats);
+          // Returning buyer (already has a password): the confirmed step shows a
+          // log-in prompt rather than waiting on a code email that never comes.
+          if (info.hasPassword) setConfirmedHasPassword(true);
         }).catch(() => {});
       }
       if (checkoutStatus === "success") {
@@ -504,8 +995,6 @@ export default function Checkout() {
     try {
       let contractId = contractIdRef.current;
 
-      const requiresSignature = service.serviceType === "project" || service.serviceType === "retainer";
-
       if (!contractId) {
         const contractRes = await fetch("/api/portal/onboarding/contract", {
           method: "POST",
@@ -553,6 +1042,10 @@ export default function Checkout() {
           cancelUrl,
           seats: effectiveSeats,
           captchaToken,
+          // This surface renders the inline code-verification UI on its
+          // confirmed step, so the webhook may send the 6-digit code email
+          // instead of the account-setup link for self-serve services (#143).
+          supportsVerificationCode: true,
         }),
       });
 
@@ -625,6 +1118,7 @@ export default function Checkout() {
           contractIds: [contractId],
           guestEmail: guestInfo.email,
           captchaToken,
+          supportsVerificationCode: true,
         }),
       });
 
@@ -633,6 +1127,9 @@ export default function Checkout() {
         setPaymentError(err.error ?? "Unable to complete registration. Please try again.");
         return;
       }
+
+      const freeJson = (await freeRes.json().catch(() => ({}))) as { hasPassword?: boolean };
+      setConfirmedHasPassword(freeJson.hasPassword === true);
 
       trackCheckoutCompleted("free_service", { service_id: String(service.id) });
       setStep("confirmed");
@@ -1182,8 +1679,20 @@ export default function Checkout() {
                   </div>
                 )}
 
-                {/* Step 4: Confirmed */}
-                {step === "confirmed" && (
+                {/* Step 4: Confirmed — self-serve services verify a 6-digit code and
+                    set their password inline (#143); signature-required services keep
+                    the manual-onboarding confirmation below, untouched. */}
+                {step === "confirmed" && service && !requiresSignature && (sessionId ?? loadSessionId()) && (
+                  <ConfirmedSelfServeStep
+                    service={service}
+                    slug={slug ?? service.slug ?? ""}
+                    sessionId={(sessionId ?? loadSessionId())!}
+                    guestEmail={guestInfo?.email ?? null}
+                    initialHasPassword={confirmedHasPassword}
+                    priceDisplay={priceDisplay}
+                  />
+                )}
+                {step === "confirmed" && (!service || requiresSignature || !(sessionId ?? loadSessionId())) && (
                   <div className="flex flex-col items-center gap-4 py-8 text-center">
                     <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-2">
                       <CheckCircle2 className="size-8 text-accent-blue" />

@@ -251,6 +251,150 @@ router.get(
   },
 );
 
+// ── Shared snapshot/pillar computation (#164 redaction logic) ─────────────────
+// Used by both /portal/dashboard (CustomerUser, full aggregate) and
+// /portal/assessment/telemetry (Assessment floor, lean subset). Kept as a single
+// function so the paid/free_activated redaction gate can only be implemented
+// once — never re-derived per route.
+
+interface CustomerPillarsResult {
+  scores: Record<string, number>;
+  pillars: Record<string, any>;
+  compositeScore: number;
+  compositeCount: number;
+  runId: string | null;
+  generatedAt: string | null;
+}
+
+async function computeCustomerScoresAndPillars(customerId: number, userId: number): Promise<CustomerPillarsResult> {
+  const snapshots = await db
+    .select({
+      engineKey: tenantEngineSnapshotsTable.engineKey,
+      score: tenantEngineSnapshotsTable.score,
+      breakdown: tenantEngineSnapshotsTable.breakdown,
+      runId: tenantEngineSnapshotsTable.runId,
+      capturedAt: tenantEngineSnapshotsTable.capturedAt,
+    })
+    .from(tenantEngineSnapshotsTable)
+    .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
+    .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
+
+  // Free-tier paywall (#164, Phase 3 of #161): a customer only sees the raw
+  // findings/recommendations text once they've paid (or been free-activated)
+  // for an assessment SOW. Composite/pillar SCORES are never gated — only the
+  // finding/recommendation strings themselves. Same paid/free_activated status
+  // set portal-assessment.ts already gates on (see its SOW-checkout dedupe
+  // check) — this route has no single docId to scope to (it aggregates every
+  // engine snapshot for the customer), so it's keyed on "has this customer
+  // paid/activated ANY assessment SOW" rather than a specific document.
+  const [paidAgreement] = await db
+    .select({ id: assessmentSowAgreementsTable.id })
+    .from(assessmentSowAgreementsTable)
+    .where(
+      and(
+        eq(assessmentSowAgreementsTable.clientUserId, userId),
+        inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
+      ),
+    )
+    .limit(1);
+  const isPaidTier = !!paidAgreement;
+
+  const scores: Record<string, number> = {};
+  const pillars: Record<string, any> = {};
+  let compositeScore = 0;
+  let compositeCount = 0;
+  let runId: string | null = null;
+  let generatedAt: string | null = null;
+
+  for (const snap of snapshots) {
+    if (scores[snap.engineKey] === undefined && snap.score !== null) {
+      scores[snap.engineKey] = snap.score;
+      compositeScore += snap.score;
+      compositeCount++;
+
+      if (!runId && snap.runId) runId = snap.runId;
+      if (!generatedAt && snap.capturedAt) generatedAt = snap.capturedAt.toISOString();
+
+      // Extract findings/recommendations from breakdown
+      const breakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
+      const findings: string[] = [];
+      const recommendations: string[] = [];
+
+      for (const item of breakdown) {
+        if (typeof item === "object" && item !== null) {
+          const b = item as Record<string, any>;
+          if (b.finding) findings.push(String(b.finding));
+          else if (b.message) findings.push(String(b.message));
+          else if (b.label) findings.push(String(b.label));
+
+          if (b.recommendation) recommendations.push(String(b.recommendation));
+          else if (b.action) recommendations.push(String(b.action));
+        }
+      }
+
+      pillars[snap.engineKey] = isPaidTier
+        ? { score: snap.score, status: "complete", findings, recommendations }
+        : { score: snap.score, status: "complete", findingsCount: findings.length, recommendationsCount: recommendations.length };
+    }
+  }
+
+  return { scores, pillars, compositeScore, compositeCount, runId, generatedAt };
+}
+
+async function resolveTelemetryStatus(customerId: number): Promise<"in_progress" | "completed"> {
+  const [customer] = await db
+    .select({ status: tenantsTable.status })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
+    .limit(1);
+
+  return customer?.status === "onboarding" ? "in_progress" : "completed";
+}
+
+// ── GET /api/portal/assessment/telemetry ──────────────────────────────────────
+// Assessment-role-accessible lean subset of /portal/dashboard: only
+// telemetryStatus and the results.{status,runId,generatedAt,summary,pillars}
+// shape assessment-dashboard.tsx consumes. Deliberately excludes every
+// CustomerUser account-aggregate field (projects, invoices, billing prices,
+// unread notifications/messages, mspId) — Assessment-tier tokens must never
+// see those.
+
+router.get(
+  "/portal/assessment/telemetry",
+  requireRole("Assessment"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    const userId = req.user!.id;
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    try {
+      const { pillars, compositeScore, compositeCount, runId, generatedAt } =
+        await computeCustomerScoresAndPillars(customerId, userId);
+      const telemetryStatus = await resolveTelemetryStatus(customerId);
+
+      res.json({
+        telemetryStatus,
+        results: {
+          status: telemetryStatus === "in_progress" ? "running" : "complete",
+          runId,
+          generatedAt,
+          summary: {
+            compositeScore: compositeCount > 0 ? Math.round(compositeScore / compositeCount) : null,
+            priorityItems: [],
+          },
+          pillars,
+        },
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "portal-customer-engines: assessment-telemetry failed");
+      res.status(500).json({ error: "Unable to load assessment telemetry right now." });
+    }
+  },
+);
+
 // ── GET /api/portal/dashboard ─────────────────────────────────────────────────
 
 router.get(
@@ -264,76 +408,8 @@ router.get(
     }
 
     try {
-      const snapshots = await db
-        .select({
-          engineKey: tenantEngineSnapshotsTable.engineKey,
-          score: tenantEngineSnapshotsTable.score,
-          breakdown: tenantEngineSnapshotsTable.breakdown,
-          runId: tenantEngineSnapshotsTable.runId,
-          capturedAt: tenantEngineSnapshotsTable.capturedAt,
-        })
-        .from(tenantEngineSnapshotsTable)
-        .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
-        .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
-
-      // Free-tier paywall (#164, Phase 3 of #161): a customer only sees the raw
-      // findings/recommendations text once they've paid (or been free-activated)
-      // for an assessment SOW. Composite/pillar SCORES are never gated — only the
-      // finding/recommendation strings themselves. Same paid/free_activated status
-      // set portal-assessment.ts already gates on (see its SOW-checkout dedupe
-      // check) — this route has no single docId to scope to (it aggregates every
-      // engine snapshot for the customer), so it's keyed on "has this customer
-      // paid/activated ANY assessment SOW" rather than a specific document.
-      const [paidAgreement] = await db
-        .select({ id: assessmentSowAgreementsTable.id })
-        .from(assessmentSowAgreementsTable)
-        .where(
-          and(
-            eq(assessmentSowAgreementsTable.clientUserId, req.user!.id),
-            inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
-          ),
-        )
-        .limit(1);
-      const isPaidTier = !!paidAgreement;
-
-      const scores: Record<string, number> = {};
-      const pillars: Record<string, any> = {};
-      let compositeScore = 0;
-      let compositeCount = 0;
-      let runId: string | null = null;
-      let generatedAt: string | null = null;
-
-      for (const snap of snapshots) {
-        if (scores[snap.engineKey] === undefined && snap.score !== null) {
-          scores[snap.engineKey] = snap.score;
-          compositeScore += snap.score;
-          compositeCount++;
-          
-          if (!runId && snap.runId) runId = snap.runId;
-          if (!generatedAt && snap.capturedAt) generatedAt = snap.capturedAt.toISOString();
-
-          // Extract findings/recommendations from breakdown
-          const breakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
-          const findings: string[] = [];
-          const recommendations: string[] = [];
-          
-          for (const item of breakdown) {
-            if (typeof item === "object" && item !== null) {
-              const b = item as Record<string, any>;
-              if (b.finding) findings.push(String(b.finding));
-              else if (b.message) findings.push(String(b.message));
-              else if (b.label) findings.push(String(b.label));
-
-              if (b.recommendation) recommendations.push(String(b.recommendation));
-              else if (b.action) recommendations.push(String(b.action));
-            }
-          }
-
-          pillars[snap.engineKey] = isPaidTier
-            ? { score: snap.score, status: "complete", findings, recommendations }
-            : { score: snap.score, status: "complete", findingsCount: findings.length, recommendationsCount: recommendations.length };
-        }
-      }
+      const { scores, pillars, compositeScore, compositeCount, runId, generatedAt } =
+        await computeCustomerScoresAndPillars(customerId, req.user!.id);
 
       // Determine type_attributes / modules to mount
       const activeServices = await db
@@ -364,8 +440,8 @@ router.get(
         }
       }
       
-      const type_attributes = dashboardModules.size > 0 
-        ? Array.from(dashboardModules) 
+      const type_attributes = dashboardModules.size > 0
+        ? Array.from(dashboardModules)
         : (enabledModules.size > 0 ? Array.from(enabledModules) : ["priority-health", "security", "copilot", "cost"]);
 
       const [customer] = await db
@@ -374,7 +450,7 @@ router.get(
         .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
-      const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
+      const telemetryStatus: "in_progress" | "completed" = customer?.status === "onboarding" ? "in_progress" : "completed";
 
       // ── Merge existing dashboard fields for customer-home.tsx ──
       const userId = req.user!.id;

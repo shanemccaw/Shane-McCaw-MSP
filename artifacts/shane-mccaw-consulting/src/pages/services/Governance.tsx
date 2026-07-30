@@ -6,6 +6,7 @@ import {
   CheckCircle, ArrowRight, ChevronRight, Shield, Tag, Archive,
   Eye, Key, Users, Building2, Globe,
 } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
@@ -84,6 +85,13 @@ const WHY_SHANE = [
 ];
 
 export default function Governance() {
+  // {{db.assessments.list}}
+  const { services } = useServices({ category: "assessment" });
+  const assessment = services.find((s) => s.name === "Tenant Governance Snapshot");
+  const assessmentHref = assessment
+    ? `/assessments/${encodeURIComponent(assessment.slug ?? String(assessment.id))}`
+    : "/assessments?tab=free";
+
   return (
     <Layout>
       <SEOMeta
@@ -136,7 +144,7 @@ export default function Governance() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessments?tab=free"
+              href={assessmentHref}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
@@ -265,7 +273,7 @@ export default function Governance() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/assessments?tab=free"
+              href={assessmentHref}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"

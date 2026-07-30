@@ -6,6 +6,8 @@ import {
   CheckCircle, ArrowRight, ChevronRight, Shield, Lock, Eye,
   AlertTriangle, Key, Server, Users, BarChart3,
 } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
+import { getTopicSlugForAssessment } from "@/lib/assessmentZones";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
@@ -65,6 +67,13 @@ const WHY_SHANE = [
 ];
 
 export default function SecurityHardening() {
+  // {{db.assessments.list}} — all real assessments mapped to this topic,
+  // derived live so the list stays correct if the catalog changes.
+  const { services } = useServices({ category: "assessment" });
+  const securityAssessments = services.filter(
+    (s) => getTopicSlugForAssessment(s) === "security-compliance",
+  );
+
   return (
     <Layout>
       <SEOMeta
@@ -296,19 +305,24 @@ export default function SecurityHardening() {
             Find Your Gaps Before an Attacker Does
           </h2>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            A structured M365 security assessment starts with a free readiness check — answer 10 questions on identity, permissions, DLP, and audit logging to see where you stand.
+            A structured M365 security assessment, run against your live tenant. Pick the domain that matters most to you — identity, a specific compliance framework, or your full security posture.
           </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <a
-              href="/assessments?tab=free"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
-              style={GRADIENT_BG}
-              data-track="cta"
-            >
-              Start Your Free Assessment
-            </a>
-          </div>
         </div>
+        {securityAssessments.length > 0 && (
+          <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+            {securityAssessments.map((service) => (
+              <a
+                key={service.slug ?? service.id}
+                href={`/assessments/${encodeURIComponent(service.slug ?? String(service.id))}`}
+                className="flex items-center justify-between gap-3 bg-charcoal-1 border border-white/[0.08] rounded-xl px-5 py-4 hover:border-accent-blue/40 transition-all"
+                data-track="cta"
+              >
+                <span className="text-text-primary text-sm font-semibold">{service.name}</span>
+                <ChevronRight className="w-4 h-4 text-accent-blue flex-shrink-0" />
+              </a>
+            ))}
+          </div>
+        )}
       </section>
     </Layout>
   );

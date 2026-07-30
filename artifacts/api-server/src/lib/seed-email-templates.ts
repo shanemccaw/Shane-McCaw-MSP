@@ -89,6 +89,26 @@ const TEMPLATES: TemplateDefinition[] = [
   `,
   },
   {
+    slug: "checkout-verification-code",
+    recipientType: "client",
+    name: "Checkout Verification Code",
+    // The code must NOT appear in the subject: sendEmailOrThrow logs every
+    // subject at info level and persists it into email_events — a code in the
+    // subject would put live plaintext codes in logs and the DB. Body only.
+    subject: "Your Shane McCaw Consulting verification code",
+    variables: [
+      { name: "code", description: "Six-digit verification code (expires in 10 minutes)" },
+      { name: "clientName", description: "Client's full name or email" },
+    ],
+    bodyHtml: `
+    <p>Hi {{clientName}},</p>
+    <p>Enter this code on the checkout confirmation screen to verify your email and finish setting up your account:</p>
+    <p style="margin:24px 0;text-align:center;"><span style="display:inline-block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 32px;font-size:32px;font-weight:700;letter-spacing:8px;color:#0f172a;">{{code}}</span></p>
+    <p style="color:#64748b;font-size:13px;">This code expires in <strong>10 minutes</strong>. If you didn't request it, you can safely ignore this email — nothing happens without the code.</p>
+    <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+  `,
+  },
+  {
     slug: "password-reset",
     recipientType: "client",
     name: "Password Reset",

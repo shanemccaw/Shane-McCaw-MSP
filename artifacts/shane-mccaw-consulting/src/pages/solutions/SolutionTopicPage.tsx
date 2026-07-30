@@ -733,7 +733,7 @@ export default function SolutionTopicPage() {
               <p className="text-text-secondary mb-8 max-w-xl mx-auto">{topic.finalCtaBody}</p>
               <div className="flex flex-col sm:flex-row justify-center gap-4">
                 <Link
-                  href="/assessment"
+                  href="/assessments?tab=free"
                   className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                   data-track="cta"
@@ -815,7 +815,7 @@ export default function SolutionTopicPage() {
               </p>
               <div className="flex flex-col sm:flex-row justify-center gap-4">
                 <Link
-                  href="/assessment"
+                  href="/assessments?tab=free"
                   className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                   data-track="cta"

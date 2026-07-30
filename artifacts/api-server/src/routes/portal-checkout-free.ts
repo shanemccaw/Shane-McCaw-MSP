@@ -12,6 +12,7 @@ import { sendPushNotifications } from "../lib/push.ts";
 import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token.ts";
+import { ensureClientVerificationCode, sendVerificationCodeEmail } from "../lib/checkout-verification-code.ts";
 import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata.ts";
 import { seedDefaultWorkflowSteps } from "../lib/default-workflow-steps.ts";
 import { logger } from "../lib/logger.ts";
@@ -32,7 +33,7 @@ async function getAdminUnreadMessageCount(): Promise<number> {
 }
 
 type FreeOnboardingResult =
-  | { ok: true; sentSetupEmail: boolean; alreadyProvisioned: boolean; projectId?: number }
+  | { ok: true; sentSetupEmail: boolean; alreadyProvisioned: boolean; projectId?: number; codeSent?: boolean; hasPassword?: boolean }
   | { ok: false; status: number; error: string };
 
 /**
@@ -53,6 +54,12 @@ async function provisionFreeOnboarding(opts: {
   contractIds: number[];
   serviceIds: number[];
   log: Request["log"];
+  // #143: the calling surface renders the inline 6-digit code UI on its
+  // confirmed step (public Checkout.tsx only). When true, a passwordless buyer
+  // of a non-signature service gets the verification-code email instead of the
+  // account-setup link. Callers that don't pass it (CRM claim-free,
+  // consent-success inline finalize) keep the link email unchanged.
+  verificationCodeUx?: boolean;
 }): Promise<FreeOnboardingResult> {
     const { authedUserId, contractIds, serviceIds, log: reqLog } = opts;
     if (serviceIds.length === 0) return { ok: false, status: 400, error: "No service IDs provided" };
@@ -136,11 +143,35 @@ async function provisionFreeOnboarding(opts: {
     const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, resolvedUserId)).limit(1);
     if (!buyer) return { ok: false, status: 404, error: "Account not found" };
 
+    // Signature-required (project/retainer) purchases keep the link-based
+    // account-setup email and the existing confirmed-step copy; everything else
+    // is eligible for the inline code UX when the caller opted in (#143).
+    const requiresSignature = orderedServices.some(
+      s => s.serviceType === "project" || s.serviceType === "retainer",
+    );
+    const codeUxActive = opts.verificationCodeUx === true && !requiresSignature;
+
     // Idempotency: deterministic invoice number — retry-safe
     const freeInvoiceNumber = `FREE-ONB-${resolvedUserId}-${[...serviceIds].sort().join("-")}`;
     const [existingInvoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
       .where(eq(invoicesTable.invoiceNumber, freeInvoiceNumber)).limit(1);
-    if (existingInvoice) return { ok: true, sentSetupEmail: false, alreadyProvisioned: true };
+    if (existingInvoice) {
+      // Already provisioned but the buyer still has no password: for the code
+      // UX this re-run IS the recovery path (expired code, or a restart after
+      // the free-flow 3-strike lockout — this endpoint is captcha-gated, which
+      // is the friction that makes post-lockout re-issue acceptable). Mint and
+      // email a fresh code so the confirmed step the caller is about to render
+      // can actually verify. The helper's cooldown absorbs double-submits.
+      let codeSent = false;
+      if (codeUxActive && !buyer.passwordHash && buyer.email) {
+        const minted = await ensureClientVerificationCode(resolvedUserId, "free");
+        if (minted.sent) {
+          sendVerificationCodeEmail(buyer.email, buyer.name ?? buyer.email, minted.code, reqLog);
+          codeSent = true;
+        }
+      }
+      return { ok: true, sentSetupEmail: false, alreadyProvisioned: true, codeSent, hasPassword: !!buyer.passwordHash };
+    }
 
     void ensureLeadForClient(resolvedUserId, buyer.email, buyer.name ?? undefined, buyer.company ?? undefined);
 
@@ -261,8 +292,17 @@ async function provisionFreeOnboarding(opts: {
     // Setup email for new accounts / confirmation for returning clients
     const baseUrl = getPortalBaseUrl();
     let sentSetupEmail = false;
+    let codeSent = false;
     const hasPassword = !!(buyer.passwordHash);
-    if (!hasPassword && buyer.email) {
+    if (!hasPassword && buyer.email && codeUxActive) {
+      // #143: inline code UX — the caller's confirmed step verifies a 6-digit
+      // code instead of handing off to the emailed account-setup link.
+      const minted = await ensureClientVerificationCode(resolvedUserId, "free");
+      if (minted.sent) {
+        sendVerificationCodeEmail(buyer.email, buyer.name ?? buyer.email, minted.code, reqLog);
+        codeSent = true;
+      }
+    } else if (!hasPassword && buyer.email) {
       const { token: activeToken, isNew: tokenIsNew } = await ensureClientSetupToken(resolvedUserId);
       sentSetupEmail = tokenIsNew;
       if (tokenIsNew) {
@@ -357,7 +397,7 @@ async function provisionFreeOnboarding(opts: {
       serviceIds,
     });
 
-    return { ok: true, sentSetupEmail, alreadyProvisioned: false, projectId: project.id };
+    return { ok: true, sentSetupEmail, alreadyProvisioned: false, projectId: project.id, codeSent, hasPassword };
 }
 
 // POST /portal/checkout/free — public marketing-site free ($0) checkout.
@@ -369,7 +409,7 @@ async function provisionFreeOnboarding(opts: {
 // verification used by the authenticated offer checkout; no Stripe interaction.
 router.post("/portal/checkout/free", async (req: Request, res: Response) => {
   try {
-    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string; captchaToken?: string };
+    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string; captchaToken?: string; supportsVerificationCode?: boolean };
 
     // CAPTCHA gate — reuses lib/captcha verifyCaptchaToken, which transparently
     // bypasses when TURNSTILE_SECRET_KEY is unset (dev/preview) and enforces
@@ -388,9 +428,10 @@ router.post("/portal/checkout/free", async (req: Request, res: Response) => {
       contractIds,
       serviceIds,
       log: req.log,
+      verificationCodeUx: body.supportsVerificationCode === true,
     });
     if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
-    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail });
+    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail, codeSent: result.codeSent === true, hasPassword: result.hasPassword === true });
   } catch (err) {
     req.log.error({ err }, "portal: failed to process free checkout");
     res.status(500).json({ error: "We couldn't complete your free registration. Please try again in a moment." });
