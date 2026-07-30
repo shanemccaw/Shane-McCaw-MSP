@@ -4,6 +4,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "comms.email" });
 import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph";
 import { computeTenantHealthVars } from "./tenant-signals";
+import { getMspPortalBaseUrl } from "./portal-url";
 
 // ─── Credential check (logged at startup / first call) ────────────────────────
 // IMPLEMENTATION REPORT: GRAPH_MAIL_USER_ID and Mail.Send status.
@@ -33,7 +34,6 @@ function warnIfCredentialsMissing(): void {
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
-export const PORTAL_URL = "https://shanemccaw.com/crm/portal";
 const NAVY = "#0A2540";
 const BLUE = "#0078D4";
 
@@ -492,7 +492,7 @@ export function purchaseConfirmationEmail(opts: {
   originalAmountDollars?: string;
   discountAmountDollars?: string;
 }): string {
-  const link = opts.portalPath ? `${PORTAL_URL}${opts.portalPath}` : PORTAL_URL;
+  const link = opts.portalPath ? `${getMspPortalBaseUrl()}${opts.portalPath}` : getMspPortalBaseUrl();
   const hasDiscount = !!(opts.couponCode && opts.originalAmountDollars && opts.discountAmountDollars);
   return `
     <p>Hi ${opts.clientName || "there"},</p>
@@ -534,7 +534,7 @@ export function onboardingConfirmationEmail(opts: {
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Discount (${opts.couponCode})</td><td style="padding:4px 0;color:#16a34a;font-weight:600;">−$${opts.discountAmountDollars} USD</td></tr>` : ""}
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${opts.amountDollars} USD</td></tr>
     </table>
-    ${emailButton("View your project workspace", `${PORTAL_URL}/projects/${opts.projectId}`)}
+    ${emailButton("View your project workspace", `${getMspPortalBaseUrl()}/projects/${opts.projectId}`)}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `;
 }
@@ -635,8 +635,8 @@ export function statusReportReplyEmail(opts: {
   projectId?: number | null;
 }): string {
   const projectUrl = opts.projectId
-    ? `${PORTAL_URL}/projects/${opts.projectId}`
-    : PORTAL_URL;
+    ? `${getMspPortalBaseUrl()}/projects/${opts.projectId}`
+    : getMspPortalBaseUrl();
   const safeReply = escapeHtml(opts.adminReply).replace(/\n/g, "<br/>");
   return `
     <p>Hi ${escapeHtml(opts.clientName) || "there"},</p>
@@ -675,8 +675,8 @@ export function adminThreadReplyEmail(opts: {
   projectId?: number | null;
 }): string {
   const projectUrl = opts.projectId
-    ? `${PORTAL_URL}/projects/${opts.projectId}`
-    : PORTAL_URL;
+    ? `${getMspPortalBaseUrl()}/projects/${opts.projectId}`
+    : getMspPortalBaseUrl();
   const safeContent = escapeHtml(opts.replyContent).replace(/\n/g, "<br/>");
   return `
     <p>Hi ${escapeHtml(opts.clientName) || "there"},</p>
@@ -701,7 +701,7 @@ export function retainerResumedEmail(opts: {
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Next charge</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(opts.nextBillingDate)}</td></tr>
     </table>
     <p>If you didn't intend to resume this retainer, or if you have any questions, please reach out via your client portal.</p>
-    ${emailButton("View your portal", PORTAL_URL)}
+    ${emailButton("View your portal", getMspPortalBaseUrl())}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `;
 }
@@ -791,8 +791,8 @@ export function adminPurchaseAlertEmail(opts: {
 }): string {
   const label = opts.type === "onboarding_purchase" ? "Onboarding purchase" : "Service purchase";
   const link = opts.type === "onboarding_purchase" && opts.projectId
-    ? `${PORTAL_URL}/projects/${opts.projectId}`
-    : `${PORTAL_URL}/dashboard`;
+    ? `${getMspPortalBaseUrl()}/projects/${opts.projectId}`
+    : `${getMspPortalBaseUrl()}/dashboard`;
   return `
     <p>Hi Shane,</p>
     <p>A new <strong>${label}</strong> just came in:</p>

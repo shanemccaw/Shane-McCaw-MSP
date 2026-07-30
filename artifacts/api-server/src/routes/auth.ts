@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
-import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken } from "./mfa.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";

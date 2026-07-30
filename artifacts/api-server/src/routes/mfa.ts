@@ -8,7 +8,8 @@ import { eq, and, gt, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createAuditLog } from "../lib/audit";
-import { sendEmailFromTemplate, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmailFromTemplate } from "../lib/mailer.ts";
+import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 const log = logger.child({ channel: "auth" });
 const auditLog = logger.child({ channel: "audit" });
 import { createSession, type LoginMethod } from "../lib/session-tracking";
@@ -240,11 +241,11 @@ export async function adminResetMfa(input: {
     {
       clientName: target.name ?? target.email,
       methodsList,
-      loginLink: PORTAL_URL,
-      securityLink: `${PORTAL_URL}/security`,
+      loginLink: getMspPortalBaseUrl(),
+      securityLink: `${getMspPortalBaseUrl()}/security`,
     },
     "Your two-factor authentication has been reset",
-    `<p>Hi ${target.name ?? target.email},</p><p>Your multi-factor authentication has been reset by an administrator. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+    `<p>Hi ${target.name ?? target.email},</p><p>Your multi-factor authentication has been reset by an administrator. Please sign in and set up a new authentication method.</p><p><a href="${getMspPortalBaseUrl()}">Sign in to your portal</a></p>`,
   ).catch((err) => log.warn({ err, userId: input.userId }, "admin mfa reset: notification email failed (non-fatal)"));
 
   void createAuditLog({

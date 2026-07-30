@@ -154,7 +154,6 @@ vi.mock("../lib/mailer.ts", () => ({
   retainerResumedEmail: vi.fn(),
   appRegExpiryAlertEmail: vi.fn(),
   brandedEmail: vi.fn(),
-  PORTAL_URL: "https://portal.test",
 }));
 
 vi.mock("../lib/sms.ts", () => ({
@@ -249,6 +248,7 @@ vi.mock("../lib/invoice-sharepoint.ts", () => ({
 
 vi.mock("../lib/portal-url.ts", () => ({
   getPortalBaseUrl: vi.fn().mockReturnValue("https://portal.test"),
+  getMspPortalBaseUrl: vi.fn().mockReturnValue("https://portal.test/portal"),
   buildAccountSetupUrl: vi.fn().mockReturnValue("https://portal.test/setup"),
 }));
 
@@ -310,6 +310,9 @@ vi.mock("pdf-lib", () => ({
 
 import router, { ensureClientMspUser } from "./portal.ts";
 import { db, usersTable } from "@workspace/db";
+import { sendEmailFromTemplate } from "../lib/mailer.ts";
+
+const sendEmailFromTemplateMock = vi.mocked(sendEmailFromTemplate);
 
 const app = express();
 app.use(express.json());
@@ -365,6 +368,40 @@ describe("DELETE /api/portal/admin/clients/:id", () => {
       (call: unknown[]) => call[0] === usersTable
     );
     expect(usersDeleteCalls).toHaveLength(1);
+  });
+});
+
+// #172: mailer.ts's PORTAL_URL hardcoded /crm/portal hybrid was removed;
+// portal.ts's own MFA-reset link builder must resolve exclusively off
+// getMspPortalBaseUrl(), never a leftover /crm path.
+describe("POST /api/portal/team/:userId/reset-mfa (#172)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSelectResultsQueue = [];
+    mockDefaultSelectResult = [];
+    deleteCalls.length = 0;
+  });
+
+  it("builds every generated link off getMspPortalBaseUrl(), never the retired /crm path", async () => {
+    const targetUserId = 55;
+    const token = makeAdminToken();
+
+    mockSelectResultsQueue = [
+      [{ customerId: 1, email: "teammate@example.com", name: "Teammate" }], // target lookup
+      [{ method: "totp" }], // mfa enrollments
+      [], // passkey rows
+    ];
+
+    const res = await request(app)
+      .post(`/api/portal/portal/team/${targetUserId}/reset-mfa`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(sendEmailFromTemplateMock).toHaveBeenCalledTimes(1);
+    const [, , mergeFields, , bodyHtml] = sendEmailFromTemplateMock.mock.calls[0];
+    expect(mergeFields.loginLink).not.toContain("/crm");
+    expect(mergeFields.securityLink).not.toContain("/crm");
+    expect(bodyHtml).not.toContain("/crm");
   });
 });
 

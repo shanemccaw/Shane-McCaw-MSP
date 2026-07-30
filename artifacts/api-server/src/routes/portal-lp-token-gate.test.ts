@@ -208,7 +208,6 @@ mock.module("../lib/mailer.ts", {
     retainerResumedEmail: () => ({ subject: "", html: "" }),
     appRegExpiryAlertEmail: () => ({ subject: "", html: "" }),
     brandedEmail: () => ({ subject: "", html: "" }),
-    PORTAL_URL: "https://example.com",
   },
 });
 
@@ -270,7 +269,10 @@ mock.module("../lib/invoice-sharepoint.ts", {
 });
 
 mock.module("../lib/portal-url.ts", {
-  namedExports: { getPortalBaseUrl: () => "https://example.com" },
+  namedExports: {
+    getPortalBaseUrl: () => "https://example.com",
+    getMspPortalBaseUrl: () => "https://example.com/portal",
+  },
 });
 
 mock.module("../lib/m365-profile-pdf.ts", {

@@ -51,10 +51,15 @@ vi.mock("@workspace/db", () => {
     then: (onfulfilled: any) => Promise.resolve({}).then(onfulfilled),
   };
 
+  const deleteChain: any = {
+    where: () => Promise.resolve({}),
+  };
+
   const mockDb = {
     select: vi.fn().mockImplementation(() => makeSelectChain()),
     insert: vi.fn().mockImplementation((table: unknown) => makeInsertChain(table)),
     update: vi.fn().mockImplementation(() => updateChain),
+    delete: vi.fn().mockImplementation(() => deleteChain),
   };
 
   const table = (name: string) => ({ __table: name });
@@ -97,7 +102,6 @@ vi.mock("../lib/mailer.ts", () => ({
   brandedEmail: vi.fn().mockReturnValue(""),
   sendEmailFromTemplate: vi.fn().mockResolvedValue(undefined),
   passwordResetEmail: vi.fn().mockReturnValue(""),
-  PORTAL_URL: "https://msp-portal.test/portal",
 }));
 
 vi.mock("../lib/azure-keyvault.ts", () => ({
@@ -186,6 +190,27 @@ describe("msp-settings.ts portal links (#154)", () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("https://msp-portal.test/portal/settings/connector?mailbox_consent=declined");
     expect(res.headers.location).not.toContain("/portal/portal");
+  });
+
+  it("POST /msp/settings/users/:userId/reset-mfa (#172) builds every link off getMspPortalBaseUrl(), never the retired /crm path", async () => {
+    const mspId = 7;
+    const userId = 42;
+    mockSelectResultsQueue = [
+      [{ id: userId, email: "user@example.com", name: "Test User" }], // ownership lookup
+      [{ method: "totp" }], // mfa enrollments
+      [], // passkey rows
+    ];
+
+    const res = await request(app)
+      .post(`/api/msp/settings/users/${userId}/reset-mfa`)
+      .set("Authorization", `Bearer ${makeMspAdminToken(mspId)}`);
+
+    expect(res.status).toBe(200);
+    expect(sendEmailFromTemplateMock).toHaveBeenCalledTimes(1);
+    const [, , mergeFields, , bodyHtml] = sendEmailFromTemplateMock.mock.calls[0];
+    expect(mergeFields.loginLink).not.toContain("/crm");
+    expect(mergeFields.securityLink).not.toContain("/crm");
+    expect(bodyHtml).not.toContain("/crm");
   });
 
   it("GET .../connector/mailbox/callback (success) redirects to a single, non-doubled /portal path", async () => {

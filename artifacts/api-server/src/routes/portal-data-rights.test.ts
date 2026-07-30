@@ -149,7 +149,6 @@ mock.module("../lib/mailer.ts", {
     appRegExpiryAlertEmail: () => ({ subject: "", html: "" }),
     brandedEmail: () => ({ subject: "", html: "" }),
     getTenantHealthBlockHtml: async () => "",
-    PORTAL_URL: "https://test.example/crm/portal",
   },
 });
 
@@ -220,6 +219,7 @@ for (const mod of [
       ensureLeadForClient: async () => {},
       uploadInvoiceToSharePoint: async () => {},
       getPortalBaseUrl: () => "https://test.example",
+      getMspPortalBaseUrl: () => "https://test.example/portal",
       fireWorkflowsForEvent: async () => {},
       emitWorkflowEvent: async () => {},
       generateM365ProfilePdf: async () => Buffer.from(""),

@@ -7,7 +7,7 @@ import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomer
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
-import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, passwordResetEmail, PORTAL_URL, canSendAutomatedCustomerEmail, canSendAutomatedCustomerEmailForUser } from "../lib/mailer.ts";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, passwordResetEmail, canSendAutomatedCustomerEmail, canSendAutomatedCustomerEmailForUser } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
@@ -1335,11 +1335,11 @@ router.post("/portal/team/:userId/reset-mfa", requireAuth, async (req: Request, 
     {
       clientName: target.name ?? target.email,
       methodsList: clearedMethods.map((m) => (m === "totp" ? "Authenticator App (TOTP)" : m === "sms" ? "SMS" : m === "passkey" ? "Passkey / Security Key" : m)).join(", ") || "None",
-      loginLink: PORTAL_URL,
-      securityLink: `${PORTAL_URL}/security`,
+      loginLink: getMspPortalBaseUrl(),
+      securityLink: `${getMspPortalBaseUrl()}/security`,
     },
     "Your two-factor authentication has been reset",
-    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by a teammate. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by a teammate. Please sign in and set up a new authentication method.</p><p><a href="${getMspPortalBaseUrl()}">Sign in to your portal</a></p>`,
   ).catch((e) => log.warn({ err: e, userId: targetUserId }, "portal/team/reset-mfa: email failed (non-fatal)"));
 
   void createAuditLog({
@@ -4747,7 +4747,7 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
     void sendEmailFromTemplate(
       "retainer-resumed",
       req.user!.email,
-      { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL, tenantHealthBlockHtml: await getTenantHealthBlockHtml(req.user!.id) },
+      { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: getMspPortalBaseUrl(), tenantHealthBlockHtml: await getTenantHealthBlockHtml(req.user!.id) },
       `Your ${serviceName} retainer is back on`,
       retainerResumedEmail({ clientName: req.user!.name ?? "", serviceName, nextBillingDate }),
     );
@@ -5614,7 +5614,7 @@ async function provisionOnboardingProject(
         clientName: buyer.name ?? "",
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
-        projectUrl: `${PORTAL_URL}/projects/${project.id}`,
+        projectUrl: `${getMspPortalBaseUrl()}/projects/${project.id}`,
         tenantHealthBlockHtml: await getTenantHealthBlockHtml(buyer.id),
         ...(hasDiscount ? { couponCode, originalAmountDollars, discountAmountDollars } : {}),
       },
@@ -5643,7 +5643,7 @@ async function provisionOnboardingProject(
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
         purchaseType: "Onboarding purchase",
-        portalLink: `${PORTAL_URL}/projects/${project.id}`,
+        portalLink: `${getMspPortalBaseUrl()}/projects/${project.id}`,
       },
       `New onboarding purchase: ${primaryServiceName} — $${totalAmountDollars}`,
       adminPurchaseAlertEmail({ clientName: buyer.name ?? "", clientEmail: buyer.email, serviceName: primaryServiceName, amountDollars: totalAmountDollars, type: "onboarding_purchase", projectId: project.id }),
@@ -6052,7 +6052,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             clientName: buyer.name ?? "",
             serviceName,
             amountDollars: finalAmountDollars,
-            portalLink: PORTAL_URL,
+            portalLink: getMspPortalBaseUrl(),
             tenantHealthBlockHtml: await getTenantHealthBlockHtml(buyer.id),
             ...(hasDiscount ? { couponCode, originalAmountDollars: amountDollars, discountAmountDollars } : {}),
           },
@@ -6080,7 +6080,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             serviceName,
             amountDollars,
             purchaseType: "Service purchase",
-            portalLink: PORTAL_URL,
+            portalLink: getMspPortalBaseUrl(),
           },
           `New purchase: ${serviceName} — $${amountDollars}`,
           adminPurchaseAlertEmail({ clientName: buyer?.name ?? "", clientEmail: buyer?.email ?? "", serviceName, amountDollars, type: "service_purchase" }),
@@ -8931,7 +8931,7 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
           clientName: client.name ?? "",
           reportTitle: report.title,
           adminReply: reply.trim(),
-          projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
+          projectUrl: report.projectId ? `${getMspPortalBaseUrl()}/projects/${report.projectId}` : getMspPortalBaseUrl(),
           tenantHealthBlockHtml: await getTenantHealthBlockHtml(report.clientUserId),
         },
         `Reply to your question on: ${report.title}`,
@@ -9004,7 +9004,7 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
           reportTitle: report.title,
           replyContent: content.trim(),
           tenantHealthBlockHtml: await getTenantHealthBlockHtml(report.clientUserId),
-          projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
+          projectUrl: report.projectId ? `${getMspPortalBaseUrl()}/projects/${report.projectId}` : getMspPortalBaseUrl(),
         },
         `Reply to your follow-up on: ${report.title}`,
         adminThreadReplyEmail({ clientName: client.name ?? "", reportTitle: report.title, replyContent: content.trim(), projectId: report.projectId }),
@@ -11025,7 +11025,7 @@ router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Req
       await sendEmailFromTemplate(
         "closure-request",
         client.email,
-        { clientName: client.name ?? "", projectTitle: project.title, projectUrl: `${PORTAL_URL}/projects/${projectId}`, tenantHealthBlockHtml: await getTenantHealthBlockHtml(project.clientUserId) },
+        { clientName: client.name ?? "", projectTitle: project.title, projectUrl: `${getMspPortalBaseUrl()}/projects/${projectId}`, tenantHealthBlockHtml: await getTenantHealthBlockHtml(project.clientUserId) },
         `Project Sign-Off: ${project.title}`,
         closureRequestEmail({ clientName: client.name ?? "", projectTitle: project.title, projectId }),
       );
@@ -11269,11 +11269,11 @@ router.post("/admin/clients/:id/mfa-reset", requireAdmin, async (req: Request, r
       {
         clientName: client.name ?? client.email,
         methodsList,
-        loginLink: PORTAL_URL,
-        securityLink: `${PORTAL_URL}/security`,
+        loginLink: getMspPortalBaseUrl(),
+        securityLink: `${getMspPortalBaseUrl()}/security`,
       },
       "Your two-factor authentication has been reset",
-      `<p>Hi ${client.name ?? client.email},</p><p>Your MFA has been reset. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+      `<p>Hi ${client.name ?? client.email},</p><p>Your MFA has been reset. Please sign in and set up a new authentication method.</p><p><a href="${getMspPortalBaseUrl()}">Sign in to your portal</a></p>`,
     );
 
     req.log.info({ clientId: id, clearedMethods }, "Admin reset client MFA");
@@ -14268,7 +14268,7 @@ async function provisionFreeOnboarding(opts: {
             serviceName: projectTitle,
             amountDollars: "0.00",
             purchaseType: "Zero-price onboarding",
-            portalLink: `${PORTAL_URL}/projects/${project.id}`,
+            portalLink: `${getMspPortalBaseUrl()}/projects/${project.id}`,
           },
           `New zero-price onboarding: ${projectTitle}`,
           adminPurchaseAlertEmail({
@@ -14486,7 +14486,7 @@ router.post("/portal/presentations/:id/claim-free", requireAuth, async (req: Req
             serviceName: projectTitle,
             amountDollars: "0.00",
             purchaseType: "Zero-price agreement",
-            portalLink: pres.projectId ? `${PORTAL_URL}/projects/${pres.projectId}` : PORTAL_URL,
+            portalLink: pres.projectId ? `${getMspPortalBaseUrl()}/projects/${pres.projectId}` : getMspPortalBaseUrl(),
           },
           `New zero-price claim: ${projectTitle}`,
           adminPurchaseAlertEmail({
