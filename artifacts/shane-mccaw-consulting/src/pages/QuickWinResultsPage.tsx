@@ -5,6 +5,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { ChatCTA } from "@/components/ChatCTA";
 import { openChat } from "@/lib/chat";
+import { trackEvent } from "@/lib/analytics";
 import {
   CheckCircle,
   ArrowRight,
@@ -424,11 +425,15 @@ export default function QuickWinResultsPage() {
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <CTAButton href={getPackageHref(primary)} className="px-6 py-2.5 text-sm">
+                    <CTAButton
+                      href={getPackageHref(primary)}
+                      className="px-6 py-2.5 text-sm"
+                      onClick={() => trackEvent("card_click", { card_name: `primary:${primary.slug}` })}
+                    >
                       Start This Quick Win
                     </CTAButton>
                     <CTAButton
-                      onClick={openChat}
+                      onClick={() => { trackEvent("card_click", { card_name: "primary:book_call" }); openChat(); }}
                       className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90"
                     >
                       Book a Free Call First
@@ -479,6 +484,7 @@ export default function QuickWinResultsPage() {
                     )}
                     <Link
                       href={getPackageHref(rec)}
+                      onClick={() => trackEvent("card_click", { card_name: `secondary:${rec.slug}` })}
                       className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                     >
                       View package details <ArrowRight className="w-3.5 h-3.5" />
@@ -595,6 +601,7 @@ export default function QuickWinResultsPage() {
                   </p>
                   <Link
                     href={getPackageHref(rec)}
+                    onClick={() => trackEvent("card_click", { card_name: `next_step_${i + 1}:${rec.slug}` })}
                     className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                   >
                     View package details <ArrowRight className="w-3.5 h-3.5" />
@@ -617,6 +624,7 @@ export default function QuickWinResultsPage() {
                   conversation about what would move the needle fastest in your environment.
                 </p>
                 <ChatCTA
+                  onClick={() => trackEvent("card_click", { card_name: "next_step:book_call" })}
                   className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                 >
                   Book a call <ArrowRight className="w-3.5 h-3.5" />
@@ -639,12 +647,16 @@ export default function QuickWinResultsPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {primary && (
-              <CTAButton href={getPackageHref(primary)} className="px-8 py-3.5 text-sm">
+              <CTAButton
+                href={getPackageHref(primary)}
+                className="px-8 py-3.5 text-sm"
+                onClick={() => trackEvent("card_click", { card_name: `bottom:${primary.slug}` })}
+              >
                 Start This Quick Win
               </CTAButton>
             )}
             <CTAButton
-              onClick={openChat}
+              onClick={() => { trackEvent("card_click", { card_name: "bottom:book_call" }); openChat(); }}
               className="px-8 py-3.5 text-sm !bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]"
             >
               Book a Free Call
