@@ -1,6 +1,6 @@
 /**
- * ScoreRing — ported from the legacy `ScoreRing`/`DeltaBadge` pair in
- * artifacts/crm/src/pages/portal/PortalHealthScore.tsx (read in full before
+ * ScoreRing — ported from the legacy `ScoreRing`/`DeltaBadge` pair in the
+ * now-deleted CRM artifact's PortalHealthScore.tsx (read in full before
  * porting). Same visual design, same thresholds (>=70 green / >=40 amber /
  * else red), same SVG geometry (radius = (size-8)/2, stroke width 6, rotated
  * -90deg so the ring starts at 12 o'clock) and the same delta badge showing
