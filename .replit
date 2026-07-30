@@ -5,7 +5,11 @@ router = "application"
 deploymentTarget = "autoscale"
 
 [deployment.postBuild]
-args = ["pnpm", "store", "prune"]
+args = [
+  "sh",
+  "-c",
+  "pnpm store prune && pwsh -NonInteractive -Command \"Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force -AllowClobber -Repository PSGallery\""
+]
 env = { "CI" = "true" }
 
 [workflows]
