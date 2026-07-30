@@ -168,6 +168,7 @@ async function ensureClientAccount(
 export async function resolveOrCreateDirectTenant(
   tenantGuid: string,
   fallbackCustomerName: string,
+  industry?: string | null,
 ): Promise<{ id: number; mspId: number } | null> {
   const [existingByTenant] = await db
     .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
@@ -186,6 +187,7 @@ export async function resolveOrCreateDirectTenant(
   const [created] = await db.insert(tenantsTable).values({
     mspId: directMsp.id,
     customerName: fallbackCustomerName,
+    industry: industry ?? null,
     tenantId: tenantGuid,
     status: "active",
   })
@@ -378,6 +380,8 @@ export async function ensureClientMspUser(
 export async function provisionProspectAccount(opts: {
   email: string;
   fullName?: string | null;
+  company?: string | null;
+  industry?: string | null;
   tenantId?: string | null;
   role: "Assessment" | "CustomerUser";
 }): Promise<{ userId: number; customerId: number | null } | null> {
@@ -387,8 +391,13 @@ export async function provisionProspectAccount(opts: {
   // Consent-first inversion (#103): resolve/create the tenants row BEFORE the
   // users row, so a genuinely-new account can be inserted with its tenant
   // scope inline — users_role_scope_check rejects a bare row outright.
+  // Company first (the tenant IS the company), personal name only as fallback.
   const tenant = opts.tenantId
-    ? await resolveOrCreateDirectTenant(opts.tenantId, opts.fullName?.trim() || "Direct Customer")
+    ? await resolveOrCreateDirectTenant(
+        opts.tenantId,
+        opts.company?.trim() || opts.fullName?.trim() || "Direct Customer",
+        opts.industry,
+      )
     : null;
 
   const acct = await ensureClientAccount(

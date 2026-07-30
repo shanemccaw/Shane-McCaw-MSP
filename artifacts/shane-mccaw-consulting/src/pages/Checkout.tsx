@@ -25,6 +25,13 @@ import { CaptchaGate } from "@/components/CaptchaGate";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Form,
   FormControl,
   FormField,
@@ -78,9 +85,27 @@ function stepIndex(s: Step): number {
   return WIZARD_STEPS.indexOf(s);
 }
 
+// Plain value/label picklist for the guest-info industry dropdown — distinct from
+// Governance.tsx's INDUSTRIES constant, which is page-specific marketing copy
+// (icons + compliance-framework descriptions), not a form picklist.
+const INDUSTRIES = [
+  { value: "healthcare", label: "Healthcare" },
+  { value: "financial-services", label: "Financial Services" },
+  { value: "government", label: "Government / Public Sector" },
+  { value: "legal", label: "Legal" },
+  { value: "technology", label: "Technology" },
+  { value: "manufacturing", label: "Manufacturing" },
+  { value: "retail", label: "Retail" },
+  { value: "education", label: "Education" },
+  { value: "nonprofit", label: "Nonprofit" },
+  { value: "other", label: "Other" },
+] as const;
+
 const guestInfoSchema = z.object({
   name: z.string().min(2, "Please enter your full name"),
   email: z.string().email("Please enter a valid email address"),
+  company: z.string().min(1, "Required"),
+  industry: z.string().min(1, "Required"),
   // Terms acceptance is gated HERE — before the consent step is reachable — so a
   // visitor cannot initiate the Microsoft 365 admin-consent redirect (real tenant
   // access) without first agreeing to the Terms of Service (which incorporates the
@@ -123,6 +148,8 @@ async function createCheckoutSession(opts: {
   productSlug: string;
   fullName: string;
   email: string;
+  company: string;
+  industry: string;
   seats: number;
 }): Promise<string> {
   const res = await fetch("/api/public/checkout-session", {
@@ -429,7 +456,7 @@ export default function Checkout() {
 
   const form = useForm<GuestInfo>({
     resolver: zodResolver(guestInfoSchema),
-    defaultValues: { name: "", email: "", termsAccepted: false },
+    defaultValues: { name: "", email: "", company: "", industry: "", termsAccepted: false },
   });
 
   // Use the recovered seat count when returning from consent (URL stripped by navigate).
@@ -443,6 +470,8 @@ export default function Checkout() {
         productSlug: slug,
         fullName: data.name,
         email: data.email,
+        company: data.company,
+        industry: data.industry,
         seats: effectiveSeats,
       });
       saveSessionId(newSessionId);
@@ -782,6 +811,48 @@ export default function Checkout() {
                                   {...field}
                                 />
                               </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="company"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Company</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Acme Inc."
+                                  autoComplete="organization"
+                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-secondary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="industry"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Industry</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="bg-white/[0.04] border-white/[0.12] text-text-primary focus:ring-accent-blue/60 focus:border-accent-blue/60">
+                                    <SelectValue placeholder="Select your industry" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {INDUSTRIES.map((i) => (
+                                    <SelectItem key={i.value} value={i.value}>
+                                      {i.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               <FormMessage />
                             </FormItem>
                           )}
