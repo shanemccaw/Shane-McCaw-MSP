@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 
 import { TransformationSurface, TransformationData } from '../telemetry/TransformationSurface';
+import { UseCaseIssueModal, UseCaseIssue } from '../UseCaseIssueModal';
 
 export interface ExtendedPersonaData {
   id: string;
@@ -321,6 +322,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
   const [activePersonaId, setActivePersonaId] = useState<string>('dev_lead');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
+  const [selectedIssue, setSelectedIssue] = useState<UseCaseIssue | null>(null);
   
   // Transformation Surface State
   const [transSliderPos, setTransSliderPos] = useState<number>(50);
@@ -1021,7 +1023,11 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
               </span>
               <div className="space-y-1.5">
                 {activePersona.sensitivityExposure.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-[10px] bg-secondary/80 p-2 rounded border border-border">
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedIssue({ label: item.label, category: 'sensitivity', severity: item.severity })}
+                    className="flex items-center justify-between text-[10px] bg-secondary/80 p-2 rounded border border-border cursor-pointer hover:border-primary/50 hover:bg-secondary transition-colors"
+                  >
                     <span className="text-muted-foreground font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono text-[9px] px-1.5 py-0.2 rounded border font-semibold ${
                       item.severity === 'High'
@@ -1044,7 +1050,11 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
               </span>
               <div className="space-y-1.5">
                 {activePersona.collaborationFriction.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-[10px] bg-secondary/80 p-2 rounded border border-border">
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedIssue({ label: item.label, category: 'friction', severity: item.severity })}
+                    className="flex items-center justify-between text-[10px] bg-secondary/80 p-2 rounded border border-border cursor-pointer hover:border-primary/50 hover:bg-secondary transition-colors"
+                  >
                     <span className="text-muted-foreground font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono text-[9px] px-1.5 py-0.2 rounded border font-semibold ${
                       item.severity === 'High'
@@ -1101,6 +1111,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
 
       </div>
 
+      <UseCaseIssueModal issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
     </div>
   );
 };
