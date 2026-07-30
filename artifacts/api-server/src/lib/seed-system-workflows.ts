@@ -28,6 +28,9 @@ interface SystemWorkflowSeed {
   eventNames?: string[];
   triggerEnabled?: boolean;
   allowManualTrigger?: boolean;
+  /** Schedule triggers only: per-record fan-out over a SELECT (see triggerScheduledWorkflows). */
+  fanOutMode?: "per_record" | "batched";
+  fanOutQuery?: string;
   graph: {
     nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
     edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
@@ -196,6 +199,138 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             nodeType: "create_notification",
             label: "Monitoring Issues",
             title: "Monitoring run completed with issues",
+            body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
+            type: "general",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 1040 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "find_client" },
+        { id: "e2", source: "find_client", target: "resolve_pkg" },
+        { id: "e3", source: "resolve_pkg", target: "get_pkg" },
+        { id: "e4", source: "get_pkg", target: "execute_pkg" },
+        { id: "e5", source: "execute_pkg", target: "branch" },
+        { id: "e6", source: "branch", target: "notify_ok", sourceHandle: "true" },
+        { id: "e7", source: "branch", target: "notify_fail", sourceHandle: "false" },
+        { id: "e8", source: "notify_ok", target: "end" },
+        { id: "e9", source: "notify_fail", target: "end" },
+      ],
+    },
+  },
+  // ── Weekly Retargeting Rescan — Free/Assessment Tenants (#166, sub-issue of #161) ──
+  {
+    name: "__system__: Weekly Retargeting Rescan — Free/Assessment Tenants",
+    description:
+      "Weekly schedule-triggered rescan for Free/Assessment-tier tenants (mspRole), so " +
+      "retargeting/upgrade messaging always has fresh telemetry instead of a stale " +
+      "one-time snapshot from consent time. Per-record fan-out: the trigger's " +
+      "fan_out_query selects every active users row with mspRole IN ('Free','Assessment') " +
+      "whose tenant's Graph consent is still 'granted' (not revoked/pending/declined), and " +
+      "fires one run per row carrying clientId (users.id), tenantId (Azure AD tenant GUID), " +
+      "and packageKey. packageKey is the same 'core:security-baseline' fallback the " +
+      "consent.granted path (consent.ts) already uses when a Free/Assessment order carries " +
+      "no product-specific package — deliberately not a per-product lookup, since this " +
+      "workflow's only job is to keep baseline telemetry fresh, not re-run whatever paid " +
+      "package a customer once purchased. " +
+      "Graph is a verbatim copy of 'Run Assessment' (find_object → find_object → " +
+      "monitor_get_package → monitor_execute_package) — reuses the exact same full-scan " +
+      "node, no new scan logic, just the schedule + tenant filter wrapped around it. " +
+      "Explicitly NOT a Monitoring subscription — does not touch msp_subscriptions or any " +
+      "billing/monitoring_tier config; this is a pure Workflow Engine definition.",
+    triggerType: "schedule",
+    cron: "0 3 * * 1", // Every Monday at 03:00 server time
+    triggerEnabled: true,
+    fanOutMode: "per_record",
+    fanOutQuery:
+      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", 'core:security-baseline' AS \"packageKey\" " +
+      "FROM users u JOIN tenants t ON t.id = u.tenant_id " +
+      "WHERE u.msp_role IN ('Free', 'Assessment') AND u.is_active = true " +
+      "AND t.consent->'graph'->>'status' = 'granted'",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Weekly Schedule (Free/Assessment fan-out)" },
+        },
+        {
+          id: "find_client",
+          type: "find_object",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Client Record",
+            objectType: "client",
+            fieldName: "id",
+            fieldValueExpr: "{{clientId}}",
+          },
+        },
+        {
+          id: "resolve_pkg",
+          type: "find_object",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Monitoring Package",
+            objectType: "monitoring_package",
+            fieldName: "key",
+            fieldValueExpr: "{{packageKey}}",
+          },
+        },
+        {
+          id: "get_pkg",
+          type: "monitor_get_package",
+          position: { x: 300, y: 480 },
+          data: {
+            nodeType: "monitor_get_package",
+            label: "Load Package Metadata",
+            packageKey: "{{steps.resolve_pkg.packageKey}}",
+          },
+        },
+        {
+          id: "execute_pkg",
+          type: "monitor_execute_package",
+          position: { x: 300, y: 620 },
+          data: {
+            nodeType: "monitor_execute_package",
+            label: "Execute Monitor Checks",
+            packageKey: "{{steps.get_pkg.packageKey}}",
+            tenantId: "{{tenantId}}",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 760 },
+          data: { nodeType: "condition", label: "Checks Passed?", expression: "runStatus == 'completed'" },
+        },
+        {
+          id: "notify_ok",
+          type: "create_notification",
+          position: { x: 150, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Complete",
+            title: "Weekly retargeting rescan executed successfully",
+            body: "Package {{steps.get_pkg.packageLabel}} completed with {{steps.execute_pkg.checksOk}} of {{steps.execute_pkg.checksTotal}} checks passing for {{steps.find_client.name}}.",
+            type: "general",
+          },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 450, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Issues",
+            title: "Weekly retargeting rescan completed with issues",
             body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
             type: "general",
           },
@@ -3114,10 +3249,15 @@ export async function seedSystemWorkflows(): Promise<void> {
           );
         } else if (seed.triggerType === "schedule" && seed.cron) {
           const nextRun = computeNextCronRun(seed.cron);
+          const scheduleConfig: Record<string, unknown> = { cron: seed.cron };
+          if (seed.fanOutMode && seed.fanOutQuery) {
+            scheduleConfig.fan_out_mode = seed.fanOutMode;
+            scheduleConfig.fan_out_query = seed.fanOutQuery;
+          }
           await pool.query(
             `INSERT INTO wf_triggers (definition_id, type, config, next_run_at, enabled)
              VALUES ($1, 'schedule', $2::jsonb, $3, true)`,
-            [defId, JSON.stringify({ cron: seed.cron }), nextRun],
+            [defId, JSON.stringify(scheduleConfig), nextRun],
           );
         }
         log.info({ defId, name: seed.name, triggerType: seed.triggerType }, "seed-system-workflows: trigger created");
