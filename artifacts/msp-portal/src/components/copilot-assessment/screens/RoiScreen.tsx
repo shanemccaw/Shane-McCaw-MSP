@@ -183,7 +183,7 @@ export const RoiScreen: React.FC<RoiScreenProps> = ({
       {/* ==================================================================== */}
       <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-status-green border border-status-green/50 flex items-center justify-center text-status-green shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-status-green/10 border border-status-green/50 flex items-center justify-center text-status-green shadow-[0_0_15px_rgba(16,185,129,0.3)]">
             <TrendingUp className="w-5 h-5" />
           </div>
           <div>
@@ -280,7 +280,7 @@ export const RoiScreen: React.FC<RoiScreenProps> = ({
                   <Users className="w-3.5 h-3.5 text-primary" />
                   1. Personas & Workflows
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green text-status-green border-status-green/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green/10 text-status-green border-status-green/30 font-bold">
                   High ROI
                 </span>
               </div>
@@ -356,7 +356,7 @@ export const RoiScreen: React.FC<RoiScreenProps> = ({
                   <Activity className="w-3.5 h-3.5 text-accent" />
                   3. Collaboration Load
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-primary text-primary border-primary/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/30 font-bold">
                   Moderate ROI
                 </span>
               </div>
@@ -434,7 +434,7 @@ export const RoiScreen: React.FC<RoiScreenProps> = ({
                   <Zap className="w-3.5 h-3.5 text-accent" />
                   5. Telemetry Signals
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-accent text-accent border-accent font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-accent/10 text-accent border-accent font-bold">
                   Target Focus
                 </span>
               </div>
@@ -471,7 +471,7 @@ export const RoiScreen: React.FC<RoiScreenProps> = ({
                 <Sparkles className="w-4 h-4 text-status-green animate-spin-slow" />
                 <span>Executive Copilot Value Narrative & Business Justification</span>
               </span>
-              <span className="text-[9.5px] font-mono px-2.5 py-0.5 rounded-full border bg-status-green text-status-green border-status-green font-bold">
+              <span className="text-[9.5px] font-mono px-2.5 py-0.5 rounded-full border bg-status-green/10 text-status-green border-status-green font-bold">
                 EXECUTIVE-READY
               </span>
             </div>

@@ -309,7 +309,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
       
       {/* Toast Notification Bar */}
       {toastMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-status-green border border-status-green/80 text-status-green font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-status-green/10 border border-status-green/80 text-status-green font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
           <CheckCircle2 className="w-4 h-4 text-status-green" />
           <span>{toastMessage}</span>
         </div>
@@ -320,7 +320,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
       {/* ==================================================================== */}
       <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-status-green border border-status-green/50 flex items-center justify-center text-status-green shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-status-green/10 border border-status-green/50 flex items-center justify-center text-status-green shadow-[0_0_15px_rgba(16,185,129,0.3)]">
             <FileCheck className="w-5 h-5" />
           </div>
           <div>
@@ -347,7 +347,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             <span className="text-sm font-mono font-black text-status-green">
               6 / 6 Documents Ready
             </span>
-            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-status-green text-status-green border-status-green/30">
+            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-status-green/10 text-status-green border-status-green/30">
               C-Suite Verified
             </span>
           </div>
@@ -457,7 +457,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
           <div className="bg-background border border-border rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-mono uppercase bg-status-green text-status-green border border-status-green/30 px-2.5 py-0.5 rounded font-bold">
+                <span className="text-[10px] font-mono uppercase bg-status-green/10 text-status-green border border-status-green/30 px-2.5 py-0.5 rounded font-bold">
                   {selectedDoc.type}
                 </span>
                 <span className="text-[10px] font-mono text-muted-foreground">
@@ -600,7 +600,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
               {/* PDF Button */}
               <button
                 onClick={() => handleDownload('PDF')}
-                className="w-full py-2.5 px-3 bg-status-green/15 hover:bg-status-green text-status-green border border-status-green/80 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer shadow-lg"
+                className="w-full py-2.5 px-3 bg-status-green/15 hover:bg-status-green/10 text-status-green border border-status-green/80 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer shadow-lg"
               >
                 <div className="flex items-center space-x-2">
                   <FileText className="w-4 h-4 text-status-green" />

@@ -374,7 +374,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             </button>
 
             <div className="flex items-center space-x-3 pb-3 border-b border-border">
-              <div className="w-10 h-10 rounded-xl bg-status-green border border-status-green/50 flex items-center justify-center text-status-green">
+              <div className="w-10 h-10 rounded-xl bg-status-green/10 border border-status-green/50 flex items-center justify-center text-status-green">
                 <ShoppingBag className="w-5 h-5" />
               </div>
               <div>
@@ -436,7 +436,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
       {/* ==================================================================== */}
       <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-accent border border-accent/50 flex items-center justify-center text-accent shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-accent/10 border border-accent/50 flex items-center justify-center text-accent shadow-[0_0_15px_rgba(99,102,241,0.3)]">
             <Briefcase className="w-5 h-5" />
           </div>
           <div>
@@ -498,7 +498,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
               <Layers className="w-4 h-4 text-accent" />
               <span>Scope Modules (8 Available)</span>
             </span>
-            <span className="text-[9px] font-mono text-accent bg-accent border border-accent px-2 py-0.5 rounded font-bold">
+            <span className="text-[9px] font-mono text-accent bg-accent/10 border border-accent px-2 py-0.5 rounded font-bold">
               {selectedModuleIds.length}/8 Active
             </span>
           </div>
@@ -581,7 +581,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                 </span>
               </div>
               <span className={`font-black px-2.5 py-0.5 rounded text-xs ${
-                lastImpactDelta.type === 'added' ? 'bg-status-green text-status-green' : 'bg-destructive text-destructive'
+                lastImpactDelta.type === 'added' ? 'bg-status-green/10 text-status-green' : 'bg-destructive/10 text-destructive'
               }`}>
                 {lastImpactDelta.type === 'added' ? '+' : ''}{lastImpactDelta.delta} Readiness
               </span>
@@ -594,7 +594,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             {/* Header Document Metadata */}
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <span className="text-[10px] font-mono uppercase bg-accent text-accent border border-accent px-2.5 py-0.5 rounded font-bold">
+                <span className="text-[10px] font-mono uppercase bg-accent/10 text-accent border border-accent px-2.5 py-0.5 rounded font-bold">
                   MICROSOFT CONSULTING SERVICES STATEMENT OF WORK
                 </span>
                 <h1 className="text-xl font-extrabold text-foreground mt-1">
@@ -673,7 +673,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                   <Award className="w-4 h-4 text-accent" />
                   <span>Aggregated Deliverables ({aggregatedDeliverables.length} Items)</span>
                 </h3>
-                <span className="text-[10px] font-mono text-accent bg-accent border border-accent px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-accent bg-accent/10 border border-accent px-2 py-0.5 rounded">
                   Auto-Expanding SOW List
                 </span>
               </div>
@@ -695,7 +695,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                   <Clock className="w-4 h-4 text-primary" />
                   <span>Execution Schedule & Timeline ({totalWeeks} Weeks Total)</span>
                 </h3>
-                <span className="text-[10px] font-mono text-primary bg-primary border border-primary/30 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded">
                   Parallel Phased Execution
                 </span>
               </div>
@@ -785,7 +785,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                 isCopilotReady 
-                  ? 'bg-status-green text-status-green border-status-green' 
+                  ? 'bg-status-green/10 text-status-green border-status-green' 
                   : 'bg-status-amber/10 text-status-amber border-status-amber'
               }`}>
                 {isCopilotReady ? 'Copilot Ready' : 'Remediation Required'}

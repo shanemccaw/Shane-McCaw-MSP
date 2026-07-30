@@ -169,7 +169,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
           <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${
             mode === 'redteam'
               ? 'bg-destructive/10 border-destructive text-destructive'
-              : 'bg-primary border-primary text-primary'
+              : 'bg-primary/10 border-primary text-primary'
           }`}>
             <Flame className="w-5 h-5" />
           </div>
@@ -214,7 +214,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
 
           <span className={`text-[9.5px] font-mono font-extrabold px-2 py-1 rounded border uppercase ${
             readinessScore >= 75
-              ? 'bg-status-green text-status-green border-status-green/30'
+              ? 'bg-status-green/10 text-status-green border-status-green/30'
               : readinessScore >= 50
               ? 'bg-status-amber/10 text-status-amber border-status-amber/30'
               : 'bg-destructive/10 text-destructive border-destructive/30'
@@ -243,7 +243,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
               onClick={() => setMode('soc')}
               className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
                 mode === 'soc'
-                  ? 'bg-accent text-accent border border-accent shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                  ? 'bg-accent/10 text-accent border border-accent shadow-[0_0_12px_rgba(168,85,247,0.3)]'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -300,10 +300,10 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-xl border ${
               mode === 'redteam'
-                ? 'bg-destructive border-destructive text-destructive'
+                ? 'bg-destructive/10 border-destructive text-destructive'
                 : mode === 'soc'
-                ? 'bg-accent border-accent text-accent'
-                : 'bg-status-amber border-status-amber text-status-amber'
+                ? 'bg-accent/10 border-accent text-accent'
+                : 'bg-status-amber/10 border-status-amber text-status-amber'
             }`}>
               {mode === 'redteam' ? <Flame className="w-4 h-4" /> : mode === 'soc' ? <Zap className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
             </div>

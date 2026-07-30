@@ -58,7 +58,7 @@ export const ThreatPipelines: React.FC<ThreatPipelinesProps> = ({
                 <h4 className="text-xs font-extrabold uppercase tracking-wider text-primary">
                   XPIA Pipeline
                 </h4>
-                <span className="text-[9px] font-mono bg-primary text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold">
+                <span className="text-[9px] font-mono bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold">
                   Document Infiltration
                 </span>
               </div>
@@ -135,7 +135,7 @@ export const ThreatPipelines: React.FC<ThreatPipelinesProps> = ({
                 <h4 className="text-xs font-extrabold uppercase tracking-wider text-accent">
                   Prompt Risk Engine
                 </h4>
-                <span className="text-[9px] font-mono bg-accent text-accent border border-accent px-1.5 py-0.2 rounded font-bold">
+                <span className="text-[9px] font-mono bg-accent/10 text-accent border border-accent px-1.5 py-0.2 rounded font-bold">
                   User Intent Stream
                 </span>
               </div>

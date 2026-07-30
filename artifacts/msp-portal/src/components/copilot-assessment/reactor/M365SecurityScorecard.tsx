@@ -65,7 +65,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'conditional_access',
       title: '2. Conditional Access & Zero Trust',
       badge: isCaEnforced ? 'Enforced' : 'Not Enforced',
-      badgeColor: isCaEnforced ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      badgeColor: isCaEnforced ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
       icon: <Lock className="w-3.5 h-3.5 text-primary" />,
       metrics: [
         { label: 'CA01 Strict Policy Status', value: isCaEnforced ? 'Enforced' : 'Not Enforced ⚠️', severity: isCaEnforced ? 'Safe' : 'Critical' },
@@ -77,7 +77,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'eeeu',
       title: '3. EEEU (External Exposure)',
       badge: externalGuestsLevel > 50 ? 'High Exposure' : 'Contained',
-      badgeColor: externalGuestsLevel > 50 ? 'bg-status-amber/10 text-status-amber border-status-amber/30' : 'bg-status-green text-status-green border-status-green/30',
+      badgeColor: externalGuestsLevel > 50 ? 'bg-status-amber/10 text-status-amber border-status-amber/30' : 'bg-status-green/10 text-status-green border-status-green/30',
       icon: <Globe className="w-3.5 h-3.5 text-status-amber" />,
       metrics: [
         { label: 'External Guest Accounts', value: `${guestsCount.toLocaleString()} guests`, severity: externalGuestsLevel > 50 ? 'High' : 'Safe' },
@@ -89,7 +89,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'dlp',
       title: '4. DLP Enforcement & Coverage',
       badge: isDlpActive ? 'Active Coverage' : 'Unprotected',
-      badgeColor: isDlpActive ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      badgeColor: isDlpActive ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
       icon: <ShieldAlert className="w-3.5 h-3.5 text-accent" />,
       metrics: [
         { label: 'Active DLP Conflicts', value: isDlpActive ? '0 conflicts' : '18 conflicts ⚠️', severity: isDlpActive ? 'Safe' : 'Critical' },
@@ -100,7 +100,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'labels',
       title: '5. Sensitivity Label Coverage',
       badge: isLabelsFixed ? 'Good (92%)' : 'Drift Detected',
-      badgeColor: isLabelsFixed ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      badgeColor: isLabelsFixed ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
       icon: <FileText className="w-3.5 h-3.5 text-status-green" />,
       metrics: [
         { label: 'Label Coverage Rate', value: isLabelsFixed ? '92%' : '38%', severity: isLabelsFixed ? 'Safe' : 'Critical' },
@@ -112,7 +112,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'permissions',
       title: '6. Permissions & Admin Roles',
       badge: isPimActive ? 'JIT Active' : 'Permanent Admins',
-      badgeColor: isPimActive ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      badgeColor: isPimActive ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
       icon: <Key className="w-3.5 h-3.5 text-destructive" />,
       metrics: [
         { label: 'Permanent Admin Accounts', value: isPimActive ? '0 (JIT PIM)' : '12 permanent ⚠️', severity: isPimActive ? 'Safe' : 'Critical' },
@@ -140,7 +140,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
             </p>
           </div>
         </div>
-        <span className="text-[9px] font-mono text-primary bg-primary px-2 py-0.5 rounded border border-primary/30 font-bold">
+        <span className="text-[9px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/30 font-bold">
           M365 Native
         </span>
       </div>

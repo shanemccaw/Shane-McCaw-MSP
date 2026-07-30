@@ -54,7 +54,7 @@ export const SocSimulationStream: React.FC<SocSimulationStreamProps> = ({
               <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
                 SOC Telemetry Simulation Stream — What Copilot WOULD Do
               </h3>
-              <span className="text-[9px] font-mono bg-accent text-accent border border-accent px-2 py-0.5 rounded font-bold">
+              <span className="text-[9px] font-mono bg-accent/10 text-accent border border-accent px-2 py-0.5 rounded font-bold">
                 XPIA + Prompt Risk Analysis
               </span>
             </div>

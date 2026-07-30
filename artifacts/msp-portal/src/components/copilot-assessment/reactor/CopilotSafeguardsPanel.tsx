@@ -82,7 +82,7 @@ export const CopilotSafeguardsPanel: React.FC<CopilotSafeguardsPanelProps> = ({
         <span className={`text-[9px] font-mono px-2 py-0.5 rounded border font-bold uppercase ${
           blockersCount > 0
             ? 'bg-destructive/10/90 text-destructive border-destructive/30'
-            : 'bg-status-green text-status-green border-status-green/30'
+            : 'bg-status-green/10 text-status-green border-status-green/30'
         }`}>
           {blockersCount > 0 ? `${blockersCount} Blockers Active` : 'All Enforced'}
         </span>
@@ -137,7 +137,7 @@ export const CopilotSafeguardsPanel: React.FC<CopilotSafeguardsPanelProps> = ({
               <span className="text-xs font-extrabold text-foreground">CA01 Conditional Access</span>
             </div>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
-              tightenCA01 ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
+              tightenCA01 ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
             }`}>
               {tightenCA01 ? 'Enforced' : 'Not Enforced'}
             </span>
@@ -163,7 +163,7 @@ export const CopilotSafeguardsPanel: React.FC<CopilotSafeguardsPanelProps> = ({
               <span className="text-xs font-extrabold text-foreground">Sensitivity Label Coverage</span>
             </div>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
-              fixUnlabeled ? 'bg-status-green text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
+              fixUnlabeled ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
             }`}>
               {fixUnlabeled ? 'Good (92%)' : 'Drift (38%)'}
             </span>
@@ -189,7 +189,7 @@ export const CopilotSafeguardsPanel: React.FC<CopilotSafeguardsPanelProps> = ({
               <span className="text-xs font-extrabold text-foreground">DLP Flow Protection</span>
             </div>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
-              resolveDLP ? 'bg-status-green text-status-green border-status-green/30' : 'bg-accent text-accent border-accent'
+              resolveDLP ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-accent/10 text-accent border-accent'
             }`}>
               {resolveDLP ? 'Strong' : 'Weak'}
             </span>
@@ -215,7 +215,7 @@ export const CopilotSafeguardsPanel: React.FC<CopilotSafeguardsPanelProps> = ({
               <span className="text-xs font-extrabold text-foreground">Privileged Identity (PIM)</span>
             </div>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
-              removePermanentAdmins ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
+              removePermanentAdmins ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
             }`}>
               {removePermanentAdmins ? 'JIT Active' : 'Not Configured'}
             </span>

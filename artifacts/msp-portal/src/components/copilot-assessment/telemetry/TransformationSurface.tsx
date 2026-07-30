@@ -145,7 +145,7 @@ export const TransformationSurface: React.FC<TransformationSurfaceProps> = ({
                 onClick={() => onSliderChange(50)}
                 className={`text-[9.5px] font-mono px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
                   sliderPos === 50
-                    ? 'bg-primary text-primary border-primary font-bold shadow-[0_0_10px_rgba(0,120,212,0.3)]'
+                    ? 'bg-primary/10 text-primary border-primary font-bold shadow-[0_0_10px_rgba(0,120,212,0.3)]'
                     : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
                 }`}
               >
@@ -155,7 +155,7 @@ export const TransformationSurface: React.FC<TransformationSurfaceProps> = ({
                 onClick={() => onSliderChange(100)}
                 className={`text-[9.5px] font-mono px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
                   sliderPos === 100
-                    ? 'bg-accent text-accent border-accent font-bold shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+                    ? 'bg-accent/10 text-accent border-accent font-bold shadow-[0_0_10px_rgba(168,85,247,0.3)]'
                     : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
                 }`}
               >
@@ -323,7 +323,7 @@ export const TransformationSurface: React.FC<TransformationSurfaceProps> = ({
                       className="flex items-center justify-between text-[11px] bg-muted/60 p-2 rounded-lg border border-accent/50"
                     >
                       <span className="text-foreground font-medium">{item.label}</span>
-                      <span className="text-[9px] font-mono font-bold bg-accent text-accent border border-accent px-1.5 py-0.2 rounded">
+                      <span className="text-[9px] font-mono font-bold bg-accent/10 text-accent border border-accent px-1.5 py-0.2 rounded">
                         {item.value}
                       </span>
                     </div>

@@ -219,7 +219,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
       {/* ==================================================================== */}
       <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-primary border border-primary/50 flex items-center justify-center text-primary shadow-[0_0_15px_rgba(0,120,212,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/50 flex items-center justify-center text-primary shadow-[0_0_15px_rgba(0,120,212,0.3)]">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
@@ -266,13 +266,13 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
             </button>
             <button
               onClick={() => handleApplyPreset('balanced')}
-              className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-primary bg-primary/10 border border-primary/30 hover:bg-primary transition-colors"
+              className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-primary bg-primary/10 border border-primary/30 hover:bg-primary/20 transition-colors"
             >
               Balanced
             </button>
             <button
               onClick={() => handleApplyPreset('strict')}
-              className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-status-green bg-status-green/10 border border-status-green/30/80 hover:bg-status-green transition-colors"
+              className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-status-green bg-status-green/10 border border-status-green/30 hover:bg-status-green/20 transition-colors"
             >
               Zero Trust
             </button>
@@ -333,7 +333,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
                   1. Sensitivity Label Coverage
                 </span>
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                  fixUnlabeled ? 'bg-status-green text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
+                  fixUnlabeled ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
                 }`}>
                   {fixUnlabeled ? 'Governed' : '62% Unlabeled'}
                 </span>
@@ -377,7 +377,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
                   2. DLP Enforcement
                 </span>
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                  resolveDlp ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
+                  resolveDlp ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
                 }`}>
                   {resolveDlp ? 'Strict DLP' : '18 Conflicts'}
                 </span>
@@ -417,7 +417,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
                   3. Conditional Access (CA01)
                 </span>
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                  tightenCA01 ? 'bg-status-green text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
+                  tightenCA01 ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
                 }`}>
                   {tightenCA01 ? 'CA01 Strict' : 'CA01 Soft'}
                 </span>
@@ -459,7 +459,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
                   4. External Exposure (EEEU)
                 </span>
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                  externalGuests < 500 ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
+                  externalGuests < 500 ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
                 }`}>
                   {externalGuests} Guests
                 </span>
@@ -501,7 +501,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({
                   5. Permissions & Admin Roles
                 </span>
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                  removeAdmins ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
+                  removeAdmins ? 'bg-status-green/10 text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30'
                 }`}>
                   {removeAdmins ? 'PIM Active' : '12 Admins'}
                 </span>

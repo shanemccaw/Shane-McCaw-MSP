@@ -209,7 +209,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
               ? 'bg-destructive/10 text-destructive border-destructive'
               : blastRadiusScore > 35
               ? 'bg-status-amber/10 text-status-amber border-status-amber'
-              : 'bg-status-green text-status-green border-status-green'
+              : 'bg-status-green/10 text-status-green border-status-green'
           }`}>
             {blastRadiusScore > 65 ? 'High Blast Radius' : blastRadiusScore > 35 ? 'Moderate Risk' : 'Governed State'}
           </span>
@@ -489,7 +489,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
           >
             <span>Tighten CA01</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              tightenCA01 ? 'bg-status-green text-black' : 'bg-destructive text-destructive'
+              tightenCA01 ? 'bg-status-green text-black' : 'bg-destructive/10 text-destructive'
             }`}>
               {tightenCA01 ? 'ENFORCED' : 'OFF'}
             </span>
@@ -506,7 +506,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
           >
             <span>Fix Unlabeled Files</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              fixUnlabeled ? 'bg-status-green text-black' : 'bg-status-amber text-status-amber'
+              fixUnlabeled ? 'bg-status-green text-black' : 'bg-status-amber/10 text-status-amber'
             }`}>
               {fixUnlabeled ? 'FIXED' : 'OFF'}
             </span>
@@ -523,7 +523,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
           >
             <span>Resolve DLP Conflicts</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              resolveDLP ? 'bg-status-green text-black' : 'bg-accent text-accent'
+              resolveDLP ? 'bg-status-green text-black' : 'bg-accent/10 text-accent'
             }`}>
               {resolveDLP ? 'ACTIVE' : 'OFF'}
             </span>
@@ -540,7 +540,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
           >
             <span>Remove Perm Admins</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              removePermanentAdmins ? 'bg-status-green text-black' : 'bg-destructive text-destructive'
+              removePermanentAdmins ? 'bg-status-green text-black' : 'bg-destructive/10 text-destructive'
             }`}>
               {removePermanentAdmins ? 'JIT PIM' : 'OFF'}
             </span>

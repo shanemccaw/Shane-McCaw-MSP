@@ -71,7 +71,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
       {/* ==================================================================== */}
       <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-accent border border-accent/50 flex items-center justify-center text-accent shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-accent/10 border border-accent/50 flex items-center justify-center text-accent shadow-[0_0_15px_rgba(99,102,241,0.3)]">
             <Award className="w-5 h-5" />
           </div>
           <div>
@@ -160,7 +160,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   <Users className="w-3.5 h-3.5 text-primary" />
                   Personas Summary
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green text-status-green border-status-green/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green/10 text-status-green border-status-green/30 font-bold">
                   Safe
                 </span>
               </div>
@@ -187,7 +187,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   <Briefcase className="w-3.5 h-3.5 text-accent" />
                   Use Case Summary
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green text-status-green border-status-green/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green/10 text-status-green border-status-green/30 font-bold">
                   High Fit
                 </span>
               </div>
@@ -268,7 +268,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   <TrendingUp className="w-3.5 h-3.5 text-status-green" />
                   ROI Potential Summary
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green text-status-green border-status-green/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-status-green/10 text-status-green border-status-green/30 font-bold">
                   High ROI
                 </span>
               </div>
@@ -295,7 +295,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   <DollarSign className="w-3.5 h-3.5 text-primary" />
                   License Utilization
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-primary text-primary border-primary/30 font-bold">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/30 font-bold">
                   Moderate
                 </span>
               </div>
@@ -323,7 +323,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                 <Sparkles className="w-4 h-4 text-primary animate-spin-slow" />
                 <span>Executive Summary & Strategic Deployment Narrative</span>
               </span>
-              <span className="text-[9.5px] font-mono px-2.5 py-0.5 rounded-full border bg-primary text-primary border-primary font-bold">
+              <span className="text-[9.5px] font-mono px-2.5 py-0.5 rounded-full border bg-primary/10 text-primary border-primary font-bold">
                 C-SUITE DIRECTIVE
               </span>
             </div>
@@ -391,7 +391,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
               <div className="bg-background border border-primary/40 rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden">
                 <div className="flex items-center justify-between pb-2 border-b border-border">
                   <span className="text-xs font-bold text-primary font-mono">PHASE 2: WAVE 1 ROLLOUT</span>
-                  <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-primary text-primary border border-primary/30">
+                  <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/30">
                     Weeks 5–8
                   </span>
                 </div>
@@ -415,7 +415,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
               <div className="bg-background border border-status-green/40 rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden">
                 <div className="flex items-center justify-between pb-2 border-b border-border">
                   <span className="text-xs font-bold text-status-green font-mono">PHASE 3: ENTERPRISE SCALE</span>
-                  <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-status-green text-status-green border border-status-green/30">
+                  <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-status-green/10 text-status-green border border-status-green/30">
                     Weeks 9–12
                   </span>
                 </div>
@@ -480,7 +480,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   <tr>
                     <td className="py-2.5 font-bold text-status-green">License Optimization</td>
                     <td>85 Unused Copilot Seats</td>
-                    <td><span className="px-1.5 py-0.5 bg-primary text-primary rounded border border-primary/30 text-[9px]">MODERATE</span></td>
+                    <td><span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded border border-primary/30 text-[9px]">MODERATE</span></td>
                     <td>Reallocate or recover $42k/yr license waste</td>
                   </tr>
                 </tbody>
