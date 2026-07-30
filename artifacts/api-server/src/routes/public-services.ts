@@ -4,6 +4,7 @@ import {
   servicesTable,
   workflowTemplateStepsTable,
   checkoutSessionsTable,
+  resultsTemplatesTable,
   type ServiceAssociatedDocument,
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
@@ -284,6 +285,14 @@ router.get("/public/consent-url", async (req: Request, res: Response) => {
 // ── GET /api/catalog/assessments ──────────────────────────────────────────────
 // Public endpoint — no auth required. Returns services where serviceType =
 // 'assessment' AND isPublic = true, ordered by sortOrder ASC.
+//
+// resultsTemplateFamily: LEFT JOIN onto results_templates (#162, parent #161)
+// so assessment-dashboard.tsx (msp-portal, #163) can route a product to the
+// right results-template family without a second round-trip — this route was
+// already the one fetch that page makes to resolve a serviceSlug to its
+// catalogue row. Null for any product not yet mapped in the registry (or
+// whose mapping is isActive: false), which callers must treat the same as
+// "no family assigned" rather than an error.
 
 router.get("/catalog/assessments", async (req: Request, res: Response) => {
   try {
@@ -313,8 +322,16 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
         priceCents: servicesTable.priceCents,
         internalCostCents: servicesTable.internalCostCents,
         associatedDocuments: servicesTable.associatedDocuments,
+        resultsTemplateFamily: resultsTemplatesTable.family,
       })
       .from(servicesTable)
+      .leftJoin(
+        resultsTemplatesTable,
+        and(
+          eq(resultsTemplatesTable.serviceId, servicesTable.id),
+          eq(resultsTemplatesTable.isActive, true),
+        ),
+      )
       .where(
         and(
           eq(servicesTable.serviceType, "assessment"),

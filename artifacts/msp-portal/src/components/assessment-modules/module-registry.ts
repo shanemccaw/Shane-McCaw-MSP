@@ -15,7 +15,16 @@
  * Per assessment service row, set:
  *   type_attributes.dashboardModules = ["priority-health", "findings", "governance", ...]
  * The assessment-dashboard.tsx page reads that array and renders only those
- * module keys, in that order. If dashboardModules is absent, all 8 modules render.
+ * module keys, in that order. If dashboardModules is absent, PILLAR_FAMILY_MODULE_KEYS
+ * (the original 8) renders — this remains the routing path for the `pillar_scored`
+ * and `copilot` Results Template families.
+ *
+ * Results Template family routing (#162/#163, parent #161): assessment-dashboard.tsx
+ * additionally reads the product's resultsTemplateFamily (from /api/catalog/assessments,
+ * joined onto results_templates). The `framework_gap_list` and `readiness_logistics`
+ * families don't fit this pillar-module system at all, so for those two the page
+ * overrides dashboardModules entirely and renders the single matching module below
+ * (`framework-gap-list` / `readiness-logistics`) instead — see PILLAR_FAMILY_MODULE_KEYS.
  *
  * Pillar taxonomy (from signal_derivation_rules.pillar — do not invent new values):
  *   governance | security | compliance | adoption | copilot | architecture | costLicensing
@@ -97,6 +106,8 @@ import ArchitectureModule from "./ArchitectureModule";
 import CostModule from "./CostModule";
 import PriorityHealthModule from "./PriorityHealthModule";
 import FindingsModule from "./FindingsModule";
+import FrameworkGapListModule from "./FrameworkGapListModule";
+import ReadinessLogisticsModule from "./ReadinessLogisticsModule";
 
 // ── Registry ───────────────────────────────────────────────────────────────────
 
@@ -157,6 +168,49 @@ export const ASSESSMENT_MODULE_DEFS: AssessmentModuleDef[] = [
     pillars: ["costLicensing"],
     component: CostModule,
   },
+
+  // ── Non-pillar Results Template family modules (#162, parent #161) ──────────
+  // `framework_gap_list` (SOC 2 / NIST CSF / ISO 27001 / CMMC) and
+  // `readiness_logistics` (Migration Readiness, Conditional Access, License
+  // Waste Audit, License & Cost Optimization) don't fit the 7-pillar taxonomy
+  // at all — each gets exactly one self-contained, full-width module instead
+  // of a set of per-pillar cards. Registered in the same array as the 8
+  // pillar modules above so AssessmentModulePanel.tsx's generic
+  // `ASSESSMENT_MODULE_DEFS.find(...)` lookup keeps working unchanged — but
+  // deliberately excluded from PILLAR_FAMILY_MODULE_KEYS below, since they
+  // must never appear in the `pillar_scored`/`copilot` fallback module set.
+  {
+    key: "framework-gap-list",
+    label: "Framework Compliance Gap List",
+    description: "Control-by-control gap list against the assessment's named compliance framework.",
+    pillars: [],
+    component: FrameworkGapListModule,
+  },
+  {
+    key: "readiness-logistics",
+    label: "Readiness & Decision Data",
+    description: "Decision-relevant readiness data — not pillar-scored.",
+    pillars: [],
+    component: ReadinessLogisticsModule,
+  },
+];
+
+// The original 8 pillar-module keys, in default display order — the
+// fallback set for the `pillar_scored` and `copilot` Results Template
+// families (#162), both of which reuse this module system as-is (confirmed
+// by audit, #163: CopilotModule.tsx is already structurally identical to
+// the other pillar modules). Kept as an explicit literal rather than
+// `ASSESSMENT_MODULE_DEFS.map(d => d.key)` now that array also holds the
+// two non-pillar family modules above, which must NOT be part of this set.
+export const PILLAR_FAMILY_MODULE_KEYS: string[] = [
+  "priority-health",
+  "findings",
+  "governance",
+  "security",
+  "compliance",
+  "copilot",
+  "architecture",
+  "cost",
 ];
 
 // ── Lookup helper ──────────────────────────────────────────────────────────────
