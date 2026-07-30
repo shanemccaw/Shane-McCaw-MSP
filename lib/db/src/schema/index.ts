@@ -3087,6 +3087,12 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   productSlug: text("product_slug").notNull(),
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
+  // Company/industry (#142): the buyer's ORGANIZATION, not the individual —
+  // sourced into tenants.customerName/industry so the tenant identity is the
+  // company, not the person filling out the form. Nullable/additive; existing
+  // rows predate this capture.
+  company: text("company"),
+  industry: text("industry"),
   seats: integer("seats").notNull().default(1),
   status: text("status", { enum: ["pending", "consented", "paid", "expired"] }).notNull().default("pending"),
   tenantId: text("tenant_id"),

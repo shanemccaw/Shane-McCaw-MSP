@@ -415,7 +415,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // has already run and returned on conflict.
   let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
   // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
-  let updatedSession: { id: string; email: string; fullName: string; productSlug: string } | undefined;
+  let updatedSession: { id: string; email: string; fullName: string; company: string | null; industry: string | null; productSlug: string } | undefined;
 
   if (isCheckoutSession && state) {
     const sessionNow = new Date();
@@ -436,6 +436,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         id: checkoutSessionsTable.id,
         email: checkoutSessionsTable.email,
         fullName: checkoutSessionsTable.fullName,
+        company: checkoutSessionsTable.company,
+        industry: checkoutSessionsTable.industry,
         productSlug: checkoutSessionsTable.productSlug,
       });
 
@@ -493,7 +495,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   } else {
     consentTenant = await resolveOrCreateDirectTenant(
       tenant,
-      updatedSession?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
+      updatedSession?.company?.trim() || updatedSession?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
+      updatedSession?.industry,
     );
   }
 
@@ -576,11 +579,15 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       let productSlug: string | null = null;
       let sessionEmail: string | null = null;
       let sessionFullName: string | null = null;
+      let sessionCompany: string | null = null;
+      let sessionIndustry: string | null = null;
 
       if (updatedSession) {
         productSlug = updatedSession.productSlug;
         sessionEmail = updatedSession.email;
         sessionFullName = updatedSession.fullName;
+        sessionCompany = updatedSession.company;
+        sessionIndustry = updatedSession.industry;
       } else {
         // Session not updated (expired or not found) — try a direct read
         const [existing] = await db
@@ -588,6 +595,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
             productSlug: checkoutSessionsTable.productSlug,
             email: checkoutSessionsTable.email,
             fullName: checkoutSessionsTable.fullName,
+            company: checkoutSessionsTable.company,
+            industry: checkoutSessionsTable.industry,
           })
           .from(checkoutSessionsTable)
           .where(eq(checkoutSessionsTable.id, state))
@@ -595,6 +604,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         productSlug = existing?.productSlug ?? null;
         sessionEmail = existing?.email ?? null;
         sessionFullName = existing?.fullName ?? null;
+        sessionCompany = existing?.company ?? null;
+        sessionIndustry = existing?.industry ?? null;
       }
 
       // Resolve packageKey + serviceType via services.type_attributes->>'packageKey'.
@@ -625,6 +636,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         const prospect = await provisionProspectAccount({
           email: sessionEmail,
           fullName: sessionFullName,
+          company: sessionCompany,
+          industry: sessionIndustry,
           tenantId: tenant,
           role: serviceType === "assessment" ? "Assessment" : "CustomerUser",
         });

@@ -524,7 +524,7 @@ describe("consent route handlers", () => {
       expect(store.redirectUrl).toContain("/consent/success");
       // No customer on the token — this GUID legitimately may not have a
       // customer object yet, so the create path is correct here.
-      expect(mockResolveOrCreateDirectTenant).toHaveBeenCalledWith("tenant-case", expect.any(String));
+      expect(mockResolveOrCreateDirectTenant).toHaveBeenCalledWith("tenant-case", expect.any(String), undefined);
     });
   });
 
