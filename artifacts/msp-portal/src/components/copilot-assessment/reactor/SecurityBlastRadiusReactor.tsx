@@ -152,7 +152,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
 
   return (
     <div className={`h-screen w-screen flex flex-col font-sans overflow-hidden antialiased select-none relative transition-colors duration-500 ${
-      mode === 'redteam' ? 'bg-[#080305] text-slate-100' : 'bg-[#030509] text-slate-100'
+      mode === 'redteam' ? 'bg-background text-foreground' : 'bg-background text-foreground'
     }`}>
       
       {/* -------------------------------------------------------------------- */}
@@ -160,52 +160,52 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
       {/* -------------------------------------------------------------------- */}
       <header className={`h-16 px-4 flex items-center justify-between shrink-0 z-30 backdrop-blur-md border-b transition-colors ${
         mode === 'redteam'
-          ? 'bg-[#120508]/95 border-rose-600/50'
-          : 'bg-[#070B14]/95 border-white/10'
+          ? 'bg-background/95 border-destructive/50'
+          : 'bg-background/95 border-border'
       }`}>
         
         {/* Left Title & Badge */}
         <div className="flex items-center space-x-3">
           <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${
             mode === 'redteam'
-              ? 'bg-rose-950 border-rose-500 text-rose-400'
-              : 'bg-sky-950 border-sky-500 text-sky-400'
+              ? 'bg-destructive/10 border-destructive text-destructive'
+              : 'bg-primary border-primary text-primary'
           }`}>
             <Flame className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm font-black uppercase tracking-widest text-white">
+              <span className="text-sm font-black uppercase tracking-widest text-foreground">
                 Microsoft Copilot Security Blast Radius
               </span>
-              <span className="text-[10px] font-mono bg-sky-950/80 text-sky-300 border border-sky-800 px-2 py-0.5 rounded font-extrabold">
+              <span className="text-[10px] font-mono bg-primary/15 text-primary border border-primary/30 px-2 py-0.5 rounded font-extrabold">
                 M365 SECURITY CORE
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-muted-foreground">
               Defender & Purview Telemetry • Zero Trust Blast Radius Model
             </p>
           </div>
         </div>
 
         {/* CENTER COPILOT READINESS SCORE (0-100) */}
-        <div className="hidden lg:flex items-center space-x-4 bg-black/60 px-4 py-1.5 rounded-xl border border-white/10">
+        <div className="hidden lg:flex items-center space-x-4 bg-muted/60 px-4 py-1.5 rounded-xl border border-border">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-mono font-bold text-slate-300 uppercase">
+              <span className="text-xs font-mono font-bold text-muted-foreground uppercase">
                 Copilot Readiness Score:
               </span>
               <span className={`text-lg font-black font-mono ${
-                readinessScore >= 75 ? 'text-emerald-400' : readinessScore >= 50 ? 'text-amber-400' : 'text-rose-400'
+                readinessScore >= 75 ? 'text-status-green' : readinessScore >= 50 ? 'text-status-amber' : 'text-destructive'
               }`}>
                 {readinessScore} / 100
               </span>
             </div>
             {/* Visual Gauge Bar */}
-            <div className="w-48 h-2 bg-slate-800 rounded-full overflow-hidden mt-1 flex">
+            <div className="w-48 h-2 bg-secondary rounded-full overflow-hidden mt-1 flex">
               <div
                 className={`h-full transition-all duration-700 ${
-                  readinessScore >= 75 ? 'bg-emerald-500' : readinessScore >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                  readinessScore >= 75 ? 'bg-status-green' : readinessScore >= 50 ? 'bg-status-amber' : 'bg-destructive'
                 }`}
                 style={{ width: `${readinessScore}%` }}
               />
@@ -214,10 +214,10 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
 
           <span className={`text-[9.5px] font-mono font-extrabold px-2 py-1 rounded border uppercase ${
             readinessScore >= 75
-              ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+              ? 'bg-status-green text-status-green border-status-green/30'
               : readinessScore >= 50
-              ? 'bg-amber-950 text-amber-300 border-amber-800'
-              : 'bg-rose-950 text-rose-300 border-rose-800'
+              ? 'bg-status-amber/10 text-status-amber border-status-amber/30'
+              : 'bg-destructive/10 text-destructive border-destructive/30'
           }`}>
             {readinessScore >= 75 ? 'Ready to Deploy' : readinessScore >= 50 ? 'Needs Guardrails' : 'PRE-DEPLOYMENT BLOCKER'}
           </span>
@@ -227,13 +227,13 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
         <div className="flex items-center space-x-3">
           
           {/* Dual-Mode Selector */}
-          <div className="bg-black/60 p-1 rounded-xl border border-white/10 flex items-center space-x-1">
+          <div className="bg-muted/60 p-1 rounded-xl border border-border flex items-center space-x-1">
             <button
               onClick={() => setMode('projected')}
               className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
                 mode === 'projected'
-                  ? 'bg-amber-950 text-amber-300 border border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-status-amber/10 text-status-amber border border-status-amber shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               1. PROJECTED MODE
@@ -243,8 +243,8 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
               onClick={() => setMode('soc')}
               className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
                 mode === 'soc'
-                  ? 'bg-purple-950 text-purple-300 border border-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.3)]'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-accent text-accent border border-accent shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               2. SOC SIMULATION
@@ -256,8 +256,8 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
             onClick={() => setMode(mode === 'redteam' ? 'projected' : 'redteam')}
             className={`px-3 py-1.5 rounded-xl font-mono text-xs font-extrabold flex items-center space-x-1.5 transition-all cursor-pointer border ${
               mode === 'redteam'
-                ? 'bg-rose-600 text-white border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.5)]'
-                : 'bg-slate-900 text-rose-400 border-rose-900/60 hover:border-rose-500'
+                ? 'bg-destructive text-foreground border-destructive shadow-[0_0_20px_rgba(244,63,94,0.5)]'
+                : 'bg-secondary text-destructive border-destructive/60 hover:border-destructive'
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
@@ -267,7 +267,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
           {/* Proceed Button */}
           <button
             onClick={onContinue}
-            className="flex items-center space-x-2 bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:from-rose-400 hover:to-indigo-500 text-white font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-rose-950/50 cursor-pointer border border-white/20"
+            className="flex items-center space-x-2 bg-gradient-to-r from-destructive via-accent to-accent hover:from-destructive hover:to-accent text-primary-foreground font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-destructive/50 cursor-pointer border border-border"
           >
             <span>Proceed to Governance Sandbox</span>
             <ArrowRight className="w-4 h-4" />
@@ -276,7 +276,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
           {onExitClick && (
             <button
               onClick={onExitClick}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg border border-border transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -292,18 +292,18 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
         {/* PERSPECTIVE MODE EXPLANATION BAR */}
         <div className={`p-3 rounded-2xl border text-xs font-mono transition-all flex flex-col md:flex-row items-center justify-between gap-3 ${
           mode === 'redteam'
-            ? 'bg-rose-950/80 border-rose-500/80 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.3)]'
+            ? 'bg-destructive/15 border-destructive/80 text-destructive shadow-[0_0_20px_rgba(244,63,94,0.3)]'
             : mode === 'soc'
-            ? 'bg-purple-950/80 border-purple-500/80 text-purple-100'
-            : 'bg-amber-950/60 border-amber-500/60 text-amber-100'
+            ? 'bg-accent/80 border-accent/80 text-accent'
+            : 'bg-status-amber/10 border-status-amber/60 text-status-amber'
         }`}>
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-xl border ${
               mode === 'redteam'
-                ? 'bg-rose-900 border-rose-400 text-rose-200'
+                ? 'bg-destructive border-destructive text-destructive'
                 : mode === 'soc'
-                ? 'bg-purple-900 border-purple-400 text-purple-200'
-                : 'bg-amber-900 border-amber-400 text-amber-200'
+                ? 'bg-accent border-accent text-accent'
+                : 'bg-status-amber border-status-amber text-status-amber'
             }`}>
               {mode === 'redteam' ? <Flame className="w-4 h-4" /> : mode === 'soc' ? <Zap className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
             </div>
@@ -314,7 +314,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
                   {mode === 'soc' && '2. SOC Incident Simulation — Compromised Credential / Insider Threat'}
                   {mode === 'redteam' && '3. Red Team Penetration Scenario — Adversarial Cyber Attack'}
                 </span>
-                <span className="text-[9px] px-2 py-0.5 rounded font-black uppercase bg-black/60 border border-white/20">
+                <span className="text-[9px] px-2 py-0.5 rounded font-black uppercase bg-muted/60 border border-border">
                   {mode === 'projected' ? 'Business Operations' : mode === 'soc' ? 'Incident Response' : 'Full Attack Chain'}
                 </span>
               </div>
@@ -327,11 +327,11 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
           </div>
 
           {/* Mode Switcher Buttons */}
-          <div className="flex items-center space-x-1.5 shrink-0 bg-black/80 p-1 rounded-xl border border-white/10">
+          <div className="flex items-center space-x-1.5 shrink-0 bg-muted/80 p-1 rounded-xl border border-border">
             <button
               onClick={() => setMode('projected')}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                mode === 'projected' ? 'bg-amber-500 text-black font-extrabold' : 'text-slate-400 hover:text-white'
+                mode === 'projected' ? 'bg-status-amber text-black font-extrabold' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               CISO Baseline
@@ -339,7 +339,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
             <button
               onClick={() => setMode('soc')}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                mode === 'soc' ? 'bg-purple-500 text-black font-extrabold' : 'text-slate-400 hover:text-white'
+                mode === 'soc' ? 'bg-accent text-black font-extrabold' : 'text-muted-foreground hover:text-primary-foreground'
               }`}
             >
               SOC Incident
@@ -347,7 +347,7 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
             <button
               onClick={() => setMode('redteam')}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                mode === 'redteam' ? 'bg-rose-500 text-white font-extrabold' : 'text-slate-400 hover:text-white'
+                mode === 'redteam' ? 'bg-destructive text-foreground font-extrabold' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Red Team
@@ -357,19 +357,19 @@ export const SecurityBlastRadiusReactor: React.FC<SecurityBlastRadiusReactorProp
 
         {/* RED TEAM ATTACK CHAIN BANNER IF ACTIVE */}
         {mode === 'redteam' && (
-          <div className="p-3.5 rounded-2xl bg-rose-950/90 border-2 border-rose-500 text-xs space-y-2 shadow-[0_0_30px_rgba(244,63,94,0.4)]">
-            <div className="flex items-center space-x-2 text-rose-200 font-mono font-black uppercase tracking-wider">
-              <Flame className="w-4 h-4 text-rose-400" />
+          <div className="p-3.5 rounded-2xl bg-destructive/10/90 border-2 border-destructive text-xs space-y-2 shadow-[0_0_30px_rgba(244,63,94,0.4)]">
+            <div className="flex items-center space-x-2 text-destructive font-mono font-black uppercase tracking-wider">
+              <Flame className="w-4 h-4 text-destructive" />
               <span>Microsoft Attack Simulation — Adversarial Copilot Exfiltration Chain</span>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-black/80 p-3 rounded-xl border border-rose-900 font-mono text-[11px] text-slate-200">
-              <span className="text-rose-300 font-bold">1. Attacker Prompt</span>
-              <ChevronRight className="w-4 h-4 text-rose-500 hidden sm:block" />
-              <span className="text-amber-300 font-bold">2. Copilot Accesses Overshared CUI</span>
-              <ChevronRight className="w-4 h-4 text-rose-500 hidden sm:block" />
-              <span className="text-purple-300 font-bold">3. Copilot Summarizes PHI</span>
-              <ChevronRight className="w-4 h-4 text-rose-500 hidden sm:block" />
-              <span className="text-rose-400 font-bold">4. Copilot Drafts Outbound Exfiltration</span>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-muted/80 p-3 rounded-xl border border-destructive font-mono text-[11px] text-foreground">
+              <span className="text-destructive font-bold">1. Attacker Prompt</span>
+              <ChevronRight className="w-4 h-4 text-destructive hidden sm:block" />
+              <span className="text-status-amber font-bold">2. Copilot Accesses Overshared CUI</span>
+              <ChevronRight className="w-4 h-4 text-destructive hidden sm:block" />
+              <span className="text-accent font-bold">3. Copilot Summarizes PHI</span>
+              <ChevronRight className="w-4 h-4 text-destructive hidden sm:block" />
+              <span className="text-destructive font-bold">4. Copilot Drafts Outbound Exfiltration</span>
             </div>
           </div>
         )}

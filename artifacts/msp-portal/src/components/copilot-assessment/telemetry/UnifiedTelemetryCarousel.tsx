@@ -88,13 +88,13 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
     <div
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
-      className="relative rounded-2xl overflow-hidden shadow-2xl transition-all duration-600 border border-white/10"
+      className="relative rounded-2xl overflow-hidden shadow-2xl transition-all duration-600 border border-border"
     >
       {/* BACKGROUND MODE 1 — DEEP BLUE TRANSLUCENT GLASS & HEARTBEAT WAVEFORM */}
       <div
         className={`absolute inset-0 transition-opacity duration-600 ${
           !isDocumentMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } bg-[#02152E]/90 backdrop-blur-xl animate-pulse-glow border border-[#0078D4]/40`}
+        } bg-background/90 backdrop-blur-xl animate-pulse-glow border border-primary/40`}
       />
 
       {/* HEARTBEAT WAVEFORM DRIFT (MODE 1) */}
@@ -104,7 +104,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
         }`}
       >
         <div className="w-[200%] h-full flex items-center animate-waveform">
-          <svg className="w-full h-16 text-[#0078D4]" fill="none" viewBox="0 0 1200 60">
+          <svg className="w-full h-16 text-primary" fill="none" viewBox="0 0 1200 60">
             <path
               d="M 0 30 Q 50 30 100 30 L 120 30 L 130 10 L 140 50 L 150 5 L 160 40 L 170 30 L 200 30 Q 300 30 400 30 L 420 30 L 430 10 L 440 50 L 450 5 L 460 40 L 470 30 L 500 30 Q 600 30 700 30 L 720 30 L 730 10 L 740 50 L 750 5 L 760 40 L 770 30 L 800 30 Q 900 30 1000 30 L 1020 30 L 1030 10 L 1040 50 L 1050 5 L 1060 40 L 1070 30 L 1100 30 Z"
               stroke="currentColor"
@@ -120,7 +120,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
       <div
         className={`absolute inset-0 transition-opacity duration-600 ${
           isDocumentMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } bg-gradient-to-r from-[#21093A]/90 via-[#0A1D3F]/90 to-[#022F43]/90 backdrop-blur-xl border border-purple-500/40`}
+        } bg-gradient-to-r from-background/90 via-background/90 to-status-teal/90 backdrop-blur-xl border border-accent/40`}
       />
 
       {/* SHIMMER SWEEP OVERLAY */}
@@ -132,35 +132,35 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
           isDocumentMode ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <Sparkles className="absolute left-[10%] bottom-0 w-4 h-4 text-purple-400 animate-sparkle-1" />
-        <Sparkles className="absolute left-[30%] bottom-0 w-3.5 h-3.5 text-cyan-400 animate-sparkle-2" />
-        <Sparkles className="absolute left-[55%] bottom-0 w-5 h-5 text-indigo-300 animate-sparkle-3" />
-        <Sparkles className="absolute left-[75%] bottom-0 w-4 h-4 text-sky-400 animate-sparkle-4" />
-        <Sparkles className="absolute left-[90%] bottom-0 w-3 h-3 text-purple-300 animate-sparkle-5" />
+        <Sparkles className="absolute left-[10%] bottom-0 w-4 h-4 text-accent animate-sparkle-1" />
+        <Sparkles className="absolute left-[30%] bottom-0 w-3.5 h-3.5 text-primary animate-sparkle-2" />
+        <Sparkles className="absolute left-[55%] bottom-0 w-5 h-5 text-accent animate-sparkle-3" />
+        <Sparkles className="absolute left-[75%] bottom-0 w-4 h-4 text-primary animate-sparkle-4" />
+        <Sparkles className="absolute left-[90%] bottom-0 w-3 h-3 text-accent animate-sparkle-5" />
       </div>
 
       {/* CONTENT RAIL */}
       <div className="relative z-10 p-4 space-y-3.5">
         {/* CAROUSEL HEADER RAIL */}
-        <div className="flex items-center justify-between pb-2 border-b border-white/10">
+        <div className="flex items-center justify-between pb-2 border-b border-border">
           <div className="flex items-center gap-2.5">
             {!isDocumentMode ? (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#0078D4]/20 border border-[#0078D4]/50 text-[#0078D4]">
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-primary/20 border border-primary/50 text-primary">
                 <Activity className="w-4 h-4 animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
                   MODE 1: TENANT CORRELATION ENGINES (12)
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
-                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-accent/20 border border-accent/50 text-accent">
+                <Sparkles className="w-4 h-4 text-accent animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
                   MODE 2: ASSESSMENT DELIVERABLES (6)
                 </span>
               </div>
             )}
 
-            <span className="text-xs font-mono font-bold text-white/80">
+            <span className="text-xs font-mono font-bold text-foreground/80">
               {!isDocumentMode
                 ? `${completedEnginesCount}/12 Complete`
                 : `${completedDocsCount}/6 Generated`}
@@ -171,7 +171,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="p-1 hover:bg-white/10 rounded text-white/60 hover:text-white transition-colors"
+              className="p-1 hover:bg-foreground/10 rounded text-foreground/60 hover:text-foreground transition-colors"
               title={isPaused ? 'Resume auto-scroll' : 'Pause auto-scroll'}
             >
               {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
@@ -194,16 +194,16 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     className={`h-1.5 rounded-full transition-all duration-300 ${
                       isActive
                         ? !isDocumentMode
-                          ? 'w-5 bg-[#0078D4]'
-                          : 'w-5 bg-purple-400'
-                        : 'w-1.5 bg-white/20 hover:bg-white/40'
+                          ? 'w-5 bg-primary'
+                          : 'w-5 bg-accent'
+                        : 'w-1.5 bg-foreground/20 hover:bg-foreground/40'
                     }`}
                   />
                 );
               })}
             </div>
 
-            <div className="flex items-center gap-0.5 border border-white/15 rounded bg-black/30">
+            <div className="flex items-center gap-0.5 border border-border rounded bg-muted/30">
               <button
                 onClick={() => {
                   if (!isDocumentMode) {
@@ -212,7 +212,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     setDocPageIndex(prev => (prev - 1 + maxDocPages) % maxDocPages);
                   }
                 }}
-                className="p-1 hover:bg-white/15 rounded-l text-white/70 hover:text-white transition-colors"
+                className="p-1 hover:bg-foreground/15 rounded-l text-foreground/70 hover:text-foreground transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -224,7 +224,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     setDocPageIndex(prev => (prev + 1) % maxDocPages);
                   }
                 }}
-                className="p-1 hover:bg-white/15 rounded-r text-white/70 hover:text-white transition-colors"
+                className="p-1 hover:bg-foreground/15 rounded-r text-foreground/70 hover:text-foreground transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -252,10 +252,10 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     key={eng.id}
                     className={`p-3.5 rounded-xl border transition-all duration-300 flex flex-col justify-between ${
                       isRunning
-                        ? 'bg-[#0B1E38]/90 border-[#0078D4] ring-1 ring-[#0078D4]/50 shadow-lg shadow-[#0078D4]/10'
+                        ? 'bg-background/90 border-primary ring-1 ring-primary/50 shadow-lg shadow-primary/10'
                         : isComplete
-                        ? 'bg-[#08172A]/80 border-emerald-500/40'
-                        : 'bg-black/40 border-white/10 opacity-60'
+                        ? 'bg-background/80 border-status-green/40'
+                        : 'bg-muted/40 border-border opacity-60'
                     }`}
                   >
                     <div className="space-y-2">
@@ -264,10 +264,10 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
                               isComplete
-                                ? 'bg-emerald-950/80 border-emerald-600 text-emerald-400'
+                                ? 'bg-status-green/15 border-status-green text-status-green'
                                 : isRunning
-                                ? 'bg-[#0078D4]/30 border-[#0078D4] text-sky-300'
-                                : 'bg-white/5 border-white/10 text-white/50'
+                                ? 'bg-primary/30 border-primary text-primary'
+                                : 'bg-foreground/5 border-border text-foreground/50'
                             }`}
                           >
                             {isComplete ? (
@@ -278,38 +278,38 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                               renderEngineIcon(eng.icon)
                             )}
                           </div>
-                          <h4 className="text-xs font-bold text-white truncate">{eng.name}</h4>
+                          <h4 className="text-xs font-bold text-foreground truncate">{eng.name}</h4>
                         </div>
 
                         {/* Severity Badge */}
                         <span
                           className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
                             eng.severity === 'High'
-                              ? 'bg-rose-950/90 text-rose-300 border-rose-700'
+                              ? 'bg-destructive/10/90 text-destructive border-destructive'
                               : eng.severity === 'Medium'
-                              ? 'bg-amber-950/90 text-amber-300 border-amber-700'
+                              ? 'bg-status-amber/10/90 text-status-amber border-status-amber'
                               : eng.severity === 'Low'
-                              ? 'bg-sky-950/90 text-sky-300 border-sky-700'
-                              : 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
+                              ? 'bg-primary/90 text-primary border-primary'
+                              : 'bg-status-green/90 text-status-green border-status-green'
                           }`}
                         >
                           {eng.severity}
                         </span>
                       </div>
 
-                      <p className="text-[10.5px] text-sky-100/70 line-clamp-2 leading-relaxed">
+                      <p className="text-[10.5px] text-primary/70 line-clamp-2 leading-relaxed">
                         {eng.description}
                       </p>
                     </div>
 
                     {/* Bottom Status & SSE Stream */}
-                    <div className="mt-3 pt-2 border-t border-white/10 space-y-1">
+                    <div className="mt-3 pt-2 border-t border-border space-y-1">
                       <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="text-white/60">Finding:</span>
-                        <span className="text-white font-bold">{eng.findingLabel}</span>
+                        <span className="text-foreground/60">Finding:</span>
+                        <span className="text-foreground font-bold">{eng.findingLabel}</span>
                       </div>
 
-                      <div className="text-[9.5px] font-mono text-sky-300 truncate">
+                      <div className="text-[9.5px] font-mono text-primary truncate">
                         ↳ {eng.currentSseMsg}
                       </div>
                     </div>
@@ -337,10 +337,10 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     key={doc.id}
                     className={`p-3.5 rounded-xl border transition-all duration-300 flex flex-col justify-between ${
                       isRunning
-                        ? 'bg-[#1D0C33]/90 border-purple-500 ring-1 ring-purple-500/50 shadow-lg shadow-purple-500/20'
+                        ? 'bg-background/90 border-accent ring-1 ring-accent/50 shadow-lg shadow-accent/20'
                         : isComplete
-                        ? 'bg-[#110D29]/80 border-emerald-500/50'
-                        : 'bg-black/40 border-white/10 opacity-60'
+                        ? 'bg-background/80 border-status-green/50'
+                        : 'bg-muted/40 border-border opacity-60'
                     }`}
                   >
                     <div className="space-y-2">
@@ -349,10 +349,10 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
                               isComplete
-                                ? 'bg-emerald-950/80 border-emerald-600 text-emerald-400'
+                                ? 'bg-status-green/15 border-status-green text-status-green'
                                 : isRunning
-                                ? 'bg-purple-500/30 border-purple-400 text-purple-200'
-                                : 'bg-white/5 border-white/10 text-white/50'
+                                ? 'bg-accent/30 border-accent text-accent'
+                                : 'bg-foreground/5 border-border text-primary-foreground/50'
                             }`}
                           >
                             {isComplete ? (
@@ -363,28 +363,28 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                               <FileText className="w-3.5 h-3.5" />
                             )}
                           </div>
-                          <h4 className="text-xs font-bold text-white truncate">{doc.name}</h4>
+                          <h4 className="text-xs font-bold text-foreground truncate">{doc.name}</h4>
                         </div>
 
-                        <span className="text-xs font-mono font-bold text-purple-300">
+                        <span className="text-xs font-mono font-bold text-accent">
                           {doc.progress}%
                         </span>
                       </div>
 
-                      <p className="text-[10.5px] text-purple-100/70 line-clamp-2 leading-relaxed">
+                      <p className="text-[10.5px] text-accent/70 line-clamp-2 leading-relaxed">
                         {doc.description}
                       </p>
                     </div>
 
                     {/* Progress Bar & SSE Msg */}
                     <div className="mt-3 space-y-1.5">
-                      <div className="w-full bg-black/50 h-1.5 rounded-full overflow-hidden border border-white/10">
+                      <div className="w-full bg-muted/50 h-1.5 rounded-full overflow-hidden border border-border">
                         <div
-                          className="bg-gradient-to-r from-purple-500 to-cyan-400 h-full transition-all duration-300"
+                          className="bg-gradient-to-r from-accent to-primary h-full transition-all duration-300"
                           style={{ width: `${doc.progress}%` }}
                         />
                       </div>
-                      <div className="text-[9.5px] font-mono text-emerald-300 truncate">
+                      <div className="text-[9.5px] font-mono text-status-green truncate">
                         ↳ {doc.currentSseMsg}
                       </div>
                     </div>

@@ -52,8 +52,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'overexposure',
       title: '1. Overexposure & Oversharing',
       badge: isLabelsFixed ? 'High Exposure' : 'Critical Risk',
-      badgeColor: isLabelsFixed ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-rose-950 text-rose-300 border-rose-800',
-      icon: <Database className="w-3.5 h-3.5 text-rose-400" />,
+      badgeColor: isLabelsFixed ? 'bg-status-amber/10 text-status-amber border-status-amber/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      icon: <Database className="w-3.5 h-3.5 text-destructive" />,
       metrics: [
         { label: 'Unlabeled Files', value: isLabelsFixed ? '8%' : '62%', severity: isLabelsFixed ? 'Safe' : 'Critical' },
         { label: 'Overshared SharePoint Sites', value: isLabelsFixed ? '24 sites' : '142 sites', severity: isLabelsFixed ? 'Low' : 'High' },
@@ -65,8 +65,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'conditional_access',
       title: '2. Conditional Access & Zero Trust',
       badge: isCaEnforced ? 'Enforced' : 'Not Enforced',
-      badgeColor: isCaEnforced ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-rose-950 text-rose-300 border-rose-800',
-      icon: <Lock className="w-3.5 h-3.5 text-sky-400" />,
+      badgeColor: isCaEnforced ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      icon: <Lock className="w-3.5 h-3.5 text-primary" />,
       metrics: [
         { label: 'CA01 Strict Policy Status', value: isCaEnforced ? 'Enforced' : 'Not Enforced ⚠️', severity: isCaEnforced ? 'Safe' : 'Critical' },
         { label: 'MFA Enforcement Rate', value: isCaEnforced ? '100% users' : '94% users', severity: 'Safe' },
@@ -77,8 +77,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'eeeu',
       title: '3. EEEU (External Exposure)',
       badge: externalGuestsLevel > 50 ? 'High Exposure' : 'Contained',
-      badgeColor: externalGuestsLevel > 50 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800',
-      icon: <Globe className="w-3.5 h-3.5 text-amber-400" />,
+      badgeColor: externalGuestsLevel > 50 ? 'bg-status-amber/10 text-status-amber border-status-amber/30' : 'bg-status-green text-status-green border-status-green/30',
+      icon: <Globe className="w-3.5 h-3.5 text-status-amber" />,
       metrics: [
         { label: 'External Guest Accounts', value: `${guestsCount.toLocaleString()} guests`, severity: externalGuestsLevel > 50 ? 'High' : 'Safe' },
         { label: 'Federated B2B Domains', value: `${domainsCount} domains`, severity: federatedDomainsLevel > 50 ? 'Moderate' : 'Safe' },
@@ -89,8 +89,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'dlp',
       title: '4. DLP Enforcement & Coverage',
       badge: isDlpActive ? 'Active Coverage' : 'Unprotected',
-      badgeColor: isDlpActive ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-rose-950 text-rose-300 border-rose-800',
-      icon: <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />,
+      badgeColor: isDlpActive ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      icon: <ShieldAlert className="w-3.5 h-3.5 text-accent" />,
       metrics: [
         { label: 'Active DLP Conflicts', value: isDlpActive ? '0 conflicts' : '18 conflicts ⚠️', severity: isDlpActive ? 'Safe' : 'Critical' },
         { label: 'Unprotected Sensitive Flows', value: isDlpActive ? '0 flows' : '42 flows', severity: isDlpActive ? 'Safe' : 'High' }
@@ -100,8 +100,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'labels',
       title: '5. Sensitivity Label Coverage',
       badge: isLabelsFixed ? 'Good (92%)' : 'Drift Detected',
-      badgeColor: isLabelsFixed ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-rose-950 text-rose-300 border-rose-800',
-      icon: <FileText className="w-3.5 h-3.5 text-emerald-400" />,
+      badgeColor: isLabelsFixed ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      icon: <FileText className="w-3.5 h-3.5 text-status-green" />,
       metrics: [
         { label: 'Label Coverage Rate', value: isLabelsFixed ? '92%' : '38%', severity: isLabelsFixed ? 'Safe' : 'Critical' },
         { label: 'Classification Accuracy', value: isLabelsFixed ? '96% accurate' : '72% accurate', severity: isLabelsFixed ? 'Safe' : 'Moderate' },
@@ -112,8 +112,8 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       id: 'permissions',
       title: '6. Permissions & Admin Roles',
       badge: isPimActive ? 'JIT Active' : 'Permanent Admins',
-      badgeColor: isPimActive ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-rose-950 text-rose-300 border-rose-800',
-      icon: <Key className="w-3.5 h-3.5 text-rose-400" />,
+      badgeColor: isPimActive ? 'bg-status-green text-status-green border-status-green/30' : 'bg-destructive/10 text-destructive border-destructive/30',
+      icon: <Key className="w-3.5 h-3.5 text-destructive" />,
       metrics: [
         { label: 'Permanent Admin Accounts', value: isPimActive ? '0 (JIT PIM)' : '12 permanent ⚠️', severity: isPimActive ? 'Safe' : 'Critical' },
         { label: 'Privileged Entra Roles', value: isPimActive ? '4 scoped' : '34 accounts', severity: isPimActive ? 'Safe' : 'High' },
@@ -123,24 +123,24 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
   ];
 
   return (
-    <div className="bg-[#070B14] border border-white/10 rounded-2xl p-3.5 flex flex-col justify-between h-full select-none overflow-hidden space-y-3">
+    <div className="bg-background border border-border rounded-2xl p-3.5 flex flex-col justify-between h-full select-none overflow-hidden space-y-3">
       
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-2 border-b border-white/10 shrink-0">
+      <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
         <div className="flex items-center space-x-2">
-          <div className="w-6 h-6 rounded bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+          <div className="w-6 h-6 rounded bg-primary/20 border border-primary/40 flex items-center justify-center text-primary">
             <Layers className="w-3.5 h-3.5" />
           </div>
           <div>
-            <h4 className="text-xs font-black uppercase tracking-wider text-white">
+            <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
               M365 Security Scorecard
             </h4>
-            <p className="text-[9.5px] text-slate-400">
+            <p className="text-[9.5px] text-muted-foreground">
               6 Core Pillars • Defender & Purview Telemetry
             </p>
           </div>
         </div>
-        <span className="text-[9px] font-mono text-sky-300 bg-sky-950 px-2 py-0.5 rounded border border-sky-800 font-bold">
+        <span className="text-[9px] font-mono text-primary bg-primary px-2 py-0.5 rounded border border-primary/30 font-bold">
           M365 Native
         </span>
       </div>
@@ -156,17 +156,17 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
               onClick={() => onSelectPillar && onSelectPillar(section.id)}
               className={`p-2.5 rounded-xl border transition-all cursor-pointer relative group ${
                 isSelected
-                  ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                  : 'bg-black/50 border-white/10 hover:border-slate-700 hover:bg-slate-900/60'
+                  ? 'bg-primary/10 border-primary ring-1 ring-primary/50 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+                  : 'bg-muted/50 border-border hover:border-border hover:bg-secondary/60'
               }`}
             >
               {/* Section Title Bar */}
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center space-x-1.5">
-                  <div className="p-1 rounded bg-slate-900 border border-white/10">
+                  <div className="p-1 rounded bg-secondary border border-border">
                     {section.icon}
                   </div>
-                  <span className="text-xs font-extrabold text-white group-hover:text-sky-300 transition-colors">
+                  <span className="text-xs font-extrabold text-foreground group-hover:text-primary transition-colors">
                     {section.title}
                   </span>
                 </div>
@@ -176,14 +176,14 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
               </div>
 
               {/* Section Metrics Breakdown Grid */}
-              <div className="grid grid-cols-1 gap-1 text-[9.5px] font-mono border-t border-white/5 pt-1.5">
+              <div className="grid grid-cols-1 gap-1 text-[9.5px] font-mono border-t border-border/50 pt-1.5">
                 {section.metrics.map((m, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-0.5 px-1 rounded bg-slate-950/40">
-                    <span className="text-slate-400">{m.label}:</span>
+                  <div key={idx} className="flex items-center justify-between py-0.5 px-1 rounded bg-secondary/40">
+                    <span className="text-muted-foreground">{m.label}:</span>
                     <span className={`font-bold ${
-                      m.severity === 'Critical' ? 'text-rose-400' :
-                      m.severity === 'High' ? 'text-amber-400' :
-                      m.severity === 'Moderate' ? 'text-yellow-300' : 'text-emerald-400'
+                      m.severity === 'Critical' ? 'text-destructive' :
+                      m.severity === 'High' ? 'text-status-amber' :
+                      m.severity === 'Moderate' ? 'text-status-amber' : 'text-status-green'
                     }`}>
                       {m.value}
                     </span>
@@ -196,7 +196,7 @@ export const M365SecurityScorecard: React.FC<ScorecardProps> = ({
       </div>
 
       {/* FOOTER TIP */}
-      <div className="p-2 rounded-xl bg-sky-950/30 border border-sky-800/40 text-[9.5px] font-mono text-sky-300 flex items-center justify-between shrink-0">
+      <div className="p-2 rounded-xl bg-primary/10 border border-primary/30/40 text-[9.5px] font-mono text-primary flex items-center justify-between shrink-0">
         <span>💡 Click a pillar to highlight corresponding axis in center radar</span>
       </div>
 

@@ -439,12 +439,12 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
   // Helper icon renderer for carousel
   const renderEngineIcon = (iconName: string) => {
     switch (iconName) {
-      case 'Activity': return <Activity className="w-4 h-4 text-sky-400" />;
-      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4 text-rose-400" />;
-      case 'Layers': return <Layers className="w-4 h-4 text-emerald-400" />;
-      case 'TrendingUp': return <TrendingUp className="w-4 h-4 text-amber-400" />;
-      case 'CheckCircle2': return <CheckCircle2 className="w-4 h-4 text-indigo-400" />;
-      default: return <Sparkles className="w-4 h-4 text-sky-400" />;
+      case 'Activity': return <Activity className="w-4 h-4 text-primary" />;
+      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4 text-destructive" />;
+      case 'Layers': return <Layers className="w-4 h-4 text-status-green" />;
+      case 'TrendingUp': return <TrendingUp className="w-4 h-4 text-status-amber" />;
+      case 'CheckCircle2': return <CheckCircle2 className="w-4 h-4 text-accent" />;
+      default: return <Sparkles className="w-4 h-4 text-primary" />;
     }
   };
 
@@ -483,35 +483,35 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
   // Icon selector per use case
   const getUseCaseIcon = (type: string) => {
     switch (type) {
-      case 'blueprint': return <Terminal className="w-4 h-4 text-sky-400" />;
-      case 'radar': return <ShieldAlert className="w-4 h-4 text-rose-400" />;
-      case 'timeline': return <Zap className="w-4 h-4 text-emerald-400" />;
-      case 'doc_flow': return <FileText className="w-4 h-4 text-amber-400" />;
-      case 'nebula': return <Crown className="w-4 h-4 text-purple-400" />;
-      case 'particles': return <Layers className="w-4 h-4 text-indigo-400" />;
-      default: return <Grid className="w-4 h-4 text-sky-400" />;
+      case 'blueprint': return <Terminal className="w-4 h-4 text-primary" />;
+      case 'radar': return <ShieldAlert className="w-4 h-4 text-destructive" />;
+      case 'timeline': return <Zap className="w-4 h-4 text-status-green" />;
+      case 'doc_flow': return <FileText className="w-4 h-4 text-status-amber" />;
+      case 'nebula': return <Crown className="w-4 h-4 text-accent" />;
+      case 'particles': return <Layers className="w-4 h-4 text-accent" />;
+      default: return <Grid className="w-4 h-4 text-primary" />;
     }
   };
 
   return (
-    <div className="h-screen w-screen bg-[#07090E] text-slate-100 flex flex-col font-sans overflow-hidden antialiased select-none relative">
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none relative">
       
       {/* 1. TOP MISSION-CONTROL TOOLBAR */}
-      <header className="h-13 bg-[#0B0F19]/90 border-b border-white/10 px-4 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+      <header className="h-13 bg-sidebar/90 border-b border-border px-4 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
             <Grid className="w-4 h-4 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-white">
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                 Use-Case Stories & Workflow Intelligence
               </span>
-              <span className="text-[10px] font-mono bg-sky-500/20 text-sky-300 border border-sky-500/40 px-2 py-0.5 rounded font-semibold">
+              <span className="text-[10px] font-mono bg-primary/20 text-primary border border-primary/40 px-2 py-0.5 rounded font-semibold">
                 STEP 5 OF 8
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-muted-foreground">
               Quiz Intent × Persona Clusters × Live Telemetry Reality
             </p>
           </div>
@@ -522,16 +522,16 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
           {onHelpClick && (
             <button
               onClick={onHelpClick}
-              className="flex items-center space-x-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition-all cursor-pointer"
+              className="flex items-center space-x-1.5 bg-secondary/80 hover:bg-secondary text-muted-foreground text-xs px-3 py-1.5 rounded-lg border border-border transition-all cursor-pointer"
             >
-              <HelpCircle className="w-3.5 h-3.5 text-sky-400" />
+              <HelpCircle className="w-3.5 h-3.5 text-primary" />
               <span>Spec Info</span>
             </button>
           )}
 
           <button
             onClick={onContinue}
-            className="flex items-center space-x-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-sky-950/50 cursor-pointer"
+            className="flex items-center space-x-2 bg-gradient-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-primary/50 cursor-pointer"
           >
             <span>Evaluate Security Simulation</span>
             <ArrowRight className="w-4 h-4" />
@@ -540,7 +540,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
           {onExitClick && (
             <button
               onClick={onExitClick}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg border border-border transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -554,13 +554,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
         {/* ==================================================================== */}
         {/* LEFT PANEL — USE-CASE SELECTOR RAIL */}
         {/* ==================================================================== */}
-        <aside className="w-80 bg-[#0A0E17]/95 border-r border-white/10 p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Grid className="w-3.5 h-3.5 text-sky-400" />
+        <aside className="w-80 bg-sidebar/95 border-r border-border p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
+          <div className="flex items-center justify-between pb-2 border-b border-border">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Grid className="w-3.5 h-3.5 text-primary" />
               <span>Use-Case Rail ({EXTENDED_USE_CASES.length})</span>
             </span>
-            <span className="text-[10px] font-mono text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+            <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
               Live Select
             </span>
           </div>
@@ -574,13 +574,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                   onClick={() => handleSelectUseCase(uc.id)}
                   className={`p-3 rounded-xl border transition-all duration-300 cursor-pointer relative group ${
                     isActive
-                      ? 'bg-gradient-to-br from-[#0F223D] to-[#121A2B] border-sky-500 ring-1 ring-sky-500/40 shadow-[0_0_20px_rgba(0,120,212,0.25)]'
-                      : 'bg-[#0E131F]/80 border-slate-800 hover:border-slate-700 hover:bg-[#111827]'
+                      ? 'bg-gradient-to-br from-background to-background border-primary ring-1 ring-primary/40 shadow-[0_0_20px_rgba(0,120,212,0.25)]'
+                      : 'bg-card/80 border-border hover:border-border hover:bg-secondary'
                   }`}
                 >
                   {/* Selection Indicator Line */}
                   {isActive && (
-                    <div className="absolute left-0 top-3 bottom-3 w-1 bg-sky-400 rounded-r" />
+                    <div className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r" />
                   )}
 
                   <div className="flex items-start justify-between gap-2">
@@ -588,50 +588,50 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                       <div
                         className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border transition-transform ${
                           isActive
-                            ? 'bg-sky-950/80 border-sky-400 text-sky-300 shadow-[0_0_10px_rgba(0,120,212,0.4)] scale-105'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 group-hover:scale-105'
+                            ? 'bg-primary/15 border-primary text-primary shadow-[0_0_10px_rgba(0,120,212,0.4)] scale-105'
+                            : 'bg-secondary border-border text-muted-foreground group-hover:scale-105'
                         }`}
                       >
                         {getUseCaseIcon(uc.bgAnimationType)}
                       </div>
                       <div>
                         <h3 className={`text-xs font-bold leading-tight ${
-                          isActive ? 'text-white' : 'text-slate-200 group-hover:text-sky-300'
+                          isActive ? 'text-foreground' : 'text-foreground group-hover:text-primary'
                         }`}>
                           {uc.name}
                         </h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                        <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
                           {uc.personaCluster}
                         </p>
                       </div>
                     </div>
 
                     {uc.blocked ? (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/80 text-rose-300 shrink-0 font-bold">
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-destructive/15 border border-destructive/30 text-destructive shrink-0 font-bold">
                         BLOCKED
                       </span>
                     ) : (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 shrink-0 font-bold">
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-status-green/15 border border-status-green/30/80 text-status-green shrink-0 font-bold">
                         {uc.feasibilityScore}% FIT
                       </span>
                     )}
                   </div>
 
                   {/* Multi-Select Collaboration & Sensitivity Chips */}
-                  <div className="mt-2.5 pt-2 border-t border-white/5 space-y-1.5">
+                  <div className="mt-2.5 pt-2 border-t border-border/50 space-y-1.5">
                     <div className="flex flex-wrap gap-1">
-                      <span className="text-[9px] font-mono text-slate-500 font-semibold mr-1">Channels:</span>
+                      <span className="text-[9px] font-mono text-muted-foreground font-semibold mr-1">Channels:</span>
                       {uc.collaborationImpact.slice(0, 3).map((ch, idx) => (
-                        <span key={idx} className="text-[8.5px] font-mono bg-slate-900/90 text-sky-300 px-1.5 py-0.2 rounded border border-sky-900/50">
+                        <span key={idx} className="text-[8.5px] font-mono bg-secondary/90 text-primary px-1.5 py-0.2 rounded border border-primary/20">
                           {ch}
                         </span>
                       ))}
                     </div>
 
                     <div className="flex flex-wrap gap-1">
-                      <span className="text-[9px] font-mono text-slate-500 font-semibold mr-1">Sensitivity:</span>
+                      <span className="text-[9px] font-mono text-muted-foreground font-semibold mr-1">Sensitivity:</span>
                       {uc.sensitivityImpact.slice(0, 2).map((sen, idx) => (
-                        <span key={idx} className="text-[8.5px] font-mono bg-rose-950/60 text-rose-300 px-1.5 py-0.2 rounded border border-rose-900/50">
+                        <span key={idx} className="text-[8.5px] font-mono bg-destructive/10 text-destructive px-1.5 py-0.2 rounded border border-destructive/30">
                           {sen}
                         </span>
                       ))}
@@ -639,9 +639,9 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                   </div>
 
                   {/* Outcome Priority */}
-                  <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-emerald-400 font-semibold bg-emerald-950/30 px-2 py-1 rounded border border-emerald-900/40">
+                  <div className="mt-2 flex items-center justify-between text-[9px] font-mono text-status-green font-semibold bg-status-green/10 px-2 py-1 rounded border border-status-green/30">
                     <span className="truncate">🎯 {uc.outcomePriority}</span>
-                    <ChevronRight className="w-3 h-3 text-slate-500 shrink-0" />
+                    <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
                   </div>
                 </div>
               );
@@ -652,7 +652,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
         {/* ==================================================================== */}
         {/* CENTER PANEL — USE-CASE STORY (SHORT → EXPANDED NARRATIVE) */}
         {/* ==================================================================== */}
-        <main className="flex-1 overflow-y-auto bg-[#05070C] p-5 flex flex-col justify-between relative scrollbar-thin">
+        <main className="flex-1 overflow-y-auto bg-background p-5 flex flex-col justify-between relative scrollbar-thin">
           
           <div className="space-y-4">
             {/* INSIGHT RIBBON SYNC */}
@@ -661,16 +661,16 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                 ribbonPulse ? 'animate-ribbon-pulse' : ''
               } ${
                 isExpanded || isTransExpanded
-                  ? 'bg-purple-950/40 border-purple-500/40 shadow-[0_0_20px_rgba(168,85,247,0.2)]'
-                  : 'bg-sky-950/40 border-sky-500/40 shadow-[0_0_20px_rgba(0,120,212,0.2)]'
+                  ? 'bg-accent/10 border-accent/40 shadow-[0_0_20px_rgba(168,85,247,0.2)]'
+                  : 'bg-primary/10 border-primary/40 shadow-[0_0_20px_rgba(0,120,212,0.2)]'
               }`}
             >
               <div className="flex items-center justify-between gap-3 relative z-10">
-                <div className="flex items-center space-x-2.5 text-xs font-semibold text-slate-100">
-                  <Sparkles className="w-4 h-4 text-sky-400 shrink-0 animate-spin-slow" />
+                <div className="flex items-center space-x-2.5 text-xs font-semibold text-foreground">
+                  <Sparkles className="w-4 h-4 text-primary shrink-0 animate-spin-slow" />
                   <span>{dynamicRibbonText}</span>
                 </div>
-                <span className="text-[9.5px] font-mono uppercase font-bold tracking-wider text-sky-400 bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/40 shrink-0">
+                <span className="text-[9.5px] font-mono uppercase font-bold tracking-wider text-primary bg-primary/20 px-2 py-0.5 rounded border border-primary/40 shrink-0">
                   {isTransExpanded ? `Transformation ${transSliderPos}%` : 'Workflow Synced'}
                 </span>
               </div>
@@ -678,51 +678,51 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
             </div>
 
             {/* CINEMATIC NARRATIVE HERO CARD */}
-            <div className="relative rounded-2xl border border-white/10 overflow-hidden shadow-2xl flex flex-col transition-all duration-700 bg-[#090D16]">
+            <div className="relative rounded-2xl border border-border overflow-hidden shadow-2xl flex flex-col transition-all duration-700 bg-background">
               
               {/* USE-CASE SPECIFIC BACKGROUND ANIMATIONS */}
               {activeUseCase.bgAnimationType === 'blueprint' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div className="absolute inset-0 bg-[radial-gradient(#0078D4_1px,transparent_1px)] [background-size:24px_24px] opacity-15 animate-grid-move" />
-                  <div className="absolute top-10 right-10 w-64 h-64 rounded-full bg-sky-500/10 blur-3xl animate-pulse" />
+                  <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:24px_24px] opacity-15 animate-grid-move" />
+                  <div className="absolute top-10 right-10 w-64 h-64 rounded-full bg-primary/10 blur-3xl animate-pulse" />
                 </div>
               )}
 
               {activeUseCase.bgAnimationType === 'radar' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#02152E] via-[#081C38] to-[#010D1E] opacity-90" />
-                  <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full border border-rose-500/20 animate-radar-sweep" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background opacity-90" />
+                  <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full border border-destructive/20 animate-radar-sweep" />
                 </div>
               )}
 
               {activeUseCase.bgAnimationType === 'timeline' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
                   <div className="absolute top-0 bottom-0 left-10 right-10 flex flex-col justify-around opacity-15">
-                    <div className="h-0.5 bg-emerald-400 animate-shimmer" />
-                    <div className="h-0.5 bg-sky-400 animate-shimmer" />
-                    <div className="h-0.5 bg-indigo-400 animate-shimmer" />
+                    <div className="h-0.5 bg-status-green animate-shimmer" />
+                    <div className="h-0.5 bg-primary animate-shimmer" />
+                    <div className="h-0.5 bg-accent animate-shimmer" />
                   </div>
                 </div>
               )}
 
               {activeUseCase.bgAnimationType === 'doc_flow' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div className="absolute top-0 bottom-0 left-1/4 w-0.5 bg-gradient-to-b from-transparent via-amber-400/30 to-transparent animate-doc-flow" />
-                  <div className="absolute top-0 bottom-0 right-1/4 w-0.5 bg-gradient-to-b from-transparent via-sky-400/30 to-transparent animate-doc-flow" />
+                  <div className="absolute top-0 bottom-0 left-1/4 w-0.5 bg-gradient-to-b from-transparent via-status-amber/30 to-transparent animate-doc-flow" />
+                  <div className="absolute top-0 bottom-0 right-1/4 w-0.5 bg-gradient-to-b from-transparent via-primary/30 to-transparent animate-doc-flow" />
                 </div>
               )}
 
               {activeUseCase.bgAnimationType === 'nebula' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-purple-950/60 via-slate-950 to-sky-950/60" />
-                  <div className="absolute left-1/3 top-1/4 w-40 h-40 rounded-full bg-purple-500/20 blur-xl animate-nebula" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-accent/10 via-secondary to-primary/15" />
+                  <div className="absolute left-1/3 top-1/4 w-40 h-40 rounded-full bg-accent/20 blur-xl animate-nebula" />
                 </div>
               )}
 
               {activeUseCase.bgAnimationType === 'particles' && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div className="absolute inset-0 bg-[radial-gradient(#6366F1_1px,transparent_1px)] [background-size:20px_20px] opacity-20 animate-grid-move" />
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-indigo-500/10 blur-3xl animate-pulse" />
+                  <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--accent))_1px,transparent_1px)] [background-size:20px_20px] opacity-20 animate-grid-move" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-accent/10 blur-3xl animate-pulse" />
                 </div>
               )}
 
@@ -735,39 +735,39 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
               <div className="relative z-10 p-6 space-y-6">
                 
                 {/* Use Case Story Header */}
-                <div className="flex items-start justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
                   <div className="flex items-center space-x-4">
-                    <div className="w-14 h-14 rounded-2xl bg-slate-900/90 border border-sky-500/50 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(0,120,212,0.35)] animate-pulse shrink-0">
+                    <div className="w-14 h-14 rounded-2xl bg-secondary/90 border border-primary/50 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(0,120,212,0.35)] animate-pulse shrink-0">
                       {getUseCaseIcon(activeUseCase.bgAnimationType)}
                     </div>
                     <div>
                       <div className="flex items-center space-x-2.5">
-                        <h2 className="text-lg font-extrabold text-white tracking-tight">
+                        <h2 className="text-lg font-extrabold text-foreground tracking-tight">
                           {activeUseCase.name}
                         </h2>
-                        <span className="text-[11px] font-mono bg-sky-500/20 text-sky-300 border border-sky-500/30 px-2.5 py-0.5 rounded-full font-bold">
+                        <span className="text-[11px] font-mono bg-primary/20 text-primary border border-primary/30 px-2.5 py-0.5 rounded-full font-bold">
                           {activeUseCase.category}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-300 font-medium mt-0.5">
-                        {activeUseCase.personaCluster} • <span className="text-emerald-400 font-semibold">{activeUseCase.outcomePriority}</span>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                        {activeUseCase.personaCluster} • <span className="text-status-green font-semibold">{activeUseCase.outcomePriority}</span>
                       </p>
                     </div>
                   </div>
 
                   {/* Quick Value Badge & EXPAND STORY BUTTON */}
                   <div className="flex items-center space-x-3">
-                    <div className="hidden lg:flex flex-col items-end px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800">
-                      <span className="text-[10px] font-mono text-slate-400">Value Potential</span>
-                      <span className="text-xs font-mono font-extrabold text-emerald-400">{activeUseCase.expectedRoi}</span>
+                    <div className="hidden lg:flex flex-col items-end px-3 py-1.5 rounded-xl bg-secondary/80 border border-border">
+                      <span className="text-[10px] font-mono text-muted-foreground">Value Potential</span>
+                      <span className="text-xs font-mono font-extrabold text-status-green">{activeUseCase.expectedRoi}</span>
                     </div>
 
                     <button
                       onClick={toggleExpand}
                       className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-extrabold text-xs transition-all duration-300 border cursor-pointer ${
                         isExpanded
-                          ? 'bg-purple-600 hover:bg-purple-500 text-white border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.4)]'
-                          : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white border-sky-400 shadow-[0_0_20px_rgba(0,120,212,0.4)]'
+                          ? 'bg-accent hover:bg-accent text-primary-foreground border-accent shadow-[0_0_20px_rgba(168,85,247,0.4)]'
+                          : 'bg-gradient-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground border-primary shadow-[0_0_20px_rgba(0,120,212,0.4)]'
                       }`}
                     >
                       <Sparkles className="w-4 h-4 animate-spin-slow" />
@@ -782,14 +782,14 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                   <div className="space-y-5 animate-fade-in">
                     
                     {/* Short Story Narrative Synthesis */}
-                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900/90 via-[#0C1425] to-slate-900/90 border border-sky-500/30 relative overflow-hidden shadow-lg">
-                      <div className="absolute top-0 right-0 p-3 text-sky-500/10 pointer-events-none">
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-secondary/90 via-background to-secondary/90 border border-primary/30 relative overflow-hidden shadow-lg">
+                      <div className="absolute top-0 right-0 p-3 text-primary/10 pointer-events-none">
                         <Bookmark className="w-16 h-16" />
                       </div>
-                      <span className="text-[10px] font-mono font-extrabold text-sky-400 uppercase tracking-widest block mb-1.5">
+                      <span className="text-[10px] font-mono font-extrabold text-primary uppercase tracking-widest block mb-1.5">
                         Workflow Story Narrative Synthesis
                       </span>
-                      <p className="text-sm text-slate-100 leading-relaxed font-normal">
+                      <p className="text-sm text-foreground leading-relaxed font-normal">
                         "{activeUseCase.shortStory.context} {activeUseCase.shortStory.personaCluster} {activeUseCase.shortStory.telemetryCheck} {activeUseCase.shortStory.workflowFriction} {activeUseCase.shortStory.copilotUnlock}"
                       </p>
                     </div>
@@ -805,30 +805,30 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
                     {/* Multi-Select Collaboration & Sensitivity Matrix */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center justify-between">
+                      <div className="bg-secondary/80 p-3.5 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center justify-between">
                           <span>Collaboration Channels & Pattern</span>
-                          <span className="text-sky-400 font-mono text-[9px]">{activeUseCase.collaborationImpact.length} Channels</span>
+                          <span className="text-primary font-mono text-[9px]">{activeUseCase.collaborationImpact.length} Channels</span>
                         </span>
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {activeUseCase.collaborationImpact.map((ch, idx) => (
-                            <span key={idx} className="text-[10px] font-mono bg-sky-950/80 text-sky-300 border border-sky-800/80 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                            <span key={idx} className="text-[10px] font-mono bg-primary/15 text-primary border border-primary/30 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                               {ch}
                             </span>
                           ))}
                         </div>
                       </div>
 
-                      <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center justify-between">
+                      <div className="bg-secondary/80 p-3.5 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center justify-between">
                           <span>Sensitivity & Data Classifications</span>
-                          <span className="text-rose-400 font-mono text-[9px]">{activeUseCase.sensitivityImpact.length} Assets</span>
+                          <span className="text-destructive font-mono text-[9px]">{activeUseCase.sensitivityImpact.length} Assets</span>
                         </span>
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {activeUseCase.sensitivityImpact.map((sen, idx) => (
-                            <span key={idx} className="text-[10px] font-mono bg-rose-950/80 text-rose-300 border border-rose-800/80 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                            <span key={idx} className="text-[10px] font-mono bg-destructive/15 text-destructive border border-destructive/30 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
                               {sen}
                             </span>
                           ))}
@@ -838,36 +838,36 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
                     {/* Key Callout Boxes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs space-y-1.5">
-                        <span className="text-[10px] font-mono font-bold uppercase text-amber-400 flex items-center gap-1.5">
+                      <div className="p-4 rounded-xl bg-status-amber/10 border border-status-amber/30 text-xs space-y-1.5">
+                        <span className="text-[10px] font-mono font-bold uppercase text-status-amber flex items-center gap-1.5">
                           <AlertTriangle className="w-4 h-4" />
                           Telemetry Reality Check
                         </span>
-                        <p className="text-amber-200/95 leading-relaxed">
+                        <p className="text-status-amber leading-relaxed">
                           {activeUseCase.shortStory.telemetryCheck}
                         </p>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-sky-950/30 border border-sky-500/30 text-xs space-y-1.5">
-                        <span className="text-[10px] font-mono font-bold uppercase text-sky-400 flex items-center gap-1.5">
+                      <div className="p-4 rounded-xl bg-primary/10 border border-primary/30 text-xs space-y-1.5">
+                        <span className="text-[10px] font-mono font-bold uppercase text-primary flex items-center gap-1.5">
                           <Zap className="w-4 h-4" />
                           Copilot Workflow Unlock
                         </span>
-                        <p className="text-sky-200/95 leading-relaxed">
+                        <p className="text-primary leading-relaxed">
                           {activeUseCase.shortStory.copilotUnlock}
                         </p>
                       </div>
                     </div>
 
                     {/* Outcome Priorities & ROI Impact Footer */}
-                    <div className="p-4 rounded-xl bg-slate-900/90 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-3">
+                    <div className="p-4 rounded-xl bg-secondary/90 border border-border flex flex-col md:flex-row items-center justify-between gap-3">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-status-green/10 border border-status-green/30 flex items-center justify-center text-status-green shrink-0">
                           <Target className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Outcome Priority</span>
-                          <p className="text-xs font-bold text-emerald-300">
+                          <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold block">Outcome Priority</span>
+                          <p className="text-xs font-bold text-status-green">
                             {activeUseCase.outcomePriority}
                           </p>
                         </div>
@@ -875,12 +875,12 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
                       <div className="flex items-center space-x-4 shrink-0">
                         <div className="text-right">
-                          <span className="text-[10px] font-mono text-slate-400 block">Weekly Return</span>
-                          <span className="text-xs font-mono font-extrabold text-white">{activeUseCase.hoursSavedPerWeek} hrs / week</span>
+                          <span className="text-[10px] font-mono text-muted-foreground block">Weekly Return</span>
+                          <span className="text-xs font-mono font-extrabold text-foreground">{activeUseCase.hoursSavedPerWeek} hrs / week</span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-mono text-slate-400 block">ROI Multiplier</span>
-                          <span className="text-xs font-mono font-extrabold text-emerald-400">{activeUseCase.roiMultiplier}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground block">ROI Multiplier</span>
+                          <span className="text-xs font-mono font-extrabold text-status-green">{activeUseCase.roiMultiplier}</span>
                         </div>
                       </div>
                     </div>
@@ -892,12 +892,12 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                 {isExpanded && (
                   <div className="pt-2 space-y-5 animate-fade-slide">
                     
-                    <div className="flex items-center justify-between pb-2 border-b border-purple-500/30">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-purple-400" />
+                    <div className="flex items-center justify-between pb-2 border-b border-accent/30">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-accent" />
                         <span>Full 8-Part Workflow Intelligence Narrative</span>
                       </h3>
-                      <span className="text-[10px] font-mono text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/40">
+                      <span className="text-[10px] font-mono text-accent bg-accent/20 px-2.5 py-0.5 rounded-full border border-accent/40">
                         Expanded Mode Active
                       </span>
                     </div>
@@ -906,78 +906,78 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                       
                       {/* 1. Workflow Context */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-white/10 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
                           <Grid className="w-3.5 h-3.5" />
                           1. Workflow Context & Mission Scope
                         </span>
-                        <p className="text-slate-300 leading-relaxed text-xs">
+                        <p className="text-muted-foreground leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.workflowContext}
                         </p>
                       </div>
 
                       {/* 2. Persona Cluster Involvement */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-white/10 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-accent uppercase tracking-wider flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5" />
                           2. Persona Cluster Involvement
                         </span>
-                        <p className="text-slate-300 leading-relaxed text-xs">
+                        <p className="text-muted-foreground leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.personaInvolvement}
                         </p>
                       </div>
 
                       {/* 3. Collaboration Patterns & Sensitivity */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-white/10 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-destructive uppercase tracking-wider flex items-center gap-1.5">
                           <Lock className="w-3.5 h-3.5" />
                           3. Collaboration & Sensitivity Impact
                         </span>
-                        <p className="text-slate-300 leading-relaxed text-xs">
+                        <p className="text-muted-foreground leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.collaborationSensitivity}
                         </p>
                       </div>
 
                       {/* 4. Telemetry Reality Check */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-amber-500/30 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-status-amber/30 space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-status-amber uppercase tracking-wider flex items-center gap-1.5">
                           <AlertTriangle className="w-3.5 h-3.5" />
                           4. Telemetry Reality Check
                         </span>
-                        <p className="text-amber-200/90 leading-relaxed text-xs">
+                        <p className="text-status-amber leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.telemetryRealityCheck}
                         </p>
                       </div>
 
                       {/* 5. Governance Gaps & Friction */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-white/10 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-border space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-destructive uppercase tracking-wider flex items-center gap-1.5">
                           <ShieldAlert className="w-3.5 h-3.5" />
                           5. Governance Gaps & Workflow Friction
                         </span>
-                        <p className="text-slate-300 leading-relaxed text-xs">
+                        <p className="text-muted-foreground leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.governanceGaps}
                         </p>
                       </div>
 
                       {/* 6. Feasibility & Readiness */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-emerald-500/30 space-y-2">
-                        <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-status-green/30 space-y-2">
+                        <span className="text-[10px] font-mono font-bold text-status-green uppercase tracking-wider flex items-center gap-1.5">
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           6. Feasibility & Adoption Readiness
                         </span>
-                        <p className="text-emerald-200/90 leading-relaxed text-xs">
+                        <p className="text-status-green leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.feasibilityReadiness}
                         </p>
                       </div>
 
                       {/* 7. Copilot Value Story */}
-                      <div className="p-4 bg-black/60 rounded-xl border border-purple-500/30 space-y-2 md:col-span-2">
-                        <span className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="p-4 bg-muted/60 rounded-xl border border-accent/30 space-y-2 md:col-span-2">
+                        <span className="text-[10px] font-mono font-bold text-accent uppercase tracking-wider flex items-center gap-1.5">
                           <Zap className="w-3.5 h-3.5" />
                           7. Copilot Workflow Value Unlock
                         </span>
-                        <p className="text-purple-200/90 leading-relaxed text-xs">
+                        <p className="text-accent leading-relaxed text-xs">
                           {activeUseCase.expandedNarrative.copilotValueStory}
                         </p>
                       </div>
@@ -985,15 +985,15 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                     </div>
 
                     {/* 8. Workflow-Specific ROI Potential Banner */}
-                    <div className="p-5 rounded-2xl bg-gradient-to-r from-purple-950/90 via-indigo-950/90 to-sky-950/90 border border-purple-500/40 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs font-bold text-purple-300 uppercase tracking-wider">
+                    <div className="p-5 rounded-2xl bg-gradient-to-r from-accent/15 via-accent/90 to-primary/25 border border-accent/40 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-accent uppercase tracking-wider">
                         <span className="flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4 text-emerald-400" />
+                          <TrendingUp className="w-4 h-4 text-status-green" />
                           <span>8. Workflow-Specific ROI Potential & Value Vector</span>
                         </span>
-                        <span className="font-mono text-emerald-400 text-base font-extrabold">{activeUseCase.expectedRoi}</span>
+                        <span className="font-mono text-status-green text-base font-extrabold">{activeUseCase.expectedRoi}</span>
                       </div>
-                      <p className="text-slate-200 text-xs leading-relaxed">
+                      <p className="text-foreground text-xs leading-relaxed">
                         {activeUseCase.expandedNarrative.roiBreakdown}
                       </p>
                     </div>
@@ -1002,7 +1002,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                     <div className="pt-2 flex justify-center">
                       <button
                         onClick={toggleExpand}
-                        className="px-5 py-2.5 bg-purple-600/90 hover:bg-purple-500 text-white font-bold text-xs rounded-xl border border-purple-400 flex items-center space-x-2 transition-all cursor-pointer shadow-lg shadow-purple-950/50"
+                        className="px-5 py-2.5 bg-accent/90 hover:bg-accent text-primary-foreground font-bold text-xs rounded-xl border border-accent flex items-center space-x-2 transition-all cursor-pointer shadow-lg shadow-accent/50"
                       >
                         <ChevronUp className="w-4 h-4" />
                         <span>Collapse 8-Part Story View</span>
@@ -1017,15 +1017,15 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
           </div>
 
           {/* UNIFIED CAROUSEL INTEGRATION (SUBDUED DOCK AT BOTTOM) */}
-          <div className={`mt-4 pt-3 border-t border-white/10 transition-all duration-500 ${
+          <div className={`mt-4 pt-3 border-t border-border transition-all duration-500 ${
             isExpanded || isTransExpanded ? 'opacity-35 scale-[0.98] pointer-events-none' : 'opacity-80 hover:opacity-100'
           }`}>
             <div className="flex items-center justify-between mb-1.5 px-1">
-              <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                <Activity className="w-3 h-3 text-sky-400" />
+              <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center gap-1.5">
+                <Activity className="w-3 h-3 text-primary" />
                 <span>Unified Telemetry Analysis Dock (Subdued in Workflow View)</span>
               </span>
-              <span className="text-[9px] font-mono text-slate-500">
+              <span className="text-[9px] font-mono text-muted-foreground">
                 {isExpanded || isTransExpanded ? 'Subdued Mode Active' : 'Live Grounding Active'}
               </span>
             </div>
@@ -1044,38 +1044,38 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
         {/* ==================================================================== */}
         {/* RIGHT PANEL — USE-CASE METRICS (ANIMATED) */}
         {/* ==================================================================== */}
-        <aside className="w-80 bg-[#0A0E17]/95 border-l border-white/10 p-4 flex flex-col justify-between shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20 select-none">
+        <aside className="w-80 bg-sidebar/95 border-l border-border p-4 flex flex-col justify-between shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20 select-none">
           
           <div className="space-y-4">
             
             {/* Title */}
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 Workflow Telemetry Metrics
               </h2>
-              <span className="text-[10px] font-mono text-sky-400 font-semibold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30">
+              <span className="text-[10px] font-mono text-primary font-semibold bg-primary/10 px-2 py-0.5 rounded border border-primary/30">
                 Live Vector
               </span>
             </div>
 
             {/* DUAL RADIAL GAUGES: Feasibility Score vs Adoption Readiness */}
-            <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3.5 rounded-xl space-y-3">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+            <div className="bg-muted/40 backdrop-blur-md border border-border p-3.5 rounded-xl space-y-3">
+              <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground">
                 <span>Workflow Readiness Gauges</span>
-                <span className="text-[9.5px] font-mono text-slate-500">2-Meter Sync</span>
+                <span className="text-[9.5px] font-mono text-muted-foreground">2-Meter Sync</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-1">
                 {/* Gauge 1: Feasibility Score */}
-                <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-secondary/80 border border-border">
                   <div className="relative w-16 h-16 flex items-center justify-center">
                     <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 64 64">
                       <circle
                         cx="32"
                         cy="32"
                         r={feasRadius}
-                        className="stroke-slate-800"
+                        className="stroke-secondary"
                         strokeWidth="5"
                         fill="transparent"
                       />
@@ -1083,7 +1083,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                         cx="32"
                         cy="32"
                         r={feasRadius}
-                        className="stroke-sky-400 transition-all duration-1000 ease-out"
+                        className="stroke-primary transition-all duration-1000 ease-out"
                         strokeWidth="5"
                         strokeDasharray={feasCircumference}
                         strokeDashoffset={feasOffset}
@@ -1091,24 +1091,24 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                         fill="transparent"
                       />
                     </svg>
-                    <span className="absolute text-xs font-mono font-extrabold text-white">
+                    <span className="absolute text-xs font-mono font-extrabold text-foreground">
                       {effectiveFeasibility}%
                     </span>
                   </div>
-                  <span className="text-[9.5px] font-mono text-slate-400 mt-1 font-semibold text-center">
+                  <span className="text-[9.5px] font-mono text-muted-foreground mt-1 font-semibold text-center">
                     Feasibility Score
                   </span>
                 </div>
 
                 {/* Gauge 2: Adoption Readiness */}
-                <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-900/80 border border-slate-800">
+                <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-secondary/80 border border-border">
                   <div className="relative w-16 h-16 flex items-center justify-center">
                     <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 64 64">
                       <circle
                         cx="32"
                         cy="32"
                         r={adoptRadius}
-                        className="stroke-slate-800"
+                        className="stroke-secondary"
                         strokeWidth="5"
                         fill="transparent"
                       />
@@ -1116,7 +1116,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                         cx="32"
                         cy="32"
                         r={adoptRadius}
-                        className="stroke-emerald-400 transition-all duration-1000 ease-out"
+                        className="stroke-status-green transition-all duration-1000 ease-out"
                         strokeWidth="5"
                         strokeDasharray={adoptCircumference}
                         strokeDashoffset={adoptOffset}
@@ -1124,11 +1124,11 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                         fill="transparent"
                       />
                     </svg>
-                    <span className="absolute text-xs font-mono font-extrabold text-white">
+                    <span className="absolute text-xs font-mono font-extrabold text-foreground">
                       {effectiveAdoptionReadiness}%
                     </span>
                   </div>
-                  <span className="text-[9.5px] font-mono text-slate-400 mt-1 font-semibold text-center">
+                  <span className="text-[9.5px] font-mono text-muted-foreground mt-1 font-semibold text-center">
                     Adoption Readiness
                   </span>
                 </div>
@@ -1136,13 +1136,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
             </div>
 
             {/* GOVERNANCE BLOCKERS LIST */}
-            <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3.5 rounded-xl space-y-2.5">
-              <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center justify-between">
+            <div className="bg-muted/40 backdrop-blur-md border border-border p-3.5 rounded-xl space-y-2.5">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center justify-between">
                 <span>Governance & Security Blockers</span>
                 {activeUseCase.blocked ? (
-                  <span className="text-rose-400 font-mono text-[9px] font-bold">Action Required</span>
+                  <span className="text-destructive font-mono text-[9px] font-bold">Action Required</span>
                 ) : (
-                  <span className="text-emerald-400 font-mono text-[9px] font-bold">Cleared</span>
+                  <span className="text-status-green font-mono text-[9px] font-bold">Cleared</span>
                 )}
               </span>
 
@@ -1152,29 +1152,29 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                     <div
                       key={idx}
                       onClick={() => setSelectedIssue({ label: b, category: 'blocker', severity: 'High' })}
-                      className="p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-[10.5px] text-rose-200 flex items-start gap-2 cursor-pointer hover:border-rose-500/60 hover:bg-rose-950/60 transition-colors"
+                      className="p-2 rounded-lg bg-destructive/10/40 border border-destructive/60 text-[10.5px] text-destructive flex items-start gap-2 cursor-pointer hover:border-destructive/60 hover:bg-destructive/10 transition-colors"
                     >
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                      <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
                       <span>{b}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-900/50 text-[10.5px] text-emerald-300 flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="p-2.5 rounded-lg bg-status-green/10 border border-status-green/50 text-[10.5px] text-status-green flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-status-green shrink-0" />
                   <span>No security blockers. Ready for immediate deployment.</span>
                 </div>
               )}
             </div>
 
             {/* SENSITIVITY EXPOSURE LIST */}
-            <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3.5 rounded-xl space-y-2">
+            <div className="bg-muted/40 backdrop-blur-md border border-border p-3.5 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                  <Lock className="w-3 h-3 text-rose-400" />
+                <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center gap-1.5">
+                  <Lock className="w-3 h-3 text-destructive" />
                   <span>Sensitivity Exposure</span>
                 </span>
-                <span className="text-[9px] font-mono text-rose-400 font-bold">Severity</span>
+                <span className="text-[9px] font-mono text-destructive font-bold">Severity</span>
               </div>
 
               <div className="space-y-1.5 pt-1">
@@ -1182,13 +1182,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                   <div
                     key={idx}
                     onClick={() => setSelectedIssue({ label: item.label, category: 'sensitivity', severity: item.severity })}
-                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px] cursor-pointer hover:border-sky-500/50 hover:bg-slate-900 transition-colors"
+                    className="flex items-center justify-between p-2 rounded-lg bg-secondary/80 border border-border text-[10px] cursor-pointer hover:border-primary/50 hover:bg-secondary transition-colors"
                   >
-                    <span className="text-slate-300 font-medium truncate max-w-[170px]">{item.label}</span>
+                    <span className="text-muted-foreground font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                      item.severity === 'High' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                      item.severity === 'Medium' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                      'bg-slate-800 text-slate-300 border border-slate-700'
+                      item.severity === 'High' ? 'bg-destructive/10 text-destructive border border-destructive/30' :
+                      item.severity === 'Medium' ? 'bg-status-amber/10 text-status-amber border border-status-amber/30' :
+                      'bg-secondary text-muted-foreground border border-border'
                     }`}>
                       {item.severity}
                     </span>
@@ -1198,13 +1198,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
             </div>
 
             {/* COLLABORATION FRICTION LIST */}
-            <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3.5 rounded-xl space-y-2">
+            <div className="bg-muted/40 backdrop-blur-md border border-border p-3.5 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold flex items-center gap-1.5">
-                  <Activity className="w-3 h-3 text-sky-400" />
+                <span className="text-[10px] font-mono text-muted-foreground uppercase font-bold flex items-center gap-1.5">
+                  <Activity className="w-3 h-3 text-primary" />
                   <span>Collaboration Friction</span>
                 </span>
-                <span className="text-[9px] font-mono text-sky-400 font-bold">Impact</span>
+                <span className="text-[9px] font-mono text-primary font-bold">Impact</span>
               </div>
 
               <div className="space-y-1.5 pt-1">
@@ -1212,13 +1212,13 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
                   <div
                     key={idx}
                     onClick={() => setSelectedIssue({ label: item.label, category: 'friction', severity: item.severity })}
-                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px] cursor-pointer hover:border-sky-500/50 hover:bg-slate-900 transition-colors"
+                    className="flex items-center justify-between p-2 rounded-lg bg-secondary/80 border border-border text-[10px] cursor-pointer hover:border-primary/50 hover:bg-secondary transition-colors"
                   >
-                    <span className="text-slate-300 font-medium truncate max-w-[170px]">{item.label}</span>
+                    <span className="text-muted-foreground font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                      item.severity === 'High' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                      item.severity === 'Medium' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                      'bg-slate-800 text-slate-300 border border-slate-700'
+                      item.severity === 'High' ? 'bg-destructive/10 text-destructive border border-destructive/30' :
+                      item.severity === 'Medium' ? 'bg-status-amber/10 text-status-amber border border-status-amber/30' :
+                      'bg-secondary text-muted-foreground border border-border'
                     }`}>
                       {item.severity}
                     </span>
@@ -1228,36 +1228,36 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
             </div>
 
             {/* VALUE & ROI VECTOR SUMMARY */}
-            <div className="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/30 p-3.5 rounded-xl space-y-2">
-              <span className="text-[10px] font-mono text-emerald-400 uppercase font-bold flex items-center justify-between">
+            <div className="bg-gradient-to-br from-status-green/40 to-secondary border border-status-green/30 p-3.5 rounded-xl space-y-2">
+              <span className="text-[10px] font-mono text-status-green uppercase font-bold flex items-center justify-between">
                 <span>Value Potential & Seat Impact</span>
-                <span className="text-emerald-300 font-mono font-bold text-[9px]">Verified Vector</span>
+                <span className="text-status-green font-mono font-bold text-[9px]">Verified Vector</span>
               </span>
 
               <div className="grid grid-cols-2 gap-2 pt-1 text-center">
-                <div className="p-2 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <span className="text-[9px] font-mono text-slate-400 block">Weekly Return</span>
-                  <span className="text-xs font-mono font-extrabold text-white">{activeUseCase.hoursSavedPerWeek} hrs / wk</span>
+                <div className="p-2 bg-secondary/90 rounded-lg border border-border">
+                  <span className="text-[9px] font-mono text-muted-foreground block">Weekly Return</span>
+                  <span className="text-xs font-mono font-extrabold text-foreground">{activeUseCase.hoursSavedPerWeek} hrs / wk</span>
                 </div>
-                <div className="p-2 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <span className="text-[9px] font-mono text-slate-400 block">ROI Multiplier</span>
-                  <span className="text-xs font-mono font-extrabold text-emerald-400">{activeUseCase.roiMultiplier}</span>
+                <div className="p-2 bg-secondary/90 rounded-lg border border-border">
+                  <span className="text-[9px] font-mono text-muted-foreground block">ROI Multiplier</span>
+                  <span className="text-xs font-mono font-extrabold text-status-green">{activeUseCase.roiMultiplier}</span>
                 </div>
               </div>
 
-              <div className="p-2 bg-slate-900/90 rounded-lg border border-slate-800 text-center">
-                <span className="text-[9px] font-mono text-slate-400 block">Annual Value Per Seat</span>
-                <span className="text-xs font-mono font-extrabold text-emerald-300">{activeUseCase.expectedRoi}</span>
+              <div className="p-2 bg-secondary/90 rounded-lg border border-border text-center">
+                <span className="text-[9px] font-mono text-muted-foreground block">Annual Value Per Seat</span>
+                <span className="text-xs font-mono font-extrabold text-status-green">{activeUseCase.expectedRoi}</span>
               </div>
             </div>
 
           </div>
 
           {/* NEXT STEP BUTTON IN RIGHT PANEL */}
-          <div className="pt-3 border-t border-white/10">
+          <div className="pt-3 border-t border-border">
             <button
               onClick={onContinue}
-              className="w-full py-2.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-sky-950/50 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+              className="w-full py-2.5 bg-gradient-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-extrabold text-xs rounded-xl shadow-lg shadow-primary/50 flex items-center justify-center space-x-2 transition-all cursor-pointer"
             >
               <span>Evaluate Security Simulation</span>
               <ArrowRight className="w-4 h-4" />

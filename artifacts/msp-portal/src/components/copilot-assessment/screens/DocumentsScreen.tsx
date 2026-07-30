@@ -295,22 +295,22 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
   const getStatusBadgeStyle = (status: 'Ready' | 'Updated' | 'New') => {
     switch (status) {
       case 'New':
-        return 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+        return 'bg-accent/20 text-accent border-accent/40';
       case 'Updated':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+        return 'bg-status-amber/20 text-status-amber border-status-amber/40';
       case 'Ready':
       default:
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+        return 'bg-status-green/20 text-status-green border-status-green/40';
     }
   };
 
   return (
-    <div className="h-screen w-screen bg-[#07090E] text-slate-100 flex flex-col font-sans overflow-hidden antialiased select-none relative">
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none relative">
       
       {/* Toast Notification Bar */}
       {toastMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-950 border border-emerald-500/80 text-emerald-200 font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-status-green border border-status-green/80 text-status-green font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-status-green" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -318,36 +318,36 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
       {/* ==================================================================== */}
       {/* TOP NAVBAR                                                           */}
       {/* ==================================================================== */}
-      <header className="h-14 bg-[#0B0F19]/95 border-b border-white/10 px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+      <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-status-green border border-status-green/50 flex items-center justify-center text-status-green shadow-[0_0_15px_rgba(16,185,129,0.3)]">
             <FileCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm font-black uppercase tracking-wider text-white">
+              <span className="text-sm font-black uppercase tracking-wider text-foreground">
                 Copilot Document Delivery Center
               </span>
-              <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-extrabold">
+              <span className="text-[10px] font-mono bg-status-green/20 text-status-green border border-status-green/40 px-2 py-0.5 rounded font-extrabold">
                 EXECUTIVE DOWNLOAD HUB
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-muted-foreground">
               6 Assessment Deliverables Generated • PDF, DOCX, JSON & Stakeholder Distribution
             </p>
           </div>
         </div>
 
         {/* Status Pill */}
-        <div className="hidden lg:flex items-center space-x-3 bg-black/60 px-4 py-1.5 rounded-xl border border-white/10">
-          <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">
+        <div className="hidden lg:flex items-center space-x-3 bg-muted/60 px-4 py-1.5 rounded-xl border border-border">
+          <span className="text-[10px] font-mono uppercase text-muted-foreground font-bold">
             Asset Readiness:
           </span>
           <div className="flex items-center space-x-2">
-            <span className="text-sm font-mono font-black text-emerald-400">
+            <span className="text-sm font-mono font-black text-status-green">
               6 / 6 Documents Ready
             </span>
-            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-emerald-950 text-emerald-300 border-emerald-800">
+            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded border bg-status-green text-status-green border-status-green/30">
               C-Suite Verified
             </span>
           </div>
@@ -358,7 +358,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
           {onOpenArchitectureSpec && (
             <button
               onClick={onOpenArchitectureSpec}
-              className="hidden md:flex items-center space-x-1.5 text-[10px] font-mono text-sky-300 bg-sky-950/60 border border-sky-800 px-3 py-1.5 rounded-lg transition-colors cursor-pointer hover:bg-sky-900/80"
+              className="hidden md:flex items-center space-x-1.5 text-[10px] font-mono text-primary bg-primary/10 border border-primary/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer hover:bg-primary/80"
             >
               <Layers className="w-3.5 h-3.5" />
               <span>UI Spec Reader</span>
@@ -367,7 +367,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
 
           <button
             onClick={onContinue}
-            className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-emerald-950/50 cursor-pointer border border-white/20 uppercase tracking-wider"
+            className="flex items-center space-x-2 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-status-green/50 cursor-pointer border border-border uppercase tracking-wider"
           >
             <span>Proceed to SOW</span>
             <ArrowRight className="w-4 h-4" />
@@ -376,7 +376,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
           {onExitClick && (
             <button
               onClick={onExitClick}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg border border-border transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -392,13 +392,13 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
         {/* ================================================================== */}
         {/* LEFT PANEL — DOCUMENT LIST                                         */}
         {/* ================================================================== */}
-        <aside className="w-80 bg-[#0A0E17]/95 border-r border-white/10 p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-emerald-400" />
+        <aside className="w-80 bg-sidebar/95 border-r border-border p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
+          <div className="flex items-center justify-between pb-2 border-b border-border">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-status-green" />
               <span>Generated Documents</span>
             </span>
-            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">
+            <span className="text-[9px] font-mono text-status-green bg-status-green/15 border border-status-green/30 px-2 py-0.5 rounded">
               6 Assets
             </span>
           </div>
@@ -415,12 +415,12 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
                   }}
                   className={`p-3 rounded-xl border transition-all cursor-pointer relative ${
                     isSelected
-                      ? 'bg-[#0F291E] border-emerald-500 ring-1 ring-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
-                      : 'bg-[#0E131F] border-slate-800 hover:border-slate-700'
+                      ? 'bg-background border-status-green ring-1 ring-status-green/50 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                      : 'bg-background border-border hover:border-border'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
                       {doc.category}
                     </span>
                     <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${getStatusBadgeStyle(doc.status)}`}>
@@ -428,16 +428,16 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
                     </span>
                   </div>
 
-                  <h3 className={`text-xs font-bold leading-tight mb-1.5 ${isSelected ? 'text-emerald-300' : 'text-slate-200'}`}>
+                  <h3 className={`text-xs font-bold leading-tight mb-1.5 ${isSelected ? 'text-status-green' : 'text-foreground'}`}>
                     {doc.title}
                   </h3>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground pt-1 border-t border-border/80">
                     <span className="flex items-center gap-1">
-                      <FileText className="w-3 h-3 text-emerald-400" />
+                      <FileText className="w-3 h-3 text-status-green" />
                       {doc.pageCount} Pages
                     </span>
-                    <span className="flex items-center gap-1 text-slate-400">
+                    <span className="flex items-center gap-1 text-muted-foreground">
                       <Clock className="w-3 h-3" />
                       {doc.readTime}
                     </span>
@@ -451,21 +451,21 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
         {/* ================================================================== */}
         {/* CENTER PANEL — DOCUMENT PREVIEW                                    */}
         {/* ================================================================== */}
-        <main className="flex-1 overflow-y-auto bg-[#05070C] p-6 flex flex-col relative scrollbar-thin space-y-5">
+        <main className="flex-1 overflow-y-auto bg-background p-6 flex flex-col relative scrollbar-thin space-y-5">
 
           {/* Document Header Bar */}
-          <div className="bg-[#090D16] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="bg-background border border-border rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-mono uppercase bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-0.5 rounded font-bold">
+                <span className="text-[10px] font-mono uppercase bg-status-green text-status-green border border-status-green/30 px-2.5 py-0.5 rounded font-bold">
                   {selectedDoc.type}
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-muted-foreground">
                   {selectedDoc.lastUpdated}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-muted-foreground bg-secondary border border-border px-2 py-0.5 rounded">
                   Confidential — C-Suite Briefing
                 </span>
                 <span className={`text-[9px] font-mono font-bold px-2.5 py-0.5 rounded border ${getStatusBadgeStyle(selectedDoc.status)}`}>
@@ -475,18 +475,18 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             </div>
 
             <div>
-              <h1 className="text-xl font-extrabold text-white tracking-tight">
+              <h1 className="text-xl font-extrabold text-foreground tracking-tight">
                 {selectedDoc.title}
               </h1>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                 {selectedDoc.summary}
               </p>
             </div>
 
             {/* Page Count & Quick Navigation Bar */}
-            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs font-mono text-slate-400">
+            <div className="pt-2 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
               <div className="flex items-center space-x-3">
-                <span className="text-emerald-400 font-bold">{selectedDoc.pageCount} Total Pages</span>
+                <span className="text-status-green font-bold">{selectedDoc.pageCount} Total Pages</span>
                 <span>•</span>
                 <span>File Size: {selectedDoc.fileSize}</span>
               </div>
@@ -495,17 +495,17 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
                 <button
                   disabled={activePreviewPage === 1}
                   onClick={() => setActivePreviewPage(prev => Math.max(1, prev - 1))}
-                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 cursor-pointer"
+                  className="p-1 rounded bg-secondary border border-border text-muted-foreground disabled:opacity-40 hover:bg-secondary cursor-pointer"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <span className="text-[10px] font-mono text-slate-300">
-                  Page <strong className="text-white">{activePreviewPage}</strong> of {selectedDoc.pageCount}
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  Page <strong className="text-foreground">{activePreviewPage}</strong> of {selectedDoc.pageCount}
                 </span>
                 <button
                   disabled={activePreviewPage === selectedDoc.pageCount}
                   onClick={() => setActivePreviewPage(prev => Math.min(selectedDoc.pageCount, prev + 1))}
-                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 cursor-pointer"
+                  className="p-1 rounded bg-secondary border border-border text-muted-foreground disabled:opacity-40 hover:bg-secondary cursor-pointer"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -514,11 +514,11 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
           </div>
 
           {/* SIMULATED PAPER DOCUMENT PREVIEW CANVAS */}
-          <div className="bg-[#0B0F19] border border-white/15 rounded-2xl p-8 shadow-2xl relative space-y-6 text-slate-200 min-h-[500px]">
+          <div className="bg-background border border-border rounded-2xl p-8 shadow-2xl relative space-y-6 text-foreground min-h-[500px]">
             {/* Watermark header */}
-            <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 border-b border-white/10 pb-3">
-              <span className="flex items-center gap-1.5 text-slate-300">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="flex justify-between items-center text-[10px] font-mono text-muted-foreground border-b border-border pb-3">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Sparkles className="w-3.5 h-3.5 text-status-green" />
                 MICROSOFT 365 COPILOT ENTERPRISE ASSESSMENT
               </span>
               <span>PAGE {activePreviewPage} OF {selectedDoc.pageCount}</span>
@@ -527,13 +527,13 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             {/* Document Content Sections */}
             <div className="space-y-6">
               {selectedDoc.sections.map((sec, idx) => (
-                <div key={idx} className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-white/5">
-                  <h3 className="text-sm font-bold text-emerald-300 font-mono flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <div key={idx} className="space-y-3 bg-secondary/60 p-4 rounded-xl border border-border/50">
+                  <h3 className="text-sm font-bold text-status-green font-mono flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-status-green" />
                     <span>{sec.heading}</span>
                   </h3>
                   
-                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                  <p className="text-xs text-muted-foreground leading-relaxed font-sans">
                     {sec.content}
                   </p>
 
@@ -541,9 +541,9 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
                   {sec.stats && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
                       {sec.stats.map((st, sIdx) => (
-                        <div key={sIdx} className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
-                          <span className="text-[10px] text-slate-400 block font-mono">{st.label}:</span>
-                          <span className="text-xs font-mono font-bold text-emerald-400">{st.value}</span>
+                        <div key={sIdx} className="bg-secondary/90 p-2 rounded-lg border border-border">
+                          <span className="text-[10px] text-muted-foreground block font-mono">{st.label}:</span>
+                          <span className="text-xs font-mono font-bold text-status-green">{st.value}</span>
                         </div>
                       ))}
                     </div>
@@ -553,7 +553,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             </div>
 
             {/* Document Footer */}
-            <div className="pt-6 border-t border-white/10 flex justify-between items-center text-[9.5px] font-mono text-slate-400">
+            <div className="pt-6 border-t border-border flex justify-between items-center text-[9.5px] font-mono text-muted-foreground">
               <span>Confidential • Prepared for Board & C-Suite Review</span>
               <span>Generated via Copilot Value Engine</span>
             </div>
@@ -564,13 +564,13 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
         {/* ================================================================== */}
         {/* RIGHT PANEL — DELIVERY OPTIONS & EXPORT CENTER                     */}
         {/* ================================================================== */}
-        <aside className="w-84 bg-[#0A0E17]/95 border-l border-white/10 p-4 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-              <Download className="w-4 h-4 text-emerald-400" />
+        <aside className="w-84 bg-sidebar/95 border-l border-border p-4 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20">
+          <div className="flex items-center justify-between pb-2 border-b border-border">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <Download className="w-4 h-4 text-status-green" />
               <span>Delivery & Export Center</span>
             </span>
-            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">
+            <span className="text-[9px] font-mono text-status-green bg-status-green/15 border border-status-green/30 px-2 py-0.5 rounded">
               Ready
             </span>
           </div>
@@ -578,14 +578,14 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
           <div className="space-y-4">
 
             {/* Selected Asset Info Card */}
-            <div className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-1.5">
-              <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold block">
+            <div className="p-3.5 rounded-xl bg-secondary/90 border border-border space-y-1.5">
+              <span className="text-[10px] font-mono uppercase text-status-green font-bold block">
                 Target Selected Document
               </span>
-              <p className="text-xs font-bold text-white leading-tight">
+              <p className="text-xs font-bold text-foreground leading-tight">
                 {selectedDoc.title}
               </p>
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800">
+              <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground pt-1 border-t border-border">
                 <span>Size: {selectedDoc.fileSize}</span>
                 <span>{selectedDoc.pageCount} Pages</span>
               </div>
@@ -593,71 +593,71 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
 
             {/* Download Buttons Section */}
             <div className="space-y-2">
-              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">
+              <span className="text-[10px] font-mono uppercase text-muted-foreground font-bold block">
                 Direct Document Downloads
               </span>
 
               {/* PDF Button */}
               <button
                 onClick={() => handleDownload('PDF')}
-                className="w-full py-2.5 px-3 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border border-emerald-600/80 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer shadow-lg"
+                className="w-full py-2.5 px-3 bg-status-green/15 hover:bg-status-green text-status-green border border-status-green/80 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer shadow-lg"
               >
                 <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <FileText className="w-4 h-4 text-status-green" />
                   <span>Download Executive PDF</span>
                 </div>
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <Download className="w-3.5 h-3.5 text-status-green" />
               </button>
 
               {/* DOCX Button */}
               <button
                 onClick={() => handleDownload('DOCX (Word)')}
-                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-sky-200 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer"
+                className="w-full py-2.5 px-3 bg-secondary hover:bg-secondary text-primary border border-border rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer"
               >
                 <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-sky-400" />
+                  <FileText className="w-4 h-4 text-primary" />
                   <span>Download Editable DOCX</span>
                 </div>
-                <Download className="w-3.5 h-3.5 text-sky-400" />
+                <Download className="w-3.5 h-3.5 text-primary" />
               </button>
 
               {/* JSON Button */}
               <button
                 onClick={() => handleDownload('JSON Schema')}
-                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-indigo-200 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer"
+                className="w-full py-2.5 px-3 bg-secondary hover:bg-secondary text-accent border border-border rounded-xl text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer"
               >
                 <div className="flex items-center space-x-2">
-                  <FileSpreadsheet className="w-4 h-4 text-indigo-400" />
+                  <FileSpreadsheet className="w-4 h-4 text-accent" />
                   <span>Download Raw Telemetry JSON</span>
                 </div>
-                <Download className="w-3.5 h-3.5 text-indigo-400" />
+                <Download className="w-3.5 h-3.5 text-accent" />
               </button>
             </div>
 
             {/* Email to Stakeholders Form */}
-            <form onSubmit={handleSendEmail} className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2.5">
-              <span className="text-[10px] font-mono uppercase text-sky-400 font-bold block flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-sky-400" />
+            <form onSubmit={handleSendEmail} className="p-3.5 rounded-xl bg-secondary/90 border border-border space-y-2.5">
+              <span className="text-[10px] font-mono uppercase text-primary font-bold block flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-primary" />
                 Email to Enterprise Stakeholders
               </span>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-slate-400 block">Stakeholder Email:</label>
+                <label className="text-[10px] font-mono text-muted-foreground block">Stakeholder Email:</label>
                 <input
                   type="email"
                   value={emailAddress}
                   onChange={(e) => setEmailAddress(e.target.value)}
                   placeholder="executive@company.com"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-secondary border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:border-primary"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-slate-400 block">Stakeholder Role:</label>
+                <label className="text-[10px] font-mono text-muted-foreground block">Stakeholder Role:</label>
                 <select
                   value={emailRole}
                   onChange={(e) => setEmailRole(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+                  className="w-full bg-secondary border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:border-primary cursor-pointer"
                 >
                   <option>Executive Sponsor (VP/C-Suite)</option>
                   <option>CISO & Security Officer</option>
@@ -669,7 +669,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
               <button
                 type="submit"
                 disabled={isSendingEmail}
-                className="w-full py-2 px-3 bg-sky-600 hover:bg-sky-500 text-slate-950 font-mono font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                className="w-full py-2 px-3 bg-primary hover:bg-primary text-primary-foreground font-mono font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>{isSendingEmail ? 'Dispatching Email...' : 'Send Document to Stakeholder'}</span>
@@ -677,16 +677,16 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             </form>
 
             {/* Bulk Download ZIP Callout */}
-            <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/40 space-y-2">
-              <span className="text-[10px] font-mono uppercase text-indigo-300 font-bold block">
+            <div className="p-3 rounded-xl bg-accent/40 border border-accent/40 space-y-2">
+              <span className="text-[10px] font-mono uppercase text-accent font-bold block">
                 Complete Deliverable Bundle (.ZIP)
               </span>
-              <p className="text-[10px] text-slate-300 leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Includes all 6 executive documents, raw telemetry logs, and financial projections in a single encrypted ZIP archive.
               </p>
               <button
                 onClick={() => handleDownload('ZIP Bundle (6 Files)')}
-                className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono font-bold rounded-lg text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer"
+                className="w-full py-2 px-3 bg-accent hover:bg-accent text-primary-foreground font-mono font-bold rounded-lg text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer"
               >
                 <Download className="w-3 h-3" />
                 <span>Download All 6 Files (.ZIP)</span>
@@ -697,7 +697,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({
             <div className="pt-2">
               <button
                 onClick={onContinue}
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-emerald-950/60 cursor-pointer border border-white/20 uppercase tracking-wider"
+                className="w-full py-3 px-4 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-status-green/60 cursor-pointer border border-border uppercase tracking-wider"
               >
                 <span>Proceed to Statement of Work (SOW)</span>
                 <ArrowRight className="w-4 h-4" />

@@ -179,11 +179,11 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
 
   const getSeverityColor = (sev: string) => {
     switch (sev) {
-      case 'Critical': return '#EF4444'; // Red
-      case 'High': return '#F59E0B';     // Amber
-      case 'Moderate': return '#EAB308'; // Yellow
-      case 'Safe': return '#10B981';     // Green
-      default: return '#3B82F6';
+      case 'Critical': return 'hsl(var(--destructive))'; // Red
+      case 'High': return 'hsl(var(--status-amber))';     // Amber
+      case 'Moderate': return 'hsl(var(--status-amber))'; // Yellow
+      case 'Safe': return 'hsl(var(--status-green))';     // Green
+      default: return 'hsl(var(--primary))';
     }
   };
 
@@ -191,31 +191,31 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
   const blastRadiusRingSize = 140 + (blastRadiusScore * 0.45);
 
   return (
-    <div className="bg-[#060913] border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between space-y-4 shadow-2xl h-full select-none overflow-hidden relative">
+    <div className="bg-background border border-border/80 rounded-2xl p-4 flex flex-col justify-between space-y-4 shadow-2xl h-full select-none overflow-hidden relative">
       
       {/* ==================================================================== */}
       {/* LAYER 1: SHORT SECURITY STORY (TOP OF CENTER PANEL)                  */}
       {/* ==================================================================== */}
-      <div className="bg-[#0B101E] border border-white/10 rounded-xl p-3.5 space-y-2 relative overflow-hidden shrink-0">
+      <div className="bg-background border border-border rounded-xl p-3.5 space-y-2 relative overflow-hidden shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-            <h4 className="text-xs font-black uppercase tracking-wider text-white">
+            <Sparkles className="w-4 h-4 text-status-amber shrink-0" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
               Copilot Security Narrative & Risk Analysis
             </h4>
           </div>
           <span className={`text-[9.5px] font-mono font-extrabold px-2 py-0.5 rounded border uppercase ${
             blastRadiusScore > 65
-              ? 'bg-rose-950 text-rose-300 border-rose-700'
+              ? 'bg-destructive/10 text-destructive border-destructive'
               : blastRadiusScore > 35
-              ? 'bg-amber-950 text-amber-300 border-amber-700'
-              : 'bg-emerald-950 text-emerald-300 border-emerald-700'
+              ? 'bg-status-amber/10 text-status-amber border-status-amber'
+              : 'bg-status-green text-status-green border-status-green'
           }`}>
             {blastRadiusScore > 65 ? 'High Blast Radius' : blastRadiusScore > 35 ? 'Moderate Risk' : 'Governed State'}
           </span>
         </div>
 
-        <p className="text-xs font-mono leading-relaxed text-slate-200 bg-black/40 p-2.5 rounded-lg border border-white/5">
+        <p className="text-xs font-mono leading-relaxed text-foreground bg-muted/40 p-2.5 rounded-lg border border-border/50">
           "{storyText}"
         </p>
       </div>
@@ -226,13 +226,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
       <div className="relative flex-1 flex flex-col items-center justify-center min-h-[310px] space-y-2">
         
         {/* RADAR & BLAST TOP HEADER STRIP */}
-        <div className="w-full flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-400 z-10 px-2 gap-2">
+        <div className="w-full flex flex-wrap items-center justify-between text-[10px] font-mono text-muted-foreground z-10 px-2 gap-2">
           <div className="flex items-center space-x-2">
-            <Shield className="w-4 h-4 text-emerald-400" />
-            <span className="font-bold text-slate-200 uppercase tracking-wider">
+            <Shield className="w-4 h-4 text-status-green" />
+            <span className="font-bold text-foreground uppercase tracking-wider">
               1. Safeguard Coverage Radar:
             </span>
-            <span className="font-extrabold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700">
+            <span className="font-extrabold text-status-green bg-status-green/15 px-2 py-0.5 rounded border border-status-green">
               {avgCoverage}% Guardrails Active
             </span>
           </div>
@@ -240,10 +240,10 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
           {/* TENANT SENTIMENT MASCOT BADGE ("Happier" as blast radius contracts) */}
           <div className={`flex items-center space-x-2 px-3 py-1 rounded-xl border transition-all duration-500 shadow-lg ${
             blastRadiusScore > 60
-              ? 'bg-rose-950/80 border-rose-600 text-rose-200 shadow-rose-950/50'
+              ? 'bg-destructive/15 border-destructive text-destructive shadow-destructive/50'
               : blastRadiusScore > 30
-              ? 'bg-amber-950/80 border-amber-600 text-amber-200 shadow-amber-950/50'
-              : 'bg-emerald-950/90 border-emerald-500 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+              ? 'bg-status-amber/15 border-status-amber text-status-amber shadow-status-amber/50'
+              : 'bg-status-green/90 border-status-green text-status-green shadow-[0_0_15px_rgba(16,185,129,0.4)]'
           }`}>
             <span className="text-sm">
               {blastRadiusScore > 60 ? '🚨 🤬' : blastRadiusScore > 30 ? '⚠️ 😐' : '✨ 😊 🛡️'}
@@ -251,7 +251,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             <div>
               <div className="font-black text-[9.5px] uppercase tracking-wider flex items-center gap-1">
                 <span>Blast Radius:</span>
-                <span className={blastRadiusScore > 60 ? 'text-rose-400' : blastRadiusScore > 30 ? 'text-amber-400' : 'text-emerald-300'}>
+                <span className={blastRadiusScore > 60 ? 'text-destructive' : blastRadiusScore > 30 ? 'text-status-amber' : 'text-status-green'}>
                   {blastRadiusScore}% ({exposedDataGB} GB)
                 </span>
               </div>
@@ -272,16 +272,16 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             <defs>
               {/* Coverage Gradient (Outward fill when guardrails enabled) */}
               <radialGradient id="radarShieldGradient" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.80" />
-                <stop offset="70%" stopColor="#10B981" stopOpacity="0.60" />
-                <stop offset="100%" stopColor="#047857" stopOpacity="0.30" />
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.80" />
+                <stop offset="70%" stopColor="hsl(var(--status-green))" stopOpacity="0.60" />
+                <stop offset="100%" stopColor="hsl(var(--status-green))" stopOpacity="0.30" />
               </radialGradient>
 
               {/* Blast Radius Hazard Gradient */}
               <radialGradient id="blastHazardGradient" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#EF4444" stopOpacity="0.75" />
-                <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.45" />
-                <stop offset="100%" stopColor="#7F1D1D" stopOpacity="0.0" />
+                <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity="0.75" />
+                <stop offset="60%" stopColor="hsl(var(--status-amber))" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity="0.0" />
               </radialGradient>
 
               <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
@@ -303,7 +303,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                   <polygon
                     points={gridPts}
                     fill="none"
-                    stroke={level === 1.0 ? '#475569' : '#334155'}
+                    stroke={level === 1.0 ? 'hsl(var(--muted-foreground))' : 'hsl(var(--border))'}
                     strokeWidth={level === 1.0 ? '1.5' : '0.75'}
                     strokeDasharray={level === 1.0 ? 'none' : '3 3'}
                     opacity={0.6}
@@ -311,7 +311,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                   <text
                     x={cx + 6}
                     y={cy - maxRadius * level + 10}
-                    fill="#64748B"
+                    fill="hsl(var(--muted-foreground))"
                     fontSize="7.5"
                     fontFamily="monospace"
                   >
@@ -327,7 +327,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
               cy={cy}
               r={blastRadiusRingSize}
               fill="url(#blastHazardGradient)"
-              stroke={blastRadiusScore > 60 ? '#EF4444' : blastRadiusScore > 30 ? '#F59E0B' : '#10B981'}
+              stroke={blastRadiusScore > 60 ? 'hsl(var(--destructive))' : blastRadiusScore > 30 ? 'hsl(var(--status-amber))' : 'hsl(var(--status-green))'}
               strokeWidth={blastRadiusScore > 60 ? '2' : '1'}
               strokeDasharray="4 4"
               opacity={0.65}
@@ -356,7 +356,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                     y1={cy}
                     x2={edgePt.cx}
                     y2={edgePt.cy}
-                    stroke={isHovered ? '#38BDF8' : '#64748B'}
+                    stroke={isHovered ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))'}
                     strokeWidth={isHovered ? '2.5' : '1'}
                     opacity={isHovered ? 1 : 0.6}
                   />
@@ -373,7 +373,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                   <text
                     x={labelPt.cx}
                     y={labelPt.cy}
-                    fill={isHovered ? '#38BDF8' : '#E2E8F0'}
+                    fill={isHovered ? 'hsl(var(--primary))' : 'hsl(var(--foreground))'}
                     fontSize="9"
                     fontWeight="800"
                     fontFamily="monospace"
@@ -387,7 +387,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                   <text
                     x={labelPt.cx}
                     y={labelPt.cy + 10}
-                    fill={pillar.riskValue > 70 ? '#34D399' : pillar.riskValue > 40 ? '#FBBF24' : '#F87171'}
+                    fill={pillar.riskValue > 70 ? 'hsl(var(--status-green))' : pillar.riskValue > 40 ? 'hsl(var(--status-amber))' : 'hsl(var(--destructive))'}
                     fontSize="8.5"
                     fontWeight="900"
                     fontFamily="monospace"
@@ -407,7 +407,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                 return `${pt.x},${pt.y}`;
               }).join(' ')}
               fill="url(#radarShieldGradient)"
-              stroke="#34D399"
+              stroke="hsl(var(--status-green))"
               strokeWidth="2.5"
               filter="url(#radarGlow)"
               className="transition-all duration-700 opacity-90"
@@ -422,7 +422,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
                   cx={pt.x}
                   cy={pt.y}
                   r="4.5"
-                  fill={pillar.riskValue > 70 ? '#10B981' : pillar.riskValue > 40 ? '#F59E0B' : '#EF4444'}
+                  fill={pillar.riskValue > 70 ? 'hsl(var(--status-green))' : pillar.riskValue > 40 ? 'hsl(var(--status-amber))' : 'hsl(var(--destructive))'}
                   stroke="#FFFFFF"
                   strokeWidth="1.5"
                   className="transition-all duration-700"
@@ -431,8 +431,8 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             })}
 
             {/* CENTER TARGET SHIELD EMBLEM */}
-            <circle cx={cx} cy={cy} r="12" fill="#090D16" stroke="#10B981" strokeWidth="2" />
-            <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize="10" fill="#34D399" fontWeight="bold">
+            <circle cx={cx} cy={cy} r="12" fill="hsl(var(--background))" stroke="hsl(var(--status-green))" strokeWidth="2" />
+            <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize="10" fill="hsl(var(--status-green))" fontWeight="bold">
               {blastRadiusScore < 30 ? '😊' : blastRadiusScore < 60 ? '😐' : '🤬'}
             </text>
           </svg>
@@ -440,8 +440,8 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
 
         {/* AXIS HOVER TOOLTIP CARD */}
         {hoveredAxisIdx !== null && (
-          <div className="bg-black/90 border border-sky-500 text-sky-200 text-[10px] font-mono px-3 py-1 rounded-lg shadow-xl z-20 whitespace-nowrap">
-            <strong className="text-white font-bold">{pillars[hoveredAxisIdx].name}:</strong> {pillars[hoveredAxisIdx].details} ({pillars[hoveredAxisIdx].riskValue}% Guardrail Coverage)
+          <div className="bg-muted/90 border border-primary text-primary text-[10px] font-mono px-3 py-1 rounded-lg shadow-xl z-20 whitespace-nowrap">
+            <strong className="text-foreground font-bold">{pillars[hoveredAxisIdx].name}:</strong> {pillars[hoveredAxisIdx].details} ({pillars[hoveredAxisIdx].riskValue}% Guardrail Coverage)
           </div>
         )}
       </div>
@@ -449,13 +449,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
       {/* ==================================================================== */}
       {/* LAYER 3: SIMULATION CONTROLS (BOTTOM OF CENTER PANEL)                */}
       {/* ==================================================================== */}
-      <div className="bg-[#0A0E1A] border border-white/10 rounded-xl p-3 space-y-2.5 shrink-0">
-        <div className="flex items-center justify-between text-[10.5px] font-mono font-extrabold text-white border-b border-white/10 pb-1.5">
-          <span className="uppercase tracking-wider flex items-center gap-1.5 text-amber-300">
-            <Sliders className="w-3.5 h-3.5 text-amber-400" />
+      <div className="bg-background border border-border rounded-xl p-3 space-y-2.5 shrink-0">
+        <div className="flex items-center justify-between text-[10.5px] font-mono font-extrabold text-foreground border-b border-border pb-1.5">
+          <span className="uppercase tracking-wider flex items-center gap-1.5 text-status-amber">
+            <Sliders className="w-3.5 h-3.5 text-status-amber" />
             <span>Simulation Controls — Adjust Governance to Shrink Radar</span>
           </span>
-          <span className="text-slate-400 font-normal">Live Blast Radius Modeling</span>
+          <span className="text-muted-foreground font-normal">Live Blast Radius Modeling</span>
         </div>
 
         {/* CONTROLS STRIP GRID */}
@@ -466,13 +466,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             onClick={onToggleEnableCopilot}
             className={`p-1.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
               enableCopilot
-                ? 'bg-amber-950/60 border-amber-500 text-amber-200 font-bold'
-                : 'bg-slate-900 border-white/10 text-slate-400'
+                ? 'bg-status-amber/10 border-status-amber text-status-amber font-bold'
+                : 'bg-secondary border-border text-muted-foreground'
             }`}
           >
             <span>Enable Copilot</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              enableCopilot ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-300'
+              enableCopilot ? 'bg-status-amber text-black' : 'bg-secondary text-muted-foreground'
             }`}>
               {enableCopilot ? 'PROJECTED' : 'OFF'}
             </span>
@@ -483,13 +483,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             onClick={onToggleCA01}
             className={`p-1.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
               tightenCA01
-                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 font-bold'
-                : 'bg-rose-950/50 border-rose-800 text-rose-300'
+                ? 'bg-status-green/10 border-status-green text-status-green font-bold'
+                : 'bg-destructive/10/50 border-destructive/30 text-destructive'
             }`}
           >
             <span>Tighten CA01</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              tightenCA01 ? 'bg-emerald-500 text-black' : 'bg-rose-900 text-rose-200'
+              tightenCA01 ? 'bg-status-green text-black' : 'bg-destructive text-destructive'
             }`}>
               {tightenCA01 ? 'ENFORCED' : 'OFF'}
             </span>
@@ -500,13 +500,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             onClick={onToggleUnlabeled}
             className={`p-1.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
               fixUnlabeled
-                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 font-bold'
-                : 'bg-amber-950/50 border-amber-800 text-amber-300'
+                ? 'bg-status-green/10 border-status-green text-status-green font-bold'
+                : 'bg-status-amber/10/50 border-status-amber/30 text-status-amber'
             }`}
           >
             <span>Fix Unlabeled Files</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              fixUnlabeled ? 'bg-emerald-500 text-black' : 'bg-amber-900 text-amber-200'
+              fixUnlabeled ? 'bg-status-green text-black' : 'bg-status-amber text-status-amber'
             }`}>
               {fixUnlabeled ? 'FIXED' : 'OFF'}
             </span>
@@ -517,13 +517,13 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             onClick={onToggleDLP}
             className={`p-1.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
               resolveDLP
-                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 font-bold'
-                : 'bg-purple-950/50 border-purple-800 text-purple-300'
+                ? 'bg-status-green/10 border-status-green text-status-green font-bold'
+                : 'bg-accent/50 border-accent text-accent'
             }`}
           >
             <span>Resolve DLP Conflicts</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              resolveDLP ? 'bg-emerald-500 text-black' : 'bg-purple-900 text-purple-200'
+              resolveDLP ? 'bg-status-green text-black' : 'bg-accent text-accent'
             }`}>
               {resolveDLP ? 'ACTIVE' : 'OFF'}
             </span>
@@ -534,23 +534,23 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
             onClick={onTogglePIM}
             className={`p-1.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
               removePermanentAdmins
-                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 font-bold'
-                : 'bg-rose-950/50 border-rose-800 text-rose-300'
+                ? 'bg-status-green/10 border-status-green text-status-green font-bold'
+                : 'bg-destructive/10/50 border-destructive/30 text-destructive'
             }`}
           >
             <span>Remove Perm Admins</span>
             <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${
-              removePermanentAdmins ? 'bg-emerald-500 text-black' : 'bg-rose-900 text-rose-200'
+              removePermanentAdmins ? 'bg-status-green text-black' : 'bg-destructive text-destructive'
             }`}>
               {removePermanentAdmins ? 'JIT PIM' : 'OFF'}
             </span>
           </button>
 
           {/* 6. Reduce External Guests Slider */}
-          <div className="p-1 rounded-lg border border-white/10 bg-black/60 flex flex-col justify-between">
+          <div className="p-1 rounded-lg border border-border bg-muted/60 flex flex-col justify-between">
             <div className="flex items-center justify-between text-[8.5px] font-mono">
-              <span className="text-slate-300 font-bold">External Guests:</span>
-              <span className="text-amber-300 font-extrabold">{Math.round((externalGuestsLevel / 100) * 1700)}</span>
+              <span className="text-muted-foreground font-bold">External Guests:</span>
+              <span className="text-status-amber font-extrabold">{Math.round((externalGuestsLevel / 100) * 1700)}</span>
             </div>
             <input
               type="range"
@@ -558,15 +558,15 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
               max={100}
               value={externalGuestsLevel}
               onChange={(e) => onChangeExternalGuests(Number(e.target.value))}
-              className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-amber-400 mt-0.5"
+              className="w-full h-1 bg-secondary rounded appearance-none cursor-pointer accent-status-amber mt-0.5"
             />
           </div>
 
           {/* 7. Reduce Federated Domains Slider */}
-          <div className="p-1 rounded-lg border border-white/10 bg-black/60 flex flex-col justify-between col-span-2 md:col-span-1">
+          <div className="p-1 rounded-lg border border-border bg-muted/60 flex flex-col justify-between col-span-2 md:col-span-1">
             <div className="flex items-center justify-between text-[8.5px] font-mono">
-              <span className="text-slate-300 font-bold">Federated Domains:</span>
-              <span className="text-sky-300 font-extrabold">{Math.round((federatedDomainsLevel / 100) * 88)}</span>
+              <span className="text-muted-foreground font-bold">Federated Domains:</span>
+              <span className="text-primary font-extrabold">{Math.round((federatedDomainsLevel / 100) * 88)}</span>
             </div>
             <input
               type="range"
@@ -574,7 +574,7 @@ export const ReactorCore: React.FC<ReactorCoreProps> = ({
               max={100}
               value={federatedDomainsLevel}
               onChange={(e) => onChangeFederatedDomains && onChangeFederatedDomains(Number(e.target.value))}
-              className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-sky-400 mt-0.5"
+              className="w-full h-1 bg-secondary rounded appearance-none cursor-pointer accent-primary mt-0.5"
             />
           </div>
 
