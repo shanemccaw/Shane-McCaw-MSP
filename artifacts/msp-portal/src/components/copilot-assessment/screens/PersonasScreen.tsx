@@ -662,8 +662,8 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                 </div>
 
                 {/* Quick Value Badge & EXPAND STORY / COLLAPSE BUTTON */}
-                <div className="flex items-center space-x-3">
-                  <div className="hidden lg:flex flex-col items-end px-3 py-1.5 rounded-xl bg-secondary/80 border border-border">
+                <div className="flex items-center space-x-3 shrink-0">
+                  <div className="hidden lg:flex flex-col items-end px-3 py-1.5 rounded-xl bg-secondary/80 border border-border shrink-0">
                     <span className="text-[10px] font-mono text-muted-foreground">Value Potential</span>
                     <span className="text-xs font-mono font-extrabold text-status-green">{activePersona.valuePotential.annualValuePerSeat}</span>
                   </div>
@@ -671,7 +671,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                   <button
                     onClick={toggleExpand}
                     style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-                    className="group relative flex items-center gap-2.5 px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 rounded-full bg-[linear-gradient(135deg,#3B82F6_0%,#8B5CF6_50%,#D8B4FE_100%)] animate-copilot-pulse-glow hover:shadow-2xl hover:-translate-y-0.5 active:scale-95 overflow-hidden border border-white/20 cursor-pointer"
+                    className="group relative flex items-center justify-center gap-2.5 min-w-[250px] shrink-0 px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 rounded-full bg-[linear-gradient(135deg,#3B82F6_0%,#8B5CF6_50%,#D8B4FE_100%)] animate-copilot-pulse-glow hover:shadow-2xl hover:-translate-y-0.5 active:scale-95 overflow-hidden border border-white/20 cursor-pointer"
                   >
                     {/* Shimmer sweep */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-copilot-shimmer z-[5]" />
