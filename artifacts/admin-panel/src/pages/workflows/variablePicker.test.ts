@@ -43,7 +43,7 @@ describe("getAncestorOutputs — with captured samples registry", () => {
     const nodes: AncestorNode[] = [
       n("start", "start"),
       n("email", "action", { actionType: "send_email" }),
-      n("target", "action", { actionType: "create_lead" }),
+      n("target", "action", { actionType: "create_client" }),
     ];
     const edges: AncestorEdge[] = [e("start", "email"), e("email", "target")];
 

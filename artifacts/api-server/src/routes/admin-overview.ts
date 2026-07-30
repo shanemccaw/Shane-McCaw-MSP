@@ -1,11 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import {
-  db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable,
+  // #135 (Decommission Legacy CRM Phase A): leads and quiz submissions both come
+  // from `lead_staging` (#83's unified pre-Zoho table) — the legacy `leads` /
+  // `quiz_leads` tables are no longer read here. `opportunitiesTable` below is
+  // deliberately unchanged: that table is Phase B's (#136).
+  db, usersTable, leadStagingTable, projectsTable, invoicesTable, clientServicesTable,
   servicesTable, projectUpdatesTable, messagesTable, shareEventsTable,
   checklistDownloadsTable, statusReportsTable, opportunitiesTable, kanbanTasksTable,
-  runbookJobHistoryTable, quizLeadsTable,
+  runbookJobHistoryTable,
 } from "@workspace/db";
-import { eq, desc, count, isNull, and, gte, sql } from "drizzle-orm";
+import { eq, desc, count, isNull, isNotNull, and, gte, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
@@ -56,7 +60,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     recentAssessments,
   ] = await Promise.all([
     db.select({ cnt: count() }).from(usersTable).where(eq(usersTable.role, "client")),
-    db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)),
+    db.select().from(leadStagingTable).orderBy(desc(leadStagingTable.createdAt)),
     db.select().from(projectsTable),
     db.select().from(invoicesTable),
     db.select({ cs: clientServicesTable, service: servicesTable })
@@ -69,7 +73,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       .where(eq(projectsTable.status, "active"))
       .orderBy(desc(projectsTable.updatedAt))
       .limit(10),
-    db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)).limit(5),
+    db.select().from(leadStagingTable).orderBy(desc(leadStagingTable.createdAt)).limit(5),
     db.select({ pu: projectUpdatesTable, p: projectsTable })
       .from(projectUpdatesTable)
       .innerJoin(projectsTable, eq(projectUpdatesTable.projectId, projectsTable.id))
@@ -124,17 +128,21 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       .leftJoin(usersTable, eq(statusReportsTable.clientUserId, usersTable.id))
       .orderBy(desc(statusReportsTable.updatedAt))
       .limit(6),
-    // Recent assessments (quiz leads) for unified activity feed
+    // Recent assessments (quiz leads) for unified activity feed.
+    // #135: `lead_staging` (#83) replaces `quiz_leads`. `quizType IS NOT NULL` is
+    // required — this feed row is labelled an assessment, and `lead_staging` also
+    // holds contact-form/purchase leads that never took a quiz.
     db.select({
-      id: quizLeadsTable.id,
-      name: quizLeadsTable.name,
-      company: quizLeadsTable.company,
-      tier: quizLeadsTable.tier,
-      totalScore: quizLeadsTable.totalScore,
-      createdAt: quizLeadsTable.createdAt,
+      id: leadStagingTable.id,
+      name: leadStagingTable.name,
+      company: leadStagingTable.company,
+      tier: leadStagingTable.tier,
+      totalScore: leadStagingTable.totalScore,
+      createdAt: leadStagingTable.createdAt,
     })
-      .from(quizLeadsTable)
-      .orderBy(desc(quizLeadsTable.createdAt))
+      .from(leadStagingTable)
+      .where(isNotNull(leadStagingTable.quizType))
+      .orderBy(desc(leadStagingTable.createdAt))
       .limit(3),
   ]);
 
@@ -552,7 +560,7 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
       quizLeadRows,
     ] = await Promise.all([
       db.select({ cnt: count() }).from(usersTable).where(eq(usersTable.role, "client")),
-      db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)),
+      db.select().from(leadStagingTable).orderBy(desc(leadStagingTable.createdAt)),
       db.select({ cnt: count() }).from(projectsTable).where(eq(projectsTable.status, "active")),
       db.select().from(invoicesTable),
       db.select({ cs: clientServicesTable, service: servicesTable })
@@ -565,7 +573,10 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
       db.select().from(kanbanTasksTable)
         .where(gte(kanbanTasksTable.updatedAt, thirtyDaysAgoInsights))
         .orderBy(desc(kanbanTasksTable.updatedAt)),
-      db.select().from(quizLeadsTable).orderBy(desc(quizLeadsTable.createdAt)),
+      // #135: quiz submissions from `lead_staging` (#83), quiz-sourced rows only.
+      db.select().from(leadStagingTable)
+        .where(isNotNull(leadStagingTable.quizType))
+        .orderBy(desc(leadStagingTable.createdAt)),
     ]);
 
     const clientCount = Number(clientRows[0]?.cnt ?? 0);

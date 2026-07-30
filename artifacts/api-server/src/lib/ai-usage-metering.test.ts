@@ -149,7 +149,7 @@ describe("action meta-node dispatch", () => {
   });
 
   it("action + a non-AI actionType stays non-AI", () => {
-    expect(isAIDependent("action", "create_lead")).toBe(false);
+    expect(isAIDependent("action", "create_client")).toBe(false);
     expect(isAIDependent("action", "http_request")).toBe(false);
   });
 
@@ -159,7 +159,7 @@ describe("action meta-node dispatch", () => {
   });
 
   it("getAiCostOwner throws on a non-AI node rather than guessing an owner", () => {
-    expect(() => getAiCostOwner("action", "create_lead")).toThrow(/not AI-dependent/);
+    expect(() => getAiCostOwner("action", "create_client")).toThrow(/not AI-dependent/);
   });
 });
 
@@ -276,7 +276,10 @@ describe("metered Anthropic client", () => {
     ["support chat", "chat_message", "msp"],
     ["script analysis", "analyze_script_output", "msp"],
     ["news + campaign brief", "fetch_news_headlines", "msp"],
-    ["lead scoring", "score_lead", "platform"],
+    // "lead scoring" / score_lead removed here with the node type itself in #135
+    // (Decommission Legacy CRM Phase A) — generate_upsell_recommendation is the
+    // other platform-owned AI node and keeps this row's coverage of that owner.
+    ["upsell recommendation", "generate_upsell_recommendation", "platform"],
     ["dashboard insight", "generate_insight", "platform"],
   ])(
     "one AI-dependent call per category produces an attributed usage event (%s)",

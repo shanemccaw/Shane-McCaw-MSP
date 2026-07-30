@@ -415,7 +415,11 @@ Opens the client's SharePoint site or M365 admin profile in a new tab if `sharep
 
 ### 3.3 Leads
 
-**Route:** `/crm/leads` · **Component:** `src/pages/crm/Leads.tsx`
+> **REMOVED in #135 (Decommission Legacy CRM Phase A).** `src/pages/crm/Leads.tsx`
+> is deleted; `/crm/leads` now redirects to `/pipeline/zoho-leads` (Zoho CRM, #83).
+> The description below is retained as history of what the page did.
+
+**Route:** `/crm/leads` (redirect) · **Component:** deleted
 
 Inbound leads from the contact form and lead magnets on the consulting website.
 
@@ -445,7 +449,11 @@ Mobile view (below `sm`): Card list showing name, email, status badge, and sourc
 
 ### 3.4 Lead Detail
 
-**Route:** `/crm/leads/:id` · **Component:** `src/pages/crm/LeadDetail.tsx`
+> **REMOVED in #135 (Decommission Legacy CRM Phase A).** `src/pages/crm/LeadDetail.tsx`
+> is deleted; `/crm/leads/:id` now redirects to `/pipeline/zoho-leads` (the local row
+> id has no Zoho equivalent to resolve). Retained below as history.
+
+**Route:** `/crm/leads/:id` (redirect) · **Component:** deleted
 
 Deep-dive view for a single lead with qualification tools and AI analysis.
 
@@ -501,7 +509,13 @@ Timeline of past qualification records showing score, stage, recommended next st
 
 ### 3.5 Opportunities
 
-**Route:** `/crm/opportunities` · **Component:** `src/pages/crm/Opportunities.tsx`
+> **REMOVED in #135 (Decommission Legacy CRM Phase A).** `src/pages/crm/Opportunities.tsx`
+> is deleted; `/crm/opportunities` now redirects to `/pipeline/zoho-deals` (Zoho CRM, #83).
+> The `opportunities` TABLE and `GET /api/opportunities` both survive — they are
+> still read by ConvertToTaskModal and the Workflow Builder/List object pickers,
+> and the table itself belongs to Phase B (#136). Retained below as history.
+
+**Route:** `/crm/opportunities` (redirect) · **Component:** deleted
 
 Opportunities are qualification records promoted from leads. Each opportunity has five sub-scores plus an overall snapshot score.
 
@@ -1240,7 +1254,11 @@ Signed project closure records and client testimonials.
 
 ### 7.6 Opportunity Detail
 
-**Route:** `/crm/opportunities/:id` · **Component:** `src/pages/crm/OpportunityDetail.tsx`
+> **REMOVED in #135 (Decommission Legacy CRM Phase A).** `src/pages/crm/OpportunityDetail.tsx`
+> is deleted; `/crm/opportunities/:id` now redirects to `/pipeline/zoho-deals`.
+> `GET /api/opportunities/:id` still exists (shane-mobile reads it). History below.
+
+**Route:** `/crm/opportunities/:id` (redirect) · **Component:** deleted
 
 Full detail view for a single qualification-derived opportunity. Loaded from `GET /api/opportunities/:id`.
 

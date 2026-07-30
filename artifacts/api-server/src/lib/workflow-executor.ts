@@ -32,10 +32,7 @@ import {
   tenantsTable,
   tenantMonitorProfilesTable,
   projectsTable,
-  opportunitiesTable,
   clientDocumentsTable,
-  leadQualificationsTable,
-  quizLeadsTable,
   clientHealthHistoryTable,
   emailTemplatesTable,
   marketingTasksTable,
@@ -78,7 +75,6 @@ import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./d
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveCustomerIdForPortalUser, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
-import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
@@ -930,8 +926,6 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const at = node.data.actionType as string | undefined;
       if (at === "cancel_workflow")      return { dryRun: true, cancelled: false, note: "cancel skipped in dry run" };
       if (at === "http_request")         return { dryRun: true, status: 200, ok: true };
-      if (at === "create_lead")          return { dryRun: true, leadId: 1, leadEmail: str("email", "test@example.com"), leadName: str("name", "Test Lead") };
-      if (at === "convert_to_opportunity") return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
       if (at === "create_client")        return { dryRun: true, clientId: 1, clientEmail: str("email", "test@example.com") };
       if (at === "create_project")       return { dryRun: true, projectId: 1, projectTitle: str("title", "Test Project") };
       if (at === "execute_runbook") {
@@ -954,31 +948,10 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, actionType: at ?? "none", note: "dry run — action skipped" };
     }
 
-    case "score_lead":
-      return { dryRun: true, leadId: num("leadId"), score: 80, scoreLabel: "High", qualified: true };
-
-    case "assign_pipeline_stage": {
-      const dryTarget = (node.data.targetType as string | undefined) ?? "opportunity";
-      return dryTarget === "lead"
-        ? { dryRun: true, targetType: "lead",        leadId: num("leadId"),             stage: str("stage", "Warm") }
-        : { dryRun: true, targetType: "opportunity",  opportunityId: num("opportunityId"), stage: str("stage", "Proposal") };
-    }
-
-    case "create_opportunity":
-      return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
-
-    case "parse_quiz_results":
-      return {
-        dryRun: true, quizLeadId: num("quizLeadId"), totalScore: 72, tier: "Intermediate",
-        recommendedService: "Microsoft 365 Assessment", leadName: "Test Lead",
-        leadEmail: "test@example.com", company: "Contoso Ltd", categoryScores: {},
-      };
-
-    case "generate_readiness_score":
-      return { dryRun: true, readinessScore: 72, readinessLabel: "Medium", recordId: null };
-
-    case "attach_quiz_insights":
-      return { dryRun: true, insightsAttached: true, documentId: 1 };
+    // Dry-run shapes for the legacy CRM node types (`score_lead`,
+    // `assign_pipeline_stage`, `create_opportunity`, `parse_quiz_results`,
+    // `generate_readiness_score`, `attach_quiz_insights`) were removed with those
+    // node types in #135 (Decommission Legacy CRM Phase A).
 
     case "validate_m365_permissions":
       return { dryRun: true, permissionsValid: true, missingCount: 0, jobId: "dry-run-job" };
@@ -1869,14 +1842,16 @@ async function buildOAuth1Header(
 }
 
 // ── Promoted action sub-type aliases ─────────────────────────────────────────
-// These are the 13 first-class node types that were promoted from the generic
+// These are the first-class node types that were promoted from the generic
 // "action + actionType" pattern. They map 1-to-1 to the corresponding actionType
 // handler in the action case. Normalizing here keeps all execution logic in one
 // place and ensures backward compat: old workflows with type:"action" still work,
 // and new workflows with type:"http_request" etc. are handled transparently.
+// `create_lead` / `convert_to_opportunity` were dropped from this set in #135
+// along with their handlers.
 const PROMOTED_ACTION_TYPES = new Set([
   "http_request", "sql_query", "send_email", "send_sms", "emit_event",
-  "cancel_workflow", "create_lead", "convert_to_opportunity", "create_client",
+  "cancel_workflow", "create_client",
   "create_project", "update_m365_profile", "execute_runbook", "generate_document",
   "calculate_pricing", "run_workflow",
 ]);
@@ -2052,36 +2027,10 @@ async function executeNode(
           } else {
             output = { skipped: true, reason: "no url configured" };
           }
-        } else if (actionType === "create_lead") {
-          const name = interp(node.data.name as string | undefined, payload);
-          const email = interp(node.data.email as string | undefined, payload);
-          if (!name || !email) {
-            nodeError = true;
-            output = { error: "create_lead requires name and email" };
-          } else {
-            const [lead] = await db.insert(leadsTable).values({
-              name,
-              email: email.toLowerCase(),
-              company: interpOrNull(node.data.company as string | undefined, payload),
-              serviceArea: interpOrNull(node.data.serviceArea as string | undefined, payload),
-              message: interpOrNull(node.data.message as string | undefined, payload),
-              source: "contact_form",
-              status: "new",
-            }).returning();
-            output = { leadId: lead.id, leadEmail: lead.email, leadName: lead.name };
-          }
-        } else if (actionType === "convert_to_opportunity") {
-          const leadId = parseInt(interp(node.data.leadId as string | undefined, payload) ?? "", 10);
-          if (isNaN(leadId)) {
-            nodeError = true;
-            output = { error: "convert_to_opportunity requires a valid leadId" };
-          } else {
-            const [opp] = await db.insert(opportunitiesTable).values({
-              leadId,
-              workflowType: (node.data.workflowType as string | undefined) ?? "DiscoveryCall",
-            }).returning();
-            output = { opportunityId: opp.id, leadId };
-          }
+        // `create_lead` and `convert_to_opportunity` handlers removed in #135
+        // (Decommission Legacy CRM Phase A) — they wrote the legacy `leads` /
+        // `opportunities` tables directly. `zoho_create_lead` / `zoho_convert_lead`
+        // (#83) are the supported replacements.
         } else if (actionType === "create_client") {
           const name = interp(node.data.name as string | undefined, payload);
           const email = interp(node.data.email as string | undefined, payload);
@@ -3574,217 +3523,13 @@ async function executeNode(
         break;
 
       // ── CRM nodes ─────────────────────────────────────────────────────────
-
-      case "score_lead": {
-        const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
-        const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
-        if (isNaN(leadId)) {
-          nodeError = true;
-          output = { error: "score_lead requires a valid leadId" };
-        } else {
-          const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
-          if (!lead) {
-            nodeError = true;
-            output = { error: `Lead #${leadId} not found` };
-          } else {
-            const threshold = parseInt(String(node.data.threshold ?? "50"), 10);
-            let score = 20;
-            if (lead.company) score += 20;
-            if (lead.serviceArea) score += 20;
-            if ((lead.message ?? "").length > 50) score += 20;
-            if (lead.stage !== "Cold") score += 20;
-            const scoreLabel = score >= 80 ? "High" : score >= 50 ? "Medium" : "Low";
-            const qualified = score >= threshold;
-            const stage = qualified ? "Hot" : "Warm";
-            await db.insert(leadQualificationsTable).values({
-              leadId,
-              newScore: score,
-              previousScore: 0,
-              stage,
-              recommendedNextStep: qualified ? "Book discovery call" : "Send nurture email",
-              workflowType: lead.serviceArea ?? undefined,
-              evidence: [
-                ...(lead.company ? ["Has company name"] : []),
-                ...(lead.serviceArea ? [`Service interest: ${lead.serviceArea}`] : []),
-                ...((lead.message ?? "").length > 50 ? ["Detailed message"] : []),
-              ],
-              scoreFit: lead.company ? 25 : 0,
-              scorePain: lead.serviceArea ? 25 : 0,
-              scoreMaturity: 0,
-              scoreIntent: (lead.message ?? "").length > 50 ? 25 : 0,
-              scoreUrgency: 25,
-              status: "pending",
-            });
-            output = { leadId, score, scoreLabel, qualified };
-          }
-        }
-        break;
-      }
-
-      case "write_crm_scores": {
-        // Runs the CRM scoring engine (crm-engine.ts) for a tenant/client and
-        // persists the resulting scores onto the lead record's priorityScore
-        // and pricingInfluenceScore columns. The engine itself is a pure sum
-        // over the tenant's fired `crm:*` signals — this node only decides
-        // which score-object field maps to which CRM column (default: the
-        // combined `total` for both), so no scoring formula lives here.
-        const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
-        const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
-        const clientUserIdRaw = interp(node.data.clientUserId as string | undefined, payload);
-        const clientUserId = clientUserIdRaw ? parseInt(clientUserIdRaw, 10) : NaN;
-
-        if (isNaN(leadId) || isNaN(clientUserId)) {
-          nodeError = true;
-          output = { error: "write_crm_scores requires a valid leadId and clientUserId" };
-        } else {
-          const priorityField = (interp(node.data.priorityScoreField as string | undefined, payload) ?? "total") as keyof CrmScoreBreakdown;
-          const pricingField = (interp(node.data.pricingInfluenceScoreField as string | undefined, payload) ?? "total") as keyof CrmScoreBreakdown;
-
-          const crmScoreResult = await calculateCrmScore(clientUserId);
-          const priorityScore = crmScoreResult.score[priorityField] ?? crmScoreResult.score.total;
-          const pricingInfluenceScore = crmScoreResult.score[pricingField] ?? crmScoreResult.score.total;
-
-          await db.update(leadsTable)
-            .set({ priorityScore, pricingInfluenceScore })
-            .where(eq(leadsTable.id, leadId));
-
-          output = {
-            leadId,
-            clientUserId,
-            priorityScore,
-            pricingInfluenceScore,
-            crmScore: crmScoreResult.score,
-            crmSignals: crmScoreResult.breakdown.map(b => b.signalKey),
-          };
-        }
-        break;
-      }
-
-      case "assign_pipeline_stage": {
-        const targetType = (node.data.targetType as string | undefined) ?? "opportunity";
-        const stage = interp(node.data.stage as string | undefined, payload);
-        if (!stage) {
-          nodeError = true;
-          output = { error: "assign_pipeline_stage requires a stage" };
-          break;
-        }
-        if (targetType === "lead") {
-          const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
-          const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
-          if (isNaN(leadId)) {
-            nodeError = true;
-            output = { error: "assign_pipeline_stage (lead) requires a valid leadId" };
-          } else {
-            await db.update(leadsTable)
-              .set({ stage: stage as "Junk" | "Cold" | "Warm" | "Hot" })
-              .where(eq(leadsTable.id, leadId));
-            output = { targetType: "lead", leadId, stage };
-          }
-        } else {
-          const oppIdRaw = interp(node.data.opportunityId as string | undefined, payload);
-          const opportunityId = oppIdRaw ? parseInt(oppIdRaw, 10) : NaN;
-          if (isNaN(opportunityId)) {
-            nodeError = true;
-            output = { error: "assign_pipeline_stage (opportunity) requires a valid opportunityId" };
-          } else {
-            await db.update(opportunitiesTable)
-              .set({ workflowType: stage })
-              .where(eq(opportunitiesTable.id, opportunityId));
-            output = { targetType: "opportunity", opportunityId, stage };
-          }
-        }
-        break;
-      }
-
-      case "create_opportunity": {
-        const coLeadIdRaw = interp(node.data.leadId as string | undefined, payload);
-        const coLeadId = coLeadIdRaw ? parseInt(coLeadIdRaw, 10) : NaN;
-        if (isNaN(coLeadId)) {
-          nodeError = true;
-          output = { error: "create_opportunity requires a valid leadId" };
-        } else {
-          const [opp] = await db.insert(opportunitiesTable).values({
-            leadId: coLeadId,
-            workflowType: (node.data.workflowType as string | undefined) ?? "DiscoveryCall",
-          }).returning();
-          output = { opportunityId: opp.id, leadId: coLeadId };
-        }
-        break;
-      }
-
-      // ── Diagnostics / Quiz nodes ───────────────────────────────────────────
-
-      case "parse_quiz_results": {
-        const quizLeadIdRaw = interp(node.data.quizLeadId as string | undefined, payload);
-        const quizLeadId = quizLeadIdRaw ? parseInt(quizLeadIdRaw, 10) : NaN;
-        if (isNaN(quizLeadId)) {
-          nodeError = true;
-          output = { error: "parse_quiz_results requires a valid quizLeadId" };
-        } else {
-          const [qLead] = await db.select().from(quizLeadsTable).where(eq(quizLeadsTable.id, quizLeadId)).limit(1);
-          if (!qLead) {
-            nodeError = true;
-            output = { error: `Quiz lead #${quizLeadId} not found` };
-          } else {
-            output = {
-              quizLeadId: qLead.id,
-              totalScore: qLead.totalScore,
-              tier: qLead.tier,
-              recommendedService: qLead.recommendedService ?? null,
-              leadName: qLead.name,
-              leadEmail: qLead.email,
-              company: qLead.company ?? null,
-              categoryScores: qLead.categoryScores,
-            };
-          }
-        }
-        break;
-      }
-
-      case "generate_readiness_score": {
-        const grClientIdRaw = interp(node.data.clientId as string | undefined, payload);
-        const grClientId = grClientIdRaw ? parseInt(grClientIdRaw, 10) : NaN;
-        if (isNaN(grClientId)) {
-          nodeError = true;
-          output = { error: "generate_readiness_score requires a valid clientId" };
-        } else {
-          const history = await db.select()
-            .from(clientHealthHistoryTable)
-            .where(eq(clientHealthHistoryTable.clientId, grClientId))
-            .limit(20);
-          if (history.length === 0) {
-            output = { readinessScore: 0, readinessLabel: "Low", recordId: null };
-          } else {
-            const avg = Math.round(history.reduce((s, r) => s + r.score, 0) / history.length);
-            const readinessLabel = avg >= 75 ? "High" : avg >= 45 ? "Medium" : "Low";
-            const [rec] = await db.insert(clientHealthHistoryTable).values({
-              clientId: grClientId,
-              category: "productivity",
-              score: avg,
-            }).returning();
-            output = { readinessScore: avg, readinessLabel, recordId: rec.id };
-          }
-        }
-        break;
-      }
-
-      case "attach_quiz_insights": {
-        const aqClientIdRaw = interp(node.data.clientId as string | undefined, payload);
-        const aqClientId = aqClientIdRaw ? parseInt(aqClientIdRaw, 10) : NaN;
-        if (isNaN(aqClientId)) {
-          nodeError = true;
-          output = { error: "attach_quiz_insights requires a valid clientId" };
-        } else {
-          const insightText = interp(node.data.insightText as string | undefined, payload) ?? "Quiz insights";
-          const [doc] = await db.insert(clientDocumentsTable).values({
-            clientUserId: aqClientId,
-            name: insightText,
-            category: "reports",
-          }).returning();
-          output = { insightsAttached: true, documentId: doc.id };
-        }
-        break;
-      }
+      // Removed in #135 (Decommission Legacy CRM Phase A): `score_lead`,
+      // `write_crm_scores`, `assign_pipeline_stage`, `create_opportunity`
+      // (wrote `leads` / `lead_qualifications` / `opportunities` directly) and
+      // the quiz/diagnostics trio `parse_quiz_results`,
+      // `generate_readiness_score`, `attach_quiz_insights`. Zero non-archived
+      // `wf_versions` referenced any of them, so no workflow-graph migration was
+      // needed. The Zoho `zoho_*` nodes (#83) are the supported CRM path.
 
       // ── M365 Health nodes ─────────────────────────────────────────────────
 

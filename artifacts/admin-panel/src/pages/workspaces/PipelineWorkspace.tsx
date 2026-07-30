@@ -1,14 +1,12 @@
 import { type ReactNode } from "react";
-import LeadsPage from "@/pages/crm/Leads";
 import QuizLeadsPage from "@/pages/crm/QuizLeads";
 import ChatQueuePage from "@/pages/crm/ChatQueue";
-import OpportunitiesPage from "@/pages/crm/Opportunities";
 import ClientsPage from "@/pages/crm/Clients";
 import M365IntelligencePage from "@/pages/crm/M365Intelligence";
 import DiagnosticSharesPage from "@/pages/crm/DiagnosticShares";
-// Zoho CRM (#83). These sit alongside the existing local-DB pages rather than
-// replacing them — decommissioning the old CRM pages is #84's job, gated on
-// this phase landing.
+// Zoho CRM (#83). As of #135 (Decommission Legacy CRM Phase A) these have fully
+// replaced the local-DB Leads/Opportunities pages, which are deleted — Zoho Leads
+// is now this workspace's default section.
 import ZohoLeadsPage from "@/pages/crm/zoho/ZohoLeads";
 import ZohoDealsPage from "@/pages/crm/zoho/ZohoDeals";
 import ZohoContactsPage from "@/pages/crm/zoho/ZohoContacts";
@@ -26,7 +24,6 @@ function getContent(section: string): ReactNode {
   switch (section) {
     case "quiz-leads":          return <QuizLeadsPage />;
     case "chat-queue":          return <ChatQueuePage />;
-    case "opportunities":       return <OpportunitiesPage />;
     case "clients":             return <ClientsPage />;
     case "m365-intelligence":   return <M365IntelligencePage />;
     case "diagnostic-shares":   return <DiagnosticSharesPage />;
@@ -38,7 +35,9 @@ function getContent(section: string): ReactNode {
     case "engagebay-tags":      return <EngageBayTagsPage />;
     case "engagebay-activity":  return <EngageBayActivityLogPage />;
     case "engagebay-settings":  return <EngageBaySettingsPage />;
-    default:                    return <LeadsPage />;
+    // #135: the default was the deleted local-CRM LeadsPage. Zoho Leads is the
+    // section that superseded it, so an unknown/absent section lands there.
+    default:                    return <ZohoLeadsPage />;
   }
 }
 

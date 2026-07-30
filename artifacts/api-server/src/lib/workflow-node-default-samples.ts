@@ -100,15 +100,8 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
   },
 
   // ── CRM nodes ─────────────────────────────────────────────────────────────
-  create_lead: {
-    leadId: 1,
-    leadName: "Jane Smith",
-    leadEmail: "jane@example.com",
-  },
-  convert_to_opportunity: {
-    opportunityId: 1,
-    leadId: 1,
-  },
+  // Samples for the legacy CRM node types were removed with those node types in
+  // #135 (Decommission Legacy CRM Phase A).
   create_client: {
     clientId: 1,
     clientEmail: "client@example.com",
@@ -116,22 +109,6 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
   create_project: {
     projectId: 1,
     projectTitle: "M365 Migration Project",
-  },
-  score_lead: {
-    leadId: 1,
-    score: 78,
-    scoreLabel: "High",
-    qualified: true,
-  },
-  assign_pipeline_stage: {
-    targetType: "lead",
-    leadId: 1,
-    opportunityId: null,
-    stage: "Warm",
-  },
-  create_opportunity: {
-    opportunityId: 1,
-    leadId: 1,
   },
 
   // ── Communication ─────────────────────────────────────────────────────────
@@ -172,23 +149,6 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
   notify_major_changes: {
     notified: true,
     skipped: false,
-  },
-
-  // ── Diagnostics ───────────────────────────────────────────────────────────
-  parse_quiz_results: {
-    quizLeadId: 1,
-    totalScore: 72,
-    tier: "Intermediate",
-    recommendedService: "Microsoft 365 Governance",
-  },
-  generate_readiness_score: {
-    readinessScore: 68,
-    readinessLabel: "Medium",
-    recordId: 1,
-  },
-  attach_quiz_insights: {
-    insightsAttached: true,
-    documentId: 1,
   },
 
   // ── Content ───────────────────────────────────────────────────────────────

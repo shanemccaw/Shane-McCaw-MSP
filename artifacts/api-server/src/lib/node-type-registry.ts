@@ -32,7 +32,7 @@
  *
  * This matters for billing: `actionType: "generate_document"` makes a real
  * streaming Anthropic call. Classifying the bare `action` node type would gate
- * every non-AI action (create_lead, http_request, …) on an MSP's AI balance,
+ * every non-AI action (create_client, http_request, …) on an MSP's AI balance,
  * which is wrong in the other direction. Use `resolveNodeTypeMeta(nodeType,
  * actionType)` — it follows the same resolution rule the executor does.
  *
@@ -236,16 +236,10 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Sends an SMS — no AI",
   },
-  {
-    nodeType: "create_lead",
-    isAIDependent: false,
-    description: "Creates a CRM lead record — no AI",
-  },
-  {
-    nodeType: "convert_to_opportunity",
-    isAIDependent: false,
-    description: "Converts a lead into an opportunity — no AI",
-  },
+  // Legacy CRM node types `create_lead` and `convert_to_opportunity` were
+  // removed in #135 (Decommission Legacy CRM Phase A) — the local `leads` /
+  // `opportunities` writers they wrapped are gone; Zoho CRM's `zoho_create_lead`
+  // / `zoho_convert_lead` (#83) are the supported replacements.
   {
     nodeType: "create_client",
     isAIDependent: false,
@@ -338,36 +332,10 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   // the AI-call-site audit; the fetch is only the first half of what it does.
 
   // ── CRM / pipeline ─────────────────────────────────────────────────────────
-  {
-    nodeType: "write_crm_scores",
-    isAIDependent: false,
-    description: "Persists CRM scoring results — no AI",
-  },
-  {
-    nodeType: "assign_pipeline_stage",
-    isAIDependent: false,
-    description: "Moves a lead/opportunity to a pipeline stage — no AI",
-  },
-  {
-    nodeType: "create_opportunity",
-    isAIDependent: false,
-    description: "Creates a CRM opportunity record — no AI",
-  },
-  {
-    nodeType: "parse_quiz_results",
-    isAIDependent: false,
-    description: "Parses quiz submission data — deterministic",
-  },
-  {
-    nodeType: "generate_readiness_score",
-    isAIDependent: false,
-    description: "Computes a readiness score from collected data — deterministic",
-  },
-  {
-    nodeType: "attach_quiz_insights",
-    isAIDependent: false,
-    description: "Attaches quiz insights to a lead record — no AI",
-  },
+  // `write_crm_scores`, `assign_pipeline_stage`, `create_opportunity`,
+  // `parse_quiz_results`, `generate_readiness_score` and `attach_quiz_insights`
+  // were removed in #135 (Decommission Legacy CRM Phase A) along with the
+  // `leads` / `quiz_leads` / `opportunities` writers they wrapped.
   {
     nodeType: "validate_m365_permissions",
     isAIDependent: false,
@@ -959,12 +927,8 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     aiCostOwner: "platform",
     description: "AI upsell / recommendation — always runs, platform cost",
   },
-  {
-    nodeType: "score_lead",
-    isAIDependent: true,
-    aiCostOwner: "platform",
-    description: "AI lead scoring — platform cost",
-  },
+  // `score_lead` (the one AI-dependent legacy CRM node) was removed in #135 —
+  // it scored a local `leads` row. Nothing replaces it on the Zoho path yet.
   {
     nodeType: "generate_insight",
     isAIDependent: true,

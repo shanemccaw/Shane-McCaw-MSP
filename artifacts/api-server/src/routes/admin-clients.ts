@@ -7,7 +7,14 @@ import {
   emailsTable,
   clientM365ProfilesTable,
   clientAppRegistrationsTable,
-  quizLeadsTable,
+  // #135 (Decommission Legacy CRM Phase A): quiz results are read from
+  // `lead_staging` (#83's unified pre-Zoho table), not the legacy `quiz_leads`.
+  // `lead_staging` also holds non-quiz leads (contact form, purchase, …), so
+  // every query below filters on `quizType IS NOT NULL` — without it a
+  // contact-form lead would surface as a quiz result with totalScore 0.
+  // Identity is the normalised email, per #81's resolution path: `lead_staging`
+  // has no user/tenant FK at all.
+  leadStagingTable,
   clientHealthHistoryTable,
   azureTenantCredentialsTable,
 } from "@workspace/db";
@@ -64,16 +71,19 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
 
       db
         .select({
-          email: quizLeadsTable.email,
-          totalScore: quizLeadsTable.totalScore,
-          tier: quizLeadsTable.tier,
-          categoryScores: quizLeadsTable.categoryScores,
-          quizType: quizLeadsTable.quizType,
-          createdAt: quizLeadsTable.createdAt,
+          email: leadStagingTable.email,
+          totalScore: leadStagingTable.totalScore,
+          tier: leadStagingTable.tier,
+          categoryScores: leadStagingTable.categoryScores,
+          quizType: leadStagingTable.quizType,
+          createdAt: leadStagingTable.createdAt,
         })
-        .from(quizLeadsTable)
-        .where(inArray(quizLeadsTable.email, clientEmails))
-        .orderBy(desc(quizLeadsTable.createdAt)),
+        .from(leadStagingTable)
+        .where(and(
+          inArray(leadStagingTable.email, clientEmails),
+          isNotNull(leadStagingTable.quizType),
+        ))
+        .orderBy(desc(leadStagingTable.createdAt)),
 
       db
         .select({
@@ -322,9 +332,12 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
 
       db
         .select()
-        .from(quizLeadsTable)
-        .where(eq(quizLeadsTable.email, client.email))
-        .orderBy(desc(quizLeadsTable.createdAt))
+        .from(leadStagingTable)
+        .where(and(
+          eq(leadStagingTable.email, client.email),
+          isNotNull(leadStagingTable.quizType),
+        ))
+        .orderBy(desc(leadStagingTable.createdAt))
         .limit(10),
 
       db
@@ -407,16 +420,19 @@ router.get("/admin/clients/:id/quiz-results", requireAdmin, async (req: Request,
 
     const quizRows = await db
       .select({
-        id: quizLeadsTable.id,
-        quizType: quizLeadsTable.quizType,
-        totalScore: quizLeadsTable.totalScore,
-        tier: quizLeadsTable.tier,
-        categoryScores: quizLeadsTable.categoryScores,
-        createdAt: quizLeadsTable.createdAt,
+        id: leadStagingTable.id,
+        quizType: leadStagingTable.quizType,
+        totalScore: leadStagingTable.totalScore,
+        tier: leadStagingTable.tier,
+        categoryScores: leadStagingTable.categoryScores,
+        createdAt: leadStagingTable.createdAt,
       })
-      .from(quizLeadsTable)
-      .where(eq(quizLeadsTable.email, client.email))
-      .orderBy(desc(quizLeadsTable.createdAt));
+      .from(leadStagingTable)
+      .where(and(
+        eq(leadStagingTable.email, client.email),
+        isNotNull(leadStagingTable.quizType),
+      ))
+      .orderBy(desc(leadStagingTable.createdAt));
 
     res.json(quizRows);
   } catch (err) {

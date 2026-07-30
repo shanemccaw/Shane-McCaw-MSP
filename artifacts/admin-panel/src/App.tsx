@@ -17,12 +17,10 @@ import SystemWorkspace from "@/pages/workspaces/SystemWorkspace";
 import WorkflowsWorkspace from "@/pages/workspaces/WorkflowsWorkspace";
 
 // ─── Detail pages (open without workspace layout) ─────────────────────────────
-import LeadDetailPage from "@/pages/crm/LeadDetail";
 import ClientDetailPage from "@/pages/crm/ClientDetail";
 import ProjectDetailPage from "@/pages/crm/ProjectDetail";
 import InvoiceDetailPage from "@/pages/crm/InvoiceDetail";
 import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
-import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
 import PromptCenterEditPage from "@/pages/PromptCenterEdit";
 
 // ─── MSP Platform admin pages ─────────────────────────────────────────────────
@@ -120,12 +118,12 @@ function Router() {
 
       {/* ── PIPELINE workspace ── */}
       <Route path="/pipeline">
-        <Redirect to="/pipeline/leads" />
+        <Redirect to="/pipeline/zoho-leads" />
       </Route>
       <Route path="/pipeline/:section">
         {(params) => (
           <AdminRoute>
-            <PipelineWorkspace section={params?.section ?? "leads"} />
+            <PipelineWorkspace section={params?.section ?? "zoho-leads"} />
           </AdminRoute>
         )}
       </Route>
@@ -223,9 +221,15 @@ function Router() {
       </Route>
 
       {/* ── Detail pages (no workspace layout changes needed) ── */}
-      <Route path="/crm/leads/:id">
-        {(params) => <AdminRoute><LeadDetailPage params={params} /></AdminRoute>}
-      </Route>
+      {/* /crm/leads/:id and /crm/opportunities/:id were LeadDetail/OpportunityDetail,
+          deleted in #135 (Decommission Legacy CRM Phase A). They are kept as
+          redirects rather than removed outright because live deep links point at
+          them — leads.ts stamps `linkPath: /crm/leads/:id` onto every
+          lead_created notification, and MarketingCommandCenter navigates there
+          from a task card. The old local-CRM row id has no Zoho equivalent to
+          resolve, so both land on the superseding Zoho list page. */}
+      <Route path="/crm/leads/:id"><Redirect to="/pipeline/zoho-leads" /></Route>
+      <Route path="/crm/opportunities/:id"><Redirect to="/pipeline/zoho-deals" /></Route>
       <Route path="/crm/clients/:id">
         <AdminRoute><ClientDetailPage /></AdminRoute>
       </Route>
@@ -237,9 +241,6 @@ function Router() {
       </Route>
       <Route path="/crm/purchases/:id">
         <AdminRoute><PurchaseDetailPage /></AdminRoute>
-      </Route>
-      <Route path="/crm/opportunities/:id">
-        {(params) => <AdminRoute><OpportunityDetailPage params={params} /></AdminRoute>}
       </Route>
       <Route path="/prompt-center/:id">
         {(params) => <AdminRoute><PromptCenterEditPage params={params} /></AdminRoute>}
@@ -277,9 +278,12 @@ function Router() {
       <Route path="/script-runner"><Redirect to="/command/scripts" /></Route>
       <Route path="/m365-run-results"><Redirect to="/command/scripts" /></Route>
 
-      <Route path="/crm/leads"><Redirect to="/pipeline/leads" /></Route>
+      {/* #135: /pipeline/leads and /pipeline/opportunities rendered the deleted
+          local-CRM pages, so these legacy redirects now target the Zoho pages
+          that superseded them (#83). */}
+      <Route path="/crm/leads"><Redirect to="/pipeline/zoho-leads" /></Route>
       <Route path="/crm/quiz-leads"><Redirect to="/pipeline/quiz-leads" /></Route>
-      <Route path="/crm/opportunities"><Redirect to="/pipeline/opportunities" /></Route>
+      <Route path="/crm/opportunities"><Redirect to="/pipeline/zoho-deals" /></Route>
       <Route path="/crm/clients"><Redirect to="/pipeline/clients" /></Route>
       <Route path="/crm/m365-intelligence"><Redirect to="/pipeline/m365-intelligence" /></Route>
       <Route path="/crm/messages"><Redirect to="/command/messages" /></Route>

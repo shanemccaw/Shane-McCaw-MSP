@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, projectsTable, leadsTable } from "@workspace/db";
+import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, projectsTable, leadStagingTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph";
@@ -116,7 +116,13 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
   if (isNaN(id)) { res.status(400).json({ error: "Invalid email ID" }); return; }
 
   const projectsAlias = projectsTable;
-  const leadsAlias = leadsTable;
+  // #135 (Decommission Legacy CRM Phase A): the linked lead's NAME now comes from
+  // `lead_staging` (#83). `emails.linked_lead_id` still holds a `leads.id` — that
+  // FK column belongs to a table Phase B (#136) owns and is not re-keyed here — so
+  // the join bridges through the `legacy_lead_id` pointer column rather than
+  // matching ids directly. An email linked to a lead that was never staged shows a
+  // null name, exactly as an unlinked email already did.
+  const leadsAlias = leadStagingTable;
 
   const [row] = await db
     .select({
@@ -132,7 +138,7 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
     .from(emailsTable)
     .leftJoin(usersTable, eq(emailsTable.linkedUserId, usersTable.id))
     .leftJoin(projectsAlias, eq(emailsTable.linkedProjectId, projectsAlias.id))
-    .leftJoin(leadsAlias, eq(emailsTable.linkedLeadId, leadsAlias.id))
+    .leftJoin(leadsAlias, eq(emailsTable.linkedLeadId, leadsAlias.legacyLeadId))
     .where(eq(emailsTable.id, id))
     .limit(1);
 

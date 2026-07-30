@@ -1,11 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
   db,
   analyticsSessionsTable,
-  quizLeadsTable,
+  // #135: quiz results now read from `lead_staging` (#83), not `quiz_leads`.
+  leadStagingTable,
   engagementOfferFiringsTable,
   engagementOfferRulesTable,
   servicesTable,
@@ -56,11 +57,16 @@ router.get("/public/personalization/state", publicLimiter, async (req: Request, 
       return;
     }
 
+    // `quizType IS NOT NULL` keeps this a quiz-taken signal: `lead_staging` also
+    // holds contact-form/purchase leads, which must stay "cold" here.
     const [lead] = await db
-      .select({ id: quizLeadsTable.id, quizType: quizLeadsTable.quizType })
-      .from(quizLeadsTable)
-      .where(eq(quizLeadsTable.email, email))
-      .orderBy(desc(quizLeadsTable.createdAt))
+      .select({ id: leadStagingTable.id, quizType: leadStagingTable.quizType })
+      .from(leadStagingTable)
+      .where(and(
+        eq(leadStagingTable.email, email),
+        isNotNull(leadStagingTable.quizType),
+      ))
+      .orderBy(desc(leadStagingTable.createdAt))
       .limit(1);
 
     if (!lead) {

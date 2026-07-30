@@ -285,21 +285,19 @@ export const WORKSPACES: WorkspaceDef[] = [
     description: "Leads, clients & opportunities",
     icon: Users,
     prefix: "/pipeline",
-    extraPrefixes: ["/crm/leads/", "/crm/clients/", "/crm/opportunities/"],
-    defaultPath: "/pipeline/leads",
+    extraPrefixes: ["/crm/clients/"],
+    // #135 (Decommission Legacy CRM Phase A): the local-CRM "Leads" and
+    // "Opportunities" leaves were removed with their pages, and the Zoho CRM
+    // group below is now the pipeline's front door — hence the default path.
+    // "/crm/leads/" and "/crm/opportunities/" also left extraPrefixes: both are
+    // plain redirects now, so no tab is ever opened on them.
+    defaultPath: "/pipeline/zoho-leads",
     sections: [
       {
         id: "leads", label: "Leads", defaultOpen: true,
         items: [
-          { id: "pipe-leads", label: "Leads", path: "/pipeline/leads", icon: UserPlus },
           { id: "pipe-quiz-leads", label: "Quiz Leads", path: "/pipeline/quiz-leads", icon: HelpCircle },
           { id: "pipe-chat-queue", label: "Chat Queue", path: "/pipeline/chat-queue", icon: MessageSquare },
-        ],
-      },
-      {
-        id: "deals", label: "Deals", defaultOpen: true,
-        items: [
-          { id: "pipe-opportunities", label: "Opportunities", path: "/pipeline/opportunities", icon: Target },
         ],
       },
       {
@@ -523,9 +521,9 @@ export const WORKSPACES: WorkspaceDef[] = [
 // ─── Detail-page tab metadata (routes that are not tree leaves) ───────────────
 
 const DETAIL_PREFIXES: Array<{ prefix: string; workspaceId: string; label: string; icon: LucideIcon }> = [
-  { prefix: "/crm/leads/", workspaceId: "pipeline", label: "Lead", icon: UserPlus },
+  // "/crm/leads/" and "/crm/opportunities/" removed in #135 — their detail pages
+  // are deleted and the routes are redirects, so they never open a tab.
   { prefix: "/crm/clients/", workspaceId: "pipeline", label: "Client", icon: Building2 },
-  { prefix: "/crm/opportunities/", workspaceId: "pipeline", label: "Opportunity", icon: Target },
   { prefix: "/crm/projects/", workspaceId: "delivery", label: "Project", icon: FolderKanban },
   { prefix: "/crm/invoices/", workspaceId: "finance", label: "Invoice", icon: Receipt },
   { prefix: "/crm/purchases/", workspaceId: "finance", label: "Purchase", icon: CreditCard },

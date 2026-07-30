@@ -1136,7 +1136,8 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
               if (leadFlashExitTimerRef.current) clearTimeout(leadFlashExitTimerRef.current);
               setLeadFlashVisible(false);
               setLeadFlashExiting(false);
-              navigate("/pipeline/leads");
+              // #135: /pipeline/leads rendered the deleted local-CRM Leads page.
+              navigate("/pipeline/zoho-leads");
             }}
             style={{ top: flashVisible ? "88px" : "16px" }}
             className={`fixed right-4 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-lg shadow-2xl border border-primary/30 bg-popover/95 backdrop-blur-sm cursor-pointer hover:border-primary/50 transition-[background-color,border-color,top] ${
