@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, checkoutVerificationCodesTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, tenantsTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents, resolveEffectiveChargeCents, seatBandViolationMessage } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
@@ -580,6 +581,18 @@ const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
 const VERIFICATION_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 const VERIFICATION_CODE_MAX_ATTEMPTS = 3;
 
+// Per-IP throttle on the public verify/resend endpoints (they take no auth and
+// resolve an attacker-suppliable checkout-session UUID to an account). Bounds
+// code brute-force and verification-email flooding beyond the per-code cap and
+// resend cooldown. Mirrors auth.ts's loginLimiter shape.
+const verificationCodeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === "development" ? 200 : 12,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please wait a minute and try again." },
+});
+
 /**
  * Atomically issues a fresh 6-digit checkout verification code for a user.
  *
@@ -603,13 +616,29 @@ async function ensureClientVerificationCode(
     await tx.execute(sql`SELECT pg_advisory_xact_lock(43084, ${userId})`);
 
     const [latest] = await tx
-      .select({ createdAt: checkoutVerificationCodesTable.createdAt })
+      .select({
+        createdAt: checkoutVerificationCodesTable.createdAt,
+        consumedAt: checkoutVerificationCodesTable.consumedAt,
+        attemptCount: checkoutVerificationCodesTable.attemptCount,
+        expiresAt: checkoutVerificationCodesTable.expiresAt,
+      })
       .from(checkoutVerificationCodesTable)
       .where(eq(checkoutVerificationCodesTable.userId, userId))
       .orderBy(desc(checkoutVerificationCodesTable.createdAt))
       .limit(1);
 
-    if (!opts.force && latest) {
+    // The cooldown only guards an ACTIVE code (unconsumed, unexpired, attempts
+    // remaining) against duplicate emails. An inactive latest row — notably the
+    // free-flow lockout tombstone — must not delay a re-mint, or the
+    // captcha-gated checkout restart would bounce buyers back into the locked
+    // panel until the cooldown lapsed. Every mint creates a fresh active row,
+    // so the 1-email-per-60s ceiling still holds.
+    const latestIsActive =
+      latest &&
+      !latest.consumedAt &&
+      latest.attemptCount < VERIFICATION_CODE_MAX_ATTEMPTS &&
+      latest.expiresAt.getTime() > Date.now();
+    if (!opts.force && latest && latestIsActive) {
       const elapsedMs = Date.now() - latest.createdAt.getTime();
       if (elapsedMs < VERIFICATION_CODE_RESEND_COOLDOWN_MS) {
         return {
@@ -639,13 +668,18 @@ async function ensureClientVerificationCode(
   });
 }
 
-/** Emails a freshly-minted verification code. The plaintext code goes into this email and nowhere else. */
+/**
+ * Emails a freshly-minted verification code. The plaintext code goes into this
+ * email's BODY and nowhere else — never the subject: sendEmailOrThrow logs
+ * every subject at info level and persists it into email_events, so a code in
+ * the subject would leak live plaintext codes into logs and the DB.
+ */
 function sendVerificationCodeEmail(toEmail: string, clientName: string, code: string, reqLog: Request["log"]): void {
   void sendEmailFromTemplate(
     "checkout-verification-code",
     toEmail,
     { code, clientName },
-    `${code} is your Shane McCaw Consulting verification code`,
+    "Your Shane McCaw Consulting verification code",
     `<p>Hi ${clientName},</p><p>Enter this code on the checkout confirmation screen to verify your email and finish setting up your account:</p><p style="margin:24px 0;text-align:center;"><span style="display:inline-block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 32px;font-size:32px;font-weight:700;letter-spacing:8px;color:#0f172a;">${code}</span></p><p style="color:#64748b;font-size:13px;">This code expires in <strong>10 minutes</strong>. If you didn't request it, you can safely ignore this email.</p><p>— Shane McCaw</p>`,
   ).catch((e) => reqLog.warn({ template: "checkout-verification-code", err: e }, "verification-code email failed (non-fatal)"));
 }
@@ -14541,7 +14575,7 @@ async function resolveVerificationTarget(sessionId: string): Promise<
 // Wrong code → increment attemptCount; the 3rd strike locks the free flow
 // (buyer restarts checkout) or auto-resends a fresh code for paid buyers, who
 // must never be dead-ended after paying (behavior confirmed with Shane, #143).
-router.post("/public/checkout/verify-code", async (req: Request, res: Response) => {
+router.post("/public/checkout/verify-code", verificationCodeLimiter, async (req: Request, res: Response) => {
   try {
     const { sessionId, code } = req.body as { sessionId?: string; code?: string };
     if (typeof sessionId !== "string" || typeof code !== "string" || !/^\d{6}$/.test(code)) {
@@ -14553,54 +14587,90 @@ router.post("/public/checkout/verify-code", async (req: Request, res: Response) 
     const { user } = target;
     if (user.passwordHash) { res.json({ ok: false, reason: "already_set" }); return; }
 
-    const [row] = await db.select().from(checkoutVerificationCodesTable)
-      .where(and(eq(checkoutVerificationCodesTable.userId, user.id), isNull(checkoutVerificationCodesTable.consumedAt)))
-      .orderBy(desc(checkoutVerificationCodesTable.createdAt))
-      .limit(1);
-    if (!row) { res.json({ ok: false, reason: "expired" }); return; }
-    if (row.purchaseType === "free" && row.attemptCount >= VERIFICATION_CODE_MAX_ATTEMPTS) {
-      res.json({ ok: false, reason: "locked" });
-      return;
-    }
-    if (row.expiresAt < new Date()) { res.json({ ok: false, reason: "expired" }); return; }
+    // The whole check→compare→increment runs under the per-user advisory lock
+    // (namespace 43084, same as the code mint) so the 3-attempt cap is EXACT: a
+    // burst of parallel guesses serializes here instead of each reading the same
+    // stale attemptCount and getting a bcrypt comparison against one code. The
+    // account-setup token mint and the paid 3-strike resend are deferred until
+    // AFTER this transaction commits — both take their own advisory locks
+    // (43083 / 43084) on separate connections, so calling them inside would
+    // deadlock against the lock this transaction still holds.
+    type VerifyOutcome =
+      | { kind: "match" }
+      | { kind: "resend" }
+      | { kind: "reason"; reason: string; attemptsRemaining?: number };
+    const outcome: VerifyOutcome = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(43084, ${user.id})`);
+      const [row] = await tx.select().from(checkoutVerificationCodesTable)
+        .where(and(eq(checkoutVerificationCodesTable.userId, user.id), isNull(checkoutVerificationCodesTable.consumedAt)))
+        .orderBy(desc(checkoutVerificationCodesTable.createdAt))
+        .limit(1);
+      if (!row) return { kind: "reason", reason: "expired" };
+      if (row.purchaseType === "free" && row.attemptCount >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+        return { kind: "reason", reason: "locked" };
+      }
+      if (row.expiresAt < new Date()) return { kind: "reason", reason: "expired" };
 
-    if (await bcrypt.compare(code, row.codeHash)) {
-      await db.update(checkoutVerificationCodesTable)
-        .set({ consumedAt: new Date() })
+      if (await bcrypt.compare(code, row.codeHash)) {
+        await tx.update(checkoutVerificationCodesTable)
+          .set({ consumedAt: new Date() })
+          .where(eq(checkoutVerificationCodesTable.id, row.id));
+        return { kind: "match" };
+      }
+
+      const attempts = row.attemptCount + 1;
+      await tx.update(checkoutVerificationCodesTable)
+        .set({ attemptCount: attempts })
         .where(eq(checkoutVerificationCodesTable.id, row.id));
+      if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+        // Paid buyers are never dead-ended: signal a fresh-code resend (done
+        // after commit). Free buyers lock; the tombstone row survives and only
+        // a captcha-gated checkout restart re-mints.
+        return row.purchaseType === "paid"
+          ? { kind: "resend" }
+          : { kind: "reason", reason: "locked" };
+      }
+      return { kind: "reason", reason: "incorrect", attemptsRemaining: VERIFICATION_CODE_MAX_ATTEMPTS - attempts };
+    });
+
+    if (outcome.kind === "match") {
       const { token } = await ensureClientSetupToken(user.id);
       res.json({ ok: true, setupToken: token });
       return;
     }
-
-    // Wrong code — atomic increment so concurrent guesses can't dodge the cap.
-    const [updated] = await db.update(checkoutVerificationCodesTable)
-      .set({ attemptCount: sql`${checkoutVerificationCodesTable.attemptCount} + 1` })
-      .where(eq(checkoutVerificationCodesTable.id, row.id))
-      .returning({ attemptCount: checkoutVerificationCodesTable.attemptCount });
-    const attempts = updated?.attemptCount ?? row.attemptCount + 1;
-    if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
-      if (row.purchaseType === "paid") {
-        const minted = await ensureClientVerificationCode(user.id, "paid", { force: true });
-        if (minted.sent) sendVerificationCodeEmail(user.email, user.name ?? user.email, minted.code, req.log);
-        res.json({ ok: false, reason: "resent" });
-        return;
-      }
-      res.json({ ok: false, reason: "locked" });
+    if (outcome.kind === "resend") {
+      const minted = await ensureClientVerificationCode(user.id, "paid", { force: true });
+      if (minted.sent) sendVerificationCodeEmail(user.email, user.name ?? user.email, minted.code, req.log);
+      res.json({ ok: false, reason: "resent" });
       return;
     }
-    res.json({ ok: false, reason: "incorrect", attemptsRemaining: VERIFICATION_CODE_MAX_ATTEMPTS - attempts });
+    res.json({
+      ok: false,
+      reason: outcome.reason,
+      ...(outcome.attemptsRemaining != null ? { attemptsRemaining: outcome.attemptsRemaining } : {}),
+    });
   } catch (err) {
     req.log.error({ err }, "portal: checkout verify-code failed");
     res.status(500).json({ error: "Verification failed. Please try again." });
   }
 });
 
-// POST /api/public/checkout/resend-code — invalidates any unconsumed code and
-// issues a fresh one. Cooldown (60s, keyed on the latest row's createdAt inside
-// ensureClientVerificationCode) prevents email spam; a free-flow lockout is
-// terminal for this session and only a captcha-gated checkout restart revives it.
-router.post("/public/checkout/resend-code", async (req: Request, res: Response) => {
+// POST /api/public/checkout/resend-code — reissues a fresh code, carrying the
+// existing row's purchaseType forward. Cooldown (60s, keyed on the latest ACTIVE
+// row's createdAt inside ensureClientVerificationCode) prevents email spam; a
+// free-flow lockout is terminal and only a captcha-gated checkout restart revives it.
+//
+// SECURITY: resend only ever REISSUES an already-minted code — it never mints
+// the FIRST code for an account. The first code comes exclusively from a trusted
+// provisioning path (provisionFreeOnboarding for free, the Stripe webhook for
+// paid), which knows the true purchaseType. If resend minted the first code it
+// would have to guess the type from the attacker-suppliable checkout-session
+// productSlug: guessing 'paid' hands an attacker an unlockable code against any
+// passwordless account (paid never locks) plus an email-flood primitive, and
+// guessing 'free' would dead-end a real paying buyer who resends in the brief
+// window before their webhook lands. So when no row exists yet we refuse to mint
+// and tell the buyer their code is on the way — the trusted path emails it momentarily.
+router.post("/public/checkout/resend-code", verificationCodeLimiter, async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.body as { sessionId?: string };
     if (typeof sessionId !== "string") { res.status(400).json({ ok: false, reason: "invalid_session" }); return; }
@@ -14621,19 +14691,14 @@ router.post("/public/checkout/resend-code", async (req: Request, res: Response) 
       res.json({ ok: false, reason: "locked" });
       return;
     }
-
-    // purchaseType for the fresh code: carry the latest row's forward; when no
-    // row exists yet (resend clicked before the Stripe webhook landed), infer
-    // from the session's product. Default 'paid' — its 3-strike behavior
-    // (auto-resend) can never dead-end a buyer.
-    let purchaseType: "free" | "paid" = latest?.purchaseType ?? "paid";
     if (!latest) {
-      const [svc] = await db.select().from(servicesTable)
-        .where(eq(servicesTable.slug, target.productSlug)).limit(1);
-      if (svc && isServiceFree(svc)) purchaseType = "free";
+      // No trusted-minted code yet (paid buyer resending before the webhook
+      // lands). Never mint here — see the SECURITY note above.
+      res.json({ ok: false, reason: "not_ready" });
+      return;
     }
 
-    const minted = await ensureClientVerificationCode(user.id, purchaseType);
+    const minted = await ensureClientVerificationCode(user.id, latest.purchaseType);
     if (!minted.sent) {
       res.status(429).json({ ok: false, reason: "cooldown", retryAfterSeconds: minted.retryAfterSeconds });
       return;

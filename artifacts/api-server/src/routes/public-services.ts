@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   servicesTable,
+  usersTable,
   workflowTemplateStepsTable,
   checkoutSessionsTable,
   resultsTemplatesTable,
@@ -210,6 +211,7 @@ router.get("/public/checkout-session/:id", async (req: Request, res: Response) =
       productSlug: checkoutSessionsTable.productSlug,
       status: checkoutSessionsTable.status,
       seats: checkoutSessionsTable.seats,
+      email: checkoutSessionsTable.email,
     })
     .from(checkoutSessionsTable)
     .where(and(eq(checkoutSessionsTable.id, id), gte(checkoutSessionsTable.expiresAt, now)))
@@ -220,7 +222,23 @@ router.get("/public/checkout-session/:id", async (req: Request, res: Response) =
     return;
   }
 
-  res.json(row);
+  // hasPassword (#143): lets the checkout confirmed step show "log in" instead
+  // of the code-verification UI for a returning buyer — the Stripe webhook only
+  // emails a code to passwordless accounts, so without this signal the paid
+  // return path would claim a code email that never comes. Boolean only, gated
+  // by the unguessable session UUID; the email itself is still never exposed.
+  const [acct] = await db
+    .select({ passwordHash: usersTable.passwordHash })
+    .from(usersTable)
+    .where(eq(usersTable.email, row.email.toLowerCase().trim()))
+    .limit(1);
+
+  res.json({
+    productSlug: row.productSlug,
+    status: row.status,
+    seats: row.seats,
+    hasPassword: !!acct?.passwordHash,
+  });
 });
 
 // ── GET /api/public/consent-url ───────────────────────────────────────────────

@@ -172,6 +172,10 @@ interface CheckoutSessionInfo {
   productSlug: string;
   status: string;
   seats: number;
+  // #143: true when the resolved buyer already has a portal password. The paid
+  // Stripe-return path uses this so a returning buyer sees "log in" instead of a
+  // code-entry screen (the webhook never emails a code to a password-holder).
+  hasPassword?: boolean;
 }
 
 async function fetchCheckoutSession(
@@ -282,6 +286,15 @@ function ConfirmedSelfServeStep({
     return () => clearTimeout(t);
   }, [cooldownLeft]);
 
+  // The paid Stripe-return path resolves hasPassword asynchronously (the
+  // checkout-session GET lands after this component has already mounted in the
+  // "code" phase). When it arrives true, flip a still-pristine code screen to the
+  // log-in state so a returning buyer isn't shown a code entry for an email that
+  // never comes. Never override a phase the buyer has already progressed past.
+  useEffect(() => {
+    if (initialHasPassword) setPhase((p) => (p === "code" ? "already-set" : p));
+  }, [initialHasPassword]);
+
   const form = useForm<PasswordSetupForm>({
     resolver: zodResolver(passwordSetupSchema),
     defaultValues: { password: "", confirmPassword: "" },
@@ -365,6 +378,15 @@ function ConfirmedSelfServeStep({
         setNotice(
           guestEmail ? `A fresh code is on its way to ${guestEmail}.` : "A fresh code is on its way.",
         );
+      } else if (json.reason === "not_ready") {
+        // Paid buyer resending before the provisioning webhook has minted the
+        // first code — it's on the way from the trusted path, just not yet.
+        setNotice(
+          guestEmail
+            ? `Your code is on its way to ${guestEmail} — give it a moment and check your inbox.`
+            : "Your code is on its way — give it a moment and check your inbox.",
+        );
+        setCooldownLeft(60);
       } else if (json.reason === "cooldown") {
         setCooldownLeft(Math.max(1, json.retryAfterSeconds ?? 60));
       } else if (json.reason === "locked") {
@@ -753,9 +775,11 @@ export default function Checkout() {
   // expired/invalid (it will never hand out a state-less URL for this flow).
   const [consentSessionGone, setConsentSessionGone] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  // Free checkout response: the buyer already had a password, so the confirmed
-  // step shows a log-in prompt instead of the code-verification UX (#143).
-  const [freeHasPassword, setFreeHasPassword] = useState(false);
+  // The resolved buyer already has a portal password, so the confirmed step
+  // shows a log-in prompt instead of the code-verification UX (#143). Set from
+  // the free-checkout response (free path) or the checkout-session GET (paid
+  // Stripe-return path) — the webhook never emails a code to a password-holder.
+  const [confirmedHasPassword, setConfirmedHasPassword] = useState(false);
   const { toast } = useToast();
   const contractIdRef = useRef<number | null>(null);
 
@@ -815,7 +839,11 @@ export default function Checkout() {
           setTermsAccepted(cachedInfo.termsAccepted === true);
         }
         fetchCheckoutSession(storedSessionId).then((info) => {
-          if (info && info.seats > 1) setRecoveredSeats(info.seats);
+          if (!info) return;
+          if (info.seats > 1) setRecoveredSeats(info.seats);
+          // Returning buyer (already has a password): the confirmed step shows a
+          // log-in prompt rather than waiting on a code email that never comes.
+          if (info.hasPassword) setConfirmedHasPassword(true);
         }).catch(() => {});
       }
       if (checkoutStatus === "success") {
@@ -1101,7 +1129,7 @@ export default function Checkout() {
       }
 
       const freeJson = (await freeRes.json().catch(() => ({}))) as { hasPassword?: boolean };
-      setFreeHasPassword(freeJson.hasPassword === true);
+      setConfirmedHasPassword(freeJson.hasPassword === true);
 
       trackCheckoutCompleted("free_service", { service_id: String(service.id) });
       setStep("confirmed");
@@ -1660,7 +1688,7 @@ export default function Checkout() {
                     slug={slug ?? service.slug ?? ""}
                     sessionId={(sessionId ?? loadSessionId())!}
                     guestEmail={guestInfo?.email ?? null}
-                    initialHasPassword={freeHasPassword}
+                    initialHasPassword={confirmedHasPassword}
                     priceDisplay={priceDisplay}
                   />
                 )}

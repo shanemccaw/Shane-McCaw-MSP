@@ -92,7 +92,10 @@ const TEMPLATES: TemplateDefinition[] = [
     slug: "checkout-verification-code",
     recipientType: "client",
     name: "Checkout Verification Code",
-    subject: "{{code}} is your Shane McCaw Consulting verification code",
+    // The code must NOT appear in the subject: sendEmailOrThrow logs every
+    // subject at info level and persists it into email_events — a code in the
+    // subject would put live plaintext codes in logs and the DB. Body only.
+    subject: "Your Shane McCaw Consulting verification code",
     variables: [
       { name: "code", description: "Six-digit verification code (expires in 10 minutes)" },
       { name: "clientName", description: "Client's full name or email" },
