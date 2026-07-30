@@ -11,7 +11,7 @@ import {
   Pause,
   Play
 } from 'lucide-react';
-import { TelemetryEngineDef, TelemetryDocDef } from '../../data/telemetryCatalog';
+import { TelemetryEngineDef, TelemetryDocDef } from '../telemetryCatalog';
 
 export interface ExtendedEngineDef extends TelemetryEngineDef {
   status: 'pending' | 'running' | 'complete';

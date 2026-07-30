@@ -1,5 +1,5 @@
 import React from 'react';
-import { UI_ARCHITECTURE_SPEC_DOCUMENT } from '../data/assessmentData';
+import { UI_ARCHITECTURE_SPEC_DOCUMENT } from './assessmentData';
 import { X, Copy, Check, FileText } from 'lucide-react';
 
 interface ArchitectureDocModalProps {

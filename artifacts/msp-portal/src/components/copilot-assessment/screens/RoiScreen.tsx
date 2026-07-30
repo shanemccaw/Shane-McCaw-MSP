@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RoiState } from '../../types';
+import { RoiState } from '../types';
 import { 
   TrendingUp, 
   DollarSign, 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PersonaStory } from '../types';
+import { PersonaStory } from './types';
 import { 
   X, 
   ShieldAlert, 

@@ -12,7 +12,7 @@ import {
   Layers,
   ChevronRight
 } from 'lucide-react';
-import { GovernanceState } from '../../types';
+import { GovernanceState } from '../types';
 
 export interface ScorecardProps {
   governance: GovernanceState;

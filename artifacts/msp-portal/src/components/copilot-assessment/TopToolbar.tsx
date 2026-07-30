@@ -1,5 +1,5 @@
 import React from 'react';
-import { AssessmentStep } from '../types';
+import { AssessmentStep } from './types';
 import { 
   ShieldCheck, 
   HelpCircle, 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GovernanceState } from '../../types';
+import { GovernanceState } from '../types';
 import { 
   ShieldAlert, 
   Flame, 
