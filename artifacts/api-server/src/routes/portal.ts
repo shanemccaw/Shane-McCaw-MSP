@@ -5770,87 +5770,12 @@ async function seedDefaultWorkflowSteps(
   );
 }
 
-// ── Stripe webhook handler ───────────────────────────────────────────────────
-// RUNBOOK: Stripe Dashboard webhook endpoints ↔ Replit Secrets
-//
-//  Endpoint URL                                    | Signing secret (Replit Secret)
-//  ------------------------------------------------+--------------------------------
-//  https://<your>.replit.dev/api/portal/stripe/webhook  | STRIPE_WEBHOOK_SECRET
-//  https://shanemccaw.com/api/portal/stripe/webhook     | STRIPE_WEBHOOK_SECRET_PROD
-//
-//  To verify or auto-repair these registrations after a redeploy, run:
-//    pnpm --filter @workspace/scripts run sync-webhooks          # check only
-//    pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create
-//
-//  The script reads REPLIT_DOMAINS (set automatically by Replit in production)
-//  and the appropriate Stripe key (STRIPE_SECRET_KEY in dev, STRIPE_SECRET_KEY_PROD
-//  in production), then compares against registered Stripe endpoints.
-//
-//  Stripe keys by environment:
-//   STRIPE_SECRET_KEY      — dev (sk_test_…), used in the Replit editor workspace
-//                            (REPLIT_DOMAINS absent, or all domains end in .replit.dev)
-//   STRIPE_SECRET_KEY_PROD — prod (sk_live_…), used in real deployments
-//                            (REPLIT_DOMAINS present with at least one non-.replit.dev domain)
-//
-//  If you change the webhook path or add a new domain, re-run the script.
-//
-// NOTE: app.ts registers express.raw() for this path before express.json(), so req.body is a raw Buffer here.
-// Supports two signing secrets simultaneously:
-//   STRIPE_WEBHOOK_SECRET     — dev endpoint (*.replit.dev)
-//   STRIPE_WEBHOOK_SECRET_PROD — prod endpoint (shanemccaw.com)
-// The handler tries each configured secret and accepts the event if any one verifies.
-router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
-  // Pre-verification trace: confirms the request reached Express regardless of
-  // signature validity. Logging stripe-signature presence (not the value itself).
-  req.log.info({
-    method: req.method,
-    path: req.path,
-    hasStripeSignature: !!req.headers["stripe-signature"],
-    contentLength: req.headers["content-length"] ?? null,
-  }, "stripe webhook: request received");
-
-  let stripeKey: string;
-  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).send((e as Error).message); return; }
-
-  const secrets = [
-    process.env.STRIPE_WEBHOOK_SECRET,
-    process.env.STRIPE_WEBHOOK_SECRET_PROD,
-  ].filter(Boolean) as string[];
-
-  if (secrets.length === 0) {
-    res.status(503).send("Stripe webhook not configured. Set STRIPE_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET_PROD.");
-    return;
-  }
-
-  const { default: Stripe } = await import("stripe");
-  const stripe = new Stripe(stripeKey);
-
-  let event: import("stripe").Stripe.Event | null = null;
-  const sig = req.headers["stripe-signature"] as string;
-  for (const secret of secrets) {
-    try {
-      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, secret);
-      break;
-    } catch {
-      // try next secret
-    }
-  }
-
-  if (!event) {
-    res.status(400).send("Webhook signature verification failed");
-    return;
-  }
-
-  // ── Acknowledge immediately so Stripe doesn't retry on slow provisioning ──
-  res.json({ received: true });
-
-  // ── Process event asynchronously (after response is flushed) ─────────────
-  setImmediate(() => {
-    void processStripeEvent(req, event).catch((err: unknown) => {
-      req.log.error({ err, eventType: event.type }, "processStripeEvent: unhandled error");
-    });
-  });
-});
+// NOTE: portal.ts's own `POST /portal/stripe/webhook` registration was removed
+// (#153) — portal-checkout.ts is now the sole registrant of that path; see its
+// RUNBOOK comment for the Stripe Dashboard endpoint / signing-secret setup.
+// `processStripeEvent` below is retained: still invoked by the admin replay-session
+// route immediately following, and by the presentation agreement-signed path further
+// down in this file.
 
 // ── Admin: manual Stripe session replay ──────────────────────────────────────
 // POST /api/admin/stripe/replay-session  { sessionId: "cs_…" }
