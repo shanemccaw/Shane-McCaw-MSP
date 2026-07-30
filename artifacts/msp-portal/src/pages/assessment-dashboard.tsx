@@ -177,7 +177,7 @@ export default function AssessmentDashboardPage() {
   
   useEffect(() => {
     let mounted = true;
-    fetchWithAuth("/api/portal/dashboard")
+    fetchWithAuth("/api/portal/assessment/telemetry")
       .then(async (res) => {
         if (!res.ok) return;
         const data = await res.json();
