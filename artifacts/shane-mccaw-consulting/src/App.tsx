@@ -26,7 +26,7 @@ import SecurityHardening from "./pages/services/SecurityHardening";
 import CopilotAI from "./pages/services/CopilotAI";
 import Pricing from "./pages/Pricing";
 import Contact from "./pages/Contact";
-import { initTracker, trackPageview } from "./lib/analytics";
+import { trackPageview } from "./lib/analytics";
 import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
@@ -84,18 +84,12 @@ function ScrollRestoration() {
   return null;
 }
 
-// Fires once on mount (durable cookie session + global capture listeners) and on every
-// route change (pageview + dwell/scroll flush of the previous page) — shared layout
-// instrumentation per website-rebuild-reference-v2.md §4.
+// Forwards every SPA route change to GA4 as a page_view event.
 function AnalyticsBoundary() {
   const [location] = useLocation();
 
   useEffect(() => {
-    initTracker();
-  }, []);
-
-  useEffect(() => {
-    void trackPageview(location);
+    trackPageview(location);
   }, [location]);
 
   return null;
