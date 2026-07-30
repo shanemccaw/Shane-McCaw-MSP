@@ -444,7 +444,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
 
           <button
             onClick={onContinue}
-            className="flex items-center space-x-2 bg-gradient-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-primary/30 cursor-pointer"
+            className="flex items-center space-x-2 bg-[linear-gradient(90deg,#0A84FF_0%,#22D3EE_35%,#A855F7_70%,#EC4899_100%)] hover:brightness-110 text-white font-extrabold px-4 py-1.5 rounded-lg text-xs transition-all shadow-lg shadow-primary/30 cursor-pointer"
           >
             <span>Evaluate Use-Case Stories</span>
             <ArrowRight className="w-4 h-4" />
@@ -665,8 +665,8 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                     onClick={toggleExpand}
                     className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-extrabold text-xs transition-all duration-300 border cursor-pointer ${
                       isExpanded
-                        ? 'bg-accent hover:bg-accent text-primary-foreground border-accent shadow-[0_0_20px_rgba(168,85,247,0.4)]'
-                        : 'bg-gradient-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground border-primary shadow-[0_0_20px_rgba(0,120,212,0.4)]'
+                        ? 'bg-[linear-gradient(90deg,#EC4899_0%,#A855F7_50%,#0A84FF_100%)] hover:brightness-110 text-white border-transparent shadow-[0_0_20px_rgba(168,85,247,0.4)]'
+                        : 'bg-[linear-gradient(90deg,#0A84FF_0%,#22D3EE_35%,#A855F7_70%,#EC4899_100%)] hover:brightness-110 text-white border-transparent shadow-[0_0_20px_rgba(0,120,212,0.4)]'
                     }`}
                   >
                     <Sparkles className="w-4 h-4 animate-spin-slow" />
