@@ -1530,16 +1530,6 @@ Each node must have:
 - "delay" — data: {nodeType:"delay", label:"Wait ...", mode:"fixed", duration:3600} (duration in seconds)
 - "error" — data: {nodeType:"error", label:"Error Handler"}
 
-### CRM
-- "score_lead" — data: {nodeType:"score_lead", label:"Score Lead", leadId:"{{leadId}}", threshold:"50"}
-- "assign_pipeline_stage" — data: {nodeType:"assign_pipeline_stage", label:"Assign Stage", opportunityId:"{{opportunityId}}", stage:"DiscoveryCall"}
-- "create_opportunity" — data: {nodeType:"create_opportunity", label:"Create Opportunity", leadId:"{{leadId}}", workflowType:"DiscoveryCall"}
-
-### Diagnostics / Quiz
-- "parse_quiz_results" — data: {nodeType:"parse_quiz_results", label:"Parse Quiz Results", quizLeadId:"{{quizLeadId}}"}
-- "generate_readiness_score" — data: {nodeType:"generate_readiness_score", label:"Readiness Score", clientId:"{{clientId}}"}
-- "attach_quiz_insights" — data: {nodeType:"attach_quiz_insights", label:"Attach Insights", clientId:"{{clientId}}"}
-
 ### M365 Health
 - "validate_m365_permissions" — data: {nodeType:"validate_m365_permissions", label:"Validate Permissions", clientId:"{{clientId}}"}
 - "update_intelligence_tables" — data: {nodeType:"update_intelligence_tables", label:"Update Intel Tables", clientId:"{{clientId}}"}
@@ -1557,8 +1547,6 @@ Each node must have:
 - "send_sms" — data: {nodeType:"send_sms", label:"Send SMS", to:"{{phone}}", message:"Hi {{name}}, …"}
 
 ### CRM Actions
-- "create_lead" — data: {nodeType:"create_lead", label:"Create Lead", name:"{{payload.name}}", email:"{{payload.email}}"}
-- "convert_to_opportunity" — data: {nodeType:"convert_to_opportunity", label:"Convert to Opportunity", leadId:"{{leadId}}", workflowType:"DiscoveryCall"}
 - "create_client" — data: {nodeType:"create_client", label:"Create Client", name:"{{payload.name}}", email:"{{payload.email}}"}
 - "create_project" — data: {nodeType:"create_project", label:"Create Project", title:"{{payload.leadName}} Onboarding", projectType:"project", clientUserId:"{{clientId}}"}
 
@@ -1685,7 +1673,7 @@ Return the COMPLETE updated graph as a JSON object — no preamble, no explanati
 ## Node schema (same as generation)
 Each node must have:
 - "id": keep existing IDs for unchanged nodes; use new unique IDs like "node-new-1" for added nodes
-- "type": one of start | end | condition | delay | error | score_lead | assign_pipeline_stage | create_opportunity | parse_quiz_results | generate_readiness_score | attach_quiz_insights | validate_m365_permissions | update_intelligence_tables | generate_diff_report | notify_major_changes | http_request | sql_query | send_email | send_sms | emit_event | cancel_workflow | create_lead | convert_to_opportunity | create_client | create_project | execute_runbook | update_m365_profile | generate_document
+- "type": one of start | end | condition | delay | error | validate_m365_permissions | update_intelligence_tables | generate_diff_report | notify_major_changes | http_request | sql_query | send_email | send_sms | emit_event | cancel_workflow | create_client | create_project | execute_runbook | update_m365_profile | generate_document
 - "position": {"x": number, "y": number} — keep existing positions for unchanged nodes; place new nodes appropriately nearby
 - "data": keep existing data fields for unchanged nodes; add required fields for new nodes
 
@@ -2362,11 +2350,6 @@ const FLAT_NODES = [
   nodeDef("generate_script", "Generate Script", "AI / Documents", "Uses AI to generate a PowerShell remediation script.", [{ key: "context", type: "string", required: true, description: "Script context or requirement description." }], ["scriptId", "packageId"], ["default"]),
   nodeDef("check_script_output", "Check Script Output", "AI / Documents", "Analyzes a script run output with AI to determine pass/fail.", [{ key: "scriptRunId", type: "string", required: true, description: "Script run ID to analyze." }], ["passed", "outcome"], ["default"]),
   // ── CRM / Lead Management ─────────────────────────────────────────────────
-  nodeDef("create_lead", "Create Lead", "CRM / Lead Management", "Creates a new CRM lead record.", [{ key: "name", type: "string", required: true, description: "Lead full name." }, { key: "email", type: "string", required: true, description: "Lead email." }, { key: "company", type: "string", description: "Company name." }], ["leadId", "leadName", "leadEmail"], ["default"]),
-  nodeDef("score_lead", "Score Lead", "CRM / Lead Management", "Computes a qualification score for a lead using signal rules and CRM fields.", [{ key: "leadId", type: "number", required: true, description: "Lead ID." }], ["leadId", "score", "scoreLabel", "qualified"], ["default"]),
-  nodeDef("convert_to_opportunity", "Convert to Opportunity", "CRM / Lead Management", "Promotes a lead to an opportunity record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID to convert." }], ["opportunityId", "leadId"], ["default"]),
-  nodeDef("create_opportunity", "Create Opportunity", "CRM / Lead Management", "Creates a new sales opportunity record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID." }, { key: "title", type: "string", description: "Opportunity title." }], ["opportunityId", "leadId"], ["default"]),
-  nodeDef("assign_pipeline_stage", "Assign Pipeline Stage", "CRM / Lead Management", "Moves a lead or opportunity to a named pipeline stage.", [{ key: "targetType", type: "string", required: true, description: "Target type: lead | opportunity." }, { key: "targetId", type: "number", required: true, description: "Lead or opportunity ID." }, { key: "stage", type: "string", required: true, description: "Pipeline stage name (e.g. 'Warm', 'Proposal')." }], ["targetType", "leadId", "opportunityId", "stage"], ["default"]),
   nodeDef("create_client", "Create Client", "CRM / Lead Management", "Creates a new client account.", [{ key: "name", type: "string", required: true, description: "Client full name." }, { key: "email", type: "string", required: true, description: "Client email." }, { key: "company", type: "string", description: "Company name." }], ["clientId", "clientEmail"], ["default"]),
   nodeDef("create_project", "Create Project", "CRM / Lead Management", "Creates a new engagement project.", [{ key: "clientId", type: "number", required: true, description: "Client user ID." }, { key: "title", type: "string", required: true, description: "Project title." }], ["projectId", "projectTitle"], ["default"]),
   nodeDef("find_object", "Find Object", "CRM / Lead Management", "Queries a collection for a single object matching a field value.", [{ key: "collection", type: "string", required: true, description: "Collection: clients | projects | leads." }, { key: "fieldName", type: "string", required: true, description: "Field to match." }, { key: "fieldValueExpr", type: "string", required: true, description: "Value (supports templates)." }], ["object", "found"], ["default"]),
@@ -2388,9 +2371,6 @@ const FLAT_NODES = [
   nodeDef("calculate_msp", "Calculate MSP Score", "Intelligence Engines", "Runs the MSP Intelligence Engine and returns an MSP-level aggregate score.", [{ key: "mspId", type: "string", description: "MSP ID (defaults to the current tenant's MSP)." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
   nodeDef("calculate_pricing", "Calculate Pricing", "Intelligence Engines", "Computes the pricing for a document's SOW phases and stores the result.", [{ key: "documentId", type: "number", required: true, description: "Document ID." }], ["documentId", "totalPrice", "lineCount"], ["default"]),
   // ── Diagnostics / Readiness ──────────────────────────────────────────────
-  nodeDef("parse_quiz_results", "Parse Quiz Results", "Diagnostics / Readiness", "Scores a completed readiness quiz and classifies the lead.", [{ key: "quizLeadId", type: "number", required: true, description: "Quiz lead ID." }], ["quizLeadId", "totalScore", "tier", "recommendedService", "leadName", "leadEmail", "company", "categoryScores"], ["default"]),
-  nodeDef("generate_readiness_score", "Generate Readiness Score", "Diagnostics / Readiness", "Computes and persists a readiness score record for a client.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["readinessScore", "readinessLabel", "recordId"], ["default"]),
-  nodeDef("attach_quiz_insights", "Attach Quiz Insights", "Diagnostics / Readiness", "Attaches quiz-derived insights to a generated document.", [{ key: "quizLeadId", type: "number", required: true, description: "Quiz lead ID." }, { key: "documentId", type: "number", required: true, description: "Document ID to attach insights to." }], ["insightsAttached", "documentId"], ["default"]),
   nodeDef("validate_m365_permissions", "Validate M365 Permissions", "Diagnostics / Readiness", "Checks that required Graph API app permissions are granted.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["permissionsValid", "missingCount", "jobId"], ["default"]),
   // ── Microsoft 365 / Azure ─────────────────────────────────────────────────
   nodeDef("get_tenant_signals", "Get Tenant Signals", "Microsoft 365 / Azure", "Evaluates active signal rules against a client's M365 profile and returns fired signals.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["signals", "signalCount", "hasSignals"], ["default"]),
@@ -2454,8 +2434,6 @@ const FLAT_NODES = [
   nodeDef("comment", "Comment", "Data / Utility", "A no-op annotation node. Useful for labelling sections of a workflow graph. Has no effect on execution.", [{ key: "text", type: "string", description: "Annotation text visible in the builder." }], [], ["default"]),
   // ── Error Handling ────────────────────────────────────────────────────────
   nodeDef("error", "Error Handler", "Error Handling", "Catches errors routed via an 'error' or 'onError' edge from any node. Execution continues normally after this node.", [{ key: "label", type: "string", description: "Label describing what error condition this handler addresses." }], ["caught", "label"], ["default"]),
-  // ── CRM / Intelligence ────────────────────────────────────────────────────
-  nodeDef("write_crm_scores", "Write CRM Scores", "CRM / Lead Management", "Runs the CRM scoring engine for a client, computes fit/pain/maturity/intent/urgency, and persists the scores onto the lead record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID to score." }, { key: "clientUserId", type: "number", required: true, description: "Client user ID (used to retrieve CRM signals)." }, { key: "priorityScoreField", type: "string", description: "Which CRM score field maps to priorityScore (default: 'total')." }, { key: "pricingInfluenceScoreField", type: "string", description: "Which CRM score field maps to pricingInfluenceScore (default: 'total')." }], ["leadId", "priorityScore", "pricingInfluenceScore", "engine", "crmScore"], ["default"]),
   // ── Sales Offer Engine (continued) ────────────────────────────────────────
   nodeDef("sales_offer_escalate", "Sales Offer Escalate", "Sales Offer Engine", "Escalates an offer and emits an admin notification.", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }, { key: "escalatedTo", type: "string", description: "Escalation target (default: 'admin')." }], ["offerId", "escalatedTo"], ["default"]),
   nodeDef("sales_offer_resolve", "Sales Offer Resolve", "Sales Offer Engine", "Transitions an offer to a terminal lifecycle state (accepted, rejected, expired, withdrawn).", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }, { key: "newState", type: "string", required: true, description: "Target state: accepted | rejected | expired | withdrawn." }], ["offerId", "newState"], ["default"]),

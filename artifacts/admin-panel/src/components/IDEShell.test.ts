@@ -69,7 +69,9 @@ describe("Workspace config integrity", () => {
   });
 
   it("detail routes resolve to their workspace with id-suffixed labels", () => {
-    expect(resolveTabMeta("/crm/leads/42")).toMatchObject({ label: "Lead #42", workspaceId: "pipeline" });
+    // Was /crm/leads/42 → "Lead #42"; that detail prefix went with LeadDetail in
+    // #135. /crm/clients/ is the surviving pipeline-owned detail route.
+    expect(resolveTabMeta("/crm/clients/42")).toMatchObject({ label: "Client #42", workspaceId: "pipeline" });
     expect(resolveTabMeta("/crm/invoices/7")).toMatchObject({ label: "Invoice #7", workspaceId: "finance" });
     expect(resolveTabMeta("/crm/projects/3")).toMatchObject({ label: "Project #3", workspaceId: "delivery" });
     expect(resolveTabMeta("/workflows/runs/9")).toMatchObject({ label: "Run #9", workspaceId: "workflows" });
@@ -165,8 +167,9 @@ describe("Collapsible-node persistence keys", () => {
 
 describe("Active-ancestor auto-expand chain", () => {
   it("returns the workspace + section chain for a plain leaf", () => {
-    // /pipeline/leads is a leaf under the pipeline > leads section.
-    expect(activeAncestorKeys("/pipeline/leads", "")).toEqual([
+    // /pipeline/quiz-leads is a leaf under the pipeline > leads section. (Was
+    // /pipeline/leads, whose leaf was removed with the page in #135.)
+    expect(activeAncestorKeys("/pipeline/quiz-leads", "")).toEqual([
       "pipeline",
       "pipeline/leads",
     ]);
@@ -182,7 +185,7 @@ describe("Active-ancestor auto-expand chain", () => {
   });
 
   it("falls back to just the owning workspace for a detail route with no leaf", () => {
-    expect(activeAncestorKeys("/crm/leads/42", "")).toEqual(["pipeline"]);
+    expect(activeAncestorKeys("/crm/clients/42", "")).toEqual(["pipeline"]);
   });
 
   it("returns an empty chain for a path owned by no workspace", () => {

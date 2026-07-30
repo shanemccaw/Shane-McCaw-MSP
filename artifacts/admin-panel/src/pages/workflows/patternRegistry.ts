@@ -223,72 +223,10 @@ export const PATTERNS: WorkflowPattern[] = [
     ],
   },
 
-  // ── 5. Lead Score → Branch → Notify ─────────────────────────────────────────
-  {
-    id: "lead-score-branch-notify",
-    name: "Lead Score → Branch → Notify",
-    description: "Scores an incoming lead then routes to a high-value fast-track or a nurture sequence, with email notification.",
-    icon: "⭐",
-    category: "CRM",
-    tags: ["lead", "score", "condition", "email", "crm"],
-    nodes: [
-      {
-        id: "p5-score",
-        type: "score_lead",
-        position: { x: 0, y: 0 },
-        data: { nodeType: "score_lead", label: "Score Lead", leadId: "{{leadId}}", threshold: 70 },
-      },
-      {
-        id: "p5-cond",
-        type: "condition",
-        position: { x: 0, y: 100 },
-        data: {
-          nodeType: "condition",
-          label: "Qualified?",
-          conditions: [
-            { key: "yes", label: "Qualified", expression: "{{qualified}} == true" },
-            { key: "no",  label: "Not yet", expression: "true" },
-          ],
-        },
-      },
-      {
-        id: "p5-high",
-        type: "send_email",
-        position: { x: -160, y: 220 },
-        data: {
-          nodeType: "send_email",
-          label: "Hot-Lead Email",
-          to: "{{leadEmail}}",
-          subject: "Exclusive offer for {{leadName}}",
-          body: "Hi {{leadName}}, based on your score of {{score}} we have a priority offer…",
-        },
-      },
-      {
-        id: "p5-stage",
-        type: "assign_pipeline_stage",
-        position: { x: -160, y: 340 },
-        data: { nodeType: "assign_pipeline_stage", label: "Move to Hot", targetType: "lead", stage: "Hot", leadId: "{{leadId}}" },
-      },
-      {
-        id: "p5-nurture",
-        type: "send_email",
-        position: { x: 160, y: 220 },
-        data: {
-          nodeType: "send_email",
-          label: "Nurture Email",
-          to: "{{leadEmail}}",
-          subject: "Resources for {{leadName}}",
-          body: "Hi {{leadName}}, here are some resources to get you started…",
-        },
-      },
-    ],
-    edges: [
-      { id: "p5-e1", source: "p5-score", target: "p5-cond" },
-      { id: "p5-e2", source: "p5-cond", target: "p5-high", sourceHandle: "yes" },
-      { id: "p5-e3", source: "p5-high", target: "p5-stage" },
-      { id: "p5-e4", source: "p5-cond", target: "p5-nurture", sourceHandle: "no" },
-    ],
-  },
+  // Pattern 5 ("Lead Score → Branch → Notify") was removed in #135 (Decommission
+  // Legacy CRM Phase A): it was built entirely on the `score_lead` and
+  // `assign_pipeline_stage` node types, which no longer exist, so inserting it
+  // would have produced a workflow the executor cannot run.
 
   // ── 6. Scheduled Batch Loop ──────────────────────────────────────────────────
   {

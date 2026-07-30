@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { db, quizPainSignalConfigTable, leadsTable, quizLeadsTable } from "@workspace/db";
+import { db, quizPainSignalConfigTable, leadStagingTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
-import { sql, eq, inArray, desc } from "drizzle-orm";
+import { sql, eq, isNotNull, desc } from "drizzle-orm";
 import { loadQuizPainConfig, deriveSignalsFromQuiz } from "../lib/derive-quiz-signals";
 
 const router = Router();
@@ -104,50 +104,58 @@ router.post("/admin/quiz-pain-config/recalculate", requireAdmin, async (req, res
   try {
     const config = await loadQuizPainConfig();
 
-    // Fetch all quiz leads ordered by total score desc so the first entry
-    // per email is the highest-scoring (best) match.
-    const allQuizLeads = await db
+    // #135 (Decommission Legacy CRM Phase A). This endpoint used to read
+    // `quiz_leads`, then join it to `leads` BY EMAIL to find the lead row to write
+    // the derived signals onto. Under `lead_staging` (#83) those are the SAME row —
+    // the table is the union of both — so the join is gone and this is one pass.
+    // The endpoint therefore collapses rather than translating 1:1; the observable
+    // contract ({ updated, total }) is unchanged.
+    //
+    // `quizType IS NOT NULL` selects rows that actually carry a quiz submission —
+    // there is nothing to derive signals from otherwise.
+    //
+    // The best-per-email dedupe is KEPT even though `ensureLeadStagingForEmail` is
+    // find-or-create: `lead_staging.email` carries an index, not a unique
+    // constraint, and the #83 backfill can legitimately produce more than one row
+    // for an address. Highest `totalScore` still wins, as before.
+    const stagedQuizLeads = await db
       .select()
-      .from(quizLeadsTable)
-      .orderBy(desc(quizLeadsTable.totalScore));
+      .from(leadStagingTable)
+      .where(isNotNull(leadStagingTable.quizType))
+      .orderBy(desc(leadStagingTable.totalScore));
 
-    // Keep only the best quiz match per email
-    const bestByEmail = new Map<string, typeof allQuizLeads[0]>();
-    for (const ql of allQuizLeads) {
+    const bestByEmail = new Map<string, typeof stagedQuizLeads[0]>();
+    for (const ql of stagedQuizLeads) {
       if (!bestByEmail.has(ql.email)) {
         bestByEmail.set(ql.email, ql);
       }
     }
 
-    const emails = [...bestByEmail.keys()];
-    if (emails.length === 0) {
+    const matched = [...bestByEmail.values()];
+    if (matched.length === 0) {
       return res.json({ updated: 0, total: 0 });
     }
 
-    // Fetch all leads whose email matches a quiz submission
-    const matchedLeads = await db
-      .select({ id: leadsTable.id, email: leadsTable.email, source: leadsTable.source })
-      .from(leadsTable)
-      .where(inArray(leadsTable.email, emails));
-
     let updated = 0;
-    for (const lead of matchedLeads) {
-      const quiz = bestByEmail.get(lead.email);
-      if (!quiz) continue;
+    for (const lead of matched) {
+      // `lead_staging.quiz_type` is nullable where `quiz_leads.quiz_type` was not,
+      // so narrow in code as well as in the WHERE above — the SQL filter cannot
+      // narrow the TS type, and deriveSignalsFromQuiz requires a real quizType.
+      if (lead.quizType === null) continue;
 
       const source = lead.source === "lead_magnet" ? "lead_magnet" : "contact_form";
       const signals = deriveSignalsFromQuiz(
         {
-          quizType: quiz.quizType,
-          categoryScores: (quiz.categoryScores ?? {}) as Record<string, number>,
-          conversation: (quiz.conversation ?? []) as { role: "user" | "assistant"; content: string }[],
+          quizType: lead.quizType,
+          categoryScores: (lead.categoryScores ?? {}) as Record<string, number>,
+          conversation: (lead.conversation ?? []) as { role: "user" | "assistant"; content: string }[],
         },
         source,
         config,
       );
 
       await db
-        .update(leadsTable)
+        .update(leadStagingTable)
         .set({
           painPoints: signals.painPoints,
           maturityIndicators: signals.maturityIndicators,
@@ -155,13 +163,13 @@ router.post("/admin/quiz-pain-config/recalculate", requireAdmin, async (req, res
           urgencySignals: signals.urgencySignals,
           updatedAt: new Date(),
         })
-        .where(eq(leadsTable.id, lead.id));
+        .where(eq(leadStagingTable.id, lead.id));
 
       updated++;
     }
 
-    req.log.info({ updated, total: matchedLeads.length }, "quiz-pain-config recalculate complete");
-    return res.json({ updated, total: matchedLeads.length });
+    req.log.info({ updated, total: matched.length }, "quiz-pain-config recalculate complete");
+    return res.json({ updated, total: matched.length });
   } catch (err) {
     req.log.error({ err }, "admin/quiz-pain-config/recalculate POST failed");
     return res.status(500).json({ error: "Failed to recalculate lead signals" });

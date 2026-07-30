@@ -7,7 +7,8 @@
 //
 // ── The sync/queued split ────────────────────────────────────────────────────
 // Audited against how the executor actually dispatches non-AI nodes today:
-// every existing CRM-ish node (`create_lead`, `convert_to_opportunity`, …) runs
+// every CRM-ish node that existed at the time (`create_lead`,
+// `convert_to_opportunity`, … — since removed in #135) ran
 // INLINE and writes straight to Postgres — there is currently no node anywhere
 // in the codebase that enqueues onto msp_job_queue (`enqueueJob` had zero real
 // callers before this file). So this phase establishes that split rather than

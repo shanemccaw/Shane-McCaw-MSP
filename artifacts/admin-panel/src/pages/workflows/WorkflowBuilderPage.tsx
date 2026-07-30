@@ -52,8 +52,6 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   emit_event:             { bg: "#1A0D18", border: "#F472B6",  icon: "📡", label: "Emit Event"             },
   cancel_workflow:        { bg: "#1A0D0D", border: "#EF4444",  icon: "🛑", label: "Cancel Workflow"        },
   // ── Promoted CRM Action nodes ──
-  create_lead:            { bg: "#041A14", border: "#34D399",  icon: "➕", label: "Create Lead"            },
-  convert_to_opportunity: { bg: "#041A14", border: "#2DD4BF",  icon: "🚀", label: "Convert to Opportunity" },
   create_client:          { bg: "#041A14", border: "#6EE7B7",  icon: "👤", label: "Create Client"          },
   create_project:         { bg: "#041A14", border: "#4ADE80",  icon: "📁", label: "Create Project"         },
   // ── Promoted Azure nodes ──
@@ -64,13 +62,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Sub-workflow ──
   run_workflow:           { bg: "#0D1A2E", border: "#3B82F6",  icon: "⚡", label: "Run Workflow"            },
   // ── CRM ──
-  score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
-  assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
-  create_opportunity:    { bg: "#061A18", border: "#00B4D8", icon: "🚀", label: "Create Opportunity"  },
   // ── Diagnostics / Quiz ──
-  parse_quiz_results:       { bg: "#1C1100", border: "#F59E0B", icon: "📋", label: "Parse Quiz"          },
-  generate_readiness_score: { bg: "#1C1100", border: "#F59E0B", icon: "📊", label: "Readiness Score"     },
-  attach_quiz_insights:     { bg: "#1C1100", border: "#F59E0B", icon: "💡", label: "Attach Insights"     },
   // ── M365 Health ──
   validate_m365_permissions: { bg: "#110D22", border: "#8B5CF6", icon: "🔐", label: "Validate Perms"      },
   update_intelligence_tables:{ bg: "#110D22", border: "#8B5CF6", icon: "🧠", label: "Update Intel"        },
@@ -223,8 +215,6 @@ const KNOWN_EVENTS: Array<{
 
 const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValues?: string[] }>> = {
   // platform / generic action sub-types
-  create_lead:            [{ key: "leadId", label: "Created lead ID" }, { key: "leadName", label: "Full name" }, { key: "leadEmail", label: "Email" }],
-  convert_to_opportunity: [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   create_client:          [{ key: "clientId", label: "Created client user ID" }, { key: "clientEmail", label: "Client email" }],
   create_project:         [{ key: "projectId", label: "Created project ID" }, { key: "projectTitle", label: "Project title" }],
   execute_runbook:        [{ key: "jobId", label: "Azure job ID (single mode)" }, { key: "jobStatus", label: "Final job status (single mode)" }, { key: "scriptName", label: "Script name (single mode)" }, { key: "jobOutput", label: "Script output text (single mode)" }, { key: "allSucceeded", label: "true when every script succeeded (multi mode)" }, { key: "results", label: "Array of per-script result objects (multi mode)" }, { key: "succeeded", label: "Array of script names that succeeded (multi mode)" }, { key: "failed", label: "Array of script names that failed (multi mode)" }],
@@ -240,13 +230,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   // Array / transform nodes
   group_by:              [{ key: "groups", label: "Array of { key, items } objects" }, { key: "groupCount", label: "Number of distinct groups" }],
   // CRM nodes
-  score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "qualified", label: "true if score ≥ threshold" }],
-  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage", enumValues: ["Junk", "Cold", "Warm", "Hot", "DiscoveryCall", "Proposal", "QuickWin", "Retainer", "Onboarding", "Closed Won", "Closed Lost"] }],
-  create_opportunity:    [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   // Diagnostics nodes
-  parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }],
-  generate_readiness_score: [{ key: "readinessScore", label: "Composite readiness score 0–100" }, { key: "readinessLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "recordId", label: "Health history record ID" }],
-  attach_quiz_insights:     [{ key: "insightsAttached", label: "true when saved" }, { key: "documentId", label: "Created insight document ID" }],
   // M365 Health nodes
   validate_m365_permissions: [{ key: "permissionsValid", label: "true if all perms present" }, { key: "missingCount", label: "Number of missing permissions" }, { key: "jobId", label: "Azure job ID" }],
   update_intelligence_tables:[{ key: "updated", label: "true on success" }, { key: "recordId", label: "Health history record ID" }, { key: "jobId", label: "Azure job ID" }],
@@ -880,17 +864,11 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "CRM",
     nodes: [
-      { type: "score_lead",            label: "Score Lead",           description: "Score a lead 0–100 and write qualification record",  tags: ["crm", "lead", "score", "qualify"] },
-      { type: "assign_pipeline_stage", label: "Assign Stage",         description: "Move opportunity to a named pipeline stage",         tags: ["crm", "pipeline", "stage", "opportunity"] },
-      { type: "create_opportunity",    label: "Create Opportunity",   description: "Convert a lead into a CRM opportunity",              tags: ["crm", "opportunity", "lead", "convert"] },
     ],
   },
   {
     name: "Diagnostics",
     nodes: [
-      { type: "parse_quiz_results",       label: "Parse Quiz Results",    description: "Read latest quiz lead record and extract scores",   tags: ["quiz", "diagnostic", "parse", "score"] },
-      { type: "generate_readiness_score", label: "Readiness Score",       description: "Compute composite M365 readiness score from history", tags: ["quiz", "diagnostic", "score", "readiness"] },
-      { type: "attach_quiz_insights",     label: "Attach Insights",       description: "Save quiz insights as a client document",           tags: ["quiz", "diagnostic", "insights", "document"] },
     ],
   },
   {
@@ -993,8 +971,6 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "CRM Actions",
     nodes: [
-      { type: "create_lead",            label: "Create Lead",            description: "Create a new lead record in the CRM",             tags: ["crm", "lead", "create", "contact"] },
-      { type: "convert_to_opportunity", label: "Convert to Opportunity", description: "Convert a lead into a CRM opportunity",            tags: ["crm", "opportunity", "lead", "convert"] },
       { type: "create_client",          label: "Create Client",          description: "Provision a new client user account",              tags: ["crm", "client", "create", "account"] },
       { type: "create_project",         label: "Create Project",         description: "Create a new engagement project",                  tags: ["crm", "project", "create", "engagement"] },
     ],
@@ -2804,8 +2780,6 @@ function NodeConfigPanel({
                   <option value="cancel_workflow">🛑 Cancel Workflow</option>
                 </optgroup>
                 <optgroup label="CRM">
-                  <option value="create_lead">➕ Create Lead</option>
-                  <option value="convert_to_opportunity">🚀 Convert to Opportunity</option>
                   <option value="create_client">👤 Create Client</option>
                   <option value="create_project">📁 Create Project</option>
                 </optgroup>
@@ -2938,35 +2912,6 @@ function NodeConfigPanel({
                 <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
                 <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
               </div>
-            )}
-
-            {(node.data.actionType as string) === "create_lead" && (
-              <>
-                <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.leadName}}" ancestorOutputs={ancestorOutputs} />
-                <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.leadEmail}}" ancestorOutputs={ancestorOutputs} />
-                <PayloadField label="Company" value={(node.data.company as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, company: v })} placeholder="{{payload.company}}" ancestorOutputs={ancestorOutputs} />
-                <PayloadField label="Service Area" value={(node.data.serviceArea as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, serviceArea: v })} placeholder="Microsoft 365" ancestorOutputs={ancestorOutputs} />
-                <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="{{payload.message}}" multiline ancestorOutputs={ancestorOutputs} />
-              </>
-            )}
-
-            {(node.data.actionType as string) === "convert_to_opportunity" && (
-              <>
-                <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
-                  <select
-                    value={(node.data.workflowType as string) ?? "DiscoveryCall"}
-                    onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
-                  >
-                    {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div className="rounded-lg bg-background border border-border p-2.5">
-                  <p className="text-[10px] text-muted-foreground/60">Creates an opportunity linked to the lead and generates the matching workflow task set. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
-                </div>
-              </>
             )}
 
             {(node.data.actionType as string) === "create_client" && (
@@ -3244,35 +3189,6 @@ function NodeConfigPanel({
         )}
 
         {/* ── Promoted CRM Action nodes ─────────────────────── */}
-
-        {nodeType === "create_lead" && (
-          <>
-            <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.leadName}}" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.leadEmail}}" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Company" value={(node.data.company as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, company: v })} placeholder="{{payload.company}}" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Service Area" value={(node.data.serviceArea as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, serviceArea: v })} placeholder="Microsoft 365" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="{{payload.message}}" multiline ancestorOutputs={ancestorOutputs} />
-          </>
-        )}
-
-        {nodeType === "convert_to_opportunity" && (
-          <>
-            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
-              <select
-                value={(node.data.workflowType as string) ?? "DiscoveryCall"}
-                onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
-              >
-                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="rounded-lg bg-background border border-border p-2.5">
-              <p className="text-[10px] text-muted-foreground/60">Creates an opportunity linked to the lead. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
-            </div>
-          </>
-        )}
 
         {nodeType === "create_client" && (
           <>
@@ -3793,131 +3709,10 @@ function NodeConfigPanel({
           </>
         )}
 
-        {/* ── CRM nodes ─────────────────────────────────────── */}
-
-        {nodeType === "score_lead" && (
-          <>
-            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-muted-foreground">Qualification Threshold</label>
-                <FieldHint text="Lead score (0–100). Leads scoring at or above this are flagged as qualified; those below are unqualified." />
-              </div>
-              <input
-                type="number" min={0} max={100}
-                value={(node.data.threshold as number) ?? 50}
-                onChange={e => onChange(node.id, { ...node.data, threshold: Number(e.target.value) })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
-              />
-            </div>
-            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
-              <p className="text-[10px] text-muted-foreground/60">Scores the lead on fit, pain, intent, and urgency. Writes a qualification record. Outputs:</p>
-              <p className="text-[10px] font-mono text-muted-foreground">{"{{score}}"} · {"{{scoreLabel}}"} · {"{{qualified}}"}</p>
-            </div>
-          </>
-        )}
-
-        {nodeType === "assign_pipeline_stage" && (() => {
-          const tgt = (node.data.targetType as string | undefined) ?? "opportunity";
-          const oppStages = ["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding","Closed Won","Closed Lost"];
-          const leadStages = ["Junk","Cold","Warm","Hot"];
-          const stageList = tgt === "lead" ? leadStages : oppStages;
-          const currentStage = (node.data.stage as string | undefined) ?? stageList[0];
-          return (
-            <>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">Target type</label>
-                  <FieldHint text="Whether to move a Lead or an Opportunity to the new stage." />
-                </div>
-                <div className="flex rounded-lg overflow-hidden border border-border">
-                  {(["opportunity","lead"] as const).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => onChange(node.id, { ...node.data, targetType: t, stage: t === "lead" ? "Warm" : "DiscoveryCall" })}
-                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${tgt === t ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
-                    >
-                      {t === "opportunity" ? "Opportunity" : "Lead"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {tgt === "lead"
-                ? <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
-                : <PayloadField label="Opportunity ID" value={(node.data.opportunityId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, opportunityId: v })} placeholder="{{opportunityId}}" ancestorOutputs={ancestorOutputs} />
-              }
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">New stage</label>
-                  <FieldHint text="The pipeline stage to move the record into. Available stages change based on the target type above." />
-                </div>
-                <select
-                  value={stageList.includes(currentStage) ? currentStage : stageList[0]}
-                  onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
-                >
-                  {stageList.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="rounded-lg bg-background border border-border p-2.5">
-                <p className="text-[10px] text-muted-foreground/60">
-                  Moves a {tgt} to the chosen stage. Outputs: <span className="font-mono text-muted-foreground">{"{{stage}}"} · {"{{targetType}}"} · {"{{" + (tgt === "lead" ? "leadId" : "opportunityId") + "}}"}</span>.
-                </p>
-              </div>
-            </>
-          );
-        })()}
-
-        {nodeType === "create_opportunity" && (
-          <>
-            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
-              <select
-                value={(node.data.workflowType as string) ?? "DiscoveryCall"}
-                onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
-              >
-                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="rounded-lg bg-background border border-border p-2.5">
-              <p className="text-[10px] text-muted-foreground/60">Creates a new opportunity from a lead. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
-            </div>
-          </>
-        )}
-
-        {/* ── Diagnostics / Quiz nodes ───────────────────────── */}
-
-        {nodeType === "parse_quiz_results" && (
-          <>
-            <PayloadField label="Quiz Lead ID" value={(node.data.quizLeadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, quizLeadId: v })} placeholder="{{quizLeadId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
-              <p className="text-[10px] text-muted-foreground/60">Reads the quiz lead record and surfaces scores. Outputs:</p>
-              <p className="text-[10px] font-mono text-muted-foreground">{"{{totalScore}}"} · {"{{tier}}"} · {"{{recommendedService}}"} · {"{{categoryScores}}"}</p>
-            </div>
-          </>
-        )}
-
-        {nodeType === "generate_readiness_score" && (
-          <>
-            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
-              <p className="text-[10px] text-muted-foreground/60">Averages the client's health history records to compute a composite readiness score and writes a summary record. Outputs:</p>
-              <p className="text-[10px] font-mono text-muted-foreground">{"{{readinessScore}}"} · {"{{readinessLabel}}"} · {"{{recordId}}"}</p>
-            </div>
-          </>
-        )}
-
-        {nodeType === "attach_quiz_insights" && (
-          <>
-            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Insight Text / Document Name" value={(node.data.insightText as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, insightText: v })} placeholder="M365 Readiness — {{tier}} ({{totalScore}})" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-background border border-border p-2.5">
-              <p className="text-[10px] text-muted-foreground/60">Saves quiz insights as a client document. Output: <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span>.</p>
-            </div>
-          </>
-        )}
+        {/* Legacy CRM node config panels (score_lead, assign_pipeline_stage,
+            create_opportunity, create_lead, convert_to_opportunity) and the
+            quiz/diagnostics trio were removed in #135 along with the node types
+            themselves. */}
 
         {/* ── M365 Health nodes ──────────────────────────────── */}
 

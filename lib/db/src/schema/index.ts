@@ -160,9 +160,9 @@ export const leadsTable = pgTable("leads", {
   // Soft-delete: when set, this lead is hidden from all stats and list queries
   deletedAt: timestamp("deleted_at"),
   // CRM scoring engine — see `crm-engine.ts`. Pure sums over fired `crm:*`
-  // signal contribution fields; persisted here via the `write_crm_scores`
-  // workflow node so automations and the CRM UI can read a stable value
-  // without recomputing the engine on every render.
+  // signal contribution fields. These were written by the `write_crm_scores`
+  // workflow node, which #135 (Decommission Legacy CRM Phase A) removed — as of
+  // that phase these two columns have no writer and are read-only history.
   priorityScore: integer("priority_score").notNull().default(0),
   pricingInfluenceScore: integer("pricing_influence_score").notNull().default(0),
 });
@@ -2516,10 +2516,11 @@ export interface WfNode {
   id: string;
   type:
     | "start" | "end" | "action" | "condition" | "delay" | "error"
-    // CRM
-    | "score_lead" | "assign_pipeline_stage" | "create_opportunity" | "write_crm_scores"
-    // Diagnostics
-    | "parse_quiz_results" | "generate_readiness_score" | "attach_quiz_insights"
+    // CRM — the legacy local-CRM node types (`score_lead`,
+    // `assign_pipeline_stage`, `create_opportunity`, `write_crm_scores`) and the
+    // quiz/diagnostics ones (`parse_quiz_results`, `generate_readiness_score`,
+    // `attach_quiz_insights`) were removed in #135 (Decommission Legacy CRM
+    // Phase A). Zoho CRM's `zoho_*` nodes (#83) are the supported path.
     // M365 Health
     | "validate_m365_permissions" | "update_intelligence_tables"
     | "generate_diff_report" | "notify_major_changes"
