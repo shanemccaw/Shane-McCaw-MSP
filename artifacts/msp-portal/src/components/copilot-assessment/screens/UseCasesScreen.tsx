@@ -38,6 +38,7 @@ import {
 import { UnifiedTelemetryCarousel, ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTelemetryCarousel';
 import { TELEMETRY_ENGINES, TELEMETRY_DOCS } from '../telemetryCatalog';
 import { TransformationSurface, TransformationData } from '../telemetry/TransformationSurface';
+import { UseCaseIssueModal, UseCaseIssue } from '../UseCaseIssueModal';
 
 export interface ExtendedUseCaseData {
   id: string;
@@ -369,6 +370,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
   const [activeUseCaseId, setActiveUseCaseId] = useState<string>('uc_eng_api');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
+  const [selectedIssue, setSelectedIssue] = useState<UseCaseIssue | null>(null);
 
   // Transformation Surface State
   const [transSliderPos, setTransSliderPos] = useState<number>(50);
@@ -1147,7 +1149,11 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
               {activeUseCase.blockers.length > 0 ? (
                 <div className="space-y-1.5 pt-0.5">
                   {activeUseCase.blockers.map((b, idx) => (
-                    <div key={idx} className="p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-[10.5px] text-rose-200 flex items-start gap-2">
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedIssue({ label: b, category: 'blocker', severity: 'High' })}
+                      className="p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-[10.5px] text-rose-200 flex items-start gap-2 cursor-pointer hover:border-rose-500/60 hover:bg-rose-950/60 transition-colors"
+                    >
                       <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
                       <span>{b}</span>
                     </div>
@@ -1173,7 +1179,11 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
               <div className="space-y-1.5 pt-1">
                 {activeUseCase.sensitivityExposure.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px]">
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedIssue({ label: item.label, category: 'sensitivity', severity: item.severity })}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px] cursor-pointer hover:border-sky-500/50 hover:bg-slate-900 transition-colors"
+                  >
                     <span className="text-slate-300 font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono px-1.5 py-0.5 rounded text-[9px] font-bold ${
                       item.severity === 'High' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
@@ -1199,7 +1209,11 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
               <div className="space-y-1.5 pt-1">
                 {activeUseCase.collaborationFriction.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px]">
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedIssue({ label: item.label, category: 'friction', severity: item.severity })}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px] cursor-pointer hover:border-sky-500/50 hover:bg-slate-900 transition-colors"
+                  >
                     <span className="text-slate-300 font-medium truncate max-w-[170px]">{item.label}</span>
                     <span className={`font-mono px-1.5 py-0.5 rounded text-[9px] font-bold ${
                       item.severity === 'High' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
@@ -1253,6 +1267,8 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
         </aside>
 
       </div>
+
+      <UseCaseIssueModal issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
     </div>
   );
 };
