@@ -235,7 +235,9 @@ router.get("/opportunities", requireAdmin, async (req: Request, res: Response) =
   // Enrich with lead data + task count
   const enriched = await Promise.all(
     opportunities.map(async (op) => {
-      const [lead] = await db
+      // #136: opportunities.lead_id is nullable — an opportunity scored from a
+      // post-cutover staged lead has no legacy `leads` row to enrich from.
+      const [lead] = op.leadId == null ? [] : await db
         .select({ id: leadsTable.id, name: leadsTable.name, email: leadsTable.email, company: leadsTable.company })
         .from(leadsTable)
         .where(eq(leadsTable.id, op.leadId))
@@ -261,7 +263,8 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
   const [op] = await db.select().from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
   if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
 
-  const [lead] = await db
+  // #136: opportunities.lead_id is nullable — see the note in the list handler above.
+  const [lead] = op.leadId == null ? [] : await db
     .select()
     .from(leadsTable)
     .where(eq(leadsTable.id, op.leadId))
@@ -274,7 +277,7 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
     .orderBy(opportunityTasksTable.createdAt);
 
   // Fetch SOW proposals linked via the lead → user chain
-  const [linkedUser] = await db
+  const [linkedUser] = op.leadId == null ? [] : await db
     .select({ id: usersTable.id })
     .from(usersTable)
     .where(eq(usersTable.linkedLeadId, op.leadId))

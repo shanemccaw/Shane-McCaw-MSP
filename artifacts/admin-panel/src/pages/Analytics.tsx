@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -17,25 +17,20 @@ interface KPIs {
 
 interface Series { date: string; views: number }
 interface TopPage { page: string; views: number; avgDuration: number | null; bounceRate: number }
-interface TopEvent { eventType: string; label: string; page: string; count: number }
-interface TopReferrer { source: string; sessions: number; pct: number }
-interface TopLink { href: string; label: string; count: number }
-interface TopCta { page: string; label: string; clicks: number; pageViews: number; ctr: number }
+interface TopEvent { eventName: string; count: number }
+interface TopReferrer { source: string; medium: string; sessions: number; pct: number }
+interface TopCampaign { campaign: string; sessions: number; pct: number }
 
 interface ForecastRow { period: string; forecast: number; lowerBound: number; upperBound: number }
 interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; generatedAt: string | null }
 
-interface CardClickRow { cardName: string; firstClicks: number; pct: number }
-interface CardClickFilterOption { id: number; label: string }
-interface CardClickFilters { clients: CardClickFilterOption[]; projects: CardClickFilterOption[] }
+interface CardClickRow { cardName: string; clicks: number; pct: number }
 
 interface CardClickTrend {
   granularity: "week" | "month";
   cardNames: string[];
   periods: Record<string, number | string>[];
 }
-
-type CardClickFilterType = "all" | "client" | "project";
 
 type SortDir = "asc" | "desc";
 
@@ -53,10 +48,6 @@ function fmtTime(seconds: number): string {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
-}
-
-function safeHref(raw: string): string {
-  return /^https?:\/\//i.test(raw) ? raw : "";
 }
 
 function SkeletonCard({ h = "h-24" }: { h?: string }) {
@@ -88,13 +79,18 @@ function SortBtn({ col, sortCol, sortDir, onSort }: { col: string; sortCol: stri
 
 const PRESET_LABELS: Record<Preset, string> = { today: "Today", "7d": "7d", "30d": "30d", "90d": "90d" };
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  cta_click: "CTA Click",
-  nav_click: "Nav Click",
-  outbound_click: "Outbound",
+// GA4's automatically-collected event names, plus our own custom `card_click`.
+// Anything not listed falls back to its raw GA4 event name.
+const EVENT_NAME_LABELS: Record<string, string> = {
+  page_view: "Page View",
   click: "Click",
+  scroll: "Scroll",
+  session_start: "Session Start",
+  first_visit: "First Visit",
+  user_engagement: "User Engagement",
+  form_start: "Form Start",
   form_submit: "Form Submit",
-  scroll_milestone: "Scroll",
+  card_click: "Overview Card Click",
 };
 
 function fmtUsd(n: number) {
@@ -132,12 +128,8 @@ export default function AnalyticsPage() {
   const [topReferrers, setTopReferrers] = useState<TopReferrer[] | null>(null);
   const [topReferrersLoading, setTopReferrersLoading] = useState(true);
 
-  const [topLinks, setTopLinks] = useState<TopLink[] | null>(null);
-  const [topLinksLoading, setTopLinksLoading] = useState(true);
-
-  const [topCtas, setTopCtas] = useState<TopCta[] | null>(null);
-  const [topCtasLoading, setTopCtasLoading] = useState(true);
-  const [topCtasSort, setTopCtasSort] = useState<{ col: string; dir: SortDir }>({ col: "Clicks", dir: "desc" });
+  const [topCampaigns, setTopCampaigns] = useState<TopCampaign[] | null>(null);
+  const [topCampaignsLoading, setTopCampaignsLoading] = useState(true);
 
   const [live, setLive] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"analytics" | "forecasting" | "engagement">("analytics");
@@ -149,38 +141,12 @@ export default function AnalyticsPage() {
   const [cardClickTrend, setCardClickTrend] = useState<CardClickTrend | null>(null);
   const [cardClickTrendLoading, setCardClickTrendLoading] = useState(true);
 
-  const [cardClickFilters, setCardClickFilters] = useState<CardClickFilters | null>(null);
-  const [cardClickFilterType, setCardClickFilterType] = useState<CardClickFilterType>("all");
-  const [cardClickFilterId, setCardClickFilterId] = useState<number | null>(null);
-
-  // Refs so load() can always read the current filter without being recreated on filter changes
-  const cardClickFilterTypeRef = useRef<CardClickFilterType>("all");
-  const cardClickFilterIdRef = useRef<number | null>(null);
-  cardClickFilterTypeRef.current = cardClickFilterType;
-  cardClickFilterIdRef.current = cardClickFilterId;
-
-  function buildQs(extra?: Record<string, string>): string {
-    const params = new URLSearchParams(extra ?? {});
-    if (isCustom && customStart && customEnd) {
-      params.set("start", customStart);
-      params.set("end", customEnd);
-    } else {
-      params.set("range", preset);
-    }
-    return params.toString();
-  }
-
-  const loadCardClicks = useCallback(async (
-    p: Preset, custom: boolean, cStart: string, cEnd: string,
-    filterType: CardClickFilterType, filterId: number | null,
-  ) => {
+  const loadCardClicks = useCallback(async (p: Preset, custom: boolean, cStart: string, cEnd: string) => {
     setCardClicksLoading(true); setCardClicksError(null);
     setCardClickTrendLoading(true);
     const params = new URLSearchParams();
     if (custom && cStart && cEnd) { params.set("start", cStart); params.set("end", cEnd); }
     else { params.set("range", p); }
-    if (filterType === "client" && filterId !== null) params.set("clientId", String(filterId));
-    if (filterType === "project" && filterId !== null) params.set("projectId", String(filterId));
     const qs = params.toString();
     await Promise.allSettled([
       fetchWithAuth(`/api/admin/analytics/card-clicks?${qs}`)
@@ -204,8 +170,7 @@ export default function AnalyticsPage() {
   const load = useCallback(async (p: Preset, custom: boolean, cStart: string, cEnd: string) => {
     setKpisLoading(true); setKpisError(null);
     setSeriesLoading(true); setTopPagesLoading(true);
-    setTopEventsLoading(true); setTopReferrersLoading(true);
-    setTopLinksLoading(true); setTopCtasLoading(true);
+    setTopEventsLoading(true); setTopReferrersLoading(true); setTopCampaignsLoading(true);
 
     function qs(): string {
       const params = new URLSearchParams();
@@ -235,38 +200,17 @@ export default function AnalyticsPage() {
         .then(async res => { const d = await res.json(); setTopReferrers(Array.isArray(d) ? d as TopReferrer[] : []); setTopReferrersLoading(false); })
         .catch(() => { setTopReferrers([]); setTopReferrersLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-links?${qs()}`)
-        .then(async res => { const d = await res.json(); setTopLinks(Array.isArray(d) ? d as TopLink[] : []); setTopLinksLoading(false); })
-        .catch(() => { setTopLinks([]); setTopLinksLoading(false); }),
-
-      fetchWithAuth(`/api/admin/analytics/top-ctas?${qs()}`)
-        .then(async res => { const d = await res.json(); setTopCtas(Array.isArray(d) ? d as TopCta[] : []); setTopCtasLoading(false); })
-        .catch(() => { setTopCtas([]); setTopCtasLoading(false); }),
+      fetchWithAuth(`/api/admin/analytics/top-campaigns?${qs()}`)
+        .then(async res => { const d = await res.json(); setTopCampaigns(Array.isArray(d) ? d as TopCampaign[] : []); setTopCampaignsLoading(false); })
+        .catch(() => { setTopCampaigns([]); setTopCampaignsLoading(false); }),
     ]);
 
-    // Re-fetch card-clicks preserving the active filter (read via ref, not state,
-    // so load() is stable and doesn't re-create when the filter changes).
-    void loadCardClicks(p, custom, cStart, cEnd, cardClickFilterTypeRef.current, cardClickFilterIdRef.current);
-  }, [fetchWithAuth, loadCardClicks, cardClickFilterTypeRef, cardClickFilterIdRef]);
+    void loadCardClicks(p, custom, cStart, cEnd);
+  }, [fetchWithAuth, loadCardClicks]);
 
   useEffect(() => {
     if (!isCustom) void load(preset, false, "", "");
   }, [preset, isCustom, load]);
-
-  // Load filter options (clients/projects with card-click data) once
-  useEffect(() => {
-    fetchWithAuth("/api/admin/analytics/card-clicks/filters")
-      .then(async res => { if (res.ok) setCardClickFilters(await res.json() as CardClickFilters); })
-      .catch(() => { /* non-fatal */ });
-  }, [fetchWithAuth]);
-
-  // Re-fetch card-clicks whenever the filter selection changes (but not initial mount — load() handles that)
-  const isFirstFilterMount = useState(true);
-  useEffect(() => {
-    if (isFirstFilterMount[0]) { isFirstFilterMount[1](false); return; }
-    void loadCardClicks(preset, isCustom, customStart, customEnd, cardClickFilterType, cardClickFilterId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardClickFilterType, cardClickFilterId]);
 
   const loadForecast = useCallback(async () => {
     setRevLoading(true);
@@ -300,21 +244,6 @@ export default function AnalyticsPage() {
     return () => clearInterval(id);
   }, [fetchWithAuth]);
 
-  const topEventsByType = topEvents
-    ? Object.entries(
-        topEvents.reduce<Record<string, TopEvent[]>>((acc, e) => {
-          const bucket = acc[e.eventType] ?? [];
-          bucket.push(e);
-          acc[e.eventType] = bucket;
-          return acc;
-        }, {}),
-      ).sort((a, b) => {
-        const sumA = a[1].reduce((s, e) => s + e.count, 0);
-        const sumB = b[1].reduce((s, e) => s + e.count, 0);
-        return sumB - sumA;
-      })
-    : [];
-
   function sortedPages(): TopPage[] {
     if (!topPages) return [];
     const { col, dir } = topPagesSort;
@@ -323,18 +252,6 @@ export default function AnalyticsPage() {
       if (col === "Views") { av = a.views; bv = b.views; }
       else if (col === "Avg Time") { av = a.avgDuration ?? 0; bv = b.avgDuration ?? 0; }
       else if (col === "Bounce") { av = a.bounceRate; bv = b.bounceRate; }
-      return dir === "desc" ? bv - av : av - bv;
-    });
-  }
-
-  function sortedCtas(): TopCta[] {
-    if (!topCtas) return [];
-    const { col, dir } = topCtasSort;
-    return [...topCtas].sort((a, b) => {
-      let av = 0, bv = 0;
-      if (col === "Clicks") { av = a.clicks; bv = b.clicks; }
-      else if (col === "Views") { av = a.pageViews; bv = b.pageViews; }
-      else if (col === "CTR") { av = a.ctr; bv = b.ctr; }
       return dir === "desc" ? bv - av : av - bv;
     });
   }
@@ -350,7 +267,7 @@ export default function AnalyticsPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-foreground">Site Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">First-party traffic data for Shane McCaw Consulting.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">GA4-sourced traffic data for Shane McCaw Consulting.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Live badge */}
@@ -440,7 +357,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             {
-              label: "Unique Visitors",
+              label: "Active Users",
               value: fmt(kpis.visitors),
               icon: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z",
               color: "text-primary bg-primary/10",
@@ -452,7 +369,7 @@ export default function AnalyticsPage() {
               color: "text-purple-400 bg-purple-500/15",
             },
             {
-              label: "Avg. Time on Page",
+              label: "Avg. Session Duration",
               value: fmtTime(kpis.avgTimeOnPage),
               icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
               color: "text-teal-400 bg-teal-500/15",
@@ -546,7 +463,8 @@ export default function AnalyticsPage() {
           )}
         </section>
 
-        {/* Traffic Sources */}
+        {/* Traffic Sources — session source/medium, plus a compact campaign breakdown
+            (folds in Attribution.tsx's function, retired alongside it in #123) */}
         <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <h2 className="text-sm font-bold text-foreground uppercase tracking-widest mb-4">Traffic Sources</h2>
           {topReferrersLoading ? (
@@ -559,7 +477,7 @@ export default function AnalyticsPage() {
                 <div key={i} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-foreground truncate">{row.source}</span>
+                      <span className="text-xs font-medium text-foreground truncate">{row.source} <span className="text-muted-foreground/70">/ {row.medium}</span></span>
                       <span className="text-xs text-muted-foreground ml-2 shrink-0">{fmt(row.sessions)} ({row.pct}%)</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-border overflow-hidden">
@@ -570,82 +488,41 @@ export default function AnalyticsPage() {
               ))}
             </div>
           )}
-        </section>
-      </div>
 
-      {/* Two-column: CTA Events + Outbound Links */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* CTA Events */}
-        <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-foreground uppercase tracking-widest mb-4">CTA &amp; Click Events</h2>
-          {topEventsLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-card rounded-lg animate-pulse" />)}</div>
-          ) : !topEvents || topEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-8">No click events recorded yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {topEventsByType.slice(0, 4).map(([eventType, events]) => (
-                <div key={eventType}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                    {EVENT_TYPE_LABELS[eventType] ?? eventType}
-                  </p>
-                  <div className="space-y-1">
-                    {events.slice(0, 5).map((ev, i) => (
-                      <div key={i} className="flex items-center gap-2 py-1">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs text-foreground font-medium truncate block">{ev.label}</span>
-                          <span className="text-[10px] text-muted-foreground truncate block">{ev.page}</span>
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground shrink-0">{fmt(ev.count)}</span>
-                      </div>
-                    ))}
+          {!topCampaignsLoading && topCampaigns && topCampaigns.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-border">
+              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">Top Campaigns</h3>
+              <div className="space-y-1.5">
+                {topCampaigns.map((row, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-foreground truncate">{row.campaign}</span>
+                    <span className="text-[10px] font-bold text-muted-foreground shrink-0">{fmt(row.sessions)} ({row.pct}%)</span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Outbound Links — sanitized hrefs */}
-        <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-foreground uppercase tracking-widest mb-4">Outbound Link Clicks</h2>
-          {topLinksLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-card rounded-lg animate-pulse" />)}</div>
-          ) : !topLinks || topLinks.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-8">No outbound clicks recorded yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 pr-3 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Label</th>
-                    <th className="text-left py-2 pr-3 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Destination</th>
-                    <th className="text-right py-2 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Clicks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topLinks.map((row, i) => {
-                    const href = safeHref(row.href);
-                    return (
-                      <tr key={i} className="border-b border-border hover:bg-accent transition-colors">
-                        <td className="py-2 pr-3 text-foreground font-medium truncate max-w-[140px]">{row.label || "—"}</td>
-                        <td className="py-2 pr-3 text-muted-foreground truncate max-w-[200px]">
-                          {href
-                            ? <a href={href} target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">{href}</a>
-                            : <span className="text-muted-foreground/60 italic text-[10px]">{row.href ? "(non-http url)" : "—"}</span>
-                          }
-                        </td>
-                        <td className="py-2 text-right font-bold text-muted-foreground">{fmt(row.count)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                ))}
+              </div>
             </div>
           )}
         </section>
       </div>
 
+      {/* Top Events */}
+      <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-foreground uppercase tracking-widest mb-4">Top Events</h2>
+        {topEventsLoading ? (
+          <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-card rounded-lg animate-pulse" />)}</div>
+        ) : !topEvents || topEvents.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8">No events recorded yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
+            {topEvents.map((ev, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 py-1.5 border-b border-border/60">
+                <span className="text-xs text-foreground font-medium truncate">{EVENT_NAME_LABELS[ev.eventName] ?? ev.eventName}</span>
+                <span className="text-xs font-bold text-muted-foreground shrink-0">{fmt(ev.count)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       </>)}
 
       {/* ── Forecasting Tab ── */}
@@ -782,75 +659,10 @@ export default function AnalyticsPage() {
             <div>
               <h2 className="text-sm font-bold text-foreground uppercase tracking-widest">Overview Card Engagement</h2>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Which overview card did each client click <em>first</em> — aggregated across all Quick Win presentations.
+                Click volume on the public site&apos;s Quick Win overview cards, sourced from GA4&apos;s <code>card_click</code> custom event — aggregate site-wide counts, not broken down by client or project.
               </p>
             </div>
-            {/* Filter controls */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <select
-                value={cardClickFilterType}
-                onChange={e => {
-                  const t = e.target.value as CardClickFilterType;
-                  setCardClickFilterType(t);
-                  setCardClickFilterId(null);
-                }}
-                className="text-xs bg-background border border-border text-foreground/90 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="all">All presentations</option>
-                {cardClickFilters && cardClickFilters.clients.length > 0 && <option value="client">Filter by client</option>}
-                {cardClickFilters && cardClickFilters.projects.length > 0 && <option value="project">Filter by project</option>}
-              </select>
-
-              {cardClickFilterType === "client" && cardClickFilters && (
-                <select
-                  value={cardClickFilterId ?? ""}
-                  onChange={e => setCardClickFilterId(e.target.value ? Number(e.target.value) : null)}
-                  className="text-xs bg-background border border-border text-foreground/90 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary max-w-[200px]"
-                >
-                  <option value="">— pick a client —</option>
-                  {cardClickFilters.clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
-                  ))}
-                </select>
-              )}
-
-              {cardClickFilterType === "project" && cardClickFilters && (
-                <select
-                  value={cardClickFilterId ?? ""}
-                  onChange={e => setCardClickFilterId(e.target.value ? Number(e.target.value) : null)}
-                  className="text-xs bg-background border border-border text-foreground/90 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary max-w-[200px]"
-                >
-                  <option value="">— pick a project —</option>
-                  {cardClickFilters.projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
-                </select>
-              )}
-
-              {(cardClickFilterType !== "all" || cardClickFilterId !== null) && (
-                <button
-                  onClick={() => { setCardClickFilterType("all"); setCardClickFilterId(null); }}
-                  className="text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg hover:bg-accent"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
           </div>
-
-          {/* Active filter badge */}
-          {cardClickFilterType !== "all" && cardClickFilterId !== null && (() => {
-            const list = cardClickFilterType === "client" ? cardClickFilters?.clients : cardClickFilters?.projects;
-            const found = list?.find(x => x.id === cardClickFilterId);
-            return found ? (
-              <div className="mt-2 mb-0 flex items-center gap-1.5">
-                <span className="text-[10px] text-muted-foreground">Showing data for</span>
-                <span className="text-[10px] font-semibold bg-primary/15 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                  {cardClickFilterType === "client" ? "Client" : "Project"}: {found.label}
-                </span>
-              </div>
-            ) : null;
-          })()}
 
           {cardClicksLoading ? (
             <div className="space-y-3 mt-5">
@@ -867,7 +679,7 @@ export default function AnalyticsPage() {
               </div>
               <p className="text-sm font-semibold text-foreground">No card-click data yet</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
-                First-click events will appear here once clients interact with the Quick Win overview cards.
+                Click events will appear here once visitors interact with the Quick Win overview cards.
               </p>
             </div>
           ) : (
@@ -881,7 +693,7 @@ export default function AnalyticsPage() {
                     <div key={row.cardName} className="bg-accent border border-border rounded-xl p-4 flex flex-col gap-1">
                       <p className="text-2xl font-bold text-foreground">{row.pct}%</p>
                       <p className="text-xs font-semibold truncate" style={{ color }}>{row.cardName}</p>
-                      <p className="text-[10px] text-muted-foreground">{row.firstClicks} first {row.firstClicks === 1 ? "click" : "clicks"}</p>
+                      <p className="text-[10px] text-muted-foreground">{row.clicks} {row.clicks === 1 ? "click" : "clicks"}</p>
                     </div>
                   );
                 })}
@@ -890,7 +702,7 @@ export default function AnalyticsPage() {
               {/* Trend chart — stacked bar by week/month */}
               <div className="mb-6 mt-2">
                 <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">
-                  First-Click Trend — by {cardClickTrend?.granularity === "month" ? "Month" : "Week"}
+                  Click Trend — by {cardClickTrend?.granularity === "month" ? "Month" : "Week"}
                 </h3>
                 {cardClickTrendLoading ? (
                   <div className="h-48 bg-accent rounded-xl animate-pulse" />
@@ -958,7 +770,7 @@ export default function AnalyticsPage() {
 
               {/* Horizontal bar chart */}
               <div className="mb-2">
-                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">First-Click Distribution</h3>
+                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Click Distribution</h3>
                 <ResponsiveContainer width="100%" height={Math.max(120, cardClicks.length * 48)}>
                   <BarChart
                     data={cardClicks}
@@ -977,8 +789,8 @@ export default function AnalyticsPage() {
                     <RechartsTooltip
                       contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #232A36", background: "#171C26", color: "#E6EDF3" }}
                       formatter={(v: number, _name: string, props: { payload?: CardClickRow }) => [
-                        `${v}% (${props.payload?.firstClicks ?? 0} first ${(props.payload?.firstClicks ?? 0) === 1 ? "click" : "clicks"})`,
-                        "First Click",
+                        `${v}% (${props.payload?.clicks ?? 0} ${(props.payload?.clicks ?? 0) === 1 ? "click" : "clicks"})`,
+                        "Share",
                       ]}
                     />
                     <Bar dataKey="pct" radius={[0, 4, 4, 0]} label={{ position: "right", fontSize: 11, fill: "#8B94A3", formatter: (v: number) => `${v}%` }}>
@@ -997,7 +809,7 @@ export default function AnalyticsPage() {
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left py-2 pr-4 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Card</th>
-                      <th className="text-right py-2 pr-4 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">First Clicks</th>
+                      <th className="text-right py-2 pr-4 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Clicks</th>
                       <th className="text-right py-2 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Share</th>
                     </tr>
                   </thead>
@@ -1011,7 +823,7 @@ export default function AnalyticsPage() {
                             <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: color }} />
                             {row.cardName}
                           </td>
-                          <td className="py-2.5 pr-4 text-right font-bold text-foreground/90">{row.firstClicks}</td>
+                          <td className="py-2.5 pr-4 text-right font-bold text-foreground/90">{row.clicks}</td>
                           <td className="py-2.5 text-right">
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.pct >= 40 ? "bg-primary/15 text-primary" : "bg-border/50 text-muted-foreground"}`}>
                               {row.pct}%
@@ -1024,7 +836,7 @@ export default function AnalyticsPage() {
                   <tfoot>
                     <tr className="border-t border-border">
                       <td className="pt-3 pr-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total</td>
-                      <td className="pt-3 pr-4 text-right font-bold text-foreground">{cardClicks.reduce((s, r) => s + r.firstClicks, 0)}</td>
+                      <td className="pt-3 pr-4 text-right font-bold text-foreground">{cardClicks.reduce((s, r) => s + r.clicks, 0)}</td>
                       <td className="pt-3 text-right text-[10px] text-muted-foreground">100%</td>
                     </tr>
                   </tfoot>
@@ -1035,53 +847,6 @@ export default function AnalyticsPage() {
         </section>
       </div>
       )}
-
-      {activeTab === "analytics" && (
-      <>{/* Top CTAs with CTR — sortable */}
-      <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-foreground uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
-          <span className="text-[10px] text-muted-foreground">CTR = clicks ÷ page views</span>
-        </div>
-        {topCtasLoading ? (
-          <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-8 bg-card rounded-lg animate-pulse" />)}</div>
-        ) : !topCtas || topCtas.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-8">No CTA click data yet — CTAs and nav links will appear here once visitors click them.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2 pr-3 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">CTA Label</th>
-                  <th className="text-left py-2 pr-3 font-semibold text-muted-foreground uppercase tracking-widest text-[10px]">Page</th>
-                  {(["Clicks", "Views", "CTR"] as const).map(col => (
-                    <th key={col} className="text-right py-2 pr-3 font-semibold text-muted-foreground uppercase tracking-widest text-[10px] cursor-pointer select-none">
-                      <SortBtn col={col} sortCol={topCtasSort.col} sortDir={topCtasSort.dir}
-                        onSort={c => setTopCtasSort(s => toggleSort(s, c))} />
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCtas().map((row, i) => (
-                  <tr key={i} className="border-b border-border hover:bg-accent transition-colors">
-                    <td className="py-2 pr-3 text-foreground font-medium truncate max-w-[180px]">{row.label}</td>
-                    <td className="py-2 pr-3 text-muted-foreground truncate max-w-[160px]">{row.page || "/"}</td>
-                    <td className="py-2 pr-3 text-right font-semibold text-foreground/90">{fmt(row.clicks)}</td>
-                    <td className="py-2 pr-3 text-right text-muted-foreground">{fmt(row.pageViews)}</td>
-                    <td className="py-2 text-right">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-500/15 text-emerald-400" : row.ctr >= 2 ? "bg-blue-500/15 text-primary" : "bg-border/50 text-muted-foreground"}`}>
-                        {row.ctr}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      </>)}
     </div>
   );
 }

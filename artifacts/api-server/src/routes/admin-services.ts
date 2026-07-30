@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, type ServiceAssociatedDocument } from "@workspace/db";
-import { eq, inArray, sql, asc } from "drizzle-orm";
+import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, projectsTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, notificationsTable, clientAppRegistrationsTable, type ServiceAssociatedDocument } from "@workspace/db";
+import { eq, and, inArray, sql, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
 import fs from "fs";
@@ -9,6 +9,11 @@ import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
 import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig";
 import { logger } from "../lib/logger.ts";
+import { getSecretValue } from "../lib/azure-keyvault";
+import { probeGraphPermissions } from "../lib/probe-graph-permissions";
+import { createAuditLog } from "../lib/audit";
+import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata";
+import { getDefaultSteps, seedDefaultWorkflowSteps } from "../lib/default-workflow-steps";
 
 const log = logger.child({ channel: "admin.content" });
 
@@ -914,6 +919,360 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
+});
+
+// ─── Relocated from portal.ts (#175 decommission) ────────────────────────────
+
+/**
+ * Aggregates the union of appPermissions across all script packages linked
+ * to the client's active service(s) via the service_script_sets join table.
+ */
+async function getRequiredPermissionsForClient(clientUserId: number): Promise<string[]> {
+  const activeServices = await db
+    .select({ serviceId: clientServicesTable.serviceId })
+    .from(clientServicesTable)
+    .where(
+      and(
+        eq(clientServicesTable.clientUserId, clientUserId),
+        eq(clientServicesTable.status, "active"),
+      ),
+    );
+
+  if (activeServices.length === 0) return [];
+
+  const serviceIds = activeServices.map(s => s.serviceId);
+
+  // Aggregate required App Registration scopes from services.requiredAppPermissions (jsonb).
+  // This replaced the old service_required_scripts join table (dropped in migration 0177).
+  const serviceRows = await db
+    .select({ requiredAppPermissions: servicesTable.requiredAppPermissions })
+    .from(servicesTable)
+    .where(inArray(servicesTable.id, serviceIds));
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const svc of serviceRows) {
+    for (const p of svc.requiredAppPermissions ?? []) {
+      const scope = p.scope;
+      if (!seen.has(scope)) { seen.add(scope); result.push(scope); }
+    }
+  }
+  return result;
+}
+
+/**
+ * Re-probes Graph permissions for a client in the background after their active
+ * services change. Uses the credentials already stored in Key Vault — never asks
+ * the client to re-enter them.
+ *
+ * Safe to call fire-and-forget (never throws; all errors are logged as warnings).
+ */
+async function reProbeClientPermissionsInBackground(clientUserId: number): Promise<void> {
+  try {
+    // 1. Only proceed if the client has a verified App Registration
+    const [appReg] = await db
+      .select()
+      .from(clientAppRegistrationsTable)
+      .where(
+        and(
+          eq(clientAppRegistrationsTable.clientUserId, clientUserId),
+          eq(clientAppRegistrationsTable.status, "verified"),
+        ),
+      );
+    if (!appReg) return;
+
+    // 2. Gather permissions required by all active services
+    const requiredPermissions = await getRequiredPermissionsForClient(clientUserId);
+    if (requiredPermissions.length === 0) return;
+
+    // 3. Retrieve the stored client secret from Key Vault
+    let clientSecret: string;
+    try {
+      clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+    } catch (kvErr) {
+      log.warn(
+        { kvErr, clientUserId },
+        "re-probe: could not retrieve client secret from Key Vault — skipping permission re-check",
+      );
+      return;
+    }
+
+    // 4. Run the permission probe (never throws)
+    const probeResult = await probeGraphPermissions(
+      appReg.tenantId,
+      appReg.azureClientId,
+      clientSecret,
+      requiredPermissions,
+    );
+
+    // 5. Persist the fresh result
+    await db
+      .update(clientAppRegistrationsTable)
+      .set({ permissionCheck: probeResult, updatedAt: new Date() })
+      .where(eq(clientAppRegistrationsTable.clientUserId, clientUserId));
+
+    log.info(
+      {
+        clientUserId,
+        granted: probeResult.granted.length,
+        missing: probeResult.missing.length,
+        unverifiable: probeResult.unverifiable.length,
+      },
+      "re-probe: permission_check refreshed after service change",
+    );
+
+    // 6. Notify the client if newly required permissions are missing
+    if (probeResult.missing.length > 0) {
+      await db.insert(notificationsTable).values({
+        userId: clientUserId,
+        title: "Action required: App Registration permissions",
+        body: `Your services have been updated and your Microsoft 365 App Registration is now missing ${probeResult.missing.length} required permission${probeResult.missing.length === 1 ? "" : "s"}. Please visit the App Registration page to grant them.`,
+        type: "general",
+        linkPath: "/portal/app-registration",
+      });
+    }
+  } catch (err) {
+    log.warn({ err, clientUserId }, "re-probe: background permission re-check failed (non-fatal)");
+  }
+}
+
+// ─── ADMIN: Services ─────────────────────────────────────────────────────────
+router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
+  const services = await db.select().from(servicesTable).orderBy(asc(servicesTable.name));
+  res.json(services);
+});
+
+router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
+  const { name, description, category, deliverables, price, basePrice, maxPrice, durationDays } = req.body as {
+    name?: string; description?: string; category?: string; deliverables?: string;
+    price?: string; basePrice?: string; maxPrice?: string; durationDays?: number;
+  };
+  if (!name) { res.status(400).json({ error: "name is required" }); return; }
+
+  const [service] = await db.insert(servicesTable).values({
+    name, description: description ?? null, category: category ?? null,
+    deliverables: deliverables ? deliverables.split(",").map(s => s.trim()) : null,
+    price: price ?? null,
+    basePrice: basePrice ?? null, maxPrice: maxPrice ?? null,
+    durationDays: durationDays ?? null,
+  }).returning();
+  res.status(201).json(service);
+});
+
+router.patch("/admin/services/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const { name, description, category, deliverables, price, basePrice, maxPrice, durationDays } = req.body as {
+    name?: string; description?: string; category?: string; deliverables?: string;
+    price?: string; basePrice?: string; maxPrice?: string; durationDays?: number;
+  };
+  const updates: Partial<typeof servicesTable.$inferInsert> = {};
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (category !== undefined) updates.category = category;
+  if (deliverables !== undefined) updates.deliverables = deliverables.split(",").map(s => s.trim());
+  if (price !== undefined) updates.price = price;
+  if (basePrice !== undefined) updates.basePrice = basePrice;
+  if (maxPrice !== undefined) updates.maxPrice = maxPrice;
+  if (durationDays !== undefined) updates.durationDays = durationDays;
+  const [updated] = await db.update(servicesTable).set(updates).where(eq(servicesTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(updated);
+});
+
+// ─── ADMIN: Get/set order workflow for a service ──────────────────────────────
+router.get("/admin/services/:id/workflow", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const [service] = await db.select({ orderWorkflow: servicesTable.orderWorkflow })
+    .from(servicesTable).where(eq(servicesTable.id, id));
+  if (!service) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ workflow: service.orderWorkflow ?? [] });
+});
+
+router.put("/admin/services/:id/workflow", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const { workflow } = req.body as { workflow: unknown };
+  if (!Array.isArray(workflow)) { res.status(400).json({ error: "workflow must be a non-empty array of steps" }); return; }
+
+  // Validate each step and its options
+  const stepIds = new Set<string>();
+  for (let si = 0; si < workflow.length; si++) {
+    const step = workflow[si] as Record<string, unknown>;
+    if (typeof step !== "object" || step === null) {
+      res.status(400).json({ error: `step[${si}] must be an object` }); return;
+    }
+    if (typeof step.id !== "string" || step.id.trim() === "") {
+      res.status(400).json({ error: `step[${si}].id must be a non-empty string` }); return;
+    }
+    if (stepIds.has(step.id)) {
+      res.status(400).json({ error: `duplicate step id "${step.id}"` }); return;
+    }
+    stepIds.add(step.id);
+    if (typeof step.title !== "string" || step.title.trim() === "") {
+      res.status(400).json({ error: `step[${si}].title must be a non-empty string` }); return;
+    }
+    if (!Array.isArray(step.options) || step.options.length === 0) {
+      res.status(400).json({ error: `step[${si}].options must be a non-empty array` }); return;
+    }
+    const optionIds = new Set<string>();
+    for (let oi = 0; oi < step.options.length; oi++) {
+      const opt = step.options[oi] as Record<string, unknown>;
+      if (typeof opt !== "object" || opt === null) {
+        res.status(400).json({ error: `step[${si}].options[${oi}] must be an object` }); return;
+      }
+      if (typeof opt.id !== "string" || opt.id.trim() === "") {
+        res.status(400).json({ error: `step[${si}].options[${oi}].id must be a non-empty string` }); return;
+      }
+      if (optionIds.has(opt.id)) {
+        res.status(400).json({ error: `step[${si}] has duplicate option id "${opt.id}"` }); return;
+      }
+      optionIds.add(opt.id);
+      if (typeof opt.label !== "string" || opt.label.trim() === "") {
+        res.status(400).json({ error: `step[${si}].options[${oi}].label must be a non-empty string` }); return;
+      }
+      if (typeof opt.priceAdjustment !== "number" || !isFinite(opt.priceAdjustment)) {
+        res.status(400).json({ error: `step[${si}].options[${oi}].priceAdjustment must be a finite number` }); return;
+      }
+    }
+  }
+
+  const [updated] = await db.update(servicesTable)
+    .set({ orderWorkflow: workflow as never })
+    .where(eq(servicesTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ workflow: updated.orderWorkflow ?? [] });
+});
+
+// ─── ADMIN: Assign service to client ─────────────────────────────────────────
+router.post("/admin/client-services", requireAdmin, async (req: Request, res: Response) => {
+  const { clientUserId, serviceId, projectId, startDate, nextMilestone, nextMilestoneDate } = req.body as {
+    clientUserId?: number; serviceId?: number; projectId?: number; startDate?: string; nextMilestone?: string; nextMilestoneDate?: string;
+  };
+  if (!clientUserId || !serviceId) { res.status(400).json({ error: "clientUserId and serviceId are required" }); return; }
+
+  const [cs] = await db.insert(clientServicesTable).values({
+    clientUserId, serviceId, projectId: projectId ?? null,
+    startDate: startDate ? new Date(startDate) : null,
+    nextMilestone: nextMilestone ?? null,
+    nextMilestoneDate: nextMilestoneDate ? new Date(nextMilestoneDate) : null,
+  }).returning();
+
+  const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, serviceId));
+  if (service) {
+    await db.insert(notificationsTable).values({
+      userId: clientUserId,
+      title: `Service activated: ${service.name}`,
+      body: null, type: "general", linkPath: "/portal/services",
+    });
+
+    // Auto-generate project from the service's directly linked workflow template (if any)
+    const resolvedWorkflowTemplateId = service.workflowTemplateId ?? null;
+    let templateWorkflowSteps: Array<{ id: number; title: string; description: string | null; order: number }> = [];
+    if (resolvedWorkflowTemplateId) {
+      templateWorkflowSteps = await db
+        .select()
+        .from(workflowTemplateStepsTable)
+        .where(eq(workflowTemplateStepsTable.workflowTemplateId, resolvedWorkflowTemplateId))
+        .orderBy(asc(workflowTemplateStepsTable.order));
+    }
+
+    let resolvedProjectId: number | null = projectId ?? null;
+    let templateStepsSeeded = false;
+
+    if (templateWorkflowSteps.length > 0) {
+      const [autoProject] = await db.insert(projectsTable).values({
+        title: service.name,
+        description: service.description ?? `Auto-generated from service: ${service.name}`,
+        status: "active",
+        clientUserId,
+        progress: 0,
+        startDate: new Date(),
+      }).returning();
+
+      resolvedProjectId = autoProject.id;
+
+      // Link the client service to this project
+      await db.update(clientServicesTable)
+        .set({ projectId: autoProject.id })
+        .where(eq(clientServicesTable.id, cs.id));
+
+      // Seed workflow steps from the workflow template; first step auto-starts
+      const createdSteps = await db.insert(workflowStepsTable).values(
+        templateWorkflowSteps.map((s, idx) => ({
+          clientServiceId: cs.id,
+          projectId: autoProject.id,
+          title: s.title,
+          description: s.description ?? "",
+          status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
+          order: idx + 1,
+          workflowTemplateStepId: s.id,
+        }))
+      ).returning();
+
+      // Seed kanban tasks for the first step from workflow_template_step_tasks (via workflowTemplateStepId)
+      const firstCreatedStep = createdSteps[0];
+      if (firstCreatedStep?.workflowTemplateStepId) {
+        const step1Tasks = await db
+          .select()
+          .from(workflowTemplateStepTasksTable)
+          .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstCreatedStep.workflowTemplateStepId))
+          .orderBy(asc(workflowTemplateStepTasksTable.order));
+        if (step1Tasks.length > 0) {
+          const resolvedMetadata = await resolveTemplateTaskMetadata(step1Tasks);
+          await db.insert(kanbanTasksTable).values(
+            step1Tasks.map((t, idx) => ({
+              projectId: autoProject.id,
+              workflowStepId: firstCreatedStep.id,
+              groupName: t.groupName ?? null,
+              title: t.title,
+              description: t.description ?? null,
+              column: (t.isCustomerTask ? "waiting_on_customer" : "backlog") as "backlog" | "waiting_on_customer",
+              order: idx,
+              taskType: t.taskType ?? null,
+              taskMetadata: resolvedMetadata[idx],
+            }))
+          );
+        }
+      }
+
+      templateStepsSeeded = true;
+
+      // Notify client about the new project
+      await db.insert(notificationsTable).values({
+        userId: clientUserId,
+        title: `Your project is ready: ${autoProject.title}`,
+        body: null,
+        type: "project_update",
+        linkPath: `/portal/projects/${autoProject.id}`,
+      });
+    }
+
+    // If no template steps were seeded, fall back to default slug-based steps
+    // so the Dashboard tracker always has live data rather than showing mock content.
+    if (!templateStepsSeeded) {
+      await seedDefaultWorkflowSteps(cs.id, resolvedProjectId, service.slug ?? "");
+    }
+  }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "service_activated",
+    entityType: "service",
+    entityId: cs.id,
+    entityLabel: service?.name ?? String(serviceId),
+    clientId: clientUserId,
+  });
+
+  res.status(201).json(cs);
+
+  // Re-probe the client's App Registration permissions in the background now that
+  // their active services have changed. This keeps permission_check current without
+  // requiring the client to re-submit their credentials.
+  void reProbeClientPermissionsInBackground(clientUserId);
 });
 
 export default router;

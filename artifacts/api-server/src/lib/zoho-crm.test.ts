@@ -154,4 +154,41 @@ describe("mapStagingToZohoLead", () => {
     expect(fields).not.toHaveProperty("Industry");
     expect(fields).not.toHaveProperty("Description");
   });
+
+  it("sends the three signal arrays as delimited text on their custom fields", () => {
+    const fields = mapStagingToZohoLead({
+      ...base,
+      painPoints: ["ransomware exposure", "no MFA"],
+      engagementSignals: ["opened pricing page"],
+      urgencySignals: ["renewal in 30 days"],
+    } as LeadStaging);
+    expect(fields.Pain_Points).toBe("ransomware exposure; no MFA");
+    expect(fields.Engagement_Signals).toBe("opened pricing page");
+    expect(fields.Urgency_Signals).toBe("renewal in 30 days");
+  });
+
+  it("omits a signal field when its array is empty, blank, or missing", () => {
+    // Sending "" would blank out signals a previous upsert already wrote onto
+    // the Zoho record, so an empty array must drop the field entirely.
+    const fields = mapStagingToZohoLead({
+      ...base,
+      painPoints: [],
+      engagementSignals: ["", "   "],
+    } as unknown as LeadStaging);
+    expect(fields).not.toHaveProperty("Pain_Points");
+    expect(fields).not.toHaveProperty("Engagement_Signals");
+    expect(fields).not.toHaveProperty("Urgency_Signals");
+  });
+
+  it("still omits score and stage — those stay local", () => {
+    const fields = mapStagingToZohoLead({
+      ...base,
+      score: 87,
+      stage: "qualified",
+      painPoints: ["no MFA"],
+    } as unknown as LeadStaging);
+    expect(fields).not.toHaveProperty("score");
+    expect(fields).not.toHaveProperty("stage");
+    expect(fields).not.toHaveProperty("Lead_Score");
+  });
 });

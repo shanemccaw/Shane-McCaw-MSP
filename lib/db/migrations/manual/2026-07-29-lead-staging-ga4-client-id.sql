@@ -1,4 +1,5 @@
 -- #116: GA4 client_id -> lead_staging -> Zoho CRM path.
--- Additive/nullable: no GA4 client-side instrumentation exists in this monorepo
--- yet (Phase 2 of the epic, #115), so every row will be NULL until that ships.
+-- One additive, nullable column: links a staged lead back to its GA4
+-- visitor/session for attribution once the lead lands in Zoho.
+
 ALTER TABLE lead_staging ADD COLUMN IF NOT EXISTS ga4_client_id text;

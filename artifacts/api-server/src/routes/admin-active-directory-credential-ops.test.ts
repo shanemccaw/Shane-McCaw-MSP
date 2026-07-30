@@ -126,7 +126,6 @@ vi.mock("../lib/audit", () => ({ createAuditLog: mockCreateAuditLog }));
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailFromTemplate: mockSendEmailFromTemplate,
   passwordResetEmail: ({ resetUrl }: { resetUrl: string }) => `<a href="${resetUrl}">reset</a>`,
-  PORTAL_URL: "https://example.test/portal",
 }));
 vi.mock("../lib/portal-url.ts", () => ({
   getMspPortalBaseUrl: () => "https://example.test/portal",

@@ -102,7 +102,9 @@ vi.mock("../lib/logger", () => ({
 vi.mock("../lib/audit", () => ({ createAuditLog: mockCreateAuditLog }));
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailFromTemplate: mockSendEmailFromTemplate,
-  PORTAL_URL: "https://example.test/portal",
+}));
+vi.mock("../lib/portal-url.ts", () => ({
+  getMspPortalBaseUrl: () => "https://example.test/portal",
 }));
 vi.mock("../lib/session-tracking", () => ({ createSession: vi.fn() }));
 
@@ -256,6 +258,12 @@ describe("adminResetMfa", () => {
       expect.any(String),
       expect.any(String),
     );
+    // #172 regression: the MFA reset link source must never resolve to the
+    // decommissioned /crm/portal hybrid path.
+    const [, , mergeFields, , bodyHtml] = mockSendEmailFromTemplate.mock.calls[0];
+    expect(mergeFields.loginLink).not.toContain("/crm");
+    expect(mergeFields.securityLink).not.toContain("/crm");
+    expect(bodyHtml).not.toContain("/crm");
     expect(mockCreateAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorUserId: ACTOR_ID,

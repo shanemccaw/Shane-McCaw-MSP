@@ -15,6 +15,8 @@
 //   GET /admin/ai-billing/recent    — last N transactions (StatusBar popovers)
 //   GET /admin/ai-billing/analytics — Phase 4 (#52): trend series over time,
 //       cost per customer / MSP / document type, and anomaly flagging
+//   GET /admin/ai-billing/lead-analytics — Phase 4.1 (#81): cost per lead and
+//       cost per assessment run, over the same window and the same filters
 //
 // The live delta that rides on top of the summary totals is pushed on the
 // "ai-cost" SSE hub channel — see the broadcast in lib/ai-billing.ts's
@@ -24,10 +26,28 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   aiUsageEventsTable,
+  leadStagingTable,
+  mspDiagnosticRunsTable,
   mspsTable,
   tenantsTable,
+  usersTable,
 } from "@workspace/db";
-import { and, count, desc, eq, gte, lt, lte, sum, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+  sum,
+  type SQL,
+} from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
@@ -49,6 +69,13 @@ import {
   rollupDimension,
 } from "../lib/ai-billing-analytics.ts";
 import { scanCostAnomalies } from "../lib/ai-cost-anomaly.ts";
+import {
+  resolveTenantLeads,
+  rollupCostPerAssessmentRun,
+  rollupCostPerLead,
+  type AssessmentRunInput,
+  type TenantLeadLink,
+} from "../lib/ai-lead-attribution.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "engine.ai-cost-governance" });
@@ -62,6 +89,14 @@ const MAX_RECENT = 50;
 // that fell outside what was actually read are marked partial so the anomaly
 // rule refuses to judge them or to use them as a baseline.
 const MAX_ANALYTICS_ROWS = 50_000;
+
+// Phase 4.1 (#81) ceilings for the cost-per-lead identity chain. Each is
+// reported in the response when it bites, for the same reason MAX_ANALYTICS_ROWS
+// is: a capped attribution that looks complete would overstate how much spend
+// this platform can actually trace back to a lead.
+const MAX_IDENTITY_TENANTS = 2_000;
+const MAX_IDENTITY_LINK_ROWS = 20_000;
+const MAX_ASSESSMENT_RUNS = 5_000;
 
 // Full-detail projection: what caused the call, what it produced, who pays.
 // Every column the Phase 2 schema expansion added is surfaced — the point of
@@ -316,9 +351,11 @@ router.get("/admin/ai-billing/recent", requireAdmin, async (req: Request, res: R
 // rather than about spend. The rule is server-owned and echoed back in full
 // (including its direction) so the page can print it verbatim.
 //
-// Cost per LEAD is not here. It is split out to #81 and blocked on the Zoho CRM
-// lead-integration initiative; building it against today's fragmented lead
-// tables would have been thrown away. Its absence is intentional.
+// Cost per LEAD is not here — it lives on /lead-analytics below, added by Phase
+// 4.1 (#81) once the Zoho CRM lead-integration work (#82/#83) landed
+// `lead_staging`. It is a separate endpoint rather than more fields on this one
+// because it needs two extra identity queries that this endpoint should not pay
+// for on every chart refresh.
 router.get("/admin/ai-billing/analytics", requireAdmin, async (req: Request, res: Response) => {
   const bucket = parseTrendBucket(req.query.bucket);
   const bucketCount = parseBucketCount(req.query.buckets, bucket);
@@ -407,5 +444,226 @@ router.get("/admin/ai-billing/analytics", requireAdmin, async (req: Request, res
     res.status(500).json({ error: "Failed to load AI usage analytics" });
   }
 });
+
+// ─── GET /admin/ai-billing/lead-analytics ────────────────────────────────────
+// Phase 4.1 (#81). "What does a lead actually cost us, and what does one
+// assessment run cost?" — the two figures the parent tracker (#48) frames the
+// whole initiative around ("showing us true cost of lead generation").
+//
+// Takes exactly the same window parameters and the same non-date filters as
+// /analytics, so a lead figure and a trend chart on one page always describe the
+// same slice of spend.
+//
+// ── The identity chain, and why it is three queries ──────────────────────────
+//
+// There is no FK between `ai_usage_events` and `lead_staging` in either
+// direction — see lib/ai-lead-attribution.ts's docblock for the full audit. The
+// chain this endpoint walks is:
+//
+//     ai_usage_events.customerId (tenants.id)
+//       -> users.tenantId
+//         -> users.linkedLeadId -> leads.id -> lead_staging.legacyLeadId
+//         -> OR lower(users.email) = lower(lead_staging.email)
+//
+// The identity query is scoped to the tenants that actually appear in THIS
+// window's usage rows, so it costs one indexed lookup per distinct customer
+// rather than a scan of every user on the platform.
+//
+// ── Sparse data is an empty state, not a bug ─────────────────────────────────
+//
+// #133 (live end-to-end verification of the Zoho CRM sync) is still open, so
+// `lead_staging` may be near-empty. Separately, the audit for this phase found
+// that cio-narrative-generator.ts — the AI call an assessment run actually makes
+// — is NOT wrapped in withAiAttribution(), so its events carry a null customerId
+// and land in `unattributed.breakdown.noCustomer`. Both show up here as honest
+// zeros and explicit unattributed figures, never as a fabricated cost-per-lead.
+router.get(
+  "/admin/ai-billing/lead-analytics",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const bucket = parseTrendBucket(req.query.bucket);
+    const bucketCount = parseBucketCount(req.query.buckets, bucket);
+    const tzOffsetMinutes = parseTzOffsetMinutes(req.query.tzOffsetMinutes);
+    const limit = parseBoundedInt(req.query.limit, DEFAULT_DIMENSION_LIMIT, 3, 25);
+    const now = new Date();
+    const window = resolveTrendWindow(bucket, bucketCount, tzOffsetMinutes, now);
+
+    try {
+      const conditions = [
+        gte(aiUsageEventsTable.occurredAt, window.start),
+        lt(aiUsageEventsTable.occurredAt, window.end),
+        ...buildDimensionFilters(req),
+      ];
+
+      // Same ceiling and same truncation honesty as /analytics: a clipped scan
+      // is declared, never quietly presented as the whole window.
+      const scanned = await db
+        .select({
+          occurredAt: aiUsageEventsTable.occurredAt,
+          costCents: aiUsageEventsTable.costCents,
+          customerId: aiUsageEventsTable.customerId,
+        })
+        .from(aiUsageEventsTable)
+        .where(and(...conditions))
+        .orderBy(desc(aiUsageEventsTable.occurredAt))
+        .limit(MAX_ANALYTICS_ROWS + 1);
+
+      const truncated = scanned.length > MAX_ANALYTICS_ROWS;
+      const rows = truncated ? scanned.slice(0, MAX_ANALYTICS_ROWS) : scanned;
+
+      if (truncated) {
+        log.warn(
+          { bucket, bucketCount, rowLimit: MAX_ANALYTICS_ROWS },
+          "ai-billing: lead-analytics row scan hit its ceiling; figures cover the most recent rows only",
+        );
+      }
+
+      // Distinct tenants this window's spend actually touches. Bounded: past the
+      // cap the identity query would stop being an indexed lookup, so it is cut
+      // and the cut is reported rather than silently narrowing attribution.
+      const allTenantIds = [
+        ...new Set(
+          rows
+            .map((r) => r.customerId)
+            .filter((id): id is number => typeof id === "number"),
+        ),
+      ];
+      const tenantIds = allTenantIds.slice(0, MAX_IDENTITY_TENANTS);
+      const tenantsElided = allTenantIds.length - tenantIds.length;
+      if (tenantsElided > 0) {
+        log.warn(
+          { distinctTenants: allTenantIds.length, cap: MAX_IDENTITY_TENANTS },
+          "ai-billing: lead-analytics identity resolution capped; some spend reported as unattributed",
+        );
+      }
+
+      const [linkRows, runRows, [stagedRow]] = await Promise.all([
+        tenantIds.length
+          ? db
+              .selectDistinct({
+                tenantId: usersTable.tenantId,
+                leadStagingId: leadStagingTable.id,
+                leadName: leadStagingTable.name,
+                leadEmail: leadStagingTable.email,
+                leadSource: leadStagingTable.source,
+              })
+              .from(usersTable)
+              // INNER join on purpose: a user with no resolvable lead should not
+              // produce a null-lead row here. Spend for such a tenant is counted
+              // as unattributed by the rollup, which is where that fact belongs.
+              .innerJoin(
+                leadStagingTable,
+                or(
+                  and(
+                    isNotNull(usersTable.linkedLeadId),
+                    eq(leadStagingTable.legacyLeadId, usersTable.linkedLeadId),
+                  ),
+                  sql`lower(${leadStagingTable.email}) = lower(${usersTable.email})`,
+                ),
+              )
+              .where(
+                and(
+                  inArray(usersTable.tenantId, tenantIds),
+                  isNull(leadStagingTable.deletedAt),
+                ),
+              )
+              .limit(MAX_IDENTITY_LINK_ROWS)
+          : Promise.resolve([]),
+
+        // Runs overlapping the window at either end, not just those that both
+        // started and finished inside it — a run straddling the boundary still
+        // spent money in it.
+        db
+          .select({
+            runId: mspDiagnosticRunsTable.runId,
+            customerId: mspDiagnosticRunsTable.customerId,
+            status: mspDiagnosticRunsTable.status,
+            startedAt: mspDiagnosticRunsTable.startedAt,
+            completedAt: mspDiagnosticRunsTable.completedAt,
+            createdAt: mspDiagnosticRunsTable.createdAt,
+          })
+          .from(mspDiagnosticRunsTable)
+          .where(
+            and(
+              lt(mspDiagnosticRunsTable.createdAt, window.end),
+              or(
+                isNull(mspDiagnosticRunsTable.completedAt),
+                gte(mspDiagnosticRunsTable.completedAt, window.start),
+              ),
+            ),
+          )
+          .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+          .limit(MAX_ASSESSMENT_RUNS),
+
+        // Lead VOLUME in the window, reported alongside lead COST. Deliberately
+        // not subtracted from leadsWithSpend to manufacture a "leads with no
+        // spend" figure: a lead staged years ago can incur spend today, so that
+        // subtraction would not mean what it appears to mean.
+        db
+          .select({ value: count() })
+          .from(leadStagingTable)
+          .where(
+            and(
+              gte(leadStagingTable.createdAt, window.start),
+              lt(leadStagingTable.createdAt, window.end),
+              isNull(leadStagingTable.deletedAt),
+            ),
+          ),
+      ]);
+
+      // users.tenantId is nullable in the schema (an MSP-scoped user has none),
+      // so rows without one are dropped here rather than being coerced to a
+      // tenant 0 that would collect other people's spend.
+      const links: TenantLeadLink[] = [];
+      for (const r of linkRows) {
+        if (typeof r.tenantId !== "number") continue;
+        links.push({
+          tenantId: r.tenantId,
+          leadStagingId: r.leadStagingId,
+          leadName: r.leadName,
+          leadEmail: r.leadEmail,
+          leadSource: r.leadSource,
+        });
+      }
+
+      const resolution = resolveTenantLeads(links);
+
+      const byLead = rollupCostPerLead(rows, resolution, limit);
+      const byAssessmentRun = rollupCostPerAssessmentRun(
+        rows,
+        runRows as AssessmentRunInput[],
+        { limit, now },
+      );
+
+      res.json({
+        bucket,
+        bucketCount,
+        periodStart: window.start.toISOString(),
+        periodEnd: window.end.toISOString(),
+        totalCostCents: rows.reduce((acc, r) => acc + (r.costCents ?? 0), 0),
+        eventCount: rows.length,
+        coverage: {
+          rowsScanned: rows.length,
+          rowLimit: MAX_ANALYTICS_ROWS,
+          truncated,
+          distinctTenants: allTenantIds.length,
+          tenantsElided,
+          identityLinkRows: linkRows.length,
+          identityLinksTruncated: linkRows.length >= MAX_IDENTITY_LINK_ROWS,
+          assessmentRunsTruncated: runRows.length >= MAX_ASSESSMENT_RUNS,
+        },
+        byLead,
+        byAssessmentRun,
+        // Lead volume for the same window, so "cost per lead" can be read next to
+        // "how many leads did we even capture" — the pairing that makes the
+        // figure mean something when lead_staging is still filling up (#133).
+        leadsStagedInWindow: Number(stagedRow?.value ?? 0),
+      });
+    } catch (err) {
+      log.error({ err, bucket, bucketCount }, "ai-billing: failed to build lead analytics");
+      res.status(500).json({ error: "Failed to load AI cost-per-lead analytics" });
+    }
+  },
+);
 
 export default router;

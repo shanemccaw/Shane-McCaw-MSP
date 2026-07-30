@@ -65,10 +65,7 @@ const captureSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1).max(200).optional(),
   company: z.string().trim().max(200).optional(),
-  // GA4's client_id (from the `_ga` cookie / gtag getters). Optional: no
-  // client-side GA4 instrumentation exists yet in this monorepo (#115), so no
-  // real caller sends this today — accepted now so the field lights up the
-  // moment that instrumentation ships, with no route change required.
+  // GA4's client_id (from the `_ga` cookie / gtag getters).
   ga4ClientId: z.string().trim().max(200).optional(),
 });
 

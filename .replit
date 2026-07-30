@@ -5,7 +5,11 @@ router = "application"
 deploymentTarget = "autoscale"
 
 [deployment.postBuild]
-args = ["pnpm", "store", "prune"]
+args = [
+  "sh",
+  "-c",
+  "pnpm store prune && pwsh -NonInteractive -Command \"Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force -AllowClobber -Repository PSGallery\""
+]
 env = { "CI" = "true" }
 
 [workflows]
@@ -95,27 +99,6 @@ router = "path"
 [workflows.workflow.tasks.env]
 PORT = "20130"
 BASE_PATH = "/admin-panel/"
-
-[[workflows.workflow]]
-name = "artifacts/crm: web"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/crm"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/crm run dev"
-cwd = "./artifacts/crm"
-waitForPort = 22444
-ensurePreviewReachable = "/"
-router = "path"
-
-[workflows.workflow.tasks.env]
-PORT = "22444"
-BASE_PATH = "/crm/"
 
 [[workflows.workflow]]
 name = "artifacts/shane-mccaw-consulting: web"

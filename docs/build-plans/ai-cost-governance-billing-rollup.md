@@ -48,8 +48,8 @@ Done, so Phases 4 and 5 are unblocked.
 | 2 | Expand ai_usage_events schema for full traceability | Done | #50 |
 | 3 | PlatformAdmin AI Billing page + live StatusBar segments (SSE) | Done | #51 |
 | 4 | Analytics/trends layer (cost-per-customer/MSP/doc-type, trend charts, anomaly flagging) | Done | #52 |
-| 4.1 | Cost-per-lead analytics (unblocked 2026-07-29 — Zoho CRM #82/#83 closed, `lead_staging` built; live verification #133 still pending but non-blocking) | Not Started | #81 |
-| 5 | Document Engine cost return value | Not Started | #53 |
+| 4.1 | Cost-per-lead analytics (unblocked 2026-07-29 — Zoho CRM #82/#83 closed, `lead_staging` built; live verification #133 still pending but non-blocking) | Done | #81 |
+| 5 | Document Engine cost return value | Done | #53 |
 
 ## Notes
 Phase 3 uses SSE push for the two StatusBar cost segments, not the
@@ -147,3 +147,66 @@ SQL `date_trunc` + `GROUP BY` behind the same response shape — the pure module
 take rows, so only the route changes. Phase 4 is likewise not live-verified: the
 aggregation and anomaly logic are tested against fixtures, not against a real
 database.
+
+### Phase 4.1 — what shipped
+
+New pure module `ai-lead-attribution.ts`, a new `/admin/ai-billing/lead-analytics`
+endpoint on the existing Phase 3 router, and a new section on Phase 4's
+`AiCostTrends.tsx`. No schema change; every table is read-only.
+
+The audit that preceded it changed the shape of the phase, and the findings are
+worth carrying forward:
+
+- **There is no FK between `ai_usage_events` and `lead_staging`, in either
+  direction.** `lead_staging` has no tenant/user column at all — its identity
+  keys are the normalised `email` and the pre-cutover `legacy_lead_id` /
+  `legacy_quiz_lead_id` pointers. `ai_usage_events` has no lead column either.
+  So cost-per-lead walks a chain — `customerId` (a `tenants.id`) → `users.tenantId`
+  → `users.linkedLeadId` / `lower(users.email)` → `lead_staging` — resolved by the
+  route and rolled up by the pure module, rather than a single join.
+- **A tenant can resolve to several leads.** The tie-break is stated, not
+  implicit: the earliest staged lead wins, because
+  `ensureAssessmentFunnelLead()` captures a lead BEFORE consent creates the
+  tenant. The number of tenants where it fired ships in the response and is
+  printed on the page.
+- **`ai_usage_events.runId` never holds an `msp_diagnostic_runs.runId`.** Its
+  only writer is `workflow-executor.ts`'s `aiAttributionFor()`, which supplies
+  portal WORKFLOW run ids. The two id-spaces are disjoint, so the obvious join
+  would have matched nothing and reported a confident $0.00 for every assessment
+  run. Cost-per-assessment-run is therefore attributed by customer + run
+  interval, which is an UPPER BOUND, and the response says so in a note the page
+  prints verbatim.
+
+Two attribution gaps found during the audit and deliberately NOT fixed here
+(this phase is read-only analytics; fixing them changes the assessment pipeline):
+
+- **`cio-narrative-generator.ts` is not wrapped in `withAiAttribution()`.** It is
+  the AI call an assessment run actually makes, so its events land with a null
+  `customerId` and are reported under `unattributed.breakdown.noCustomer`. Until
+  that call site is wrapped, cost-per-assessment-run will read near-zero even
+  with real assessment traffic.
+- **`ai-analyzer.ts` passes a `users.id` as `customerId`,** where every other
+  volume call site (`document-engine`, `document-engine-sow`, `workflow-executor`)
+  passes a `tenants.id`. The Phase 3/4 routes join `customerId` against
+  `tenants`, so those rows resolve against the wrong id-space.
+
+Phase 4.1 is not live-verified either: `lead_staging` may be near-empty until
+#133 exercises the Zoho sync end to end. That is handled as a genuine empty
+state — a null headline figure renders as "No figure yet", never as `$0.00`.
+
+### Phase 5 — what shipped
+
+The engine-side plumbing (`generateDocument()`/`generateSowDocument()`
+returning `costCents`/`costStatus`, already flowing through the generate
+route's JSON response) landed earlier in `19339c18` and was left unbookended
+until this session; this phase is purely the display half. Two changes: the
+Document Generator IDE's generation-success toast now shows the cost
+alongside the document id, wording it per `costStatus` ("recorded" → a real
+figure via the shared `formatCents()`, "no-ai-call" → "no AI call (reused)",
+"unknown" → "cost unknown" — never a bare `$0.00` for either non-recorded
+case); and the generation history endpoint (`admin-document-generator.ts`)
+gains a `LEFT JOIN ai_usage_events` on `generatedArtifactType = docType` AND
+`generatedArtifactId = id::text`, selecting `costCents` (null on no match —
+a pre-Phase-2 document or a failed usage recording — rendered in the history
+table as "—", not `$0.00`). Not live-verified — no `DATABASE_URL` in this
+environment.

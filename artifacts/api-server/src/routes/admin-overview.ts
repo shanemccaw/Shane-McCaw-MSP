@@ -158,6 +158,9 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   // Build opportunity lookup by leadId (to enrich pipeline stages)
   const oppByLeadId = new Map<number, typeof allOpportunities[0]>();
   for (const opp of allOpportunities) {
+    // #136: opportunities.lead_id is nullable — an opportunity scored from a
+    // post-cutover staged lead has no legacy lead to key this map on.
+    if (opp.leadId == null) continue;
     if (!oppByLeadId.has(opp.leadId)) oppByLeadId.set(opp.leadId, opp);
   }
 
@@ -619,6 +622,8 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
 
     const oppByLeadId = new Map<number, typeof allOpportunities[0]>();
     for (const opp of allOpportunities) {
+      // #136: opportunities.lead_id is nullable — see the note on the same map above.
+      if (opp.leadId == null) continue;
       if (!oppByLeadId.has(opp.leadId)) oppByLeadId.set(opp.leadId, opp);
     }
     const highScoreOpps = allOpportunities.filter(o =>

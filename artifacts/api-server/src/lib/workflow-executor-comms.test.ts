@@ -62,7 +62,7 @@ vi.mock("@workspace/db", () => {
   const tableNames = [
     "wfRunsTable", "wfVersionsTable", "wfDefinitionsTable", "wfTriggersTable",
     "wfRunNodeOutputsTable", "wfRunNodeLogsTable",
-    "leadsTable", "usersTable", "projectsTable", "opportunitiesTable",
+    "leadsTable", "leadStagingTable", "usersTable", "projectsTable", "opportunitiesTable",
     "clientDocumentsTable", "leadQualificationsTable", "quizLeadsTable",
     "clientHealthHistoryTable", "emailTemplatesTable", "marketingTasksTable",
     "kanbanTasksTable", "articlesTable", "notificationsTable",
@@ -799,7 +799,8 @@ describe("find_object — lead found by email (live)", () => {
       }),
       {},
       [
-        [{ id: 7, email: "john@example.com", name: "John Doe", status: "new" }],
+        // #136: the row now comes from lead_staging, so it carries both ids.
+        [{ id: 500, legacyLeadId: 7, email: "john@example.com", name: "John Doe", status: "new" }],
       ],
     );
     await executeWorkflowRun(1);
@@ -813,8 +814,13 @@ describe("find_object — lead found by email (live)", () => {
     expect(capturedOutput().objectType).toBe("lead");
   });
 
-  it("output.objectId is the lead id", () => {
+  it("output.objectId is the legacy lead id, not the staging id", () => {
     expect(capturedOutput().objectId).toBe(7);
+  });
+
+  it("output.leadId is the legacy lead id and leadStagingId is the staging id", () => {
+    expect(capturedOutput().leadId).toBe(7);
+    expect(capturedOutput().leadStagingId).toBe(500);
   });
 
   it("node status is ok", () => {

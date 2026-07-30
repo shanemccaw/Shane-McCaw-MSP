@@ -39,6 +39,44 @@
       "description": "30-year Microsoft ecosystem veteran and NASA's Lead Microsoft 365 Architect. Independent consultant specializing in M365, Copilot AI, SharePoint, Power Platform, and enterprise governance."
     }
     </script>
+
+    <!--
+      GA4 (gtag.js) + Microsoft Clarity — env-gated the same way analytics.ts's isEnabled()
+      gates the first-party tracker: on in production, opt-in in dev via VITE_ANALYTICS_ENABLED=true.
+      Real IDs land in VITE_GA4_MEASUREMENT_ID / VITE_CLARITY_PROJECT_ID (Replit secrets) once
+      Shane has a GA4 property + Clarity project; until then Vite leaves the %...% tokens below
+      un-substituted and the guards below skip loading either script.
+    -->
+    <script>
+      (function () {
+        var analyticsEnabled = %PROD% || "%VITE_ANALYTICS_ENABLED%" === "true";
+        if (!analyticsEnabled) return;
+
+        var ga4Id = "%VITE_GA4_MEASUREMENT_ID%";
+        if (ga4Id.charAt(0) !== "%") {
+          var gtagScript = document.createElement("script");
+          gtagScript.async = true;
+          gtagScript.src = "https://www.googletagmanager.com/gtag/js?id=" + ga4Id;
+          document.head.appendChild(gtagScript);
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function () { window.dataLayer.push(arguments); };
+          window.gtag("js", new Date());
+          window.gtag("config", ga4Id);
+        }
+
+        var clarityId = "%VITE_CLARITY_PROJECT_ID%";
+        if (clarityId.charAt(0) !== "%") {
+          (function (c, l, a, r, i, t, y) {
+            c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+            t = l.createElement(r);
+            t.async = 1;
+            t.src = "https://www.clarity.ms/tag/" + i;
+            y = l.getElementsByTagName(r)[0];
+            y.parentNode.insertBefore(t, y);
+          })(window, document, "clarity", "script", clarityId);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

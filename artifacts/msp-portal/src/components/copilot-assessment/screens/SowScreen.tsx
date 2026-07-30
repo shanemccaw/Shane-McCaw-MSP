@@ -1,0 +1,947 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Briefcase, 
+  CheckCircle2, 
+  Clock, 
+  DollarSign, 
+  Download, 
+  Mail, 
+  ShieldCheck, 
+  Sparkles, 
+  FileText, 
+  Plus, 
+  Trash2, 
+  Check, 
+  ShoppingBag, 
+  CreditCard, 
+  ArrowRight, 
+  Building2, 
+  ShieldAlert, 
+  UserCheck, 
+  Layers, 
+  HelpCircle, 
+  X,
+  Award,
+  AlertCircle,
+  FileSpreadsheet,
+  Send,
+  Lock,
+  ChevronRight,
+  TrendingUp,
+  Zap,
+  CheckCircle,
+  XCircle,
+  Activity
+} from 'lucide-react';
+
+export interface SowScopeModule {
+  id: string;
+  title: string;
+  subtitle: string;
+  price: number;
+  isRecurring?: boolean;
+  durationWeeks: number;
+  badge: 'Recommended' | 'High Value' | 'Optional';
+  badgeColor: string;
+  description: string;
+  deliverables: string[];
+  defaultSelected: boolean;
+  impactReadiness: number;
+  impactGovernance: number;
+  impactSecurity: number;
+  impactRoi: number;
+  impactDeployment: number;
+  detailNote: string;
+}
+
+export const SCOPE_MODULES: SowScopeModule[] = [
+  {
+    id: 'core-deploy',
+    title: '1. Copilot Deployment (Core)',
+    subtitle: 'M365 tenant prep, admin center setup & licensing',
+    price: 15000,
+    durationWeeks: 3,
+    badge: 'Recommended',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    description: 'Baseline M365 Copilot environment deployment, admin center service principal provisioning, app assignment, and IT team technical briefing.',
+    deliverables: [
+      'Tenant Technical Assessment & Prerequisites Validation',
+      'M365 Admin Center Copilot Licensing & App Deployment',
+      'Telemetry Analytics & Adoption Portal Activation'
+    ],
+    defaultSelected: true,
+    impactReadiness: 15,
+    impactGovernance: 5,
+    impactSecurity: 5,
+    impactRoi: 10,
+    impactDeployment: 25,
+    detailNote: 'Essential baseline for all Copilot services'
+  },
+  {
+    id: 'governance-remediation',
+    title: '2. Governance Remediation',
+    subtitle: 'Purview auto-labeling & oversharing containment',
+    price: 18500,
+    durationWeeks: 3,
+    badge: 'High Value',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    description: 'Remediate critical data exposure risks by deploying Microsoft Purview sensitivity labels across unlabeled SharePoint sites and setting external DLP rules.',
+    deliverables: [
+      'Microsoft Purview Auto-Labeling Deployment',
+      'SharePoint Oversharing Audit & Remediation Plan',
+      'External Sharing & Guest Access DLP Guardrails'
+    ],
+    defaultSelected: true,
+    impactReadiness: 25,
+    impactGovernance: 31,
+    impactSecurity: 15,
+    impactRoi: 5,
+    impactDeployment: 5,
+    detailNote: 'CA01, labels, DLP & external exposure containment'
+  },
+  {
+    id: 'security-hardening',
+    title: '3. Security Hardening',
+    subtitle: 'Entra ID CA01 & PIM elevation enforcement',
+    price: 22000,
+    durationWeeks: 3,
+    badge: 'High Value',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    description: 'Enforce Entra ID Conditional Access CA01 policies for compliant endpoint isolation and configure Privileged Identity Management (PIM) for Copilot admins.',
+    deliverables: [
+      'Entra ID CA01 Conditional Access Policy Enforcement',
+      'Privileged Identity Management (PIM) Elevation Rules',
+      'Defender for Cloud Apps Real-Time Session Monitoring'
+    ],
+    defaultSelected: true,
+    impactReadiness: 22,
+    impactGovernance: 10,
+    impactSecurity: 28,
+    impactRoi: 5,
+    impactDeployment: 5,
+    detailNote: 'Blast radius reduction & tenant hardening'
+  },
+  {
+    id: 'workflow-automation',
+    title: '4. Workflow Automation',
+    subtitle: 'Custom Copilot Studio agents & Graph connectors',
+    price: 28000,
+    durationWeeks: 4,
+    badge: 'High Value',
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    description: 'Accelerate productivity with 2 custom declarative Copilot Studio agents for RFP generation and contract review, plus Power Automate flows.',
+    deliverables: [
+      '2 Declarative Copilot Studio Enterprise Agents',
+      'Power Automate Trigger & ERP Integration Workflows',
+      'Custom Microsoft Graph Indexing Setup'
+    ],
+    defaultSelected: false,
+    impactReadiness: 18,
+    impactGovernance: 5,
+    impactSecurity: 5,
+    impactRoi: 24,
+    impactDeployment: 10,
+    detailNote: 'Time saved & automated repetitive flows'
+  },
+  {
+    id: 'persona-training',
+    title: '5. Persona Enablement Training',
+    subtitle: 'Cohort prompt engineering & department playbooks',
+    price: 9500,
+    durationWeeks: 2,
+    badge: 'Recommended',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    description: 'Role-specific prompt engineering workshops for Sales, HR, Legal, and Finance teams, complete with custom department prompt cheat-sheets.',
+    deliverables: [
+      '4 Department-Specific Enablement Masterclasses',
+      'Custom Role Prompt Libraries & Cheat-Sheets',
+      'End-User Adoption & Champion Network Playbook'
+    ],
+    defaultSelected: true,
+    impactReadiness: 8,
+    impactGovernance: 0,
+    impactSecurity: 0,
+    impactRoi: 12,
+    impactDeployment: 20,
+    detailNote: 'Drives daily user habit & prompt mastery'
+  },
+  {
+    id: 'ongoing-monitoring',
+    title: '6. Ongoing Copilot Monitoring (Recurring)',
+    subtitle: 'Monthly seat optimization & continuous health checks',
+    price: 4500,
+    isRecurring: true,
+    durationWeeks: 4,
+    badge: 'Optional',
+    badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+    description: 'Continuous monthly license utilization audits, prompt telemetry analysis, quarterly security posture checks, and recurring MSP optimization.',
+    deliverables: [
+      'Monthly Unused License Reallocation & Waste Audit',
+      'Quarterly Purview Security & DLP Alignment Review',
+      'Continuous Prompt Tuning & Model Version Advisory'
+    ],
+    defaultSelected: false,
+    impactReadiness: 10,
+    impactGovernance: 12,
+    impactSecurity: 10,
+    impactRoi: 10,
+    impactDeployment: 5,
+    detailNote: 'Sustained MSP oversight & continuous tuning'
+  },
+  {
+    id: 'license-optimization',
+    title: '7. License Optimization & Waste Reduction',
+    subtitle: 'Reallocate inactive seats & optimize M365 SKUs',
+    price: 8000,
+    durationWeeks: 1,
+    badge: 'High Value',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    description: 'Identify inactive or low-usage Copilot licenses within 30 days and establish automated seat recycling rules to eliminate seat waste.',
+    deliverables: [
+      'Copilot License Utilization Telemetry Audit Report',
+      'Automated Seat Recycling & Reallocation Pipeline',
+      'M365 E3/E5 Step-Up Licensing Cost Optimization'
+    ],
+    defaultSelected: false,
+    impactReadiness: 12,
+    impactGovernance: 8,
+    impactSecurity: 0,
+    impactRoi: 18,
+    impactDeployment: 0,
+    detailNote: 'Immediate hard dollars cost reduction'
+  },
+  {
+    id: 'custom-workflow',
+    title: '8. Custom Departmental Workflow Buildout',
+    subtitle: 'Tailored LOB integrations for Finance & Operations',
+    price: 16500,
+    durationWeeks: 3,
+    badge: 'Optional',
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    description: 'Deep line-of-business custom integration extending Copilot to SAP/Salesforce data sources via custom Graph Connectors.',
+    deliverables: [
+      'Custom Graph Connector for SAP & Salesforce Data',
+      'Line-of-Business Financial Reporting Copilot Bot',
+      'Data Protection & Field-Level Access Control Matrix'
+    ],
+    defaultSelected: false,
+    impactReadiness: 14,
+    impactGovernance: 5,
+    impactSecurity: 5,
+    impactRoi: 20,
+    impactDeployment: 5,
+    detailNote: 'Deep LOB ERP/CRM data connection'
+  }
+];
+
+interface SowScreenProps {
+  onContinue?: () => void;
+  onHelpClick?: () => void;
+  onExitClick?: () => void;
+  onNavigate?: (step: string) => void;
+}
+
+export const SowScreen: React.FC<SowScreenProps> = ({
+  onContinue,
+  onHelpClick,
+  onExitClick,
+  onNavigate
+}) => {
+  const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>(
+    SCOPE_MODULES.filter(m => m.defaultSelected).map(m => m.id)
+  );
+
+  const [companyName, setCompanyName] = useState<string>('Contoso Pharmaceuticals Enterprise');
+  const [poNumber, setPoNumber] = useState<string>('PO-2026-M365-8841');
+  const [signerName, setSignerName] = useState<string>('Sarah Jenkins, Chief Information Officer');
+  const [procurementEmail, setProcurementEmail] = useState<string>('procurement@contoso.com');
+  
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastImpactDelta, setLastImpactDelta] = useState<{ type: 'added' | 'removed'; title: string; delta: number } | null>(null);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState<boolean>(false);
+  const [isProcurementSent, setIsProcurementSent] = useState<boolean>(false);
+
+  // Trigger Toast Notification
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
+
+  // Toggle Module Selection with Live Delta Notification
+  const toggleModule = (id: string) => {
+    const mod = SCOPE_MODULES.find(m => m.id === id);
+    if (!mod) return;
+
+    setSelectedModuleIds(prev => {
+      const isCurrentlySelected = prev.includes(id);
+      if (isCurrentlySelected) {
+        if (prev.length === 1) {
+          triggerToast('At least one scope module must remain selected in the SOW.');
+          return prev;
+        }
+        setLastImpactDelta({
+          type: 'removed',
+          title: mod.title,
+          delta: -mod.impactReadiness
+        });
+        return prev.filter(mId => mId !== id);
+      } else {
+        setLastImpactDelta({
+          type: 'added',
+          title: mod.title,
+          delta: mod.impactReadiness
+        });
+        return [...prev, id];
+      }
+    });
+  };
+
+  // Clear last delta banner after 3.5s
+  useEffect(() => {
+    if (lastImpactDelta) {
+      const timer = setTimeout(() => {
+        setLastImpactDelta(null);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastImpactDelta]);
+
+  // Selected Modules & Calculations
+  const selectedModules = SCOPE_MODULES.filter(m => selectedModuleIds.includes(m.id));
+  const subtotal = selectedModules.reduce((acc, m) => acc + m.price, 0);
+  const msCredit = 15000; // Microsoft Assessment Funding Credit
+  const totalInvestment = Math.max(0, subtotal - msCredit);
+  const totalWeeks = Math.max(...selectedModules.map(m => m.durationWeeks), 0);
+
+  // Dynamic Live Scores Calculation
+  const baseReadiness = 12;
+  const baseGovernance = 15;
+  const baseSecurity = 20;
+  const baseRoi = 10;
+
+  const rawReadiness = baseReadiness + selectedModules.reduce((acc, m) => acc + m.impactReadiness, 0);
+  const readinessScore = Math.min(100, rawReadiness);
+
+  const rawGovernance = baseGovernance + selectedModules.reduce((acc, m) => acc + m.impactGovernance, 0);
+  const governanceScore = Math.min(100, rawGovernance);
+
+  const rawSecurity = baseSecurity + selectedModules.reduce((acc, m) => acc + m.impactSecurity, 0);
+  const securityScore = Math.min(100, rawSecurity);
+
+  const rawRoi = baseRoi + selectedModules.reduce((acc, m) => acc + m.impactRoi, 0);
+  const roiScore = Math.min(100, rawRoi);
+
+  const isCopilotReady = readinessScore >= 80;
+
+  // Aggregated Deliverables
+  const aggregatedDeliverables = selectedModules.flatMap(m => m.deliverables);
+
+  const handleSendProcurement = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcurementSent(true);
+    triggerToast(`Statement of Work dispatched to procurement (${procurementEmail}) with PO #${poNumber}!`);
+  };
+
+  const handleConfirmPurchase = () => {
+    setIsPurchaseModalOpen(false);
+    triggerToast(`Order confirmed! SOW SOW-2026-M365-092 authorized for ${companyName} under PO #${poNumber}.`);
+  };
+
+  return (
+    <div className="h-screen w-screen bg-[#07090E] text-slate-100 flex flex-col font-sans overflow-hidden antialiased select-none relative">
+
+      {/* Top Floating Toast Notification */}
+      {toastMessage && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/90 border border-emerald-500/80 text-emerald-200 font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* CONFIRMATION PURCHASE MODAL                                          */}
+      {/* ==================================================================== */}
+      {isPurchaseModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0B0F19] border border-emerald-500/50 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 relative">
+            <button
+              onClick={() => setIsPurchaseModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center space-x-3 pb-3 border-b border-white/10">
+              <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white">Authorize Statement of Work</h3>
+                <p className="text-xs text-slate-400 font-mono">Microsoft 365 Copilot Enterprise Engagement</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 font-mono bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Client Entity:</span>
+                <span className="text-white font-bold">{companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Authorized Signer:</span>
+                <span className="text-white">{signerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Purchase Order #:</span>
+                <span className="text-emerald-400 font-bold">{poNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Readiness Score Achieved:</span>
+                <span className={`font-bold ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {readinessScore}/100 ({isCopilotReady ? 'Copilot Ready' : 'Remediation Required'})
+                </span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-800 text-sm">
+                <span className="text-slate-200 font-bold">Total Net Investment:</span>
+                <span className="text-emerald-400 font-black">${totalInvestment.toLocaleString()} USD</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-[11px] text-emerald-300 flex items-start gap-2">
+              <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Includes 30-day guaranteed price lock and $15,000 Microsoft Partner Assessment Funding Credit. Net 30 payment terms apply upon kickoff.</span>
+            </div>
+
+            <div className="flex space-x-3 pt-2">
+              <button
+                onClick={() => setIsPurchaseModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono rounded-xl text-xs border border-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPurchase}
+                className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-emerald-950/60"
+              >
+                Confirm & Sign SOW
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* NAVBAR                                                               */}
+      {/* ==================================================================== */}
+      <header className="h-14 bg-[#0B0F19]/95 border-b border-white/10 px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-950 border border-indigo-500/50 flex items-center justify-center text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+            <Briefcase className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-black uppercase tracking-wider text-white">
+                Statement of Work & Scope Selection
+              </span>
+              <span className="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-2 py-0.5 rounded font-extrabold">
+                LIVE SCORE CALCULATOR
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              Microsoft Consulting Services SOW-2026-M365-092 • Interactive Real-Time SOW Configurator
+            </p>
+          </div>
+        </div>
+
+        {/* Live Top Status Bar */}
+        <div className="hidden lg:flex items-center space-x-4 bg-black/60 px-4 py-1.5 rounded-xl border border-white/10 font-mono">
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase text-slate-400 font-bold">Readiness Score:</span>
+            <span className={`text-sm font-black ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {readinessScore}/100
+            </span>
+          </div>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase text-slate-400 font-bold">Total Investment:</span>
+            <span className="text-sm font-black text-emerald-400">
+              ${totalInvestment.toLocaleString()} USD
+            </span>
+          </div>
+        </div>
+
+        {/* Navigation Actions */}
+        <div className="flex items-center space-x-3">
+          {onExitClick && (
+            <button
+              onClick={onExitClick}
+              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ==================================================================== */}
+      {/* THREE-PANEL BODY LAYOUT                                              */}
+      {/* ==================================================================== */}
+      <div className="flex-1 flex overflow-hidden relative">
+
+        {/* ================================================================== */}
+        {/* LEFT PANEL — SCOPE OPTIONS (SELECTABLE MODULES)                    */}
+        {/* ================================================================== */}
+        <aside className="w-84 bg-[#0A0E17]/95 border-r border-white/10 p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 font-mono">
+              <Layers className="w-4 h-4 text-indigo-400" />
+              <span>Scope Modules (8 Available)</span>
+            </span>
+            <span className="text-[9px] font-mono text-indigo-300 bg-indigo-950 border border-indigo-800 px-2 py-0.5 rounded font-bold">
+              {selectedModuleIds.length}/8 Active
+            </span>
+          </div>
+
+          {/* Module List */}
+          <div className="space-y-2.5">
+            {SCOPE_MODULES.map((mod) => {
+              const isSelected = selectedModuleIds.includes(mod.id);
+              return (
+                <div
+                  key={mod.id}
+                  onClick={() => toggleModule(mod.id)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
+                    isSelected
+                      ? 'bg-[#0E1A2B] border-sky-500 ring-1 ring-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+                      : 'bg-[#0E131F] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                        isSelected ? 'bg-sky-500 border-sky-400 text-slate-950' : 'border-slate-700 bg-slate-900'
+                      }`}>
+                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                      <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${mod.badgeColor}`}>
+                        {mod.badge}
+                      </span>
+                    </div>
+
+                    <span className="text-xs font-mono font-black text-emerald-400">
+                      ${mod.price.toLocaleString()} {mod.isRecurring ? '/mo' : ''}
+                    </span>
+                  </div>
+
+                  <h3 className={`text-xs font-bold leading-tight mb-1 ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                    {mod.title}
+                  </h3>
+
+                  <p className="text-[10.5px] text-slate-400 leading-snug mb-2">
+                    {mod.subtitle}
+                  </p>
+
+                  <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-sky-400" />
+                      {mod.durationWeeks} Wks
+                    </span>
+                    <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      +{mod.impactReadiness} Score
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* ================================================================== */}
+        {/* CENTER PANEL — DYNAMIC SOW BUILDER                                 */}
+        {/* ================================================================== */}
+        <main className="flex-1 overflow-y-auto bg-[#05070C] p-6 flex flex-col relative scrollbar-thin space-y-6">
+
+          {/* Dynamic Impact Delta Notification Banner */}
+          {lastImpactDelta && (
+            <div className={`p-3 rounded-xl border font-mono text-xs flex items-center justify-between shadow-lg transition-all animate-fadeIn ${
+              lastImpactDelta.type === 'added'
+                ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-200'
+                : 'bg-rose-950/80 border-rose-500/80 text-rose-200'
+            }`}>
+              <div className="flex items-center space-x-2">
+                {lastImpactDelta.type === 'added' ? (
+                  <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span>
+                  <strong>{lastImpactDelta.type === 'added' ? 'Scope Added:' : 'Scope Removed:'}</strong> {lastImpactDelta.title}
+                </span>
+              </div>
+              <span className={`font-black px-2.5 py-0.5 rounded text-xs ${
+                lastImpactDelta.type === 'added' ? 'bg-emerald-900 text-emerald-300' : 'bg-rose-900 text-rose-300'
+              }`}>
+                {lastImpactDelta.type === 'added' ? '+' : ''}{lastImpactDelta.delta} Readiness
+              </span>
+            </div>
+          )}
+
+          {/* SOW Document Main Container */}
+          <div className="bg-[#090D16] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6 relative">
+            
+            {/* Header Document Metadata */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <span className="text-[10px] font-mono uppercase bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded font-bold">
+                  MICROSOFT CONSULTING SERVICES STATEMENT OF WORK
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-1">
+                  M365 COPILOT ENTERPRISE SCOPE & DEPLOYMENT AGREEMENT
+                </h1>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  Ref: SOW-2026-M365-092 • Organization: {companyName}
+                </p>
+              </div>
+
+              <div className="text-right font-mono">
+                <span className="text-[10px] text-slate-400 block">NET INVESTMENT</span>
+                <span className="text-2xl font-black text-emerald-400">${totalInvestment.toLocaleString()} USD</span>
+              </div>
+            </div>
+
+            {/* Engagement Overview & Executive Context */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold text-sky-300 font-mono uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-sky-400" />
+                <span>Executive Engagement Context</span>
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed font-sans bg-slate-950/60 p-4 rounded-xl border border-white/5">
+                This Statement of Work (SOW) details the technical deliverables, governance guardrails, security hardening, and persona enablement services required for <strong>{companyName}</strong> to achieve operational readiness for 500 Microsoft 365 Copilot seats. Services are delivered in accordance with Microsoft enterprise architectural standards and Microsoft Solution Assessment best practices.
+              </p>
+            </div>
+
+            {/* Selected Scope Modules List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Configured Scope Modules ({selectedModules.length} Active)</span>
+                </h3>
+                <span className="text-[10px] font-mono text-slate-400">Click Trash Icon to Remove Module</span>
+              </div>
+
+              <div className="space-y-2">
+                {selectedModules.map((mod) => (
+                  <div key={mod.id} className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-start justify-between">
+                    <div className="space-y-1 pr-4">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-white font-mono">{mod.title}</span>
+                        <span className={`text-[9px] font-mono px-2 py-0.5 rounded border ${mod.badgeColor}`}>
+                          {mod.badge}
+                        </span>
+                        <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">
+                          +{mod.impactReadiness} Readiness
+                        </span>
+                      </div>
+                      <p className="text-[11.5px] text-slate-300">{mod.description}</p>
+                    </div>
+
+                    <div className="flex items-center space-x-3 shrink-0">
+                      <div className="text-right font-mono">
+                        <span className="text-xs font-bold text-emerald-400 block">${mod.price.toLocaleString()}</span>
+                        <span className="text-[10px] text-slate-400">{mod.durationWeeks} Wks</span>
+                      </div>
+                      <button
+                        onClick={() => toggleModule(mod.id)}
+                        className="p-1 hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-rose-800"
+                        title="Remove module"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Dynamic Deliverables List */}
+            <div className="space-y-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Award className="w-4 h-4 text-indigo-400" />
+                  <span>Aggregated Deliverables ({aggregatedDeliverables.length} Items)</span>
+                </h3>
+                <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950 border border-indigo-800 px-2 py-0.5 rounded">
+                  Auto-Expanding SOW List
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {aggregatedDeliverables.map((del, dIdx) => (
+                  <div key={dIdx} className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 text-[11px] font-mono text-slate-200 flex items-center space-x-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>{del}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Project Timeline & Phases Schedule */}
+            <div className="space-y-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-sky-400" />
+                  <span>Execution Schedule & Timeline ({totalWeeks} Weeks Total)</span>
+                </h3>
+                <span className="text-[10px] font-mono text-sky-400 bg-sky-950 border border-sky-800 px-2 py-0.5 rounded">
+                  Parallel Phased Execution
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-amber-500/40 space-y-1">
+                  <span className="text-[10px] text-amber-400 font-bold block">WEEKS 1–2</span>
+                  <span className="text-white font-bold block">Remediation & Hardening</span>
+                  <p className="text-[10px] text-slate-400">Purview auto-labeling & Entra ID CA01 policy setup</p>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-sky-500/40 space-y-1">
+                  <span className="text-[10px] text-sky-400 font-bold block">WEEKS 3–4</span>
+                  <span className="text-white font-bold block">Deployment & Onboarding</span>
+                  <p className="text-[10px] text-slate-400">Tenant config & cohort prompt engineering workshops</p>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-indigo-500/40 space-y-1">
+                  <span className="text-[10px] text-indigo-400 font-bold block">WEEKS 5–6</span>
+                  <span className="text-white font-bold block">Workflow Agents</span>
+                  <p className="text-[10px] text-slate-400">Copilot Studio agent creation & Power Automate integration</p>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-emerald-500/40 space-y-1">
+                  <span className="text-[10px] text-emerald-400 font-bold block">WEEKS 7–8</span>
+                  <span className="text-white font-bold block">Hand-off & Optimization</span>
+                  <p className="text-[10px] text-slate-400">Final telemetry review & ongoing MSP seat optimization</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Breakdown */}
+            <div className="space-y-3 pt-3 border-t border-white/10">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <span>Financial Summary & Microsoft Credit Application</span>
+              </h3>
+
+              <div className="bg-slate-950/90 rounded-xl border border-slate-800 p-4 font-mono text-xs space-y-2">
+                <div className="flex justify-between text-slate-300">
+                  <span>Selected Modules Subtotal ({selectedModules.length} Modules):</span>
+                  <span className="font-bold text-white">${subtotal.toLocaleString()} USD</span>
+                </div>
+
+                <div className="flex justify-between text-emerald-400">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Microsoft Assessment Partner Funding Credit:
+                  </span>
+                  <span className="font-bold">-${msCredit.toLocaleString()} USD</span>
+                </div>
+
+                <div className="flex justify-between pt-2 border-t border-slate-800 text-sm font-black">
+                  <span className="text-white">Net Investment Authorization Amount:</span>
+                  <span className="text-emerald-400">${totalInvestment.toLocaleString()} USD</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </main>
+
+        {/* ================================================================== */}
+        {/* RIGHT PANEL — REAL-TIME SCORE + PURCHASE SUMMARY                   */}
+        {/* ================================================================== */}
+        <aside className="w-88 bg-[#0A0E17]/95 border-l border-white/10 p-4 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20 font-mono">
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              <span>Real-Time Scoring Engine</span>
+            </span>
+            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded font-bold">
+              LIVE CALCULATOR
+            </span>
+          </div>
+
+          {/* 1. COPILOT READINESS OVERALL SCORE */}
+          <div className={`p-4 rounded-2xl border transition-all space-y-3 relative overflow-hidden ${
+            isCopilotReady 
+              ? 'bg-gradient-to-br from-slate-900 via-emerald-950/40 to-[#0A1828] border-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+              : 'bg-gradient-to-br from-slate-900 via-amber-950/40 to-[#0A1828] border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase text-slate-400 tracking-wider font-bold">
+                Copilot Readiness Score
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                isCopilotReady 
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500' 
+                  : 'bg-amber-950 text-amber-300 border-amber-500'
+              }`}>
+                {isCopilotReady ? 'Copilot Ready' : 'Remediation Required'}
+              </span>
+            </div>
+
+            <div className="flex items-baseline space-x-2">
+              <span className={`text-3xl font-black ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {readinessScore}
+              </span>
+              <span className="text-sm text-slate-500 font-bold">/ 100</span>
+            </div>
+
+            {/* Animated Progress Bar */}
+            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-white/10 p-0.5">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${
+                  isCopilotReady ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-amber-500 to-rose-400'
+                }`}
+                style={{ width: `${readinessScore}%` }}
+              />
+            </div>
+
+            <p className="text-[10px] text-slate-400 leading-snug">
+              {isCopilotReady 
+                ? 'High readiness threshold achieved! All key governance, security, and enablement requirements met.'
+                : 'Threshold < 80: Select Governance or Security modules to remediate risk before deployment.'}
+            </p>
+          </div>
+
+          {/* SUB-CATEGORICAL SCORES */}
+          <div className="space-y-2.5">
+            <span className="text-[10px] uppercase text-slate-400 font-bold block border-b border-white/10 pb-1">
+              Category Score Breakdown
+            </span>
+
+            {/* 2. Governance Score */}
+            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                  Governance Score
+                </span>
+                <span className="font-extrabold text-sky-400">{governanceScore}/100</span>
+              </div>
+              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-sky-500 h-full transition-all duration-500" style={{ width: `${governanceScore}%` }} />
+              </div>
+              <p className="text-[9.5px] text-slate-400">
+                Purview labels, DLP policies, oversharing containment
+              </p>
+            </div>
+
+            {/* 3. Security Score */}
+            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  Security Score
+                </span>
+                <span className="font-extrabold text-rose-400">{securityScore}/100</span>
+              </div>
+              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${securityScore}%` }} />
+              </div>
+              <p className="text-[9.5px] text-slate-400">
+                Entra ID CA01, PIM elevation & blast radius reduction
+              </p>
+            </div>
+
+            {/* 4. ROI Score */}
+            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  ROI & Automation Score
+                </span>
+                <span className="font-extrabold text-emerald-400">{roiScore}/100</span>
+              </div>
+              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${roiScore}%` }} />
+              </div>
+              <p className="text-[9.5px] text-slate-400">
+                Workflow automation, agent buildout & waste reduction
+              </p>
+            </div>
+          </div>
+
+          {/* Terms & Authorization Summary */}
+          <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 text-[10.5px]">
+            <span className="text-[10px] uppercase text-indigo-400 font-bold block flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+              SOW Authorization Details
+            </span>
+
+            <div className="space-y-1.5 text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Entity:</span>
+                <span className="text-white font-bold">{companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">PO Number:</span>
+                <span className="text-emerald-400 font-bold">{poNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Terms:</span>
+                <span className="text-slate-200">Net 30 • 30-Day Lock</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2 pt-1 mt-auto">
+
+            {/* 1. Main Purchase Button */}
+            <button
+              onClick={() => setIsPurchaseModalOpen(true)}
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-emerald-950/60 cursor-pointer border border-white/20 uppercase tracking-wider"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Purchase & Authorize SOW</span>
+            </button>
+
+            {/* 2. Send SOW to Procurement Form */}
+            <form onSubmit={handleSendProcurement} className="space-y-1.5">
+              <div className="flex space-x-1.5">
+                <input
+                  type="email"
+                  value={procurementEmail}
+                  onChange={(e) => setProcurementEmail(e.target.value)}
+                  placeholder="procurement@company.com"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-[10.5px] text-slate-200 focus:outline-none focus:border-sky-500"
+                />
+                <button
+                  type="submit"
+                  className="py-1 px-3 bg-sky-600 hover:bg-sky-500 text-slate-950 font-bold rounded-lg text-[10.5px] shrink-0 cursor-pointer"
+                >
+                  Procurement
+                </button>
+              </div>
+            </form>
+
+            {/* 3. Download SOW PDF Button */}
+            <button
+              onClick={() => triggerToast(`Downloading "Statement_of_Work_SOW-2026-M365-092.pdf"... File ready!`)}
+              className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs flex items-center justify-center space-x-2 border border-slate-800 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-sky-400" />
+              <span>Download SOW PDF</span>
+            </button>
+
+          </div>
+
+        </aside>
+
+      </div>
+    </div>
+  );
+};

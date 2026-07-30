@@ -117,8 +117,16 @@ export interface AiCostAnomalyScan {
   };
 }
 
-/** Median of a non-empty list of integer cents, rounded back to integer cents. */
-function medianCents(values: readonly number[]): number {
+/**
+ * Median of a non-empty list of integer cents, rounded back to integer cents.
+ *
+ * Exported so Phase 4.1's cost-per-lead / cost-per-run figures use the SAME
+ * median this module's baseline uses, rather than a second implementation that
+ * could round differently. Median, not mean, for the same reason stated above:
+ * one runaway lead or one runaway assessment run must not drag the headline
+ * figure until the next one looks normal.
+ */
+export function medianCents(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted.length >> 1;

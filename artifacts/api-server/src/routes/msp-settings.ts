@@ -85,7 +85,7 @@ import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
-import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 
 const router: IRouter = Router();
 
@@ -901,11 +901,11 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
     {
       clientName: target.name ?? target.email,
       methodsList: clearedMethods.map((m) => (m === "totp" ? "Authenticator App (TOTP)" : m === "sms" ? "SMS" : m === "passkey" ? "Passkey / Security Key" : m)).join(", ") || "None",
-      loginLink: PORTAL_URL,
-      securityLink: `${PORTAL_URL}/security`,
+      loginLink: getMspPortalBaseUrl(),
+      securityLink: `${getMspPortalBaseUrl()}/security`,
     },
     "Your two-factor authentication has been reset",
-    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by an MSP admin. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by an MSP admin. Please sign in and set up a new authentication method.</p><p><a href="${getMspPortalBaseUrl()}">Sign in to your portal</a></p>`,
   ).catch((e) => log.warn({ err: e, userId }, "msp-settings/reset-mfa: email failed (non-fatal)"));
 
   await writeAuditLog({

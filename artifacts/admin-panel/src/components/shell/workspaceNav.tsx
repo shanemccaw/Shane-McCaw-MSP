@@ -71,9 +71,7 @@ import {
   MessagesSquare,
   Star,
   Rocket,
-  Film,
-  Flame,
-  Waypoints,
+  ExternalLink,
   FolderTree,
 } from "lucide-react";
 
@@ -89,6 +87,8 @@ export interface TreeItem {
   children?: TreeItem[];
   /** Key into live badge counts provided by the shell (e.g. unread email). */
   badgeKey?: "unreadEmail";
+  /** Opens `path` in a new tab instead of client-side routing (e.g. Microsoft Clarity). */
+  external?: boolean;
 }
 
 export interface TreeSection {
@@ -247,9 +247,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
-          { id: "cmd-session-replay", label: "Session Replay", path: "/command/session-replay", icon: Film },
-          { id: "cmd-attribution", label: "Attribution", path: "/command/attribution", icon: Waypoints },
-          { id: "cmd-heatmap", label: "Heatmap", path: "/command/heatmap", icon: Flame },
+          { id: "cmd-clarity", label: "Microsoft Clarity", path: "https://clarity.microsoft.com", icon: ExternalLink, external: true },
           { id: "cmd-doc-generator", label: "Document Generator", path: "/command/doc-generator", icon: FileText },
         ],
       },

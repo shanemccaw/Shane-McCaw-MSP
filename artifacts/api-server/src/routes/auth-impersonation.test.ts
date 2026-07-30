@@ -89,7 +89,6 @@ mock.module("../lib/mailer.ts", {
   namedExports: {
     sendEmailFromTemplate: async () => {},
     passwordResetEmail: () => ({ subject: "", html: "" }),
-    PORTAL_URL: "https://example.com",
   },
 });
 

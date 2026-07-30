@@ -142,13 +142,14 @@ vi.mock("../lib/audit.ts", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-// The consent callback dynamically imports portal.ts for the two functions it
-// needs (resolveOrCreateDirectTenant — the single tenant-creation door the
-// consent stamp now depends on — and provisionProspectAccount). Mocked so the
-// test doesn't pull in the 15k-line route module and its whole dependency
-// graph; the real behaviour of both is covered by portal.ts's own tests.
+// The consent callback statically imports lib/direct-tenant-provisioning.ts
+// for the two functions it needs (resolveOrCreateDirectTenant — the single
+// tenant-creation door the consent stamp now depends on — and
+// provisionProspectAccount). Mocked here so this test exercises only
+// consent.ts's own logic; the real behaviour of both is covered by
+// direct-tenant-provisioning's own callers/tests.
 const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1 });
-vi.mock("./portal.js", () => ({
+vi.mock("../lib/direct-tenant-provisioning.ts", () => ({
   resolveOrCreateDirectTenant: (...args: unknown[]) => mockResolveOrCreateDirectTenant(...args),
   provisionProspectAccount: vi.fn().mockResolvedValue(null),
 }));
