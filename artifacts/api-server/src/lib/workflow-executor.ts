@@ -27,7 +27,7 @@ import {
   breakGlassPendingSecretsTable,
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
-  leadsTable,
+  leadStagingTable,
   usersTable,
   tenantsTable,
   tenantMonitorProfilesTable,
@@ -5737,15 +5737,22 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
         switch (foObjectType) {
           case "lead": {
-            const rows = await db.select().from(leadsTable).where(
-              foField === "id"    ? eq(leadsTable.id, parseInt(foValue, 10)) :
-              foField === "email" ? eq(leadsTable.email, foValue) :
-              foField === "name"  ? eq(leadsTable.name, foValue) :
-              eq(leadsTable.email, foValue)
+            // #136 (Decommission Legacy CRM Phase B): sourced from lead_staging,
+            // not the legacy `leads` table. `fieldName: "id"` still means the
+            // LEGACY leads.id — that is the id existing workflow definitions
+            // carry — so it matches on legacy_lead_id. objectId/leadId keep
+            // emitting that legacy id; a lead staged after the cutover has none,
+            // so objectId falls back to the staging id (also emitted explicitly
+            // as leadStagingId) rather than reporting the lead as not found.
+            const rows = await db.select().from(leadStagingTable).where(
+              foField === "id"    ? eq(leadStagingTable.legacyLeadId, parseInt(foValue, 10)) :
+              foField === "email" ? eq(leadStagingTable.email, foValue) :
+              foField === "name"  ? eq(leadStagingTable.name, foValue) :
+              eq(leadStagingTable.email, foValue)
             ).limit(1);
             const row = rows[0];
             output = row
-              ? { found: true, objectType: "lead", objectId: row.id, leadId: row.id, email: row.email, name: row.name, company: row.company, status: row.status, score: row.score }
+              ? { found: true, objectType: "lead", objectId: row.legacyLeadId ?? row.id, leadId: row.legacyLeadId ?? null, leadStagingId: row.id, email: row.email, name: row.name, company: row.company, status: row.status, score: row.score }
               : { found: false, objectType: "lead", fieldName: foField, fieldValue: foValue };
             break;
           }

@@ -1642,7 +1642,13 @@ export type WebauthnChallenge = typeof webauthnChallengesTable.$inferSelect;
 
 export const opportunitiesTable = pgTable("opportunities", {
   id: serial("id").primaryKey(),
-  leadId: integer("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
+  // Nullable as of #136 (Decommission Legacy CRM Phase B). `lead_staging` is now
+  // the content source of truth, and a lead captured after that cutover has no
+  // `leads` row at all — so an opportunity scored from it can only carry
+  // `leadStagingId`. Rows created before the cutover keep their legacy pointer,
+  // which is what the not-yet-re-pointed readers (opportunities.ts, inbox.ts,
+  // admin-marketing.ts, ai-next-best-actions.ts) still join on.
+  leadId: integer("lead_id").references(() => leadsTable.id, { onDelete: "cascade" }),
   scoreSnapshot: integer("score_snapshot").notNull().default(0),
   scoreFit: integer("score_fit").notNull().default(0),
   scorePain: integer("score_pain").notNull().default(0),

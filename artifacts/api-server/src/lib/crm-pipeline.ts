@@ -7,23 +7,44 @@
  *
  * Both functions are non-fatal: they catch all errors and log a warning so that
  * a CRM bookkeeping failure never breaks a purchase or document-delivery flow.
+ *
+ * ── Decommission Legacy CRM Phase B (#136) ──────────────────────────────────
+ * Nothing in this file reads or writes the legacy `leads` table any more.
+ * `lead_staging` is the content source of truth; every find-or-create goes
+ * through [[ensureLeadStagingForEmail]] (lead-intent.ts), which is the single
+ * place a captured identity becomes a Zoho-bound lead.
+ *
+ * The *id* these functions return is still the legacy `leads.id` space, carried
+ * on `lead_staging.legacy_lead_id`. That is deliberate, not leftover: ten
+ * satellite FK columns (`users.linked_lead_id`, `opportunities.lead_id`,
+ * `lead_intent_events.lead_id`, `engagement_offer_firings.lead_id`, …) still
+ * store `leads.id`, and comparing the two id spaces returns wrong rows rather
+ * than an error. Re-keying those columns is the follow-up issue's job.
+ *
+ * Consequence, stated plainly: a lead staged AFTER this cutover has no legacy
+ * id, so these functions return 0 for it and `users.linked_lead_id` is left
+ * unset. Its content is fully present in `lead_staging` — it is only the
+ * id-keyed legacy surfaces that cannot see it until the FK re-key lands.
  */
 
 import {
   db,
-  leadsTable,
+  leadStagingTable,
   opportunitiesTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, notInArray } from "drizzle-orm";
+import { eq, and, or, notInArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { ensureLeadStagingForEmail } from "./lead-intent.ts";
 const log = logger.child({ channel: "crm" });
 
 /**
- * Find-or-create a Lead for a client user, then set users.linkedLeadId.
- * Called when a new user is provisioned via a landing-page purchase.
- * Returns the lead ID, or 0 on failure.
+ * Find-or-create a staged lead for a client user, then set users.linkedLeadId
+ * when the staged row carries a legacy id. Called when a new user is
+ * provisioned via a landing-page purchase.
+ *
+ * Returns the legacy lead ID, or 0 when there is none (staged-only lead, or
+ * failure).
  */
 export async function ensureLeadForClient(
   userId: number,
@@ -41,46 +62,34 @@ export async function ensureLeadForClient(
       .where(eq(usersTable.id, userId))
       .limit(1);
 
-    if (user?.linkedLeadId) {
-      // Zoho sync (#116): this path never staged/queued a Zoho push before —
-      // ensureLeadStagingForEmail is itself find-or-create, so this is a no-op
-      // if the email was already staged by an earlier funnel touch.
-      await ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "purchase", legacyLeadId: user.linkedLeadId, ga4ClientId });
-      return user.linkedLeadId;
-    }
+    // Find-or-create is idempotent, so this is a no-op when the email was
+    // already staged by an earlier funnel touch. An existing users.linkedLeadId
+    // is passed through so a pre-cutover legacy id survives onto the staged row.
+    const staged = await ensureLeadStagingForEmail(normalizedEmail, {
+      name,
+      company,
+      source: "purchase",
+      legacyLeadId: user?.linkedLeadId ?? undefined,
+      ga4ClientId,
+    });
 
-    const [existingLead] = await db
-      .select({ id: leadsTable.id })
-      .from(leadsTable)
-      .where(eq(leadsTable.email, normalizedEmail))
-      .limit(1);
+    if (user?.linkedLeadId) return user.linkedLeadId;
 
-    let leadId: number;
-    if (existingLead) {
-      leadId = existingLead.id;
+    const leadId = staged?.legacyLeadId ?? 0;
+    if (leadId) {
+      await db
+        .update(usersTable)
+        .set({ linkedLeadId: leadId })
+        .where(eq(usersTable.id, userId));
+      log.info({ userId, leadId }, "crm-pipeline: linked client user to lead");
     } else {
-      const [newLead] = await db
-        .insert(leadsTable)
-        .values({
-          name: name?.trim() || normalizedEmail,
-          email: normalizedEmail,
-          company: company?.trim() || undefined,
-          source: "purchase",
-          status: "converted",
-          stage: "Cold",
-        })
-        .returning({ id: leadsTable.id });
-      leadId = newLead!.id;
+      // Honest no-op rather than writing a lead_staging.id into a column that
+      // holds leads.id — see the id-space note at the top of this file.
+      log.info(
+        { userId, leadStagingId: staged?.id },
+        "crm-pipeline: staged client user has no legacy lead id — users.linked_lead_id left unset",
+      );
     }
-
-    await db
-      .update(usersTable)
-      .set({ linkedLeadId: leadId })
-      .where(eq(usersTable.id, userId));
-
-    await ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "purchase", legacyLeadId: leadId, ga4ClientId });
-
-    log.info({ userId, leadId }, "crm-pipeline: linked client user to lead");
     return leadId;
   } catch (err) {
     log.warn({ err, userId }, "crm-pipeline: ensureLeadForClient failed (non-fatal)");
@@ -89,17 +98,20 @@ export async function ensureLeadForClient(
 }
 
 /**
- * Find-or-create a Lead the moment a visitor enters name + email at the top of
- * the assessment funnel (the marketing-site checkout guest-info step), BEFORE
- * they proceed to M365 consent. Captured even if they bounce — a bounced lead is
- * still real, trackable, remarketable data (it can later be redirected toward the
- * quiz funnel, etc.). See [[login-signal-and-consent-bridge]].
+ * Find-or-create a staged lead the moment a visitor enters name + email at the
+ * top of the assessment funnel (the marketing-site checkout guest-info step),
+ * BEFORE they proceed to M365 consent. Captured even if they bounce — a bounced
+ * lead is still real, trackable, remarketable data (it can later be redirected
+ * toward the quiz funnel, etc.). See [[login-signal-and-consent-bridge]].
  *
- * Idempotent by email: if a lead already exists we leave it untouched (never
+ * Idempotent by email: an already-staged email is left untouched (never
  * downgrade an already-`converted`/`qualified` lead back to `new`). Non-fatal —
  * a CRM bookkeeping failure must never block session creation.
  *
- * Returns the lead ID, or 0 on failure.
+ * This is the funnel's earliest capture point, so it is where a GA4 client_id
+ * is recorded first-touch (#116).
+ *
+ * Returns the legacy lead ID, or 0 when there is none.
  */
 export async function ensureAssessmentFunnelLead(
   email: string,
@@ -111,32 +123,19 @@ export async function ensureAssessmentFunnelLead(
     const normalizedEmail = email.toLowerCase().trim();
     if (!normalizedEmail) return 0;
 
-    // Zoho sync (#116): this is the funnel's earliest capture point, so it's
-    // where a GA4 client_id should be recorded first-touch. Non-fatal, staged
-    // regardless of whether the leadsTable row below is new or pre-existing.
-    void ensureLeadStagingForEmail(normalizedEmail, { name, company, source: "assessment", ga4ClientId });
+    const staged = await ensureLeadStagingForEmail(normalizedEmail, {
+      name,
+      company,
+      source: "assessment",
+      ga4ClientId,
+    });
+    if (!staged) return 0;
 
-    const [existingLead] = await db
-      .select({ id: leadsTable.id })
-      .from(leadsTable)
-      .where(eq(leadsTable.email, normalizedEmail))
-      .limit(1);
-    if (existingLead) return existingLead.id;
-
-    const [newLead] = await db
-      .insert(leadsTable)
-      .values({
-        name: name?.trim() || normalizedEmail,
-        email: normalizedEmail,
-        company: company?.trim() || undefined,
-        source: "assessment",
-        status: "new",
-        stage: "Cold",
-      })
-      .returning({ id: leadsTable.id });
-
-    log.info({ leadId: newLead?.id, email: normalizedEmail }, "crm-pipeline: captured assessment-funnel lead");
-    return newLead?.id ?? 0;
+    log.info(
+      { leadStagingId: staged.id, legacyLeadId: staged.legacyLeadId, email: normalizedEmail },
+      "crm-pipeline: captured assessment-funnel lead",
+    );
+    return staged.legacyLeadId ?? 0;
   } catch (err) {
     log.warn({ err, email }, "crm-pipeline: ensureAssessmentFunnelLead failed (non-fatal)");
     return 0;
@@ -144,14 +143,18 @@ export async function ensureAssessmentFunnelLead(
 }
 
 /**
- * Find-or-create the Lead for a client user (via [[ensureLeadForClient]]) AND flip
- * its status to `converted`. Called at the point a real Prospect account is
- * created at consent time — the funnel-entry lead captured by
+ * Find-or-create the staged lead for a client user (via [[ensureLeadForClient]])
+ * AND flip its status to `converted`. Called at the point a real Prospect
+ * account is created at consent time — the funnel-entry lead captured by
  * ensureAssessmentFunnelLead transitions new → converted here. `converted` is a
- * plain status write (the Lead Scoring Engine is decoupled from it), so no scoring
- * pass is required. Guarded so an already-`archived` lead is never resurrected.
+ * plain status write (the Lead Scoring Engine is decoupled from it), so no
+ * scoring pass is required. Guarded so an already-`archived` lead is never
+ * resurrected.
  *
- * Returns the lead ID, or 0 on failure. Non-fatal.
+ * The status flip is keyed on the staged row's email, not on a lead id, so it
+ * still works for a staged-only lead that has no legacy id.
+ *
+ * Returns the legacy lead ID, or 0 when there is none. Non-fatal.
  */
 export async function convertLeadForClient(
   userId: number,
@@ -161,12 +164,17 @@ export async function convertLeadForClient(
   ga4ClientId?: string,
 ): Promise<number> {
   const leadId = await ensureLeadForClient(userId, email, name, company, ga4ClientId);
-  if (!leadId) return 0;
   try {
-    await db
-      .update(leadsTable)
-      .set({ status: "converted", updatedAt: new Date() })
-      .where(and(eq(leadsTable.id, leadId), notInArray(leadsTable.status, ["converted", "archived"])));
+    const normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail) {
+      await db
+        .update(leadStagingTable)
+        .set({ status: "converted", updatedAt: new Date() })
+        .where(and(
+          eq(leadStagingTable.email, normalizedEmail),
+          notInArray(leadStagingTable.status, ["converted", "archived"]),
+        ));
+    }
   } catch (err) {
     log.warn({ err, userId, leadId }, "crm-pipeline: convertLeadForClient status flip failed (non-fatal)");
   }
@@ -175,11 +183,19 @@ export async function convertLeadForClient(
 
 /**
  * When a SOW (or consolidated SOW) is delivered to a client:
- *   1. Ensure a Lead record exists for that user
- *   2. Move the lead to "qualified" status if it was earlier in the funnel
- *   3. Find or create an Opportunity linked to that lead
+ *   1. Ensure a staged lead exists for that user
+ *   2. Move the staged lead to "qualified" status if it was earlier in the funnel
+ *   3. Find or create an Opportunity linked to that staged lead
  *
  * Called from document-generator.ts (auto-fire path) and admin-insights.ts (send endpoint).
+ *
+ * The opportunity row is scoring EVIDENCE, not the deal itself (Zoho owns the
+ * deal — see opportunitiesTable's #83 note). It is written against
+ * `opportunities.lead_staging_id`, with the legacy `lead_id` still populated
+ * when the staged row has one so the not-yet-re-pointed readers
+ * (opportunities.ts, inbox.ts, admin-marketing.ts, ai-next-best-actions.ts)
+ * keep seeing it. The de-dupe check covers both pointers, so a pre-cutover
+ * opportunity that only has `lead_id` is still found and not duplicated.
  */
 export async function ensureOpportunityForSow(
   customerId: number,
@@ -199,36 +215,44 @@ export async function ensureOpportunityForSow(
 
     if (!user) return;
 
-    const leadId = await ensureLeadForClient(
+    const legacyLeadId = await ensureLeadForClient(
       customerId,
       user.email,
       user.name ?? undefined,
       user.company ?? undefined,
     );
-    if (!leadId) return;
 
-    const [currentLead] = await db
-      .select({ status: leadsTable.status })
-      .from(leadsTable)
-      .where(eq(leadsTable.id, leadId))
+    const normalizedEmail = user.email.toLowerCase().trim();
+    const [staged] = await db
+      .select({ id: leadStagingTable.id, status: leadStagingTable.status })
+      .from(leadStagingTable)
+      .where(eq(leadStagingTable.email, normalizedEmail))
       .limit(1);
 
-    if (currentLead?.status === "new" || currentLead?.status === "contacted") {
+    if (!staged) return;
+
+    if (staged.status === "new" || staged.status === "contacted") {
       await db
-        .update(leadsTable)
+        .update(leadStagingTable)
         .set({ status: "qualified", updatedAt: new Date() })
-        .where(eq(leadsTable.id, leadId));
+        .where(eq(leadStagingTable.id, staged.id));
     }
 
     const [existingOpp] = await db
       .select({ id: opportunitiesTable.id })
       .from(opportunitiesTable)
-      .where(eq(opportunitiesTable.leadId, leadId))
+      .where(legacyLeadId
+        ? or(
+            eq(opportunitiesTable.leadStagingId, staged.id),
+            eq(opportunitiesTable.leadId, legacyLeadId),
+          )
+        : eq(opportunitiesTable.leadStagingId, staged.id))
       .limit(1);
 
     if (!existingOpp) {
       await db.insert(opportunitiesTable).values({
-        leadId,
+        leadId: legacyLeadId || null,
+        leadStagingId: staged.id,
         scoreSnapshot: 50,
         scoreFit: 15,
         scorePain: 15,
@@ -240,9 +264,15 @@ export async function ensureOpportunityForSow(
         workflowType: "ProposalPrep",
         state: "new",
       });
-      log.info({ customerId, leadId, docId }, "crm-pipeline: created opportunity from SOW delivery");
+      log.info(
+        { customerId, leadStagingId: staged.id, legacyLeadId, docId },
+        "crm-pipeline: created opportunity from SOW delivery",
+      );
     } else {
-      log.info({ customerId, leadId, docId, oppId: existingOpp.id }, "crm-pipeline: opportunity already exists");
+      log.info(
+        { customerId, leadStagingId: staged.id, legacyLeadId, docId, oppId: existingOpp.id },
+        "crm-pipeline: opportunity already exists",
+      );
     }
   } catch (err) {
     log.warn({ err, customerId, docId }, "crm-pipeline: ensureOpportunityForSow failed (non-fatal)");

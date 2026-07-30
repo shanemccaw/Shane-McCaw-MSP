@@ -8,7 +8,7 @@ import {
   leadScoringConfigTable,
   type LeadStaging,
 } from "@workspace/db";
-import { eq, and, gte, isNull } from "drizzle-orm";
+import { eq, and, gte, isNull, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { queueLeadStagingPush } from "./zoho-lead-sync.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "./zoho-client.ts";
@@ -86,51 +86,62 @@ export async function ingestIntentEvent(
   return { event: ev, hotScore };
 }
 
+/**
+ * Resolve an email to a lead id in the LEGACY `leads.id` space, sourced from
+ * `lead_staging` (#136 — Decommission Legacy CRM Phase B). No longer reads the
+ * `leads` table.
+ *
+ * The legacy id space is what this function must keep returning: its callers
+ * feed the result straight into `lead_intent_events.lead_id` (analytics.ts) and
+ * `engagement_offer_firings.lead_id` (public-personalization.ts), both of which
+ * still store `leads.id`. Returning a `lead_staging.id` here would put two id
+ * spaces in one column and silently match wrong rows.
+ *
+ * Therefore: a staged lead with no `legacy_lead_id` — i.e. one captured after
+ * this cutover — resolves to null, and the Engagement Offer Engine will not
+ * fire for it. That is the recorded tradeoff of keeping the id spaces clean;
+ * it lifts when those satellite FK columns are re-keyed onto `lead_staging.id`
+ * (follow-up to #135/#136, and #114's scoring-engine territory).
+ */
 export async function findLeadByEmail(email: string): Promise<{ id: number } | null> {
-  const [lead] = await db.select({ id: leadsTable.id })
-    .from(leadsTable)
-    .where(eq(leadsTable.email, email.toLowerCase().trim()))
+  const [staged] = await db.select({ legacyLeadId: leadStagingTable.legacyLeadId })
+    .from(leadStagingTable)
+    .where(and(
+      eq(leadStagingTable.email, email.toLowerCase().trim()),
+      isNotNull(leadStagingTable.legacyLeadId),
+    ))
     .limit(1);
-  return lead ?? null;
+  return staged?.legacyLeadId != null ? { id: staged.legacyLeadId } : null;
 }
 
 /**
  * Bridges an identity known only outside the CRM (a quiz submission, a portal
- * first-login) into a real leadsTable row, so downstream lookups keyed on
- * findLeadByEmail — e.g. the Engagement Offer Engine — have something to find.
- * Check-then-create by email, mirroring crm-pipeline.ts's ensureLeadForClient;
- * non-fatal so a CRM bookkeeping failure never breaks the calling flow.
+ * first-login) into a `lead_staging` row. Delegates wholesale to
+ * [[ensureLeadStagingForEmail]] — as of #136 there is no separate `leads` row
+ * to create, so this is the staging call plus the legacy-id return contract its
+ * callers were written against.
+ *
+ * Returns the legacy lead id when the staged row has one, else 0. Both current
+ * callers (quiz.ts, portal-first-login.ts) fire-and-forget, so a 0 costs them
+ * nothing directly — but see findLeadByEmail's note for what a missing legacy
+ * id means downstream.
  */
 export async function ensureLeadForEmail(
   email: string,
   opts: { name?: string; company?: string; source: "quiz" | "portal_login"; ga4ClientId?: string },
 ): Promise<number> {
   try {
-    const normalizedEmail = email.toLowerCase().trim();
+    // Self-contained — ensureLeadStagingForEmail never throws, so a Zoho outage
+    // cannot break the quiz/login flow that called us.
+    const staged = await ensureLeadStagingForEmail(email, opts);
+    if (!staged) return 0;
 
-    const existing = await findLeadByEmail(normalizedEmail);
-    if (existing) return existing.id;
+    log.info(
+      { leadStagingId: staged.id, legacyLeadId: staged.legacyLeadId, source: opts.source },
+      "lead-intent: bridged identity into lead_staging",
+    );
 
-    const [newLead] = await db
-      .insert(leadsTable)
-      .values({
-        name: opts.name?.trim() || normalizedEmail,
-        email: normalizedEmail,
-        company: opts.company?.trim() || undefined,
-        source: opts.source,
-        status: "new",
-        stage: "Cold",
-      })
-      .returning({ id: leadsTable.id });
-
-    log.info({ leadId: newLead!.id, source: opts.source }, "lead-intent: created lead from identity bridge");
-
-    // Zoho CRM (#83): the same identity is staged and queued for Zoho. Awaited
-    // but self-contained — ensureLeadStagingForEmail never throws, so a Zoho
-    // outage cannot break the quiz/login flow that called us.
-    await ensureLeadStagingForEmail(normalizedEmail, { ...opts, legacyLeadId: newLead!.id });
-
-    return newLead!.id;
+    return staged.legacyLeadId ?? 0;
   } catch (err) {
     log.warn({ err, email }, "lead-intent: ensureLeadForEmail failed (non-fatal)");
     return 0;
