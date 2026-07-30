@@ -415,7 +415,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-primary-foreground">
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                 Persona Stories & Cohort Fusion
               </span>
               <span className="text-[10px] font-mono bg-primary/20 text-primary border border-primary/40 px-2 py-0.5 rounded font-semibold">
@@ -507,7 +507,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                       </div>
                       <div>
                         <h3 className={`text-xs font-bold leading-tight ${
-                          isActive ? 'text-primary-foreground' : 'text-foreground group-hover:text-primary'
+                          isActive ? 'text-foreground' : 'text-foreground group-hover:text-primary'
                         }`}>
                           {p.name}
                         </h3>
@@ -639,7 +639,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                   </div>
                   <div>
                     <div className="flex items-center space-x-2.5">
-                      <h2 className="text-lg font-extrabold text-primary-foreground tracking-tight">
+                      <h2 className="text-lg font-extrabold text-foreground tracking-tight">
                         {activePersona.name}
                       </h2>
                       <span className="text-[11px] font-mono bg-primary/20 text-primary border border-primary/30 px-2.5 py-0.5 rounded-full font-bold">
@@ -773,7 +773,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                     <div className="flex items-center space-x-4 shrink-0">
                       <div className="text-right">
                         <span className="text-[10px] font-mono text-muted-foreground block">Weekly Return</span>
-                        <span className="text-xs font-mono font-extrabold text-primary-foreground">{activePersona.valuePotential.hoursSavedPerWeek} hrs / week</span>
+                        <span className="text-xs font-mono font-extrabold text-foreground">{activePersona.valuePotential.hoursSavedPerWeek} hrs / week</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] font-mono text-muted-foreground block">ROI Multiplier</span>
@@ -912,7 +912,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
             
             {/* Title */}
             <div className="flex items-center justify-between pb-2 border-b border-border">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-primary-foreground flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 Persona Telemetry Metrics
               </h2>
@@ -936,7 +936,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                   <div className="relative w-16 h-16 flex items-center justify-center">
                     <div className="absolute inset-0 rounded-full border border-destructive/30 animate-ring-rotate pointer-events-none" />
                     <svg className="w-16 h-16 transform -rotate-90">
-                      <circle cx="32" cy="32" r={riskRadius} stroke="rgba(255,255,255,0.1)" strokeWidth="5" fill="transparent" />
+                      <circle cx="32" cy="32" r={riskRadius} stroke="hsl(var(--muted-foreground) / 0.2)" strokeWidth="5" fill="transparent" />
                       <circle
                         cx="32"
                         cy="32"
@@ -950,7 +950,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                         className="transition-all duration-700 ease-out"
                       />
                     </svg>
-                    <span className="absolute text-sm font-extrabold text-primary-foreground font-mono">
+                    <span className="absolute text-sm font-extrabold text-foreground font-mono">
                       {effectiveRiskScore}
                     </span>
                   </div>
@@ -971,7 +971,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                   <div className="relative w-16 h-16 flex items-center justify-center">
                     <div className="absolute inset-0 rounded-full border border-primary/30 animate-ring-rotate pointer-events-none" />
                     <svg className="w-16 h-16 transform -rotate-90">
-                      <circle cx="32" cy="32" r={feasRadius} stroke="rgba(255,255,255,0.1)" strokeWidth="5" fill="transparent" />
+                      <circle cx="32" cy="32" r={feasRadius} stroke="hsl(var(--muted-foreground) / 0.2)" strokeWidth="5" fill="transparent" />
                       <circle
                         cx="32"
                         cy="32"
@@ -985,7 +985,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
                         className="transition-all duration-700 ease-out"
                       />
                     </svg>
-                    <span className="absolute text-sm font-extrabold text-primary-foreground font-mono">
+                    <span className="absolute text-sm font-extrabold text-foreground font-mono">
                       {effectiveFeasibilityScore}%
                     </span>
                   </div>
@@ -1073,7 +1073,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
               <div className="grid grid-cols-2 gap-2 text-center pt-1">
                 <div className="bg-muted/40 p-2 rounded border border-border/50">
                   <span className="text-[9px] font-mono text-muted-foreground block">Weekly Return</span>
-                  <span className="text-xs font-mono font-bold text-primary-foreground">
+                  <span className="text-xs font-mono font-bold text-foreground">
                     {activePersona.valuePotential.hoursSavedPerWeek} hrs/wk
                   </span>
                 </div>
