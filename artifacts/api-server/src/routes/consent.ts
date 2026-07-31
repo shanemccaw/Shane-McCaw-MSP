@@ -58,7 +58,7 @@ import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, serv
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
-import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
@@ -531,6 +531,21 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
 
+  // ── Capture the tenant's real domain (#238) ─────────────────────────────
+  // tenants.domain was never populated by this flow. Connect-IPPSSession-backed
+  // checks (DLP/Labels, #212, and anything else built on that mechanism) reject
+  // a raw tenant GUID as -Organization and need the real domain. Best-effort:
+  // a lookup failure here must never fail the consent grant that already
+  // landed above.
+  try {
+    const initialDomain = await getInitialDomainForTenant(tenant);
+    if (initialDomain) {
+      await db.update(tenantsTable).set({ domain: initialDomain, updatedAt: new Date() }).where(eq(tenantsTable.id, consentTenant.id));
+    }
+  } catch (err) {
+    log.warn({ err, tenant, customerId: consentTenant.id }, "Consent callback: failed to capture tenant domain via Graph (non-fatal)");
+  }
+
   // MSP-channel customers start "onboarding" and flip to "active" exactly on
   // consent granted (business rule, confirmed). Only applies to the invite-token
   // path (inviteRecord set) — direct website checkout customers are already
@@ -767,6 +782,23 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       );
     } catch (diagErr) {
       log.warn({ err: diagErr, tenant }, "consent.granted: diagnostics run failed (non-fatal)");
+    }
+  })();
+
+  // Fire-and-forget DLP/Label Purview role-group provisioning (#249, #246
+  // chunk C) — must not delay the consent redirect, and must never fail the
+  // consent grant itself. Fires on every `graph` consent success (this chain
+  // is idempotent and safe to re-run); it commonly reports "blocked" on a
+  // brand-new tenant because `writeBack` is a separate, not-yet-granted
+  // consent grant — see dlp-role-group-provisioning.ts's header for why that
+  // is expected, not an error, and how the admin-panel re-trigger covers it.
+  void (async () => {
+    try {
+      const { provisionDlpRoleGroupForTenant } = await import("../lib/dlp-role-group-provisioning.ts");
+      const outcome = await provisionDlpRoleGroupForTenant(tenant, consentTenant.id, "consent.granted");
+      log.info({ tenant, customerId: consentTenant.id, overallStatus: outcome.overallStatus }, "consent.granted: DLP role-group provisioning finished");
+    } catch (err) {
+      log.warn({ err, tenant }, "consent.granted: DLP role-group provisioning failed (non-fatal)");
     }
   })();
 

@@ -145,6 +145,46 @@ interface TenantMonitorProfilesResponse {
   profiles: TenantMonitorProfile[];
 }
 
+// #249 — DLP/Label Purview role-group provisioning state + manual re-trigger.
+interface DlpProvisioningLastRun {
+  at: string;
+  source: string;
+  overallStatus: string;
+  roleGroupStepStatus: string;
+}
+
+interface DlpProvisioningState {
+  status: "not_provisioned" | "partially_provisioned" | "provisioned" | "unknown";
+  groupExists: boolean;
+  servicePrincipalIsMember: boolean;
+  lastRun: DlpProvisioningLastRun | null;
+  reason?: string;
+}
+
+interface DlpProvisioningStepResult {
+  status: string;
+  detail?: string;
+}
+
+interface DlpProvisioningTriggerResult {
+  overallStatus: string;
+  groupId: string | null;
+  servicePrincipalId: string | null;
+  steps: {
+    resolveServicePrincipal: DlpProvisioningStepResult;
+    createGroup: DlpProvisioningStepResult;
+    addServicePrincipalMember: DlpProvisioningStepResult;
+    addRoleGroupMember: DlpProvisioningStepResult;
+  };
+}
+
+const DLP_STATUS_LABEL: Record<DlpProvisioningState["status"], string> = {
+  not_provisioned: "Not provisioned",
+  partially_provisioned: "Partially provisioned",
+  provisioned: "Provisioned",
+  unknown: "Unknown",
+};
+
 function formatDate(value: string | null): string {
   if (!value) return "—";
   const d = new Date(value);
@@ -208,6 +248,13 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
+  // #249 — DLP/Label Purview role-group provisioning state + re-trigger.
+  const [dlpState, setDlpState] = useState<DlpProvisioningState | null>(null);
+  const [dlpStateError, setDlpStateError] = useState<string | null>(null);
+  const [triggeringDlp, setTriggeringDlp] = useState(false);
+  const [dlpTriggerError, setDlpTriggerError] = useState<string | null>(null);
+  const [dlpTriggerResult, setDlpTriggerResult] = useState<DlpProvisioningTriggerResult | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -219,6 +266,9 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
     setScanSuccess(null);
     setInviteError(null);
     setInviteUrl(null);
+    setDlpStateError(null);
+    setDlpTriggerError(null);
+    setDlpTriggerResult(null);
 
     (async () => {
       try {
@@ -302,6 +352,32 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
       cancelled = true;
     };
   }, [tenantGuid, fetchWithAuth]);
+
+  // DLP/Label Purview role-group provisioning state (#249) — same
+  // "wait for the GUID, honest empty state otherwise" shape as telemetry.
+  const refreshDlpState = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/customers/${customerId}/dlp-provisioning`);
+      if (!res.ok) {
+        setDlpStateError("Failed to load DLP provisioning state.");
+        return;
+      }
+      setDlpState((await res.json()) as DlpProvisioningState);
+    } catch {
+      setDlpStateError("Failed to load DLP provisioning state.");
+    }
+  };
+
+  useEffect(() => {
+    if (!tenantGuid) {
+      setDlpState(null);
+      setDlpStateError(null);
+      return;
+    }
+    setDlpState(null);
+    setDlpStateError(null);
+    void refreshDlpState();
+  }, [tenantGuid, customerId, fetchWithAuth]);
 
   // Consent revoke — PATCH consent.ts's existing route, now carrying a `key`
   // selector so one action covers Graph/SharePoint/write-back (Phase 10,
@@ -389,6 +465,35 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
       setInviteError("Failed to generate an invite link.");
     } finally {
       setGeneratingInvite(false);
+    }
+  };
+
+  // Manual re-trigger (#249) — POST admin-dlp-provisioning.ts's
+  // /admin/customers/:id/dlp-provisioning/trigger route. Idempotent on the
+  // server side (every step checks live/audit state first), so this is safe
+  // to click again on an already-provisioned tenant — used for both backfill
+  // (tenants that consented before this chain existed) and retrying a
+  // partial/blocked run.
+  const triggerDlpProvisioning = async () => {
+    setTriggeringDlp(true);
+    setDlpTriggerError(null);
+    setDlpTriggerResult(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/customers/${customerId}/dlp-provisioning/trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const body = (await res.json().catch(() => null)) as (DlpProvisioningTriggerResult & { error?: string }) | null;
+      if (!res.ok) {
+        setDlpTriggerError(body?.error ?? "Failed to trigger DLP role-group provisioning.");
+        return;
+      }
+      setDlpTriggerResult(body);
+      await refreshDlpState();
+    } catch {
+      setDlpTriggerError("Failed to trigger DLP role-group provisioning.");
+    } finally {
+      setTriggeringDlp(false);
     }
   };
 
@@ -513,6 +618,71 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
         <ConsentField label="Graph (read) consent" consent={graphConsent} />
         <ConsentField label="SharePoint consent" consent={sharePointConsent} />
         <ConsentField label="Write-back consent" consent={writeConsent} />
+      </Section>
+
+      {/* DLP/Label Purview role-group provisioning (#249) */}
+      <Section title="DLP/Label Role-Group Provisioning" icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}>
+        {!tenantGuid ? (
+          <p className="italic text-muted-foreground">Tenant is not connected to a Microsoft 365 tenant — provisioning is unavailable.</p>
+        ) : dlpStateError ? (
+          <p className="italic text-amber-600 dark:text-amber-400">{dlpStateError}</p>
+        ) : !dlpState ? (
+          <p className="italic text-muted-foreground">Loading provisioning state…</p>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">Status</span>
+              <span
+                className={`shrink-0 text-[11px] font-semibold ${
+                  dlpState.status === "provisioned"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : dlpState.status === "partially_provisioned"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {DLP_STATUS_LABEL[dlpState.status]}
+              </span>
+            </div>
+            {dlpState.reason && <Field label="Note" value={dlpState.reason} />}
+            <Field label="Security group exists" value={dlpState.groupExists ? "Yes" : "No"} />
+            <Field label="Service principal is a member" value={dlpState.servicePrincipalIsMember ? "Yes" : "No"} />
+            {dlpState.lastRun && (
+              <>
+                <Field label="Last run" value={formatDateTime(dlpState.lastRun.at)} />
+                <Field label="Last run outcome" value={`${dlpState.lastRun.overallStatus} (role-group step: ${dlpState.lastRun.roleGroupStepStatus})`} highlight={dlpState.lastRun.overallStatus !== "provisioned"} />
+                <Field label="Last run source" value={dlpState.lastRun.source} />
+              </>
+            )}
+            {!dlpState.lastRun && <p className="italic text-muted-foreground">No provisioning run recorded yet for this tenant.</p>}
+
+            <div className="pt-1">
+              <button
+                onClick={() => void triggerDlpProvisioning()}
+                disabled={triggeringDlp}
+                className="rounded border border-border px-2 py-1 text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                {triggeringDlp ? "Provisioning…" : dlpState.status === "provisioned" ? "Re-run (idempotent)" : "Provision now"}
+              </button>
+              {dlpTriggerError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{dlpTriggerError}</p>}
+              {dlpTriggerResult && (
+                <div className="mt-1.5 rounded border border-border bg-background p-2">
+                  <p className={`text-[11px] font-semibold ${dlpTriggerResult.overallStatus === "provisioned" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                    {dlpTriggerResult.overallStatus}
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+                    {Object.entries(dlpTriggerResult.steps).map(([step, r]) => (
+                      <li key={step}>
+                        {step}: <span className="font-medium text-foreground">{r.status}</span>
+                        {r.detail ? ` — ${r.detail}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Section>
 
       {/* Consent + scan actions (Phase 10) */}
