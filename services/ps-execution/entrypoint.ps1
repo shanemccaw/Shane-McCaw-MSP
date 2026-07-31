@@ -89,21 +89,33 @@ function Get-ManagedIdentityToken {
         # docs, the raw VM-style IMDS (169.254.169.254) is NOT reachable from
         # Container Apps — this platform instead exposes a local token
         # service via IDENTITY_ENDPOINT/IDENTITY_HEADER (#203).
-        $identityUrl = "$($env:IDENTITY_ENDPOINT)?api-version=2019-08-01&resource=$([uri]::EscapeDataString($Resource))"
+        $identityUriBuilder = [System.UriBuilder]::new($env:IDENTITY_ENDPOINT)
+        $identityQuery = [System.Web.HttpUtility]::ParseQueryString("")
+        $identityQuery["api-version"] = "2019-08-01"
+        $identityQuery["resource"] = $Resource
         if ($miClientId) {
-            $identityUrl += "&client_id=$([uri]::EscapeDataString($miClientId))"
+            $identityQuery["client_id"] = $miClientId
         }
+        $identityUriBuilder.Query = $identityQuery.ToString()
+        $identityUrl = $identityUriBuilder.Uri.AbsoluteUri
 
+        Write-Log -Level "info" -Message "requesting Managed Identity token from IDENTITY_ENDPOINT" -Extra @{ url = $identityUrl }
         $response = Invoke-RestMethod -Method Get -Uri $identityUrl -Headers @{ "X-IDENTITY-HEADER" = $env:IDENTITY_HEADER } -TimeoutSec 10
         return $response.access_token
     }
 
     # Fallback: VM-style IMDS, for any future non-Container-Apps hosting target.
-    $imdsUrl = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2019-08-01&resource=$([uri]::EscapeDataString($Resource))"
+    $imdsUriBuilder = [System.UriBuilder]::new("http://169.254.169.254/metadata/identity/oauth2/token")
+    $imdsQuery = [System.Web.HttpUtility]::ParseQueryString("")
+    $imdsQuery["api-version"] = "2019-08-01"
+    $imdsQuery["resource"] = $Resource
     if ($miClientId) {
-        $imdsUrl += "&client_id=$([uri]::EscapeDataString($miClientId))"
+        $imdsQuery["client_id"] = $miClientId
     }
+    $imdsUriBuilder.Query = $imdsQuery.ToString()
+    $imdsUrl = $imdsUriBuilder.Uri.AbsoluteUri
 
+    Write-Log -Level "info" -Message "requesting Managed Identity token from IMDS" -Extra @{ url = $imdsUrl }
     $response = Invoke-RestMethod -Method Get -Uri $imdsUrl -Headers @{ Metadata = "true" } -TimeoutSec 10
     return $response.access_token
 }
@@ -140,7 +152,13 @@ function Get-HttpErrorResponseBody {
 function Get-KeyVaultSecret {
     param([string]$SecretName, [string]$AccessToken)
 
-    $secretUrl = "$vaultUrl/secrets/$SecretName?api-version=7.4"
+    $secretUriBuilder = [System.UriBuilder]::new("$vaultUrl/secrets/$SecretName")
+    $secretQuery = [System.Web.HttpUtility]::ParseQueryString("")
+    $secretQuery["api-version"] = "7.4"
+    $secretUriBuilder.Query = $secretQuery.ToString()
+    $secretUrl = $secretUriBuilder.Uri.AbsoluteUri
+
+    Write-Log -Level "info" -Message "requesting secret from Key Vault" -Extra @{ url = $secretUrl }
     $response = Invoke-RestMethod -Method Get -Uri $secretUrl -Headers @{ Authorization = "Bearer $AccessToken" } -TimeoutSec 10
     return $response.value
 }
