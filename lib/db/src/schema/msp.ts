@@ -2916,6 +2916,37 @@ export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTa
 export type MspRiskDecision = typeof mspRiskDecisionsTable.$inferSelect;
 export type InsertMspRiskDecision = typeof mspRiskDecisionsTable.$inferInsert;
 
+// ── AI Dev Response Cache (#185, parent #183) ──────────────────────────────────
+// Dev-only cache of Anthropic call responses, keyed on a stable hash of that
+// call's real inputs, so iterating on a prompt in development doesn't re-spend
+// real API cost on an unchanged request. `feature` is plain text (NOT a
+// Postgres enum) so a new AI call site never needs a schema migration just to
+// start caching — and `requestContext`/`response` are JSONB precisely because
+// different call sites' inputs/outputs share no common shape (persona-gen's
+// inputs look nothing like a report narrative's). This table is written and
+// read ONLY from lib/ai-dev-response-cache.ts, which hard-gates every access
+// to non-production — nothing here enforces that at the schema level, the
+// gate is entirely in that module, on purpose (a schema-level gate cannot be
+// unit-tested the way a code-level fail-closed check can).
+export const aiDevResponseCacheTable = pgTable("ai_dev_response_cache", {
+  id: serial("id").primaryKey(),
+  // sha256 of `feature` + a stable (sorted-key) serialization of requestContext.
+  hash: text("hash").notNull().unique(),
+  // Free-form label identifying the AI call site, e.g. "persona_generation",
+  // "use_case_generation", "final_report_narrative". Deliberately plain text.
+  feature: text("feature").notNull(),
+  // The real inputs (prompt/context) that produced `response` — whatever shape
+  // that call site's request takes.
+  requestContext: jsonb("request_context").$type<Record<string, unknown>>().notNull(),
+  // The cached Anthropic response, verbatim.
+  response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Null = no expiry (cleared only via the module's manual-clear helper).
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (t) => [
+  index("ai_dev_response_cache_feature_idx").on(t.feature),
+  index("ai_dev_response_cache_expires_at_idx").on(t.expiresAt),
+]);
 
-
-
+export type AiDevResponseCacheRow = typeof aiDevResponseCacheTable.$inferSelect;
+export type InsertAiDevResponseCacheRow = typeof aiDevResponseCacheTable.$inferInsert;
