@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X, AlertTriangle, ShieldCheck, Wrench, Sparkles, Copy, Check, ToggleLeft, ToggleRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, AlertTriangle, ShieldCheck, Wrench, Sparkles, Copy, Check, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
+import { fetchRemediationDetail, type RemediationContext, type RemediationDetailResult } from './remediationDetailClient';
 
 export type IssueCategory = 'blocker' | 'sensitivity' | 'friction';
 export type IssueSeverity = 'High' | 'Medium' | 'Low';
@@ -10,14 +11,14 @@ export interface UseCaseIssue {
   severity: IssueSeverity;
 }
 
+type FetchWithAuth = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 interface UseCaseIssueModalProps {
   issue: UseCaseIssue | null;
   onClose: () => void;
-}
-
-interface RemediationStep {
-  text: string;
-  code?: string;
+  fetchWithAuth: FetchWithAuth;
+  /** Real grounding context, when the caller has any -- see remediation-detail-generator.ts's audit note for what each screen actually has. */
+  context?: RemediationContext;
 }
 
 const CATEGORY_META: Record<IssueCategory, { title: string; icon: React.ReactNode }> = {
@@ -40,27 +41,6 @@ const MOCK_SCORES: Record<IssueSeverity, { current: number; projected: number }>
   Medium: { current: 58, projected: 84 },
   Low: { current: 72, projected: 90 },
 };
-
-// Placeholder copy only -- this is a design pass. Real per-item detail and
-// remediation content gets wired to live Copilot Readiness signal data in a
-// later phase, not authored here.
-function mockDetail(issue: UseCaseIssue): string {
-  return `Telemetry flagged "${issue.label}" during the most recent tenant scan. This is placeholder detail text standing in for the real signal breakdown -- once wired, this section will show exactly which check fired, which objects it affected, and when it was last observed.`;
-}
-
-function mockRemediation(issue: UseCaseIssue): RemediationStep[] {
-  return [
-    { text: 'Placeholder remediation step one -- real guidance will be specific to this exact finding.' },
-    {
-      text: 'Run this Graph/PowerShell check to confirm current exposure before remediating (placeholder command):',
-      code: `Connect-MgGraph -Scopes "Sites.Read.All"\nGet-MgSite -Search "*" | Where-Object { $_.Permissions -match "Everyone" }`,
-    },
-    {
-      text: 'Apply the fix once confirmed (placeholder command):',
-      code: `Set-SPOSite -Identity <SiteUrl> -SharingCapability Disabled`,
-    },
-  ];
-}
 
 const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   const [copied, setCopied] = useState(false);
@@ -90,8 +70,41 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-export const UseCaseIssueModal: React.FC<UseCaseIssueModalProps> = ({ issue, onClose }) => {
+export const UseCaseIssueModal: React.FC<UseCaseIssueModalProps> = ({ issue, onClose, fetchWithAuth, context }) => {
   const [showSimulated, setShowSimulated] = useState(false);
+  const [remediation, setRemediation] = useState<RemediationDetailResult | null>(null);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const contextKey = JSON.stringify(context ?? null);
+
+  // Real AI-generated remediation guidance (#195) -- re-fetched whenever a
+  // different finding is opened. Honest loading/error states below; never a
+  // fabricated fallback detail/steps on failure.
+  useEffect(() => {
+    if (!issue) {
+      setRemediation(null);
+      setStatus('idle');
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setStatus('loading');
+    setError(null);
+    fetchRemediationDetail(fetchWithAuth, issue, context)
+      .then(result => {
+        if (cancelled) return;
+        setRemediation(result);
+        setStatus('ready');
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message);
+        setStatus('error');
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issue?.label, issue?.category, issue?.severity, fetchWithAuth, contextKey]);
 
   if (!issue) return null;
 
@@ -179,9 +192,22 @@ export const UseCaseIssueModal: React.FC<UseCaseIssueModalProps> = ({ issue, onC
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider font-mono">
             What This Means
           </span>
-          <p className="text-sm text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg border border-border">
-            {mockDetail(issue)}
-          </p>
+          {status === 'loading' && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-4 rounded-lg border border-border">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span>Generating real remediation guidance for this finding…</span>
+            </div>
+          )}
+          {status === 'error' && (
+            <p className="text-sm text-destructive leading-relaxed bg-destructive/10 p-4 rounded-lg border border-destructive/30">
+              {error || 'Something went wrong generating guidance for this finding. Please try again.'}
+            </p>
+          )}
+          {status === 'ready' && remediation && (
+            <p className="text-sm text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg border border-border">
+              {remediation.detail}
+            </p>
+          )}
         </div>
 
         {/* How to fix it */}
@@ -190,26 +216,39 @@ export const UseCaseIssueModal: React.FC<UseCaseIssueModalProps> = ({ issue, onC
             <Wrench className="w-3.5 h-3.5" />
             How To Fix It
           </span>
-          <div className="space-y-2">
-            {mockRemediation(issue).map((step, idx) => (
-              <div
-                key={idx}
-                className="bg-muted/50 border border-border p-3 rounded-md text-xs text-foreground"
-              >
-                <div className="flex items-start space-x-2.5">
-                  <span className="font-mono font-bold text-primary shrink-0">{idx + 1}.</span>
-                  <span className="leading-relaxed">{step.text}</span>
+          {status === 'loading' && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-border">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <span>Building a step-by-step fix…</span>
+            </div>
+          )}
+          {status === 'error' && (
+            <div className="text-xs text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/30">
+              Remediation steps unavailable right now.
+            </div>
+          )}
+          {status === 'ready' && remediation && (
+            <div className="space-y-2">
+              {remediation.steps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className="bg-muted/50 border border-border p-3 rounded-md text-xs text-foreground"
+                >
+                  <div className="flex items-start space-x-2.5">
+                    <span className="font-mono font-bold text-primary shrink-0">{idx + 1}.</span>
+                    <span className="leading-relaxed">{step.text}</span>
+                  </div>
+                  {step.code && <CodeBlock code={step.code} />}
                 </div>
-                {step.code && <CodeBlock code={step.code} />}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <span className="text-[10px] font-mono text-muted-foreground">
-            Design preview -- not yet wired to live signal data
+            Fix Simulator scores are illustrative -- explanation &amp; remediation steps above are real AI-generated guidance
           </span>
           <button
             onClick={onClose}

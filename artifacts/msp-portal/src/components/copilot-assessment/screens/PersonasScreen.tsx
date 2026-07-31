@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import { PersonaStory, QuizProfile, PersonaGenerationStatus } from '../types';
 import {
   Users,
@@ -55,6 +56,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
   onExitClick,
   onNavigate
 }) => {
+  const { fetchWithAuth } = useAuth();
   const [activePersonaId, setActivePersonaId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
@@ -903,7 +905,21 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
 
       </div>
 
-      <UseCaseIssueModal issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
+      <UseCaseIssueModal
+        issue={selectedIssue}
+        onClose={() => setSelectedIssue(null)}
+        fetchWithAuth={fetchWithAuth}
+        context={{
+          role: quizProfile.role,
+          department: quizProfile.department,
+          industry: quizProfile.industry,
+          personaName: activePersona.name,
+          personaRole: activePersona.role,
+          useCaseCluster: activePersona.useCaseCluster,
+          collaborationPattern: activePersona.collaborationPattern,
+          sensitivitySet: activePersona.sensitivitySet,
+        }}
+      />
     </div>
   );
 };

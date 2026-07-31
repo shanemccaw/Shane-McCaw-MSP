@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { 
+import { useAuth } from '@/lib/auth-context';
+import {
   Grid, 
   ArrowRight, 
   ShieldAlert, 
@@ -367,6 +368,7 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
   onExitClick,
   onNavigate
 }) => {
+  const { fetchWithAuth } = useAuth();
   const [activeUseCaseId, setActiveUseCaseId] = useState<string>('uc_eng_api');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
@@ -1268,7 +1270,15 @@ export const UseCasesScreen: React.FC<UseCasesScreenProps> = ({
 
       </div>
 
-      <UseCaseIssueModal issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
+      {/* No context passed here: EXTENDED_USE_CASES is still a local design
+          mock (this screen never consumes its own `useCases` prop, confirmed
+          by direct audit for #195) -- feeding that mock data into the real
+          remediation AI call as if it were grounding would be exactly the
+          fabricated-input CLAUDE.md and #195 warn against. PersonasScreen
+          passes real context because its personas are real (#186); this
+          screen gets the same honest label/category/severity-only call it
+          always has, until it's wired to real generated use-case tiles. */}
+      <UseCaseIssueModal issue={selectedIssue} onClose={() => setSelectedIssue(null)} fetchWithAuth={fetchWithAuth} />
     </div>
   );
 };
