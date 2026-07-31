@@ -546,7 +546,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         </aside>
 
         {/* CENTER PANEL (Primary Content Stage) */}
-        <main className="flex-1 overflow-y-auto bg-background p-6 sm:p-8 flex flex-col justify-between scrollbar-thin">
+        <main className="flex-1 flex flex-col overflow-hidden bg-background">
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8 scrollbar-thin">
           <div className="max-w-4xl mx-auto w-full space-y-6">
             {/* Screen Header */}
             {stepId !== 'about-you' && stepId !== 'review' && (
@@ -822,49 +823,53 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
               </div>
             )}
           </div>
+          </div>
 
-          {/* Bottom Navigation Row */}
-          <div className="max-w-4xl mx-auto w-full pt-8 flex items-center justify-between border-t border-border mt-8">
-            <button
-              onClick={handleBack}
-              disabled={activeStepIndex === 0}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${
-                activeStepIndex === 0
-                  ? 'opacity-40 cursor-not-allowed text-muted-foreground bg-background'
-                  : 'text-foreground bg-secondary hover:bg-secondary/80 border border-border cursor-pointer'
-              }`}
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Back</span>
-            </button>
-
-            {stepId !== 'review' ? (
+          {/* Bottom Navigation Row -- docked footer bar, outside the scrolling
+              content region above so Back/Next stay visible on long steps. */}
+          <div className="shrink-0 border-t border-border bg-sidebar px-6 sm:px-8 py-4">
+            <div className="max-w-4xl mx-auto w-full flex items-center justify-between">
               <button
-                onClick={handleNext}
-                disabled={isNextDisabled()}
-                className={`flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold transition-all ${
-                  !isNextDisabled()
-                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer'
-                    : 'opacity-50 cursor-not-allowed bg-secondary text-muted-foreground'
+                onClick={handleBack}
+                disabled={activeStepIndex === 0}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${
+                  activeStepIndex === 0
+                    ? 'opacity-40 cursor-not-allowed text-muted-foreground bg-background'
+                    : 'text-foreground bg-secondary hover:bg-secondary/80 border border-border cursor-pointer'
                 }`}
               >
-                <span>{activeStepIndex === QUIZ_NAV_ITEMS.length - 2 ? 'Review Baseline' : 'Next'}</span>
-                <ChevronRight className="w-4 h-4" />
+                <ChevronLeft className="w-4 h-4" />
+                <span>Back</span>
               </button>
-            ) : (
-              <button
-                onClick={handleCompleteQuiz}
-                className="flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer"
-              >
-                <span>Continue to Telemetry Analysis</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+
+              {stepId !== 'review' ? (
+                <button
+                  onClick={handleNext}
+                  disabled={isNextDisabled()}
+                  className={`flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold transition-all ${
+                    !isNextDisabled()
+                      ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer'
+                      : 'opacity-50 cursor-not-allowed bg-secondary text-muted-foreground'
+                  }`}
+                >
+                  <span>{activeStepIndex === QUIZ_NAV_ITEMS.length - 2 ? 'Review Baseline' : 'Next'}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleCompleteQuiz}
+                  className="flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer"
+                >
+                  <span>Continue to Telemetry Analysis</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </main>
 
         {/* RIGHT PANEL (Real-Time Context Scoring Panel) */}
-        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} />
+        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} company={company} phone={phone} />
       </div>
     </div>
   );
