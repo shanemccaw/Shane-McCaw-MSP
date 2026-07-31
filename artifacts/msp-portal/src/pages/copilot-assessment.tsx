@@ -414,10 +414,7 @@ export default function CopilotAssessmentPage() {
 
       <div className="fixed inset-0 z-40 bg-background">
         {currentStep === 'home' && (
-          <HomeScreen
-            onStart={() => handleNavigate('quiz')}
-            onOpenSpec={() => setIsSpecModalOpen(true)}
-          />
+          <HomeScreen onStart={() => handleNavigate('quiz')} />
         )}
 
         {/* Held back until the saved-profile lookup answers (#237), so a
