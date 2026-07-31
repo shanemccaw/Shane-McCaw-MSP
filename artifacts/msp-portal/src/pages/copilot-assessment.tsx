@@ -139,7 +139,15 @@ export default function CopilotAssessmentPage() {
         setState(prev => ({ ...prev, personasStatus: 'error' }));
       });
     return () => { cancelled = true; };
-  }, [currentStep, state.quizProfile, state.personasStatus, fetchWithAuth]);
+    // state.personasStatus is intentionally excluded: this effect sets it
+    // (idle -> loading) inside its own body, so including it here creates a
+    // self-cancelling loop -- React tears down and re-runs the effect on
+    // that status change, flipping `cancelled` to true before the in-flight
+    // fetch's .then()/.catch() ever run. The `!== 'idle'` guard above still
+    // prevents duplicate fetches; currentStep/quizProfile changing is what
+    // legitimately re-triggers this effect for a fresh quiz/step visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, state.quizProfile, fetchWithAuth]);
 
   // Real Final Report narrative generation (#191) — fires once per fresh
   // quizProfile/persona set, the first time the report step is reached.
@@ -168,7 +176,13 @@ export default function CopilotAssessmentPage() {
         setState(prev => ({ ...prev, finalReportStatus: 'error' }));
       });
     return () => { cancelled = true; };
-  }, [currentStep, state.quizProfile, state.personas, state.personasStatus, state.governance, state.finalReportStatus, fetchWithAuth]);
+    // state.finalReportStatus is intentionally excluded, same reason as the
+    // persona effect above: this effect sets it (idle -> loading) inside its
+    // own body, so including it here self-cancels the in-flight fetch before
+    // it can resolve. The `!== 'idle'` guard above still prevents duplicate
+    // fetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, state.quizProfile, state.personas, state.personasStatus, state.governance, fetchWithAuth]);
 
   const currentStepIndex = STEP_ORDER.indexOf(currentStep);
   const progressPercent = Math.round((currentStepIndex / (STEP_ORDER.length - 1)) * 100);
