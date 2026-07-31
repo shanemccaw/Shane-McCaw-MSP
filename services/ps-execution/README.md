@@ -18,11 +18,18 @@ Standalone Docker image for the containerized PowerShell execution service
   arbitrary script string from the request; `params` fill that cmdlet's
   allowed parameter values only, never control flow. Executes via
   `Connect-IPPSSession` (cert parsed from the Key Vault secret at startup)
-  + the resolved cmdlet, capturing the success/output stream only. Real
-  DLP/Label cmdlets are #212's scope — this phase ships one trivial
-  placeholder (`get-connection-info` → `Get-ConnectionInformation`, no
-  tenant data involved) to exercise the full connect/invoke/capture/
-  disconnect path end to end.
+  + the resolved cmdlet, capturing the success/output stream only. This
+  phase ships one trivial placeholder (`get-connection-info` →
+  `Get-ConnectionInformation`, no tenant data involved) to exercise the
+  full connect/invoke/capture/disconnect path end to end.
+- **Phase 4 (#212, this phase):** the four real DLP/Label cmdlets —
+  `get-dlp-policies` → `Get-DlpCompliancePolicy`, `get-dlp-incidents` →
+  `Export-ActivityExplorerData` (the current, non-retired DLP-incident
+  source — `Get-DlpIncidentDetailReport`/`Get-DlpDetailReport` are both
+  retired per Microsoft Learn), `get-labels` → `Get-Label`,
+  `get-label-policies` → `Get-LabelPolicy`. Two additional per-entry
+  catalog fields (`ResultProperty`, `PostFilter`) exist only for these —
+  see the catalog's own comments in `entrypoint.ps1` for why.
 
 Not part of the pnpm workspace — this is a plain Docker image, built and
 run independently of the Node/pnpm toolchain.

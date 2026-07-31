@@ -249,15 +249,126 @@ catch {
 # `params` in the request can only fill values for names on this list,
 # never add new ones or influence which cmdlet runs.
 #
-# Real DLP/Label cmdlets are #212's scope. This starts with one trivial,
-# read-only placeholder that still exercises the full path (connect,
-# invoke, capture, disconnect) end to end: Get-ConnectionInformation lists
-# the current process's own open EXO/IPPS sessions — no tenant mail or
-# compliance data involved.
+# get-connection-info: trivial, read-only placeholder that still exercises
+# the full path (connect, invoke, capture, disconnect) end to end —
+# Get-ConnectionInformation lists the current process's own open EXO/IPPS
+# sessions, no tenant mail or compliance data involved. #210/#211 verified
+# this live.
+#
+# The four #212 entries below are the real DLP/Label checks. Two catalog
+# entry fields beyond Cmdlet/AllowedParams exist ONLY because these real
+# cmdlets need them (get-connection-info needed neither):
+#   - ResultProperty: some cmdlets don't return the item collection
+#     directly — their result is a wrapper object with the real data
+#     JSON-encoded inside one property. When set, the dispatcher reads
+#     $result.<ResultProperty> and, if it's a string, ConvertFrom-Json's it
+#     before anything downstream sees it.
+#   - PostFilter: a code-owned (never DB/request-driven) predicate
+#     scriptblock run over the item collection before the response is
+#     built. This exists because monitor-executor.ts's applyMapping()
+#     unconditionally sets `_itemCount = items.length` — there is no
+#     post-fetch filtering stage on the api-server side for PS-backed
+#     checks the way Graph checks get `$filter` via filterParams — so a
+#     check whose whole point is "count of policies/labels IN A BAD STATE"
+#     has to arrive pre-filtered, and filtering here (code) rather than via
+#     a request param keeps the #209 what-code-runs-stays-code-owned
+#     boundary intact: PostFilter is picked by cmdletKey, never by
+#     anything in the request body.
 $script:CmdletCatalog = @{
     "get-connection-info" = @{
         Cmdlet         = "Get-ConnectionInformation"
         AllowedParams  = @()
+    }
+
+    # #212: weak / non-enforcing DLP policies.
+    # Get-DlpCompliancePolicy is the current, non-retired cmdlet per
+    # Microsoft Learn (learn.microsoft.com/powershell/module/
+    # exchangepowershell/get-dlpcompliancepolicy, checked 2026-07-31) — the
+    # issue text raised a possible "Get-DlpCompliancePolicyV2"; no such
+    # cmdlet exists in current docs, so it's not used. No parameters are
+    # required to list every policy in the org.
+    #
+    # "Weak" is this session's product-level read, not a Microsoft-defined
+    # term: a policy not in Mode=Enable (i.e. still TestWithNotifications /
+    # TestWithoutNotifications / PendingDeletion) or explicitly disabled is
+    # doing detection/audit work at best, not actually blocking anything.
+    # Flagged for Shane to correct the bar if this doesn't match his intent
+    # for compliance:weak-dlp-policies.
+    "get-dlp-policies" = @{
+        Cmdlet         = "Get-DlpCompliancePolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.Mode -ne "Enable" -or $_.Enabled -eq $false }
+    }
+
+    # #212: DLP incidents.
+    # Get-DlpIncidentDetailReport ("will be retired") and Get-DlpDetailReport
+    # ("This cmdlet is retired") are both explicitly superseded on Microsoft
+    # Learn by Export-ActivityExplorerData as of 2026 — confirmed against the
+    # live docs pages, not assumed. There is no other PowerShell-reachable
+    # DLP-incident source; #180's Graph-coverage concern is real (Graph has
+    # no DLP incident endpoint either), so this genuinely requires the PS
+    # path.
+    #
+    # StartTime/EndTime/OutputFormat are mandatory on the real cmdlet.
+    # OutputFormat is fixed to "Json" here (never request-driven) because
+    # ResultProperty's unwrap below only makes sense for the Json shape.
+    # StartTime/EndTime are supplied per-check via psParams using the
+    # {NDaysAgo} placeholder monitor-executor.ts's resolvePsParamsPlaceholders
+    # now resolves (#212 addition, mirrors the existing Graph-endpoint
+    # {NDaysAgo} token) — Activity Explorer only retains 30 days regardless.
+    # Filter1 scopes the export to DLP-specific Activity values
+    # (DLPRuleMatch/DLPRuleEnforce/DLPInfo/DlpClassification) rather than
+    # every Activity Explorer event type; supplied via psParams as a fill
+    # value, never chosen by this container.
+    #
+    # Export-ActivityExplorerData's real return shape (confirmed against
+    # multiple independent real-world usage reports, since Microsoft Learn's
+    # own page doesn't document the object's shape) is a wrapper:
+    # { ResultData: "<JSON-encoded string>", LastPage: bool, Watermark: string }
+    # — ResultData is a STRING containing the JSON-encoded item array, not
+    # the array itself. ResultProperty tells the dispatcher to unwrap it.
+    "get-dlp-incidents" = @{
+        Cmdlet         = "Export-ActivityExplorerData"
+        AllowedParams  = @("StartTime", "EndTime", "OutputFormat", "Filter1", "PageSize")
+        ResultProperty = "ResultData"
+    }
+
+    # #212: sensitivity label taxonomy / coverage gap.
+    # Get-Label lists LABEL DEFINITIONS in the org, not per-document/
+    # per-site label application — there is no Connect-IPPSSession-reachable
+    # cmdlet that reports "documents missing a label" short of Content/
+    # Activity Explorer (and Export-ActivityExplorerData, above, doesn't
+    # cover label-application coverage either). No parameters are required
+    # to list every label.
+    #
+    # PostFilter narrows to Disabled=$true labels: label definitions that
+    # exist in the org's taxonomy but are not currently active, i.e.
+    # protecting nothing right now — the closest honest "missing" proxy
+    # this cmdlet can produce. Flagged explicitly: this is NOT literally
+    # "items missing sensitivity labels" (copilot-readiness.ts's own
+    # docstring language for compliance:missing-labels) — it's the nearest
+    # real signal available from Get-Label. A truer per-item coverage
+    # metric would need a different data source; Shane should confirm this
+    # proxy is acceptable or flag a follow-up.
+    "get-labels" = @{
+        Cmdlet         = "Get-Label"
+        AllowedParams  = @()
+        PostFilter     = { $_.Disabled -eq $true }
+    }
+
+    # #212: label policy distribution/publish errors.
+    # Get-LabelPolicy's Name/Mode/DistributionStatus output fields
+    # (confirmed via real-world usage reports — the Microsoft Learn
+    # parameter page doesn't enumerate output properties, only parameters)
+    # surface publish/distribution failures. No parameters are required to
+    # list every policy.
+    #
+    # PostFilter narrows to policies whose DistributionStatus is present and
+    # not "Success" — the compliance:label-errors count.
+    "get-label-policies" = @{
+        Cmdlet         = "Get-LabelPolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.DistributionStatus -and $_.DistributionStatus -ne "Success" }
     }
 }
 
@@ -406,6 +517,7 @@ try {
         }
 
         $invocation = Resolve-CmdletInvocation -CmdletKey $cmdletKey -RequestParams $requestParams
+        $catalogEntry = $script:CmdletCatalog[$cmdletKey]
 
         try {
             Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
@@ -419,6 +531,28 @@ try {
         try {
             $cmdletParams = $invocation.Params
             $result = & $invocation.Cmdlet @cmdletParams
+
+            # ResultProperty: some cmdlets (Export-ActivityExplorerData) return
+            # a wrapper object with the real item collection JSON-encoded
+            # inside one property rather than as the collection itself — see
+            # the catalog entry's own comment for why. Unwrap+parse before
+            # anything downstream (PostFilter, the response serializer) sees it.
+            if ($catalogEntry.ResultProperty -and $null -ne $result) {
+                $raw = $result.$($catalogEntry.ResultProperty)
+                if ($raw -is [string]) {
+                    $result = if ([string]::IsNullOrWhiteSpace($raw)) { @() } else { $raw | ConvertFrom-Json }
+                }
+                else {
+                    $result = $raw
+                }
+            }
+
+            # PostFilter: a code-owned predicate (never DB/request-driven, see
+            # the catalog's own comment) narrowing the item collection before
+            # `_itemCount` is derived from it on the api-server side.
+            if ($catalogEntry.PostFilter -and $null -ne $result) {
+                $result = @($result) | Where-Object $catalogEntry.PostFilter
+            }
         }
         catch {
             Write-Log -Level "error" -Message "cmdlet execution failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
@@ -429,11 +563,12 @@ try {
             Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         }
 
-        # One synchronous response: whatever Write-Output produced. Multiple
-        # items assign to $result as an array (serializes as a JSON array);
-        # a single item assigns directly (serializes as a JSON object) —
-        # this is PowerShell's own pipeline-assignment behavior, not
-        # special-cased here. No items -> an empty JSON array.
+        # One synchronous response: whatever Write-Output produced (after any
+        # ResultProperty unwrap / PostFilter above). Multiple items assign to
+        # $result as an array (serializes as a JSON array); a single item
+        # assigns directly (serializes as a JSON object) — this is
+        # PowerShell's own pipeline-assignment behavior, not special-cased
+        # here. No items -> an empty JSON array.
         if ($null -eq $result) {
             $responseBody = "[]"
         }

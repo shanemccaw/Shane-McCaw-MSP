@@ -237,6 +237,17 @@ export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string,
  */
 const PS_PARAM_PLACEHOLDER_RE = /\{(organization|tenantId)\}/g;
 
+/**
+ * Reuses the same `{NDaysAgo}` relative-date token `resolveEndpointPlaceholders`
+ * already resolves for Graph endpoint strings (#212). Some cmdlets behind the
+ * PS execution path — e.g. `Export-ActivityExplorerData` for
+ * `compliance:dlp-incidents` — take mandatory literal `StartTime`/`EndTime`
+ * values with no relative-date syntax of their own, so `psParams` needs the
+ * same substitution `endpoint` already gets, applied to a params object
+ * instead of a URL string.
+ */
+const PS_PARAM_DATE_PLACEHOLDER_RE = /\{(\d+)DaysAgo\}/g;
+
 export function resolvePsParamsPlaceholders(
   params: Record<string, unknown> | null | undefined,
   organization: string,
@@ -244,9 +255,18 @@ export function resolvePsParamsPlaceholders(
 ): Record<string, unknown> {
   const resolved: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params ?? {})) {
-    resolved[key] = typeof value === "string"
-      ? value.replace(PS_PARAM_PLACEHOLDER_RE, (_match, token: string) => (token === "organization" ? organization : tenantId))
-      : value;
+    if (typeof value !== "string") {
+      resolved[key] = value;
+      continue;
+    }
+    const withDates = value.replace(PS_PARAM_DATE_PLACEHOLDER_RE, (_match, days: string) => {
+      const n = Number(days);
+      return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+    });
+    resolved[key] = withDates.replace(
+      PS_PARAM_PLACEHOLDER_RE,
+      (_match, token: string) => (token === "organization" ? organization : tenantId),
+    );
   }
   return resolved;
 }

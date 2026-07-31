@@ -1213,6 +1213,28 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     });
   });
 
+  it("resolves {NDaysAgo} placeholders in psParams to literal ISO dates before dispatch (#212)", async () => {
+    mockCallPsExecution.mockResolvedValueOnce({ items: [], rawResponse: [] });
+
+    await executeMonitorCheck({
+      check: {
+        ...psCheck,
+        psParams: { Organization: "{organization}", StartTime: "{30DaysAgo}", EndTime: "{0DaysAgo}", OutputFormat: "Json" },
+      },
+      tenantId: "tenant-guid-4",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    const [, calledParams] = mockCallPsExecution.mock.calls[0];
+    expect(calledParams.Organization).toBe("tenant-guid-4");
+    expect(calledParams.OutputFormat).toBe("Json");
+    const isoDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(calledParams.StartTime).toMatch(isoDate);
+    expect(calledParams.EndTime).toMatch(isoDate);
+    expect(new Date(calledParams.StartTime).getTime()).toBeLessThan(new Date(calledParams.EndTime).getTime());
+  });
+
   it("a PsExecutionError falls through to the generic error path — never markTenantConsentRevoked", async () => {
     const { markTenantConsentRevoked } = await import("../graph");
     mockCallPsExecution.mockRejectedValueOnce(
