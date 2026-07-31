@@ -30,10 +30,9 @@ interface ScoringPanelProps {
   // values. Kept optional so this panel still renders sensibly mid-quiz.
   role?: string;
   department?: string;
-  workload?: { draftingLoad: number; researchLoad: number; communicationLoad: number; repetitiveLoad: number };
 }
 
-export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department, workload }) => {
+export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department }) => {
   const currentIndustry = answers['industry'] || '';
 
   const getArrayFromAnswer = (key: string): string[] => {
@@ -127,11 +126,6 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   if (answers['change-mgmt']) {
     const found = UNIVERSAL_CHANGE_MGMT.find(o => o.id === answers['change-mgmt']);
     if (found) summaryItems.push({ label: 'Change Mgmt', value: found.title, category: 'change-mgmt' });
-  }
-
-  if (workload) {
-    const avg = Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100);
-    summaryItems.push({ label: 'Workload Mix', value: `${avg}% avg load`, category: 'workload-mix' });
   }
 
   const hasIndustry = !!answers['industry'];
@@ -458,23 +452,6 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
                 />
               </div>
             </div>
-
-            {workload && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-semibold">
-                  <span className="text-foreground/80">Workload Mix (avg)</span>
-                  <span className="font-mono text-primary">
-                    {Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100)}%
-                  </span>
-                </div>
-                <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

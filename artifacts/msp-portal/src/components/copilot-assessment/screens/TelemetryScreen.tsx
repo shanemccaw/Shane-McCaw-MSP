@@ -148,7 +148,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // Dynamic Hint Cards Stream
   const dynamicHints = generateDynamicHintCards(
     quizAnswers,
-    phase === 'phase3' || phase === 'complete' ? 'phase3' : phase === 'phase2_engines' ? 'phase2' : 'phase1',
+    phase === 'phase3_docs' || phase === 'complete' ? 'phase3' : phase === 'phase2_engines' ? 'phase2' : 'phase1',
     completedEnginesCount
   );
 

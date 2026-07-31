@@ -36,13 +36,16 @@ interface QuizScreenProps {
   onCompleteQuiz: (profile: QuizProfile) => void;
   onHelpClick?: () => void;
   onExitClick?: () => void;
-}
-
-interface WorkloadMix {
-  draftingLoad: number;
-  researchLoad: number;
-  communicationLoad: number;
-  repetitiveLoad: number;
+  // Passed when navigating back to the quiz after it was already completed
+  // once (state.quizProfile in the page). Only role/department are safely
+  // reversible into per-step state -- industry/sensitivity/collaboration/etc
+  // were converted from option IDs to display titles in buildQuizProfile(),
+  // and reversing that requires exact title matching against the (possibly
+  // industry-dependent) catalogs, which is lossy/fragile. Not implemented --
+  // returning to the quiz after completion currently re-starts About You/
+  // Industry onward blank rather than fully restoring prior selections. Real
+  // gap, flagged rather than silently half-fixed.
+  initialProfile?: QuizProfile;
 }
 
 // Icon Resolver Component
@@ -99,18 +102,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   onSelectOption: externalOnSelect,
   onCompleteQuiz,
   onHelpClick,
-  onExitClick
+  onExitClick,
+  initialProfile
 }) => {
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>(externalAnswers || {});
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
-  const [role, setRole] = useState<string>('');
-  const [department, setDepartment] = useState<string>('');
-  const [workload, setWorkload] = useState<WorkloadMix>({
-    draftingLoad: 0.5,
-    researchLoad: 0.5,
-    communicationLoad: 0.5,
-    repetitiveLoad: 0.5,
-  });
+  const [role, setRole] = useState<string>(initialProfile?.role || '');
+  const [department, setDepartment] = useState<string>(initialProfile?.department || '');
 
   const answers = externalAnswers || localAnswers;
 
@@ -260,7 +258,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         };
 
       case 'about-you':
-      case 'workload-mix':
       case 'review':
         return {
           title: '',
@@ -287,7 +284,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     const id = QUIZ_NAV_ITEMS[idx].id;
     if (id === 'review') return false;
     if (id === 'about-you') return role.trim().length > 0 && department.trim().length > 0;
-    if (id === 'workload-mix') return true; // sliders always have a value
     const val = answers[id];
     return !!val && val.trim().length > 0;
   };
@@ -301,7 +297,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   };
 
   const isNextDisabled = () => {
-    if (stepId === 'review' || stepId === 'workload-mix') return false;
+    if (stepId === 'review') return false;
     if (stepId === 'about-you') return role.trim().length === 0 || department.trim().length === 0;
     if (isMultiSelect) {
       return selectedArr.length === 0;
@@ -425,10 +421,15 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       sensitivity: getSelectedArray('sensitivity').map(id => sensitivityCatalog.find(o => o.id === id)?.title || id),
       workflowStyle: WORKFLOW_MAP[answers['workflow']] || 'structured',
       outcomePriorities: getSelectedArray('outcomes').map(id => outcomesCatalog.find(o => o.id === id)?.title || id),
-      draftingLoad: workload.draftingLoad,
-      researchLoad: workload.researchLoad,
-      communicationLoad: workload.communicationLoad,
-      repetitiveLoad: workload.repetitiveLoad,
+      // Fixed neutral defaults -- Workload Mix step (sliders for these 4 values)
+      // was removed per Shane's direction. #190's ROI Scoring Engine still reads
+      // these 4 fields; until there's a real collection mechanism, every quiz
+      // produces the same neutral 0.5 for all four rather than a fabricated
+      // per-user value. Flagged separately, not blocking this removal.
+      draftingLoad: 0.5,
+      researchLoad: 0.5,
+      communicationLoad: 0.5,
+      repetitiveLoad: 0.5,
       toolUsage: [],
       aiComfort: AI_COMFORT_MAP[answers['ai-comfort']] || 'medium',
     };
@@ -437,13 +438,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   const handleCompleteQuiz = () => {
     onCompleteQuiz(buildQuizProfile());
   };
-
-  const workloadFields: { key: keyof WorkloadMix; label: string; description: string }[] = [
-    { key: 'draftingLoad', label: 'Drafting', description: 'Writing emails, reports, proposals, and documents' },
-    { key: 'researchLoad', label: 'Research', description: 'Gathering, reading, and synthesizing information' },
-    { key: 'communicationLoad', label: 'Communication', description: 'Meetings, messages, status updates, coordination' },
-    { key: 'repetitiveLoad', label: 'Repetitive Tasks', description: 'Data entry, formatting, routine approvals' },
-  ];
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground select-none">
@@ -542,7 +536,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         <main className="flex-1 overflow-y-auto bg-background p-6 sm:p-8 flex flex-col justify-between scrollbar-thin">
           <div className="max-w-4xl mx-auto w-full space-y-6">
             {/* Screen Header */}
-            {stepId !== 'about-you' && stepId !== 'workload-mix' && stepId !== 'review' && (
+            {stepId !== 'about-you' && stepId !== 'review' && (
               <div>
                 <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-card border border-border rounded text-[11px] font-mono text-primary mb-3">
                   <QuestionIcon className="w-3.5 h-3.5 text-primary" />
@@ -567,7 +561,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
             )}
 
             {/* Answer Options Tiles Grid */}
-            {stepId !== 'review' && stepId !== 'about-you' && stepId !== 'workload-mix' && (
+            {stepId !== 'review' && stepId !== 'about-you' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 pt-2">
                 {stepData.options.map((option) => {
                   const isSelected = isMultiSelect
@@ -666,41 +660,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
               </div>
             )}
 
-            {/* NEW SCREEN: WORKLOAD MIX */}
-            {stepId === 'workload-mix' && (
-              <div className="space-y-6 pt-2">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Workload Mix</h1>
-                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
-                    Roughly how does your work break down? This directly drives the ROI and time-saved figures in your final report.
-                  </p>
-                </div>
-                <div className="space-y-5 max-w-2xl">
-                  {workloadFields.map(field => (
-                    <div key={field.key} className="p-5 rounded-lg border border-border bg-card space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-sm font-bold text-foreground">{field.label}</span>
-                          <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
-                        </div>
-                        <span className="text-sm font-mono font-extrabold text-primary shrink-0 ml-4">
-                          {Math.round(workload[field.key] * 100)}%
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(workload[field.key] * 100)}
-                        onChange={(e) => setWorkload(prev => ({ ...prev, [field.key]: Number(e.target.value) / 100 }))}
-                        className="w-full accent-primary cursor-pointer"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* SCREEN: QUIZ COMPLETION SUMMARY */}
             {stepId === 'review' && (
               <div className="space-y-6 pt-2">
@@ -795,13 +754,6 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                       {getReviewTitles('change-mgmt')}
                     </div>
                   </div>
-
-                  <div className="p-4 bg-card border border-border rounded-lg">
-                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Workload Mix</span>
-                    <div className="text-sm font-bold text-foreground mt-1">
-                      Drafting {Math.round(workload.draftingLoad * 100)}% · Research {Math.round(workload.researchLoad * 100)}% · Comms {Math.round(workload.communicationLoad * 100)}% · Repetitive {Math.round(workload.repetitiveLoad * 100)}%
-                    </div>
-                  </div>
                 </div>
 
                 <div className="p-5 bg-card border border-primary/40 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -864,7 +816,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         </main>
 
         {/* RIGHT PANEL (Real-Time Context Scoring Panel) */}
-        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} workload={workload} />
+        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} />
       </div>
     </div>
   );

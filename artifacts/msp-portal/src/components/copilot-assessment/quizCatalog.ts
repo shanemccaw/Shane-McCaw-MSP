@@ -32,8 +32,7 @@ export const QUIZ_NAV_ITEMS = [
   { id: 'adoption-speed', label: 'Adoption Speed', stepNumber: 10, isMultiSelect: false },
   { id: 'outcomes', label: 'Outcome Priorities', stepNumber: 11, isMultiSelect: true },
   { id: 'change-mgmt', label: 'Change Management', stepNumber: 12, isMultiSelect: false },
-  { id: 'workload-mix', label: 'Workload Mix', stepNumber: 13, isMultiSelect: false },
-  { id: 'review', label: 'Review', stepNumber: 14, isMultiSelect: false },
+  { id: 'review', label: 'Review', stepNumber: 13, isMultiSelect: false },
 ];
 
 export const INDUSTRY_OPTIONS: QuizOptionTile[] = [
