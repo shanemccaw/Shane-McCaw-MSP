@@ -68,10 +68,17 @@ function Write-Log {
     param(
         [string]$Level,
         [string]$Message,
-        [hashtable]$Extra = @{}
+        [hashtable]$Extra = @{},
+        # Defaults to this service's own operational channel. Write-cmdlet
+        # audit entries (see the CmdletCatalog's IsWrite handling below) pass
+        # "audit" instead — CLAUDE.md's locked channel taxonomy reserves
+        # "audit" platform-wide for exactly this kind of action record, and
+        # it's a distinct channel (not just a distinct message) so it can be
+        # filtered/shipped independently of routine request-handling noise.
+        [string]$Channel = "integration.ps-execution"
     )
     $entry = @{
-        channel   = "integration.ps-execution"
+        channel   = $Channel
         level     = $Level
         message   = $Message
         timestamp = [DateTimeOffset]::UtcNow.ToString("o")
@@ -370,6 +377,68 @@ $script:CmdletCatalog = @{
         AllowedParams  = @()
         PostFilter     = { $_.DistributionStatus -and $_.DistributionStatus -ne "Success" }
     }
+
+    # #247 (#246 chunk A): first WRITE cmdlet in this catalog — every entry
+    # above is read-only per #209's design. Adds a member (an Entra
+    # security/mail-enabled group or user) to a Security & Compliance role
+    # group — #246's actual driver is landing mt-app's own service
+    # principal, via an Entra security group, into a Purview DLP role group
+    # so app-only Get-DlpCompliancePolicy/etc. calls stop failing with
+    # "not recognized" for tenants onboarded after this ships.
+    #
+    # AllowedParams is Identity/Member — Add-RoleGroupMember's real,
+    # splattable parameter names (learn.microsoft.com/powershell/module/
+    # exchangepowershell/add-rolegroupmember, checked 2026-07-31: Identity
+    # is the role-group target, Member the principal to add; no parameter
+    # named "RoleGroup" exists). The issue text described the intended scope
+    # as "RoleGroup and Member" — read as the two concepts being locked
+    # down, not a literal parameter-name instruction: every other catalog
+    # entry's AllowedParams are the cmdlet's actual PowerShell parameter
+    # names because they're splatted directly via `& $Cmdlet @cmdletParams`
+    # below, and "RoleGroup" isn't one here. Flagged for Shane: whichever
+    # future caller (#246 chunk C's consent.ts orchestration) builds
+    # psParams for this cmdletKey needs to send Identity, not RoleGroup.
+    #
+    # Idempotency (investigated, not assumed): Microsoft Learn's own
+    # Add-RoleGroupMember page (checked 2026-07-31) documents parameters and
+    # permissions but does not state what happens on a duplicate add. The
+    # closest confirmed real-world behavior is Add-DistributionGroupMember —
+    # same "Add-*Member" Exchange cmdlet family, same underlying
+    # group-membership-write mechanism, role groups included — which throws
+    # a MemberAlreadyExistsException on a repeat add rather than silently
+    # no-op'ing (widely reported; not itself a Microsoft Learn statement
+    # either, so treated as a strong inference, not a certainty). Given
+    # this write cmdlet's entire purpose (#246) is onboarding-time
+    # provisioning that legitimately needs to be re-runnable — retries, and
+    # Shane's own confirmed "admin-panel manual re-trigger for backfill/
+    # troubleshooting" design in #246 — the dispatcher below (see IsWrite
+    # handling) treats a caught "already a member"/"AlreadyExists" error as
+    # a successful no-op, not a script_error, so a caller re-running this
+    # against an already-provisioned tenant sees success rather than having
+    # to special-case a specific exception string itself.
+    #
+    # Logging/audit (investigated, not assumed): runPowerShellCheck's
+    # existing logging shape was built for scheduled reads and deliberately
+    # never logs request params (no existing entry's AllowedParams held
+    # anything worth logging). A write action's audit value IS the specific
+    # params (which role group, which member) and the outcome
+    # (succeeded/no-op/failed) — those need to land in the log record
+    # itself, on the platform's dedicated "audit" channel (CLAUDE.md's
+    # locked taxonomy), not buried in "integration.ps-execution" alongside
+    # startup/routing noise. This container has no DB access (CLAUDE.md) so
+    # it cannot call the Node-side createAuditLog()/auditLogsTable directly
+    # the way write-action-safety.ts's Graph-write engine does — the
+    # audit-channel stdout entries emitted below are the input Shane's
+    # future consent.ts orchestration (#246 chunk C) reads and forwards
+    # into that real audit log, not a substitute for it. IsWrite is the flag
+    # the dispatcher below keys this treatment off of — code-owned, per
+    # cmdletKey, never request-driven, matching every other catalog field's
+    # security posture.
+    "add-role-group-member" = @{
+        Cmdlet         = "Add-RoleGroupMember"
+        AllowedParams  = @("Identity", "Member")
+        IsWrite        = $true
+    }
 }
 
 # --- Bearer-token check -------------------------------------------------------
@@ -528,9 +597,28 @@ try {
             continue
         }
 
+        # See the "add-role-group-member" catalog entry's own comment for
+        # why write cmdlets get this distinct treatment: audit-channel
+        # logging of the actual target params (never done for reads, none
+        # of which have any worth logging) plus idempotent handling of a
+        # duplicate add.
+        if ($catalogEntry.IsWrite) {
+            Write-Log -Level "info" -Channel "audit" -Message "write action attempted" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; member = $invocation.Params["Member"] }
+        }
+
+        $writeOutcome = $null
         try {
             $cmdletParams = $invocation.Params
             $result = & $invocation.Cmdlet @cmdletParams
+
+            if ($catalogEntry.IsWrite) {
+                # Add-RoleGroupMember has no meaningful success payload to
+                # preserve (unlike the read cmdlets above) — normalize to an
+                # explicit status object so a caller doesn't have to
+                # distinguish "[]" (empty read result) from "write succeeded".
+                $writeOutcome = "succeeded"
+                $result = @{ status = $writeOutcome }
+            }
 
             # ResultProperty: some cmdlets (Export-ActivityExplorerData) return
             # a wrapper object with the real item collection JSON-encoded
@@ -555,12 +643,29 @@ try {
             }
         }
         catch {
-            Write-Log -Level "error" -Message "cmdlet execution failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
-            Send-ErrorResponse -Response $response -StatusCode 500 -Kind "script_error" -Message "The resolved cmdlet raised an error during execution."
-            continue
+            # See the catalog entry's "Idempotency" comment: a duplicate add
+            # is treated as a successful no-op, not a script_error, since
+            # this cmdlet's whole purpose is re-runnable onboarding-time
+            # provisioning.
+            if ($catalogEntry.IsWrite -and $_.Exception.Message -match "(?i)already a member|AlreadyExists") {
+                $writeOutcome = "already_member"
+                $result = @{ status = $writeOutcome }
+            }
+            else {
+                Write-Log -Level "error" -Message "cmdlet execution failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
+                if ($catalogEntry.IsWrite) {
+                    Write-Log -Level "error" -Channel "audit" -Message "write action failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; member = $invocation.Params["Member"]; error = $_.Exception.Message }
+                }
+                Send-ErrorResponse -Response $response -StatusCode 500 -Kind "script_error" -Message "The resolved cmdlet raised an error during execution."
+                continue
+            }
         }
         finally {
             Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        }
+
+        if ($catalogEntry.IsWrite -and $writeOutcome) {
+            Write-Log -Level "info" -Channel "audit" -Message "write action $writeOutcome" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; member = $invocation.Params["Member"] }
         }
 
         # One synchronous response: whatever Write-Output produced (after any
