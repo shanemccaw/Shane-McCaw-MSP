@@ -36,15 +36,18 @@ interface QuizScreenProps {
   onCompleteQuiz: (profile: QuizProfile) => void;
   onHelpClick?: () => void;
   onExitClick?: () => void;
+  // The authenticated account's display name, for a personalized greeting on
+  // About You -- we already know who's taking the quiz, no need to ask again.
+  userName?: string;
   // Passed when navigating back to the quiz after it was already completed
-  // once (state.quizProfile in the page). Only role/department are safely
-  // reversible into per-step state -- industry/sensitivity/collaboration/etc
-  // were converted from option IDs to display titles in buildQuizProfile(),
+  // once (state.quizProfile in the page). Role/department/company/phone are
+  // safely reversible into per-step state; industry/sensitivity/collaboration/
+  // etc were converted from option IDs to display titles in buildQuizProfile(),
   // and reversing that requires exact title matching against the (possibly
   // industry-dependent) catalogs, which is lossy/fragile. Not implemented --
-  // returning to the quiz after completion currently re-starts About You/
-  // Industry onward blank rather than fully restoring prior selections. Real
-  // gap, flagged rather than silently half-fixed.
+  // returning to the quiz after completion currently re-starts Industry
+  // onward blank rather than fully restoring prior selections. Real gap,
+  // flagged rather than silently half-fixed.
   initialProfile?: QuizProfile;
 }
 
@@ -103,12 +106,20 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   onCompleteQuiz,
   onHelpClick,
   onExitClick,
+  userName,
   initialProfile
 }) => {
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>(externalAnswers || {});
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [role, setRole] = useState<string>(initialProfile?.role || '');
   const [department, setDepartment] = useState<string>(initialProfile?.department || '');
+  const [company, setCompany] = useState<string>(initialProfile?.company || '');
+  const [phone, setPhone] = useState<string>(initialProfile?.phone || '');
+
+  // Same first/last-name split zoho-lead-sync.ts uses for real Zoho pushes --
+  // first word is the first name, single-word names have no first name to
+  // greet with (falls back to the full name, still better than nothing).
+  const firstName = userName?.trim() ? userName.trim().split(/\s+/)[0] : '';
 
   const answers = externalAnswers || localAnswers;
 
@@ -416,6 +427,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     return {
       role: role.trim(),
       department: department.trim(),
+      company: company.trim() || undefined,
+      phone: phone.trim() || undefined,
       industry: currentIndustry,
       collaboration: collaborationPatterns.length > 0 ? collaborationPatterns : ['internal'],
       sensitivity: getSelectedArray('sensitivity').map(id => sensitivityCatalog.find(o => o.id === id)?.title || id),
@@ -624,7 +637,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
             {stepId === 'about-you' && (
               <div className="space-y-6 pt-2">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">About You</h1>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                    {firstName ? `Hey, ${firstName}!` : 'About You'}
+                  </h1>
                   <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
                     A quick bit of context before we get into your organization's profile.
                   </p>
@@ -656,6 +671,32 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                       className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                     />
                   </div>
+                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <Briefcase className="w-3.5 h-3.5 text-primary" />
+                      Company
+                    </label>
+                    <input
+                      type="text"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      placeholder="e.g. Acme Corporation"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <Radio className="w-3.5 h-3.5 text-primary" />
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g. (555) 123-4567"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -674,6 +715,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                     <span className="text-[10px] uppercase font-mono text-muted-foreground block">Role / Department</span>
                     <div className="text-sm font-bold text-foreground mt-1">
                       {role || 'Not Provided'} / {department || 'Not Provided'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Company / Phone</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {company || 'Not Provided'} / {phone || 'Not Provided'}
                     </div>
                   </div>
 

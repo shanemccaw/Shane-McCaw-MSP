@@ -79,7 +79,7 @@ type SharedState = Omit<AssessmentState, 'currentStep'>;
 export default function CopilotAssessmentPage() {
   const { step: rawStep } = useParams<{ step?: string }>();
   const [, setLocation] = useLocation();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
 
   // Falls back to 'home' for a missing/invalid :step (e.g. a stale or
   // hand-typed link) rather than crashing on an unrecognized step.
@@ -267,6 +267,7 @@ export default function CopilotAssessmentPage() {
         {currentStep === 'quiz' && (
           <QuizScreen
             initialProfile={state.quizProfile ?? undefined}
+            userName={user?.name}
             onCompleteQuiz={handleCompleteQuiz}
             onHelpClick={() => setIsSpecModalOpen(true)}
             onExitClick={() => handleNavigate('home')}

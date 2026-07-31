@@ -24,6 +24,12 @@ export type AiComfortLevel = 'low' | 'medium' | 'high';
 export interface QuizProfile {
   role: string;
   department: string;
+  // Real Zoho Lead fields (see zoho-lead-sync.ts's mapStagingToZohoLead) that
+  // nothing else in the funnel collects -- name comes from the authenticated
+  // account, industry is its own quiz step. Optional: not every quiz-taker
+  // has a company/phone to give, and this shouldn't block completing the quiz.
+  company?: string;
+  phone?: string;
   industry: string;
   collaboration: CollaborationPattern[];
   sensitivity: string[];
