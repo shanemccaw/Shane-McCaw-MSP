@@ -15,6 +15,13 @@ export type AssessmentStep =
 export type CollaborationPattern = 'internal' | 'cross-team' | 'external';
 export type WorkflowStyle = 'structured' | 'unstructured';
 export type AiComfortLevel = 'low' | 'medium' | 'high';
+// Real UNIVERSAL_ADOPTION_SPEED / UNIVERSAL_CHANGE_MGMT option ids (quizCatalog.ts),
+// kept as ids rather than display titles: both are single-select enums that
+// downstream rollout planning compares against, and an id survives a copy edit
+// to the tile's title. Added by #270 — the quiz asked both questions long
+// before this, but buildQuizProfile() dropped both answers on the floor.
+export type AdoptionSpeed = 'early_adopter' | 'fast_follower' | 'average_adopter' | 'slow_adopter';
+export type ChangeManagementNeed = 'minimal' | 'moderate' | 'significant';
 
 // Real structured attribute collection produced by the Quiz (Phase 1 of the
 // Copilot Assessment epic, #184). This JSON becomes the prompt-context input
@@ -35,12 +42,32 @@ export interface QuizProfile {
   sensitivity: string[];
   workflowStyle: WorkflowStyle;
   outcomePriorities: string[];
+  // Inferred from the answers above by workloadInference.ts (#270), NOT asked
+  // directly — the slider step that used to collect them was removed, and the
+  // hardcoded 0.5 that replaced it gave every customer in the platform the same
+  // ROI score. See that file's header for the full scoring decision.
   draftingLoad: number; // 0-1
   researchLoad: number; // 0-1
   communicationLoad: number; // 0-1
   repetitiveLoad: number; // 0-1
+  // Real Tool Usage step answers, as display titles ('Word', 'Teams', ...) —
+  // #270. Empty only when a pre-#270 profile is restored; the step is required.
   toolUsage: string[];
   aiComfort: AiComfortLevel;
+  // Answers the quiz has always collected but buildQuizProfile() used to
+  // discard (#270). Display titles for the three multi-selects, option ids for
+  // the two single-select enums.
+  //
+  // Optional purely for restore compatibility: a profile persisted before #270
+  // genuinely has none of these five keys, and the wizard hands a restored
+  // profile straight to the persona/report generators. A freshly completed quiz
+  // always sets all five — treat absence as "an older profile", never as
+  // "the customer skipped it".
+  personaClusters?: string[];
+  targetPersonas?: string[];
+  useCaseClusters?: string[];
+  adoptionSpeed?: AdoptionSpeed;
+  changeManagement?: ChangeManagementNeed;
 }
 
 export interface EngineStatus {

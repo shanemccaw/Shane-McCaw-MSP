@@ -108,6 +108,15 @@ export type CopilotQuizProfile = {
   repetitiveLoad: number;
   toolUsage: string[];
   aiComfort: string;
+  // Answers the quiz always collected but the wizard used to drop before
+  // building the profile (#270). Optional because rows written before #270
+  // genuinely have none of these keys — the route normalizes an absent value to
+  // empty/null rather than inventing one, so "older profile" stays legible.
+  personaClusters?: string[];
+  targetPersonas?: string[];
+  useCaseClusters?: string[];
+  adoptionSpeed?: string | null;
+  changeManagement?: string | null;
 };
 
 export type CopilotAssessmentQuizRecord = {

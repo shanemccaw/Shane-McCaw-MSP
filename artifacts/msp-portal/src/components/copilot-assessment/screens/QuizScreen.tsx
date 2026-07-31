@@ -9,7 +9,7 @@ import {
   CheckSquare, MessageSquare, Megaphone, FileCode, ListTodo, BarChart2, Lock,
   EyeOff, Globe, Network, Users, Share2, Smile, Meh, AlertTriangle, Activity,
   Clock, Crown, Check, ChevronLeft, ChevronRight, ArrowRight, Info, HelpCircle,
-  HelpCircle as QuestionIcon, File, Settings, User
+  HelpCircle as QuestionIcon, File, Settings, User, Presentation, Mail, NotebookPen
 } from 'lucide-react';
 
 import {
@@ -25,10 +25,15 @@ import {
   UNIVERSAL_ADOPTION_SPEED,
   ADAPTIVE_OUTCOME_PRIORITIES,
   UNIVERSAL_CHANGE_MGMT,
+  UNIVERSAL_TOOL_USAGE,
   QuizOptionTile
 } from '../quizCatalog';
 import { ScoringPanel } from '../quiz/ScoringPanel';
-import { QuizProfile, CollaborationPattern, WorkflowStyle, AiComfortLevel } from '../types';
+import { inferWorkloadMix } from '../workloadInference';
+import {
+  QuizProfile, CollaborationPattern, WorkflowStyle, AiComfortLevel,
+  AdoptionSpeed, ChangeManagementNeed
+} from '../types';
 
 interface QuizScreenProps {
   answers?: Record<string, string>;
@@ -68,7 +73,7 @@ const DynamicIcon: React.FC<{ name: string; className?: string }> = ({ name, cla
     CheckSquare, MessageSquare, Megaphone, FileCode, ListTodo, BarChart2, Lock,
     EyeOff, Globe, Network, Users, Share2, Smile, Meh, AlertTriangle, Activity,
     Clock, Crown, Check, ChevronLeft, ChevronRight, ArrowRight, Info, HelpCircle,
-    File, Settings, User
+    File, Settings, User, Presentation, Mail, NotebookPen
   };
 
   const IconComponent = iconMap[name] || Sparkles;
@@ -137,6 +142,23 @@ const AI_COMFORT_MAP: Record<string, AiComfortLevel> = {
   neutral: 'medium',
   cautious: 'low',
   not_comfortable: 'low',
+};
+
+// #270 -- both catalogs already use exactly these ids, so these are identity
+// maps rather than translations. They exist so an unrecognised stored answer
+// resolves to undefined (the field is simply absent) instead of being written
+// through as an invalid enum value.
+const ADOPTION_SPEED_MAP: Record<string, AdoptionSpeed> = {
+  early_adopter: 'early_adopter',
+  fast_follower: 'fast_follower',
+  average_adopter: 'average_adopter',
+  slow_adopter: 'slow_adopter',
+};
+
+const CHANGE_MGMT_MAP: Record<string, ChangeManagementNeed> = {
+  minimal: 'minimal',
+  moderate: 'moderate',
+  significant: 'significant',
 };
 
 export const QuizScreen: React.FC<QuizScreenProps> = ({
@@ -273,6 +295,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
           hint: 'Select all collaboration patterns present across your teams and departments.'
         };
       }
+
+      case 'tools':
+        return {
+          title: 'Select All Microsoft 365 Apps You Work In Daily',
+          description: 'Copilot is embedded per-app — the surfaces you actually live in determine which Copilot experiences deliver value first.',
+          options: UNIVERSAL_TOOL_USAGE,
+          hint: 'Select every app your teams use day to day.'
+        };
 
       case 'ai-comfort':
         return {
@@ -429,6 +459,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       }).join(', ');
     }
 
+    if (key === 'tools') {
+      return arr.map(id => UNIVERSAL_TOOL_USAGE.find(o => o.id === id)?.title || id).join(', ');
+    }
+
     if (key === 'ai-comfort') {
       const f = UNIVERSAL_AI_COMFORT.find(o => o.id === arr[0]);
       return f ? f.title : arr[0];
@@ -461,16 +495,45 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   };
 
   // Build the real QuizProfile the rest of the platform (#186/#187 AI generation,
-  // #190 ROI scoring) actually consumes. toolUsage is intentionally left empty --
-  // not collected by this quiz; use-case-generator.ts already falls back to
-  // "none specified" gracefully when empty.
+  // #190 ROI scoring) actually consumes.
+  //
+  // #270 closed three real gaps here: the clusters/personas/use-cases/
+  // adoption-speed/change-mgmt answers were collected and then silently dropped
+  // rather than returned; the four workload weights were hardcoded to 0.5 for
+  // every customer; and toolUsage was an always-empty array despite three AI
+  // generators reading it. All three now carry real answers.
   const buildQuizProfile = (): QuizProfile => {
+    const clustersCatalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
+    const personasCatalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
+    const useCasesCatalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
     const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
     const outcomesCatalog = ADAPTIVE_OUTCOME_PRIORITIES[currentIndustry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
     const collaborationIds = getSelectedArray('collaboration');
     const collaborationPatterns = Array.from(
       new Set(collaborationIds.map(id => COLLABORATION_MAP[id]).filter((v): v is CollaborationPattern => !!v))
     );
+
+    // Kept as option ids for the inference below (it resolves them against the
+    // same catalogs), and converted to display titles for the profile itself --
+    // same convention sensitivity/outcomePriorities already follow, so the AI
+    // generators read product-quality names rather than slugs.
+    const personaClusterIds = getSelectedArray('clusters');
+    const personaIds = getSelectedArray('personas');
+    const useCaseIds = getSelectedArray('use-cases');
+
+    const workflowStyle: WorkflowStyle = WORKFLOW_MAP[answers['workflow']] || 'structured';
+
+    // Real inference from the answers already given -- see workloadInference.ts
+    // for the documented scoring decision. Replaces the flat 0.5 that made
+    // every customer's ROI score identical.
+    const workload = inferWorkloadMix({
+      industry: currentIndustry,
+      useCaseIds,
+      personaIds,
+      role: role.trim(),
+      department: department.trim(),
+      workflowStyle,
+    });
 
     return {
       role: role.trim(),
@@ -480,19 +543,19 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       industry: currentIndustry,
       collaboration: collaborationPatterns.length > 0 ? collaborationPatterns : ['internal'],
       sensitivity: getSelectedArray('sensitivity').map(id => sensitivityCatalog.find(o => o.id === id)?.title || id),
-      workflowStyle: WORKFLOW_MAP[answers['workflow']] || 'structured',
+      workflowStyle,
       outcomePriorities: getSelectedArray('outcomes').map(id => outcomesCatalog.find(o => o.id === id)?.title || id),
-      // Fixed neutral defaults -- Workload Mix step (sliders for these 4 values)
-      // was removed per Shane's direction. #190's ROI Scoring Engine still reads
-      // these 4 fields; until there's a real collection mechanism, every quiz
-      // produces the same neutral 0.5 for all four rather than a fabricated
-      // per-user value. Flagged separately, not blocking this removal.
-      draftingLoad: 0.5,
-      researchLoad: 0.5,
-      communicationLoad: 0.5,
-      repetitiveLoad: 0.5,
-      toolUsage: [],
+      draftingLoad: workload.draftingLoad,
+      researchLoad: workload.researchLoad,
+      communicationLoad: workload.communicationLoad,
+      repetitiveLoad: workload.repetitiveLoad,
+      toolUsage: getSelectedArray('tools').map(id => UNIVERSAL_TOOL_USAGE.find(o => o.id === id)?.title || id),
       aiComfort: AI_COMFORT_MAP[answers['ai-comfort']] || 'medium',
+      personaClusters: personaClusterIds.map(id => clustersCatalog.find(o => o.id === id)?.title || id),
+      targetPersonas: personaIds.map(id => personasCatalog.find(o => o.id === id)?.title || id),
+      useCaseClusters: useCaseIds.map(id => useCasesCatalog.find(o => o.id === id)?.title || id),
+      adoptionSpeed: ADOPTION_SPEED_MAP[answers['adoption-speed']],
+      changeManagement: CHANGE_MGMT_MAP[answers['change-mgmt']],
     };
   };
 
@@ -502,7 +565,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
 
   // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
   // Fills one deterministic default answer per QUIZ_NAV_ITEMS step (#231) so
-  // a testbed account can iterate on the flow without a 13-step re-click on
+  // a testbed account can iterate on the flow without a full re-click on
   // every refresh (quiz answers have no persistence layer yet -- separate,
   // bigger issue, out of scope here). Same fixed industry/cluster/persona
   // chain the rest of the quiz's own filtering logic above depends on, so the
@@ -538,6 +601,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       'use-cases': useCaseId,
       sensitivity: sensitivityCatalog[0].id,
       collaboration: collaborationCatalog[0].id,
+      // Two tools, not one -- toolUsage is a real multi-select now (#270) and a
+      // single-value auto-fill would never exercise the join in the profile.
+      tools: `${UNIVERSAL_TOOL_USAGE[0].id},${UNIVERSAL_TOOL_USAGE[4].id}`,
       'ai-comfort': UNIVERSAL_AI_COMFORT[0].id,
       workflow: UNIVERSAL_WORKFLOW_STRUCTURE[0].id,
       'adoption-speed': UNIVERSAL_ADOPTION_SPEED[0].id,
@@ -898,6 +964,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                     <span className="text-[10px] uppercase font-mono text-muted-foreground block">Collaboration Pattern</span>
                     <div className="text-sm font-bold text-foreground mt-1">
                       {getReviewTitles('collaboration')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Tool Usage (Multi)</span>
+                    <div className="text-sm font-bold text-primary mt-1">
+                      {getReviewTitles('tools')}
                     </div>
                   </div>
 

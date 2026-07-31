@@ -58,6 +58,12 @@ function isValidQuizProfile(body: unknown): body is CopilotQuizProfile {
   const b = body as Record<string, unknown>;
   const isStringArray = (v: unknown): boolean => Array.isArray(v) && v.every((x) => typeof x === "string");
   const isLoad = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v);
+  // The five fields #270 stopped dropping. Checked as OPTIONAL, not required:
+  // a client on an older bundle (or a re-save of a profile restored from a
+  // pre-#270 row) genuinely has none of them, and rejecting that would lock a
+  // returning customer out of saving rather than surface a real error.
+  const isOptionalStringArray = (v: unknown): boolean => v === undefined || v === null || isStringArray(v);
+  const isOptionalString = (v: unknown): boolean => v === undefined || v === null || typeof v === "string";
   return (
     typeof b.role === "string" &&
     typeof b.department === "string" &&
@@ -73,7 +79,12 @@ function isValidQuizProfile(body: unknown): body is CopilotQuizProfile {
     isStringArray(b.toolUsage) &&
     typeof b.aiComfort === "string" &&
     (b.company === undefined || b.company === null || typeof b.company === "string") &&
-    (b.phone === undefined || b.phone === null || typeof b.phone === "string")
+    (b.phone === undefined || b.phone === null || typeof b.phone === "string") &&
+    isOptionalStringArray(b.personaClusters) &&
+    isOptionalStringArray(b.targetPersonas) &&
+    isOptionalStringArray(b.useCaseClusters) &&
+    isOptionalString(b.adoptionSpeed) &&
+    isOptionalString(b.changeManagement)
   );
 }
 
@@ -95,6 +106,14 @@ function normalizeQuizProfile(profile: CopilotQuizProfile): CopilotQuizProfile {
     repetitiveLoad: profile.repetitiveLoad,
     toolUsage: profile.toolUsage,
     aiComfort: profile.aiComfort,
+    // #270 — an absent value normalizes to empty/null rather than to a
+    // plausible-looking default, so a restored pre-#270 profile never reads as
+    // "this customer selected nothing" when the question was never asked.
+    personaClusters: profile.personaClusters ?? [],
+    targetPersonas: profile.targetPersonas ?? [],
+    useCaseClusters: profile.useCaseClusters ?? [],
+    adoptionSpeed: profile.adoptionSpeed ?? null,
+    changeManagement: profile.changeManagement ?? null,
   };
 }
 

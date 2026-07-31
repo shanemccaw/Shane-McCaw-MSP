@@ -69,8 +69,16 @@ export interface QuizProfile {
   researchLoad: number; // 0-1
   communicationLoad: number; // 0-1
   repetitiveLoad: number; // 0-1
+  /** Real Tool Usage step selections (#270) — substituted into {{toolUsage}} below. */
   toolUsage: string[];
   aiComfort: AiComfortLevel;
+  // #270 — collected by the quiz, previously dropped. Optional: a profile
+  // restored from a pre-#270 row has none of them.
+  personaClusters?: string[];
+  targetPersonas?: string[];
+  useCaseClusters?: string[];
+  adoptionSpeed?: string | null;
+  changeManagement?: string | null;
 }
 
 export type PersonaSeverity = "High" | "Medium" | "Low";

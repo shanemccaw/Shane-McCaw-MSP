@@ -57,8 +57,18 @@ export interface PersonaGenerationQuizProfile {
   researchLoad: number;
   communicationLoad: number;
   repetitiveLoad: number;
+  /** Real Microsoft 365 surfaces the quiz-taker selected on the Tool Usage step (#270). */
   toolUsage: string[];
   aiComfort: string;
+  // #270 — the quiz's cluster/persona/use-case/rollout answers, no longer
+  // dropped by buildQuizProfile(). Optional: a profile restored from a row
+  // written before #270 has none of them. They reach the model through
+  // {{quizProfileJson}}, which serializes this whole object.
+  personaClusters?: string[];
+  targetPersonas?: string[];
+  useCaseClusters?: string[];
+  adoptionSpeed?: string | null;
+  changeManagement?: string | null;
 }
 
 type Severity = "High" | "Medium" | "Low";

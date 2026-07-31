@@ -144,9 +144,33 @@ const COMPLETED_PROFILE = {
   researchLoad: 0.4,
   communicationLoad: 0.6,
   repetitiveLoad: 0.9,
-  toolUsage: ["Teams", "SharePoint", "Outlook"],
+  toolUsage: ["Teams", "SharePoint / OneDrive", "Outlook"],
   aiComfort: "medium",
+  // The five answers #270 stopped dropping on the wizard side.
+  personaClusters: ["Clinical Care", "Administration"],
+  targetPersonas: ["Clinician", "Care Coordinator"],
+  useCaseClusters: ["Chart Summarization", "Care Plan Drafting"],
+  adoptionSpeed: "fast_follower",
+  changeManagement: "moderate",
 };
+
+/**
+ * A profile as it was stored BEFORE #270 — no clusters, no personas, no
+ * use-case clusters, no adoption speed, no change-management answer. Real rows
+ * in this shape exist, and the wizard re-saves a restored profile, so the route
+ * has to keep accepting it.
+ */
+const LEGACY_PROFILE = (() => {
+  const {
+    personaClusters: _pc,
+    targetPersonas: _tp,
+    useCaseClusters: _uc,
+    adoptionSpeed: _as,
+    changeManagement: _cm,
+    ...rest
+  } = COMPLETED_PROFILE;
+  return rest;
+})();
 
 beforeEach(() => {
   mockTenantStore.clear();
@@ -289,6 +313,139 @@ describe("tenant scoping and validation (#237)", () => {
     const stored = mockTenantStore.get(TENANT_ID)!.copilotAssessment;
     expect(stored.somethingElse).toEqual({ keep: true });
     expect(stored).toHaveProperty("quiz");
+  });
+
+  it("persists the five answers the wizard used to drop (#270)", async () => {
+    // The bug this replaced: the quiz asked for clusters/personas/use cases/
+    // adoption speed/change management, the customer answered, and none of it
+    // reached the stored profile — so nothing downstream could ever use it.
+    await request(app)
+      .put("/api/portal/copilot-assessment/quiz-profile")
+      .set("Authorization", `Bearer ${makeLoginToken()}`)
+      .send({ quizProfile: COMPLETED_PROFILE });
+
+    const res = await request(app)
+      .get("/api/portal/copilot-assessment/quiz-profile")
+      .set("Authorization", `Bearer ${makeLoginToken()}`);
+
+    expect(res.body.quizProfile.personaClusters).toEqual(["Clinical Care", "Administration"]);
+    expect(res.body.quizProfile.targetPersonas).toEqual(["Clinician", "Care Coordinator"]);
+    expect(res.body.quizProfile.useCaseClusters).toEqual(["Chart Summarization", "Care Plan Drafting"]);
+    expect(res.body.quizProfile.adoptionSpeed).toBe("fast_follower");
+    expect(res.body.quizProfile.changeManagement).toBe("moderate");
+    // And the real Tool Usage answers, which used to be an always-empty array.
+    expect(res.body.quizProfile.toolUsage).toEqual(["Teams", "SharePoint / OneDrive", "Outlook"]);
+  });
+
+  it("still accepts a profile saved before #270, without inventing answers for it", async () => {
+    const save = await request(app)
+      .put("/api/portal/copilot-assessment/quiz-profile")
+      .set("Authorization", `Bearer ${makeLoginToken()}`)
+      .send({ quizProfile: LEGACY_PROFILE });
+    expect(save.status).toBe(200);
+
+    const res = await request(app)
+      .get("/api/portal/copilot-assessment/quiz-profile")
+      .set("Authorization", `Bearer ${makeLoginToken()}`);
+
+    // Empty/null, never a plausible-looking default — "never asked" must stay
+    // distinguishable from "answered with nothing".
+    expect(res.body.quizProfile.personaClusters).toEqual([]);
+    expect(res.body.quizProfile.targetPersonas).toEqual([]);
+    expect(res.body.quizProfile.useCaseClusters).toEqual([]);
+    expect(res.body.quizProfile.adoptionSpeed).toBeNull();
+    expect(res.body.quizProfile.changeManagement).toBeNull();
+  });
+
+  it("rejects a wrong-typed new field rather than storing it", async () => {
+    const res = await request(app)
+      .put("/api/portal/copilot-assessment/quiz-profile")
+      .set("Authorization", `Bearer ${makeLoginToken()}`)
+      .send({ quizProfile: { ...COMPLETED_PROFILE, targetPersonas: "Clinician" } });
+
+    expect(res.status).toBe(400);
+    expect(mockTenantStore.get(TENANT_ID)!.copilotAssessment).toEqual({});
+  });
+
+  // ── Real captured wizard output ─────────────────────────────────────────────
+  // Not hand-written: these two are the exact `quizProfile` bodies the real
+  // QuizScreen PUT after a real browser walked all 14 quiz steps twice (#270),
+  // one legal answer set and one manufacturing answer set. They are here so the
+  // server's gate is tested against what the client genuinely sends, not
+  // against a fixture that drifts away from it.
+  const CAPTURED_LEGAL = {
+    role: "Senior Litigation Counsel",
+    department: "Litigation",
+    company: "Harbor & Vance LLP",
+    phone: "555-0100",
+    industry: "legal",
+    collaboration: ["internal", "external"],
+    sensitivity: ["Privileged / Work Product"],
+    workflowStyle: "unstructured",
+    outcomePriorities: ["Productivity & Time Saved", "Quality & Error Reduction"],
+    draftingLoad: 0.71,
+    researchLoad: 0.85,
+    communicationLoad: 0.27,
+    repetitiveLoad: 0.4,
+    toolUsage: ["Word", "Outlook", "Teams"],
+    aiComfort: "high",
+    personaClusters: ["Litigation", "Compliance & Regulatory"],
+    targetPersonas: ["Litigator", "Litigation Paralegal"],
+    useCaseClusters: ["Brief Drafting", "Discovery Review Summaries"],
+    adoptionSpeed: "fast_follower",
+    changeManagement: "moderate",
+  };
+
+  const CAPTURED_MANUFACTURING = {
+    role: "Shift Supervisor",
+    department: "Production Operations",
+    company: "Northgate Fabrication",
+    phone: "555-0200",
+    industry: "manufacturing",
+    collaboration: ["internal"],
+    sensitivity: ["SCADA / OT Telemetry"],
+    workflowStyle: "structured",
+    outcomePriorities: ["Productivity & Time Saved"],
+    draftingLoad: 0.48,
+    researchLoad: 0.23,
+    communicationLoad: 0.38,
+    repetitiveLoad: 0.93,
+    toolUsage: ["Excel", "Teams", "SharePoint / OneDrive"],
+    aiComfort: "low",
+    personaClusters: ["Production", "Maintenance"],
+    targetPersonas: ["Shift Supervisor", "Maintenance Technician"],
+    useCaseClusters: ["Shift Handover Briefs", "Work Order Drafting"],
+    adoptionSpeed: "slow_adopter",
+    changeManagement: "significant",
+  };
+
+  it("round-trips what the real wizard actually sends, unchanged (#270)", async () => {
+    for (const captured of [CAPTURED_LEGAL, CAPTURED_MANUFACTURING]) {
+      mockTenantStore.set(TENANT_ID, { copilotAssessment: {}, updatedAt: new Date() });
+
+      const save = await request(app)
+        .put("/api/portal/copilot-assessment/quiz-profile")
+        .set("Authorization", `Bearer ${makeLoginToken()}`)
+        .send({ quizProfile: captured });
+      expect(save.status).toBe(200);
+
+      const res = await request(app)
+        .get("/api/portal/copilot-assessment/quiz-profile")
+        .set("Authorization", `Bearer ${makeLoginToken()}`);
+      expect(res.body.quizProfile).toEqual(captured);
+    }
+  });
+
+  it("the two real captures are genuinely different profiles, not one shape twice", () => {
+    // The regression #270 fixed: every customer used to save draftingLoad 0.5,
+    // researchLoad 0.5, communicationLoad 0.5, repetitiveLoad 0.5 and an empty
+    // toolUsage — so any two saved profiles were interchangeable downstream.
+    const loads = (p: typeof CAPTURED_LEGAL) => [p.draftingLoad, p.researchLoad, p.communicationLoad, p.repetitiveLoad];
+    expect(loads(CAPTURED_LEGAL)).not.toEqual(loads(CAPTURED_MANUFACTURING));
+    expect(loads(CAPTURED_LEGAL)).not.toEqual([0.5, 0.5, 0.5, 0.5]);
+    expect(loads(CAPTURED_MANUFACTURING)).not.toEqual([0.5, 0.5, 0.5, 0.5]);
+    expect(CAPTURED_LEGAL.toolUsage.length).toBeGreaterThan(0);
+    expect(CAPTURED_MANUFACTURING.toolUsage).not.toEqual(CAPTURED_LEGAL.toolUsage);
   });
 
   it("records who completed it", async () => {

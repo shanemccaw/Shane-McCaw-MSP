@@ -19,7 +19,8 @@ import {
   UNIVERSAL_WORKFLOW_STRUCTURE,
   UNIVERSAL_ADOPTION_SPEED,
   ADAPTIVE_OUTCOME_PRIORITIES,
-  UNIVERSAL_CHANGE_MGMT
+  UNIVERSAL_CHANGE_MGMT,
+  UNIVERSAL_TOOL_USAGE
 } from '../quizCatalog';
 
 interface ScoringPanelProps {
@@ -49,6 +50,7 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   const selectedSensitivities = getArrayFromAnswer('sensitivity');
   const selectedCollaborations = getArrayFromAnswer('collaboration');
   const selectedOutcomes = getArrayFromAnswer('outcomes');
+  const selectedTools = getArrayFromAnswer('tools');
 
   // Build Answer Summary Items
   const summaryItems: Array<{ label: string; value: string; category: string }> = [];
@@ -101,6 +103,18 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
       label: 'Collaboration',
       value: `${titles.length} selected (${titles.slice(0, 2).join(', ')}${titles.length > 2 ? '...' : ''})`,
       category: 'collaboration'
+    });
+  }
+
+  // Real Tool Usage step (#270). Summary only -- the readiness/radar formulas
+  // below are deliberately untouched by this answer, so adding the step doesn't
+  // silently move a score every earlier assessment was measured against.
+  if (selectedTools.length > 0) {
+    const titles = selectedTools.map(id => UNIVERSAL_TOOL_USAGE.find(o => o.id === id)?.title || id);
+    summaryItems.push({
+      label: 'Tools',
+      value: `${titles.length} selected (${titles.slice(0, 2).join(', ')}${titles.length > 2 ? '...' : ''})`,
+      category: 'tools'
     });
   }
 

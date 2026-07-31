@@ -28,12 +28,16 @@ export const QUIZ_NAV_ITEMS = [
   { id: 'use-cases', label: 'Use Cases', stepNumber: 5, isMultiSelect: true },
   { id: 'sensitivity', label: 'Data Sensitivity', stepNumber: 6, isMultiSelect: true },
   { id: 'collaboration', label: 'Collaboration Pattern', stepNumber: 7, isMultiSelect: true },
-  { id: 'ai-comfort', label: 'AI Comfort', stepNumber: 8, isMultiSelect: false },
-  { id: 'workflow', label: 'Workflow Structure', stepNumber: 9, isMultiSelect: false },
-  { id: 'adoption-speed', label: 'Adoption Speed', stepNumber: 10, isMultiSelect: false },
-  { id: 'outcomes', label: 'Outcome Priorities', stepNumber: 11, isMultiSelect: true },
-  { id: 'change-mgmt', label: 'Change Management', stepNumber: 12, isMultiSelect: false },
-  { id: 'review', label: 'Review', stepNumber: 13, isMultiSelect: false },
+  // Real Tool Usage step (#270). Sits directly after Collaboration Pattern:
+  // both describe WHERE the work happens, and the answer feeds the same
+  // downstream generators as the collaboration answer does.
+  { id: 'tools', label: 'Tool Usage', stepNumber: 8, isMultiSelect: true },
+  { id: 'ai-comfort', label: 'AI Comfort', stepNumber: 9, isMultiSelect: false },
+  { id: 'workflow', label: 'Workflow Structure', stepNumber: 10, isMultiSelect: false },
+  { id: 'adoption-speed', label: 'Adoption Speed', stepNumber: 11, isMultiSelect: false },
+  { id: 'outcomes', label: 'Outcome Priorities', stepNumber: 12, isMultiSelect: true },
+  { id: 'change-mgmt', label: 'Change Management', stepNumber: 13, isMultiSelect: false },
+  { id: 'review', label: 'Review', stepNumber: 14, isMultiSelect: false },
 ];
 
 export const INDUSTRY_OPTIONS: QuizOptionTile[] = [
@@ -734,6 +738,22 @@ export const UNIVERSAL_AI_COMFORT: QuizOptionTile[] = [
   { id: 'neutral', title: 'Neutral', description: 'Open to AI assistance, but relies on standard review workflows before sending', iconName: 'Meh' },
   { id: 'cautious', title: 'Cautious', description: 'Prefers strict human-in-the-loop validation, concerned about accuracy & hallucination', iconName: 'ShieldAlert' },
   { id: 'not_comfortable', title: 'Not Comfortable', description: 'Skeptical or resistant to AI, requires extensive policy guardrails & proof', iconName: 'AlertTriangle' },
+];
+
+// Real Tool Usage options (#270) — the eight Microsoft 365 surfaces that have a
+// first-party Copilot integration, so an answer here genuinely narrows which
+// Copilot experiences are in reach. The titles (not the ids) are what lands in
+// QuizProfile.toolUsage and therefore in the AI generators' prompts, so they
+// read as product names rather than slugs.
+export const UNIVERSAL_TOOL_USAGE: QuizOptionTile[] = [
+  { id: 'word', title: 'Word', description: 'Long-form documents, reports, contracts & proposals', iconName: 'FileText' },
+  { id: 'excel', title: 'Excel', description: 'Spreadsheets, financial models & data analysis', iconName: 'FileSpreadsheet' },
+  { id: 'powerpoint', title: 'PowerPoint', description: 'Decks, client presentations & internal briefings', iconName: 'Presentation' },
+  { id: 'outlook', title: 'Outlook', description: 'Email, calendar & meeting coordination', iconName: 'Mail' },
+  { id: 'teams', title: 'Teams', description: 'Chat, channels, meetings & meeting recap', iconName: 'MessageSquare' },
+  { id: 'onenote', title: 'OneNote', description: 'Notebooks, meeting notes & shared research', iconName: 'NotebookPen' },
+  { id: 'sharepoint_onedrive', title: 'SharePoint / OneDrive', description: 'Document libraries, intranet sites & file storage', iconName: 'HardDrive' },
+  { id: 'loop', title: 'Loop', description: 'Collaborative workspaces, pages & live components', iconName: 'Layers' },
 ];
 
 export const UNIVERSAL_WORKFLOW_STRUCTURE: QuizOptionTile[] = [

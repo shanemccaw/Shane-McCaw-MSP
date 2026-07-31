@@ -77,8 +77,17 @@ export interface FinalReportQuizProfile {
   researchLoad: number;
   communicationLoad: number;
   repetitiveLoad: number;
+  /** Real Tool Usage step selections (#270) — surfaced to the model via {{toolUsage}}. */
   toolUsage: string[];
   aiComfort: "low" | "medium" | "high";
+  // #270 — collected by the quiz, previously dropped. Optional: a profile
+  // restored from a pre-#270 row has none of them. Passed straight through to
+  // generateUseCasesForPersona below alongside the rest of the profile.
+  personaClusters?: string[];
+  targetPersonas?: string[];
+  useCaseClusters?: string[];
+  adoptionSpeed?: string | null;
+  changeManagement?: string | null;
 }
 
 type Severity = "High" | "Medium" | "Low";
@@ -233,6 +242,7 @@ QUIZ-TAKER'S ORGANIZATION PROFILE:
 - Collaboration pattern(s): {{collaboration}}
 - Data sensitivity in scope: {{sensitivity}}
 - Outcome priorities: {{outcomePriorities}}
+- Microsoft 365 surfaces this organization works in daily: {{toolUsage}}
 
 REAL GENERATED PERSONAS this assessment surfaced for this organization ({{personaCount}} total):
 {{personasBlock}}
@@ -333,6 +343,9 @@ export async function generateFinalReportNarrative(
     .replace(/\{\{collaboration\}\}/g, quizProfile.collaboration.join(", ") || "none specified")
     .replace(/\{\{sensitivity\}\}/g, quizProfile.sensitivity.join(", ") || "none specified")
     .replace(/\{\{outcomePriorities\}\}/g, quizProfile.outcomePriorities.join(", ") || "none specified")
+    // #270 — real Tool Usage answers. Harmless no-op against a stored ai_prompts
+    // body that predates the token (see the manual SQL that adds it there).
+    .replace(/\{\{toolUsage\}\}/g, quizProfile.toolUsage.join(", ") || "none specified")
     .replace(/\{\{personaCount\}\}/g, String(personas.length))
     .replace(/\{\{personasBlock\}\}/g, personasToBlock(personas))
     .replace(/\{\{useCaseCount\}\}/g, String(useCaseTiles.length))

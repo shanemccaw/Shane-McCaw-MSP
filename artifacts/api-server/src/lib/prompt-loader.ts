@@ -1558,7 +1558,7 @@ Ground riskScore/feasibilityScore/adoptionFriction and valuePotential.hoursSaved
   {
     key: "assessment-final-report-narrative",
     name: "Copilot Assessment — Final Report Narrative",
-    description: "Generates the Final Report screen's 6-8 sentence executive narrative from real generated personas (#186), real generated use cases (#187), the real user-configured GovernanceState, and a real deterministic ROI score (#190) — Copilot Assessment epic #183, Phase 8 / #191. Tokens: {{role}}, {{department}}, {{industry}}, {{collaboration}}, {{sensitivity}}, {{outcomePriorities}}, {{personaCount}}, {{personasBlock}}, {{useCaseCount}}, {{useCasesBlock}}, {{governanceBlock}}, {{roiBlock}}. Must return ONLY a semantic HTML fragment (no <html>/<head>/<body>/<style>/<script>, no markdown fences).",
+    description: "Generates the Final Report screen's 6-8 sentence executive narrative from real generated personas (#186), real generated use cases (#187), the real user-configured GovernanceState, and a real deterministic ROI score (#190) — Copilot Assessment epic #183, Phase 8 / #191. Tokens: {{role}}, {{department}}, {{industry}}, {{collaboration}}, {{sensitivity}}, {{outcomePriorities}}, {{toolUsage}}, {{personaCount}}, {{personasBlock}}, {{useCaseCount}}, {{useCasesBlock}}, {{governanceBlock}}, {{roiBlock}}. Must return ONLY a semantic HTML fragment (no <html>/<head>/<body>/<style>/<script>, no markdown fences).",
     category: "insights",
     featureArea: "Copilot Assessment — Final Report",
     featureRoute: "/copilot-assessment/report",
@@ -1570,6 +1570,7 @@ QUIZ-TAKER'S ORGANIZATION PROFILE:
 - Collaboration pattern(s): {{collaboration}}
 - Data sensitivity in scope: {{sensitivity}}
 - Outcome priorities: {{outcomePriorities}}
+- Microsoft 365 surfaces this organization works in daily: {{toolUsage}}
 
 REAL GENERATED PERSONAS this assessment surfaced for this organization ({{personaCount}} total):
 {{personasBlock}}
