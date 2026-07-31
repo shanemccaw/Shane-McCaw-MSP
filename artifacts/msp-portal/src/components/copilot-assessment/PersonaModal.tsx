@@ -19,6 +19,14 @@ interface PersonaModalProps {
 export const PersonaModal: React.FC<PersonaModalProps> = ({ persona, onClose }) => {
   if (!persona) return null;
 
+  // #186: PersonaStory's real shape (shortStory/expandedNarrative/
+  // sensitivityExposure/collaborationFriction/valuePotential) replaced the
+  // narrower mock fields this modal used to read directly.
+  const evidence = [
+    ...persona.sensitivityExposure.map(e => `${e.label} (${e.severity})`),
+    ...persona.collaborationFriction.map(f => `${f.label} (${f.severity})`),
+  ];
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-[#161616] border border-[#2D2D2D] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl space-y-6 p-6 animate-in fade-in zoom-in-95 duration-200">
@@ -53,7 +61,7 @@ export const PersonaModal: React.FC<PersonaModalProps> = ({ persona, onClose }) 
             Detailed Persona Narrative
           </span>
           <p className="text-sm text-[#E1E1E1] leading-relaxed bg-[#111111] p-4 rounded-lg border border-[#2D2D2D]">
-            "{persona.detailedStory}"
+            "{persona.shortStory.summary}"
           </p>
         </div>
 
@@ -61,16 +69,16 @@ export const PersonaModal: React.FC<PersonaModalProps> = ({ persona, onClose }) 
         <div className="space-y-2">
           <span className="text-xs font-semibold text-[#A1A1A1] uppercase tracking-wider font-mono flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5 text-[#0078D4]" />
-            Telemetry Evidence & Signal Provenance
+            Common Patterns for This Persona
           </span>
           <div className="space-y-2">
-            {persona.telemetryEvidence.map((evidence, idx) => (
+            {evidence.map((item, idx) => (
               <div
                 key={idx}
                 className="flex items-center space-x-2.5 bg-[#111111] border border-[#2D2D2D] p-2.5 rounded-md text-xs text-[#E1E1E1]"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="font-mono">{evidence}</span>
+                <span className="font-mono">{item}</span>
               </div>
             ))}
           </div>
@@ -87,21 +95,21 @@ export const PersonaModal: React.FC<PersonaModalProps> = ({ persona, onClose }) 
             <div className="bg-[#111111] p-3 rounded-md border border-[#2D2D2D]">
               <span className="text-[10px] text-[#888888] block">Weekly Time Saved</span>
               <span className="text-base font-bold text-emerald-400 font-mono">
-                +{persona.roiPreview.hoursSavedPerWeek} hrs / wk
+                +{persona.valuePotential.hoursSavedPerWeek} hrs / wk
               </span>
             </div>
 
             <div className="bg-[#111111] p-3 rounded-md border border-[#2D2D2D]">
               <span className="text-[10px] text-[#888888] block">Annual Seat Value</span>
               <span className="text-base font-bold text-[#0078D4] font-mono">
-                {persona.roiPreview.annualValue}
+                {persona.valuePotential.annualValuePerSeat}
               </span>
             </div>
 
             <div className="bg-[#111111] p-3 rounded-md border border-[#2D2D2D]">
               <span className="text-[10px] text-[#888888] block">Primary Benefit Driver</span>
               <span className="text-xs font-medium text-[#E1E1E1]">
-                {persona.roiPreview.primaryBenefit}
+                {persona.valuePotential.primaryBenefit}
               </span>
             </div>
           </div>

@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { PersonaStory } from '../types';
-import { 
-  Users, 
-  ArrowRight, 
-  ShieldAlert, 
-  Zap, 
-  Terminal, 
-  FileText, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ChevronDown, 
-  ChevronUp, 
+import React, { useEffect, useState } from 'react';
+import { PersonaStory, QuizProfile, PersonaGenerationStatus } from '../types';
+import {
+  Users,
+  ArrowRight,
+  ShieldAlert,
+  Zap,
+  Terminal,
+  FileText,
+  CheckCircle2,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
   Sparkles,
   Lock,
   Cpu,
@@ -26,285 +26,18 @@ import {
   Bookmark,
   Target,
   BarChart3,
-  Lightbulb
+  Lightbulb,
+  Loader2
 } from 'lucide-react';
 
 import { TransformationSurface, TransformationData } from '../telemetry/TransformationSurface';
 import { UseCaseIssueModal, UseCaseIssue } from '../UseCaseIssueModal';
 
-export interface ExtendedPersonaData {
-  id: string;
-  name: string;
-  role: string;
-  department: string;
-  avatar: string;
-  bgAnimationType: 'engineer' | 'security' | 'pm' | 'writer' | 'researcher';
-  collaborationPattern: string[];
-  sensitivitySet: string[];
-  useCaseCluster: string;
-  outcomePriorities: string[];
-  
-  // Scores & Metrics
-  riskScore: number;
-  feasibilityScore: number;
-  adoptionFriction: number;
-  sensitivityExposure: { label: string; severity: 'High' | 'Medium' | 'Low' }[];
-  collaborationFriction: { label: string; severity: 'High' | 'Medium' | 'Low' }[];
-  valuePotential: {
-    hoursSavedPerWeek: number;
-    annualValuePerSeat: string;
-    roiMultiplier: string;
-    primaryBenefit: string;
-  };
-
-  // Short Story (3-5 SENTENCES)
-  shortStory: {
-    summary: string;
-    telemetryCheck: string;
-    copilotUnlock: string;
-  };
-
-  // Expanded Narrative (7 Parts)
-  expandedNarrative: {
-    identityContext: string;
-    collaborationSensitivity: string;
-    telemetryRealityCheck: string;
-    workflowFriction: string;
-    feasibilityReadiness: string;
-    copilotValueStory: string;
-    roiBreakdown: string;
-  };
-
-  insightRibbonText: string;
-}
-
-const EXTENDED_PERSONAS: ExtendedPersonaData[] = [
-  {
-    id: 'dev_lead',
-    name: 'Engineering & Dev Lead',
-    role: 'Lead Cloud Architect & Dev Lead',
-    department: 'Engineering & Tech Ops',
-    avatar: '💻',
-    bgAnimationType: 'engineer',
-    collaborationPattern: ['GitHub Repos', 'Teams Dev Channel', 'M365 Loop', 'Azure DevOps', 'VS Code'],
-    sensitivitySet: ['Confidential IP', 'API Keys & Secrets', 'Architecture Specs', 'Prod Conn Strings'],
-    useCaseCluster: 'Automated Code Review & API Microservices Grounding',
-    outcomePriorities: ['Engineering Velocity (+35%)', 'Zero Key Exposure', 'CI/CD Auto-Sync'],
-    riskScore: 32,
-    feasibilityScore: 92,
-    adoptionFriction: 18,
-    sensitivityExposure: [
-      { label: 'Unmonitored API Key Snippets', severity: 'High' },
-      { label: 'Overshared Dev Specs in Teams', severity: 'Medium' },
-      { label: 'Unlabeled Architecture Diagrams', severity: 'Low' }
-    ],
-    collaborationFriction: [
-      { label: 'Manual PR & Spec Reconciliation', severity: 'High' },
-      { label: 'Cross-Squad Context Loss in Slack/Teams', severity: 'Medium' }
-    ],
-    valuePotential: {
-      hoursSavedPerWeek: 6.8,
-      annualValuePerSeat: '$18,400 / seat',
-      roiMultiplier: '8.4x ROI',
-      primaryBenefit: 'Accelerated Code Delivery & Automated Governance Grounding'
-    },
-    shortStory: {
-      summary: 'Coordinates multi-repo microservices architecture across 1,400+ weekly Teams messages and GitHub commits. While Quiz intent highlights high custom AI extensibility and REST API integration needs, live Telemetry reveals 14 unmonitored API key snippets and overshared dev specs across legacy channels.',
-      telemetryCheck: 'Drift Engine detected 14 unmonitored API key strings in public Teams chats & 3 overshared SharePoint dev repos.',
-      copilotUnlock: 'M365 Copilot with Graph Connectors & Copilot Studio automates PR reviews and architectural synthesis while Purview enforces auto-labeling on secret credentials.'
-    },
-    expandedNarrative: {
-      identityContext: 'As Lead Cloud Architect, this persona manages microservice boundaries, API contract definitions, and sprint velocity across 4 sub-squads. They spend 22+ hours weekly navigating scattered specification docs, pull request threads, and incident channels.',
-      collaborationSensitivity: 'Heavy reliance on GitHub Repos, Teams Dev Channels, and M365 Loop workspaces. Sensitive assets include proprietary source code algorithms, cloud connection strings, and production architecture specs.',
-      telemetryRealityCheck: 'Signals & Drift Engines identified 14 hardcoded credential strings in Teams snippets, 3 overshared SharePoint sites with broad "Everyone" permissions, and CA01 MFA bypass exceptions on legacy service accounts.',
-      workflowFriction: 'Devs waste 1.5 hours daily manually searching for API specs and reconciling contradictory architectural updates across Jira, Teams, and Loop.',
-      feasibilityReadiness: 'Feasibility Score is 92/100 due to high technical literacy and existing M365 E5 licensing. Champion readiness is high with minimal change resistance.',
-      copilotValueStory: 'Integrating M365 Copilot with GitHub Copilot & Azure Graph Connectors enables instant code documentation synthesis, real-time PR triage, and automated architecture brief generation.',
-      roiBreakdown: 'Recovers 6.8 hours/week per developer. At an average developer cost, this yields $18,400 in annual productivity value per seat with an 8.4x ROI multiplier.'
-    },
-    insightRibbonText: '⚡ Dev Lead Cohort: 14 unmonitored API keys detected in overshared specs — Copilot Graph Grounding recovers 6.8 hrs/wk with automated sensitivity enforcement.'
-  },
-  {
-    id: 'sec_spec',
-    name: 'Mission Specialist & SecOps',
-    role: 'Principal Security Engineer & SecOps Lead',
-    department: 'Cyber Security & Governance',
-    avatar: '🛡️',
-    bgAnimationType: 'security',
-    collaborationPattern: ['Exchange Online', 'Teams Incident Room', 'Purview Center', 'Defender SIEM'],
-    sensitivitySet: ['PII Records', 'Credential Vaults', 'DLP Audit Logs', 'CA01 Policy Specs'],
-    useCaseCluster: 'SecOps Guardrail Audit & Automated DLP Enforcement',
-    outcomePriorities: ['Zero Drift', 'Conditional Access Alignment', '100% Audit Coverage'],
-    riskScore: 68,
-    feasibilityScore: 85,
-    adoptionFriction: 24,
-    sensitivityExposure: [
-      { label: 'Public Sharing Links on Sensitive Sites', severity: 'High' },
-      { label: 'CA01 Policy Exception Drift', severity: 'High' },
-      { label: 'Unlabeled PII in Legacy Exchange Logs', severity: 'Medium' }
-    ],
-    collaborationFriction: [
-      { label: 'Manual Security Incident Triage', severity: 'High' },
-      { label: 'DLP Override Audit Bottlenecks', severity: 'Medium' }
-    ],
-    valuePotential: {
-      hoursSavedPerWeek: 5.4,
-      annualValuePerSeat: '$21,200 / seat',
-      roiMultiplier: '9.1x ROI',
-      primaryBenefit: 'Automated Threat Mitigation & Continuous Purview Guardrail Sync'
-    },
-    shortStory: {
-      summary: 'Coordinates continuous incident triage and Purview compliance across 1,240 SharePoint sites and M365 tenant endpoints. Telemetry flags 18 overshared public links and CA01 MFA exemptions. Copilot for Security automates threat hunting while DLP auto-labeling blocks data egress.',
-      telemetryCheck: 'Health Engine & Priority Engine flagged CA01 Conditional Access exemptions and 18 public sharing links on sensitive HR/Finance sites.',
-      copilotUnlock: 'Automates SIEM query generation, summarizes complex audit trails, and automatically applies Purview Sensitivity Labels across all tenant repositories.'
-    },
-    expandedNarrative: {
-      identityContext: 'The Principal Security Engineer leads tenant threat hunting, zero-trust compliance, and data loss prevention across all enterprise endpoints and cloud workloads.',
-      collaborationSensitivity: 'Utilizes Purview Compliance Center, Defender SIEM, and dedicated Teams Incident War Rooms. Handles highly sensitive PII, audit trails, and conditional access policies.',
-      telemetryRealityCheck: 'Tenant telemetry revealed legacy basic auth protocols still active on 2 admin endpoints, missing PIM step-up MFA for 3 global admin roles, and 18 overshared public links.',
-      workflowFriction: 'SecOps engineers lose 18+ hours weekly manually sifting through raw Defender logs and verifying DLP override exceptions.',
-      feasibilityReadiness: 'Feasibility Score of 85/100. High readiness for automated security copilots once CA01 conditional access policies are tightened.',
-      copilotValueStory: 'Copilot for Security correlates Graph signals with Defender incidents in natural language, reducing threat investigation time from hours to seconds.',
-      roiBreakdown: 'Saves 5.4 hours/week per SecOps analyst, avoiding costly audit findings and generating $21,200 in annual productivity and risk-mitigation value per seat.'
-    },
-    insightRibbonText: '🛡️ SecOps Specialist: 18 overshared public links & CA01 MFA exemptions flagged — Copilot for Security automates threat triage and Purview auto-labeling.'
-  },
-  {
-    id: 'prog_mgr',
-    name: 'Program & Product Manager',
-    role: 'Staff Product Manager & Agile Lead',
-    department: 'Product & PMO',
-    avatar: '🚀',
-    bgAnimationType: 'pm',
-    collaborationPattern: ['Teams Squad Channels', 'Word PRDs', 'Loop Workspaces', 'Jira / DevOps'],
-    sensitivitySet: ['Roadmap Strategy', 'Customer Feedback', 'Sprint Velocity Logs', 'Vendor SOWs'],
-    useCaseCluster: 'Cross-Squad Sprint Synthesis & Automated Status Briefs',
-    outcomePriorities: ['Sprint Cycle Speed (+40%)', 'Zero Meeting Lag', 'Cross-Functional Sync'],
-    riskScore: 24,
-    feasibilityScore: 94,
-    adoptionFriction: 12,
-    sensitivityExposure: [
-      { label: 'Unrestricted Customer Feedback Repos', severity: 'Medium' },
-      { label: 'Draft Financial SOWs in Teams', severity: 'Medium' }
-    ],
-    collaborationFriction: [
-      { label: '68% Meeting Time Congestion', severity: 'High' },
-      { label: 'Manual Executive Status Report Assembly', severity: 'High' }
-    ],
-    valuePotential: {
-      hoursSavedPerWeek: 5.8,
-      annualValuePerSeat: '$16,500 / seat',
-      roiMultiplier: '7.8x ROI',
-      primaryBenefit: 'Elimination of Administrative Meeting Burden & Rapid Sprint Alignment'
-    },
-    shortStory: {
-      summary: 'Manages 12 cross-functional sprint pods and processes 1,400 Teams messages weekly. Telemetry indicates 68% meeting time congestion. Copilot synthesizes multi-hour roadmap discussions into instant Azure DevOps backlog items, recovering 5.8 hrs/wk.',
-      telemetryCheck: 'Signals Engine detected 68% of work hours spent in Teams calls with 1,400+ weekly chat messages across 12 squad channels.',
-      copilotUnlock: 'Copilot in Teams & Word auto-generates meeting recaps, extracts action items directly into Jira/DevOps, and drafts executive status briefs.'
-    },
-    expandedNarrative: {
-      identityContext: 'Oversees product strategy, feature prioritization, and engineering execution across multiple release trains and business stakeholders.',
-      collaborationSensitivity: 'Heavy daily activity in Teams Channels, Word PRDs, M365 Loop workspaces, and DevOps boards. Manages strategic roadmap data and vendor SOWs.',
-      telemetryRealityCheck: 'Priority Engine highlighted extreme meeting fragmentation (68% meeting time ratio) causing status reporting delay cycles of 4+ days.',
-      workflowFriction: 'PMs spend up to 10 hours every week manually writing meeting minutes, drafting status decks, and following up on unassigned action items.',
-      feasibilityReadiness: 'Feasibility Score of 94/100. Highest adoption velocity among all enterprise cohorts with immediate productivity return.',
-      copilotValueStory: 'Copilot in Teams captures key decisions during live meetings, creates action-item tables in Loop, and converts PRDs into executive slides automatically.',
-      roiBreakdown: 'Recovers 5.8 hours/week per PM. Delivers $16,500 in annual seat value with a 7.8x ROI multiplier.'
-    },
-    insightRibbonText: '🚀 Program Manager: 68% meeting time congestion across 12 sprint pods — Copilot synthesizes multi-hour discussions into instant Azure DevOps items.'
-  },
-  {
-    id: 'tech_writer',
-    name: 'Technical Writer & Legal Counsel',
-    role: 'Lead Technical Writer & Corporate Counsel',
-    department: 'Legal & Documentation',
-    avatar: '📜',
-    bgAnimationType: 'writer',
-    collaborationPattern: ['Word Docs', 'SharePoint Portal', 'Outlook Legal Thread', 'Adobe Acrobat'],
-    sensitivitySet: ['Legal Redlines', 'IP Patent Claims', 'Customer NDAs', 'M&A Disclosures'],
-    useCaseCluster: 'Contract Redline & Automated Policy Compliance Check',
-    outcomePriorities: ['Document Accuracy', 'Audit Provenance', 'Contract Velocity'],
-    riskScore: 52,
-    feasibilityScore: 81,
-    adoptionFriction: 30,
-    sensitivityExposure: [
-      { label: 'Unlabeled Legal Contract Drafts', severity: 'High' },
-      { label: 'Legacy Non-Encrypted M&A Attachments', severity: 'High' }
-    ],
-    collaborationFriction: [
-      { label: '45+ Page Manual Contract Redlines', severity: 'High' },
-      { label: 'Version Control Friction in Email Threads', severity: 'Medium' }
-    ],
-    valuePotential: {
-      hoursSavedPerWeek: 4.8,
-      annualValuePerSeat: '$19,800 / seat',
-      roiMultiplier: '8.8x ROI',
-      primaryBenefit: 'Accelerated Contract Review Cycles with Complete Compliance Audit Trail'
-    },
-    shortStory: {
-      summary: 'Synthesizes complex 45+ page legal contracts and regulatory policies. Telemetry flags 42 unlabeled legal drafts in public team channels. Copilot accelerates redline analysis and clause extraction with full audit provenance while Purview auto-labels sensitivity.',
-      telemetryCheck: 'Drift Engine discovered 42 unlabeled legal drafts and NDA documents stored in unencrypted SharePoint folders.',
-      copilotUnlock: 'Copilot in Word compares contract versions, extracts non-standard indemnification clauses, and verifies compliance with enterprise policy.'
-    },
-    expandedNarrative: {
-      identityContext: 'Responsible for legal risk mitigation, contract redlining, compliance documentation, and regulatory filing reviews.',
-      collaborationSensitivity: 'Operates in Word, SharePoint, and Outlook. Handles highly confidential IP claims, acquisition NDAs, and customer contracts.',
-      telemetryRealityCheck: 'Drift Engine detected 42 unlabeled legal contract drafts sitting in public department channels without sensitivity classification.',
-      workflowFriction: 'Reviewing a single 50-page vendor agreement or contract redline takes 4-6 hours of manual clause comparison.',
-      feasibilityReadiness: 'Feasibility Score of 81/100. Requires strict Purview label enforcement before deploying Copilot to ensure zero accidental data leak.',
-      copilotValueStory: 'Copilot in Word performs side-by-side contract analysis, highlights risky liability clauses, and drafts executive summary memos with source citations.',
-      roiBreakdown: 'Saves 4.8 hours/week per legal counsel, slashing contract turnaround time from 12 days to 3 days and generating $19,800 in seat value.'
-    },
-    insightRibbonText: '📜 Legal Counsel: 42 unlabeled legal drafts in public channels — Copilot accelerates contract redline analysis with 100% audit provenance.'
-  },
-  {
-    id: 'research_exec',
-    name: 'Research & Strategic Executive',
-    role: 'VP Strategy & Chief Research Officer',
-    department: 'Executive Management',
-    avatar: '👑',
-    bgAnimationType: 'researcher',
-    collaborationPattern: ['Board Exchange Threads', 'PowerPoint Decks', 'Excel Financials', 'Teams Exec Briefs'],
-    sensitivitySet: ['Board Packages', 'Financial M&A', 'Executive Compensation', 'Strategic Acquisition'],
-    useCaseCluster: 'Multi-Document Executive Briefing & Decision Acceleration',
-    outcomePriorities: ['Decision Speed (+50%)', 'Strategic Focus', 'Board Package Fidelity'],
-    riskScore: 18,
-    feasibilityScore: 96,
-    adoptionFriction: 8,
-    sensitivityExposure: [
-      { label: 'Unencrypted Board Presentation Drafts', severity: 'Medium' }
-    ],
-    collaborationFriction: [
-      { label: '480 Weekly Email Thread Overload', severity: 'High' },
-      { label: 'Multi-Document Strategy Synthesis Lag', severity: 'Medium' }
-    ],
-    valuePotential: {
-      hoursSavedPerWeek: 7.2,
-      annualValuePerSeat: '$26,500 / seat',
-      roiMultiplier: '11.2x ROI',
-      primaryBenefit: 'Instant Multi-Report Synthesis & High-Fidelity Strategic Briefing'
-    },
-    shortStory: {
-      summary: 'Evaluates strategic M&A proposals, quarterly board decks, and market research. Telemetry confirms 480 weekly email threads and tight executive schedules. Copilot synthesizes 100-page market dossiers in seconds, recovering 7.2 hrs/wk for high-leverage decision making.',
-      telemetryCheck: 'Signals Engine recorded 480 weekly email threads, 18 strategic PowerPoint decks, and continuous multi-document context switches.',
-      copilotUnlock: 'Copilot in PowerPoint & Outlook synthesizes complex financial reports, generates executive briefs, and prepares board presentation storyboards.'
-    },
-    expandedNarrative: {
-      identityContext: 'Drives enterprise corporate strategy, market intelligence research, and high-stakes M&A evaluation reporting to the CEO and Board.',
-      collaborationSensitivity: 'High email density in Exchange, confidential board decks in PowerPoint, and financial forecasting models in Excel.',
-      telemetryRealityCheck: 'Telemetry shows high executive time spent reading lengthy market research PDFs and reconciling mismatched Excel data.',
-      workflowFriction: 'Synthesizing 5 competitor research reports and preparing a board briefing takes up to 12 hours of manual compilation.',
-      feasibilityReadiness: 'Feasibility Score of 96/100. Highest strategic impact cohort with immediate executive sponsorship.',
-      copilotValueStory: 'Copilot synthesizes multi-file dossiers across Outlook, Word, and Excel into a 5-bullet executive summary with interactive Q&A grounding.',
-      roiBreakdown: 'Recovers 7.2 hours/week per executive, unlocking $26,500 in annual strategic productivity value per seat.'
-    },
-    insightRibbonText: '👑 Executive Leadership: 480 weekly email threads & tight M&A review windows — Copilot synthesizes 100-page dossiers in seconds, saving 7.2 hrs/wk.'
-  }
-];
-
 interface PersonasScreenProps {
-  quizAnswers?: Record<string, string>;
-  personas?: PersonaStory[];
+  quizProfile: QuizProfile | null;
+  personas: PersonaStory[];
+  personasStatus: PersonaGenerationStatus;
+  personasError?: string | null;
   onSelectPersona?: (persona: PersonaStory) => void;
   onContinue: () => void;
   onHelpClick?: () => void;
@@ -313,22 +46,69 @@ interface PersonasScreenProps {
 }
 
 export const PersonasScreen: React.FC<PersonasScreenProps> = ({
-  quizAnswers = {},
+  quizProfile,
+  personas,
+  personasStatus,
+  personasError,
   onContinue,
   onHelpClick,
   onExitClick,
   onNavigate
 }) => {
-  const [activePersonaId, setActivePersonaId] = useState<string>('dev_lead');
+  const [activePersonaId, setActivePersonaId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
   const [selectedIssue, setSelectedIssue] = useState<UseCaseIssue | null>(null);
-  
+
   // Transformation Surface State
   const [transSliderPos, setTransSliderPos] = useState<number>(50);
   const [isTransExpanded, setIsTransExpanded] = useState<boolean>(false);
 
-  const activePersona = EXTENDED_PERSONAS.find(p => p.id === activePersonaId) || EXTENDED_PERSONAS[0];
+  // Real personas arrive asynchronously (#186) — default the rail selection to
+  // the first one once they land, rather than a hardcoded mock id.
+  useEffect(() => {
+    if (personas.length > 0 && !personas.some(p => p.id === activePersonaId)) {
+      setActivePersonaId(personas[0].id);
+    }
+  }, [personas, activePersonaId]);
+
+  const activePersona = personas.find(p => p.id === activePersonaId) || personas[0];
+
+  if (!quizProfile) {
+    return (
+      <PersonasStatusScreen
+        icon={<AlertTriangle className="w-8 h-8 text-status-amber" />}
+        title="Complete the quiz first"
+        detail="Persona generation needs your quiz answers as context. Go back and finish the quiz to continue."
+        onExitClick={onExitClick}
+        onHelpClick={onHelpClick}
+      />
+    );
+  }
+
+  if (personasStatus === 'loading' || (personasStatus === 'idle' && personas.length === 0)) {
+    return (
+      <PersonasStatusScreen
+        icon={<Loader2 className="w-8 h-8 text-primary animate-spin" />}
+        title="Generating your persona cohort…"
+        detail="M365 Copilot is synthesizing ~5 archetypal personas from your quiz answers. This usually takes a few seconds."
+        onExitClick={onExitClick}
+        onHelpClick={onHelpClick}
+      />
+    );
+  }
+
+  if (personasStatus === 'error' || !activePersona) {
+    return (
+      <PersonasStatusScreen
+        icon={<AlertTriangle className="w-8 h-8 text-destructive" />}
+        title="Persona generation failed"
+        detail={personasError || 'Something went wrong generating personas. Please try again.'}
+        onExitClick={onExitClick}
+        onHelpClick={onHelpClick}
+      />
+    );
+  }
 
   const handleSelectPersona = (id: string) => {
     if (id === activePersonaId) return;
@@ -478,7 +258,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
           <div className="flex items-center justify-between pb-2 border-b border-border">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-primary" />
-              <span>Persona Cohort Rail ({EXTENDED_PERSONAS.length})</span>
+              <span>Persona Cohort Rail ({personas.length})</span>
             </span>
             <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
               Live Select
@@ -486,7 +266,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
           </div>
 
           <div className="space-y-2.5">
-            {EXTENDED_PERSONAS.map((p) => {
+            {personas.map((p) => {
               const isActive = p.id === activePersonaId;
               return (
                 <div
@@ -1127,3 +907,51 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
     </div>
   );
 };
+
+/** Shared loading/error/blocked-state layout for PersonasScreen — honest states, never a fabricated persona. */
+const PersonasStatusScreen: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  onExitClick?: () => void;
+  onHelpClick?: () => void;
+}> = ({ icon, title, detail, onExitClick, onHelpClick }) => (
+  <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none relative">
+    <header className="h-13 bg-sidebar/90 border-b border-border px-4 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+      <div className="flex items-center space-x-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
+          <Users className="w-4 h-4" />
+        </div>
+        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+          Persona Stories & Cohort Fusion
+        </span>
+      </div>
+      <div className="flex items-center space-x-3">
+        {onHelpClick && (
+          <button
+            onClick={onHelpClick}
+            className="flex items-center space-x-1.5 bg-secondary/80 hover:bg-secondary text-muted-foreground text-xs px-3 py-1.5 rounded-lg border border-border transition-all cursor-pointer"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-primary" />
+            <span>Spec Info</span>
+          </button>
+        )}
+        {onExitClick && (
+          <button
+            onClick={onExitClick}
+            className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg border border-border transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </header>
+    <div className="flex-1 flex items-center justify-center p-6">
+      <div className="max-w-md w-full rounded-2xl border border-border bg-card/80 p-8 flex flex-col items-center text-center space-y-4">
+        {icon}
+        <h2 className="text-base font-bold text-foreground">{title}</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">{detail}</p>
+      </div>
+    </div>
+  </div>
+);

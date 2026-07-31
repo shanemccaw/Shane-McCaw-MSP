@@ -18,8 +18,9 @@
  * not a local setState -- Back/Forward, refresh, and sharing a link to a
  * specific step all work correctly as a result.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
+import { useAuth } from '@/lib/auth-context';
 import {
   AssessmentStep,
   AssessmentState,
@@ -32,10 +33,10 @@ import {
 } from '@/components/copilot-assessment/types';
 import {
   INITIAL_ENGINES,
-  PERSONA_STORIES,
   USE_CASE_TILES,
   DOCUMENT_DELIVERABLES
 } from '@/components/copilot-assessment/assessmentData';
+import { fetchPersonaStories } from '@/components/copilot-assessment/personaGenerationClient';
 
 import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
 
@@ -78,6 +79,7 @@ type SharedState = Omit<AssessmentState, 'currentStep'>;
 export default function CopilotAssessmentPage() {
   const { step: rawStep } = useParams<{ step?: string }>();
   const [, setLocation] = useLocation();
+  const { fetchWithAuth } = useAuth();
 
   // Falls back to 'home' for a missing/invalid :step (e.g. a stale or
   // hand-typed link) rather than crashing on an unrecognized step.
@@ -92,6 +94,8 @@ export default function CopilotAssessmentPage() {
     engines: INITIAL_ENGINES,
     isTelemetryRunning: false,
     telemetryProgress: 0,
+    personas: [],
+    personasStatus: 'idle',
     selectedPersona: null,
     selectedDocument: null,
     governance: {
@@ -106,8 +110,31 @@ export default function CopilotAssessmentPage() {
       useCaseIntensity: 70
     }
   });
+  const [personasError, setPersonasError] = useState<string | null>(null);
 
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
+
+  // Real persona generation (#186) — fires once per fresh quizProfile, the
+  // first time the personas step is reached. Re-completing the quiz resets
+  // personasStatus back to 'idle' (see handleCompleteQuiz), so a retake
+  // regenerates rather than serving stale personas.
+  useEffect(() => {
+    if (currentStep !== 'personas' || !state.quizProfile || state.personasStatus !== 'idle') return;
+    let cancelled = false;
+    setState(prev => ({ ...prev, personasStatus: 'loading' }));
+    setPersonasError(null);
+    fetchPersonaStories(fetchWithAuth, state.quizProfile)
+      .then(personas => {
+        if (cancelled) return;
+        setState(prev => ({ ...prev, personas, personasStatus: 'ready' }));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setPersonasError(err.message);
+        setState(prev => ({ ...prev, personasStatus: 'error' }));
+      });
+    return () => { cancelled = true; };
+  }, [currentStep, state.quizProfile, state.personasStatus, fetchWithAuth]);
 
   const currentStepIndex = STEP_ORDER.indexOf(currentStep);
   const progressPercent = Math.round((currentStepIndex / (STEP_ORDER.length - 1)) * 100);
@@ -125,6 +152,8 @@ export default function CopilotAssessmentPage() {
     setState(prev => ({
       ...prev,
       quizProfile: profile,
+      personas: [],
+      personasStatus: 'idle',
       currentStep: 'telemetry'
     }));
   };
@@ -182,6 +211,7 @@ export default function CopilotAssessmentPage() {
   };
 
   const handleReset = () => {
+    setPersonasError(null);
     setState({
       currentQuestionIndex: 0,
       quizAnswers: {},
@@ -191,6 +221,8 @@ export default function CopilotAssessmentPage() {
       engines: INITIAL_ENGINES,
       isTelemetryRunning: false,
       telemetryProgress: 0,
+      personas: [],
+      personasStatus: 'idle',
       selectedPersona: null,
       selectedDocument: null,
       governance: {
@@ -252,8 +284,10 @@ export default function CopilotAssessmentPage() {
 
         {currentStep === 'personas' && (
           <PersonasScreen
-            quizAnswers={state.quizAnswers}
-            personas={PERSONA_STORIES}
+            quizProfile={state.quizProfile}
+            personas={state.personas}
+            personasStatus={state.personasStatus}
+            personasError={personasError}
             onSelectPersona={(persona) => setState(prev => ({ ...prev, selectedPersona: persona }))}
             onContinue={() => handleNavigate('use-cases')}
             {...commonScreenProps}

@@ -1494,6 +1494,67 @@ INSTRUCTIONS:
 - Total length: 200-450 words. Write as Shane, first person, direct and human — not a corporate report voice.
 - CRITICAL: output the HTML fragment and then STOP. No commentary before or after.`,
   },
+  {
+    key: "assessment-persona-generation",
+    name: "Copilot Assessment — Persona Generation",
+    description: "Generates ~5 archetypal personas from a single quiz-taker's structured QuizProfile (Copilot Assessment epic #183, Phase 3 / #186). Single-input model — not real multi-employee clustering. Tokens: {{quizProfileJson}}. Must return ONLY a JSON array matching the PersonaStory shape.",
+    category: "insights",
+    featureArea: "Copilot Assessment — Personas",
+    featureRoute: "/copilot-assessment/personas",
+    model: "claude-sonnet-4-6",
+    body: `You are a Microsoft 365 Copilot adoption strategist. A prospective client just completed a short intake quiz describing their own role and organization. From THIS SINGLE QUIZ-TAKER'S CONTEXT ONLY, generate 5 plausible, distinct ARCHETYPAL personas — other roles/departments that would realistically exist at an organization matching this profile, spanning a genuine spread of functions (e.g. technical, security/compliance, program/product, documentation/legal, executive) rather than five variations on the quiz-taker's own role.
+
+QUIZ-TAKER CONTEXT (JSON):
+{{quizProfileJson}}
+
+IMPORTANT — industry/sensitivity/role context must naturally shape persona content (e.g. a healthcare industry value should produce HIPAA/PHI-aware personas; legal/CUI sensitivity should produce privilege-aware personas) purely through your own reasoning — there is no fixed per-industry template to follow, and you must never hardcode or copy boilerplate industry language that ignores what this specific quiz context says.
+
+HONESTY RULE: This organization has not been scanned yet — you have no real telemetry, no real findings. Every "telemetry"/"reality check" style field below must be written as a COMMON PATTERN typical of this persona archetype and quiz context ("commonly seen in organizations with this profile...", "organizations like this typically show..."), never phrased as if you personally detected or scanned anything. Never claim a specific real finding actually exists in this tenant.
+
+Return ONLY a JSON array of exactly 5 objects, no markdown fences, no preamble, no trailing text, matching this EXACT shape:
+[
+  {
+    "id": "short-kebab-case-slug",
+    "name": "Persona display name, e.g. Engineering & Dev Lead",
+    "role": "Specific job title",
+    "department": "Department name",
+    "avatar": "single emoji",
+    "bgAnimationType": "one of: engineer | security | pm | writer | researcher — pick whichever best fits this persona's function",
+    "collaborationPattern": ["3-5 real M365/tool surfaces this persona lives in, e.g. Teams Dev Channel"],
+    "sensitivitySet": ["2-4 categories of sensitive data this persona regularly handles"],
+    "useCaseCluster": "Short phrase naming this persona's primary Copilot use-case cluster",
+    "outcomePriorities": ["2-3 short outcome priority phrases, e.g. Engineering Velocity (+35%)"],
+    "riskScore": <integer 0-100>,
+    "feasibilityScore": <integer 0-100>,
+    "adoptionFriction": <integer 0-100>,
+    "sensitivityExposure": [{"label": "short common-pattern label", "severity": "High|Medium|Low"}, ...2-3 entries],
+    "collaborationFriction": [{"label": "short common-pattern label", "severity": "High|Medium|Low"}, ...1-2 entries],
+    "valuePotential": {
+      "hoursSavedPerWeek": <number, one decimal, 3-8 range>,
+      "annualValuePerSeat": "$X,XXX / seat",
+      "roiMultiplier": "X.Xx ROI",
+      "primaryBenefit": "short phrase"
+    },
+    "shortStory": {
+      "summary": "2-3 sentence narrative summary in third person",
+      "telemetryCheck": "1 sentence, common-pattern framing per the HONESTY RULE above",
+      "copilotUnlock": "1-2 sentences on how M365 Copilot addresses this persona's workflow"
+    },
+    "expandedNarrative": {
+      "identityContext": "1-2 sentences on this persona's role and daily responsibilities",
+      "collaborationSensitivity": "1-2 sentences on their collaboration surfaces and the sensitive data they touch",
+      "telemetryRealityCheck": "1-2 sentences, common-pattern framing per the HONESTY RULE above",
+      "workflowFriction": "1-2 sentences on a concrete daily friction point",
+      "feasibilityReadiness": "1-2 sentences on adoption readiness, referencing the feasibilityScore",
+      "copilotValueStory": "1-2 sentences on the specific Copilot capability that helps most",
+      "roiBreakdown": "1-2 sentences tying valuePotential's numbers to this persona's work"
+    },
+    "insightRibbonText": "One punchy sentence with an emoji prefix summarizing this persona's headline pattern + Copilot unlock"
+  }
+]
+
+Ground riskScore/feasibilityScore/adoptionFriction and valuePotential.hoursSavedPerWeek loosely in the quiz-taker's own draftingLoad/researchLoad/communicationLoad/repetitiveLoad values where the persona's function plausibly correlates — but these are illustrative, not a precise formula.`,
+  },
 ];
 
 
