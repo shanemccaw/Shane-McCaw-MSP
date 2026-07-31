@@ -94,7 +94,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
       <div
         className={`absolute inset-0 transition-opacity duration-600 ${
           !isDocumentMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } bg-background/90 backdrop-blur-xl animate-pulse-glow border border-primary/40`}
+        } bg-[#02152E]/90 backdrop-blur-xl animate-pulse-glow border border-[#0078D4]/40`}
       />
 
       {/* HEARTBEAT WAVEFORM DRIFT (MODE 1) */}
@@ -104,7 +104,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
         }`}
       >
         <div className="w-[200%] h-full flex items-center animate-waveform">
-          <svg className="w-full h-16 text-primary" fill="none" viewBox="0 0 1200 60">
+          <svg className="w-full h-16 text-[#0078D4]" fill="none" viewBox="0 0 1200 60">
             <path
               d="M 0 30 Q 50 30 100 30 L 120 30 L 130 10 L 140 50 L 150 5 L 160 40 L 170 30 L 200 30 Q 300 30 400 30 L 420 30 L 430 10 L 440 50 L 450 5 L 460 40 L 470 30 L 500 30 Q 600 30 700 30 L 720 30 L 730 10 L 740 50 L 750 5 L 760 40 L 770 30 L 800 30 Q 900 30 1000 30 L 1020 30 L 1030 10 L 1040 50 L 1050 5 L 1060 40 L 1070 30 L 1100 30 Z"
               stroke="currentColor"
@@ -120,7 +120,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
       <div
         className={`absolute inset-0 transition-opacity duration-600 ${
           isDocumentMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } bg-gradient-to-r from-background/90 via-background/90 to-accent/40 backdrop-blur-xl border border-accent/40`}
+        } bg-gradient-to-r from-[#21093A]/90 via-[#0A1D3F]/90 to-[#022F43]/90 backdrop-blur-xl border border-purple-500/40`}
       />
 
       {/* SHIMMER SWEEP OVERLAY */}
@@ -132,11 +132,11 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
           isDocumentMode ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <Sparkles className="absolute left-[10%] bottom-0 w-4 h-4 text-accent animate-sparkle-1" />
-        <Sparkles className="absolute left-[30%] bottom-0 w-3.5 h-3.5 text-primary animate-sparkle-2" />
-        <Sparkles className="absolute left-[55%] bottom-0 w-5 h-5 text-accent animate-sparkle-3" />
-        <Sparkles className="absolute left-[75%] bottom-0 w-4 h-4 text-primary animate-sparkle-4" />
-        <Sparkles className="absolute left-[90%] bottom-0 w-3 h-3 text-accent animate-sparkle-5" />
+        <Sparkles className="absolute left-[10%] bottom-0 w-4 h-4 text-purple-400 animate-sparkle-1" />
+        <Sparkles className="absolute left-[30%] bottom-0 w-3.5 h-3.5 text-cyan-400 animate-sparkle-2" />
+        <Sparkles className="absolute left-[55%] bottom-0 w-5 h-5 text-indigo-300 animate-sparkle-3" />
+        <Sparkles className="absolute left-[75%] bottom-0 w-4 h-4 text-sky-400 animate-sparkle-4" />
+        <Sparkles className="absolute left-[90%] bottom-0 w-3 h-3 text-purple-300 animate-sparkle-5" />
       </div>
 
       {/* CONTENT RAIL */}
@@ -285,12 +285,12 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                         <span
                           className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
                             eng.severity === 'High'
-                              ? 'bg-destructive/90 text-destructive border-destructive'
+                              ? 'bg-rose-950/90 text-rose-300 border-rose-700'
                               : eng.severity === 'Medium'
-                              ? 'bg-status-amber/90 text-status-amber border-status-amber'
+                              ? 'bg-amber-950/90 text-amber-300 border-amber-700'
                               : eng.severity === 'Low'
-                              ? 'bg-primary/90 text-primary border-primary'
-                              : 'bg-status-green/90 text-status-green border-status-green'
+                              ? 'bg-sky-950/90 text-sky-300 border-sky-700'
+                              : 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
                           }`}
                         >
                           {eng.severity}
