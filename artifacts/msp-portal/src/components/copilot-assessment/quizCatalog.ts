@@ -222,6 +222,176 @@ export const ADAPTIVE_PERSONAS: Record<string, QuizOptionTile[]> = {
     // Support
     { id: 'support_eng', title: 'Support Engineer', description: 'Ticket triage, KB article generation & incident retros', iconName: 'LifeBuoy', clusterId: 'support' },
   ],
+  manufacturing: [
+    // Engineering
+    { id: 'process_engineer', title: 'Process Engineer', description: 'Process flow documentation, CAD drafting & line optimization notes', iconName: 'Wrench', clusterId: 'engineering' },
+    { id: 'automation_engineer', title: 'Automation Engineer', description: 'PLC programming logic, robotics specs & controls documentation', iconName: 'Cpu', clusterId: 'engineering' },
+
+    // Quality & Safety
+    { id: 'qa_inspector', title: 'QA Inspector', description: 'Defect logs, non-conformance reports & ISO audit prep', iconName: 'CheckSquare', clusterId: 'quality_safety' },
+    { id: 'ehs_specialist', title: 'EHS Specialist', description: 'Safety incident reports, compliance checklists & hazard assessments', iconName: 'ShieldAlert', clusterId: 'quality_safety' },
+
+    // Production
+    { id: 'shift_supervisor', title: 'Shift Supervisor', description: 'Shift handover notes, throughput reports & scheduling docs', iconName: 'Users', clusterId: 'production' },
+    { id: 'production_planner', title: 'Production Planner', description: 'Schedule optimization, capacity planning & work order drafting', iconName: 'Boxes', clusterId: 'production' },
+
+    // Maintenance
+    { id: 'maintenance_tech', title: 'Maintenance Technician', description: 'Work order documentation, preventive maintenance schedules', iconName: 'Settings', clusterId: 'maintenance' },
+    { id: 'reliability_engineer', title: 'Reliability Engineer', description: 'Failure analysis reports & SCADA telemetry diagnostics', iconName: 'Activity', clusterId: 'maintenance' },
+  ],
+  education: [
+    // Instruction
+    { id: 'teacher', title: 'Teacher', description: 'Lesson plans, grading rubrics & parent/guardian communication', iconName: 'BookOpen', clusterId: 'instruction' },
+    { id: 'instructional_coach', title: 'Instructional Coach', description: 'Professional development materials & classroom observation notes', iconName: 'GraduationCap', clusterId: 'instruction' },
+
+    // Research
+    { id: 'academic_researcher', title: 'Academic Researcher', description: 'Literature reviews, grant proposals & peer review synthesis', iconName: 'Microscope', clusterId: 'research' },
+    { id: 'grad_assistant', title: 'Graduate Assistant', description: 'Data collection support, citation management & lit summaries', iconName: 'FileText', clusterId: 'research' },
+
+    // Administration
+    { id: 'registrar', title: 'Registrar', description: 'Enrollment records, transcript processing & scheduling docs', iconName: 'FileSpreadsheet', clusterId: 'administration' },
+    { id: 'dean', title: 'Dean', description: 'Accreditation reports, faculty memos & institutional governance docs', iconName: 'Building', clusterId: 'administration' },
+
+    // Curriculum
+    { id: 'curriculum_designer', title: 'Curriculum Designer', description: 'Syllabus drafting & learning outcome mapping', iconName: 'Layers', clusterId: 'curriculum' },
+    { id: 'instructional_designer', title: 'Instructional Designer', description: 'Course content development & assessment design', iconName: 'PenTool', clusterId: 'curriculum' },
+  ],
+  government: [
+    // Policy & Analysis
+    { id: 'policy_analyst', title: 'Policy Analyst', description: 'Legislative briefs, impact assessments & public comment synthesis', iconName: 'FileSpreadsheet', clusterId: 'policy_analysis' },
+    { id: 'legislative_aide', title: 'Legislative Aide', description: 'Constituent correspondence & bill summary drafting', iconName: 'FileText', clusterId: 'policy_analysis' },
+
+    // Operations
+    { id: 'program_manager_gov', title: 'Program Manager', description: 'Interagency coordination notes & service delivery reports', iconName: 'FolderKanban', clusterId: 'operations' },
+    { id: 'procurement_officer', title: 'Procurement Officer', description: 'RFP drafting, vendor contracts & sourcing documentation', iconName: 'FileCheck', clusterId: 'operations' },
+
+    // Investigation
+    { id: 'investigator', title: 'Investigator', description: 'Case file documentation, evidence logs & interview summaries', iconName: 'Search', clusterId: 'investigation' },
+    { id: 'compliance_auditor_gov', title: 'Compliance Auditor', description: 'Regulatory audits & FOIA response drafting', iconName: 'ShieldCheck', clusterId: 'investigation' },
+
+    // Communications
+    { id: 'press_officer', title: 'Press Officer', description: 'Press releases, public statements & media briefing prep', iconName: 'Megaphone', clusterId: 'communications' },
+    { id: 'public_affairs', title: 'Public Affairs Specialist', description: 'Citizen engagement materials & agency briefing documents', iconName: 'Users', clusterId: 'communications' },
+  ],
+  legal: [
+    // Litigation
+    { id: 'litigator', title: 'Litigator', description: 'Brief drafting, deposition prep & case strategy memos', iconName: 'Gavel', clusterId: 'litigation' },
+    { id: 'litigation_paralegal', title: 'Litigation Paralegal', description: 'Discovery review, exhibit organization & filing prep', iconName: 'FileText', clusterId: 'litigation' },
+
+    // Corporate & Transactional
+    { id: 'transactional_attorney', title: 'Transactional Attorney', description: 'Contract drafting, deal memos & term sheet review', iconName: 'Briefcase', clusterId: 'corporate_transactional' },
+    { id: 'corp_paralegal', title: 'Corporate Paralegal', description: 'Due diligence review & closing checklist management', iconName: 'CheckSquare', clusterId: 'corporate_transactional' },
+
+    // Compliance & Regulatory
+    { id: 'compliance_counsel', title: 'Compliance Counsel', description: 'Regulatory filings, policy drafting & risk memos', iconName: 'ShieldCheck', clusterId: 'legal_compliance' },
+    { id: 'compliance_analyst_legal', title: 'Compliance Analyst', description: 'Audit response prep & regulatory risk assessments', iconName: 'FileCheck', clusterId: 'legal_compliance' },
+
+    // Practice Management
+    { id: 'practice_manager', title: 'Practice Manager', description: 'Billing narratives, client intake docs & matter administration', iconName: 'FileSpreadsheet', clusterId: 'practice_mgmt' },
+    { id: 'legal_secretary', title: 'Legal Secretary', description: 'Correspondence drafting & calendar/matter coordination', iconName: 'Layers', clusterId: 'practice_mgmt' },
+  ],
+  retail: [
+    // Merchandising
+    { id: 'merchandiser', title: 'Merchandiser', description: 'Assortment plans, pricing analysis & planogram documentation', iconName: 'Tag', clusterId: 'merchandising' },
+    { id: 'buyer', title: 'Buyer', description: 'Vendor negotiation memos & purchase order documentation', iconName: 'ShoppingBag', clusterId: 'merchandising' },
+
+    // Store Operations
+    { id: 'store_manager', title: 'Store Manager', description: 'Staff scheduling, inventory reports & daily ops summaries', iconName: 'Store', clusterId: 'store_ops' },
+    { id: 'loss_prevention', title: 'Loss Prevention Specialist', description: 'Incident reports & shrinkage analysis documentation', iconName: 'ShieldAlert', clusterId: 'store_ops' },
+
+    // E-Commerce
+    { id: 'ecommerce_manager', title: 'E-Commerce Manager', description: 'Product listing copy & campaign brief drafting', iconName: 'ShoppingBag', clusterId: 'ecommerce' },
+    { id: 'digital_marketer_retail', title: 'Digital Marketer', description: 'Ad copy drafting & campaign performance reports', iconName: 'Megaphone', clusterId: 'ecommerce' },
+
+    // Customer Experience
+    { id: 'cx_specialist', title: 'Customer Experience Specialist', description: 'Service scripts & complaint resolution documentation', iconName: 'Smile', clusterId: 'customer_experience' },
+    { id: 'loyalty_manager', title: 'Loyalty Program Manager', description: 'Program communications & retention analysis reports', iconName: 'Heart', clusterId: 'customer_experience' },
+  ],
+  energy: [
+    // Field Operations
+    { id: 'field_technician_energy', title: 'Field Technician', description: 'Inspection reports & work order documentation', iconName: 'Zap', clusterId: 'field_ops' },
+    { id: 'site_supervisor', title: 'Site Supervisor', description: 'Safety walkthrough docs & shift report drafting', iconName: 'Users', clusterId: 'field_ops' },
+
+    // Engineering & Technical
+    { id: 'reservoir_engineer', title: 'Reservoir Engineer', description: 'Reservoir modeling reports & technical specifications', iconName: 'Cpu', clusterId: 'engineering_technical' },
+    { id: 'grid_engineer', title: 'Grid Engineer', description: 'Load analysis & capacity planning documentation', iconName: 'Activity', clusterId: 'engineering_technical' },
+
+    // Regulatory & Environmental
+    { id: 'environmental_specialist', title: 'Environmental Specialist', description: 'Emissions reports & permit application drafting', iconName: 'ShieldCheck', clusterId: 'regulatory_environmental' },
+    { id: 'regulatory_affairs_energy', title: 'Regulatory Affairs Specialist', description: 'Compliance filings & audit preparation', iconName: 'FileCheck', clusterId: 'regulatory_environmental' },
+
+    // Trading & Commercial
+    { id: 'energy_trader', title: 'Energy Trader', description: 'Market analysis & contract structuring documentation', iconName: 'LineChart', clusterId: 'trading_commercial' },
+    { id: 'commercial_analyst_energy', title: 'Commercial Analyst', description: 'Pricing models & hedging strategy documentation', iconName: 'TrendingUp', clusterId: 'trading_commercial' },
+  ],
+  transportation: [
+    // Logistics & Dispatch
+    { id: 'dispatcher', title: 'Dispatcher', description: 'Route plans, load schedules & carrier communications', iconName: 'Truck', clusterId: 'logistics_dispatch' },
+    { id: 'logistics_coordinator', title: 'Logistics Coordinator', description: 'Carrier communications & shipment tracking updates', iconName: 'FolderKanban', clusterId: 'logistics_dispatch' },
+
+    // Fleet Operations
+    { id: 'fleet_manager', title: 'Fleet Manager', description: 'Maintenance logs & driver compliance documentation', iconName: 'Settings', clusterId: 'fleet_ops' },
+    { id: 'fleet_analyst', title: 'Fleet Analyst', description: 'Telemetry reports & utilization analysis', iconName: 'BarChart2', clusterId: 'fleet_ops' },
+
+    // Safety & Compliance
+    { id: 'safety_officer_transport', title: 'Safety Officer', description: 'Incident reports & DOT audit preparation', iconName: 'ShieldAlert', clusterId: 'transport_safety' },
+    { id: 'compliance_specialist_transport', title: 'Compliance Specialist', description: 'Hazmat documentation & inspection logs', iconName: 'FileCheck', clusterId: 'transport_safety' },
+
+    // Customer & Freight Services
+    { id: 'freight_coordinator', title: 'Freight Coordinator', description: 'Shipment tracking updates & billing documentation', iconName: 'FileText', clusterId: 'freight_services' },
+    { id: 'claims_specialist', title: 'Claims Specialist', description: 'Claims resolution & customer correspondence', iconName: 'FileCheck', clusterId: 'freight_services' },
+  ],
+  agriculture: [
+    // Field & Crop Operations
+    { id: 'farm_manager', title: 'Farm Manager', description: 'Planting schedules & yield report documentation', iconName: 'Sprout', clusterId: 'field_crop_ops' },
+    { id: 'field_technician_ag', title: 'Field Technician', description: 'Soil sample logs & irrigation record keeping', iconName: 'Activity', clusterId: 'field_crop_ops' },
+
+    // Livestock & Herd Management
+    { id: 'herd_manager', title: 'Herd Manager', description: 'Health records & breeding log documentation', iconName: 'Heart', clusterId: 'livestock_mgmt' },
+    { id: 'livestock_technician', title: 'Livestock Technician', description: 'Feed planning docs & veterinary visit notes', iconName: 'Stethoscope', clusterId: 'livestock_mgmt' },
+
+    // Agronomy & Research
+    { id: 'agronomist', title: 'Agronomist', description: 'Field trial reports & pest/disease analysis', iconName: 'Microscope', clusterId: 'agronomy_research' },
+    { id: 'research_technician_ag', title: 'Research Technician', description: 'Data collection support & lab notes', iconName: 'FileText', clusterId: 'agronomy_research' },
+
+    // Supply Chain & Trading
+    { id: 'commodity_trader', title: 'Commodity Trader', description: 'Contract structuring & market pricing analysis', iconName: 'TrendingUp', clusterId: 'ag_supply_chain' },
+    { id: 'logistics_manager_ag', title: 'Logistics Manager', description: 'Storage planning & transport coordination docs', iconName: 'Boxes', clusterId: 'ag_supply_chain' },
+  ],
+  nonprofit: [
+    // Programs & Services
+    { id: 'program_manager_np', title: 'Program Manager', description: 'Case management notes & outcome report drafting', iconName: 'Heart', clusterId: 'programs_services' },
+    { id: 'case_worker', title: 'Case Worker', description: 'Client intake documentation & service plan drafting', iconName: 'FileText', clusterId: 'programs_services' },
+
+    // Development & Fundraising
+    { id: 'development_director', title: 'Development Director', description: 'Donor proposals & cultivation strategy documentation', iconName: 'Users', clusterId: 'development_fundraising' },
+    { id: 'grant_writer', title: 'Grant Writer', description: 'Grant applications & funder report drafting', iconName: 'PenTool', clusterId: 'development_fundraising' },
+
+    // Finance & Compliance
+    { id: 'finance_manager_np', title: 'Finance Manager', description: 'Budget reports & Form 990 preparation support', iconName: 'FileSpreadsheet', clusterId: 'nonprofit_finance' },
+    { id: 'grants_accountant', title: 'Grants Accountant', description: 'Compliance tracking & expense report documentation', iconName: 'FileCheck', clusterId: 'nonprofit_finance' },
+
+    // Communications & Outreach
+    { id: 'comms_manager_np', title: 'Communications Manager', description: 'Newsletters & press release drafting', iconName: 'Megaphone', clusterId: 'comms_outreach' },
+    { id: 'outreach_coordinator', title: 'Outreach Coordinator', description: 'Community engagement materials & social content', iconName: 'Users', clusterId: 'comms_outreach' },
+  ],
+  other: [
+    // Leadership & Strategy
+    { id: 'executive', title: 'Executive', description: 'Strategic plans, board memos & org-wide communications', iconName: 'Crown', clusterId: 'leadership_strategy' },
+    { id: 'strategy_lead', title: 'Strategy Lead', description: 'Initiative roadmaps & strategic planning documentation', iconName: 'Target', clusterId: 'leadership_strategy' },
+
+    // Operations & Delivery
+    { id: 'project_manager_other', title: 'Project Manager', description: 'Status reports, project plans & vendor coordination', iconName: 'FolderKanban', clusterId: 'ops_delivery' },
+    { id: 'ops_coordinator', title: 'Operations Coordinator', description: 'Process documentation & cross-team coordination', iconName: 'Boxes', clusterId: 'ops_delivery' },
+
+    // Knowledge & Analysis
+    { id: 'analyst_other', title: 'Analyst', description: 'Research synthesis & report drafting', iconName: 'BarChart', clusterId: 'knowledge_analysis' },
+    { id: 'knowledge_manager', title: 'Knowledge Manager', description: 'Documentation management & knowledge base articles', iconName: 'BookOpen', clusterId: 'knowledge_analysis' },
+
+    // Client & Stakeholder Relations
+    { id: 'account_manager', title: 'Account Manager', description: 'Client communications & account plan documentation', iconName: 'Briefcase', clusterId: 'client_relations' },
+    { id: 'relationship_manager', title: 'Relationship Manager', description: 'Stakeholder updates & service report drafting', iconName: 'Users', clusterId: 'client_relations' },
+  ],
   default: [
     { id: 'exec_leader', title: 'Executive Leader', description: 'Strategic planning, board presentations & org-wide memos', iconName: 'Crown', clusterId: 'exec_strategy' },
     { id: 'knowledge_worker', title: 'Knowledge Worker', description: 'Daily M365 document synthesis, email & meeting catchup', iconName: 'Briefcase', clusterId: 'gen_knowledge' },
