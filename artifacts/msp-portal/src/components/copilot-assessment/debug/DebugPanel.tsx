@@ -29,8 +29,9 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import { Bug, ChevronDown, ChevronUp, Trash2, X } from "lucide-react";
+import { Bug, ChevronDown, ChevronUp, RotateCcw, Trash2, X } from "lucide-react";
 import { JsonViewer } from "@/components/ui/json-viewer";
+import { useAuth } from "@/lib/auth-context";
 import {
   clearNetworkLog,
   getNetworkLog,
@@ -97,6 +98,7 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
 
   const startDrag = useDragHandle(panelRef, setLayout, "move");
   const startResize = useDragHandle(panelRef, setLayout, "resize");
+  const resetSession = useResetSession();
 
   const filtered = useMemo(() => {
     const q = urlFilter.trim().toLowerCase();
@@ -141,6 +143,38 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
           Testbed Debug
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={resetSession.requestReset}
+            disabled={resetSession.status === "pending"}
+            data-testid="copilot-debug-reset-session"
+            title={
+              resetSession.status === "confirm"
+                ? "Click again to confirm — wipes quiz, scans, findings, workflow runs, and documents for this account"
+                : "[DEBUG] Reset session — clear quiz, scans, and documents (leaves entitlement intact)"
+            }
+            className={`flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold tracking-wide uppercase transition-colors disabled:opacity-50 ${
+              resetSession.status === "confirm"
+                ? "bg-red-500/20 text-red-600 hover:bg-red-500/30 dark:text-red-400"
+                : resetSession.status === "error"
+                  ? "text-red-600 dark:text-red-400"
+                  : resetSession.status === "done"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <RotateCcw className={`h-3 w-3 shrink-0 ${resetSession.status === "pending" ? "animate-spin" : ""}`} />
+            {resetSession.status === "confirm"
+              ? "Confirm?"
+              : resetSession.status === "pending"
+                ? "Resetting…"
+                : resetSession.status === "done"
+                  ? "Reset ✓"
+                  : resetSession.status === "error"
+                    ? "Failed"
+                    : "Reset"}
+          </button>
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -346,6 +380,59 @@ function statusColor(entry: NetworkEntry): string {
   if (entry.status != null && entry.status >= 400) return "text-red-600 dark:text-red-400";
   if (entry.state === "pending") return "text-muted-foreground/60";
   return "text-emerald-600 dark:text-emerald-400";
+}
+
+// ── Reset session (#284) ────────────────────────────────────────────────────────
+
+type ResetStatus = "idle" | "confirm" | "pending" | "done" | "error";
+
+/**
+ * Two-click confirm before the destructive call fires: the first click only
+ * arms a 4s-window "Confirm?" state (auto-reverts to idle if never followed
+ * up), the second click within that window is what actually calls
+ * POST /portal/assessment/debug-reset-session. The endpoint itself is the
+ * real gate (hard server-side isTestbed check) — this is purely a
+ * misclick guard on a destructive, un-undoable action.
+ */
+function useResetSession() {
+  const { fetchWithAuth } = useAuth();
+  const [status, setStatus] = useState<ResetStatus>("idle");
+  const confirmTimer = useRef<number | null>(null);
+  const settleTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+      if (settleTimer.current) window.clearTimeout(settleTimer.current);
+    },
+    [],
+  );
+
+  const requestReset = useCallback(() => {
+    if (status === "pending") return;
+
+    if (status !== "confirm") {
+      setStatus("confirm");
+      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = window.setTimeout(() => setStatus("idle"), 4000);
+      return;
+    }
+
+    if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+    setStatus("pending");
+    void fetchWithAuth("/api/portal/assessment/debug-reset-session", { method: "POST" })
+      .then((res) => {
+        setStatus(res.ok ? "done" : "error");
+      })
+      .catch(() => {
+        setStatus("error");
+      })
+      .finally(() => {
+        settleTimer.current = window.setTimeout(() => setStatus("idle"), 3000);
+      });
+  }, [status, fetchWithAuth]);
+
+  return { status, requestReset };
 }
 
 // ── Layout: drag, resize, persistence ─────────────────────────────────────────

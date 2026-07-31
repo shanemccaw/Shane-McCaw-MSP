@@ -55,6 +55,7 @@ import {
   wfRunsTable,
   wfDefinitionsTable,
   presentationDocViewsTable,
+  type CopilotAssessmentStateMap,
 } from "@workspace/db";
 
 /**
@@ -1016,6 +1017,123 @@ router.get(
     } catch (err) {
       authLog.error({ err, customerId }, "GET /portal/assessment/testbed-status failed");
       res.status(500).json({ error: "Failed to resolve testbed status" });
+    }
+  },
+);
+
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// POST /portal/assessment/debug-reset-session
+// #284, parent epic #183. Resets a testbed customer back to a fresh,
+// never-scanned, never-quizzed state so Shane doesn't have to hand-run SQL
+// between test passes. Hard server-side isTestbed guard, same discipline as
+// debug-trigger-scan above — this check, not the button's client-side
+// visibility, is what actually blocks a live customer. Four-part reset,
+// confirmed real via manual SQL Shane already ran successfully:
+//   1. Clear tenants.copilot_assessment's "quiz" key (other keys under the
+//      same jsonb column, if any land there later, are left alone).
+//   2. Delete msp_diagnostic_runs for this customer (cascades to
+//      msp_diagnostic_findings via the existing FK).
+//   3. Delete wf_runs for the Assessment doc-generation workflow whose
+//      trigger payload references this customer/user — the same ownership
+//      predicate GET /portal/assessment/status uses to find the run.
+//   4. Delete insights_generated_documents for this customer (users.id
+//      space, customer-scoped via resolveSiblingUserIds — the same helper
+//      every other document read/write in this file uses).
+// Deliberately NOT touched: client_services — that's the real Copilot
+// entitlement; wiping it would immediately lock the account back out of the
+// flow. Remove this route entirely before production. See backlog: [Shane to
+// add ticket].
+router.post(
+  "/portal/assessment/debug-reset-session",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    const userId = req.user?.id;
+    if (customerId === null || userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      // Hard server-side testbed guard — this check is what actually
+      // prevents a real customer from wiping their own session data, not the
+      // button's visibility.
+      const [customer] = await db
+        .select({ isTestbed: tenantsTable.isTestbed, copilotAssessment: tenantsTable.copilotAssessment })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      if (!customer || customer.isTestbed !== true) {
+        log.warn({ customerId }, "debug-reset-session: blocked — customer is not a testbed tenant");
+        res.status(403).json({ error: "Session reset is not available for this account" });
+        return;
+      }
+
+      // 1. Clear the saved quiz profile, leaving any other copilot_assessment key intact.
+      const existingAssessment = (customer.copilotAssessment as CopilotAssessmentStateMap | undefined) ?? {};
+      const { quiz: _quiz, ...restAssessment } = existingAssessment;
+      await db
+        .update(tenantsTable)
+        .set({ copilotAssessment: restAssessment, updatedAt: new Date() })
+        .where(eq(tenantsTable.id, customerId));
+
+      // 2. Delete scan history (cascades to msp_diagnostic_findings via FK).
+      const deletedRuns = await db
+        .delete(mspDiagnosticRunsTable)
+        .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+        .returning({ id: mspDiagnosticRunsTable.id });
+
+      // 3. Delete the document-generation workflow runs tied to this customer.
+      const ownedWfRuns = await db
+        .select({ id: wfRunsTable.id })
+        .from(wfRunsTable)
+        .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfRunsTable.definitionId))
+        .where(
+          and(
+            eq(wfDefinitionsTable.name, ASSESSMENT_DOC_WORKFLOW_NAME),
+            sql`(${wfRunsTable.payload}->>'customerId' = ${String(customerId)} OR ${wfRunsTable.payload}->>'userId' = ${String(userId)} OR ${wfRunsTable.payload}->>'clientUserId' = ${String(userId)})`,
+          ),
+        );
+      let deletedWfRunCount = 0;
+      if (ownedWfRuns.length > 0) {
+        const deletedWfRuns = await db
+          .delete(wfRunsTable)
+          .where(inArray(wfRunsTable.id, ownedWfRuns.map((r) => r.id)))
+          .returning({ id: wfRunsTable.id });
+        deletedWfRunCount = deletedWfRuns.length;
+      }
+
+      // 4. Delete generated documents (users.id space, customer-scoped).
+      const docScopeUserIds = await resolveSiblingUserIds(userId);
+      const deletedDocs = await db
+        .delete(insightsGeneratedDocumentsTable)
+        .where(inArray(insightsGeneratedDocumentsTable.customerId, docScopeUserIds))
+        .returning({ id: insightsGeneratedDocumentsTable.id });
+
+      log.info(
+        {
+          customerId,
+          userId,
+          deletedRuns: deletedRuns.length,
+          deletedWfRuns: deletedWfRunCount,
+          deletedDocs: deletedDocs.length,
+        },
+        "debug-reset-session: session reset complete",
+      );
+
+      res.json({
+        reset: true,
+        cleared: {
+          quiz: true,
+          diagnosticRuns: deletedRuns.length,
+          workflowRuns: deletedWfRunCount,
+          documents: deletedDocs.length,
+        },
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "POST /portal/assessment/debug-reset-session failed");
+      if (!res.headersSent) res.status(500).json({ error: "Failed to reset session" });
     }
   },
 );
