@@ -25,7 +25,7 @@
  * carried past it instead of made to redo it. Everything else here stays
  * exactly as described above -- in-memory, per session.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -69,6 +69,9 @@ import { RoiScreen } from '@/components/copilot-assessment/screens/RoiScreen';
 import { FinalReportScreen } from '@/components/copilot-assessment/screens/FinalReportScreen';
 import { DocumentsScreen } from '@/components/copilot-assessment/screens/DocumentsScreen';
 import { SowScreen } from '@/components/copilot-assessment/screens/SowScreen';
+
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+import { CopilotAssessmentDebugPanel } from '@/components/copilot-assessment/debug/DebugPanel';
 
 import { PersonaModal } from '@/components/copilot-assessment/PersonaModal';
 import { DocumentModal } from '@/components/copilot-assessment/DocumentModal';
@@ -402,6 +405,39 @@ export default function CopilotAssessmentPage() {
     onNavigate: handleNavigate,
   };
 
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Live snapshot of everything this component holds in memory, for the
+  // testbed-only debug panel (#279). Built from the real state objects
+  // themselves (not a copy kept in sync), so it cannot drift: every render
+  // caused by a setState here produces a fresh snapshot and the panel
+  // re-renders with it. Assembled unconditionally — cheap, and hooks can't be
+  // called behind an `if (isTestbed)`; the panel below is what's gated.
+  const debugState = useMemo(
+    () => ({
+      route: { currentStep, rawStep: rawStep ?? null, currentStepIndex, progressPercent },
+      state,
+      derived: { awaitingQuizRestore, awaitingPersonasRestore, restoreStatus, isTestbed },
+      errors: { personasError, finalReportError },
+      ui: { isSpecModalOpen },
+      user: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+    }),
+    [
+      currentStep,
+      rawStep,
+      currentStepIndex,
+      progressPercent,
+      state,
+      awaitingQuizRestore,
+      awaitingPersonasRestore,
+      restoreStatus,
+      isTestbed,
+      personasError,
+      finalReportError,
+      isSpecModalOpen,
+      user,
+    ],
+  );
+
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none">
       <TopToolbar
@@ -564,6 +600,15 @@ export default function CopilotAssessmentPage() {
         isOpen={isSpecModalOpen}
         onClose={() => setIsSpecModalOpen(false)}
       />
+
+      {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+          Testbed-only floating debug console (#279): this page's live
+          in-memory state plus its real HTTP/SSE traffic. Gated on the same
+          server-resolved tenants.isTestbed flag as the QuizScreen [DEBUG]
+          button above — it defaults false, so for a real customer the panel
+          is never mounted at all (and its fetch/EventSource recorder never
+          installs), rather than rendered-and-hidden. */}
+      {isTestbed && <CopilotAssessmentDebugPanel state={debugState} />}
     </div>
   );
 }
