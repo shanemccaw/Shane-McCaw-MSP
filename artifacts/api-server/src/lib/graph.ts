@@ -801,6 +801,30 @@ export async function graphFetchForTenant(
   return res;
 }
 
+/**
+ * Resolves a tenant's real (initial, `.onmicrosoft.com`) domain via Graph's
+ * `/organization` endpoint — the value Connect-IPPSSession-backed checks
+ * need for `-Organization` (#238; it rejects a raw tenant GUID outright).
+ * Only Directory.Read.All is required, already part of REQUIRED_MT_SCOPES.
+ * Returns null on any failure (no org row, no verifiedDomains, Graph error)
+ * — callers must treat this as best-effort, never fatal.
+ */
+export async function getInitialDomainForTenant(tenantId: string): Promise<string | null> {
+  try {
+    const res = await graphFetchForTenant(tenantId, "/organization?$select=verifiedDomains");
+    if (!res.ok) {
+      log.warn({ tenantId, status: res.status }, "getInitialDomainForTenant: /organization lookup failed");
+      return null;
+    }
+    const body = (await res.json()) as { value?: Array<{ verifiedDomains?: Array<{ name?: string; isInitial?: boolean }> }> };
+    const verifiedDomains = body.value?.[0]?.verifiedDomains ?? [];
+    return verifiedDomains.find((d) => d.isInitial)?.name ?? null;
+  } catch (err) {
+    log.warn({ err, tenantId }, "getInitialDomainForTenant: /organization lookup threw");
+    return null;
+  }
+}
+
 export type GraphWriteMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
 export interface GraphWriteResult {
