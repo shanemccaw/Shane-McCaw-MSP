@@ -222,7 +222,6 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   const governanceTolerance = !hasIndustry ? 0 : answers['ai-comfort'] ? aiComfortScore : (selectedSensitivities.length > 0 ? Math.max(20, 100 - sensScore) : 0);
   const riskPosture = !hasIndustry ? 0 : governanceRisk > 0 ? governanceRisk : (selectedSensitivities.length > 0 ? sensScore : 0);
   const adoptionFriction = !hasIndustry ? 0 : adoptionDifficulty;
-  const valueLevers = !hasIndustry ? 0 : valuePotential;
 
   // 4. Use-Case Feasibility
   const useCaseFeasibility = !hasIndustry ? 0 : selectedUseCases.length > 0
