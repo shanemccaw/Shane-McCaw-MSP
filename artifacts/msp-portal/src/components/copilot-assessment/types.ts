@@ -101,6 +101,10 @@ export interface PersonaStory {
 
 export interface UseCaseTile {
   id: string;
+  // Real gap fixed by #187: use cases are generated per-persona (Phase 4 of
+  // the Copilot Assessment epic, #183), so every tile must link back to the
+  // PersonaStory.id it was generated for.
+  personaId: string;
   name: string;
   category: string;
   feasibilityScore: number;

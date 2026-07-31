@@ -51,6 +51,7 @@ export const INITIAL_ENGINES: EngineStatus[] = [
 export const USE_CASE_TILES: UseCaseTile[] = [
   {
     id: 'uc1',
+    personaId: 'exec',
     name: "Executive Briefings & Meeting Catch-up",
     category: "Productivity",
     feasibilityScore: 96,
@@ -62,6 +63,7 @@ export const USE_CASE_TILES: UseCaseTile[] = [
   },
   {
     id: 'uc2',
+    personaId: 'sales',
     name: "Automated RFP & Proposal Drafting",
     category: "Sales Velocity",
     feasibilityScore: 92,
@@ -73,6 +75,7 @@ export const USE_CASE_TILES: UseCaseTile[] = [
   },
   {
     id: 'uc3',
+    personaId: 'legal',
     name: "Contract Redline & Audit Synthesis",
     category: "Legal & Governance",
     feasibilityScore: 74,
@@ -84,6 +87,7 @@ export const USE_CASE_TILES: UseCaseTile[] = [
   },
   {
     id: 'uc4',
+    personaId: 'pm',
     name: "Custom Declarative Copilot Agents",
     category: "Extensibility",
     feasibilityScore: 88,
@@ -95,6 +99,7 @@ export const USE_CASE_TILES: UseCaseTile[] = [
   },
   {
     id: 'uc5',
+    personaId: 'exec',
     name: "Cross-Tenant Financial Consolidation",
     category: "Finance & Analytics",
     feasibilityScore: 62,
@@ -106,6 +111,7 @@ export const USE_CASE_TILES: UseCaseTile[] = [
   },
   {
     id: 'uc6',
+    personaId: 'sales',
     name: "Customer Service Knowledge Grounding",
     category: "Support Operations",
     feasibilityScore: 90,
