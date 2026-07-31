@@ -108,6 +108,35 @@ function Get-ManagedIdentityToken {
     return $response.access_token
 }
 
+function Get-HttpErrorResponseBody {
+    param($ErrorRecord)
+
+    # PowerShell 7's Invoke-RestMethod populates $_.ErrorDetails.Message with
+    # the response body text on a non-2xx response — this is the correct
+    # pwsh 7 pattern and works regardless of the underlying exception type.
+    if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+        return $ErrorRecord.ErrorDetails.Message
+    }
+
+    # Fallback for cases ErrorDetails isn't populated: pwsh 7's
+    # Invoke-RestMethod throws Microsoft.PowerShell.Commands.HttpResponseException,
+    # whose .Response is a System.Net.Http.HttpResponseMessage — NOT the
+    # System.Net.HttpWebResponse from Windows PowerShell 5.1/.NET Framework,
+    # so there's no .GetResponseStream(). Read the body via
+    # Content.ReadAsStringAsync() instead.
+    $httpResponse = $ErrorRecord.Exception.Response
+    if ($httpResponse -and $httpResponse.Content) {
+        try {
+            return $httpResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        }
+        catch {
+            return $null
+        }
+    }
+
+    return $null
+}
+
 function Get-KeyVaultSecret {
     param([string]$SecretName, [string]$AccessToken)
 
@@ -131,7 +160,8 @@ try {
     Write-Log -Level "info" -Message "startup: cert secret retrieved" -Extra @{ secretName = $certSecretName; mtAppClientId = $mtAppClientId }
 }
 catch {
-    Write-Log -Level "error" -Message "startup: failed to retrieve cert secret from Key Vault" -Extra @{ secretName = $certSecretName; error = $_.Exception.Message }
+    $responseBody = Get-HttpErrorResponseBody -ErrorRecord $_
+    Write-Log -Level "error" -Message "startup: failed to retrieve cert secret from Key Vault" -Extra @{ secretName = $certSecretName; error = $_.Exception.Message; responseBody = $responseBody }
     exit 1
 }
 
@@ -140,7 +170,8 @@ try {
     Write-Log -Level "info" -Message "startup: bearer token secret retrieved" -Extra @{ secretName = $bearerSecretName }
 }
 catch {
-    Write-Log -Level "error" -Message "startup: failed to retrieve bearer token secret from Key Vault" -Extra @{ secretName = $bearerSecretName; error = $_.Exception.Message }
+    $responseBody = Get-HttpErrorResponseBody -ErrorRecord $_
+    Write-Log -Level "error" -Message "startup: failed to retrieve bearer token secret from Key Vault" -Extra @{ secretName = $bearerSecretName; error = $_.Exception.Message; responseBody = $responseBody }
     exit 1
 }
 
