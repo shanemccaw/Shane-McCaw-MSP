@@ -19,8 +19,6 @@ import {
   Sliders,
   Sparkles,
   FileText,
-  ChevronRight,
-  ChevronLeft,
   AlertTriangle,
   Radio,
   TrendingDown,
@@ -34,10 +32,7 @@ import {
   Radar,
   ResponsiveContainer
 } from 'recharts';
-import {
-  PHASE2_ENGINES,
-  generateDynamicHintCards
-} from '../telemetryCatalog';
+import { PHASE2_ENGINES } from '../telemetryCatalog';
 import { useRealGraphScanSteps } from '../useRealGraphScanSteps';
 import { useRealDocWorkflowPhases } from '../useRealDocWorkflowPhases';
 import { useRealTelemetryComparison } from '../useRealTelemetryComparison';
@@ -122,16 +117,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
         ? `[${engines[activeEngineIndex]?.name ?? 'Engines'}] ${engines[activeEngineIndex]?.currentSseMsg ?? ''}`
         : docWf.streamMessage;
 
-  // Dynamic Hint Cards Carousel Index
-  const [hintCardIndex, setHintCardIndex] = useState<number>(0);
-  const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
-
-  useEffect(() => {
-    setRibbonPulse(true);
-    const timer = setTimeout(() => setRibbonPulse(false), 1200);
-    return () => clearTimeout(timer);
-  }, [hintCardIndex]);
-
   const isDocumentMode = phase === 'phase3_docs' || phase === 'complete';
 
   // Compute Completed Counts
@@ -158,21 +143,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     const docFraction = docs.length > 0 ? completedDocsCount / docs.length : 0;
     overallProgress = phase === 'complete' ? 100 : Math.min(100, Math.round(75 + docFraction * 25));
   }
-
-  // Dynamic Hint Cards Stream
-  const dynamicHints = generateDynamicHintCards(
-    quizAnswers,
-    phase === 'phase3_docs' || phase === 'complete' ? 'phase3' : phase === 'phase2_engines' ? 'phase2' : 'phase1',
-    completedEnginesCount
-  );
-
-  // Auto-rotate Insight Ribbon every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setHintCardIndex(prev => (prev + 1) % Math.max(1, dynamicHints.length));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [dynamicHints.length]);
 
   // PHASE 1 → PHASE 2 — driven by the REAL run reaching a terminal state with
   // real results, not by a timer. A failed/blocked scan deliberately does NOT
@@ -359,6 +329,27 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               <Play className="w-3 h-3" />
             )}
             <span>[Debug] Run real scan</span>
+          </button>
+        )}
+
+        {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+            Testbed-only navigation bypass (#253). Calls onContinue() directly
+            regardless of phase, skipping the real document-generation wait
+            (Phase 3 — real AI/credit spend) entirely, so a testbed account can
+            iterate on the Personas/Use Cases/etc. screens downstream without
+            spending AI credits generating real documents. Pure client-side
+            navigation — no server call, no server-side gate. Downstream
+            screens see real absence of document data, not a stub: this does
+            NOT fake or fabricate any document. Remove this button before
+            production. */}
+        {graphScan.isTestbed && (
+          <button
+            onClick={onContinue}
+            className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors"
+            title="Testbed only — skips ahead to Personas without waiting for document generation"
+          >
+            <ArrowRight className="w-3 h-3" />
+            <span>[Debug] Skip to Personas</span>
           </button>
         )}
       </header>
@@ -623,46 +614,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                 })()}
               </div>
 
-              {/* INSIGHT RIBBON (QUIZ + TELEMETRY INTEGRATION) */}
-              <div className="bg-[#001830] border border-[#0078D4]/60 px-4 py-3 rounded-lg relative overflow-hidden flex items-center justify-between gap-3 text-xs shadow-md mt-2">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-md bg-[#0078D4] text-white font-mono text-[10px] font-extrabold uppercase tracking-wider shadow">
-                    <Sparkles className="w-3.5 h-3.5 text-sky-200 animate-pulse" />
-                    <span>INSIGHT RIBBON</span>
-                  </div>
-                  <div className="overflow-hidden relative h-6 flex items-center min-w-0 flex-1">
-                    <p
-                      key={hintCardIndex}
-                      className="text-xs sm:text-sm text-sky-100 font-semibold truncate italic animate-fade-slide"
-                    >
-                      "{dynamicHints[hintCardIndex] || 'Correlating quiz self-assessment with tenant signal telemetry...'}"
-                    </p>
-                  </div>
-                </div>
-
-                {/* Ribbon Navigation Controls & Counter */}
-                <div className="flex items-center gap-2 shrink-0 bg-[#001020] px-2 py-1 rounded border border-[#0078D4]/30">
-                  <span className="font-mono text-xs font-bold text-sky-300">
-                    {hintCardIndex + 1}/{dynamicHints.length}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      onClick={() => setHintCardIndex(prev => (prev - 1 + dynamicHints.length) % dynamicHints.length)}
-                      className="p-1 hover:bg-[#0078D4]/30 rounded text-sky-300 hover:text-white transition-colors"
-                      title="Previous insight"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setHintCardIndex(prev => (prev + 1) % dynamicHints.length)}
-                      className="p-1 hover:bg-[#0078D4]/30 rounded text-sky-300 hover:text-white transition-colors"
-                      title="Next insight"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* PHASE 1 TILE GRID — REAL MICROSOFT GRAPH SCAN (#228)
@@ -800,7 +751,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
         <aside
           className={`w-80 relative flex flex-col justify-between shrink-0 overflow-y-auto scrollbar-thin select-none p-4 transition-all duration-700 border-l ${
             isDocumentMode ? 'border-purple-500/40 text-purple-100' : 'border-[#0078D4]/40 text-sky-100'
-          } ${ribbonPulse ? 'animate-ribbon-pulse' : ''}`}
+          }`}
         >
           {/* MODE 1 BACKGROUND: Engine Phase (Deep blue pulse glow + Heartbeat line) */}
           <div
@@ -965,8 +916,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                   </div>
                 </div>
 
-                {/* Data pulse behind radar chart synced to ribbon cycle */}
-                <div key={`radar-pulse-${hintCardIndex}`} className="absolute inset-0 pointer-events-none rounded-xl animate-ribbon-pulse" />
 
                 {/* A pillar the engine has no real data for is absent, not
                     zero-filled — so an empty radar is reported honestly rather

@@ -397,65 +397,16 @@ export const TELEMETRY_DOCS: TelemetryDocDef[] = [
   }
 ];
 
-import { SENSITIVITY_OPTIONS, COLLABORATION_OPTIONS } from './quizCatalog';
-
-export function generateDynamicHintCards(
-  answers: Record<string, string>,
-  phase: 'phase1' | 'phase2' | 'phase3',
-  completedEnginesCount: number
-): string[] {
-  const hints: string[] = [];
-
-  const sensIds = answers['sensitivity'] ? answers['sensitivity'].split(',').filter(Boolean) : [];
-  const collabIds = answers['collaboration'] ? answers['collaboration'].split(',').filter(Boolean) : [];
-  const speed = answers['adoption-speed'] || '';
-  const outcome = answers['outcomes'] || '';
-
-  const sensTitles = sensIds.map(id => SENSITIVITY_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-  const collabTitles = collabIds.map(id => COLLABORATION_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-
-  // 1. Sensitivity set insight
-  if (sensTitles.length > 0) {
-    hints.push(`${sensTitles.join(' + ')} selected. Telemetry shows 62% unlabeled.`);
-  } else {
-    hints.push('PHI + HIPAA selected. Telemetry shows 62% unlabeled.');
-  }
-
-  // 2. Collaboration set insight
-  if (collabTitles.length > 0) {
-    hints.push(`${collabTitles.join(' + ')} collaboration. Telemetry shows 14 overshared sites.`);
-  } else {
-    hints.push('Cross-agency + Multi-facility collaboration. Telemetry shows 14 overshared sites.');
-  }
-
-  // 3. Persona specific insight
-  hints.push('Engineer persona: 44% of engineering files missing labels.');
-
-  // 4. Use case specific insight
-  hints.push('Technical writing use case blocked by missing sensitivity labels.');
-
-  // 5. Risk / Security priority insight
-  hints.push('Mission safety priority. CA01 disabled increases risk.');
-
-  // 6. Permission Sprawl insight
-  hints.push('Permission sprawl detected: 1,200+ ACLs.');
-
-  // 7. Additional Quiz & Telemetry correlations
-  if (speed === 'early_adopter' || speed === 'fast_follower') {
-    hints.push('High adoption speed selected. Telemetry shows 120 unassigned Copilot licenses.');
-  }
-
-  if (outcome.includes('research') || outcome.includes('efficiency')) {
-    hints.push('Research acceleration priority. Telemetry shows governance gaps in 7 libraries.');
-  }
-
-  // 8. Dynamic Document / SSE generation items
-  if (phase === 'phase3' || completedEnginesCount >= 10) {
-    hints.push('Reticulating Splines… Synthesizing Security Report & Governance Plan...');
-  }
-
-  return hints;
-}
+// generateDynamicHintCards() (Insight Ribbon) lived here until #252.
+//
+// It returned hardcoded hint strings with fake numbers ("Telemetry shows 62%
+// unlabeled", "14 overshared sites", "120 unassigned Copilot licenses", etc.)
+// baked into quiz-derived text regardless of the real scan's actual results.
+// Deleted outright per #252 (scope simplified for launch) rather than shipped
+// fabricated. Real live+rich wiring is deferred to Iteration 2 — see #252 for
+// the real-data constraint (per-check SSE is plain, persisted findings are
+// batch-written after the run) and reuse #245's scanCheckResults /
+// persisted-findings infrastructure when that work is picked up.
 
 // generateTop3Mismatches() lived here until #245.
 //
