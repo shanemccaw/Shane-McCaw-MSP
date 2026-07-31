@@ -1,9 +1,14 @@
-# entrypoint.ps1 — PowerShell execution container, Phase 2 (#198, parent epic #180).
+# entrypoint.ps1 — PowerShell execution container.
 #
-# Scope for this phase only: prove the Managed Identity -> Key Vault -> two
-# secrets round-trip, and reject any HTTP request that doesn't present the
-# bearer token. No Connect-IPPSSession, no real request/response API shape,
-# no tenant connection — those are later phases of #180.
+# Phase 2 (#198): Managed Identity -> Key Vault -> two secrets round-trip,
+# reject any HTTP request that doesn't present the bearer token.
+# Phase 3 (#210, per #209's approved design + #180's pinned architecture
+# comment): real request handling. POST { cmdletKey, params } — cmdletKey
+# resolves to one of a fixed, code-owned allowlist of approved cmdlet
+# invocations (never an arbitrary script string from the request); params
+# are static values merged into that cmdlet's parameters, fill values only,
+# never control flow. Executes via Connect-IPPSSession (cert from Key
+# Vault) + the resolved cmdlet, capturing the success/output stream only.
 #
 # Written directly in PowerShell (not Node/another runtime) because the base
 # image is `mcr.microsoft.com/powershell` and pwsh already ships everything
@@ -204,6 +209,58 @@ if (-not $certPem -or -not $bearerToken) {
     exit 1
 }
 
+# Baked into the image at build time (see Dockerfile) — never a live
+# PSGallery install. Imported once at startup so a missing/broken module
+# fails fast here rather than on the first real request.
+try {
+    Import-Module ExchangeOnlineManagement -MinimumVersion 3.0.0 -ErrorAction Stop
+    Write-Log -Level "info" -Message "startup: ExchangeOnlineManagement module imported"
+}
+catch {
+    Write-Log -Level "error" -Message "startup: failed to import ExchangeOnlineManagement" -Extra @{ error = $_.Exception.Message }
+    exit 1
+}
+
+# $certPem is the PEM-encoded certificate+key bundle from Key Vault (see
+# azure-keyvault.ts's getCertificatePem doc comment on the api-server side —
+# same "cert/key bundle" shape, different (Managed Identity) retrieval
+# path). CreateFromPem(cert, key) with the same string for both arguments
+# works for a combined bundle: it independently locates the first
+# CERTIFICATE block and the first PRIVATE KEY block in whatever text it's
+# given. Parsed once here (not per-request) since the secret is already
+# held in memory for the life of the process.
+try {
+    $script:appOnlyCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPem($certPem, $certPem)
+    Write-Log -Level "info" -Message "startup: app-only certificate parsed" -Extra @{ thumbprint = $script:appOnlyCertificate.Thumbprint }
+}
+catch {
+    Write-Log -Level "error" -Message "startup: failed to parse app-only certificate from Key Vault secret" -Extra @{ error = $_.Exception.Message }
+    exit 1
+}
+
+# --- Approved cmdlet allowlist -------------------------------------------------
+#
+# cmdletKey (from the request body) resolves ONLY to an entry here — never
+# to a script string from the request itself. This is the security
+# boundary #209's design calls out explicitly: a PS-backed check does not
+# have the "bounded, read-only Graph REST call" ceiling a malformed Graph
+# endpoint string has, so what-code-runs stays code-owned, not DB/request
+# driven. `AllowedParams` is the per-cmdlet parameter-name allowlist —
+# `params` in the request can only fill values for names on this list,
+# never add new ones or influence which cmdlet runs.
+#
+# Real DLP/Label cmdlets are #212's scope. This starts with one trivial,
+# read-only placeholder that still exercises the full path (connect,
+# invoke, capture, disconnect) end to end: Get-ConnectionInformation lists
+# the current process's own open EXO/IPPS sessions — no tenant mail or
+# compliance data involved.
+$script:CmdletCatalog = @{
+    "get-connection-info" = @{
+        Cmdlet         = "Get-ConnectionInformation"
+        AllowedParams  = @()
+    }
+}
+
 # --- Bearer-token check -------------------------------------------------------
 #
 # Fixed-time comparison so response timing can't be used to brute-force the
@@ -215,6 +272,76 @@ function Test-BearerToken {
     $expectedBytes = [Text.Encoding]::UTF8.GetBytes($bearerToken)
     $presentedBytes = [Text.Encoding]::UTF8.GetBytes($Presented)
     return [Security.Cryptography.CryptographicOperations]::FixedTimeEquals($expectedBytes, $presentedBytes)
+}
+
+# --- Request handling -----------------------------------------------------------
+#
+# Structured error responses, never a raw PowerShell exception message or
+# stack trace in the body. `kind` is the field #211's PsExecutionError
+# (api-server side, not built yet) discriminates on: "bad_request" and
+# "unknown_cmdlet" are both request-shape problems (never reach
+# Connect-IPPSSession), "auth_failed" is a Connect-IPPSSession failure,
+# "script_error" is the resolved cmdlet itself throwing.
+function Send-JsonResponse {
+    param(
+        [System.Net.HttpListenerResponse]$Response,
+        [int]$StatusCode,
+        [string]$Body
+    )
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Body)
+    $Response.StatusCode = $StatusCode
+    $Response.ContentType = "application/json"
+    $Response.OutputStream.Write($bytes, 0, $bytes.Length)
+    $Response.Close()
+}
+
+function Send-ErrorResponse {
+    param(
+        [System.Net.HttpListenerResponse]$Response,
+        [int]$StatusCode,
+        [string]$Kind,
+        [string]$Message
+    )
+    $payload = @{ error = $Kind; message = $Message } | ConvertTo-Json -Compress
+    Send-JsonResponse -Response $Response -StatusCode $StatusCode -Body $payload
+}
+
+# Resolves cmdletKey against the allowlist and merges request params into
+# that cmdlet's allowed parameter set only — fill values, never control
+# flow. `Organization` is treated as the reserved tenant-identity field for
+# Connect-IPPSSession (not forwarded to the cmdlet itself); this field name
+# is this phase's assumption, not yet confirmed against #211's real
+# monitor-executor.ts caller (which doesn't exist yet) — flagged for
+# Shane's review, not silently assumed permanent.
+function Resolve-CmdletInvocation {
+    param(
+        [string]$CmdletKey,
+        [hashtable]$RequestParams
+    )
+
+    $catalogEntry = $script:CmdletCatalog[$CmdletKey]
+    $cmdletParams = @{}
+    foreach ($allowedName in $catalogEntry.AllowedParams) {
+        if ($RequestParams.ContainsKey($allowedName)) {
+            $cmdletParams[$allowedName] = $RequestParams[$allowedName]
+        }
+    }
+
+    return @{
+        Cmdlet = $catalogEntry.Cmdlet
+        Params = $cmdletParams
+    }
+}
+
+function ConvertTo-ParamHashtable {
+    param($JsonParamsObject)
+
+    $result = @{}
+    if ($null -eq $JsonParamsObject) { return $result }
+    foreach ($prop in $JsonParamsObject.PSObject.Properties) {
+        $result[$prop.Name] = $prop.Value
+    }
+    return $result
 }
 
 # --- HTTP entrypoint -----------------------------------------------------------
@@ -245,20 +372,76 @@ try {
             continue
         }
 
-        # Phase 2 proof only — no real request/response API contract yet.
-        # Confirms the token round-tripped and the cert secret is loaded in
-        # memory, without ever echoing either back.
-        Write-Log -Level "info" -Message "request authorized" -Extra @{ path = $request.Url.AbsolutePath }
-        $payload = @{
-            status    = "ok"
-            certLoaded = [bool]$certPem
-            authOk    = $true
-        } | ConvertTo-Json -Compress
-        $bodyBytes = [Text.Encoding]::UTF8.GetBytes($payload)
-        $response.ContentType = "application/json"
-        $response.StatusCode = 200
-        $response.OutputStream.Write($bodyBytes, 0, $bodyBytes.Length)
-        $response.Close()
+        Write-Log -Level "info" -Message "request authorized" -Extra @{ path = $request.Url.AbsolutePath; method = $request.HttpMethod }
+
+        if ($request.HttpMethod -ne "POST") {
+            Send-ErrorResponse -Response $response -StatusCode 405 -Kind "method_not_allowed" -Message "Only POST is supported."
+            continue
+        }
+
+        try {
+            $streamReader = New-Object System.IO.StreamReader($request.InputStream, $request.ContentEncoding)
+            $rawBody = $streamReader.ReadToEnd()
+            $streamReader.Close()
+            $requestBody = $rawBody | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            Write-Log -Level "warn" -Message "request rejected: malformed JSON body" -Extra @{ error = $_.Exception.Message }
+            Send-ErrorResponse -Response $response -StatusCode 400 -Kind "bad_request" -Message "Request body must be valid JSON."
+            continue
+        }
+
+        $cmdletKey = $requestBody.cmdletKey
+        if (-not $cmdletKey -or -not $script:CmdletCatalog.ContainsKey($cmdletKey)) {
+            Write-Log -Level "warn" -Message "request rejected: unknown cmdletKey" -Extra @{ cmdletKey = $cmdletKey }
+            Send-ErrorResponse -Response $response -StatusCode 400 -Kind "unknown_cmdlet" -Message "cmdletKey '$cmdletKey' is not in the approved allowlist."
+            continue
+        }
+
+        $requestParams = ConvertTo-ParamHashtable -JsonParamsObject $requestBody.params
+        $organization = $requestParams["Organization"]
+        if (-not $organization) {
+            Send-ErrorResponse -Response $response -StatusCode 400 -Kind "bad_request" -Message "params.Organization is required to identify the target tenant."
+            continue
+        }
+
+        $invocation = Resolve-CmdletInvocation -CmdletKey $cmdletKey -RequestParams $requestParams
+
+        try {
+            Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
+        }
+        catch {
+            Write-Log -Level "error" -Message "Connect-IPPSSession failed" -Extra @{ cmdletKey = $cmdletKey; organization = $organization; error = $_.Exception.Message }
+            Send-ErrorResponse -Response $response -StatusCode 502 -Kind "auth_failed" -Message "Could not establish a Security & Compliance session for the target tenant."
+            continue
+        }
+
+        try {
+            $cmdletParams = $invocation.Params
+            $result = & $invocation.Cmdlet @cmdletParams
+        }
+        catch {
+            Write-Log -Level "error" -Message "cmdlet execution failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
+            Send-ErrorResponse -Response $response -StatusCode 500 -Kind "script_error" -Message "The resolved cmdlet raised an error during execution."
+            continue
+        }
+        finally {
+            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        }
+
+        # One synchronous response: whatever Write-Output produced. Multiple
+        # items assign to $result as an array (serializes as a JSON array);
+        # a single item assigns directly (serializes as a JSON object) —
+        # this is PowerShell's own pipeline-assignment behavior, not
+        # special-cased here. No items -> an empty JSON array.
+        if ($null -eq $result) {
+            $responseBody = "[]"
+        }
+        else {
+            $responseBody = $result | ConvertTo-Json -Depth 10
+        }
+        Write-Log -Level "info" -Message "cmdlet executed" -Extra @{ cmdletKey = $cmdletKey }
+        Send-JsonResponse -Response $response -StatusCode 200 -Body $responseBody
     }
 }
 finally {
