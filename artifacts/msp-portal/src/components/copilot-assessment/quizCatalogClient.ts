@@ -33,7 +33,9 @@ import {
   ADAPTIVE_USE_CASES,
   ADAPTIVE_OUTCOME_PRIORITIES,
   type QuizOptionTile,
-} from './quizCatalog';
+  // Explicit .ts specifier so this module is runnable under `node --test`,
+  // the same reason workloadInference.ts spells it out.
+} from './quizCatalog.ts';
 
 type FetchWithAuth = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 

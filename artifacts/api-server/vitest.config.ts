@@ -63,6 +63,7 @@ export default defineConfig({
       "src/lib/cio-narrative-generator.test.ts",
       "src/lib/use-case-generator.test.ts",
       "src/routes/copilot-assessment-quiz-profile.test.ts",
+      "src/routes/copilot-assessment-quiz-catalog.test.ts",
       "src/lib/assessment-tool-usage-signal.test.ts",
       "src/routes/admin-ai-billing-analytics.test.ts",
       "src/lib/ai-lead-attribution.test.ts",
