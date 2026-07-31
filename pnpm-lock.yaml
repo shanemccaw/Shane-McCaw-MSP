@@ -158,12 +158,6 @@ importers:
 
   .:
     devDependencies:
-      '@esbuild/win32-x64':
-        specifier: ^0.27.3
-        version: 0.27.3
-      '@rollup/rollup-win32-x64-msvc':
-        specifier: ^4.62.2
-        version: 4.62.2
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
@@ -459,9 +453,6 @@ importers:
 
   artifacts/api-server:
     dependencies:
-      '@azure/arm-automation':
-        specifier: ^10.1.1
-        version: 10.1.1
       '@azure/identity':
         specifier: ^4.13.1
         version: 4.13.1
@@ -1755,9 +1746,6 @@ packages:
     resolution: {integrity: sha512-nBrLsEWm4J2u5LpAPjxADTlq3trDgVZZXHNKabeXZtpq3d3AbN/KGO82R87rdDz5/lYB024rtEf10/q0urNgsA==}
     engines: {node: '>=18.0.0'}
 
-  '@azure/arm-automation@10.1.1':
-    resolution: {integrity: sha512-7XcawiT/K/ULB6AaE3sD91As37tEKt6YKeUllILZAclWiCRxebssbl0RaWBuT9N0boyOf3qYaPXjhG0dIWVvew==}
-
   '@azure/core-auth@1.10.1':
     resolution: {integrity: sha512-ykRMW8PjVAn+RS6ww5cmK9U2CyH9p4Q88YJwvUslfuMmN98w/2rdGRLPqJYObapBCdzBVeDgYWdJnFPFb7qzpg==}
     engines: {node: '>=20.0.0'}
@@ -1805,14 +1793,6 @@ packages:
   '@azure/logger@1.3.0':
     resolution: {integrity: sha512-fCqPIfOcLE+CGqGPd66c8bZpwAji98tZ4JI9i/mlTNTlsIWslCfpg48s/ypyLxZTump5sypjrKn2/kY7q8oAbA==}
     engines: {node: '>=20.0.0'}
-
-  '@azure/ms-rest-azure-js@2.1.0':
-    resolution: {integrity: sha512-CjZjB8apvXl5h97Ck6SbeeCmU0sk56YPozPtTyGudPp1RGoHXNjFNtoOvwOG76EdpmMpxbK10DqcygI16Lu60Q==}
-    deprecated: This package has been deprecated in favor of the new [Azure SDK for JavaScript](https://github.com/azure/azure-sdk-for-js). The long running operation support is provided by the @azure/core-lro package (https://github.com/Azure/azure-sdk-for-js/tree/dc5f9743b05ea78f938eba31cbe704150889490c/sdk/core/core-lro).
-
-  '@azure/ms-rest-js@2.7.0':
-    resolution: {integrity: sha512-ngbzWbqF+NmztDOpLBVDxYM+XLcUj7nKhxGbSU9WtIsXfRB//cf2ZbAG5HkOrhU9/wd/ORRB6lM/d69RKVjiyA==}
-    deprecated: This package has been deprecated in favor of the new Azure SDK packages from [Azure SDK for JavaScript](https://github.com/azure/azure-sdk-for-js).
 
   '@azure/msal-browser@5.14.0':
     resolution: {integrity: sha512-Dfl7hPZe9/JJwRhFFXHq2z1oHYBuGubmff3kWXOsd1AGgyXlqjNYAWuN/1JL/ZrcZBs8TKMjGSil6Rcc7E8VPQ==}
@@ -2462,12 +2442,6 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
-
-  '@esbuild/win32-x64@0.27.3':
-    resolution: {integrity: sha512-4uJGhsxuptu3OcpVAzli+/gWusVGwZZHTlS63hh++ehExkVT8SgiEf7/uC/PclrPPkLhZqGgCTjd0VWLo6xMqA==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [win32]
 
   '@exodus/bytes@1.15.1':
     resolution: {integrity: sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q==}
@@ -4086,11 +4060,6 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
-
-  '@rollup/rollup-win32-x64-msvc@4.62.2':
-    resolution: {integrity: sha512-BfzEnDJOt9T8M989/lA37EcJgat01wLRnoi5dQf3QzOH7jzpqTAzdDbVfRljVr5r+jzKqpbHeyOfAaXxAd0PAA==}
-    cpu: [x64]
-    os: [win32]
 
   '@scalar/helpers@0.5.2':
     resolution: {integrity: sha512-Pi1GAl8jO6ungmGj2sjDfCfqiBNrKW6HXDZmminV94ybGU/KtRLOqHwd0n9FIhY3j0RYGpGC0VCuniCICfQPHg==}
@@ -6096,10 +6065,6 @@ packages:
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
-
-  form-data@2.5.6:
-    resolution: {integrity: sha512-Ogz/E85h9tlfJzpI6TuFpGcHZFhLrb9Gw8wq9v40CxSCPnv7ahKr6Xgtkn0KYCDQJ8DNn5VoMO8EXr9V5PadyA==}
-    engines: {node: '>= 0.12'}
 
   form-data@4.0.6:
     resolution: {integrity: sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==}
@@ -8688,10 +8653,6 @@ packages:
   tunnel-rat@0.1.2:
     resolution: {integrity: sha512-lR5VHmkPhzdhrM092lI2nACsLO4QubF0/yoOhzX7c+wIpbN1GjHNzCc91QlpxBi+cnx8vVJ+Ur6vL5cEoQPFpQ==}
 
-  tunnel@0.0.6:
-    resolution: {integrity: sha512-1h/Lnq9yajKY2PEbBadPXj3VxsDDu844OnaAo52UVmIzIvwwtBPIuNvkjuzBlTWpfJyUbG3ez0KSBibQkj4ojg==}
-    engines: {node: '>=0.6.11 <=0.7.0 || >=0.7.3'}
-
   tw-animate-css@1.4.0:
     resolution: {integrity: sha512-7bziOlRqH0hJx80h/3mbicLW7o8qLsH5+RaLR2t+OHM3D0JlWGODQKQ4cxbK7WlvmUxpcj6Kgu6EKqjrGFe3QQ==}
 
@@ -8886,11 +8847,6 @@ packages:
 
   uuid@7.0.3:
     resolution: {integrity: sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
-    hasBin: true
-
-  uuid@8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
     deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
@@ -9156,10 +9112,6 @@ packages:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
 
-  xml2js@0.5.0:
-    resolution: {integrity: sha512-drPFnkQJik/O+uPKpqSgr22mpuFHqKdbS835iAQrUC73L2F5WkboIRd63ai/2Yg6I1jzifPFKH2NTK+cfglkIA==}
-    engines: {node: '>=4.0.0'}
-
   xml2js@0.6.0:
     resolution: {integrity: sha512-eLTh0kA8uHceqesPqSE+VvO1CDDJWMwlQfB6LuN6T8w6MaDJ8Txm8P7s5cHD0miF0V+GGTZrDQfxPZQVsur33w==}
     engines: {node: '>=4.0.0'}
@@ -9327,16 +9279,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@azure/arm-automation@10.1.1':
-    dependencies:
-      '@azure/core-auth': 1.10.1
-      '@azure/ms-rest-azure-js': 2.1.0
-      '@azure/ms-rest-js': 2.7.0
-      tslib: 1.14.1
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
-
   '@azure/core-auth@1.10.1':
     dependencies:
       '@azure/abort-controller': 2.1.2
@@ -9460,29 +9402,6 @@ snapshots:
       '@typespec/ts-http-runtime': 0.3.6
       tslib: 2.8.1
     transitivePeerDependencies:
-      - supports-color
-
-  '@azure/ms-rest-azure-js@2.1.0':
-    dependencies:
-      '@azure/core-auth': 1.10.1
-      '@azure/ms-rest-js': 2.7.0
-      tslib: 1.14.1
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
-
-  '@azure/ms-rest-js@2.7.0':
-    dependencies:
-      '@azure/core-auth': 1.10.1
-      abort-controller: 3.0.0
-      form-data: 2.5.6
-      node-fetch: 2.7.0
-      tslib: 1.14.1
-      tunnel: 0.0.6
-      uuid: 8.3.2
-      xml2js: 0.5.0
-    transitivePeerDependencies:
-      - encoding
       - supports-color
 
   '@azure/msal-browser@5.14.0':
@@ -10260,8 +10179,6 @@ snapshots:
 
   '@esbuild/linux-x64@0.27.3':
     optional: true
-
-  '@esbuild/win32-x64@0.27.3': {}
 
   '@exodus/bytes@1.15.1(@noble/hashes@2.2.0)':
     optionalDependencies:
@@ -12719,8 +12636,6 @@ snapshots:
   '@rollup/rollup-linux-x64-gnu@4.60.3':
     optional: true
 
-  '@rollup/rollup-win32-x64-msvc@4.62.2': {}
-
   '@scalar/helpers@0.5.2': {}
 
   '@scalar/helpers@0.6.0': {}
@@ -14868,15 +14783,6 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
-
-  form-data@2.5.6:
-    dependencies:
-      asynckit: 0.4.0
-      combined-stream: 1.0.8
-      es-set-tostringtag: 2.1.0
-      hasown: 2.0.4
-      mime-types: 2.1.35
-      safe-buffer: 5.2.1
 
   form-data@4.0.6:
     dependencies:
@@ -17989,8 +17895,6 @@ snapshots:
       - immer
       - react
 
-  tunnel@0.0.6: {}
-
   tw-animate-css@1.4.0: {}
 
   twilio@6.0.2:
@@ -18168,8 +18072,6 @@ snapshots:
   uuid@3.4.0: {}
 
   uuid@7.0.3: {}
-
-  uuid@8.3.2: {}
 
   validate-npm-package-name@5.0.1: {}
 
@@ -18407,11 +18309,6 @@ snapshots:
       uuid: 7.0.3
 
   xml-name-validator@5.0.0: {}
-
-  xml2js@0.5.0:
-    dependencies:
-      sax: 1.6.0
-      xmlbuilder: 11.0.1
 
   xml2js@0.6.0:
     dependencies:

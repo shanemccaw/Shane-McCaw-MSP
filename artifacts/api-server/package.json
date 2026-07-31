@@ -13,7 +13,6 @@
     "seed-marketing": "node --enable-source-maps ./dist/scripts/seed-marketing.mjs"
   },
   "dependencies": {
-    "@azure/arm-automation": "^10.1.1",
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-certificates": "^4.10.3",
     "@azure/keyvault-secrets": "^4.11.2",
