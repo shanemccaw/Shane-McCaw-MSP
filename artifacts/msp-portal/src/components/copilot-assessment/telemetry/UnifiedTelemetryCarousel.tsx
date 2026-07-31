@@ -145,15 +145,15 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
         <div className="flex items-center justify-between pb-2 border-b border-border">
           <div className="flex items-center gap-2.5">
             {!isDocumentMode ? (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-primary/20 border border-primary/50 text-primary">
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#0078D4]/20 border border-[#0078D4]/50 text-[#0078D4]">
                 <Activity className="w-4 h-4 animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
                   MODE 1: TENANT CORRELATION ENGINES (12)
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-accent/20 border border-accent/50 text-accent">
-                <Sparkles className="w-4 h-4 text-accent animate-pulse" />
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
+                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
                   MODE 2: ASSESSMENT DELIVERABLES (6)
                 </span>
@@ -380,7 +380,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     <div className="mt-3 space-y-1.5">
                       <div className="w-full bg-muted/50 h-1.5 rounded-full overflow-hidden border border-border">
                         <div
-                          className="bg-gradient-to-r from-accent to-primary h-full transition-all duration-300"
+                          className="bg-gradient-to-r from-purple-500 to-cyan-400 h-full transition-all duration-300"
                           style={{ width: `${doc.progress}%` }}
                         />
                       </div>
