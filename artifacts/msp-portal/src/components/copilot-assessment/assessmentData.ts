@@ -1,4 +1,4 @@
-import { EngineStatus, PersonaStory, UseCaseTile, DocumentDeliverable } from './types';
+import { EngineStatus, UseCaseTile, DocumentDeliverable } from './types';
 
 export const INITIAL_ENGINES: EngineStatus[] = [
   {
@@ -43,92 +43,10 @@ export const INITIAL_ENGINES: EngineStatus[] = [
   }
 ];
 
-export const PERSONA_STORIES: PersonaStory[] = [
-  {
-    id: 'exec',
-    name: "Executive Leadership",
-    role: "VP / C-Suite",
-    department: "Executive Management",
-    avatar: "👑",
-    riskScore: 24,
-    opportunityScore: 94,
-    recommendedRollout: "Wave 1 Immediate Onboarding",
-    detailedStory: "Executive leaders process hundreds of threads, board packages, and strategic memos weekly. Copilot synthesizes multi-hour strategy meetings into key action items in 30 seconds and drafts high-impact announcements with brand voice fidelity.",
-    telemetryEvidence: [
-      "Average weekly email volume: 480 threads",
-      "Meeting time ratio: 68% of total work hours",
-      "Key workflow: Multi-document synthesis & executive brief generation"
-    ],
-    roiPreview: {
-      hoursSavedPerWeek: 6.5,
-      annualValue: "$24,500 / seat",
-      primaryBenefit: "Executive focus recovery & decision velocity"
-    }
-  },
-  {
-    id: 'sales',
-    name: "Account Executive & Sales Ops",
-    role: "Senior Sales Director",
-    department: "Revenue & Sales",
-    avatar: "📈",
-    riskScore: 32,
-    opportunityScore: 91,
-    recommendedRollout: "Wave 1 Sales Champion Cohort",
-    detailedStory: "Sales teams combine CRM telemetry, customer emails, RFP requirements, and technical documentation. Copilot automates RFP response assembly, meeting summary follow-ups, and custom account brief generation.",
-    telemetryEvidence: [
-      "RFP response cycle: 14 days baseline → 4 days target",
-      "Customer communication channels: Email, Teams, Dynamics 365",
-      "CRM sync frequency: 120 updates/week"
-    ],
-    roiPreview: {
-      hoursSavedPerWeek: 5.8,
-      annualValue: "$18,200 / seat",
-      primaryBenefit: "3x Faster RFP turnaround & win rate boost"
-    }
-  },
-  {
-    id: 'legal',
-    name: "Legal & Compliance Counsel",
-    role: "Corporate Counsel",
-    department: "Legal Affairs",
-    avatar: "⚖️",
-    riskScore: 58,
-    opportunityScore: 82,
-    recommendedRollout: "Wave 2 (Post-Governance Hardening)",
-    detailedStory: "Legal counsel handles complex contract comparisons, regulatory updates, and risk disclosures. Copilot accelerates redline clause analysis and policy gap detection while adhering to strict DLP boundary controls.",
-    telemetryEvidence: [
-      "Document length average: 45+ pages",
-      "Compliance audit frequency: Continuous",
-      "Primary requirement: Zero data leakage & full audit provenance"
-    ],
-    roiPreview: {
-      hoursSavedPerWeek: 4.5,
-      annualValue: "$19,800 / seat",
-      primaryBenefit: "Accelerated contract reviews with strict provenance"
-    }
-  },
-  {
-    id: 'pm',
-    name: "Product & Project Managers",
-    role: "Lead Technical PM",
-    department: "Product Engineering",
-    avatar: "🚀",
-    riskScore: 28,
-    opportunityScore: 89,
-    recommendedRollout: "Wave 1 Core Productivity",
-    detailedStory: "Project managers coordinate cross-functional engineering sprints, specification reviews, and stakeholder updates. Copilot translates customer feedback channels directly into Azure DevOps items and status reports.",
-    telemetryEvidence: [
-      "Teams channel message count: 1,400 / week",
-      "Meeting recap creation frequency: 12 meetings / week",
-      "Tooling footprint: Jira, Azure DevOps, M365 Loop, Word"
-    ],
-    roiPreview: {
-      hoursSavedPerWeek: 5.2,
-      annualValue: "$15,600 / seat",
-      primaryBenefit: "Automated sprint summaries & backlog alignment"
-    }
-  }
-];
+// Mock PERSONA_STORIES removed (#186) — personas are now generated for real
+// per quiz-taker by persona-generation-engine.ts (POST
+// /api/portal/copilot-assessment/personas), consumed via
+// personaGenerationClient.ts. See PersonaStory in types.ts for the real shape.
 
 export const USE_CASE_TILES: UseCaseTile[] = [
   {

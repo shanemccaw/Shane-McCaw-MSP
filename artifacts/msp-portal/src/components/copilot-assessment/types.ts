@@ -46,22 +46,57 @@ export interface EngineStatus {
   details: string[];
 }
 
+export type PersonaSeverity = 'High' | 'Medium' | 'Low';
+export type PersonaBgAnimationType = 'engineer' | 'security' | 'pm' | 'writer' | 'researcher';
+
+// Real consumed shape (Copilot Assessment epic #183, Phase 3 / #186) — audited
+// directly against PersonasScreen.tsx's actual field reads rather than assumed
+// from the interface that used to live here. That prior narrower shape (id/
+// name/role/department/avatar/riskScore/opportunityScore/recommendedRollout/
+// detailedStory/telemetryEvidence/roiPreview) was never what the screen
+// rendered; PersonasScreen locally defined and consumed a much richer
+// ExtendedPersonaData shape instead, matching UseCasesScreen's identical
+// shadow-interface gap flagged in #186's issue body. This interface now IS
+// that real shape, generated fresh per quiz-taker by persona-generation-engine.ts
+// (single-input model — ~5 archetypal personas from one QuizProfile, not real
+// multi-employee clustering).
 export interface PersonaStory {
   id: string;
   name: string;
   role: string;
   department: string;
   avatar: string;
+  bgAnimationType: PersonaBgAnimationType;
+  collaborationPattern: string[];
+  sensitivitySet: string[];
+  useCaseCluster: string;
+  outcomePriorities: string[];
   riskScore: number;
-  opportunityScore: number;
-  recommendedRollout: string;
-  detailedStory: string;
-  telemetryEvidence: string[];
-  roiPreview: {
+  feasibilityScore: number;
+  adoptionFriction: number;
+  sensitivityExposure: { label: string; severity: PersonaSeverity }[];
+  collaborationFriction: { label: string; severity: PersonaSeverity }[];
+  valuePotential: {
     hoursSavedPerWeek: number;
-    annualValue: string;
+    annualValuePerSeat: string;
+    roiMultiplier: string;
     primaryBenefit: string;
   };
+  shortStory: {
+    summary: string;
+    telemetryCheck: string;
+    copilotUnlock: string;
+  };
+  expandedNarrative: {
+    identityContext: string;
+    collaborationSensitivity: string;
+    telemetryRealityCheck: string;
+    workflowFriction: string;
+    feasibilityReadiness: string;
+    copilotValueStory: string;
+    roiBreakdown: string;
+  };
+  insightRibbonText: string;
 }
 
 export interface UseCaseTile {
@@ -102,6 +137,8 @@ export interface DocumentDeliverable {
   }[];
 }
 
+export type PersonaGenerationStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface AssessmentState {
   currentStep: AssessmentStep;
   currentQuestionIndex: number;
@@ -112,6 +149,8 @@ export interface AssessmentState {
   engines: EngineStatus[];
   isTelemetryRunning: boolean;
   telemetryProgress: number;
+  personas: PersonaStory[];
+  personasStatus: PersonaGenerationStatus;
   selectedPersona: PersonaStory | null;
   selectedDocument: DocumentDeliverable | null;
   governance: GovernanceState;
