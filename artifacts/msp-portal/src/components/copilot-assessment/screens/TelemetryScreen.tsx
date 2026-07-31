@@ -5,16 +5,12 @@ import {
   CheckCircle2,
   Loader2,
   Play,
-  Pause,
-  RotateCcw,
   Shield,
   ShieldAlert,
   Zap,
   ArrowRight,
   Server,
   AlertCircle,
-  HelpCircle,
-  X,
   Lock,
   Users,
   Database,
@@ -50,27 +46,16 @@ import type { ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTele
 interface TelemetryScreenProps {
   quizAnswers?: Record<string, string>;
   onContinue: () => void;
-  onHelpClick?: () => void;
-  onExitClick?: () => void;
 }
 
 type TelemetryPhase = 'phase1_graph' | 'phase2_engines' | 'phase3_docs' | 'complete';
 
 export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   quizAnswers = {},
-  onContinue,
-  onHelpClick,
-  onExitClick
+  onContinue
 }) => {
   // Phase state
   const [phase, setPhase] = useState<TelemetryPhase>('phase1_graph');
-
-  // Phase 2 pacing controls. These are real controls again (not inert): phase 2
-  // is a local cosmetic animation, so pausing and speeding it up genuinely does
-  // something. They stay disabled during phases 1 and 3, which are real
-  // server-side runs a browser cannot pause or fast-forward.
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
-  const [simSpeed, setSimSpeed] = useState<number>(1); // 1x, 2x, 4x
 
   // Phase 1 — REAL Microsoft Graph scan state (#228).
   // No local step state and no timer here any more: the four tiles' statuses and
@@ -214,7 +199,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // happens in the effect body rather than inside a setState updater — no
   // side effects in a reducer, and StrictMode's double-invoke stays harmless.
   useEffect(() => {
-    if (phase !== 'phase2_engines' || !isSimulating) return;
+    if (phase !== 'phase2_engines') return;
 
     const timer = setTimeout(() => {
       const next = activeEngineProgress + 15;
@@ -250,10 +235,10 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
         setActiveEngineProgress(100);
         setPhase('phase3_docs');
       }
-    }, 120 / simSpeed);
+    }, 120);
 
     return () => clearTimeout(timer);
-  }, [phase, isSimulating, simSpeed, activeEngineIndex, activeEngineProgress]);
+  }, [phase, activeEngineIndex, activeEngineProgress]);
 
   // PHASE 3 → COMPLETE — the real run reached its success terminal
   // (assessment.docs.completed on the stream, or status "completed" on the
@@ -263,28 +248,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     if (phase !== 'phase3_docs' || !docWf.docGenComplete) return;
     setPhase('complete');
   }, [phase, docWf.docGenComplete]);
-
-  // Reset — replays phase 2's cosmetic pass and re-reads the real state for
-  // phases 1 and 3. It does not re-run the tenant scan and it cannot re-run the
-  // document workflow (that fires server-side off diagnostics.run_completed), so
-  // a customer whose real runs are already finished lands straight back on the
-  // completed view. That is the real state.
-  const handleRestart = () => {
-    setPhase('phase1_graph');
-    setEngines(
-      PHASE2_ENGINES.map(e => ({
-        id: e.id,
-        name: e.name,
-        description: e.description,
-        icon: e.icon,
-        status: 'pending' as const,
-        currentSseMsg: e.sseMessages[0]
-      }))
-    );
-    setActiveEngineIndex(0);
-    setActiveEngineProgress(0);
-    setIsSimulating(true);
-  };
 
   // RIGHT PANEL SCORES & METRICS CALCULATIONS
   const selectedSensitivities = (quizAnswers['sensitivity'] || '').split(',').filter(Boolean);
@@ -396,74 +359,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               <span className="text-[#0078D4]">Telemetry Signals</span>
             </h1>
           </div>
-        </div>
-
-        {/* Action Controls & Toolbar Right */}
-        <div className="flex items-center gap-3">
-          {/* Playback Controls — phase 2 only. Phase 2 is a local cosmetic
-              animation, so pausing/speeding it is real. Phases 1 and 3 are live
-              server-side runs (the tenant diagnostics scan and the Assessment
-              document-generation workflow), which a browser cannot pause or
-              fast-forward, so the controls disable themselves there rather than
-              silently doing nothing. */}
-          {(() => {
-            const pacingControllable = phase === 'phase2_engines';
-            const inertTitle =
-              'Live server-side run — playback applies to the engines pass only';
-            return (
-          <div className="flex items-center gap-1.5 bg-[#161616] border border-[#2D2D2D] rounded px-2 py-1 text-[11px] font-mono">
-            <button
-              onClick={() => setIsSimulating(!isSimulating)}
-              disabled={!pacingControllable}
-              className="text-[#CCCCCC] hover:text-white flex items-center gap-1 transition-colors px-1 disabled:opacity-40 disabled:hover:text-[#CCCCCC]"
-              title={
-                !pacingControllable ? inertTitle : isSimulating ? 'Pause engines pass' : 'Resume engines pass'
-              }
-            >
-              {isSimulating ? (
-                <Pause className="w-3.5 h-3.5 text-amber-400" />
-              ) : (
-                <Play className="w-3.5 h-3.5 text-emerald-400" />
-              )}
-              <span>{isSimulating ? 'Pause' : 'Resume'}</span>
-            </button>
-            <span className="text-[#333333]">|</span>
-            <button
-              onClick={() => setSimSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1))}
-              disabled={!pacingControllable}
-              className="text-[#0078D4] font-bold hover:underline px-1 disabled:opacity-40 disabled:hover:no-underline"
-              title={!pacingControllable ? inertTitle : 'Toggle Speed'}
-            >
-              {simSpeed}x Speed
-            </button>
-            <span className="text-[#333333]">|</span>
-            <button
-              onClick={handleRestart}
-              className="text-[#888888] hover:text-white flex items-center gap-1 transition-colors px-1"
-              title="Restart Analysis"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
-          </div>
-            );
-          })()}
-
-          <button
-            onClick={onHelpClick}
-            className="p-1.5 hover:bg-[#222222] rounded text-[#A1A1A1] hover:text-white transition-colors"
-            title="Help & Specification"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={onExitClick}
-            className="flex items-center gap-1.5 bg-[#1F1F1F] hover:bg-[#2D2D2D] text-xs text-[#CCCCCC] px-3 py-1 rounded border border-[#2D2D2D] transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>Exit</span>
-          </button>
         </div>
       </header>
 

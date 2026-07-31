@@ -357,8 +357,6 @@ export default function CopilotAssessmentPage() {
           <TelemetryScreen
             quizAnswers={state.quizAnswers}
             onContinue={() => handleNavigate('personas')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
           />
         )}
 
