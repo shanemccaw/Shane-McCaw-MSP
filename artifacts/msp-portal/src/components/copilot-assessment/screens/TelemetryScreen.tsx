@@ -728,16 +728,21 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               </div>
             )}
 
-            {/* UNIFIED TELEMETRY CAROUSEL (ENGINES + DOCUMENTS) */}
-            <UnifiedTelemetryCarousel
-              phase={phase}
-              engines={engines}
-              completedEnginesCount={completedEnginesCount}
-              docs={docs}
-              completedDocsCount={completedDocsCount}
-              renderEngineIcon={renderEngineIcon}
-              emptyDocsMessage={docWf.streamMessage}
-            />
+            {/* UNIFIED TELEMETRY CAROUSEL (ENGINES + DOCUMENTS) — gated on
+                phase !== 'phase1_graph' (#251), same as the Phase 1 tile
+                group above: Mode 1's cosmetic engine tiles have no business
+                appearing while the real Phase 1 Graph scan is still running. */}
+            {phase !== 'phase1_graph' && (
+              <UnifiedTelemetryCarousel
+                phase={phase}
+                engines={engines}
+                completedEnginesCount={completedEnginesCount}
+                docs={docs}
+                completedDocsCount={completedDocsCount}
+                renderEngineIcon={renderEngineIcon}
+                emptyDocsMessage={docWf.streamMessage}
+              />
+            )}
           </div>
 
           {/* Completion Banner & Next Step Action */}

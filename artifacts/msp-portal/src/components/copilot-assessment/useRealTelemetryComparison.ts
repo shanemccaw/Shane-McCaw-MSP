@@ -75,7 +75,7 @@ export interface RealTelemetryComparison {
 
 export function useRealTelemetryComparison(): RealTelemetryComparison {
   const { fetchWithAuth } = useAuth();
-  const { scanCheckResults, streamedRunId } = useScanStatus();
+  const { scanCheckResults, streamedRunId, triggeredRunId } = useScanStatus();
   const [payload, setPayload] = useState<TelemetryComparisonPayload | null>(null);
 
   const lastFetchAtRef = useRef(0);
@@ -119,6 +119,20 @@ export function useRealTelemetryComparison(): RealTelemetryComparison {
     const timer = setTimeout(() => void load(), RECOMPUTE_MIN_INTERVAL_MS - sinceLast);
     return () => clearTimeout(timer);
   }, [checkCount, load]);
+
+  // Clear the panel back to its real "no data yet" state the moment a NEW
+  // triggered run appears (#251), reusing the same `triggeredRunId` pattern
+  // #243 built in scan-status-context.tsx. Without this, `payload`'s own
+  // best-effort "keep showing the last real payload" behavior above (meant
+  // for transient fetch failures) had the side effect of holding the
+  // PREVIOUS run's numbers on screen until this run's own recompute cadence
+  // eventually overwrote them.
+  const previousTriggeredRunIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousTriggeredRunIdRef.current;
+    previousTriggeredRunIdRef.current = triggeredRunId;
+    if (triggeredRunId != null && triggeredRunId !== previous) setPayload(null);
+  }, [triggeredRunId]);
 
   // Terminal recompute — the authoritative one. `streamedRunId` goes null when
   // the run's stream closes on its real complete/error event (or when the poll
