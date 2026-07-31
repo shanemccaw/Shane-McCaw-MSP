@@ -84,6 +84,45 @@ export type TenantConsentRecord = {
 
 export type TenantConsentMap = Partial<Record<"graph" | "writeBack" | "sharepoint", TenantConsentRecord>>;
 
+// ── Copilot Assessment per-tenant state (epic #183 / #237) ────────────────────
+// Structural mirror of msp-portal's frozen QuizProfile shape (see its types.ts,
+// #184) — the wizard's own type stays the contract; this is the storage-side
+// echo of it, so lib/db does not import from an app package. Deliberately not
+// re-narrowed here (collaboration/workflowStyle/aiComfort are unions in the
+// wizard): the route validates on the way in, and a stored row must still
+// deserialize if the wizard's unions ever widen.
+export type CopilotQuizProfile = {
+  role: string;
+  department: string;
+  company?: string | null;
+  phone?: string | null;
+  industry: string;
+  collaboration: string[];
+  sensitivity: string[];
+  workflowStyle: string;
+  outcomePriorities: string[];
+  /** 0-1 workload weights. */
+  draftingLoad: number;
+  researchLoad: number;
+  communicationLoad: number;
+  repetitiveLoad: number;
+  toolUsage: string[];
+  aiComfort: string;
+};
+
+export type CopilotAssessmentQuizRecord = {
+  profile: CopilotQuizProfile;
+  /** ISO timestamp of the completion this record came from — a retake overwrites. */
+  completedAt: string;
+  /** users.id of the quiz-taker (the tenant may have several portal users). */
+  completedByUserId?: number | null;
+};
+
+// Keyed by assessment section, exactly like `consent` above, so the epic's later
+// phases (personas / use cases / final report) can persist per-tenant state
+// without another column or table.
+export type CopilotAssessmentStateMap = Partial<Record<"quiz", CopilotAssessmentQuizRecord>>;
+
 export const tenantsTable = pgTable("tenants", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "restrict" }),
@@ -91,6 +130,10 @@ export const tenantsTable = pgTable("tenants", {
   tenantUrl: text("tenant_url"),
   tenantId: text("tenant_id").notNull().unique(),
   consent: jsonb("consent").$type<TenantConsentMap>().notNull().default({}),
+  // Completed Copilot Assessment state (#237). Same single-jsonb-column-keyed-
+  // by-section convention as `consent` — a customer who completed the quiz,
+  // logged out and came back must not be made to retake all 13 steps.
+  copilotAssessment: jsonb("copilot_assessment").$type<CopilotAssessmentStateMap>().notNull().default({}),
   // Restored from the dropped msp_customers table (Phase 0 didn't carry these
   // forward; re-added here in Phase 2a once portal-* consumers turned out to
   // still need them — domain/industry/status/isTestbed have no analogue

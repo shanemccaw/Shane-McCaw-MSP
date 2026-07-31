@@ -17,9 +17,17 @@
  * Navigating between steps now does a real setLocation() (URL change),
  * not a local setState -- Back/Forward, refresh, and sharing a link to a
  * specific step all work correctly as a result.
+ *
+ * One piece of that state is NOT session-local any more (#237): the
+ * completed quizProfile is persisted server-side on the customer's own
+ * tenant row (tenants.copilot_assessment) and restored on mount, so a
+ * customer who finished the 13-step quiz, left, and logged back in is
+ * carried past it instead of made to redo it. Everything else here stays
+ * exactly as described above -- in-memory, per session.
  */
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import {
   AssessmentStep,
@@ -38,6 +46,13 @@ import {
 } from '@/components/copilot-assessment/assessmentData';
 import { fetchPersonaStories } from '@/components/copilot-assessment/personaGenerationClient';
 import { fetchFinalReportNarrative } from '@/components/copilot-assessment/finalReportClient';
+import {
+  fetchSavedQuizProfile,
+  saveQuizProfile,
+  shouldAwaitQuizRestore,
+  shouldSkipQuizStep,
+  type QuizProfileRestoreStatus
+} from '@/components/copilot-assessment/quizProfileClient';
 
 import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
 
@@ -74,6 +89,9 @@ const STEP_ORDER: AssessmentStep[] = [
 ];
 
 const VALID_STEPS = new Set<string>(STEP_ORDER);
+
+/** Single place this route's URLs are built, so a rename can't leave one caller stale. */
+const stepPath = (step: AssessmentStep): string => `/copilot-assessment/${step}`;
 
 type SharedState = Omit<AssessmentState, 'currentStep'>;
 
@@ -137,6 +155,26 @@ export default function CopilotAssessmentPage() {
       .catch(() => {
         // best-effort — stays false (button stays hidden) on any failure
       });
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
+
+  // Completed-quiz restore (#237). The finished QuizProfile is now persisted
+  // server-side on the customer's own tenant row, so consent -> pay -> login ->
+  // complete quiz -> [gap] -> log back in no longer means redoing all 13 steps.
+  // Runs once on mount (this page does not remount on :step changes — see the
+  // file header), and never overwrites a profile completed in this session.
+  const [restoreStatus, setRestoreStatus] = useState<QuizProfileRestoreStatus>('idle');
+  useEffect(() => {
+    let cancelled = false;
+    fetchSavedQuizProfile(fetchWithAuth).then(profile => {
+      if (cancelled) return;
+      if (!profile) {
+        setRestoreStatus('absent');
+        return;
+      }
+      setState(prev => (prev.quizProfile ? prev : { ...prev, quizProfile: profile }));
+      setRestoreStatus('restored');
+    });
     return () => { cancelled = true; };
   }, [fetchWithAuth]);
 
@@ -213,12 +251,32 @@ export default function CopilotAssessmentPage() {
   // onNavigate/onContinue callback contract, so none of them needed to
   // change.
   const handleNavigate = (step: AssessmentStep) => {
-    setLocation(`/copilot-assessment/${step}`);
+    setLocation(stepPath(step));
   };
+
+  // Carry a returning customer past the quiz step (#237). This is not new
+  // routing: it makes the exact same forward move handleCompleteQuiz already
+  // makes once quizProfile is populated, so everything downstream (personas,
+  // report, …) keeps working off the same single source of truth. One-shot —
+  // see shouldSkipQuizStep for why 'restored' -> 'applied' rather than a
+  // standing redirect.
+  useEffect(() => {
+    if (!shouldSkipQuizStep({ currentStep, quizProfile: state.quizProfile, restoreStatus })) return;
+    setRestoreStatus('applied');
+    setLocation(stepPath('telemetry'));
+  }, [currentStep, state.quizProfile, restoreStatus, setLocation]);
 
   // Quiz Handler — receives the completed structured profile (#183/#184)
   const handleCompleteQuiz = (profile: QuizProfile) => {
     setFinalReportError(null);
+    // Persist server-side so this profile survives logout/login (#237). Fire
+    // and forget on purpose: saveQuizProfile never throws, and the customer
+    // moves on to telemetry either way — a failed save costs a redo next
+    // session, it must not strand someone who just finished the quiz.
+    void saveQuizProfile(fetchWithAuth, profile);
+    // A profile completed here supersedes anything restored, and the skip above
+    // must not then fire on top of it.
+    setRestoreStatus('applied');
     setState(prev => ({
       ...prev,
       quizProfile: profile,
@@ -287,6 +345,10 @@ export default function CopilotAssessmentPage() {
   const handleReset = () => {
     setPersonasError(null);
     setFinalReportError(null);
+    // Explicit "start over" — the customer gets the quiz back rather than being
+    // carried past it by the restored profile they just discarded (#237). The
+    // saved profile stays on the tenant row until the retake overwrites it.
+    setRestoreStatus('absent');
     setState({
       currentQuestionIndex: 0,
       quizAnswers: {},
@@ -318,6 +380,13 @@ export default function CopilotAssessmentPage() {
     handleNavigate('home');
   };
 
+  // Hold the quiz step back both while the saved-profile lookup is outstanding
+  // and during the frame between "profile restored" and the skip effect above
+  // changing the URL — otherwise question 1 flashes up in either window.
+  const awaitingQuizRestore =
+    shouldAwaitQuizRestore({ currentStep, quizProfile: state.quizProfile, restoreStatus }) ||
+    shouldSkipQuizStep({ currentStep, quizProfile: state.quizProfile, restoreStatus });
+
   const commonScreenProps = {
     onHelpClick: () => setIsSpecModalOpen(true),
     onExitClick: () => handleNavigate('home'),
@@ -342,7 +411,19 @@ export default function CopilotAssessmentPage() {
           />
         )}
 
-        {currentStep === 'quiz' && (
+        {/* Held back until the saved-profile lookup answers (#237), so a
+            returning customer never sees question 1 flash up before being
+            carried past the quiz they already completed. */}
+        {currentStep === 'quiz' && awaitingQuizRestore && (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking for a saved assessment…
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'quiz' && !awaitingQuizRestore && (
           <QuizScreen
             initialProfile={state.quizProfile ?? undefined}
             userName={user?.name}
