@@ -644,19 +644,35 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
 
             {/* NEW SCREEN: ABOUT YOU */}
             {stepId === 'about-you' && (
-              <div className="space-y-6 pt-2">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                    {firstName ? `Hey, ${firstName}!` : 'About You'}
-                  </h1>
-                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
-                    A quick bit of context before we get into your organization's profile.
-                  </p>
+              <div className="relative space-y-8 pt-2">
+                {/* Decorative background treatment -- dot-grid + soft glow orbs, same idiom as PersonasScreen */}
+                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none rounded-2xl">
+                  <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:22px_22px] opacity-[0.08]" />
+                  <div className="absolute -top-16 -left-10 w-72 h-72 rounded-full bg-primary/15 blur-3xl animate-pulse" />
+                  <div className="absolute -bottom-10 right-0 w-64 h-64 rounded-full bg-accent/15 blur-3xl animate-pulse" />
                 </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-secondary/90 border border-primary/50 flex items-center justify-center shadow-[0_0_20px_rgba(0,120,212,0.35)] animate-pulse shrink-0">
+                    <User className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                      {firstName ? `Hey, ${firstName}!` : 'About You'}
+                    </h1>
+                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
+                      A quick bit of context before we get into your organization's profile.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
-                      <User className="w-3.5 h-3.5 text-primary" />
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
                       Your Role
                     </label>
                     <input
@@ -667,9 +683,12 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                       className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                     />
                   </div>
-                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
-                      <Building2 className="w-3.5 h-3.5 text-primary" />
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Building2 className="w-3.5 h-3.5" />
+                      </div>
                       Your Department
                     </label>
                     <input
@@ -680,9 +699,12 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                       className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                     />
                   </div>
-                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
-                      <Briefcase className="w-3.5 h-3.5 text-primary" />
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
                       Company
                     </label>
                     <input
@@ -693,9 +715,12 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                       className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                     />
                   </div>
-                  <div className="p-5 rounded-lg border border-border bg-card space-y-2">
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
-                      <Radio className="w-3.5 h-3.5 text-primary" />
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Radio className="w-3.5 h-3.5" />
+                      </div>
                       Phone
                     </label>
                     <input
