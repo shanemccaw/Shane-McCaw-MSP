@@ -84,6 +84,21 @@ function Write-Log {
 function Get-ManagedIdentityToken {
     param([string]$Resource)
 
+    if ($env:IDENTITY_ENDPOINT) {
+        # Azure Container Apps / App Service token endpoint. Per Microsoft's
+        # docs, the raw VM-style IMDS (169.254.169.254) is NOT reachable from
+        # Container Apps — this platform instead exposes a local token
+        # service via IDENTITY_ENDPOINT/IDENTITY_HEADER (#203).
+        $identityUrl = "$($env:IDENTITY_ENDPOINT)?api-version=2019-08-01&resource=$([uri]::EscapeDataString($Resource))"
+        if ($miClientId) {
+            $identityUrl += "&client_id=$([uri]::EscapeDataString($miClientId))"
+        }
+
+        $response = Invoke-RestMethod -Method Get -Uri $identityUrl -Headers @{ "X-IDENTITY-HEADER" = $env:IDENTITY_HEADER } -TimeoutSec 10
+        return $response.access_token
+    }
+
+    # Fallback: VM-style IMDS, for any future non-Container-Apps hosting target.
     $imdsUrl = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2019-08-01&resource=$([uri]::EscapeDataString($Resource))"
     if ($miClientId) {
         $imdsUrl += "&client_id=$([uri]::EscapeDataString($miClientId))"
