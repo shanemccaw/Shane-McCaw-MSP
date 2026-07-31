@@ -15,19 +15,24 @@ import {
 import {
   QUIZ_NAV_ITEMS,
   INDUSTRY_OPTIONS,
-  ADAPTIVE_CLUSTERS,
-  ADAPTIVE_PERSONAS,
-  ADAPTIVE_USE_CASES,
   ADAPTIVE_DATA_SENSITIVITY,
   ADAPTIVE_COLLABORATION,
   UNIVERSAL_AI_COMFORT,
   UNIVERSAL_WORKFLOW_STRUCTURE,
   UNIVERSAL_ADOPTION_SPEED,
-  ADAPTIVE_OUTCOME_PRIORITIES,
   UNIVERSAL_CHANGE_MGMT,
   UNIVERSAL_TOOL_USAGE,
   QuizOptionTile
 } from '../quizCatalog';
+import { useAuth } from '@/lib/auth-context';
+import { useQuizCatalog } from '../useQuizCatalog';
+import {
+  fetchQuizCatalog,
+  resolveQuizCatalog,
+  filterPersonasByClusters,
+  filterUseCasesByPersonas,
+  filterOutcomesByPersonas,
+} from '../quizCatalogClient';
 import { ScoringPanel } from '../quiz/ScoringPanel';
 import { inferWorkloadMix } from '../workloadInference';
 import {
@@ -190,6 +195,16 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   const isMultiSelect = currentNav.isMultiSelect;
   const currentIndustry = answers['industry'] || 'space';
 
+  // Real DB-backed persona clusters / personas / use cases / outcomes (#271).
+  // Data sensitivity and collaboration are deliberately NOT part of this — they
+  // stay in quizCatalog.ts, which is what #271 scopes.
+  //
+  // Always populated: the hook falls back per level to the built-in content
+  // while the fetch is in flight, if it fails, or before Shane has run the
+  // catalog SQL, so no step can render an empty tile grid.
+  const { fetchWithAuth } = useAuth();
+  const catalog = useQuizCatalog(currentIndustry);
+
   // Helper for multi-select handling stored as comma-separated string
   const getSelectedArray = (id: string): string[] => {
     const raw = answers[id];
@@ -230,51 +245,29 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
           hint: 'Industry determines persona clusters, personas, and use cases.'
         };
 
-      case 'clusters': {
-        const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
+      case 'clusters':
         return {
           title: 'Select All Persona Clusters You Support',
           description: 'Persona clusters organize functional teams into structured Copilot enablement tracks.',
-          options: catalog,
+          options: catalog.clusters,
           hint: 'Clusters organize personas into logical groups.'
         };
-      }
 
-      case 'personas': {
-        const fullCatalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
-        const selectedClusterIds = getSelectedArray('clusters');
-        let filteredCatalog = fullCatalog;
-
-        // If clusters were selected, filter personas by those clusters
-        if (selectedClusterIds.length > 0) {
-          filteredCatalog = fullCatalog.filter(p => !p.clusterId || selectedClusterIds.includes(p.clusterId));
-        }
-
+      case 'personas':
         return {
           title: 'Select All Personas You Support',
           description: 'Copilot deployments support multi-role workflows and specialized job descriptions.',
-          options: filteredCatalog,
+          options: filterPersonasByClusters(catalog.personas, getSelectedArray('clusters')),
           hint: 'Copilot deployments support multiple personas.'
         };
-      }
 
-      case 'use-cases': {
-        const fullCatalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
-        const selectedPersonaIds = getSelectedArray('personas');
-        let filteredCatalog = fullCatalog;
-
-        // If personas were selected, filter use cases by those personas.
-        if (selectedPersonaIds.length > 0) {
-          filteredCatalog = fullCatalog.filter(u => !u.personaId || selectedPersonaIds.includes(u.personaId));
-        }
-
+      case 'use-cases':
         return {
           title: 'Select All Relevant Copilot Use Cases',
           description: 'High-value use-case scenarios calculate initial feasibility, Graph grounding requirements, and ROI.',
-          options: filteredCatalog,
+          options: filterUseCasesByPersonas(catalog.useCases, getSelectedArray('personas')),
           hint: 'Use cases determine feasibility and ROI.'
         };
-      }
 
       case 'sensitivity': {
         const catalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
@@ -328,15 +321,19 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
           hint: 'This shapes rollout strategy.'
         };
 
-      case 'outcomes': {
-        const catalog = ADAPTIVE_OUTCOME_PRIORITIES[currentIndustry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
+      // Outcomes are persona-scoped from #271 on — previously they were
+      // industry-scoped with no persona linkage at all, which broke the
+      // cluster -> persona -> use cases -> outcomes chain the downstream AI
+      // persona generation needs. Content that carries no persona (everything
+      // migrated from the old hardcoded catalog) still shows for any selection,
+      // so this narrows only where Shane has loaded real persona-specific rows.
+      case 'outcomes':
         return {
           title: 'Select All Outcomes That Matter Most',
           description: 'Targeted business metrics drive value calculations, ROI modeling, and C-suite reporting.',
-          options: catalog,
+          options: filterOutcomesByPersonas(catalog.outcomes, getSelectedArray('personas')),
           hint: 'This determines value levers.'
         };
-      }
 
       case 'change-mgmt':
         return {
@@ -420,27 +417,15 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     }
 
     if (key === 'clusters') {
-      const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
-      return arr.map(id => {
-        const f = catalog.find(o => o.id === id);
-        return f ? f.title : id;
-      }).join(', ');
+      return arr.map(id => catalog.clusters.find(o => o.id === id)?.title || id).join(', ');
     }
 
     if (key === 'personas') {
-      const catalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
-      return arr.map(id => {
-        const f = catalog.find(o => o.id === id);
-        return f ? f.title : id;
-      }).join(', ');
+      return arr.map(id => catalog.personas.find(o => o.id === id)?.title || id).join(', ');
     }
 
     if (key === 'use-cases') {
-      const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
-      return arr.map(id => {
-        const f = catalog.find(o => o.id === id);
-        return f ? f.title : id;
-      }).join(', ');
+      return arr.map(id => catalog.useCases.find(o => o.id === id)?.title || id).join(', ');
     }
 
     if (key === 'sensitivity') {
@@ -479,11 +464,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     }
 
     if (key === 'outcomes') {
-      const catalog = ADAPTIVE_OUTCOME_PRIORITIES[currentIndustry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
-      return arr.map(id => {
-        const f = catalog.find(o => o.id === id);
-        return f ? f.title : id;
-      }).join(', ');
+      return arr.map(id => catalog.outcomes.find(o => o.id === id)?.title || id).join(', ');
     }
 
     if (key === 'change-mgmt') {
@@ -503,11 +484,15 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   // every customer; and toolUsage was an always-empty array despite three AI
   // generators reading it. All three now carry real answers.
   const buildQuizProfile = (): QuizProfile => {
-    const clustersCatalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
-    const personasCatalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
-    const useCasesCatalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
+    // Clusters/personas/use-cases/outcomes resolve against the DB-backed
+    // catalog (#271) so a title Shane loaded by SQL is the one that reaches the
+    // AI generators; sensitivity stays on the static catalog, which #271 does
+    // not move.
+    const clustersCatalog = catalog.clusters;
+    const personasCatalog = catalog.personas;
+    const useCasesCatalog = catalog.useCases;
+    const outcomesCatalog = catalog.outcomes;
     const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
-    const outcomesCatalog = ADAPTIVE_OUTCOME_PRIORITIES[currentIndustry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
     const collaborationIds = getSelectedArray('collaboration');
     const collaborationPatterns = Array.from(
       new Set(collaborationIds.map(id => COLLABORATION_MAP[id]).filter((v): v is CollaborationPattern => !!v))
@@ -571,23 +556,35 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   // chain the rest of the quiz's own filtering logic above depends on, so the
   // filtered persona/use-case picks are always valid for the fixed industry --
   // not randomized, always the same answer set.
-  const handleDebugAutoFill = () => {
+  //
+  // #271: this now resolves its picks against the REAL catalog for the fixed
+  // industry rather than the hardcoded objects. It has to — auto-filling ids
+  // that no longer exist in the DB would produce a profile whose clusters,
+  // personas, use cases and outcomes fall through to raw slugs, and a debug
+  // tool that quietly stops matching real content is worse than none. Fetched
+  // directly (not via the hook, which is bound to whatever industry is answered
+  // at click time), falling back to the built-in content exactly as the hook
+  // does.
+  const handleDebugAutoFill = async () => {
     const industry = 'space';
 
-    const clusterCatalog = ADAPTIVE_CLUSTERS[industry] || ADAPTIVE_CLUSTERS['default'];
-    const clusterId = clusterCatalog[0].id;
+    const debugCatalog = resolveQuizCatalog(await fetchQuizCatalog(fetchWithAuth, industry), industry);
 
-    const personaCatalogFull = ADAPTIVE_PERSONAS[industry] || ADAPTIVE_PERSONAS['default'];
-    const personaCatalog = personaCatalogFull.filter(p => !p.clusterId || p.clusterId === clusterId);
-    const personaId = (personaCatalog[0] ?? personaCatalogFull[0]).id;
+    const clusterId = debugCatalog.clusters[0]?.id;
+    if (!clusterId) return;
 
-    const useCaseCatalogFull = ADAPTIVE_USE_CASES[industry] || ADAPTIVE_USE_CASES['default'];
-    const useCaseCatalog = useCaseCatalogFull.filter(u => !u.personaId || u.personaId === personaId);
-    const useCaseId = (useCaseCatalog[0] ?? useCaseCatalogFull[0]).id;
+    const personaCatalog = filterPersonasByClusters(debugCatalog.personas, [clusterId]);
+    const personaId = (personaCatalog[0] ?? debugCatalog.personas[0])?.id;
+    if (!personaId) return;
+
+    const useCaseCatalog = filterUseCasesByPersonas(debugCatalog.useCases, [personaId]);
+    const useCaseId = (useCaseCatalog[0] ?? debugCatalog.useCases[0])?.id;
+
+    const outcomeCatalog = filterOutcomesByPersonas(debugCatalog.outcomes, [personaId]);
+    const outcomeId = (outcomeCatalog[0] ?? debugCatalog.outcomes[0])?.id;
 
     const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[industry] || ADAPTIVE_DATA_SENSITIVITY['default'];
     const collaborationCatalog = ADAPTIVE_COLLABORATION[industry] || ADAPTIVE_COLLABORATION['default'];
-    const outcomesCatalog = ADAPTIVE_OUTCOME_PRIORITIES[industry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
 
     setRole('QA Test Engineer');
     setDepartment('IT');
@@ -598,7 +595,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       industry,
       clusters: clusterId,
       personas: personaId,
-      'use-cases': useCaseId,
+      'use-cases': useCaseId ?? '',
       sensitivity: sensitivityCatalog[0].id,
       collaboration: collaborationCatalog[0].id,
       // Two tools, not one -- toolUsage is a real multi-select now (#270) and a
@@ -607,7 +604,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       'ai-comfort': UNIVERSAL_AI_COMFORT[0].id,
       workflow: UNIVERSAL_WORKFLOW_STRUCTURE[0].id,
       'adoption-speed': UNIVERSAL_ADOPTION_SPEED[0].id,
-      outcomes: outcomesCatalog[0].id,
+      outcomes: outcomeId ?? '',
       'change-mgmt': UNIVERSAL_CHANGE_MGMT[0].id,
     });
   };
@@ -639,7 +636,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
               this button is absent (not just hidden) for every other account. */}
           {isTestbed && (
             <button
-              onClick={handleDebugAutoFill}
+              onClick={() => { void handleDebugAutoFill(); }}
               className="px-3 py-1 bg-status-amber/20 text-status-amber border border-status-amber/50 text-xs font-mono font-bold rounded hover:bg-status-amber/30 transition-colors cursor-pointer"
               title="Testbed only -- fills all quiz steps with deterministic default answers"
             >
@@ -1074,7 +1071,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         </main>
 
         {/* RIGHT PANEL (Real-Time Context Scoring Panel) */}
-        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} company={company} phone={phone} />
+        {/* catalog passed through (#271) so the panel resolves the SAME titles
+            the tiles rendered — otherwise a use case Shane loaded by SQL would
+            show as a raw slug in the summary while reading correctly in the grid. */}
+        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} company={company} phone={phone} catalog={catalog} />
       </div>
     </div>
   );

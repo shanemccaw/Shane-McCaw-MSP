@@ -174,6 +174,7 @@ import copilotAssessmentFinalReportRouter from "./copilot-assessment-final-repor
 import copilotAssessmentCheckoutRouter from "./copilot-assessment-checkout";
 import copilotAssessmentRemediationRouter from "./copilot-assessment-remediation";
 import copilotAssessmentQuizProfileRouter from "./copilot-assessment-quiz-profile";
+import copilotAssessmentQuizCatalogRouter from "./copilot-assessment-quiz-catalog";
 import portalFirstLoginRouter from "./portal-first-login";
 import mspDiagnosticsRouter from "./msp-diagnostics";
 import portalDeliveryKanbanRouter from "./portal-delivery-kanban";
@@ -399,6 +400,7 @@ router.use(copilotAssessmentFinalReportRouter);
 router.use(copilotAssessmentCheckoutRouter);
 router.use(copilotAssessmentRemediationRouter);
 router.use(copilotAssessmentQuizProfileRouter);
+router.use(copilotAssessmentQuizCatalogRouter);
 router.use(portalFirstLoginRouter);
 router.use(mspDiagnosticsRouter);
 router.use(portalDeliveryKanbanRouter);

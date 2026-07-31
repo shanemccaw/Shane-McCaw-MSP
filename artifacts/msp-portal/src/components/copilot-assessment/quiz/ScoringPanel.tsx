@@ -10,18 +10,15 @@ import {
 import { Sparkles, Info, Activity } from 'lucide-react';
 import {
   INDUSTRY_OPTIONS,
-  ADAPTIVE_CLUSTERS,
-  ADAPTIVE_PERSONAS,
-  ADAPTIVE_USE_CASES,
   ADAPTIVE_DATA_SENSITIVITY,
   ADAPTIVE_COLLABORATION,
   UNIVERSAL_AI_COMFORT,
   UNIVERSAL_WORKFLOW_STRUCTURE,
   UNIVERSAL_ADOPTION_SPEED,
-  ADAPTIVE_OUTCOME_PRIORITIES,
   UNIVERSAL_CHANGE_MGMT,
   UNIVERSAL_TOOL_USAGE
 } from '../quizCatalog';
+import { staticQuizCatalog, type QuizCatalogLevels } from '../quizCatalogClient';
 
 interface ScoringPanelProps {
   answers: Record<string, string>;
@@ -33,10 +30,16 @@ interface ScoringPanelProps {
   department?: string;
   company?: string;
   phone?: string;
+  // The DB-backed cluster/persona/use-case/outcome catalog QuizScreen resolved
+  // (#271). Optional so this panel keeps working standalone (tests, any future
+  // caller) -- it then resolves titles from the built-in content, which is the
+  // same fallback QuizScreen itself would be showing in that situation.
+  catalog?: QuizCatalogLevels;
 }
 
-export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department, company, phone }) => {
+export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department, company, phone, catalog }) => {
   const currentIndustry = answers['industry'] || '';
+  const resolvedCatalog = catalog ?? staticQuizCatalog(currentIndustry);
 
   const getArrayFromAnswer = (key: string): string[] => {
     const raw = answers[key];
@@ -69,20 +72,17 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   }
 
   if (selectedClusters.length > 0) {
-    const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'] || [];
-    const titles = selectedClusters.map(id => catalog.find(o => o.id === id)?.title || id);
+    const titles = selectedClusters.map(id => resolvedCatalog.clusters.find(o => o.id === id)?.title || id);
     summaryItems.push({ label: 'Clusters', value: `${titles.length} selected (${titles.slice(0, 2).join(', ')}${titles.length > 2 ? '...' : ''})`, category: 'clusters' });
   }
 
   if (selectedPersonas.length > 0) {
-    const catalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'] || [];
-    const titles = selectedPersonas.map(id => catalog.find(o => o.id === id)?.title || id);
+    const titles = selectedPersonas.map(id => resolvedCatalog.personas.find(o => o.id === id)?.title || id);
     summaryItems.push({ label: 'Personas', value: `${titles.length} selected`, category: 'personas' });
   }
 
   if (selectedUseCases.length > 0) {
-    const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'] || [];
-    const titles = selectedUseCases.map(id => catalog.find(o => o.id === id)?.title || id);
+    const titles = selectedUseCases.map(id => resolvedCatalog.useCases.find(o => o.id === id)?.title || id);
     summaryItems.push({ label: 'Use Cases', value: `${titles.length} selected`, category: 'use-cases' });
   }
 
@@ -134,8 +134,7 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   }
 
   if (selectedOutcomes.length > 0) {
-    const catalog = ADAPTIVE_OUTCOME_PRIORITIES[currentIndustry] || ADAPTIVE_OUTCOME_PRIORITIES['default'] || [];
-    const titles = selectedOutcomes.map(id => catalog.find(o => o.id === id)?.title || id);
+    const titles = selectedOutcomes.map(id => resolvedCatalog.outcomes.find(o => o.id === id)?.title || id);
     summaryItems.push({
       label: 'Outcomes',
       value: `${titles.length} selected (${titles.slice(0, 2).join(', ')}${titles.length > 2 ? '...' : ''})`,

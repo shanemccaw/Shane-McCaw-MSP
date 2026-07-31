@@ -163,6 +163,115 @@ export const insertTenantSchema = createInsertSchema(tenantsTable).omit({ id: tr
 export type Tenant = typeof tenantsTable.$inferSelect;
 export type InsertTenant = typeof tenantsTable.$inferInsert;
 
+// ── Copilot Assessment quiz catalog (#271, epic #183) ─────────────────────────
+// The four adaptive quiz catalogs — persona clusters, personas, use cases and
+// outcomes — moved out of msp-portal's hardcoded quizCatalog.ts and into real
+// rows Shane populates directly by SQL. The hardcoded catalogs were 4 entries
+// per industry at every level and industry-scoped only; these tables carry no
+// depth ceiling and make outcomes persona-scoped.
+//
+// Shape deliberately mirrors the filter-tag pattern the hardcoded catalogs
+// already used (a persona carries its cluster's key, a use case carries its
+// persona's key) rather than introducing FK ids between the levels. That is
+// what lets the wizard keep doing its filtering in memory over one fetch, so
+// selecting a cluster still narrows personas without a round trip — and it is
+// what makes Shane's own INSERTs writable by hand, since a row references its
+// parent by the same human-readable key he is already typing.
+//
+// personaKey sentinel: quiz_use_cases and quiz_outcomes both scope to a
+// persona. A row whose personaKey is "*" applies to EVERY persona in its
+// industry — the honest encoding for content that genuinely has no persona
+// linkage yet, which is exactly what the migrated outcomes are (they were
+// industry-scoped before this issue). The read route maps "*" back to "no
+// linkage", so such a row renders under any persona selection, identical to
+// pre-#271 behaviour. Real persona-specific rows simply use the real key.
+export const QUIZ_CATALOG_ALL_PERSONAS = "*" as const;
+
+export const quizPersonaClustersTable = pgTable("quiz_persona_clusters", {
+  id: serial("id").primaryKey(),
+  // INDUSTRY_OPTIONS ids ("space", "healthcare", ...) plus the literal
+  // "default", which the read route falls back to for an industry with no rows
+  // of its own — the same `|| ADAPTIVE_X['default']` fallback the wizard did.
+  industry: text("industry").notNull(),
+  clusterKey: text("cluster_key").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("quiz_persona_clusters_industry_key_uq").on(t.industry, t.clusterKey),
+  index("quiz_persona_clusters_industry_idx").on(t.industry),
+]);
+
+export const quizPersonasTable = pgTable("quiz_personas", {
+  id: serial("id").primaryKey(),
+  industry: text("industry").notNull(),
+  /** quiz_persona_clusters.cluster_key within the same industry. */
+  clusterKey: text("cluster_key").notNull(),
+  personaKey: text("persona_key").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // Unique on (industry, persona_key) — NOT on the cluster too: a persona key
+  // is the answer value the wizard stores and every downstream lookup resolves,
+  // so the same key appearing under two clusters would make that lookup
+  // ambiguous. One persona belongs to exactly one cluster.
+  unique("quiz_personas_industry_key_uq").on(t.industry, t.personaKey),
+  index("quiz_personas_industry_cluster_idx").on(t.industry, t.clusterKey),
+]);
+
+export const quizUseCasesTable = pgTable("quiz_use_cases", {
+  id: serial("id").primaryKey(),
+  industry: text("industry").notNull(),
+  /** quiz_personas.persona_key, or QUIZ_CATALOG_ALL_PERSONAS for industry-wide. */
+  personaKey: text("persona_key").notNull(),
+  useCaseKey: text("use_case_key").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // Persona is part of the key here (unlike personas above): the same use case
+  // can legitimately belong to two personas, and the wizard dedupes by key when
+  // several selected personas surface it.
+  unique("quiz_use_cases_industry_persona_key_uq").on(t.industry, t.personaKey, t.useCaseKey),
+  index("quiz_use_cases_industry_persona_idx").on(t.industry, t.personaKey),
+]);
+
+export const quizOutcomesTable = pgTable("quiz_outcomes", {
+  id: serial("id").primaryKey(),
+  industry: text("industry").notNull(),
+  /** quiz_personas.persona_key, or QUIZ_CATALOG_ALL_PERSONAS for industry-wide. */
+  personaKey: text("persona_key").notNull(),
+  outcomeKey: text("outcome_key").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("quiz_outcomes_industry_persona_key_uq").on(t.industry, t.personaKey, t.outcomeKey),
+  index("quiz_outcomes_industry_persona_idx").on(t.industry, t.personaKey),
+]);
+
+export type QuizPersonaCluster = typeof quizPersonaClustersTable.$inferSelect;
+export type InsertQuizPersonaCluster = typeof quizPersonaClustersTable.$inferInsert;
+export type QuizPersona = typeof quizPersonasTable.$inferSelect;
+export type InsertQuizPersona = typeof quizPersonasTable.$inferInsert;
+export type QuizUseCase = typeof quizUseCasesTable.$inferSelect;
+export type InsertQuizUseCase = typeof quizUseCasesTable.$inferInsert;
+export type QuizOutcome = typeof quizOutcomesTable.$inferSelect;
+export type InsertQuizOutcome = typeof quizOutcomesTable.$inferInsert;
+
 export const tenantEngineOverridesTable = pgTable("tenant_engine_overrides", {
   id: serial("id").primaryKey(),
   // tenants.id of the testbed customer — successor id-space after Phase 0
