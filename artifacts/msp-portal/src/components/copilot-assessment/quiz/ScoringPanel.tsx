@@ -10,6 +10,9 @@ import {
 import { Sparkles, Info, Activity } from 'lucide-react';
 import {
   INDUSTRY_OPTIONS,
+  ADAPTIVE_CLUSTERS,
+  ADAPTIVE_PERSONAS,
+  ADAPTIVE_USE_CASES,
   ADAPTIVE_DATA_SENSITIVITY,
   ADAPTIVE_COLLABORATION,
   UNIVERSAL_AI_COMFORT,
@@ -39,6 +42,9 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
     return raw.split(',').filter(Boolean);
   };
 
+  const selectedClusters = getArrayFromAnswer('clusters');
+  const selectedPersonas = getArrayFromAnswer('personas');
+  const selectedUseCases = getArrayFromAnswer('use-cases');
   const selectedSensitivities = getArrayFromAnswer('sensitivity');
   const selectedCollaborations = getArrayFromAnswer('collaboration');
   const selectedOutcomes = getArrayFromAnswer('outcomes');
@@ -53,6 +59,24 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   if (answers['industry']) {
     const found = INDUSTRY_OPTIONS.find(o => o.id === answers['industry']);
     if (found) summaryItems.push({ label: 'Industry', value: found.title, category: 'industry' });
+  }
+
+  if (selectedClusters.length > 0) {
+    const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'] || [];
+    const titles = selectedClusters.map(id => catalog.find(o => o.id === id)?.title || id);
+    summaryItems.push({ label: 'Clusters', value: `${titles.length} selected (${titles.slice(0, 2).join(', ')}${titles.length > 2 ? '...' : ''})`, category: 'clusters' });
+  }
+
+  if (selectedPersonas.length > 0) {
+    const catalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'] || [];
+    const titles = selectedPersonas.map(id => catalog.find(o => o.id === id)?.title || id);
+    summaryItems.push({ label: 'Personas', value: `${titles.length} selected`, category: 'personas' });
+  }
+
+  if (selectedUseCases.length > 0) {
+    const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'] || [];
+    const titles = selectedUseCases.map(id => catalog.find(o => o.id === id)?.title || id);
+    summaryItems.push({ label: 'Use Cases', value: `${titles.length} selected`, category: 'use-cases' });
   }
 
   if (selectedSensitivities.length > 0) {
@@ -112,6 +136,18 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
 
   const hasIndustry = !!answers['industry'];
 
+  // Persona Coverage
+  const personaCoverage = !hasIndustry ? 0 : selectedPersonas.length > 0
+    ? Math.min(100, Math.round((selectedPersonas.length / 6) * 100))
+    : selectedClusters.length > 0
+    ? Math.min(100, selectedClusters.length * 25)
+    : 0;
+
+  // Use-Case Coverage
+  const useCaseCoverage = !hasIndustry ? 0 : selectedUseCases.length > 0
+    ? Math.min(100, Math.round((selectedUseCases.length / 5) * 100))
+    : 0;
+
   // Governance Risk (unchanged from original -- driven entirely by sensitivity + collaboration, neither of which was removed)
   let sensScore = 0;
   if (selectedSensitivities.length > 0) {
@@ -168,17 +204,9 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
     ? Math.round((speedScore * 0.4) + (wfScore * 0.3) + (cmScore * 0.3))
     : 0;
 
-  // Value Potential -- REBUILT. Original formula weighted selected use-case/persona
-  // counts, which no longer exist as quiz inputs (personas/use-cases are now AI-
-  // generated from context, not user-selected -- see #183/#186/#187). Rebuilt from
-  // the two real remaining value signals: how many outcome priorities were flagged,
-  // and the average workload-mix load (higher load = more for Copilot to take off
-  // someone's plate = more value potential).
-  const workloadAvg = workload
-    ? Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100)
-    : 0;
-  const valuePotential = !hasIndustry ? 0 : (selectedOutcomes.length > 0 || workloadAvg > 0)
-    ? Math.min(100, Math.round((selectedOutcomes.length * 15) + (workloadAvg * 0.5)))
+  // Value Potential (original formula, restored verbatim)
+  const valuePotential = !hasIndustry ? 0 : (selectedUseCases.length > 0 || selectedOutcomes.length > 0)
+    ? Math.min(100, Math.round((selectedUseCases.length * 15) + (selectedPersonas.length * 8) + (selectedOutcomes.length * 15)))
     : 0;
 
   // Radar Chart Axes
@@ -194,37 +222,39 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
   const governanceTolerance = !hasIndustry ? 0 : answers['ai-comfort'] ? aiComfortScore : (selectedSensitivities.length > 0 ? Math.max(20, 100 - sensScore) : 0);
   const riskPosture = !hasIndustry ? 0 : governanceRisk > 0 ? governanceRisk : (selectedSensitivities.length > 0 ? sensScore : 0);
   const adoptionFriction = !hasIndustry ? 0 : adoptionDifficulty;
+
+  // 4. Use-Case Feasibility
+  const useCaseFeasibility = !hasIndustry ? 0 : selectedUseCases.length > 0
+    ? Math.min(100, Math.max(10, Math.round(useCaseCoverage * 0.7 + (answers['workflow'] === 'highly_structured' ? 30 : 15))))
+    : 0;
+
+  // 5. Persona Complexity
+  const personaComplexity = !hasIndustry ? 0 : selectedPersonas.length > 0
+    ? Math.min(100, Math.round(selectedPersonas.length * 15 + selectedClusters.length * 10))
+    : selectedClusters.length > 0
+    ? selectedClusters.length * 20
+    : 0;
+
+  // 6. Value Levers
   const valueLevers = !hasIndustry ? 0 : valuePotential;
 
-  // Workload Intensity axis -- REPLACES the old "Use-Case Feasibility" axis
-  // (used to derive from selected use-case count, which no longer exists as a
-  // quiz input). Now reflects the real Workload Mix sliders directly.
-  const workloadIntensity = !hasIndustry ? 0 : workloadAvg;
-
-  // Outcome Focus axis -- REPLACES the old "Persona Complexity" axis (used to
-  // derive from selected persona/cluster counts, same reason as above). Now
-  // reflects how many outcome priorities were flagged as important.
-  const outcomeFocus = !hasIndustry ? 0 : Math.min(100, selectedOutcomes.length * 25);
-
-  // Readiness Score -- REBUILT. Original weighted useCaseFeasibility (25%) and
-  // personaCoverage (20%), both gone. Redistributed across the real remaining
-  // signals: value potential now carries more weight since it's the strongest
-  // real proxy for "how much this assessment is worth pursuing."
+  // Readiness Score (original formula, restored verbatim)
   const readinessScore = (!hasIndustry || summaryItems.length <= 1)
     ? 0
     : Math.min(100, Math.max(0, Math.round(
-        (valuePotential * 0.40) +
-        (workloadIntensity * 0.20) +
-        ((100 - governanceRisk) * 0.20) +
-        ((100 - adoptionDifficulty) * 0.20)
+        (useCaseFeasibility * 0.25) +
+        (personaCoverage * 0.20) +
+        (valuePotential * 0.25) +
+        ((100 - governanceRisk) * 0.15) +
+        ((100 - adoptionDifficulty) * 0.15)
       )));
 
   const radarData = [
     { axis: 'Governance Tolerance', val: governanceTolerance },
     { axis: 'Risk Posture', val: riskPosture },
     { axis: 'Adoption Friction', val: adoptionFriction },
-    { axis: 'Workload Intensity', val: workloadIntensity },
-    { axis: 'Outcome Focus', val: outcomeFocus },
+    { axis: 'Use-Case Feasibility', val: useCaseFeasibility },
+    { axis: 'Persona Complexity', val: personaComplexity },
     { axis: 'Value Levers', val: valueLevers },
   ];
 
@@ -366,13 +396,26 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
           <div className="space-y-2.5">
             <div className="space-y-1">
               <div className="flex justify-between text-[10px] font-semibold">
-                <span className="text-foreground/80">Workload Intensity</span>
-                <span className="font-mono text-primary">{workloadIntensity}%</span>
+                <span className="text-foreground/80">Persona Coverage</span>
+                <span className="font-mono text-primary">{personaCoverage}%</span>
               </div>
               <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${workloadIntensity}%` }}
+                  style={{ width: `${personaCoverage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] font-semibold">
+                <span className="text-foreground/80">Use-Case Coverage</span>
+                <span className="font-mono text-status-green">{useCaseCoverage}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-status-green transition-all duration-300"
+                  style={{ width: `${useCaseCoverage}%` }}
                 />
               </div>
             </div>
@@ -415,6 +458,23 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
                 />
               </div>
             </div>
+
+            {workload && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-semibold">
+                  <span className="text-foreground/80">Workload Mix (avg)</span>
+                  <span className="font-mono text-primary">
+                    {Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${Math.round(((workload.draftingLoad + workload.researchLoad + workload.communicationLoad + workload.repetitiveLoad) / 4) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
