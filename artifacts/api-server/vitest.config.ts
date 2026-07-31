@@ -60,6 +60,7 @@ export default defineConfig({
       "src/lib/ai-cost-capture.test.ts",
       "src/lib/document-engine-cost.test.ts",
       "src/lib/cio-narrative-generator.test.ts",
+      "src/lib/use-case-generator.test.ts",
       "src/routes/admin-ai-billing-analytics.test.ts",
       "src/lib/ai-lead-attribution.test.ts",
       "src/routes/admin-ai-billing-lead-analytics.test.ts",
