@@ -261,7 +261,7 @@ function SlugInnerSwitch() {
   const defaultLanding = isLoading
     ? "/dashboard"
     : user?.mspRole === "Assessment"
-      ? "/assessment"
+      ? "/copilot-assessment"
       : user?.mspRole === "CustomerUser"
         ? "/m365-health"
         : "/dashboard";
@@ -753,7 +753,7 @@ function FlatLoggedInRedirect() {
       if (!storedSlug) storeSlug(resolvedSlug);
       const landing =
         user?.mspRole === "Assessment"
-          ? "assessment"
+          ? "copilot-assessment"
           : user?.mspRole === "CustomerUser"
             ? "m365-health"
             : "dashboard";

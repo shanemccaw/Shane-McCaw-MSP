@@ -421,7 +421,7 @@ export default function LoginPage() {
   const defaultLanding = isLoading
     ? "/dashboard"
     : user?.mspRole === "Assessment"
-      ? "/assessment"
+      ? "/copilot-assessment"
       : user?.mspRole === "CustomerUser"
         ? "/m365-health"
         : "/dashboard";
@@ -450,7 +450,7 @@ export default function LoginPage() {
       // always goes to m365-health, not dashboard (pre-login user is null).
       const resolvedLanding =
         result.user?.mspRole === "Assessment"
-          ? "/assessment"
+          ? "/copilot-assessment"
           : result.user?.mspRole === "CustomerUser"
             ? "/m365-health"
             : "/dashboard";
