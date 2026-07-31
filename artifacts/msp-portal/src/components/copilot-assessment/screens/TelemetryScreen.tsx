@@ -76,6 +76,15 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // (#226 phases 2/3), deliberately untouched here.
   const graphScan = useRealGraphScanSteps();
 
+  // #234 — testbed accounts must not auto-advance off scan history from a
+  // prior session. graphScan.scanComplete reflects the tenant's most recent
+  // diagnostics run ever, regardless of age, so a testbed tenant scanned days
+  // ago would otherwise skip Phase 1 (and hide the [Debug] button) on mount.
+  // Flips true only when THIS session explicitly fires the [Debug] button.
+  // Non-testbed accounts never read this flag — their skip-ahead behavior is
+  // unchanged.
+  const [testbedScanTriggeredThisSession, setTestbedScanTriggeredThisSession] = useState(false);
+
   // Phase 2 Engines State
   const [engines, setEngines] = useState<
     Array<TelemetryEngineDef & { status: 'pending' | 'running' | 'complete'; progress: number; currentSseMsg: string }>
@@ -165,11 +174,16 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // PHASE 1 → PHASE 2 — driven by the REAL run reaching a terminal state with
   // real results, not by a timer. A failed/blocked scan deliberately does NOT
   // advance: the page holds on the real failure instead of pretending forward.
+  // #234 — testbed accounts additionally require an explicit [Debug] trigger
+  // in this session; scanComplete alone (which can reflect a stale historical
+  // run) is not enough to leave Phase 1 for them. Non-testbed accounts keep
+  // the original scanComplete-only behavior.
   useEffect(() => {
     if (phase !== 'phase1_graph' || !graphScan.scanComplete) return;
+    if (graphScan.isTestbed && !testbedScanTriggeredThisSession) return;
     setPhase('phase2_engines');
     setEngines(prev => prev.map((e, idx) => (idx === 0 ? { ...e, status: 'running', progress: 0 } : e)));
-  }, [phase, graphScan.scanComplete]);
+  }, [phase, graphScan.scanComplete, graphScan.isTestbed, testbedScanTriggeredThisSession]);
 
   // Main Simulation Engine Effect — phases 2 and 3 only (phase 1 is real).
   useEffect(() => {
@@ -758,7 +772,10 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                         See backlog: [Shane to add ticket]. */}
                     {graphScan.isTestbed && (
                       <button
-                        onClick={() => void graphScan.triggerScan()}
+                        onClick={() => {
+                          setTestbedScanTriggeredThisSession(true);
+                          void graphScan.triggerScan();
+                        }}
                         disabled={graphScan.triggering || graphScan.scanActive}
                         className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors disabled:opacity-40"
                         title="Testbed only — starts a real diagnostics run against this tenant"
