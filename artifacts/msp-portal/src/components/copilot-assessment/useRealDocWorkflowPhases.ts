@@ -1,11 +1,18 @@
 /**
  * useRealDocWorkflowPhases.ts
  *
- * Real backing for the Copilot Assessment telemetry page's phase 2 (Engines)
- * and phase 3 (Documents) — #235. Replaces the scripted `setInterval` walk over
- * TELEMETRY_ENGINES / TELEMETRY_DOCS in TelemetryScreen.tsx (12 invented engines
- * with invented finding counts, 6 invented deliverables, all on a 120ms timer)
- * with the real live progress of the real workflow run for this customer.
+ * Real backing for the Copilot Assessment telemetry page's phase 3 (Documents)
+ * — #235. Replaces the scripted `setInterval` walk over TELEMETRY_DOCS in
+ * TelemetryScreen.tsx (6 invented deliverables on a 120ms timer) with the real
+ * live progress of the real document-generation workflow run for this customer.
+ *
+ * SCOPE: phase 3 ONLY. Phase 2 (the Engines carousel) is deliberately not here
+ * — per Shane's scope correction on #235 it is a cosmetic paced placeholder
+ * using the real engine names, with no real data source behind it and no
+ * dependency on this run (see PHASE2_ENGINES in telemetryCatalog.ts). An
+ * earlier revision of this hook derived the five engine tiles from this run's
+ * lifecycle; that was removed rather than left dormant, so nothing here can
+ * quietly become phase 2's data source again.
  *
  * ZERO new backend infrastructure. Both halves already exist and already run the
  * old assessment wizard live:
@@ -52,24 +59,17 @@
  *   then workflow_run_complete (assessment.docs.completed) or
  *        workflow_run_error   (assessment.docs.failed, or an executor failure).
  *
- * ── Honest mapping, and what is NOT there ────────────────────────────────────
- * PHASE 3 (documents) maps one-to-one onto the above and is fully real: the slot
- * count is the run's real `total`, each slot's name is the real document title
- * out of the real "Generating X…" message, and the SOW + presentation slots are
- * the run's real `gen_sow` / `build_pres` stages.
+ * ── The mapping ──────────────────────────────────────────────────────────────
+ * Phase 3 maps one-to-one onto the above and is fully real: the slot count is
+ * the run's real `total`, each slot's name is the real document title out of the
+ * real "Generating X…" message, and the SOW + presentation slots are the run's
+ * real `gen_sow` / `build_pres` stages.
  *
- * PHASE 2 (engines) does NOT have per-engine events, and this is reported rather
- * than papered over. The seeded graph has no engine node at all (no
- * `calculate_priority` / `calculate_health` / `calculate_drift` / … — the node
- * types that hit getEngineDef in workflow-executor.ts); the engine recomputation
- * this assessment depends on happens upstream, inside the monitoring-package run
- * of the diagnostics scan (monitor-executor.ts), which fires
- * `diagnostics.run_completed` and thereby triggers this workflow. So the five
- * engines share the ONE real signal this stream actually provides — how far the
- * run itself has got — and each tile says so in its own message line instead of
- * inventing a per-engine progress bar, a severity, or a finding count. If Shane
- * wants genuinely per-engine live detail here, that needs per-engine events at
- * the source; it cannot be read out of this stream today.
+ * Worth recording for anyone who later wonders where the engines went: the
+ * seeded graph has no engine node at all (none of the `calculate_priority` /
+ * `calculate_health` / `calculate_drift` / … node types that reach getEngineDef
+ * in workflow-executor.ts), so this run never had per-engine events to map in
+ * the first place. That is exactly why phase 2 is cosmetic.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -77,17 +77,6 @@ import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
 
 export type DocWorkflowTileStatus = "pending" | "running" | "complete" | "error";
-
-export interface RealEngineTile {
-  /** engine-registry key (engine-registry.ts) for the engine this tile names. */
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  status: DocWorkflowTileStatus;
-  /** Live line — always a statement about real run state, never a script. */
-  message: string;
-}
 
 export interface RealDocTile {
   id: string;
@@ -105,8 +94,6 @@ export interface RealDocWorkflowPhases {
   runId: number | null;
   /** True once the first /portal/scan-status payload has been read. */
   loaded: boolean;
-  /** The five engine tiles (see the honesty note in the file header). */
-  engines: RealEngineTile[];
   /** Document / SOW / presentation slots, real count and real names. */
   docs: RealDocTile[];
   /** True once the run has emitted its first progress event (docs are underway). */
@@ -144,44 +131,6 @@ interface ProgressState {
   step: number | null;
   total: number | null;
 }
-
-/**
- * The five engines this page names. Ids are real engine-registry keys; the
- * descriptions state what the engine is, and deliberately make no claim about
- * this tenant (no severity, no finding count — the run reports neither).
- */
-const ENGINE_TILES: { id: string; name: string; description: string; icon: string }[] = [
-  {
-    id: "priority",
-    name: "Priority Engine",
-    description: "Ranks the tenant's findings into a remediation order.",
-    icon: "Zap",
-  },
-  {
-    id: "health",
-    name: "Architecture Health Engine",
-    description: "Scores the tenant's Microsoft 365 architecture health.",
-    icon: "Server",
-  },
-  {
-    id: "security",
-    name: "Security Engine",
-    description: "Scores the tenant's security posture from collected checks.",
-    icon: "Shield",
-  },
-  {
-    id: "drift",
-    name: "Drift Engine",
-    description: "Compares this scan against the tenant's previous state.",
-    icon: "Sliders",
-  },
-  {
-    id: "forecasting",
-    name: "Forecasting Engine",
-    description: "Projects the tenant's trajectory from its scan history.",
-    icon: "Activity",
-  },
-];
 
 /**
  * wf_runs.status values that mean the run really failed. Deliberately NOT
@@ -293,43 +242,6 @@ export function useRealDocWorkflowPhases(): RealDocWorkflowPhases {
     const finishedWithoutProgress = !failed && pollComplete && !streamComplete && !sawProgress;
     const started = !failed && (sawProgress || streamComplete);
 
-    // ── Phase 2 — engines ────────────────────────────────────────────────────
-    // One shared real signal for all five (see the file header): the stream has
-    // no per-engine event, so each tile states the real thing it is derived from
-    // rather than pretending to a progress of its own.
-    let engineStatus: DocWorkflowTileStatus;
-    let engineMessage: string;
-    if (failed) {
-      engineStatus = "error";
-      engineMessage = errorMessage ?? "The assessment run failed.";
-    } else if (started) {
-      engineStatus = "complete";
-      engineMessage =
-        "Complete — the run reached document generation, which is downstream of every engine. " +
-        "This run emits no per-engine event, so no per-engine detail is claimed.";
-    } else if (finishedWithoutProgress) {
-      // Not "complete": the run finished without ever reporting document work,
-      // so there is nothing here to call done.
-      engineStatus = "pending";
-      engineMessage =
-        `Assessment run #${runId} finished without reporting any document progress — ` +
-        "either it was not eligible to generate yet, or it ended before this page connected.";
-    } else if (runId != null) {
-      engineStatus = "running";
-      engineMessage = `Assessment run #${runId} is in flight — no progress event has arrived from it yet.`;
-    } else {
-      engineStatus = "pending";
-      engineMessage =
-        data == null
-          ? "Reading your assessment run state…"
-          : "No assessment document run exists for your account yet.";
-    }
-    const engines: RealEngineTile[] = ENGINE_TILES.map((e) => ({
-      ...e,
-      status: engineStatus,
-      message: engineMessage,
-    }));
-
     // ── Phase 3 — documents ──────────────────────────────────────────────────
     // Real slots: `docTotal` documents from the run's own count, then the run's
     // real SOW stage (gen_sow) and presentation stage (build_pres). Until the
@@ -438,7 +350,6 @@ export function useRealDocWorkflowPhases(): RealDocWorkflowPhases {
     return {
       runId,
       loaded: data != null,
-      engines,
       docs,
       docGenStarted: started,
       docGenComplete: complete,

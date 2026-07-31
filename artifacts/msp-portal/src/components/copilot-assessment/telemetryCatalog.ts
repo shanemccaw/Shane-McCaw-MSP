@@ -61,6 +61,96 @@ export const GRAPH_API_STEPS: GraphApiStep[] = [
   }
 ];
 
+/**
+ * Phase 2 (Engines carousel) of the Copilot Assessment telemetry page.
+ *
+ * COSMETIC ONLY, by Shane's explicit scope correction on #235: these five
+ * engines are deliberately NOT wired to any real data source. They are not
+ * currently driven by any automated workflow — the `calculate_priority` /
+ * `calculate_health` / `calculate_drift` / `calculate_forecast` node types
+ * exist only in the Workflow Builder / Simulator Studio, a manual admin tool,
+ * and nothing triggers them during a real customer scan today. So phase 2 is a
+ * paced visual placeholder using the REAL engine names (the ids below are the
+ * genuine `engine-registry.ts` keys), stepped by a local timer in
+ * TelemetryScreen.tsx. Do not wire this to `update_intelligence_tables`, the
+ * doc-generation workflow, or anything else.
+ *
+ * Phase 1 (scan) and phase 3 (documents) ARE real and must stay real — see
+ * useRealGraphScanSteps.ts and useRealDocWorkflowPhases.ts.
+ *
+ * Deliberately narrower than TELEMETRY_ENGINES below: no `severity`, no
+ * `findingCount`/`findingLabel`. Pacing is cosmetic, but there is no reason to
+ * put invented tenant findings ("3,420 exposed records", "CA01 disabled") back
+ * on screen to achieve it, so the messages describe the engine's own work only.
+ */
+export interface Phase2EngineDef {
+  /** Real engine-registry.ts key. */
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  /** Cosmetic pacing lines — process descriptions, never tenant claims. */
+  sseMessages: string[];
+}
+
+export const PHASE2_ENGINES: Phase2EngineDef[] = [
+  {
+    id: 'priority',
+    name: 'Priority Engine',
+    description: 'Ranks findings into a remediation order.',
+    icon: 'Zap',
+    sseMessages: [
+      'Loading remediation ranking rules...',
+      'Weighting findings by urgency and blast radius...',
+      'Priority ordering assembled.'
+    ]
+  },
+  {
+    id: 'health',
+    name: 'Architecture Health Engine',
+    description: 'Scores Microsoft 365 architecture health.',
+    icon: 'Server',
+    sseMessages: [
+      'Loading architecture health model...',
+      'Evaluating tenant configuration against baseline...',
+      'Architecture health score assembled.'
+    ]
+  },
+  {
+    id: 'security',
+    name: 'Security Engine',
+    description: 'Scores security posture from collected checks.',
+    icon: 'Shield',
+    sseMessages: [
+      'Loading security posture model...',
+      'Correlating identity, access and data-protection signals...',
+      'Security posture score assembled.'
+    ]
+  },
+  {
+    id: 'drift',
+    name: 'Drift Engine',
+    description: 'Compares this scan against previous tenant state.',
+    icon: 'Sliders',
+    sseMessages: [
+      'Loading previous tenant state...',
+      'Diffing current configuration against the last snapshot...',
+      'Drift comparison assembled.'
+    ]
+  },
+  {
+    id: 'forecasting',
+    name: 'Forecasting Engine',
+    description: 'Projects trajectory from scan history.',
+    icon: 'Activity',
+    sseMessages: [
+      'Loading scan history series...',
+      'Projecting trajectory across the observed window...',
+      'Forecast assembled.'
+    ]
+  }
+];
+
 export const TELEMETRY_ENGINES: TelemetryEngineDef[] = [
   {
     id: 'signals-engine',

@@ -39,6 +39,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import {
+  PHASE2_ENGINES,
   generateDynamicHintCards,
   generateTop3Mismatches
 } from '../telemetryCatalog';
@@ -64,19 +65,25 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // Phase state
   const [phase, setPhase] = useState<TelemetryPhase>('phase1_graph');
 
+  // Phase 2 pacing controls. These are real controls again (not inert): phase 2
+  // is a local cosmetic animation, so pausing and speeding it up genuinely does
+  // something. They stay disabled during phases 1 and 3, which are real
+  // server-side runs a browser cannot pause or fast-forward.
+  const [isSimulating, setIsSimulating] = useState<boolean>(true);
+  const [simSpeed, setSimSpeed] = useState<number>(1); // 1x, 2x, 4x
+
   // Phase 1 — REAL Microsoft Graph scan state (#228).
   // No local step state and no timer here any more: the four tiles' statuses and
   // message lines come from the real diagnostics run for this customer's tenant
   // (see useRealGraphScanSteps.ts for the milestone mapping).
   const graphScan = useRealGraphScanSteps();
 
-  // Phases 2 + 3 — REAL doc-generation workflow run (#235).
-  // The scripted setInterval walk over TELEMETRY_ENGINES/TELEMETRY_DOCS is gone:
-  // both phases now read the real run of the seeded "Assessment Document
-  // Generation" workflow for this customer, over the run-scoped SSE stream the
-  // old assessment wizard has always used. See useRealDocWorkflowPhases.ts for
-  // the exact real event shape and the honest mapping — in particular why the
-  // five engine tiles share one signal (that run emits no per-engine event).
+  // Phase 3 — REAL doc-generation workflow run (#235).
+  // The scripted setInterval walk over TELEMETRY_DOCS is gone: the document
+  // tiles now read the real run of the seeded "Assessment Document Generation"
+  // workflow for this customer, over the run-scoped SSE stream the old
+  // assessment wizard has always used. See useRealDocWorkflowPhases.ts for the
+  // exact real event shape this maps.
   const docWf = useRealDocWorkflowPhases();
 
   // #234 — testbed accounts must not auto-advance off scan history from a
@@ -88,20 +95,29 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // unchanged.
   const [testbedScanTriggeredThisSession, setTestbedScanTriggeredThisSession] = useState(false);
 
-  // Phase 2 engine tiles + phase 3 document tiles — both are pure projections of
-  // the real run state above onto the carousel's tile shape. No local status,
-  // progress or message state, and no timer: there is nothing to simulate.
-  const engines: ExtendedEngineDef[] = docWf.engines.map(e => ({
-    id: e.id,
-    name: e.name,
-    description: e.description,
-    icon: e.icon,
-    status: e.status,
-    currentSseMsg: e.message
-    // No `severity` and no `findingLabel`: the run reports neither, so the tile
-    // renders neither (the carousel omits both when absent).
-  }));
+  // Phase 2 engine tiles — COSMETIC, by Shane's scope correction on #235. These
+  // five carry the real engine names (ids are real engine-registry keys) but no
+  // real data source: nothing triggers those engines during a customer scan
+  // today, so a paced local animation is the correct and intended treatment.
+  // No `severity`/`findingLabel` is set, so the carousel omits both rather than
+  // reintroducing the invented tenant findings this page used to show.
+  const [engines, setEngines] = useState<ExtendedEngineDef[]>(() =>
+    PHASE2_ENGINES.map(e => ({
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      icon: e.icon,
+      status: 'pending',
+      currentSseMsg: e.sseMessages[0]
+    }))
+  );
+  const [activeEngineIndex, setActiveEngineIndex] = useState<number>(0);
+  /** Cosmetic 0–100 fill for the engine currently pacing. */
+  const [activeEngineProgress, setActiveEngineProgress] = useState<number>(0);
 
+  // Phase 3 document tiles — a pure projection of the REAL run state above onto
+  // the carousel's tile shape. No local status, progress or message state and no
+  // timer: there is nothing here to simulate.
   const docs: ExtendedDocDef[] = docWf.docs.map(d => ({
     id: d.id,
     name: d.name,
@@ -111,9 +127,15 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     currentSseMsg: d.message
   }));
 
-  // Stream message — the real line for whichever phase is actually running.
+  // Stream row line. Phases 1 and 3 are real (the diagnostics run and the
+  // doc-generation run respectively); phase 2's line is the cosmetic pacing
+  // message of whichever engine tile is currently animating.
   const currentSseStream =
-    phase === 'phase1_graph' ? graphScan.streamMessage : docWf.streamMessage;
+    phase === 'phase1_graph'
+      ? graphScan.streamMessage
+      : phase === 'phase2_engines'
+        ? `[${engines[activeEngineIndex]?.name ?? 'Engines'}] ${engines[activeEngineIndex]?.currentSseMsg ?? ''}`
+        : docWf.streamMessage;
 
   // Dynamic Hint Cards Carousel Index
   const [hintCardIndex, setHintCardIndex] = useState<number>(0);
@@ -135,15 +157,18 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // Phase 1 = 0% to 25%
   // Phase 2 = 25% to 75%
   // Phase 3 = 75% to 100%
-  // Every term is a real completed-count over a real total; nothing is paced.
+  // Phases 1 and 3 are real completed-counts over real totals; phase 2's band is
+  // the cosmetic pacing position (see PHASE2_ENGINES).
   let overallProgress = 0;
   if (phase === 'phase1_graph') {
     // Real scan progress (0–100 across the four real steps) scaled into this
     // page's 0–25% band for phase 1.
     overallProgress = Math.min(25, Math.round(graphScan.scanProgressPct * 0.25));
   } else if (phase === 'phase2_engines') {
-    const engineFraction = engines.length > 0 ? completedEnginesCount / engines.length : 0;
-    overallProgress = Math.min(75, Math.round(25 + engineFraction * 50));
+    const engineWeight = engines.length > 0 ? 50 / engines.length : 0;
+    const runningContrib =
+      engines[activeEngineIndex]?.status === 'running' ? (activeEngineProgress / 100) * engineWeight : 0;
+    overallProgress = Math.min(75, Math.round(25 + completedEnginesCount * engineWeight + runningContrib));
   } else if (phase === 'phase3_docs' || phase === 'complete') {
     const docFraction = docs.length > 0 ? completedDocsCount / docs.length : 0;
     overallProgress = phase === 'complete' ? 100 : Math.min(100, Math.round(75 + docFraction * 25));
@@ -175,17 +200,60 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     if (phase !== 'phase1_graph' || !graphScan.scanComplete) return;
     if (graphScan.isTestbed && !testbedScanTriggeredThisSession) return;
     setPhase('phase2_engines');
+    setEngines(prev => prev.map((e, idx) => (idx === 0 ? { ...e, status: 'running' } : e)));
+    setActiveEngineIndex(0);
+    setActiveEngineProgress(0);
   }, [phase, graphScan.scanComplete, graphScan.isTestbed, testbedScanTriggeredThisSession]);
 
-  // PHASE 2 → PHASE 3 — the real run emitted its first progress event, which
-  // only happens once the two-sided doc gate passed and the customer's real
-  // document set was resolved. A run that hasn't started (or hasn't fired at
-  // all, because the gate is still waiting on its other condition) holds the
-  // page on phase 2 reporting that, rather than walking forward on a timer.
+  // PHASE 2 — cosmetic pacing only (Shane's #235 scope correction). Walks the
+  // five real engine names on a local timer and makes NO backend call: these
+  // engines aren't triggered by any automated workflow for a real customer scan
+  // today, so there is nothing live to report. Deliberately isolated from
+  // `docWf` so the real phase-3 stream can never be mistaken for its source.
+  // One tick per effect run (setTimeout, not setInterval) so every state update
+  // happens in the effect body rather than inside a setState updater — no
+  // side effects in a reducer, and StrictMode's double-invoke stays harmless.
   useEffect(() => {
-    if (phase !== 'phase2_engines' || !docWf.docGenStarted || docWf.docGenError) return;
-    setPhase('phase3_docs');
-  }, [phase, docWf.docGenStarted, docWf.docGenError]);
+    if (phase !== 'phase2_engines' || !isSimulating) return;
+
+    const timer = setTimeout(() => {
+      const next = activeEngineProgress + 15;
+
+      if (next < 100) {
+        setActiveEngineProgress(next);
+        // Advance the active tile's pacing line in step with its fill.
+        setEngines(current =>
+          current.map((e, idx) => {
+            if (idx !== activeEngineIndex) return e;
+            const lines = PHASE2_ENGINES[idx]?.sseMessages ?? [];
+            const msgIdx = Math.min(lines.length - 1, Math.floor((next / 100) * lines.length));
+            return { ...e, currentSseMsg: lines[msgIdx] ?? e.currentSseMsg };
+          })
+        );
+        return;
+      }
+
+      // Active tile done — complete it, and start the next one if there is one.
+      const nextIdx = activeEngineIndex + 1;
+      setEngines(current =>
+        current.map((e, idx) => {
+          if (idx === activeEngineIndex) return { ...e, status: 'complete' as const };
+          if (idx === nextIdx) return { ...e, status: 'running' as const };
+          return e;
+        })
+      );
+
+      if (nextIdx < PHASE2_ENGINES.length) {
+        setActiveEngineIndex(nextIdx);
+        setActiveEngineProgress(0);
+      } else {
+        setActiveEngineProgress(100);
+        setPhase('phase3_docs');
+      }
+    }, 120 / simSpeed);
+
+    return () => clearTimeout(timer);
+  }, [phase, isSimulating, simSpeed, activeEngineIndex, activeEngineProgress]);
 
   // PHASE 3 → COMPLETE — the real run reached its success terminal
   // (assessment.docs.completed on the stream, or status "completed" on the
@@ -196,16 +264,26 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     setPhase('complete');
   }, [phase, docWf.docGenComplete]);
 
-  // The simulation timer that used to drive phases 2 and 3 is gone entirely.
-  // All three phases are now projections of real server-side runs, so there is
-  // nothing left on this page to step, pace, pause or speed up.
-
-  // Reset — re-reads the real state from phase 1. It does not re-run the tenant
-  // scan and it cannot re-run the document workflow (that fires server-side off
-  // diagnostics.run_completed), so a customer whose runs are already finished
-  // lands straight back on the completed view. That is the real state.
+  // Reset — replays phase 2's cosmetic pass and re-reads the real state for
+  // phases 1 and 3. It does not re-run the tenant scan and it cannot re-run the
+  // document workflow (that fires server-side off diagnostics.run_completed), so
+  // a customer whose real runs are already finished lands straight back on the
+  // completed view. That is the real state.
   const handleRestart = () => {
     setPhase('phase1_graph');
+    setEngines(
+      PHASE2_ENGINES.map(e => ({
+        id: e.id,
+        name: e.name,
+        description: e.description,
+        icon: e.icon,
+        status: 'pending' as const,
+        currentSseMsg: e.sseMessages[0]
+      }))
+    );
+    setActiveEngineIndex(0);
+    setActiveEngineProgress(0);
+    setIsSimulating(true);
   };
 
   // RIGHT PANEL SCORES & METRICS CALCULATIONS
@@ -322,27 +400,41 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
         {/* Action Controls & Toolbar Right */}
         <div className="flex items-center gap-3">
-          {/* Playback Controls — permanently disabled since #235. Every phase on
-              this page is now a real server-side run (the tenant diagnostics scan
-              and the Assessment document-generation workflow), and a browser
-              cannot pause or fast-forward either one. The controls stay visible
-              but inert rather than silently doing nothing. */}
+          {/* Playback Controls — phase 2 only. Phase 2 is a local cosmetic
+              animation, so pausing/speeding it is real. Phases 1 and 3 are live
+              server-side runs (the tenant diagnostics scan and the Assessment
+              document-generation workflow), which a browser cannot pause or
+              fast-forward, so the controls disable themselves there rather than
+              silently doing nothing. */}
+          {(() => {
+            const pacingControllable = phase === 'phase2_engines';
+            const inertTitle =
+              'Live server-side run — playback applies to the engines pass only';
+            return (
           <div className="flex items-center gap-1.5 bg-[#161616] border border-[#2D2D2D] rounded px-2 py-1 text-[11px] font-mono">
             <button
-              disabled
-              className="text-[#CCCCCC] flex items-center gap-1 px-1 disabled:opacity-40"
-              title="Live server-side runs — this page reports them, it does not drive them"
+              onClick={() => setIsSimulating(!isSimulating)}
+              disabled={!pacingControllable}
+              className="text-[#CCCCCC] hover:text-white flex items-center gap-1 transition-colors px-1 disabled:opacity-40 disabled:hover:text-[#CCCCCC]"
+              title={
+                !pacingControllable ? inertTitle : isSimulating ? 'Pause engines pass' : 'Resume engines pass'
+              }
             >
-              <Pause className="w-3.5 h-3.5 text-amber-400" />
-              <span>Pause</span>
+              {isSimulating ? (
+                <Pause className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Play className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>{isSimulating ? 'Pause' : 'Resume'}</span>
             </button>
             <span className="text-[#333333]">|</span>
             <button
-              disabled
-              className="text-[#0078D4] font-bold px-1 disabled:opacity-40"
-              title="Live server-side runs — this page reports them, it does not drive them"
+              onClick={() => setSimSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1))}
+              disabled={!pacingControllable}
+              className="text-[#0078D4] font-bold hover:underline px-1 disabled:opacity-40 disabled:hover:no-underline"
+              title={!pacingControllable ? inertTitle : 'Toggle Speed'}
             >
-              1x Speed
+              {simSpeed}x Speed
             </button>
             <span className="text-[#333333]">|</span>
             <button
@@ -354,6 +446,8 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               <span>Reset</span>
             </button>
           </div>
+            );
+          })()}
 
           <button
             onClick={onHelpClick}
@@ -467,9 +561,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
                   <span
                     className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
-                      phase === 'phase2_engines' && docWf.docGenError
-                        ? 'bg-rose-500/10 text-rose-300 border border-rose-500/40 font-bold'
-                        : phase === 'phase2_engines'
+                      phase === 'phase2_engines'
                         ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
                         : phase === 'phase3_docs' || phase === 'complete'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold'
@@ -477,17 +569,14 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     }`}
                   >
                     {phase === 'phase2_engines'
-                      ? docWf.docGenError
-                        ? 'Failed'
-                        : `${completedEnginesCount}/${engines.length}`
+                      ? `${completedEnginesCount}/${engines.length}`
                       : phase === 'phase3_docs' || phase === 'complete'
                       ? 'Complete'
                       : 'Pending'}
                   </span>
                 </div>
                 <p className="text-[10px] text-[#888888] mt-1.5 leading-relaxed">
-                  Engine state read from your real assessment document run — that run reports no
-                  per-engine progress, so all {engines.length} resolve together.
+                  Sequential pass across the {engines.length} intelligence engines.
                 </p>
               </div>
 
@@ -569,16 +658,15 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                         : graphScan.scanActive
                         ? 'Scanning your Microsoft 365 tenant'
                         : 'Connecting to Microsoft 365')}
-                    {phase === 'phase2_engines' &&
+                    {phase === 'phase2_engines' && 'Analyzing Tenant Telemetry'}
+                    {phase === 'phase3_docs' &&
                       (docWf.docGenError
-                        ? 'Assessment run failed'
+                        ? 'Document generation failed'
                         : docWf.finishedWithoutProgress
                         ? 'Assessment run reported no document progress'
                         : docWf.runId == null
                         ? 'Waiting for your assessment run to start'
-                        : 'Analyzing Tenant Telemetry')}
-                    {phase === 'phase3_docs' &&
-                      (docWf.docGenError ? 'Document generation failed' : 'Generating Assessment Documents')}
+                        : 'Generating Assessment Documents')}
                     {phase === 'complete' && 'Telemetry Analysis Complete'}
                   </h2>
                 </div>
@@ -602,13 +690,18 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                   />
                 </div>
 
-                {/* SSE Inline Stream Message Display — every phase's line is now
-                    real: phase 1 is the real diagnostics run (poll + diagnostics
-                    SSE), phases 2/3 are the real doc-generation workflow run
-                    (poll + its run-scoped SSE stream). Nothing here is scripted. */}
+                {/* Inline stream row. Phase 1 is the real diagnostics run (poll +
+                    diagnostics SSE) and phase 3 is the real doc-generation
+                    workflow run (poll + its run-scoped SSE stream); phase 2's
+                    line is the cosmetic engines pass, labelled as a pass rather
+                    than as a live stream. */}
                 {(() => {
                   const streamFailed =
-                    phase === 'phase1_graph' ? graphScan.scanFailed : docWf.docGenError != null;
+                    phase === 'phase1_graph'
+                      ? graphScan.scanFailed
+                      : phase === 'phase3_docs' || phase === 'complete'
+                        ? docWf.docGenError != null
+                        : false;
                   return (
                     <div
                       className={`flex items-center gap-2 pt-1 text-xs font-mono bg-[#111111] px-3 py-1.5 rounded border border-[#222222] ${
@@ -622,7 +715,11 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                         }`}
                       />
                       <span className="truncate">
-                        {phase === 'phase1_graph' ? 'Live scan: ' : 'Live run: '}
+                        {phase === 'phase1_graph'
+                          ? 'Live scan: '
+                          : phase === 'phase2_engines'
+                            ? 'Engines pass: '
+                            : 'Live run: '}
                         {currentSseStream}
                       </span>
                     </div>
