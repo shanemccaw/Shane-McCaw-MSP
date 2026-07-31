@@ -154,8 +154,8 @@ export default function CopilotAssessmentPage() {
       quizProfile: profile,
       personas: [],
       personasStatus: 'idle',
-      currentStep: 'telemetry'
     }));
+    handleNavigate('telemetry');
   };
 
   // Telemetry Engine Simulation Handler
