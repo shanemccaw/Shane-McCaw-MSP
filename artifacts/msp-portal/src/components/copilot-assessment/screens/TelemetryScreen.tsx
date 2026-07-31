@@ -663,6 +663,20 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                         {graphScan.steps.filter(s => s.status === 'complete').length}/{graphScan.steps.length} Complete
                       </span>
                     </div>
+
+                    {/* Heartbeat Line — same animate-waveform SVG pattern as the Mode 1 right-panel
+                        background (#276), filling the empty space to the right of the complete count */}
+                    <div className="flex-1 h-8 overflow-hidden pointer-events-none opacity-25 ml-4">
+                      <div className="w-[200%] h-full flex items-center animate-waveform">
+                        <svg className="w-full h-16 text-[#0078D4]" fill="none" viewBox="0 0 1200 60">
+                          <path
+                            d="M 0 30 Q 50 30 100 30 L 120 30 L 130 10 L 140 50 L 150 5 L 160 40 L 170 30 L 200 30 Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
