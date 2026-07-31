@@ -29,16 +29,16 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     clientName: "Jane Smith",
     serviceName: "M365 Tenant Health Audit",
     amountDollars: "4,500",
-    portalLink: "https://shanemccaw.consulting/crm/portal",
+    portalLink: "https://shanemccaw.com/portal",
   },
   "onboarding-confirmation": {
     clientName: "Jane Smith",
     serviceName: "M365 Governance Setup",
     amountDollars: "4,997",
-    projectUrl: "https://shanemccaw.consulting/crm/portal/projects/1",
+    projectUrl: "https://shanemccaw.com/portal/projects/1",
   },
   "password-reset": {
-    resetLink: "https://shanemccaw.consulting/crm/reset-password?token=example",
+    resetLink: "https://shanemccaw.com/portal/reset-password?token=example",
   },
   "contact-inquiry-notification": {
     name: "Jane Smith",
@@ -52,31 +52,31 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
   "closure-request": {
     clientName: "Jane Smith",
     projectTitle: "M365 Governance Setup",
-    projectUrl: "https://shanemccaw.consulting/crm/portal/projects/1",
+    projectUrl: "https://shanemccaw.com/portal/projects/1",
   },
   "status-report-reply": {
     clientName: "Jane Smith",
     reportTitle: "Week 3 Progress Report",
     adminReply: "Great question! The Teams rollout is on track and we'll have it ready for your review by Thursday.",
-    projectUrl: "https://shanemccaw.consulting/crm/portal/projects/1",
+    projectUrl: "https://shanemccaw.com/portal/projects/1",
   },
   "client-thread-reply": {
     clientName: "Jane Smith",
     reportTitle: "Week 3 Progress Report",
     replyContent: "Thanks for the update! Will the SharePoint migration be included in the same sprint?",
-    adminPanelUrl: "https://shanemccaw.consulting/admin-panel/crm/projects/1",
+    adminPanelUrl: "https://shanemccaw.com/admin-panel/crm/projects/1",
   },
   "admin-thread-reply": {
     clientName: "Jane Smith",
     reportTitle: "Week 3 Progress Report",
     replyContent: "Yes, SharePoint migration is in the same sprint — we'll kick that off after the Teams rollout is signed off.",
-    projectUrl: "https://shanemccaw.consulting/crm/portal/projects/1",
+    projectUrl: "https://shanemccaw.com/portal/projects/1",
   },
   "retainer-resumed": {
     clientName: "Jane Smith",
     serviceName: "Microsoft 365 Managed Support",
     nextBillingDate: "August 1, 2026",
-    portalLink: "https://shanemccaw.consulting/crm/portal",
+    portalLink: "https://shanemccaw.com/portal",
   },
   "service-overview-lead-notification": {
     name: "Jane Smith",
@@ -95,7 +95,7 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     whyThisFits: "A phased Copilot AI Deployment will let Contoso build on its existing M365 licences while closing the readiness gaps identified in categories 2 and 3.",
     roiProjection: "Based on Contoso's profile, organisations at this maturity level typically see a 15–25% productivity uplift within 6 months of deployment — roughly 2–3 hours per knowledge worker per week.",
     categoryScoresRows: "<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;width:160px;\">Infrastructure &amp; Identity</td><td style=\"padding:4px 0;font-weight:600;\">9/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Data &amp; Compliance</td><td style=\"padding:4px 0;font-weight:600;\">7/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">AI Literacy</td><td style=\"padding:4px 0;font-weight:600;\">6/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Change Management</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Business Process</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>",
-    resultsUrl: "https://shanemccaw.consulting/quiz/results/42?token=sample",
+    resultsUrl: "https://shanemccaw.com/quiz/results/42?token=sample",
   },
   "admin-purchase-alert": {
     clientName: "Jane Smith",
@@ -103,17 +103,17 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     serviceName: "M365 Health Check",
     amountDollars: "1,497",
     purchaseType: "Service purchase",
-    portalLink: "https://shanemccaw.consulting/crm/portal",
+    portalLink: "https://shanemccaw.com/portal",
   },
   "service-overview-email": {
     firstName: "Jane",
     serviceName: "SharePoint Intranet Build",
-    bookingLink: "https://shanemccaw.consulting/book",
+    bookingLink: "https://shanemccaw.com/book",
   },
   "client-message-notification": {
     clientName: "Jane Smith",
     messageBody: "Hi, just wanted to check in on the progress of the SharePoint migration. Any updates?",
-    portalLink: "https://shanemccaw.consulting/crm/portal/messages",
+    portalLink: "https://shanemccaw.com/portal/messages",
   },
   "admin-message-notification": {
     clientName: "Jane Smith",
@@ -129,11 +129,11 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     whyThisFits: "A phased Copilot AI Deployment will let Contoso build on its existing M365 licences while closing the readiness gaps identified in categories 2 and 3.",
     roiProjection: "Based on Contoso's profile, organisations at this maturity level typically see a 15–25% productivity uplift within 6 months of deployment — roughly 2–3 hours per knowledge worker per week.",
     categoryScoresRows: "<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;width:160px;\">Infrastructure &amp; Identity</td><td style=\"padding:4px 0;font-weight:600;\">9/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Data &amp; Compliance</td><td style=\"padding:4px 0;font-weight:600;\">7/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">AI Literacy</td><td style=\"padding:4px 0;font-weight:600;\">6/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Change Management</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Business Process</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>",
-    resultsUrl: "https://shanemccaw.consulting/quiz/results/42?token=sample",
+    resultsUrl: "https://shanemccaw.com/quiz/results/42?token=sample",
   },
   "welcome-email": {
     clientName: "Jane Smith",
-    portalLink: "https://shanemccaw.consulting/crm/portal",
+    portalLink: "https://shanemccaw.com/portal",
   },
 };
 
