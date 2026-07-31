@@ -289,8 +289,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     }
   };
 
-  // SVG Gauge calculations
-  const radius = 32;
+  // SVG Gauge calculations. The svg viewport is 64x64 (w-16 h-16) with the
+  // circle centered at (32,32); a radius of 32 puts the stroke's outer edge
+  // (r + strokeWidth/2) past the svg's own bounds, which the svg element's
+  // default overflow:hidden then clips top/bottom. Leaving half the stroke
+  // width as margin keeps the full ring inside the viewport.
+  const gaugeStrokeWidth = 5;
+  const radius = 32 - gaugeStrokeWidth / 2 - 1;
   const circumference = 2 * Math.PI * radius;
   const selfDashoffset = circumference - (selfScore / 100) * circumference;
   const actualDashoffset = circumference - (actualTelemetryScore / 100) * circumference;
@@ -885,13 +890,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     {/* Rotating Highlight Ring */}
                     <div className="absolute inset-0 rounded-full border border-sky-400/20 animate-ring-rotate pointer-events-none" />
                     <svg className="w-16 h-16 transform -rotate-90">
-                      <circle cx="32" cy="32" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth="5" fill="transparent" />
+                      <circle cx="32" cy="32" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth={gaugeStrokeWidth} fill="transparent" />
                       <circle
                         cx="32"
                         cy="32"
                         r={radius}
                         stroke="#0078D4"
-                        strokeWidth="5"
+                        strokeWidth={gaugeStrokeWidth}
                         strokeDasharray={circumference}
                         strokeDashoffset={selfDashoffset}
                         strokeLinecap="round"
@@ -915,13 +920,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     <svg className={`w-16 h-16 transform -rotate-90 ${
                       actualTelemetryScore > 0 ? 'drop-shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse' : ''
                     }`}>
-                      <circle cx="32" cy="32" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth="5" fill="transparent" />
+                      <circle cx="32" cy="32" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth={gaugeStrokeWidth} fill="transparent" />
                       <circle
                         cx="32"
                         cy="32"
                         r={radius}
                         stroke={actualTelemetryScore > 0 ? '#F59E0B' : '#444444'}
-                        strokeWidth="5"
+                        strokeWidth={gaugeStrokeWidth}
                         strokeDasharray={circumference}
                         strokeDashoffset={actualDashoffset}
                         strokeLinecap="round"
