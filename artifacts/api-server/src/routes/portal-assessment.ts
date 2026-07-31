@@ -896,7 +896,13 @@ router.post(
         return;
       }
 
-      // Same packageKey resolution as msp-diagnostics.ts's diagnostics/run route.
+      // Resolve packageKey off the customer's active Copilot entitlement
+      // (copilot-readiness-snapshot FREE / copilot-readiness-assessment PAID —
+      // the same client_services row #240's entitlement gate checks), not the
+      // unrelated monitoring_subscription join. Both slugs carry the same
+      // real packageKey ("assess:copilot-readiness" — confirmed live, see
+      // admin-simulator-assessments.test.ts's REAL_ASSESSMENT_SERVICES), so no
+      // FREE vs PAID branching is needed here.
       const [pkgRow] = await db
         .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
         .from(usersTable)
@@ -905,11 +911,11 @@ router.post(
         .where(
           and(
             eq(usersTable.tenantId, customerId),
-            eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
+            inArray(servicesTable.slug, ["copilot-readiness-snapshot", "copilot-readiness-assessment"]),
             eq(clientServicesTable.status, "active"),
           )
         )
-        // Deterministic: most recent active subscription wins when a customer
+        // Deterministic: most recent active entitlement wins when a customer
         // holds more than one (unordered LIMIT 1 was arbitrary).
         .orderBy(desc(clientServicesTable.id))
         .limit(1);
