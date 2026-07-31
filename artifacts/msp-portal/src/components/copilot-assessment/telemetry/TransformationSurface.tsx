@@ -276,7 +276,7 @@ export const TransformationSurface: React.FC<TransformationSurfaceProps> = ({
               </div>
 
               {/* Bottom Risk Summary */}
-              <div className="relative z-10 pt-2 border-t border-destructive/40 text-[10px] font-mono text-destructive bg-destructive/10/40 p-2 rounded-lg flex items-center justify-between">
+              <div className="relative z-10 pt-2 border-t border-destructive/40 text-[10px] font-mono text-destructive bg-destructive/10 p-2 rounded-lg flex items-center justify-between">
                 <span>Diagnostic Assessment:</span>
                 <span className="font-bold">{data.before.riskSummary}</span>
               </div>

@@ -120,7 +120,7 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
       <div
         className={`absolute inset-0 transition-opacity duration-600 ${
           isDocumentMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } bg-gradient-to-r from-background/90 via-background/90 to-status-teal/90 backdrop-blur-xl border border-accent/40`}
+        } bg-gradient-to-r from-background/90 via-background/90 to-accent/40 backdrop-blur-xl border border-accent/40`}
       />
 
       {/* SHIMMER SWEEP OVERLAY */}
@@ -285,9 +285,9 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                         <span
                           className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
                             eng.severity === 'High'
-                              ? 'bg-destructive/10/90 text-destructive border-destructive'
+                              ? 'bg-destructive/90 text-destructive border-destructive'
                               : eng.severity === 'Medium'
-                              ? 'bg-status-amber/10/90 text-status-amber border-status-amber'
+                              ? 'bg-status-amber/90 text-status-amber border-status-amber'
                               : eng.severity === 'Low'
                               ? 'bg-primary/90 text-primary border-primary'
                               : 'bg-status-green/90 text-status-green border-status-green'
