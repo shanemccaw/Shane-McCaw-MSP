@@ -30,9 +30,11 @@ interface ScoringPanelProps {
   // values. Kept optional so this panel still renders sensibly mid-quiz.
   role?: string;
   department?: string;
+  company?: string;
+  phone?: string;
 }
 
-export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department }) => {
+export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepId, isReviewScreen, role, department, company, phone }) => {
   const currentIndustry = answers['industry'] || '';
 
   const getArrayFromAnswer = (key: string): string[] => {
@@ -53,6 +55,10 @@ export const ScoringPanel: React.FC<ScoringPanelProps> = ({ answers, activeStepI
 
   if (role && department) {
     summaryItems.push({ label: 'Role / Dept', value: `${role} / ${department}`, category: 'about-you' });
+  }
+
+  if (company || phone) {
+    summaryItems.push({ label: 'Company / Phone', value: `${company || '—'} / ${phone || '—'}`, category: 'about-you' });
   }
 
   if (answers['industry']) {
