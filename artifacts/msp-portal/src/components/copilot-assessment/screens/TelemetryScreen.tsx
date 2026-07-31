@@ -360,6 +360,35 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
             </h1>
           </div>
         </div>
+
+        {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+            Testbed-only manual trigger for a REAL scan, so the real run can be
+            watched live during development. Persistently visible across all
+            three phases (#241) — no longer scoped to phase1_graph — so a
+            testbed account can re-trigger a fresh scan without navigating away
+            and back. It posts to the platform's one existing debug endpoint
+            (POST /portal/assessment/debug-trigger-scan), which is hard-gated
+            server-side to isTestbed=true customers — this isTestbed check only
+            hides the button, it is NOT the gate. Remove this button with that
+            route. See backlog: [Shane to add ticket]. */}
+        {graphScan.isTestbed && (
+          <button
+            onClick={() => {
+              setTestbedScanTriggeredThisSession(true);
+              void graphScan.triggerScan();
+            }}
+            disabled={graphScan.triggering || graphScan.scanActive}
+            className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors disabled:opacity-40"
+            title="Testbed only — starts a real diagnostics run against this tenant"
+          >
+            {graphScan.triggering ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Play className="w-3 h-3" />
+            )}
+            <span>[Debug] Run real scan</span>
+          </button>
+        )}
       </header>
 
       {/* 2. THREE-PANEL BODY */}
@@ -676,33 +705,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     Tile Group: Microsoft Graph Connection
                   </h3>
                   <div className="flex items-center gap-3">
-                    {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
-                        Testbed-only manual trigger for a REAL scan, so the real
-                        run can be watched live during development. It posts to
-                        the platform's one existing debug endpoint
-                        (POST /portal/assessment/debug-trigger-scan), which is
-                        hard-gated server-side to isTestbed=true customers — this
-                        isTestbed check only hides the button, it is NOT the gate.
-                        Remove this button with that route.
-                        See backlog: [Shane to add ticket]. */}
-                    {graphScan.isTestbed && (
-                      <button
-                        onClick={() => {
-                          setTestbedScanTriggeredThisSession(true);
-                          void graphScan.triggerScan();
-                        }}
-                        disabled={graphScan.triggering || graphScan.scanActive}
-                        className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors disabled:opacity-40"
-                        title="Testbed only — starts a real diagnostics run against this tenant"
-                      >
-                        {graphScan.triggering ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Play className="w-3 h-3" />
-                        )}
-                        <span>[Debug] Run real scan</span>
-                      </button>
-                    )}
                     <span className="text-xs font-mono text-[#0078D4]">4 Steps</span>
                   </div>
                 </div>
