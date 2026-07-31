@@ -96,6 +96,53 @@ export function computePillarDisplayScore(
 }
 
 /**
+ * The SAME normalization as `computePillarDisplayScore`, applied one level up —
+ * to the whole-engine score rather than to a single pillar.
+ *
+ * This is deliberately NOT a second scoring model, and deliberately NOT an
+ * average of the per-pillar display scores (which would silently weight a
+ * pillar carrying one tiny rule equally with one carrying twenty, i.e. a new
+ * formula). It is the identical `100 − raw/theoreticalMax × 100` expression
+ * with both sides summed over the caller's pillar list — the same aggregation
+ * `calculateArchitectureHealthScore` itself performs when it reports one
+ * `score` for the tenant (`healthResult.score + securityResult.score`).
+ *
+ * The pillar list is a parameter rather than `HEALTH_PILLARS`, so the caller
+ * can pass the security-inclusive radar set (`RADAR_PILLARS`, which lives in
+ * pillar-coverage.ts and imports THIS module) without creating an import cycle.
+ *
+ * Returns null when no evaluable rule configures any impact across the given
+ * pillars — the same "never fabricate a score with no data behind it" guard the
+ * per-pillar function applies.
+ */
+export function computeOverallDisplayScore(
+  pillars: readonly (HealthPillar | "security")[],
+  output: HealthEngineOutput,
+  impacts: Map<string, SignalHealthImpactConfig>,
+  evaluableSignalKeys: ReadonlySet<string>,
+): number | null {
+  let theoreticalMax = 0;
+  let rawScore = 0;
+
+  for (const pillar of pillars) {
+    const field = PILLAR_FIELD[pillar] as PillarImpactField;
+    for (const [signalKey, config] of impacts.entries()) {
+      if (!evaluableSignalKeys.has(signalKey)) continue;
+      theoreticalMax += config[field] as number;
+    }
+    // A pillar with no breakdown entry contributes no raw score — and, unlike
+    // the per-pillar function, that is safe here: its weights are still in the
+    // denominator, so a missing pillar can only make the overall look worse,
+    // never fabricate a better one.
+    rawScore += output.breakdown.find(b => b.pillar === pillar)?.score ?? 0;
+  }
+
+  if (theoreticalMax === 0) return null;
+
+  return Math.max(0, Math.min(100, Math.round(100 - (rawScore / theoreticalMax) * 100)));
+}
+
+/**
  * Converts a `HealthEngineOutput` into a customer-facing display score for
  * each pillar. Returns an array in the same order as `HEALTH_PILLARS`.
  *

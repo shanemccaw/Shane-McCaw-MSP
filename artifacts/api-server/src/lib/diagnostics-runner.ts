@@ -595,6 +595,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
           total: evt.total,
           requiresCustomerScript: evt.requiresCustomerScript,
           errorMessage: evt.errorMessage,
+          severityMatched: evt.severityMatched,
         });
       },
     });

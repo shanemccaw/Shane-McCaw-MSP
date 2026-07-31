@@ -36,11 +36,11 @@ import {
 } from 'recharts';
 import {
   PHASE2_ENGINES,
-  generateDynamicHintCards,
-  generateTop3Mismatches
+  generateDynamicHintCards
 } from '../telemetryCatalog';
 import { useRealGraphScanSteps } from '../useRealGraphScanSteps';
 import { useRealDocWorkflowPhases } from '../useRealDocWorkflowPhases';
+import { useRealTelemetryComparison } from '../useRealTelemetryComparison';
 import type { ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTelemetryCarousel';
 
 interface TelemetryScreenProps {
@@ -249,75 +249,47 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     setPhase('complete');
   }, [phase, docWf.docGenComplete]);
 
-  // RIGHT PANEL SCORES & METRICS CALCULATIONS
-  const selectedSensitivities = (quizAnswers['sensitivity'] || '').split(',').filter(Boolean);
-  const selectedCollaborations = (quizAnswers['collaboration'] || '').split(',').filter(Boolean);
-  const selectedPersonas = (quizAnswers['personas'] || '').split(',').filter(Boolean);
-  const selectedUseCases = (quizAnswers['use-cases'] || '').split(',').filter(Boolean);
+  // RIGHT PANEL — REAL TELEMETRY COMPARISON (#245)
+  //
+  // All four elements below (Score gauges, Multi-Dimension Radar, Dimension Gap
+  // Analysis, Top Discrepancies) now read one real source: the platform's own
+  // health engine (computeHealthEngine via calculateArchitectureHealthScore) and
+  // this customer's real msp_diagnostic_findings, joined with the run's real
+  // per-check SSE stream while a scan is in flight. See
+  // useRealTelemetryComparison.ts / telemetryComparison.ts, and api-server's
+  // lib/telemetry-comparison.ts.
+  //
+  // What was here before: `sensRiskScore` / `collabRiskScore` derived from quiz
+  // answers, multiplied by a synthetic `engineProgressFactor` (the fraction of
+  // the COSMETIC phase-2 engine tiles that had animated), producing six invented
+  // radar axes, four invented gap bars and an invented "Actual Telemetry" score
+  // — none of which read a single byte of the real scan. Deleted outright rather
+  // than left dormant, so nothing can quietly become the panel's source again.
+  const comparison = useRealTelemetryComparison();
 
-  // Multi-Select Sensitivity Risk Factor
-  let sensRiskScore = 20;
-  if (selectedSensitivities.length > 0) {
-    const scores = selectedSensitivities.map(val => {
-      if (['classified', 'phi', 'sec_reg', 'cui_restricted'].includes(val)) return 85;
-      if (['mission_crit', 'hipaa_reg', 'sox', 'confidential'].includes(val)) return 65;
-      if (['res_sens', 'mixed_sens', 'high_sens', 'internal'].includes(val)) return 45;
-      return 20;
-    });
-    const maxSens = Math.max(...scores);
-    const breadthBonus = Math.min(15, (selectedSensitivities.length - 1) * 5);
-    sensRiskScore = Math.min(100, maxSens + breadthBonus);
-  }
-
-  // Multi-Select Collaboration Risk Factor
-  let collabRiskScore = 35;
-  if (selectedCollaborations.length > 0) {
-    const scores = selectedCollaborations.map(val => {
-      if (['cross_agency', 'multi_facility', 'client_facing', 'external_partners'].includes(val)) return 85;
-      if (['cross_mission', 'department', 'firm_wide', 'cross_functional'].includes(val)) return 60;
-      return 35;
-    });
-    const maxCollab = Math.max(...scores);
-    const breadthBonus = Math.min(15, (selectedCollaborations.length - 1) * 5);
-    collabRiskScore = Math.min(100, maxCollab + breadthBonus);
-  }
-
-  const engineProgressFactor =
-    phase === 'phase1_graph' || engines.length === 0 ? 0 : completedEnginesCount / engines.length;
-
-  // 1. Self-Assessment Score (from quiz)
+  // Self-Assessment gauge — unchanged, and deliberately so (#245 scopes the
+  // Self side out: it is legitimately self-reported). Note for Shane: this is
+  // still a constant, not actually derived from `quizAnswers`.
   const selfScore = 72; // Baseline quiz readiness score
 
-  // 2. Actual Telemetry Score incorporating multi-select sets
-  const targetActualScore = Math.max(28, Math.min(65, Math.round(75 - (sensRiskScore * 0.28 + collabRiskScore * 0.22))));
-  let actualTelemetryScore = 0;
-  if (phase === 'phase1_graph') {
-    actualTelemetryScore = 0;
-  } else if (phase === 'phase2_engines') {
-    actualTelemetryScore = Math.round(targetActualScore * engineProgressFactor);
-  } else {
-    actualTelemetryScore = targetActualScore;
-  }
+  // Real overall health for the Actual gauge. Null means the engine genuinely
+  // has no data for this tenant yet — shown as a "no data" caption, never as a
+  // fabricated number.
+  const actualTelemetryScore = comparison.actualScore ?? 0;
 
-  // 3. Radar Chart Data incorporating multi-select sensitivity & collaboration
-  const actualGov = Math.max(20, Math.round((82 - (sensRiskScore * 0.35 + collabRiskScore * 0.25)) * engineProgressFactor));
-  const actualRisk = Math.min(95, Math.round((32 + sensRiskScore * 0.38 + collabRiskScore * 0.25) * engineProgressFactor));
-  const actualAdoption = Math.min(90, Math.round((30 + collabRiskScore * 0.35 + (selectedPersonas.length * 3)) * engineProgressFactor));
-  const actualFeasibility = Math.max(25, Math.round((85 - sensRiskScore * 0.35 - collabRiskScore * 0.15) * engineProgressFactor));
-  const actualComplexity = Math.min(95, Math.round((35 + sensRiskScore * 0.25 + collabRiskScore * 0.32) * engineProgressFactor));
-  const actualValue = Math.round((55 + (selectedUseCases.length * 3) + (collabRiskScore * 0.15) - (sensRiskScore * 0.1)) * engineProgressFactor);
+  // Real radar axes: the seven pillars the engine actually returns
+  // (governance, compliance, adoption, copilot, architecture, licensing,
+  // security), not the six invented ones. There is intentionally NO `self`
+  // series — see the self-assessment design question in telemetryComparison.ts.
+  const radarData = comparison.pillars.map(p => ({ axis: p.axis, actual: p.actual }));
 
-  const radarData = [
-    { axis: 'Governance', self: 75, actual: actualGov },
-    { axis: 'Risk Posture', self: 30, actual: actualRisk },
-    { axis: 'Adoption Friction', self: 40, actual: actualAdoption },
-    { axis: 'Feasibility', self: 80, actual: actualFeasibility },
-    { axis: 'Complexity', self: 65, actual: actualComplexity },
-    { axis: 'Value Levers', self: 85, actual: actualValue }
-  ];
+  // Real gap bars — the SAME per-pillar numbers as the radar (previously a
+  // separate set of invented formulas), worst real exposure first.
+  const gapBars = comparison.gapBars;
 
-  // Dynamic Mismatches
-  const topMismatches = generateTop3Mismatches(quizAnswers);
+  // Real discrepancies — this run's live failing/severity-matched checks while
+  // it streams, its persisted critical/warning findings once it completes.
+  const topDiscrepancies = comparison.discrepancies;
 
   // Helper for rendering icons dynamically
   const renderEngineIcon = (iconName: string) => {
@@ -952,11 +924,19 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                       />
                     </svg>
                     <span className="absolute text-sm font-extrabold text-amber-400 font-mono">
-                      {actualTelemetryScore}
+                      {comparison.actualScore ?? '—'}
                     </span>
                   </div>
+                  {/* Real state of the real engine, never a generic "Live" label:
+                      a tenant the engine has no data for says so. */}
                   <span className="text-[9px] font-mono text-amber-400 font-bold">
-                    {phase === 'phase1_graph' ? 'Scanning...' : 'Live Telemetry'}
+                    {comparison.actualScore == null
+                      ? comparison.loaded
+                        ? 'No engine data'
+                        : 'Loading…'
+                      : comparison.live
+                        ? 'Live · updating'
+                        : 'Health Engine'}
                   </span>
                 </div>
               </div>
@@ -967,11 +947,12 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               <div className="flex items-center justify-between text-[11px] font-bold text-white/80">
                 <span>Multi-Dimension Radar</span>
                 <div className="flex items-center gap-2 text-[9px] font-mono">
-                  <span className="flex items-center gap-1 text-[#0078D4]">
-                    <span className="w-2 h-2 rounded-full bg-[#0078D4]" /> Self
-                  </span>
+                  {/* No "Self" series — there is no real quiz-answer → pillar
+                      self-score mapping to draw one from (see
+                      telemetryComparison.ts). The legend states what is really
+                      plotted rather than implying a comparison that isn't there. */}
                   <span className="flex items-center gap-1 text-amber-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" /> Telemetry
+                    <span className="w-2 h-2 rounded-full bg-amber-400" /> Health Engine
                   </span>
                 </div>
               </div>
@@ -987,29 +968,34 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                 {/* Data pulse behind radar chart synced to ribbon cycle */}
                 <div key={`radar-pulse-${hintCardIndex}`} className="absolute inset-0 pointer-events-none rounded-xl animate-ribbon-pulse" />
 
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData}>
-                    <PolarGrid stroke="rgba(255,255,255,0.15)" />
-                    <PolarAngleAxis dataKey="axis" tick={{ fill: '#A1A1A1', fontSize: 8 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar
-                      name="Self-Assessment"
-                      dataKey="self"
-                      stroke="#0078D4"
-                      fill="#0078D4"
-                      fillOpacity={0.25}
-                      className="transition-all duration-700"
-                    />
-                    <Radar
-                      name="Actual Telemetry"
-                      dataKey="actual"
-                      stroke="#F59E0B"
-                      fill="#F59E0B"
-                      fillOpacity={phase === 'phase1_graph' ? 0.05 : 0.40}
-                      className="transition-all duration-700"
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
+                {/* A pillar the engine has no real data for is absent, not
+                    zero-filled — so an empty radar is reported honestly rather
+                    than drawn as a collapsed shape. */}
+                {radarData.length === 0 ? (
+                  <div className="h-full w-full flex items-center justify-center text-center px-3">
+                    <p className="text-[10px] font-mono text-white/50 leading-relaxed">
+                      {comparison.loaded
+                        ? 'No pillar has real signal data for your tenant yet — the radar fills in as your scan collects it.'
+                        : 'Loading your tenant’s real pillar scores…'}
+                    </p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData}>
+                      <PolarGrid stroke="rgba(255,255,255,0.15)" />
+                      <PolarAngleAxis dataKey="axis" tick={{ fill: '#A1A1A1', fontSize: 8 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                      <Radar
+                        name="Health Engine"
+                        dataKey="actual"
+                        stroke="#F59E0B"
+                        fill="#F59E0B"
+                        fillOpacity={0.4}
+                        className="transition-all duration-700"
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -1020,97 +1006,50 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                   <TrendingDown className="w-3.5 h-3.5 text-amber-400" />
                   <span>Dimension Gap Analysis</span>
                 </span>
-                <span className="text-[9.5px] font-mono text-white/50">Live Delta</span>
+                <span className="text-[9.5px] font-mono text-white/50">
+                  {comparison.live ? 'Live Delta' : 'Health Engine'}
+                </span>
               </div>
 
+              {/* One bar per REAL pillar, worst real exposure first — the same
+                  per-pillar display scores the radar plots, from the same engine
+                  breakdown, so the two elements can no longer disagree. The blue
+                  segment is the pillar's real health, the rose segment its real
+                  distance from full health. Baselines here used to be literals
+                  (75 / 30 / 40 / 80) standing in for a self-assessment that was
+                  never collected — see the design question in
+                  telemetryComparison.ts. */}
               <div className="space-y-2 text-[10px]">
-                {/* Governance Gap */}
-                <div className="space-y-1">
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-white/80">Governance Exposure</span>
-                    <span className="font-mono text-rose-400 font-bold">-{Math.max(0, 75 - actualGov)}% Exposure</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden flex border border-white/5 relative">
-                    <div
-                      className="bg-[#0078D4] h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${actualGov}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-30" />
+                {gapBars.length === 0 ? (
+                  <p className="text-[10px] font-mono text-white/50 leading-relaxed">
+                    {comparison.loaded
+                      ? 'No pillar has real signal data for your tenant yet.'
+                      : 'Loading your tenant’s real pillar exposure…'}
+                  </p>
+                ) : (
+                  gapBars.map(bar => (
+                    <div key={bar.pillar} className="space-y-1">
+                      <div className="flex justify-between font-semibold">
+                        <span className="text-white/80">{bar.axis}</span>
+                        <span className="font-mono text-rose-400 font-bold">-{bar.gap}% Exposure</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden flex border border-white/5 relative">
+                        <div
+                          className="bg-[#0078D4] h-full transition-all duration-700 ease-out relative overflow-hidden"
+                          style={{ width: `${bar.actual}%` }}
+                        >
+                          <div className="absolute inset-0 animate-shimmer opacity-30" />
+                        </div>
+                        <div
+                          className="bg-rose-500 h-full transition-all duration-700 ease-out relative overflow-hidden"
+                          style={{ width: `${bar.gap}%` }}
+                        >
+                          <div className="absolute inset-0 animate-shimmer opacity-50" />
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      className="bg-rose-500 h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${Math.max(0, 75 - actualGov)}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-50" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Risk Posture Gap */}
-                <div className="space-y-1">
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-white/80">Unmonitored Risk Posture</span>
-                    <span className="font-mono text-amber-400 font-bold">+{Math.max(0, actualRisk - 30)}% Risk</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden flex border border-white/5 relative">
-                    <div
-                      className="bg-[#0078D4] h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: '30%' }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-30" />
-                    </div>
-                    <div
-                      className="bg-amber-500 h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${Math.max(0, actualRisk - 30)}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-50" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Adoption Friction Gap */}
-                <div className="space-y-1">
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-white/80">Adoption Friction</span>
-                    <span className="font-mono text-sky-400 font-bold">+{Math.max(0, actualAdoption - 40)}% Friction</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden flex border border-white/5 relative">
-                    <div
-                      className="bg-[#0078D4] h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: '40%' }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-30" />
-                    </div>
-                    <div
-                      className="bg-sky-400 h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${Math.max(0, actualAdoption - 40)}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-50" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Feasibility Gap */}
-                <div className="space-y-1">
-                  <div className="flex justify-between font-semibold">
-                    <span className="text-white/80">Use-Case Feasibility</span>
-                    <span className="font-mono text-purple-400 font-bold">-{Math.max(0, 80 - actualFeasibility)}% Blocked</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden flex border border-white/5 relative">
-                    <div
-                      className="bg-[#0078D4] h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${actualFeasibility}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-30" />
-                    </div>
-                    <div
-                      className="bg-purple-500 h-full transition-all duration-700 ease-out relative overflow-hidden"
-                      style={{ width: `${Math.max(0, 80 - actualFeasibility)}%` }}
-                    >
-                      <div className="absolute inset-0 animate-shimmer opacity-50" />
-                    </div>
-                  </div>
-                </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -1121,51 +1060,67 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Top Discrepancies</span>
                 </div>
-                <span className="text-[9px] font-mono text-amber-300/70">{topMismatches.length} Detected</span>
+                <span className="text-[9px] font-mono text-amber-300/70">{topDiscrepancies.length} Detected</span>
               </div>
 
+              {/* REAL critical/warning findings (#245). Previously three hardcoded
+                  strings from generateTop3Mismatches ("Unlabeled files (62%)",
+                  "14 SharePoint sites", "CA01 policy disabled") that were
+                  identical for every customer and every scan.
+                  Two real sources, and the card says which it is showing:
+                    • live   — the run currently streaming, classified from its
+                               own per-check results by the same rule the server
+                               uses when it writes the finding rows;
+                    • persisted — that run's real msp_diagnostic_findings once it
+                               has finished writing them.
+                  The "Quiz:" line is gone: there is no real quiz-answer → finding
+                  mapping to compare against (see telemetryComparison.ts). */}
               <div className="space-y-2 text-[10px]">
-                {topMismatches.map((m, idx) => {
-                  const severity = m.severity || (idx === 0 ? 'high' : idx === 1 ? 'medium' : 'low');
-                  const isHigh = severity === 'high';
-                  const isMed = severity === 'medium';
+                {topDiscrepancies.length === 0 ? (
+                  <p className="text-[9.5px] font-mono text-white/50 leading-relaxed">
+                    {!comparison.loaded
+                      ? 'Loading your tenant’s real findings…'
+                      : comparison.live
+                        ? 'No critical or warning result from your scan yet.'
+                        : 'Your last scan returned no critical or warning findings.'}
+                  </p>
+                ) : (
+                  topDiscrepancies.map(d => {
+                    const isHigh = d.severity === 'critical';
 
-                  const borderBg = isHigh
-                    ? 'border-rose-500/50 bg-rose-950/40 text-rose-200'
-                    : isMed
-                    ? 'border-amber-500/50 bg-amber-950/40 text-amber-200'
-                    : 'border-sky-500/50 bg-sky-950/40 text-sky-200';
+                    const borderBg = isHigh
+                      ? 'border-rose-500/50 bg-rose-950/40 text-rose-200'
+                      : 'border-amber-500/50 bg-amber-950/40 text-amber-200';
 
-                  const badgeColor = isHigh
-                    ? 'bg-rose-500/30 text-rose-300 border-rose-500/60'
-                    : isMed
-                    ? 'bg-amber-500/30 text-amber-300 border-amber-500/60'
-                    : 'bg-sky-500/30 text-sky-300 border-sky-500/60';
+                    const badgeColor = isHigh
+                      ? 'bg-rose-500/30 text-rose-300 border-rose-500/60'
+                      : 'bg-amber-500/30 text-amber-300 border-amber-500/60';
 
-                  return (
-                    <div
-                      key={m.id || idx}
-                      className={`p-2.5 rounded-lg border backdrop-blur-sm transition-all duration-300 animate-fade-slide ${borderBg}`}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="font-bold text-white text-xs truncate flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${isHigh ? 'bg-rose-500' : isMed ? 'bg-amber-500' : 'bg-sky-400'} animate-pulse`} />
-                          {m.title}
-                        </span>
-                        <span className={`text-[8.5px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${badgeColor}`}>
-                          {severity}
-                        </span>
+                    return (
+                      <div
+                        key={d.id}
+                        className={`p-2.5 rounded-lg border backdrop-blur-sm transition-all duration-300 animate-fade-slide ${borderBg}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-bold text-white text-xs truncate flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isHigh ? 'bg-rose-500' : 'bg-amber-500'} animate-pulse`} />
+                            {d.title}
+                          </span>
+                          <span className={`text-[8.5px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${badgeColor}`}>
+                            {d.severity}
+                          </span>
+                        </div>
+
+                        <div className="text-[9.5px] font-mono font-medium text-amber-300/90 truncate">
+                          {d.live ? 'Live check' : 'Finding'}: {d.checkKey}
+                        </div>
+                        <p className="text-[9.5px] text-white/70 leading-tight mt-0.5 line-clamp-2">
+                          {d.detail}
+                        </p>
                       </div>
-
-                      <div className="text-[9.5px] font-mono font-medium text-amber-300/90 truncate">
-                        Quiz: {m.quizText}
-                      </div>
-                      <p className="text-[9.5px] text-white/70 leading-tight mt-0.5 line-clamp-2">
-                        Telemetry: {m.telemetryText}
-                      </p>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>

@@ -165,6 +165,10 @@ export function broadcastDiagnosticsRunProgress(runId: string, data: {
   total: number;
   requiresCustomerScript: boolean;
   errorMessage?: string;
+  /** Severity band this check's own severity_rules matched, if any (#245) — lets a
+   *  live consumer classify a check's finding severity exactly as
+   *  diagnostics-runner's classifyCheckSeverity will when it persists the run. */
+  severityMatched?: string | null;
 }): void {
   broadcastToHubWithReplay("engine.monitor", runId, { type: "diagnostics_progress", ...data });
 }

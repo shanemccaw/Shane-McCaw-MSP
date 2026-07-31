@@ -152,6 +152,17 @@ export type ProgressCallback = (event: {
   total: number;
   requiresCustomerScript: boolean;
   errorMessage?: string;
+  /**
+   * The severity band this check's own configured severity_rules matched, if
+   * any — the second half of what `classifyCheckSeverity` (diagnostics-runner)
+   * needs to know a check's finding severity (#245). Without it a live
+   * consumer can only see checks that outright failed, and a check that
+   * returned status "ok" while matching a real critical severity rule — a
+   * genuine finding — is invisible until the run's findings are persisted at
+   * the very end. Carried through to the run's SSE stream so the telemetry
+   * page's Top Discrepancies can reflect real findings AS they happen.
+   */
+  severityMatched?: string | null;
 }) => void;
 
 // ── Grammar: deterministic condition evaluator ────────────────────────────────
@@ -1496,6 +1507,7 @@ export async function executeMonitoringPackage(opts: {
         total,
         requiresCustomerScript: check.requiresCustomerScript,
         errorMessage: errResult.errorMessage,
+        severityMatched: errResult.severityMatched,
       });
       continue;
     }
@@ -1515,6 +1527,7 @@ export async function executeMonitoringPackage(opts: {
       total,
       requiresCustomerScript: check.requiresCustomerScript,
       errorMessage: result.errorMessage,
+      severityMatched: result.severityMatched,
     });
   }
 

@@ -399,14 +399,6 @@ export const TELEMETRY_DOCS: TelemetryDocDef[] = [
 
 import { SENSITIVITY_OPTIONS, COLLABORATION_OPTIONS } from './quizCatalog';
 
-export interface TelemetryMismatch {
-  id: string;
-  title: string;
-  quizText: string;
-  telemetryText: string;
-  severity: 'high' | 'medium' | 'sky';
-}
-
 export function generateDynamicHintCards(
   answers: Record<string, string>,
   phase: 'phase1' | 'phase2' | 'phase3',
@@ -465,74 +457,15 @@ export function generateDynamicHintCards(
   return hints;
 }
 
-export function generateTop3Mismatches(
-  answers: Record<string, string>
-): TelemetryMismatch[] {
-  const sensIds = answers['sensitivity'] ? answers['sensitivity'].split(',').filter(Boolean) : [];
-  const collabIds = answers['collaboration'] ? answers['collaboration'].split(',').filter(Boolean) : [];
-  const speed = answers['adoption-speed'] || '';
-
-  const sensTitles = sensIds.map(id => SENSITIVITY_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-  const collabTitles = collabIds.map(id => COLLABORATION_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-
-  const mismatches: TelemetryMismatch[] = [];
-
-  // 1. Sensitivity Mismatch
-  if (sensTitles.length > 0) {
-    mismatches.push({
-      id: 'sens_mismatch',
-      title: '1. Sensitivity Exposure',
-      quizText: `Selected sensitivity: ${sensTitles.join(' + ')}`,
-      telemetryText: 'Telemetry: Unlabeled files (62%) + high exposure detected.',
-      severity: 'high'
-    });
-  } else {
-    mismatches.push({
-      id: 'sens_mismatch',
-      title: '1. Sensitivity Exposure',
-      quizText: 'Self-rated low or unselected sensitivity',
-      telemetryText: 'Telemetry: 3,420 sensitive records in public libraries & 62% missing MIP labels.',
-      severity: 'high'
-    });
-  }
-
-  // 2. Collaboration Mismatch
-  if (collabTitles.length > 0) {
-    mismatches.push({
-      id: 'collab_mismatch',
-      title: '2. Oversharing Drift',
-      quizText: `Selected collaboration: ${collabTitles.join(' + ')}`,
-      telemetryText: 'Telemetry: Oversharing detected across 14 SharePoint sites.',
-      severity: 'medium'
-    });
-  } else {
-    mismatches.push({
-      id: 'collab_mismatch',
-      title: '2. Oversharing Drift',
-      quizText: 'Self-assessed restricted/internal collaboration',
-      telemetryText: 'Telemetry: 14 sites found with "Everyone except external" broad access.',
-      severity: 'medium'
-    });
-  }
-
-  // 3. Conditional Access / Adoption Mismatch
-  if (speed === 'early_adopter' || speed === 'fast_follower') {
-    mismatches.push({
-      id: 'speed_mismatch',
-      title: '3. Readiness vs Adoption Gap',
-      quizText: 'Selected fast adoption speed',
-      telemetryText: 'Telemetry: 120 unassigned Copilot licenses & CA01 policy disabled.',
-      severity: 'sky'
-    });
-  } else {
-    mismatches.push({
-      id: 'ca_mismatch',
-      title: '3. Conditional Access Gap',
-      quizText: 'Self-assumed baseline security posture',
-      telemetryText: 'Telemetry: CA01 policy disabled, exposing tenant to MFA bypass.',
-      severity: 'sky'
-    });
-  }
-
-  return mismatches.slice(0, 3);
-}
+// generateTop3Mismatches() lived here until #245.
+//
+// It returned three hardcoded discrepancy strings — "Unlabeled files (62%)",
+// "Oversharing detected across 14 SharePoint sites", "CA01 policy disabled" —
+// identical for every customer and every scan, with no connection to any real
+// finding. The Top Discrepancies card now renders this customer's real
+// critical/warning msp_diagnostic_findings: live from the running scan's own
+// per-check results while it streams, then from its persisted rows. See
+// telemetryComparison.ts + useRealTelemetryComparison.ts.
+//
+// Deleted outright rather than deprecated, so nothing can quietly fall back to
+// it. The `TelemetryMismatch` interface went with it.

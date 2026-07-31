@@ -106,6 +106,38 @@ export interface ScanCheckProgress {
   total: number;
 }
 
+/**
+ * One real per-check result off the diagnostics-run SSE stream, retained for
+ * the run currently being streamed (#245).
+ *
+ * `scanCheckProgress` above deliberately holds only the LATEST event — it backs
+ * a single status line. The telemetry page's right panel needs the accumulated
+ * set instead: which checks of THIS run have failed so far, live, before the
+ * run's `msp_diagnostic_findings` rows exist (they are written in one batch
+ * after every check finishes — see diagnostics-runner.ts step 4).
+ *
+ * Appended inside the SSE `onmessage` handler itself, not derived from
+ * `scanCheckProgress` by an effect: successive events between two renders would
+ * collapse to the last one, silently dropping real check results.
+ */
+export interface ScanCheckResult {
+  checkKey: string;
+  checkLabel: string;
+  /** The check's real status, verbatim — the same string diagnostics-runner classifies into a finding severity. */
+  status: string;
+  /**
+   * The severity band the check's own configured severity_rules matched, if any.
+   * Together with `status` this is exactly what diagnostics-runner's
+   * classifyCheckSeverity reads, so a live consumer reaches the same severity
+   * the persisted finding will carry. Absent on an older api-server process that
+   * doesn't send the field yet — then only failed checks can be classified.
+   */
+  severityMatched?: string | null;
+  errorMessage?: string;
+  index: number;
+  total: number;
+}
+
 interface ScanStatusContextValue {
   data: ScanStatusPayload | null;
   /** Set when the trigger request itself failed — distinct from a normal poll miss. */
@@ -129,6 +161,15 @@ interface ScanStatusContextValue {
    * `data.active` for the progress bar itself; this only drives the status text.
    */
   scanCheckProgress: ScanCheckProgress | null;
+  /**
+   * Every per-check result the CURRENTLY STREAMED run has delivered so far, in
+   * arrival order (#245). Reset the moment a different run's stream opens, so
+   * these are always one run's real results and never two runs' mixed together.
+   * Empty whenever no stream is attached.
+   */
+  scanCheckResults: ScanCheckResult[];
+  /** The runId `scanCheckResults` belongs to — null when no stream is attached. */
+  streamedRunId: string | null;
   /**
    * The runId returned by this session's most recent successful trigger POST,
    * held from the moment the POST returns until that run is observed terminal
@@ -155,7 +196,16 @@ const ACTIVE_POLL_MS = 3_000;
 // Live diagnostics SSE events — same discriminated union the assessment
 // wizard/generating-screen consume from this exact endpoint.
 type DiagnosticsSSEEvent =
-  | { type: "diagnostics_progress"; checkKey: string; checkLabel: string; status: string; index: number; total: number }
+  | {
+      type: "diagnostics_progress";
+      checkKey: string;
+      checkLabel: string;
+      status: string;
+      index: number;
+      total: number;
+      errorMessage?: string;
+      severityMatched?: string | null;
+    }
   | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; findings: number }
   | { type: "diagnostics_error"; message: string };
 
@@ -165,6 +215,7 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ScanStatusPayload | null>(null);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [scanCheckProgress, setScanCheckProgress] = useState<ScanCheckProgress | null>(null);
+  const [scanCheckResults, setScanCheckResults] = useState<ScanCheckResult[]>([]);
   const [triggeredRunId, setTriggeredRunId] = useState<string | null>(null);
   const fastUntilRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -278,8 +329,12 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!streamRunId || customerId == null || !accessToken) {
       setScanCheckProgress(null);
+      setScanCheckResults([]);
       return;
     }
+    // A new run's stream is opening: the previous run's per-check results are
+    // not this run's, so they go before the first event of this one lands.
+    setScanCheckResults([]);
     const es = new EventSource(
       `/api/msp/customers/${customerId}/diagnostics/runs/${streamRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
     );
@@ -291,6 +346,23 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
           checkLabel: parsed.checkLabel,
           index: parsed.index,
           total: parsed.total,
+        });
+        // Accumulated here, in the event handler, so no real check result can be
+        // lost to render batching (#245). Keyed by checkKey — the stream's own
+        // replay of cached state can redeliver a check, and a run must never
+        // count the same check twice.
+        setScanCheckResults((prev) => {
+          const next = prev.filter((r) => r.checkKey !== parsed.checkKey);
+          next.push({
+            checkKey: parsed.checkKey,
+            checkLabel: parsed.checkLabel,
+            status: parsed.status,
+            severityMatched: parsed.severityMatched,
+            errorMessage: parsed.errorMessage,
+            index: parsed.index,
+            total: parsed.total,
+          });
+          return next;
         });
         // Real evidence this run is alive: keep the poll on its fast cadence
         // for as long as checks keep arriving.
@@ -322,6 +394,8 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
         reportTriggerStarted,
         reportTriggerError,
         scanCheckProgress,
+        scanCheckResults,
+        streamedRunId: streamRunId,
         triggeredRunId,
       }}
     >

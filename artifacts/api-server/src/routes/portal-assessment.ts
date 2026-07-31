@@ -78,6 +78,7 @@ import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
+import { buildTelemetryComparison } from "../lib/telemetry-comparison";
 import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
@@ -465,6 +466,42 @@ router.get(
     } catch (err) {
       log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
       res.status(500).json({ error: "Failed to load assessment status" });
+    }
+  },
+);
+
+// ── Telemetry right-panel comparison (#245) ──────────────────────────────────
+//
+//   GET /api/portal/assessment/telemetry-comparison
+//
+// The four right-panel elements of the Copilot Assessment telemetry page —
+// Score gauges, Multi-Dimension Radar, Dimension Gap Analysis, Top
+// Discrepancies — computed from the REAL health engine and the customer's REAL
+// diagnostic findings. See lib/telemetry-comparison.ts for the full provenance
+// note (no new scoring formula; why it is genuinely live mid-scan; and why
+// `selfAssessment` is null pending Shane's design decision).
+//
+// Deliberately a separate route from /portal/assessment/status rather than more
+// fields on it: this one is re-fetched repeatedly WHILE a scan runs (the panel
+// updates as checks land), and status already carries the wizard's whole
+// heavyweight payload — documents, cost engine, copilot readiness, SOW state —
+// none of which changes per check.
+router.get(
+  "/portal/assessment/telemetry-comparison",
+  // Same floor as /portal/assessment/status — the assessment wizard's own role.
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      res.json(await buildTelemetryComparison(customerId));
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/assessment/telemetry-comparison failed");
+      res.status(500).json({ error: "Failed to compute telemetry comparison" });
     }
   },
 );
