@@ -39,6 +39,8 @@ interface PersonasScreenProps {
   personas: PersonaStory[];
   personasStatus: PersonaGenerationStatus;
   personasError?: string | null;
+  /** Real server-reported progress (#283) — derived from the model's actual streamed output, never a fabricated stage. */
+  personasProgress?: { pct: number; label: string } | null;
   onSelectPersona?: (persona: PersonaStory) => void;
   onContinue: () => void;
   onHelpClick?: () => void;
@@ -51,6 +53,7 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
   personas,
   personasStatus,
   personasError,
+  personasProgress,
   onContinue,
   onHelpClick,
   onExitClick,
@@ -61,6 +64,23 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [ribbonPulse, setRibbonPulse] = useState<boolean>(false);
   const [selectedIssue, setSelectedIssue] = useState<UseCaseIssue | null>(null);
+
+  // Real elapsed-time counter (#283) — the one honest signal that always
+  // updates regardless of whether the server has emitted any progress event
+  // yet, so the loading state is never indistinguishable from actually stuck.
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  useEffect(() => {
+    if (personasStatus !== 'loading' && !(personasStatus === 'idle' && personas.length === 0)) {
+      setElapsedSeconds(0);
+      return;
+    }
+    setElapsedSeconds(0);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [personasStatus, personas.length]);
 
   // Transformation Surface State
   const [transSliderPos, setTransSliderPos] = useState<number>(50);
@@ -89,11 +109,15 @@ export const PersonasScreen: React.FC<PersonasScreenProps> = ({
   }
 
   if (personasStatus === 'loading' || (personasStatus === 'idle' && personas.length === 0)) {
+    const elapsedLabel = `${elapsedSeconds}s elapsed`;
+    const detail = personasProgress?.label
+      ? `${personasProgress.label} (${Math.round(personasProgress.pct)}%) — ${elapsedLabel}`
+      : `Sending your profile to M365 Copilot… — ${elapsedLabel}`;
     return (
       <PersonasStatusScreen
         icon={<Loader2 className="w-8 h-8 text-primary animate-spin" />}
         title="Generating your persona cohort…"
-        detail="M365 Copilot is synthesizing ~5 archetypal personas from your quiz answers. This usually takes a few seconds."
+        detail={detail}
         onExitClick={onExitClick}
         onHelpClick={onHelpClick}
       />

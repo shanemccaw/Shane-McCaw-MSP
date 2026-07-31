@@ -29,6 +29,21 @@
  * withAiAttribution call, so dev-time iteration on this prompt/UI doesn't
  * burn real API cost — a cache MISS still bills through the identical
  * withAiAttribution path every other call site uses.
+ *
+ * STREAMING (#283)
+ * -----------------
+ * Shane hit a real 502 on this route. Root cause: this call was a single
+ * BLOCKING anthropic.messages.create — zero response bytes reach the client
+ * (or the Replit reverse proxy sitting in front of api-server, see
+ * docs/deployment.md) for the entire generation. A proxy that treats "no
+ * bytes for N seconds" as a dead upstream kills the connection, which the
+ * browser sees as a 502 — regardless of the platform's documented 5-minute
+ * total-request ceiling (see admin-ps-scripts.ts's own comment about that
+ * limit), because an idle-byte timeout is a separate, typically much shorter
+ * mechanism than a max-duration timeout. Converted to anthropic.messages.stream
+ * (same pattern as admin-ps-scripts.ts) so real bytes flow to the caller
+ * throughout generation via `onProgress`, never leaving the connection idle.
+ * A cache HIT (dev-only) still returns instantly with no stream at all.
  */
 
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -121,6 +136,8 @@ export interface GeneratePersonaStoriesParams {
   quizProfile: PersonaGenerationQuizProfile;
   mspId: number | null;
   customerId: number | null;
+  /** Real accumulated-character count as the model streams its response — never a fabricated stage. */
+  onProgress?: (charsReceived: number) => void;
 }
 
 const PERSONA_COUNT = 5;
@@ -338,7 +355,7 @@ function normalizePersona(raw: unknown, usedIds: Set<string>): PersonaStoryResul
 export async function generatePersonaStories(
   params: GeneratePersonaStoriesParams,
 ): Promise<PersonaStoryResult[]> {
-  const { quizProfile, mspId, customerId } = params;
+  const { quizProfile, mspId, customerId, onProgress } = params;
 
   const rawTemplate = await getPrompt("assessment-persona-generation", PERSONA_GENERATION_PROMPT_FALLBACK);
   const prompt = rawTemplate.replace(/\{\{quizProfileJson\}\}/g, JSON.stringify(quizProfile, null, 2));
@@ -356,12 +373,21 @@ export async function generatePersonaStories(
       customerId,
       triggerSource: "persona-generation-engine",
     },
-    () =>
-      anthropic.messages.create({
+    () => {
+      const stream = anthropic.messages.stream({
         model: "claude-sonnet-4-6",
         max_tokens: 8000,
         messages: [{ role: "user", content: prompt }],
-      }),
+      });
+      if (onProgress) {
+        let charsReceived = 0;
+        stream.on("text", (text: string) => {
+          charsReceived += text.length;
+          onProgress(charsReceived);
+        });
+      }
+      return stream.finalMessage();
+    },
   );
 
   if (aiResponse.stop_reason === "max_tokens") {

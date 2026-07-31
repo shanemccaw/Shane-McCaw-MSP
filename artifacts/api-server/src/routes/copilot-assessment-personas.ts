@@ -8,6 +8,15 @@
  * keeps assessment state in local React state (see copilot-assessment.tsx's
  * own doc comment), and this call is re-issued whenever the personas step is
  * (re)entered.
+ *
+ * SSE STREAMING (#283) — Shane hit a real 502 here. This was a single
+ * blocking call with zero response bytes flowing to the client for the
+ * entire generation; a reverse-proxy idle-connection timeout (distinct from,
+ * and typically shorter than, any max-duration timeout) reads that silence
+ * as a dead upstream and kills the connection. Converted to SSE, mirroring
+ * admin-ps-scripts.ts's existing pattern in this codebase: real progress
+ * events (derived from the model's actual streamed character count, never a
+ * fabricated stage) keep bytes flowing throughout.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -41,6 +50,9 @@ function isValidQuizProfile(body: unknown): body is PersonaGenerationQuizProfile
   );
 }
 
+/** Rough expected output size for a 5-persona JSON array — used only to derive an honest 0-100 progress pct from real streamed characters, same heuristic convention as admin-ps-scripts.ts. */
+const EXPECTED_CHARS = 9_000;
+
 router.post(
   "/portal/copilot-assessment/personas",
   requireAuth,
@@ -57,17 +69,42 @@ router.post(
     const billingMspId = resolveBillingMspId(user) ?? mspId;
     const customerId = user.customerId ?? null;
 
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const sendSSE = (event: Record<string, unknown>): void => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    sendSSE({ type: "phase", label: "Sending your profile to M365 Copilot…", pct: 5 });
+
+    let lastEmittedPct = 5;
     try {
       const personas = await generatePersonaStories({
         quizProfile,
         mspId: billingMspId,
         customerId,
+        onProgress: (charsReceived) => {
+          if (lastEmittedPct === 5) {
+            sendSSE({ type: "phase", label: "Generating your persona cohort…", pct: 15 });
+            lastEmittedPct = 15;
+          }
+          const pct = Math.min(90, Math.round(15 + (charsReceived / EXPECTED_CHARS) * 75));
+          if (pct >= lastEmittedPct + 3) {
+            lastEmittedPct = pct;
+            sendSSE({ type: "progress", pct });
+          }
+        },
       });
-      res.json({ personas });
+      sendSSE({ type: "phase", label: "Finalizing personas…", pct: 95 });
+      sendSSE({ type: "done", payload: { personas } });
     } catch (err) {
       log.error({ err, userId: user.id }, "copilot-assessment-personas: generation failed");
-      res.status(503).json({ error: "Persona generation is temporarily unavailable. Please try again shortly." });
+      sendSSE({ type: "error", message: "Persona generation is temporarily unavailable. Please try again shortly." });
     }
+    res.end();
   },
 );
 

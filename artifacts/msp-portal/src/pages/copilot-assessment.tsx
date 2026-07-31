@@ -137,6 +137,10 @@ export default function CopilotAssessmentPage() {
     finalReportStatus: 'idle'
   });
   const [personasError, setPersonasError] = useState<string | null>(null);
+  // Real server-reported progress (#283) — derived from the model's actual
+  // streamed character count, never a fabricated stage. null while no phase
+  // event has arrived yet.
+  const [personasProgress, setPersonasProgress] = useState<{ pct: number; label: string } | null>(null);
   const [finalReportError, setFinalReportError] = useState<string | null>(null);
 
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
@@ -191,7 +195,10 @@ export default function CopilotAssessmentPage() {
     let cancelled = false;
     setState(prev => ({ ...prev, personasStatus: 'loading' }));
     setPersonasError(null);
-    fetchPersonaStories(fetchWithAuth, state.quizProfile)
+    setPersonasProgress(null);
+    fetchPersonaStories(fetchWithAuth, state.quizProfile, (progress) => {
+      if (!cancelled) setPersonasProgress(progress);
+    })
       .then(personas => {
         if (cancelled) return;
         setState(prev => ({ ...prev, personas, personasStatus: 'ready' }));
@@ -348,6 +355,7 @@ export default function CopilotAssessmentPage() {
 
   const handleReset = () => {
     setPersonasError(null);
+    setPersonasProgress(null);
     setFinalReportError(null);
     // Explicit "start over" — the customer gets the quiz back rather than being
     // carried past it by the restored profile they just discarded (#237). The
@@ -502,6 +510,7 @@ export default function CopilotAssessmentPage() {
             personas={state.personas}
             personasStatus={state.personasStatus}
             personasError={personasError}
+            personasProgress={personasProgress}
             onSelectPersona={(persona) => setState(prev => ({ ...prev, selectedPersona: persona }))}
             onContinue={() => handleNavigate('use-cases')}
             {...commonScreenProps}
