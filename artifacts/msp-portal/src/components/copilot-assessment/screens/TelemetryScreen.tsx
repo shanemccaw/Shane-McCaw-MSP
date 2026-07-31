@@ -807,9 +807,20 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
           )}
         </main>
 
-        {/* RIGHT PANEL: Real-time Telemetry Assessment Comparison */}
+        {/* RIGHT PANEL: Real-time Telemetry Assessment Comparison.
+            #278 fix: the ambient background layers below must NOT live inside the
+            scrolling element. `absolute inset-0` children of a `overflow-y-auto`
+            container scroll along with the container's content (their height is
+            pinned to the container's clientHeight, not scrollHeight), so as the
+            panel scrolled, the backdrop-blur/gradient/pulse layers slid up and
+            uncovered a growing gap of the plain panel background at the bottom —
+            the reported "background jump" — and repainting those backdrop-blur
+            layers at the scroll extents produced the reported top-of-scroll
+            flash. Scrolling now happens on an inner wrapper only; this <aside>
+            itself is unscrolled, so the background layers stay pinned and always
+            cover the full panel. */}
         <aside
-          className={`w-80 relative flex flex-col justify-between shrink-0 overflow-y-auto scrollbar-thin select-none p-4 transition-all duration-700 border-l ${
+          className={`w-80 relative flex flex-col justify-between shrink-0 select-none transition-all duration-700 border-l ${
             isDocumentMode ? 'border-purple-500/40 text-purple-100' : 'border-[#0078D4]/40 text-sky-100'
           }`}
         >
@@ -858,8 +869,8 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
           {/* Subtle Shimmer Sweep Overlay */}
           <div className="absolute inset-0 pointer-events-none animate-shimmer opacity-20" />
 
-          {/* PANEL CONTENT LAYER */}
-          <div className="relative z-10 space-y-5">
+          {/* PANEL CONTENT LAYER — the only scrollable element in this panel (#278) */}
+          <div className="relative z-10 h-full overflow-y-auto scrollbar-thin p-4 space-y-5">
             {/* Title */}
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <h2 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
