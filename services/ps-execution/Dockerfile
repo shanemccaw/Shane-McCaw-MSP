@@ -8,9 +8,12 @@
 # Still no live Connect-IPPSSession / tenant connection — that's a later
 # phase of the containerized execution service epic (#180).
 #
-# Confirm the base image tag is still current before rebuilding — pin to a
-# specific tag (not `latest`) once verified, for build reproducibility.
-FROM mcr.microsoft.com/powershell:latest
+# Pinned per #199: mcr.microsoft.com/powershell doesn't publish full
+# patch-level tags for this OS, only major.minor-os rolling tags. 7.4 is
+# the current LTS branch; this avoids `latest`'s multi-platform manifest
+# list (which also includes Windows/arm images and was, at pin time,
+# floating on an older 7.4.2 patch than this tag's 7.4.6).
+FROM mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 
 # Bake ExchangeOnlineManagement into the image now, so container startup
 # never triggers a live PSGallery install. A live Install-Module was
