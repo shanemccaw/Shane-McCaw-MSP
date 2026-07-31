@@ -34,7 +34,17 @@ export function ScanTriggerButton() {
     try {
       const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
       if (res.ok) {
-        reportTriggerStarted();
+        // Same shared context, same race as the assessment page's own trigger:
+        // pass the runId the 202 body carries so the run's SSE stream opens now
+        // rather than only if the poll happens to see the run active (#243).
+        let startedRunId: string | null = null;
+        try {
+          const body = (await res.json()) as { runId?: unknown };
+          if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+        } catch {
+          // No/unreadable body — fall back to poll discovery, as before.
+        }
+        reportTriggerStarted(startedRunId);
       } else {
         let message = `Trigger request failed (${res.status})`;
         try {

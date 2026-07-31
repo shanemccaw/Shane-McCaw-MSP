@@ -102,7 +102,7 @@ function shortRunId(runId: string | null | undefined): string {
 
 export function useRealGraphScanSteps(): RealGraphScanState {
   const { fetchWithAuth } = useAuth();
-  const { data, scanCheckProgress, triggerError, reportTriggerStarted, reportTriggerError } =
+  const { data, scanCheckProgress, triggerError, triggeredRunId, reportTriggerStarted, reportTriggerError } =
     useScanStatus();
   const [triggering, setTriggering] = useState(false);
 
@@ -123,9 +123,20 @@ export function useRealGraphScanSteps(): RealGraphScanState {
         method: "POST",
       });
       if (res.ok) {
-        // Drives the shared context into fast-poll mode, so the real run row is
-        // picked up (and its SSE stream opened) within a few hundred ms.
-        reportTriggerStarted();
+        // The 202 body carries the real runId of the row the route just
+        // inserted (see debug-trigger-scan in portal-assessment.ts). Handing it
+        // straight to the context opens that run's SSE stream immediately,
+        // instead of hoping the shared poll catches the run while it is still
+        // active — which a fast-finishing run simply never is (#243).
+        let startedRunId: string | null = null;
+        try {
+          const body = (await res.json()) as { runId?: unknown };
+          if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+        } catch {
+          // No/unreadable body (e.g. an older api-server process): fall back to
+          // poll discovery, which is exactly the previous behaviour.
+        }
+        reportTriggerStarted(startedRunId);
       } else {
         let message = `Trigger request failed (${res.status})`;
         try {
@@ -144,15 +155,43 @@ export function useRealGraphScanSteps(): RealGraphScanState {
   }, [fetchWithAuth, reportTriggerStarted, reportTriggerError]);
 
   const state = useMemo(() => {
-    // The latest run, active or finished. lastRunSummary is the authoritative
-    // source (it survives completion); `active` is the wire-safety fallback for
-    // an older api-server process that doesn't send the newer field yet.
-    const latest =
+    // The latest run the POLL knows about, active or finished. lastRunSummary is
+    // the authoritative source (it survives completion); `active` is the
+    // wire-safety fallback for an older api-server process that doesn't send the
+    // newer field yet.
+    const polled =
       data?.lastRunSummary ??
       (data?.active
         ? { ...data.active, completedAt: null as string | null }
         : null);
-    const runActive = data?.active != null;
+
+    // #243 — a run triggered in this session that the poll hasn't caught up to
+    // yet. The previous run's finished counts are NOT this run's, and reporting
+    // them anyway is what pinned every tile at complete and the bar at 100%
+    // through the whole of a re-triggered scan: the page went from one run's
+    // completion straight to the next's, never passing through running.
+    // Until the poll catches up, the only real facts about this run are its id,
+    // that the server accepted it, and whatever its SSE stream has delivered.
+    const triggeredRunPending = triggeredRunId != null && polled?.runId !== triggeredRunId;
+    const latest = triggeredRunPending
+      ? {
+          runId: triggeredRunId,
+          // Live check text is proof the runner really started it; before that
+          // all we truly know is that the row was accepted.
+          status: scanCheckProgress ? "running" : "pending",
+          checksTotal: 0,
+          checksOk: 0,
+          checksError: 0,
+          checksLicenseGap: 0,
+          startedAt: null as string | null,
+          completedAt: null as string | null,
+        }
+      : triggering
+        // Trigger POST still in flight: no run id yet, and the previous run's
+        // numbers are equally not ours to show.
+        ? null
+        : polled;
+    const runActive = triggeredRunPending || data?.active != null;
     const runStatus = latest?.status ?? null;
     const runFailed = runStatus === "failed";
     const runFinished = runStatus === "completed" || runStatus === "partial";
@@ -303,7 +342,7 @@ export function useRealGraphScanSteps(): RealGraphScanState {
       loaded: data != null,
       isTestbed: data?.isTestbed === true,
     };
-  }, [data, scanCheckProgress, triggerError, triggering]);
+  }, [data, scanCheckProgress, triggerError, triggering, triggeredRunId]);
 
   return { ...state, triggerScan, triggering, triggerError };
 }
