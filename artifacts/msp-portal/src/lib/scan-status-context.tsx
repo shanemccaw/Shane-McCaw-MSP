@@ -53,6 +53,18 @@ export interface ScanStatusPayload {
     startedAt: string;
     completedAt: string | null;
   } | null;
+  /**
+   * The customer's most recent "__system__: Assessment Document Generation"
+   * workflow run — the id to subscribe to the existing run-scoped SSE stream
+   * (GET /api/portal/assessment/doc-workflow/:runId/sse) with, plus the
+   * poll-based status that authoritatively reports its terminal state.
+   *   - an object: a real run exists for this customer
+   *   - null: no run has ever fired for them (the two-sided doc gate is still
+   *     waiting on its other condition) — a real, reportable state
+   *   - absent/undefined: an older-but-still-live api-server that doesn't send
+   *     the field yet, i.e. genuinely unknown
+   */
+  docWorkflow?: { runId: number; status: string } | null;
   isTestbed: boolean;
   /** Real tenant_consent.consent_status for this customer's tenant, or null if no row yet. */
   consentStatus: "pending" | "granted" | "declined" | "revoked" | null;

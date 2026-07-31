@@ -39,14 +39,12 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import {
-  TELEMETRY_ENGINES,
-  TELEMETRY_DOCS,
   generateDynamicHintCards,
-  generateTop3Mismatches,
-  TelemetryEngineDef,
-  TelemetryDocDef
+  generateTop3Mismatches
 } from '../telemetryCatalog';
 import { useRealGraphScanSteps } from '../useRealGraphScanSteps';
+import { useRealDocWorkflowPhases } from '../useRealDocWorkflowPhases';
+import type { ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTelemetryCarousel';
 
 interface TelemetryScreenProps {
   quizAnswers?: Record<string, string>;
@@ -65,16 +63,21 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 }) => {
   // Phase state
   const [phase, setPhase] = useState<TelemetryPhase>('phase1_graph');
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
-  const [simSpeed, setSimSpeed] = useState<number>(1); // 1x, 2x, 4x speed
 
   // Phase 1 — REAL Microsoft Graph scan state (#228).
   // No local step state and no timer here any more: the four tiles' statuses and
   // message lines come from the real diagnostics run for this customer's tenant
-  // (see useRealGraphScanSteps.ts for the milestone mapping). Phases 2 and 3
-  // below are still the simulated flow — replacing those is separate work
-  // (#226 phases 2/3), deliberately untouched here.
+  // (see useRealGraphScanSteps.ts for the milestone mapping).
   const graphScan = useRealGraphScanSteps();
+
+  // Phases 2 + 3 — REAL doc-generation workflow run (#235).
+  // The scripted setInterval walk over TELEMETRY_ENGINES/TELEMETRY_DOCS is gone:
+  // both phases now read the real run of the seeded "Assessment Document
+  // Generation" workflow for this customer, over the run-scoped SSE stream the
+  // old assessment wizard has always used. See useRealDocWorkflowPhases.ts for
+  // the exact real event shape and the honest mapping — in particular why the
+  // five engine tiles share one signal (that run emits no per-engine event).
+  const docWf = useRealDocWorkflowPhases();
 
   // #234 — testbed accounts must not auto-advance off scan history from a
   // prior session. graphScan.scanComplete reflects the tenant's most recent
@@ -85,35 +88,32 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // unchanged.
   const [testbedScanTriggeredThisSession, setTestbedScanTriggeredThisSession] = useState(false);
 
-  // Phase 2 Engines State
-  const [engines, setEngines] = useState<
-    Array<TelemetryEngineDef & { status: 'pending' | 'running' | 'complete'; progress: number; currentSseMsg: string }>
-  >(() =>
-    TELEMETRY_ENGINES.map(e => ({
-      ...e,
-      status: 'pending',
-      progress: 0,
-      currentSseMsg: e.sseMessages[0]
-    }))
-  );
-  const [activeEngineIndex, setActiveEngineIndex] = useState<number>(0);
+  // Phase 2 engine tiles + phase 3 document tiles — both are pure projections of
+  // the real run state above onto the carousel's tile shape. No local status,
+  // progress or message state, and no timer: there is nothing to simulate.
+  const engines: ExtendedEngineDef[] = docWf.engines.map(e => ({
+    id: e.id,
+    name: e.name,
+    description: e.description,
+    icon: e.icon,
+    status: e.status,
+    currentSseMsg: e.message
+    // No `severity` and no `findingLabel`: the run reports neither, so the tile
+    // renders neither (the carousel omits both when absent).
+  }));
 
-  // Phase 3 Documents State
-  const [docs, setDocs] = useState<
-    Array<TelemetryDocDef & { status: 'pending' | 'running' | 'complete'; progress: number; currentSseMsg: string }>
-  >(() =>
-    TELEMETRY_DOCS.map(d => ({
-      ...d,
-      status: 'pending',
-      progress: 0,
-      currentSseMsg: d.sseMessages[0]
-    }))
-  );
-  const [activeDocIndex, setActiveDocIndex] = useState<number>(0);
+  const docs: ExtendedDocDef[] = docWf.docs.map(d => ({
+    id: d.id,
+    name: d.name,
+    description: d.description,
+    status: d.status,
+    progress: d.progress,
+    currentSseMsg: d.message
+  }));
 
-  // Stream message. During phase 1 this is the REAL scan's current line
-  // (graphScan.streamMessage); phases 2/3 keep driving it from the simulation.
-  const [currentSseStream, setCurrentSseStream] = useState<string>('');
+  // Stream message — the real line for whichever phase is actually running.
+  const currentSseStream =
+    phase === 'phase1_graph' ? graphScan.streamMessage : docWf.streamMessage;
 
   // Dynamic Hint Cards Carousel Index
   const [hintCardIndex, setHintCardIndex] = useState<number>(0);
@@ -135,19 +135,18 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // Phase 1 = 0% to 25%
   // Phase 2 = 25% to 75%
   // Phase 3 = 75% to 100%
+  // Every term is a real completed-count over a real total; nothing is paced.
   let overallProgress = 0;
   if (phase === 'phase1_graph') {
     // Real scan progress (0–100 across the four real steps) scaled into this
     // page's 0–25% band for phase 1.
     overallProgress = Math.min(25, Math.round(graphScan.scanProgressPct * 0.25));
   } else if (phase === 'phase2_engines') {
-    const engineWeight = 50 / TELEMETRY_ENGINES.length;
-    const runningContrib = engines[activeEngineIndex]?.status === 'running' ? (engines[activeEngineIndex].progress / 100) * engineWeight : 0;
-    overallProgress = Math.min(75, Math.round(25 + completedEnginesCount * engineWeight + runningContrib));
+    const engineFraction = engines.length > 0 ? completedEnginesCount / engines.length : 0;
+    overallProgress = Math.min(75, Math.round(25 + engineFraction * 50));
   } else if (phase === 'phase3_docs' || phase === 'complete') {
-    const docWeight = 25 / TELEMETRY_DOCS.length;
-    const runningContrib = docs[activeDocIndex]?.status === 'running' ? (docs[activeDocIndex].progress / 100) * docWeight : 0;
-    overallProgress = Math.min(100, Math.round(75 + completedDocsCount * docWeight + runningContrib));
+    const docFraction = docs.length > 0 ? completedDocsCount / docs.length : 0;
+    overallProgress = phase === 'complete' ? 100 : Math.min(100, Math.round(75 + docFraction * 25));
   }
 
   // Dynamic Hint Cards Stream
@@ -165,12 +164,6 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     return () => clearInterval(interval);
   }, [dynamicHints.length]);
 
-  // PHASE 1 — REAL: mirror the real scan's live line into the stream row.
-  useEffect(() => {
-    if (phase !== 'phase1_graph') return;
-    setCurrentSseStream(graphScan.streamMessage);
-  }, [phase, graphScan.streamMessage]);
-
   // PHASE 1 → PHASE 2 — driven by the REAL run reaching a terminal state with
   // real results, not by a timer. A failed/blocked scan deliberately does NOT
   // advance: the page holds on the real failure instead of pretending forward.
@@ -182,120 +175,37 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     if (phase !== 'phase1_graph' || !graphScan.scanComplete) return;
     if (graphScan.isTestbed && !testbedScanTriggeredThisSession) return;
     setPhase('phase2_engines');
-    setEngines(prev => prev.map((e, idx) => (idx === 0 ? { ...e, status: 'running', progress: 0 } : e)));
   }, [phase, graphScan.scanComplete, graphScan.isTestbed, testbedScanTriggeredThisSession]);
 
-  // Main Simulation Engine Effect — phases 2 and 3 only (phase 1 is real).
+  // PHASE 2 → PHASE 3 — the real run emitted its first progress event, which
+  // only happens once the two-sided doc gate passed and the customer's real
+  // document set was resolved. A run that hasn't started (or hasn't fired at
+  // all, because the gate is still waiting on its other condition) holds the
+  // page on phase 2 reporting that, rather than walking forward on a timer.
   useEffect(() => {
-    if (!isSimulating || phase === 'phase1_graph') return;
+    if (phase !== 'phase2_engines' || !docWf.docGenStarted || docWf.docGenError) return;
+    setPhase('phase3_docs');
+  }, [phase, docWf.docGenStarted, docWf.docGenError]);
 
-    const intervalTime = 120 / simSpeed;
-    const timer = setInterval(() => {
-      // PHASE 2: ENGINES EXECUTION
-      if (phase === 'phase2_engines') {
-        setEngines(prevEngines => {
-          const activeEngine = prevEngines[activeEngineIndex];
-          if (!activeEngine) return prevEngines;
+  // PHASE 3 → COMPLETE — the real run reached its success terminal
+  // (assessment.docs.completed on the stream, or status "completed" on the
+  // poll). A failed run deliberately never advances: the page holds on the real
+  // failure, exactly as phase 1 does for a failed scan.
+  useEffect(() => {
+    if (phase !== 'phase3_docs' || !docWf.docGenComplete) return;
+    setPhase('complete');
+  }, [phase, docWf.docGenComplete]);
 
-          if (activeEngine.progress < 100) {
-            const nextProgress = Math.min(100, activeEngine.progress + 15);
-            const msgIdx = Math.min(
-              activeEngine.sseMessages.length - 1,
-              Math.floor((nextProgress / 100) * activeEngine.sseMessages.length)
-            );
-            const nextSse = activeEngine.sseMessages[msgIdx];
-            setCurrentSseStream(`[${activeEngine.name}] ${nextSse}`);
+  // The simulation timer that used to drive phases 2 and 3 is gone entirely.
+  // All three phases are now projections of real server-side runs, so there is
+  // nothing left on this page to step, pace, pause or speed up.
 
-            return prevEngines.map((e, idx) =>
-              idx === activeEngineIndex ? { ...e, progress: nextProgress, currentSseMsg: nextSse } : e
-            );
-          } else {
-            // Active engine complete
-            const updated = prevEngines.map((e, idx) =>
-              idx === activeEngineIndex ? { ...e, status: 'complete' as const, progress: 100 } : e
-            );
-
-            if (activeEngineIndex + 1 < TELEMETRY_ENGINES.length) {
-              const nextIdx = activeEngineIndex + 1;
-              setActiveEngineIndex(nextIdx);
-              updated[nextIdx] = {
-                ...updated[nextIdx],
-                status: 'running' as const,
-                progress: 0
-              };
-            } else {
-              // Phase 2 complete -> Phase 3
-              setPhase('phase3_docs');
-              setCurrentSseStream('Telemetry Engine Analysis Complete. Initiating Document Generation...');
-              setDocs(prev => prev.map((d, idx) => (idx === 0 ? { ...d, status: 'running', progress: 0 } : d)));
-            }
-            return updated;
-          }
-        });
-      }
-
-      // PHASE 3: DOCUMENT GENERATION
-      else if (phase === 'phase3_docs') {
-        setDocs(prevDocs => {
-          const activeDoc = prevDocs[activeDocIndex];
-          if (!activeDoc) return prevDocs;
-
-          if (activeDoc.progress < 100) {
-            const nextProgress = Math.min(100, activeDoc.progress + 8);
-            const msgIdx = Math.min(
-              activeDoc.sseMessages.length - 1,
-              Math.floor((nextProgress / 100) * activeDoc.sseMessages.length)
-            );
-            const nextSse = activeDoc.sseMessages[msgIdx];
-            setCurrentSseStream(`[${activeDoc.name}] ${nextSse}`);
-
-            return prevDocs.map((d, idx) =>
-              idx === activeDocIndex ? { ...d, progress: nextProgress, currentSseMsg: nextSse } : d
-            );
-          } else {
-            // Active document complete
-            const updated = prevDocs.map((d, idx) =>
-              idx === activeDocIndex ? { ...d, status: 'complete' as const, progress: 100 } : d
-            );
-
-            if (activeDocIndex + 1 < TELEMETRY_DOCS.length) {
-              const nextIdx = activeDocIndex + 1;
-              setActiveDocIndex(nextIdx);
-              updated[nextIdx] = {
-                ...updated[nextIdx],
-                status: 'running' as const,
-                progress: 0
-              };
-            } else {
-              // Phase 3 Complete!
-              setPhase('complete');
-              setIsSimulating(false);
-              setCurrentSseStream('Telemetry Analysis & Document Deliverables Generation Complete!');
-            }
-            return updated;
-          }
-        });
-      }
-    }, intervalTime);
-
-    return () => clearInterval(timer);
-  }, [phase, isSimulating, simSpeed, activeEngineIndex, activeDocIndex]);
-
-  // Restart Handler — replays the SIMULATED phases (2 and 3). It deliberately
-  // does not re-run the real tenant scan: phase 1 simply re-reads the real run's
-  // current state, so an already-completed scan lands straight back on phase 2.
+  // Reset — re-reads the real state from phase 1. It does not re-run the tenant
+  // scan and it cannot re-run the document workflow (that fires server-side off
+  // diagnostics.run_completed), so a customer whose runs are already finished
+  // lands straight back on the completed view. That is the real state.
   const handleRestart = () => {
     setPhase('phase1_graph');
-    setEngines(
-      TELEMETRY_ENGINES.map(e => ({ ...e, status: 'pending', progress: 0, currentSseMsg: e.sseMessages[0] }))
-    );
-    setActiveEngineIndex(0);
-    setDocs(
-      TELEMETRY_DOCS.map(d => ({ ...d, status: 'pending', progress: 0, currentSseMsg: d.sseMessages[0] }))
-    );
-    setActiveDocIndex(0);
-    setCurrentSseStream(graphScan.streamMessage);
-    setIsSimulating(true);
   };
 
   // RIGHT PANEL SCORES & METRICS CALCULATIONS
@@ -331,7 +241,8 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     collabRiskScore = Math.min(100, maxCollab + breadthBonus);
   }
 
-  const engineProgressFactor = phase === 'phase1_graph' ? 0 : completedEnginesCount / TELEMETRY_ENGINES.length;
+  const engineProgressFactor =
+    phase === 'phase1_graph' || engines.length === 0 ? 0 : completedEnginesCount / engines.length;
 
   // 1. Self-Assessment Score (from quiz)
   const selfScore = 72; // Baseline quiz readiness score
@@ -411,38 +322,27 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
         {/* Action Controls & Toolbar Right */}
         <div className="flex items-center gap-3">
-          {/* Playback Controls — phases 2/3 only. Phase 1 is a real tenant scan
-              running server-side, so pausing or speeding it up is not something
-              this page can do; the controls disable themselves rather than
-              silently doing nothing. */}
+          {/* Playback Controls — permanently disabled since #235. Every phase on
+              this page is now a real server-side run (the tenant diagnostics scan
+              and the Assessment document-generation workflow), and a browser
+              cannot pause or fast-forward either one. The controls stay visible
+              but inert rather than silently doing nothing. */}
           <div className="flex items-center gap-1.5 bg-[#161616] border border-[#2D2D2D] rounded px-2 py-1 text-[11px] font-mono">
             <button
-              onClick={() => setIsSimulating(!isSimulating)}
-              disabled={phase === 'phase1_graph'}
-              className="text-[#CCCCCC] hover:text-white flex items-center gap-1 transition-colors px-1 disabled:opacity-40 disabled:hover:text-[#CCCCCC]"
-              title={
-                phase === 'phase1_graph'
-                  ? 'Live tenant scan — playback controls apply to the simulated phases only'
-                  : isSimulating
-                  ? 'Pause Analysis'
-                  : 'Resume Analysis'
-              }
+              disabled
+              className="text-[#CCCCCC] flex items-center gap-1 px-1 disabled:opacity-40"
+              title="Live server-side runs — this page reports them, it does not drive them"
             >
-              {isSimulating ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
-              <span>{isSimulating ? 'Pause' : 'Resume'}</span>
+              <Pause className="w-3.5 h-3.5 text-amber-400" />
+              <span>Pause</span>
             </button>
             <span className="text-[#333333]">|</span>
             <button
-              onClick={() => setSimSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1))}
-              disabled={phase === 'phase1_graph'}
-              className="text-[#0078D4] font-bold hover:underline px-1 disabled:opacity-40 disabled:hover:no-underline"
-              title={
-                phase === 'phase1_graph'
-                  ? 'Live tenant scan — playback controls apply to the simulated phases only'
-                  : 'Toggle Speed'
-              }
+              disabled
+              className="text-[#0078D4] font-bold px-1 disabled:opacity-40"
+              title="Live server-side runs — this page reports them, it does not drive them"
             >
-              {simSpeed}x Speed
+              1x Speed
             </button>
             <span className="text-[#333333]">|</span>
             <button
@@ -567,7 +467,9 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
                   <span
                     className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
-                      phase === 'phase2_engines'
+                      phase === 'phase2_engines' && docWf.docGenError
+                        ? 'bg-rose-500/10 text-rose-300 border border-rose-500/40 font-bold'
+                        : phase === 'phase2_engines'
                         ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
                         : phase === 'phase3_docs' || phase === 'complete'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold'
@@ -575,14 +477,17 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     }`}
                   >
                     {phase === 'phase2_engines'
-                      ? `${completedEnginesCount}/12`
+                      ? docWf.docGenError
+                        ? 'Failed'
+                        : `${completedEnginesCount}/${engines.length}`
                       : phase === 'phase3_docs' || phase === 'complete'
                       ? 'Complete'
                       : 'Pending'}
                   </span>
                 </div>
                 <p className="text-[10px] text-[#888888] mt-1.5 leading-relaxed">
-                  Sequential evaluation across 12 security, risk & drift engines.
+                  Engine state read from your real assessment document run — that run reports no
+                  per-engine progress, so all {engines.length} resolve together.
                 </p>
               </div>
 
@@ -613,7 +518,9 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
                   <span
                     className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
-                      phase === 'phase3_docs'
+                      phase === 'phase3_docs' && docWf.docGenError
+                        ? 'bg-rose-500/10 text-rose-300 border border-rose-500/40 font-bold'
+                        : phase === 'phase3_docs'
                         ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
                         : phase === 'complete'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold'
@@ -621,14 +528,17 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     }`}
                   >
                     {phase === 'phase3_docs'
-                      ? `${completedDocsCount}/6`
+                      ? docWf.docGenError
+                        ? 'Failed'
+                        : `${completedDocsCount}/${docs.length}`
                       : phase === 'complete'
                       ? 'Complete'
                       : 'Pending'}
                   </span>
                 </div>
                 <p className="text-[10px] text-[#888888] mt-1.5 leading-relaxed">
-                  Synthesizing 6 enterprise deliverable plans & ROI reports.
+                  Live progress of the real document-generation run for your account — your own
+                  documents, then the SOW, then your presentation.
                 </p>
               </div>
             </div>
@@ -659,8 +569,16 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                         : graphScan.scanActive
                         ? 'Scanning your Microsoft 365 tenant'
                         : 'Connecting to Microsoft 365')}
-                    {phase === 'phase2_engines' && 'Analyzing Tenant Telemetry'}
-                    {phase === 'phase3_docs' && 'Generating Assessment Documents'}
+                    {phase === 'phase2_engines' &&
+                      (docWf.docGenError
+                        ? 'Assessment run failed'
+                        : docWf.finishedWithoutProgress
+                        ? 'Assessment run reported no document progress'
+                        : docWf.runId == null
+                        ? 'Waiting for your assessment run to start'
+                        : 'Analyzing Tenant Telemetry')}
+                    {phase === 'phase3_docs' &&
+                      (docWf.docGenError ? 'Document generation failed' : 'Generating Assessment Documents')}
                     {phase === 'complete' && 'Telemetry Analysis Complete'}
                   </h2>
                 </div>
@@ -684,27 +602,32 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                   />
                 </div>
 
-                {/* SSE Inline Stream Message Display */}
-                {/* Phase 1 labels itself honestly: that line is the real scan's
-                    current state (poll + diagnostics SSE), not the simulation's
-                    scripted stream. */}
-                <div
-                  className={`flex items-center gap-2 pt-1 text-xs font-mono bg-[#111111] px-3 py-1.5 rounded border border-[#222222] ${
-                    phase === 'phase1_graph' && graphScan.scanFailed ? 'text-rose-300' : 'text-emerald-400'
-                  }`}
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      phase === 'phase1_graph' && graphScan.scanFailed
-                        ? 'bg-rose-400'
-                        : 'bg-emerald-400 animate-ping'
-                    }`}
-                  />
-                  <span className="truncate">
-                    {phase === 'phase1_graph' ? 'Live scan: ' : 'SSE Stream: '}
-                    {currentSseStream}
-                  </span>
-                </div>
+                {/* SSE Inline Stream Message Display — every phase's line is now
+                    real: phase 1 is the real diagnostics run (poll + diagnostics
+                    SSE), phases 2/3 are the real doc-generation workflow run
+                    (poll + its run-scoped SSE stream). Nothing here is scripted. */}
+                {(() => {
+                  const streamFailed =
+                    phase === 'phase1_graph' ? graphScan.scanFailed : docWf.docGenError != null;
+                  return (
+                    <div
+                      className={`flex items-center gap-2 pt-1 text-xs font-mono bg-[#111111] px-3 py-1.5 rounded border border-[#222222] ${
+                        streamFailed ? 'text-rose-300' : 'text-emerald-400'
+                      }`}
+                      title={currentSseStream}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          streamFailed ? 'bg-rose-400' : 'bg-emerald-400 animate-ping'
+                        }`}
+                      />
+                      <span className="truncate">
+                        {phase === 'phase1_graph' ? 'Live scan: ' : 'Live run: '}
+                        {currentSseStream}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* INSIGHT RIBBON (QUIZ + TELEMETRY INTEGRATION) */}
@@ -877,6 +800,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               docs={docs}
               completedDocsCount={completedDocsCount}
               renderEngineIcon={renderEngineIcon}
+              emptyDocsMessage={docWf.streamMessage}
             />
           </div>
 

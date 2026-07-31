@@ -5,23 +5,40 @@ import {
   ChevronRight,
   CheckCircle2,
   Loader2,
+  AlertCircle,
   FileText,
   Activity,
   Layers,
   Pause,
   Play
 } from 'lucide-react';
-import { TelemetryEngineDef, TelemetryDocDef } from '../telemetryCatalog';
 
-export interface ExtendedEngineDef extends TelemetryEngineDef {
-  status: 'pending' | 'running' | 'complete';
-  progress: number;
+/**
+ * Tile shapes are structural, not tied to telemetryCatalog.ts any more (#235).
+ * The telemetry page now feeds these from the REAL doc-generation workflow run
+ * (useRealDocWorkflowPhases.ts), which reports no severity, no finding count and
+ * no per-document percentage — so those three fields are optional and the tile
+ * simply omits them rather than rendering an invented value. UseCasesScreen.tsx
+ * still passes the fabricated catalog objects, which satisfy this shape too.
+ */
+export interface ExtendedEngineDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  status: 'pending' | 'running' | 'complete' | 'error';
   currentSseMsg: string;
+  severity?: 'None' | 'Low' | 'Medium' | 'High';
+  findingLabel?: string;
 }
 
-export interface ExtendedDocDef extends TelemetryDocDef {
-  status: 'pending' | 'running' | 'complete';
-  progress: number;
+export interface ExtendedDocDef {
+  id: string;
+  name: string;
+  description: string;
+  status: 'pending' | 'running' | 'complete' | 'error';
+  /** null/absent when no real fraction exists for this slot. */
+  progress?: number | null;
   currentSseMsg: string;
 }
 
@@ -32,6 +49,8 @@ interface UnifiedTelemetryCarouselProps {
   docs: ExtendedDocDef[];
   completedDocsCount: number;
   renderEngineIcon: (iconName: string) => React.ReactNode;
+  /** Real line to show when `docs` is legitimately empty (no run / no set yet). */
+  emptyDocsMessage?: string;
 }
 
 export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> = ({
@@ -40,7 +59,8 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
   completedEnginesCount,
   docs,
   completedDocsCount,
-  renderEngineIcon
+  renderEngineIcon,
+  emptyDocsMessage
 }) => {
   const isDocumentMode = phase === 'phase3_docs' || phase === 'complete';
 
@@ -55,8 +75,11 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
   const enginesPerPage = 4;
   const docsPerPage = 3;
 
-  const maxEnginePages = Math.ceil(engines.length / enginesPerPage);
-  const maxDocPages = Math.ceil(docs.length / docsPerPage);
+  // Counts are real and can legitimately be zero (a run that hasn't reported its
+  // document set yet), so the page count never drops to 0 — the modulo below
+  // would go NaN and the pagination dots would disappear mid-render.
+  const maxEnginePages = Math.max(1, Math.ceil(engines.length / enginesPerPage));
+  const maxDocPages = Math.max(1, Math.ceil(docs.length / docsPerPage));
 
   // Auto-scroll Timer (5 to 7 seconds -> 6 seconds)
   useEffect(() => {
@@ -148,22 +171,22 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
               <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#0078D4]/20 border border-[#0078D4]/50 text-[#0078D4]">
                 <Activity className="w-4 h-4 animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
-                  MODE 1: TENANT CORRELATION ENGINES (12)
+                  MODE 1: TENANT CORRELATION ENGINES ({engines.length})
                 </span>
               </div>
             ) : (
               <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
                 <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
                 <span className="text-xs font-bold font-mono tracking-wider uppercase">
-                  MODE 2: ASSESSMENT DELIVERABLES (6)
+                  MODE 2: ASSESSMENT DELIVERABLES ({docs.length})
                 </span>
               </div>
             )}
 
             <span className="text-xs font-mono font-bold text-foreground/80">
               {!isDocumentMode
-                ? `${completedEnginesCount}/12 Complete`
-                : `${completedDocsCount}/6 Generated`}
+                ? `${completedEnginesCount}/${engines.length} Complete`
+                : `${completedDocsCount}/${docs.length} Generated`}
             </span>
           </div>
 
@@ -246,12 +269,15 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
               {visibleEngines.map(eng => {
                 const isRunning = eng.status === 'running';
                 const isComplete = eng.status === 'complete';
+                const isError = eng.status === 'error';
 
                 return (
                   <div
                     key={eng.id}
                     className={`p-3.5 rounded-xl border transition-all duration-300 flex flex-col justify-between ${
-                      isRunning
+                      isError
+                        ? 'bg-background/90 border-rose-500/60 ring-1 ring-rose-500/30'
+                        : isRunning
                         ? 'bg-background/90 border-primary ring-1 ring-primary/50 shadow-lg shadow-primary/10'
                         : isComplete
                         ? 'bg-background/80 border-status-green/40'
@@ -263,14 +289,18 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                         <div className="flex items-center gap-2 min-w-0">
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
-                              isComplete
+                              isError
+                                ? 'bg-rose-500/15 border-rose-500 text-rose-400'
+                                : isComplete
                                 ? 'bg-status-green/15 border-status-green text-status-green'
                                 : isRunning
                                 ? 'bg-primary/30 border-primary text-primary'
                                 : 'bg-foreground/5 border-border text-foreground/50'
                             }`}
                           >
-                            {isComplete ? (
+                            {isError ? (
+                              <AlertCircle className="w-3.5 h-3.5" />
+                            ) : isComplete ? (
                               <CheckCircle2 className="w-3.5 h-3.5" />
                             ) : isRunning ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -281,20 +311,25 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                           <h4 className="text-xs font-bold text-foreground truncate">{eng.name}</h4>
                         </div>
 
-                        {/* Severity Badge */}
-                        <span
-                          className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
-                            eng.severity === 'High'
-                              ? 'bg-rose-950/90 text-rose-300 border-rose-700'
-                              : eng.severity === 'Medium'
-                              ? 'bg-amber-950/90 text-amber-300 border-amber-700'
-                              : eng.severity === 'Low'
-                              ? 'bg-sky-950/90 text-sky-300 border-sky-700'
-                              : 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
-                          }`}
-                        >
-                          {eng.severity}
-                        </span>
+                        {/* Severity Badge — only when a severity is genuinely
+                            known. The real workflow run reports none, so the
+                            telemetry page's tiles omit this entirely rather
+                            than defaulting to a colour that reads as a verdict. */}
+                        {eng.severity && (
+                          <span
+                            className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
+                              eng.severity === 'High'
+                                ? 'bg-rose-950/90 text-rose-300 border-rose-700'
+                                : eng.severity === 'Medium'
+                                ? 'bg-amber-950/90 text-amber-300 border-amber-700'
+                                : eng.severity === 'Low'
+                                ? 'bg-sky-950/90 text-sky-300 border-sky-700'
+                                : 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
+                            }`}
+                          >
+                            {eng.severity}
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-[10.5px] text-primary/70 line-clamp-2 leading-relaxed">
@@ -304,12 +339,19 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
 
                     {/* Bottom Status & SSE Stream */}
                     <div className="mt-3 pt-2 border-t border-border space-y-1">
-                      <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="text-foreground/60">Finding:</span>
-                        <span className="text-foreground font-bold">{eng.findingLabel}</span>
-                      </div>
+                      {eng.findingLabel && (
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-foreground/60">Finding:</span>
+                          <span className="text-foreground font-bold">{eng.findingLabel}</span>
+                        </div>
+                      )}
 
-                      <div className="text-[9.5px] font-mono text-primary truncate">
+                      <div
+                        className={`text-[9.5px] font-mono truncate ${
+                          isError ? 'text-rose-300' : 'text-primary'
+                        }`}
+                        title={eng.currentSseMsg}
+                      >
                         ↳ {eng.currentSseMsg}
                       </div>
                     </div>
@@ -327,16 +369,33 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                 : 'opacity-0 translate-x-8 pointer-events-none absolute inset-0'
             }`}
           >
+            {/* A real run that hasn't yet reported its document set has nothing
+                to show here — an invented placeholder list is exactly what this
+                rewrite removed, so the panel says so instead. */}
+            {docs.length === 0 && (
+              <div className="rounded-xl border border-border bg-muted/30 p-4 text-[11px] font-mono text-foreground/60">
+                {emptyDocsMessage ?? 'Waiting for the assessment run to report its document set.'}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {visibleDocs.map(doc => {
                 const isRunning = doc.status === 'running';
                 const isComplete = doc.status === 'complete';
+                const isError = doc.status === 'error';
+                // The real run reports no per-document percentage — it reports
+                // which document it is on. A slot therefore reads 100% only when
+                // the run really finished it; otherwise the readout shows the
+                // real state word instead of a made-up number.
+                const pct = doc.progress ?? null;
+                const barWidth = pct ?? (isComplete ? 100 : 0);
 
                 return (
                   <div
                     key={doc.id}
                     className={`p-3.5 rounded-xl border transition-all duration-300 flex flex-col justify-between ${
-                      isRunning
+                      isError
+                        ? 'bg-background/90 border-rose-500/60 ring-1 ring-rose-500/30'
+                        : isRunning
                         ? 'bg-background/90 border-accent ring-1 ring-accent/50 shadow-lg shadow-accent/20'
                         : isComplete
                         ? 'bg-background/80 border-status-green/50'
@@ -348,14 +407,18 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                         <div className="flex items-center gap-2 min-w-0">
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
-                              isComplete
+                              isError
+                                ? 'bg-rose-500/15 border-rose-500 text-rose-400'
+                                : isComplete
                                 ? 'bg-status-green/15 border-status-green text-status-green'
                                 : isRunning
                                 ? 'bg-accent/30 border-accent text-accent'
                                 : 'bg-foreground/5 border-border text-primary-foreground/50'
                             }`}
                           >
-                            {isComplete ? (
+                            {isError ? (
+                              <AlertCircle className="w-3.5 h-3.5" />
+                            ) : isComplete ? (
                               <CheckCircle2 className="w-3.5 h-3.5" />
                             ) : isRunning ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -366,8 +429,18 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                           <h4 className="text-xs font-bold text-foreground truncate">{doc.name}</h4>
                         </div>
 
-                        <span className="text-xs font-mono font-bold text-accent">
-                          {doc.progress}%
+                        <span
+                          className={`text-xs font-mono font-bold shrink-0 ${
+                            isError ? 'text-rose-300' : 'text-accent'
+                          }`}
+                        >
+                          {pct != null
+                            ? `${pct}%`
+                            : isError
+                            ? 'Failed'
+                            : isRunning
+                            ? 'Live'
+                            : '—'}
                         </span>
                       </div>
 
@@ -380,11 +453,18 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
                     <div className="mt-3 space-y-1.5">
                       <div className="w-full bg-muted/50 h-1.5 rounded-full overflow-hidden border border-border">
                         <div
-                          className="bg-gradient-to-r from-purple-500 to-cyan-400 h-full transition-all duration-300"
-                          style={{ width: `${doc.progress}%` }}
+                          className={`h-full transition-all duration-300 ${
+                            isError ? 'bg-rose-500' : 'bg-gradient-to-r from-purple-500 to-cyan-400'
+                          }`}
+                          style={{ width: `${isError ? 100 : barWidth}%` }}
                         />
                       </div>
-                      <div className="text-[9.5px] font-mono text-status-green truncate">
+                      <div
+                        className={`text-[9.5px] font-mono truncate ${
+                          isError ? 'text-rose-300' : 'text-status-green'
+                        }`}
+                        title={doc.currentSseMsg}
+                      >
                         ↳ {doc.currentSseMsg}
                       </div>
                     </div>

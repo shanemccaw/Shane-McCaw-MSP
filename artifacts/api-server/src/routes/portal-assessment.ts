@@ -484,6 +484,10 @@ router.get(
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
+    // users.id — needed only for the doc-workflow run lookup below, whose trigger
+    // payload can carry either id space. Absent on a token without it; the OR
+    // predicate then simply never matches on the userId legs.
+    const userId = req.user?.id ?? null;
     if (customerId === null) {
       res.status(403).json({ error: "No customer identity on token" });
       return;
@@ -526,6 +530,29 @@ router.get(
         .select({ isTestbed: tenantsTable.isTestbed, tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      // ── Doc-generation workflow run (id + status) ─────────────────────────
+      // Deliberately the SAME query shape /portal/assessment/status already uses
+      // for `docWfRun` (see the block above it) — same workflow name, same
+      // three-legged trigger-payload predicate, same "most recent run" ordering.
+      // Not a second lookup shape and not a new stream: it exists so the Copilot
+      // Assessment telemetry page can subscribe to the ALREADY-LIVE run-scoped
+      // stream (GET /portal/assessment/doc-workflow/:runId/sse) the old wizard
+      // subscribes to today, without having to poll the heavyweight
+      // /portal/assessment/status payload from a page that only needs the run id.
+      // Additive and optional at the wire boundary, exactly like lastRunSummary.
+      const [docWfRun] = await db
+        .select({ id: wfRunsTable.id, status: wfRunsTable.status })
+        .from(wfRunsTable)
+        .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfRunsTable.definitionId))
+        .where(
+          and(
+            eq(wfDefinitionsTable.name, ASSESSMENT_DOC_WORKFLOW_NAME),
+            sql`(${wfRunsTable.payload}->>'customerId' = ${String(customerId)} OR ${wfRunsTable.payload}->>'userId' = ${String(userId ?? "")} OR ${wfRunsTable.payload}->>'clientUserId' = ${String(userId ?? "")})`,
+          ),
+        )
+        .orderBy(desc(wfRunsTable.id))
         .limit(1);
 
       let consentStatus: string | null = null;
@@ -598,6 +625,13 @@ router.get(
               completedAt: latestRun.completedAt ?? null,
             }
           : null,
+        // The customer's most recent Assessment document-generation workflow
+        // run, or null when one has never fired for them (e.g. the two-sided
+        // gate is still waiting on the other condition). Only the run id and
+        // status: the id is the subscription handle for the existing run-scoped
+        // SSE stream, and the status is the poll-based terminal signal — the
+        // same division of labour the wizard already relies on.
+        docWorkflow: docWfRun ? { runId: docWfRun.id, status: docWfRun.status } : null,
         isTestbed: customerRow?.isTestbed === true,
         consentStatus,
         scopesStale,
