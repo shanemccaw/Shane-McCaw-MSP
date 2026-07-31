@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked } from "./graph";
+import { callPsExecution, PsExecutionError } from "./ps-execution-client";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -223,6 +224,31 @@ export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string,
     : withDates;
   if (!tenantId) return withItem;
   return withItem.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
+}
+
+/**
+ * The tenant-identity placeholders a PowerShell-backed check's `psParams` may
+ * contain. Mirrors `resolveEndpointPlaceholders`'s identity-token idea, but
+ * applied to a params object instead of a URL string, per #209's design.
+ * `{organization}` resolves to the tenant's onmicrosoft.com/verified domain
+ * (`tenants.domain`) — the value Connect-IPPSSession's `-Organization`
+ * parameter expects — falling back to the AAD tenant GUID when no domain is
+ * on file, rather than silently substituting an empty string.
+ */
+const PS_PARAM_PLACEHOLDER_RE = /\{(organization|tenantId)\}/g;
+
+export function resolvePsParamsPlaceholders(
+  params: Record<string, unknown> | null | undefined,
+  organization: string,
+  tenantId: string,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params ?? {})) {
+    resolved[key] = typeof value === "string"
+      ? value.replace(PS_PARAM_PLACEHOLDER_RE, (_match, token: string) => (token === "organization" ? organization : tenantId))
+      : value;
+  }
+  return resolved;
 }
 
 function stripParam(url: string, prefixRegex: RegExp): string {
@@ -734,6 +760,106 @@ export function licenseGapProfileFlags(feature: string): Record<string, boolean>
   return {};
 }
 
+// ── PowerShell-backed check executor ──────────────────────────────────────────
+//
+// Runs a check whose data can only be read via Connect-IPPSSession (DLP/Label
+// policies, #208) — no Graph REST equivalent exists. Modeled on
+// runFanOutCheck's precedent (a distinct execution path alongside the normal
+// Graph fetch, sharing everything downstream of `items`), but deliberately
+// does NOT call graphFetchForTenant/graphFetchPaginated at all: per #209's
+// design, a PS execution failure has nothing to do with a customer's Graph
+// consent state, so it must be structurally unable to throw
+// ConsentRevokedError/LicenseGapError, not merely conventionally unlikely to.
+async function runPowerShellCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+
+  if (!check.psCmdletKey) {
+    throw new Error(`monitor check ${check.key} has executorType "powershell" but no psCmdletKey configured`);
+  }
+
+  // Organization is the reserved tenant-identity field Connect-IPPSSession
+  // needs (entrypoint.ps1) — resolved from the tenant's own domain, not
+  // stored as a literal in psParams, so one check definition works for every
+  // tenant it's assigned to.
+  const [tenantRow] = await db
+    .select({ domain: tenantsTable.domain })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+  const organization = tenantRow?.domain || tenantId;
+
+  const resolvedParams = resolvePsParamsPlaceholders(
+    check.psParams as Record<string, unknown> | null,
+    organization,
+    tenantId,
+  );
+  resolvedParams.Organization ??= organization;
+
+  const { items, rawResponse } = await callPsExecution(check.psCmdletKey, resolvedParams);
+
+  // Same downstream contract as the Graph path: mapping/properties -> schema
+  // validation -> severity classification -> persistence, all unmodified.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(items, mapping, properties);
+
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: PowerShell check output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatched = classifySeverity(severityRules, extracted);
+
+  // The container's contract (#210) is one synchronous request/response — no
+  // @odata.nextLink, no CSV — so pageCount is always 1.
+  const pageCount = 1;
+
+  const [row] = await db
+    .insert(tenantMonitorProfilesTable)
+    .values({
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "ok",
+      rawResponse: rawResponse as Record<string, unknown>,
+      extractedProperties: extracted,
+      severityMatched,
+      itemCount: items.length,
+      pageCount,
+    })
+    .onConflictDoNothing()
+    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+  log.info(
+    { checkKey: check.key, tenantId, itemCount: items.length, cmdletKey: check.psCmdletKey },
+    "monitor-executor: PowerShell-backed check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status: "ok",
+    extractedProperties: extracted,
+    severityMatched,
+    itemCount: items.length,
+    pageCount,
+    profileId: row?.profileId,
+    ...(opts.includeItems ? { items } : {}),
+  };
+}
+
 // ── Fan-out (group-scoped) check executor ─────────────────────────────────────
 //
 // Runs a check whose target endpoint has no tenant-wide form and must instead be
@@ -1048,6 +1174,14 @@ export async function executeMonitorCheck(opts: {
   }
 
   try {
+    // PowerShell-backed checks (executorType = 'powershell', #209/#211) take an
+    // entirely separate path that never touches Graph at all — checked first,
+    // ahead of the fan-out/Graph branches below, which are Graph-only by
+    // construction (executorType defaults to 'graph' for every existing check).
+    if (check.executorType === "powershell") {
+      return await runPowerShellCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+    }
+
     // Fan-out (group-scoped) checks take an entirely separate, additive path.
     // Enumeration-level consent/license/generic errors it throws are caught by
     // this same try/catch below, so the auto-revoke + license_gap persistence
@@ -1199,8 +1333,19 @@ export async function executeMonitorCheck(opts: {
       };
     }
 
+    // PsExecutionError (ps-execution container failures — network, cert/auth,
+    // or a cmdlet-level error) falls through to this same generic path by
+    // design: per #209, it deliberately gets no new run-status semantics —
+    // it's a plain "error", same as any other unrecognized failure. Its
+    // `kind` is attached to the log line only, for ops diagnosis; it must
+    // NEVER route to markTenantConsentRevoked() the way ConsentRevokedError
+    // does above — a PS execution auth failure is not a customer's Graph
+    // consent state changing.
     const errorMessage = err instanceof Error ? err.message : String(err);
-    log.error({ err, checkKey: check.key, tenantId }, "monitor-executor: check failed");
+    log.error(
+      { err, checkKey: check.key, tenantId, psExecutionKind: err instanceof PsExecutionError ? err.kind : undefined },
+      "monitor-executor: check failed",
+    );
 
     const [row] = await db
       .insert(tenantMonitorProfilesTable)

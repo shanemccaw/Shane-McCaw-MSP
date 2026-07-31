@@ -45,6 +45,7 @@ vi.mock("@workspace/db", () => ({
   monitoringPackagesTable: {},
   monitoringPackageChecksTable: {},
   tenantMonitorProfilesTable: {},
+  tenantsTable: {},
 }));
 
 vi.mock("../graph", () => ({
@@ -74,6 +75,20 @@ vi.mock("../graph", () => ({
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../ps-execution-client", () => ({
+  callPsExecution: vi.fn(),
+  PsExecutionError: class PsExecutionError extends Error {
+    kind: "unreachable" | "auth_failed" | "script_error";
+    cmdletKey: string;
+    constructor(kind: "unreachable" | "auth_failed" | "script_error", cmdletKey: string, message: string) {
+      super(message);
+      this.name = "PsExecutionError";
+      this.kind = kind;
+      this.cmdletKey = cmdletKey;
+    }
+  },
+}));
+
 vi.mock("../logger", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
@@ -83,6 +98,7 @@ vi.mock("../logger", () => {
 
 import { graphFetchForTenant } from "../graph";
 import { ConsentRevokedError, LicenseGapError } from "../graph";
+import { callPsExecution, PsExecutionError } from "../ps-execution-client";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
 
@@ -649,6 +665,9 @@ describe("executeMonitorCheck", () => {
     fanOutSource: null,
     fanOutItemIdField: null,
     fanOutMaxItems: null,
+    executorType: "graph" as const,
+    psCmdletKey: null,
+    psParams: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -909,6 +928,9 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     fanOutSource: "/groups?$select=id",
     fanOutItemIdField: null, // defaults to "id"
     fanOutMaxItems: null,
+    executorType: "graph" as const,
+    psCmdletKey: null,
+    psParams: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1108,6 +1130,105 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     expect(props.eligibleAssignmentsTotal).toBe(2);
     expect(props._itemCount).toBe(2); // applyMapping stamps this for pillar coverage
     expect(result.severityMatched).toBe("warning");
+  });
+});
+
+describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')", () => {
+  const mockCallPsExecution = callPsExecution as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const psCheck = {
+    id: 20,
+    checkId: "uuid-ps",
+    key: "diagnostics:ps-execution-test",
+    label: "PowerShell Execution Path (diagnostic)",
+    description: null,
+    endpoint: "(unused — executorType=powershell drives dispatch, not endpoint)",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: [] as string[],
+    mapping: [{ sourceField: "State", targetField: "connectionState", transform: "first" }] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    executorType: "powershell" as const,
+    psCmdletKey: "get-connection-info",
+    psParams: { Organization: "{organization}" } as Record<string, unknown>,
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it("dispatches to the ps-execution container (not Graph) and persists a real check-dispatch result", async () => {
+    mockCallPsExecution.mockResolvedValueOnce({
+      items: [{ State: "Connected", CertificateAuthentication: true }],
+      rawResponse: { State: "Connected", CertificateAuthentication: true },
+    });
+
+    const result = await executeMonitorCheck({
+      check: psCheck,
+      tenantId: "tenant-guid-1",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(mockCallPsExecution).toHaveBeenCalledWith(
+      "get-connection-info",
+      expect.objectContaining({ Organization: "tenant-guid-1" }), // no tenants.domain row in the mock -> falls back to tenantId
+    );
+    expect(graphFetchForTenant).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.pageCount).toBe(1);
+    expect(result.extractedProperties.connectionState).toBe("Connected");
+  });
+
+  it("resolves {organization}/{tenantId} placeholders in psParams before dispatch", async () => {
+    mockCallPsExecution.mockResolvedValueOnce({ items: [{ State: "Connected" }], rawResponse: { State: "Connected" } });
+
+    await executeMonitorCheck({
+      check: { ...psCheck, psParams: { Organization: "{organization}", RequestedBy: "check-{tenantId}" } },
+      tenantId: "tenant-guid-2",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(mockCallPsExecution).toHaveBeenCalledWith("get-connection-info", {
+      Organization: "tenant-guid-2",
+      RequestedBy: "check-tenant-guid-2",
+    });
+  });
+
+  it("a PsExecutionError falls through to the generic error path — never markTenantConsentRevoked", async () => {
+    const { markTenantConsentRevoked } = await import("../graph");
+    mockCallPsExecution.mockRejectedValueOnce(
+      new PsExecutionError("auth_failed", "get-connection-info", "Could not establish a Security & Compliance session for the target tenant."),
+    );
+
+    const result = await executeMonitorCheck({
+      check: psCheck,
+      tenantId: "tenant-guid-3",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("Security & Compliance session");
+    expect(markTenantConsentRevoked).not.toHaveBeenCalled();
   });
 });
 

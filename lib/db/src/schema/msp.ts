@@ -1420,6 +1420,16 @@ export type MonitorCheckFrequency = typeof MONITOR_CHECK_FREQUENCY[number];
 export const MONITOR_CHECK_STATUS = ["active", "archived"] as const;
 export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
 
+// ── PowerShell-backed execution (additive, per #209's approved design) ────────
+// Every existing check is Graph-REST-shaped at the transport layer. A small
+// class of checks (DLP/Label policies, #208) can only be read via
+// Connect-IPPSSession PowerShell cmdlets, not Graph REST. `executorType`
+// discriminates which transport a check uses; everything downstream of fetch
+// (mapping/severityRules/outputSchema/engines/frequency/scriptPackageId) is
+// already transport-agnostic and stays completely shared between both paths.
+export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell"] as const;
+export type MonitorCheckExecutorType = typeof MONITOR_CHECK_EXECUTOR_TYPES[number];
+
 export const monitorChecksTable = pgTable("monitor_checks", {
   id: serial("id").primaryKey(),
   checkId: uuid("check_id").notNull().unique().defaultRandom(),
@@ -1456,6 +1466,13 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   fanOutItemIdField: text("fan_out_item_id_field"),
   /** Per-check cap on how many enumerated items are scanned (throttle guard). NULL = platform default (FAN_OUT_MAX_ITEMS_DEFAULT). */
   fanOutMaxItems: integer("fan_out_max_items"),
+  // ── PowerShell-backed execution (additive, NULL/'graph' for every existing check) ──
+  /** 'graph' (default, every existing row) = the endpoint/method/... columns above drive a Graph REST fetch. 'powershell' = psCmdletKey/psParams below drive a ps-execution container call instead; endpoint/method/requestBody/selectParams/filterParams/fanOut* are unused. */
+  executorType: text("executor_type", { enum: MONITOR_CHECK_EXECUTOR_TYPES }).notNull().default("graph"),
+  /** Identifier resolved server-side by the ps-execution container against its own code-owned cmdlet allowlist ($script:CmdletCatalog in entrypoint.ps1) — never a raw script string. NULL unless executorType = 'powershell'. */
+  psCmdletKey: text("ps_cmdlet_key"),
+  /** Static params merged with resolved tenant-identity context ({organization}/{tenantId} placeholders) at dispatch time — fill values only, never control flow. NULL unless executorType = 'powershell'. */
+  psParams: jsonb("ps_params").$type<Record<string, unknown>>(),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),
