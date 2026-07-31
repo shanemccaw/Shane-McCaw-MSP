@@ -8,9 +8,7 @@ import {
   AlertCircle,
   FileText,
   Activity,
-  Layers,
-  Pause,
-  Play
+  Layers
 } from 'lucide-react';
 
 /**
@@ -192,14 +190,6 @@ export const UnifiedTelemetryCarousel: React.FC<UnifiedTelemetryCarouselProps> =
 
           {/* CONTROLS & PAGINATION INDICATOR */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsPaused(!isPaused)}
-              className="p-1 hover:bg-foreground/10 rounded text-foreground/60 hover:text-foreground transition-colors"
-              title={isPaused ? 'Resume auto-scroll' : 'Pause auto-scroll'}
-            >
-              {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            </button>
-
             <div className="flex items-center gap-1">
               {Array.from({
                 length: !isDocumentMode ? maxEnginePages : maxDocPages

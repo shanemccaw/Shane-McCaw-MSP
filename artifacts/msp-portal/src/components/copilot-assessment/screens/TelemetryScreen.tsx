@@ -617,94 +617,113 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
             </div>
 
             {/* PHASE 1 TILE GRID — REAL MICROSOFT GRAPH SCAN (#228)
-                Same four-tile layout as before, but every status badge and every
-                log line below is real state of the real diagnostics run for this
-                customer's tenant (useRealGraphScanSteps.ts). Nothing here is on a
-                timer, and a tile with no real signal behind it stays pending. */}
+                Restyled to match Mode 1/2's carousel visual language (#254): the
+                same rounded/bordered card shell, the same purple gradient
+                background and header badge chip as UnifiedTelemetryCarousel.tsx,
+                so all three modes read as one visual system. Visual only — every
+                status badge and log line below is still real state of the real
+                diagnostics run for this customer's tenant
+                (useRealGraphScanSteps.ts). Nothing here is on a timer, and a tile
+                with no real signal behind it stays pending. */}
             {phase === 'phase1_graph' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#A1A1A1]">
-                    Tile Group: Microsoft Graph Connection
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-[#0078D4]">4 Steps</span>
-                  </div>
-                </div>
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-border">
+                {/* BACKGROUND — same Copilot purple gradient as Mode 1/2 */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#21093A]/90 via-[#0A1D3F]/90 to-[#022F43]/90 backdrop-blur-xl border border-purple-500/40" />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {graphScan.steps.map(step => {
-                    const st = step.status;
-                    return (
-                      <div
-                        key={step.id}
-                        className={`p-3.5 rounded-xl border transition-all ${
-                          st === 'error'
-                            ? 'bg-[#161616] border-rose-500/60 ring-1 ring-rose-500/20 shadow-lg'
-                            : st === 'running'
-                            ? 'bg-[#161616] border-[#0078D4] ring-1 ring-[#0078D4]/30 shadow-lg'
-                            : st === 'complete'
-                            ? 'bg-[#161616]/80 border-[#2D2D2D]'
-                            : 'bg-[#121212] border-[#222222] opacity-50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
+                {/* CONTENT RAIL */}
+                <div className="relative z-10 p-4 space-y-3.5">
+                  {/* HEADER RAIL — matches carousel's header badge chip pattern */}
+                  <div className="flex items-center justify-between pb-2 border-b border-border">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
+                        <Server className="w-4 h-4 animate-pulse" />
+                        <span className="text-xs font-bold font-mono tracking-wider uppercase">
+                          MODE 0: MICROSOFT GRAPH CONNECTION ({graphScan.steps.length})
+                        </span>
+                      </div>
+
+                      <span className="text-xs font-mono font-bold text-foreground/80">
+                        {graphScan.steps.filter(s => s.status === 'complete').length}/{graphScan.steps.length} Complete
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {graphScan.steps.map(step => {
+                      const st = step.status;
+                      return (
+                        <div
+                          key={step.id}
+                          className={`p-3.5 rounded-xl border transition-all duration-300 flex flex-col justify-between ${
+                            st === 'error'
+                              ? 'bg-background/90 border-rose-500/60 ring-1 ring-rose-500/30'
+                              : st === 'running'
+                              ? 'bg-background/90 border-primary ring-1 ring-primary/50 shadow-lg shadow-primary/10'
+                              : st === 'complete'
+                              ? 'bg-background/80 border-status-green/40'
+                              : 'bg-muted/40 border-border opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
+                                  st === 'error'
+                                    ? 'bg-rose-500/15 border-rose-500 text-rose-400'
+                                    : st === 'complete'
+                                    ? 'bg-status-green/15 border-status-green text-status-green'
+                                    : st === 'running'
+                                    ? 'bg-primary/30 border-primary text-primary'
+                                    : 'bg-foreground/5 border-border text-foreground/50'
+                                }`}
+                              >
+                                {st === 'error' ? (
+                                  <AlertCircle className="w-3.5 h-3.5" />
+                                ) : st === 'complete' ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                ) : st === 'running' ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Server className="w-3.5 h-3.5" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-bold text-foreground truncate">{step.title}</h4>
+                                <p className="text-[10.5px] text-foreground/60 truncate">{step.subtitle}</p>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 font-bold ${
                                 st === 'error'
-                                  ? 'bg-rose-950/80 border-rose-700 text-rose-400'
+                                  ? 'bg-rose-950/90 text-rose-300 border-rose-700'
                                   : st === 'complete'
-                                  ? 'bg-emerald-950/80 border-emerald-700 text-emerald-400'
+                                  ? 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
                                   : st === 'running'
-                                  ? 'bg-[#0078D4]/20 border-[#0078D4] text-[#0078D4]'
-                                  : 'bg-[#222222] border-[#333333] text-[#666666]'
+                                  ? 'bg-[#0078D4]/20 text-[#0078D4] border-[#0078D4]/40'
+                                  : 'bg-muted/60 text-foreground/50 border-border'
                               }`}
                             >
-                              {st === 'error' ? (
-                                <AlertCircle className="w-4 h-4" />
-                              ) : st === 'complete' ? (
-                                <CheckCircle2 className="w-4 h-4" />
-                              ) : st === 'running' ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Server className="w-4 h-4" />
-                              )}
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-bold text-white">{step.title}</h4>
-                              <p className="text-[11px] text-[#888888]">{step.subtitle}</p>
-                            </div>
+                              {st}
+                            </span>
                           </div>
 
-                          <span
-                            className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded border ${
-                              st === 'error'
-                                ? 'bg-rose-950/80 text-rose-300 border-rose-800 font-bold'
-                                : st === 'complete'
-                                ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
-                                : st === 'running'
-                                ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
-                                : 'bg-[#222222] text-[#666666] border-[#333333]'
-                            }`}
-                          >
-                            {st}
-                          </span>
+                          {/* Real log line for this step — live run state, no script */}
+                          <div className="mt-3 pt-2 border-t border-border">
+                            <div
+                              className={`text-[9.5px] font-mono truncate flex items-center gap-1 ${
+                                st === 'error' ? 'text-rose-300' : 'text-primary'
+                              }`}
+                              title={step.message}
+                            >
+                              <span>↳</span>
+                              <span className="truncate">{step.message}</span>
+                            </div>
+                          </div>
                         </div>
-
-                        {/* Real log line for this step — live run state, no script */}
-                        <div
-                          className={`mt-2.5 pt-2 border-t border-[#222222] text-[10px] font-mono flex items-center gap-1 ${
-                            st === 'error' ? 'text-rose-300' : 'text-[#A1A1A1]'
-                          }`}
-                          title={step.message}
-                        >
-                          <span className={st === 'error' ? 'text-rose-400' : 'text-[#0078D4]'}>↳</span>
-                          <span className="truncate">{step.message}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
