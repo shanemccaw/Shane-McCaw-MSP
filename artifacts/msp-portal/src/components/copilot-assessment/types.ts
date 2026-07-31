@@ -12,17 +12,29 @@ export type AssessmentStep =
   | 'documents'
   | 'sow';
 
-export interface QuizQuestion {
-  id: number;
-  question: string;
-  category: string;
-  options: {
-    id: string;
-    label: string;
-    description: string;
-    personaImpact: string;
-    useCaseFit: string;
-  }[];
+export type CollaborationPattern = 'internal' | 'cross-team' | 'external';
+export type WorkflowStyle = 'structured' | 'unstructured';
+export type AiComfortLevel = 'low' | 'medium' | 'high';
+
+// Real structured attribute collection produced by the Quiz (Phase 1 of the
+// Copilot Assessment epic, #184). This JSON becomes the prompt-context input
+// for the Persona/Use-Case/Report AI generation phases (#183 Phases 3/4/8) —
+// the shape is the contract those phases are built against, so it is frozen
+// here rather than reshaped per-consumer.
+export interface QuizProfile {
+  role: string;
+  department: string;
+  industry: string;
+  collaboration: CollaborationPattern[];
+  sensitivity: string[];
+  workflowStyle: WorkflowStyle;
+  outcomePriorities: string[];
+  draftingLoad: number; // 0-1
+  researchLoad: number; // 0-1
+  communicationLoad: number; // 0-1
+  repetitiveLoad: number; // 0-1
+  toolUsage: string[];
+  aiComfort: AiComfortLevel;
 }
 
 export interface EngineStatus {
@@ -94,6 +106,7 @@ export interface AssessmentState {
   currentStep: AssessmentStep;
   currentQuestionIndex: number;
   quizAnswers: Record<string, string>;
+  quizProfile: QuizProfile | null;
   isLeftPanelCollapsed: boolean;
   isRightPanelCollapsed: boolean;
   engines: EngineStatus[];

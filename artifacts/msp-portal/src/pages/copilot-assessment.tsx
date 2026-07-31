@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
-import { 
-  AssessmentStep, 
-  AssessmentState, 
-  PersonaStory, 
-  DocumentDeliverable, 
-  GovernanceState, 
+import {
+  AssessmentStep,
+  AssessmentState,
+  PersonaStory,
+  DocumentDeliverable,
+  GovernanceState,
   RoiState,
-  EngineStatus
+  EngineStatus,
+  QuizProfile
 } from '@/components/copilot-assessment/types';
-import { 
-  QUIZ_QUESTIONS, 
-  INITIAL_ENGINES, 
-  PERSONA_STORIES, 
-  USE_CASE_TILES, 
-  DOCUMENT_DELIVERABLES 
+import {
+  INITIAL_ENGINES,
+  PERSONA_STORIES,
+  USE_CASE_TILES,
+  DOCUMENT_DELIVERABLES
 } from '@/components/copilot-assessment/assessmentData';
 
 import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
@@ -57,6 +57,7 @@ export default function App() {
     currentStep: 'home',
     currentQuestionIndex: 0,
     quizAnswers: {},
+    quizProfile: null,
     isLeftPanelCollapsed: false,
     isRightPanelCollapsed: false,
     engines: INITIAL_ENGINES,
@@ -95,11 +96,12 @@ export default function App() {
     }
   };
 
-  // Quiz Handlers
-  const handleSelectQuizOption = (stepId: string | number, optionId: string) => {
+  // Quiz Handler — receives the completed structured profile (#183/#184)
+  const handleCompleteQuiz = (profile: QuizProfile) => {
     setState(prev => ({
       ...prev,
-      quizAnswers: { ...prev.quizAnswers, [stepId]: optionId }
+      quizProfile: profile,
+      currentStep: 'telemetry'
     }));
   };
 
@@ -164,6 +166,7 @@ export default function App() {
       currentStep: 'home',
       currentQuestionIndex: 0,
       quizAnswers: {},
+      quizProfile: null,
       isLeftPanelCollapsed: false,
       isRightPanelCollapsed: false,
       engines: INITIAL_ENGINES,
@@ -199,9 +202,8 @@ export default function App() {
       {state.currentStep === 'quiz' ? (
         <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
           <QuizScreen
-            answers={state.quizAnswers}
-            onSelectOption={handleSelectQuizOption}
-            onCompleteQuiz={() => handleNavigate('telemetry')}
+            initialProfile={state.quizProfile ?? undefined}
+            onCompleteQuiz={handleCompleteQuiz}
             onHelpClick={() => setIsSpecModalOpen(true)}
             onExitClick={() => handleNavigate('home')}
           />

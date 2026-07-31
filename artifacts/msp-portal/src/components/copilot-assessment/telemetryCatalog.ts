@@ -320,7 +320,7 @@ export const TELEMETRY_DOCS: TelemetryDocDef[] = [
   }
 ];
 
-import { ADAPTIVE_DATA_SENSITIVITY, ADAPTIVE_COLLABORATION } from './quizCatalog';
+import { SENSITIVITY_OPTIONS, COLLABORATION_OPTIONS } from './quizCatalog';
 
 export interface TelemetryMismatch {
   id: string;
@@ -337,17 +337,13 @@ export function generateDynamicHintCards(
 ): string[] {
   const hints: string[] = [];
 
-  const ind = answers['industry'] || 'space';
   const sensIds = answers['sensitivity'] ? answers['sensitivity'].split(',').filter(Boolean) : [];
   const collabIds = answers['collaboration'] ? answers['collaboration'].split(',').filter(Boolean) : [];
   const speed = answers['adoption-speed'] || '';
   const outcome = answers['outcomes'] || '';
 
-  const sensCatalog = ADAPTIVE_DATA_SENSITIVITY[ind] || ADAPTIVE_DATA_SENSITIVITY['default'] || [];
-  const collabCatalog = ADAPTIVE_COLLABORATION[ind] || ADAPTIVE_COLLABORATION['default'] || [];
-
-  const sensTitles = sensIds.map(id => sensCatalog.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-  const collabTitles = collabIds.map(id => collabCatalog.find(o => o.id === id)?.title.split('/')[0].trim() || id);
+  const sensTitles = sensIds.map(id => SENSITIVITY_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
+  const collabTitles = collabIds.map(id => COLLABORATION_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
 
   // 1. Sensitivity set insight
   if (sensTitles.length > 0) {
@@ -395,16 +391,12 @@ export function generateDynamicHintCards(
 export function generateTop3Mismatches(
   answers: Record<string, string>
 ): TelemetryMismatch[] {
-  const ind = answers['industry'] || 'space';
   const sensIds = answers['sensitivity'] ? answers['sensitivity'].split(',').filter(Boolean) : [];
   const collabIds = answers['collaboration'] ? answers['collaboration'].split(',').filter(Boolean) : [];
   const speed = answers['adoption-speed'] || '';
 
-  const sensCatalog = ADAPTIVE_DATA_SENSITIVITY[ind] || ADAPTIVE_DATA_SENSITIVITY['default'] || [];
-  const collabCatalog = ADAPTIVE_COLLABORATION[ind] || ADAPTIVE_COLLABORATION['default'] || [];
-
-  const sensTitles = sensIds.map(id => sensCatalog.find(o => o.id === id)?.title.split('/')[0].trim() || id);
-  const collabTitles = collabIds.map(id => collabCatalog.find(o => o.id === id)?.title.split('/')[0].trim() || id);
+  const sensTitles = sensIds.map(id => SENSITIVITY_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
+  const collabTitles = collabIds.map(id => COLLABORATION_OPTIONS.find(o => o.id === id)?.title.split('/')[0].trim() || id);
 
   const mismatches: TelemetryMismatch[] = [];
 
