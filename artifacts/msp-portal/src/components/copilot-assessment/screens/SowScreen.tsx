@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { 
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { startCopilotAssessmentCheckout } from '../checkoutClient';
+import {
   Briefcase, 
   CheckCircle2, 
   Clock, 
@@ -234,6 +236,55 @@ export const SCOPE_MODULES: SowScopeModule[] = [
   }
 ];
 
+// CAPTCHA gate (Cloudflare Turnstile; dev-bypass when unconfigured) — mirrors
+// AssessmentPaymentPlan.tsx's CaptchaGate so this real Stripe checkout sends a
+// real token when VITE_TURNSTILE_SITE_KEY is set, and a bypass token in dev
+// where the server's verifyCaptchaToken also bypasses.
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: { sitekey: string; callback: (token: string) => void }) => string;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
+function CaptchaGate({ onVerify }: { onVerify: (token: string) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
+  useEffect(() => {
+    if (!siteKey) {
+      onVerify('DEV_BYPASS_TOKEN');
+      return;
+    }
+    if (!window.turnstile) {
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+    let widgetId: string | undefined;
+    const renderWidget = () => {
+      if (window.turnstile && containerRef.current) {
+        widgetId = window.turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: (token: string) => onVerify(token),
+        });
+      } else {
+        setTimeout(renderWidget, 100);
+      }
+    };
+    renderWidget();
+    return () => {
+      if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey, onVerify]);
+
+  if (!siteKey) return null;
+  return <div ref={containerRef} className="flex justify-center" />;
+}
+
 interface SowScreenProps {
   onContinue?: () => void;
   onHelpClick?: () => void;
@@ -260,6 +311,12 @@ export const SowScreen: React.FC<SowScreenProps> = ({
   const [lastImpactDelta, setLastImpactDelta] = useState<{ type: 'added' | 'removed'; title: string; delta: number } | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState<boolean>(false);
   const [isProcurementSent, setIsProcurementSent] = useState<boolean>(false);
+
+  const { fetchWithAuth } = useAuth();
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const handleCaptchaVerify = useCallback((token: string) => setCaptchaToken(token), []);
 
   // Trigger Toast Notification
   const triggerToast = (msg: string) => {
@@ -344,9 +401,25 @@ export const SowScreen: React.FC<SowScreenProps> = ({
     triggerToast(`Statement of Work dispatched to procurement (${procurementEmail}) with PO #${poNumber}!`);
   };
 
-  const handleConfirmPurchase = () => {
-    setIsPurchaseModalOpen(false);
-    triggerToast(`Order confirmed! SOW SOW-2026-M365-092 authorized for ${companyName} under PO #${poNumber}.`);
+  const handleConfirmPurchase = async () => {
+    if (!captchaToken || isCheckingOut) return;
+    setCheckoutError(null);
+    setIsCheckingOut(true);
+    try {
+      const url = await startCopilotAssessmentCheckout(fetchWithAuth, {
+        captchaToken,
+        companyName,
+        poNumber,
+        signerName,
+        readinessScore,
+        selectedModules,
+        creditCents: Math.round(msCredit * 100),
+      });
+      window.location.href = url;
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : 'Checkout failed. Please try again.');
+      setIsCheckingOut(false);
+    }
   };
 
   return (
@@ -413,18 +486,29 @@ export const SowScreen: React.FC<SowScreenProps> = ({
               <span>Includes 30-day guaranteed price lock and $15,000 Microsoft Partner Assessment Funding Credit. Net 30 payment terms apply upon kickoff.</span>
             </div>
 
+            <CaptchaGate onVerify={handleCaptchaVerify} />
+
+            {checkoutError && (
+              <div className="p-2.5 bg-destructive/15 border border-destructive/40 rounded-xl text-[11px] text-destructive flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{checkoutError}</span>
+              </div>
+            )}
+
             <div className="flex space-x-3 pt-2">
               <button
                 onClick={() => setIsPurchaseModalOpen(false)}
-                className="flex-1 py-2.5 bg-secondary hover:bg-secondary text-muted-foreground font-mono rounded-xl text-xs border border-border cursor-pointer"
+                disabled={isCheckingOut}
+                className="flex-1 py-2.5 bg-secondary hover:bg-secondary text-muted-foreground font-mono rounded-xl text-xs border border-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmPurchase}
-                className="flex-1 py-2.5 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-status-green/60"
+                disabled={!captchaToken || isCheckingOut}
+                className="flex-1 py-2.5 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-status-green/60 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm & Sign SOW
+                {isCheckingOut ? 'Redirecting to Stripe…' : 'Confirm & Sign SOW'}
               </button>
             </div>
           </div>
@@ -902,7 +986,11 @@ export const SowScreen: React.FC<SowScreenProps> = ({
 
             {/* 1. Main Purchase Button */}
             <button
-              onClick={() => setIsPurchaseModalOpen(true)}
+              onClick={() => {
+                setCaptchaToken(null);
+                setCheckoutError(null);
+                setIsPurchaseModalOpen(true);
+              }}
               className="w-full py-3 px-4 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-status-green/60 cursor-pointer border border-border uppercase tracking-wider"
             >
               <ShoppingBag className="w-4 h-4" />
