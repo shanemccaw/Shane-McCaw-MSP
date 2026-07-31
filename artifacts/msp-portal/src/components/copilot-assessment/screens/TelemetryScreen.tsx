@@ -40,6 +40,8 @@ import type { ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTele
 
 interface TelemetryScreenProps {
   quizAnswers?: Record<string, string>;
+  /** True while the #237 saved-quiz-profile restore is still outstanding (#256). */
+  quizProfileRestorePending?: boolean;
   onContinue: () => void;
 }
 
@@ -47,6 +49,7 @@ type TelemetryPhase = 'phase1_graph' | 'phase2_engines' | 'phase3_docs' | 'compl
 
 export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   quizAnswers = {},
+  quizProfileRestorePending = false,
   onContinue
 }) => {
   // Phase state
@@ -341,8 +344,16 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
             navigation — no server call, no server-side gate. Downstream
             screens see real absence of document data, not a stub: this does
             NOT fake or fabricate any document. Remove this button before
-            production. */}
-        {graphScan.isTestbed && (
+            production.
+
+            Gated on quizProfileRestorePending (#256): the #237 saved-quiz-profile
+            restore is an async fetch on page mount, and a fast click here right
+            after page load can outrun it, landing on Personas with a null
+            quizProfile that looks identical to "no profile ever existed" and
+            spins forever. Hidden — not just disabled — until that restore has
+            left its initial pending state (restored or absent; both are terminal
+            enough to know whether a profile exists). */}
+        {graphScan.isTestbed && !quizProfileRestorePending && (
           <button
             onClick={onContinue}
             className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors"

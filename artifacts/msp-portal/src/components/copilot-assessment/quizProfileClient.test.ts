@@ -18,6 +18,7 @@ import {
   fetchSavedQuizProfile,
   saveQuizProfile,
   shouldAwaitQuizRestore,
+  shouldAwaitPersonasRestore,
   shouldSkipQuizStep,
   type QuizProfileRestoreStatus,
 } from './quizProfileClient.ts';
@@ -65,7 +66,7 @@ const COMPLETED_PROFILE = {
  * and the skip effect applies it once.
  */
 type WizardState = {
-  currentStep: 'home' | 'quiz' | 'telemetry';
+  currentStep: 'home' | 'quiz' | 'telemetry' | 'personas';
   quizProfile: typeof COMPLETED_PROFILE | null;
   restoreStatus: QuizProfileRestoreStatus;
   location: string;
@@ -169,6 +170,85 @@ describe('the skip does not fight the customer (#237)', () => {
     for (const step of ['home', 'telemetry'] as const) {
       assert.equal(shouldSkipQuizStep({ currentStep: step, quizProfile: COMPLETED_PROFILE, restoreStatus: 'restored' }), false);
       assert.equal(shouldAwaitQuizRestore({ currentStep: step, quizProfile: null, restoreStatus: 'idle' }), false);
+    }
+  });
+});
+
+describe('Personas does not spin forever on the restore race (#256)', () => {
+  it('rapid navigation to Personas right after page load is held back, not spun forever', async () => {
+    // Reproduces the exact race from #256: a customer with a REAL saved
+    // profile lands on Personas (e.g. the #253 debug skip button, or a
+    // direct/bookmarked link) before the mount-time restore fetch has
+    // resolved. quizProfile is still null and restoreStatus is still 'idle'
+    // at that instant -- indistinguishable, without the guard, from a
+    // customer who never completed the quiz at all.
+    const backend = makeFakeBackend();
+    await saveQuizProfile(backend.fetchWithAuth, COMPLETED_PROFILE); // a real profile IS saved server-side
+
+    const state: WizardState = {
+      currentStep: 'personas',
+      quizProfile: null,
+      restoreStatus: 'idle',
+      location: '/copilot-assessment/personas',
+    };
+
+    // The instant navigation lands, before the restore promise has settled.
+    assert.equal(
+      shouldAwaitPersonasRestore({ currentStep: state.currentStep, quizProfile: state.quizProfile, restoreStatus: state.restoreStatus }),
+      true,
+      'Personas must be held back -- a null quizProfile here is ambiguous, not evidence of "no profile"',
+    );
+
+    // The restore promise (already in flight since page mount) resolves.
+    const restored = await fetchSavedQuizProfile(backend.fetchWithAuth);
+    assert.deepEqual(restored, COMPLETED_PROFILE);
+    state.quizProfile = restored;
+    state.restoreStatus = 'restored';
+
+    // Personas can now render for real instead of waiting forever.
+    assert.equal(
+      shouldAwaitPersonasRestore({ currentStep: state.currentStep, quizProfile: state.quizProfile, restoreStatus: state.restoreStatus }),
+      false,
+      'once the restore answers with a real profile, Personas must stop waiting and generate',
+    );
+  });
+
+  it('a genuinely first-time customer is not held back once the lookup answers "absent"', async () => {
+    const backend = makeFakeBackend(); // nothing ever saved
+    const restored = await fetchSavedQuizProfile(backend.fetchWithAuth);
+    assert.equal(restored, null);
+
+    const state: WizardState = {
+      currentStep: 'personas',
+      quizProfile: null,
+      restoreStatus: 'absent',
+      location: '/copilot-assessment/personas',
+    };
+    assert.equal(
+      shouldAwaitPersonasRestore({ ...state }),
+      false,
+      'restoreStatus has left idle -- null quizProfile is now real, Personas shows "complete the quiz first" instead of waiting',
+    );
+  });
+
+  it('normal quiz-completion navigation never hits the race -- handleCompleteQuiz sets quizProfile before it navigates', () => {
+    // Mirrors handleCompleteQuiz in copilot-assessment.tsx: quizProfile and
+    // restoreStatus='applied' are both set synchronously in the same state
+    // update that precedes the navigation call, so Personas (reached later,
+    // via telemetry's real onContinue) never sees a null quizProfile for a
+    // customer who just finished the quiz in this session.
+    const state: WizardState = {
+      currentStep: 'personas',
+      quizProfile: COMPLETED_PROFILE,
+      restoreStatus: 'applied',
+      location: '/copilot-assessment/personas',
+    };
+    assert.equal(shouldAwaitPersonasRestore({ ...state }), false);
+  });
+
+  it('only the personas step is ever held back by this guard', () => {
+    for (const step of ['home', 'quiz', 'telemetry'] as const) {
+      assert.equal(shouldAwaitPersonasRestore({ currentStep: step, quizProfile: null, restoreStatus: 'idle' }), false);
     }
   });
 });

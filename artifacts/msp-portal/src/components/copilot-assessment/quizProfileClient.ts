@@ -107,3 +107,23 @@ export function shouldSkipQuizStep(args: {
 }): boolean {
   return args.currentStep === 'quiz' && args.quizProfile !== null && args.restoreStatus === 'restored';
 }
+
+/**
+ * Should the wizard hold the Personas step back rather than render it? (#256)
+ *
+ * Personas needs a quizProfile to generate anything, but a null quizProfile is
+ * ambiguous on its own: it means either "genuinely nothing saved" or "the
+ * restore fetch just hasn't answered yet" (the #237 race #256 was filed
+ * for — reachable via the #253 debug skip button, a direct/bookmarked link to
+ * this step, or a refresh while on it). Only the second case should hold the
+ * step back; once restoreStatus leaves 'idle' (whether 'restored' or
+ * 'absent') a null quizProfile is real and Personas can render its own
+ * "complete the quiz first" state instead of waiting forever.
+ */
+export function shouldAwaitPersonasRestore(args: {
+  currentStep: AssessmentStep;
+  quizProfile: QuizProfile | null;
+  restoreStatus: QuizProfileRestoreStatus;
+}): boolean {
+  return args.currentStep === 'personas' && args.quizProfile === null && args.restoreStatus === 'idle';
+}

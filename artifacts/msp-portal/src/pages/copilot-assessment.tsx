@@ -50,6 +50,7 @@ import {
   fetchSavedQuizProfile,
   saveQuizProfile,
   shouldAwaitQuizRestore,
+  shouldAwaitPersonasRestore,
   shouldSkipQuizStep,
   type QuizProfileRestoreStatus
 } from '@/components/copilot-assessment/quizProfileClient';
@@ -387,6 +388,14 @@ export default function CopilotAssessmentPage() {
     shouldAwaitQuizRestore({ currentStep, quizProfile: state.quizProfile, restoreStatus }) ||
     shouldSkipQuizStep({ currentStep, quizProfile: state.quizProfile, restoreStatus });
 
+  // Hold the Personas step back the same way while the saved-profile restore
+  // is still outstanding (#256) — otherwise a null quizProfile is indistinguishable
+  // from "no profile exists" and either spins forever or shows a misleading
+  // "complete the quiz first" message that self-corrects once the restore lands.
+  // Reachable via the #253 debug skip button, a direct/bookmarked link to this
+  // step, or a refresh while on it — not just the debug path.
+  const awaitingPersonasRestore = shouldAwaitPersonasRestore({ currentStep, quizProfile: state.quizProfile, restoreStatus });
+
   const commonScreenProps = {
     onHelpClick: () => setIsSpecModalOpen(true),
     onExitClick: () => handleNavigate('home'),
@@ -437,11 +446,24 @@ export default function CopilotAssessmentPage() {
         {currentStep === 'telemetry' && (
           <TelemetryScreen
             quizAnswers={state.quizAnswers}
+            quizProfileRestorePending={restoreStatus === 'idle'}
             onContinue={() => handleNavigate('personas')}
           />
         )}
 
-        {currentStep === 'personas' && (
+        {/* Held back until the saved-profile restore answers (#256) — see
+            awaitingPersonasRestore above for why a null quizProfile alone isn't
+            enough to tell "no profile" from "restore still in flight" apart. */}
+        {currentStep === 'personas' && awaitingPersonasRestore && (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading your saved profile…
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'personas' && !awaitingPersonasRestore && (
           <PersonasScreen
             quizProfile={state.quizProfile}
             personas={state.personas}
