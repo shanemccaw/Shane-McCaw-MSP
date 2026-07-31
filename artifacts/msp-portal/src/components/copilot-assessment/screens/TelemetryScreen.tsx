@@ -36,6 +36,7 @@ import { PHASE2_ENGINES } from '../telemetryCatalog';
 import { useRealGraphScanSteps } from '../useRealGraphScanSteps';
 import { useRealDocWorkflowPhases } from '../useRealDocWorkflowPhases';
 import { useRealTelemetryComparison } from '../useRealTelemetryComparison';
+import { useVersionInfo } from '@/hooks/useVersionInfo';
 import type { ExtendedEngineDef, ExtendedDocDef } from '../telemetry/UnifiedTelemetryCarousel';
 
 interface TelemetryScreenProps {
@@ -60,6 +61,11 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // message lines come from the real diagnostics run for this customer's tenant
   // (see useRealGraphScanSteps.ts for the milestone mapping).
   const graphScan = useRealGraphScanSteps();
+
+  // Left-panel footer version stamp — real git build info (#274), same
+  // commit-count/short-hash source app-shell.tsx already uses, not an
+  // invented scheme.
+  const versionInfo = useVersionInfo();
 
   // Phase 3 — REAL doc-generation workflow run (#235).
   // The scripted setInterval walk over TELEMETRY_DOCS is gone: the document
@@ -534,7 +540,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
           <div className="p-3 bg-[#161616] border border-[#2D2D2D] rounded text-[10px] font-mono text-[#666666] leading-relaxed">
             SYSTEM TELEMETRY ENGINE:
             <br />
-            v5.2 High-Throughput Correlation
+            v{versionInfo.display}
           </div>
         </aside>
 
