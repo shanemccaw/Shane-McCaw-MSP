@@ -149,6 +149,19 @@ export interface DocumentDeliverable {
 
 export type PersonaGenerationStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+// Real deterministic ROI score shape returned by the Final Report Engine
+// (#183 Phase 8 / #191), mirroring calculateRoiScore()'s output
+// (roiScoringEngine.ts, #190) as computed server-side for that same quiz
+// profile — see final-report-narrative-generator.ts.
+export interface RoiScoreResult {
+  score: number; // 0-100
+  timeSavedHoursPerWeek: number;
+  costSavedPerYear: number;
+  efficiencyGainPct: number; // 0-100
+}
+
+export type FinalReportStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface AssessmentState {
   currentStep: AssessmentStep;
   currentQuestionIndex: number;
@@ -165,4 +178,7 @@ export interface AssessmentState {
   selectedDocument: DocumentDeliverable | null;
   governance: GovernanceState;
   roi: RoiState;
+  finalReportNarrative: string | null;
+  finalReportRoiScore: RoiScoreResult | null;
+  finalReportStatus: FinalReportStatus;
 }

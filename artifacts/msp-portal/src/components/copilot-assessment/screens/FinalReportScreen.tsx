@@ -1,33 +1,39 @@
 import React, { useState } from 'react';
-import { GovernanceState, RoiState } from '../types';
-import { 
-  Award, 
-  ShieldCheck, 
-  AlertTriangle, 
-  TrendingUp, 
-  FileText, 
-  CheckCircle2, 
-  XCircle, 
-  ArrowRight, 
-  Briefcase, 
-  Users, 
-  Clock, 
-  DollarSign, 
-  Lock, 
-  Sparkles, 
-  ChevronRight, 
-  Download, 
-  HelpCircle, 
+import { FinalReportStatus, GovernanceState, PersonaStory, RoiScoreResult, RoiState } from '../types';
+import {
+  Award,
+  ShieldCheck,
+  AlertTriangle,
+  TrendingUp,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  Briefcase,
+  Users,
+  Clock,
+  DollarSign,
+  Lock,
+  Sparkles,
+  ChevronRight,
+  Download,
+  HelpCircle,
   X,
   Layers,
   ShieldAlert,
   Activity,
-  Check
+  Check,
+  Loader2
 } from 'lucide-react';
 
 interface FinalReportScreenProps {
   governance?: GovernanceState;
   roi?: RoiState;
+  personas?: PersonaStory[];
+  narrativeStatus?: FinalReportStatus;
+  narrativeHtml?: string | null;
+  narrativeError?: string | null;
+  roiScore?: RoiScoreResult | null;
   onContinue: () => void;
   onHelpClick?: () => void;
   onExitClick?: () => void;
@@ -37,6 +43,11 @@ interface FinalReportScreenProps {
 export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
   governance,
   roi,
+  personas = [],
+  narrativeStatus = 'idle',
+  narrativeHtml,
+  narrativeError,
+  roiScore,
   onContinue,
   onHelpClick,
   onExitClick,
@@ -49,11 +60,21 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
   const isPimActive = governance?.pim ?? true;
   const isSensitivityActive = governance?.sensitivityLabels ?? false;
 
-  // Composite Readiness Score (0-100)
+  // Composite Readiness Score (0-100). Governance/Security sub-scores are
+  // still a local placeholder formula — #183 Phases 5/6 (Governance/Security
+  // Scoring Engines) haven't landed, so no real weighted score exists yet
+  // for either (see final-report-narrative-generator.ts's doc comment). Only
+  // the ROI sub-score below is real — the deterministic result of #191's
+  // Final Report Engine call, mirroring #190's calculateRoiScore().
   const govScore = (isCa01Active ? 30 : 0) + (isPimActive ? 25 : 0) + (isSensitivityActive ? 35 : 10); // ~65
   const secScore = isCa01Active && isPimActive ? 78 : 55;
-  const roiScore = 91;
-  const compositeReadinessScore = Math.round((govScore * 0.3) + (secScore * 0.3) + (roiScore * 0.4)); // ~78
+  const realRoiScore = roiScore?.score ?? null;
+  const compositeReadinessScore = Math.round((govScore * 0.3) + (secScore * 0.3) + ((realRoiScore ?? 0) * 0.4));
+
+  const personaCount = personas.length;
+  const avgFeasibility = personaCount > 0
+    ? Math.round(personas.reduce((sum, p) => sum + p.feasibilityScore, 0) / personaCount)
+    : null;
 
   const getReadinessBadge = (score: number) => {
     if (score >= 85) return { label: 'READY FOR ROLLOUT', color: 'bg-status-green/20 text-status-green border-status-green/40' };
@@ -61,7 +82,9 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
     return { label: 'CRITICAL BLOCKERS DETECTED', color: 'bg-destructive/20 text-destructive border-destructive/40' };
   };
 
-  const readinessBadge = getReadinessBadge(compositeReadinessScore);
+  const readinessBadge = realRoiScore === null
+    ? { label: 'GENERATING…', color: 'bg-muted text-muted-foreground border-border' }
+    : getReadinessBadge(compositeReadinessScore);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none relative">
@@ -96,7 +119,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
           </span>
           <div className="flex items-center space-x-2">
             <span className="text-sm font-mono font-black text-status-amber">
-              {compositeReadinessScore} / 100
+              {realRoiScore === null ? '—' : compositeReadinessScore} / 100
             </span>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${readinessBadge.color}`}>
               {readinessBadge.label}
@@ -165,11 +188,13 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-snug">
-                4 core enterprise cohorts analyzed. High readiness observed in Engineering & HR.
+                {personaCount > 0
+                  ? `${personaCount} archetypal persona${personaCount === 1 ? '' : 's'} generated for this organization, led by ${personas[0].name}.`
+                  : 'No personas generated for this assessment yet.'}
               </p>
               <div className="mt-2 text-[10px] font-mono text-primary flex justify-between pt-1 border-t border-border">
-                <span>Selected Cohorts: 4</span>
-                <span>Avg Readiness: 84%</span>
+                <span>Personas: {personaCount}</span>
+                <span>Avg Feasibility: {avgFeasibility === null ? '—' : `${avgFeasibility}%`}</span>
               </div>
             </div>
 
@@ -328,30 +353,38 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
               </span>
             </div>
 
-            {/* 6-8 Sentence Executive Narrative */}
-            <div className="space-y-3 text-xs leading-relaxed text-foreground font-normal">
-              <p>
-                <strong className="text-foreground">Assessment Discovery:</strong> This enterprise tenant assessment evaluated 500 Microsoft 365 Copilot licenses across engineering, legal, HR, and operations cohorts, establishing a foundational baseline of user telemetry and data posture.
-              </p>
-              <p>
-                <strong className="text-foreground">Copilot Opportunities Unlocked:</strong> We identified 14 high-value use cases—led by document drafting, research synthesis, and Teams meeting summaries—capable of reclaiming 1,240 hours per month, equivalent to 7.2 full-time FTEs.
-              </p>
-              <p>
-                <strong className="text-status-amber">Governance Blockers:</strong> However, critical governance blockers currently restrict enterprise-wide rollout, specifically unconfigured Microsoft Purview sensitivity labels across 35% of SharePoint Online repositories.
-              </p>
-              <p>
-                <strong className="text-destructive">Security Blast Radius:</strong> Furthermore, missing Entra ID Conditional Access policies (CA01) and overshared permissions elevate the blast radius for AI-prompted data exposure across non-compliant endpoints.
-              </p>
-              <p>
-                <strong className="text-status-green">ROI Potential:</strong> Remediating these governance gaps unlocks an additional 30% productivity gain and eliminates $42,000 in unused license waste, driving total annual financial value to $226,000.
-              </p>
-              <p>
-                <strong className="text-primary">Recommended Deployment Path:</strong> We recommend a phased Wave 1 deployment targeting 250 high-ROI personas while executing the Microsoft Purview auto-labeling baseline.
-              </p>
-              <p>
-                <strong className="text-accent">Recommended Remediation Path:</strong> In parallel, enforce Microsoft Defender for Cloud Apps and Zero Trust device compliance controls before expanding Copilot access to high-risk cohorts.
-              </p>
-            </div>
+            {/* Real 6-8 sentence executive narrative (#191) — grounded in real
+                generated personas/use cases, the real user-configured
+                governance state, and a real deterministic ROI score. See
+                final-report-narrative-generator.ts. Honest loading/error
+                states — never a fabricated narrative. */}
+            {narrativeStatus === 'loading' && (
+              <div className="flex items-center gap-3 text-xs text-muted-foreground py-4">
+                <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+                <span>Synthesizing the executive narrative from your real personas, use cases, and ROI score…</span>
+              </div>
+            )}
+
+            {narrativeStatus === 'error' && (
+              <div className="flex items-start gap-3 text-xs text-destructive py-4">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{narrativeError || 'Something went wrong generating the executive narrative. Please try again.'}</span>
+              </div>
+            )}
+
+            {narrativeStatus === 'idle' && (
+              <div className="flex items-start gap-3 text-xs text-muted-foreground py-4">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Waiting on real persona data before the executive narrative can be generated.</span>
+              </div>
+            )}
+
+            {narrativeStatus === 'ready' && narrativeHtml && (
+              <div
+                className="space-y-3 text-xs leading-relaxed text-foreground font-normal [&_h3]:text-sm [&_h3]:font-extrabold [&_h3]:text-foreground [&_h4]:text-xs [&_h4]:font-bold [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mt-1"
+                dangerouslySetInnerHTML={{ __html: narrativeHtml }}
+              />
+            )}
           </div>
 
           {/* Strategic Deployment Roadmap Grid */}
@@ -524,7 +557,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   />
                   <path
                     className="text-status-amber"
-                    strokeDasharray={`${compositeReadinessScore}, 100`}
+                    strokeDasharray={`${realRoiScore === null ? 0 : compositeReadinessScore}, 100`}
                     strokeWidth="3.5"
                     strokeLinecap="round"
                     stroke="currentColor"
@@ -533,7 +566,11 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-mono font-black text-foreground">{compositeReadinessScore}</span>
+                  {realRoiScore === null ? (
+                    <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                  ) : (
+                    <span className="text-2xl font-mono font-black text-foreground">{compositeReadinessScore}</span>
+                  )}
                   <span className="text-[9px] font-mono text-muted-foreground">/ 100</span>
                 </div>
               </div>
@@ -571,14 +608,16 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                 </div>
               </div>
 
-              {/* ROI Score */}
+              {/* ROI Score — real, deterministic (#191, mirrors #190's calculateRoiScore over this quiz-taker's own workload answers) */}
               <div className="space-y-1">
                 <div className="flex justify-between text-[11px] font-mono">
                   <span className="text-status-green">ROI Potential Score</span>
-                  <span className="text-status-green font-bold">{roiScore} / 100</span>
+                  <span className="text-status-green font-bold">
+                    {realRoiScore === null ? 'Generating…' : `${realRoiScore} / 100`}
+                  </span>
                 </div>
                 <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-status-green rounded-full" style={{ width: `${roiScore}%` }} />
+                  <div className="h-full bg-status-green rounded-full" style={{ width: `${realRoiScore ?? 0}%` }} />
                 </div>
               </div>
             </div>
@@ -590,7 +629,7 @@ export const FinalReportScreen: React.FC<FinalReportScreenProps> = ({
                 Deployment Recommendation
               </span>
               <p className="text-xs font-mono font-extrabold text-status-amber">
-                NEEDS REMEDIATION FIXES
+                {readinessBadge.label}
               </p>
               <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Approved for Wave 1 conditional rollout upon execution of Entra ID CA01 & Purview labeling remediations.

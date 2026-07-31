@@ -1555,6 +1555,43 @@ Return ONLY a JSON array of exactly 5 objects, no markdown fences, no preamble, 
 
 Ground riskScore/feasibilityScore/adoptionFriction and valuePotential.hoursSavedPerWeek loosely in the quiz-taker's own draftingLoad/researchLoad/communicationLoad/repetitiveLoad values where the persona's function plausibly correlates — but these are illustrative, not a precise formula.`,
   },
+  {
+    key: "assessment-final-report-narrative",
+    name: "Copilot Assessment — Final Report Narrative",
+    description: "Generates the Final Report screen's 6-8 sentence executive narrative from real generated personas (#186), real generated use cases (#187), the real user-configured GovernanceState, and a real deterministic ROI score (#190) — Copilot Assessment epic #183, Phase 8 / #191. Tokens: {{role}}, {{department}}, {{industry}}, {{collaboration}}, {{sensitivity}}, {{outcomePriorities}}, {{personaCount}}, {{personasBlock}}, {{useCaseCount}}, {{useCasesBlock}}, {{governanceBlock}}, {{roiBlock}}. Must return ONLY a semantic HTML fragment (no <html>/<head>/<body>/<style>/<script>, no markdown fences).",
+    category: "insights",
+    featureArea: "Copilot Assessment — Final Report",
+    featureRoute: "/copilot-assessment/report",
+    model: "claude-sonnet-4-6",
+    body: `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience, delivering the executive summary of a completed Copilot Assessment directly to this prospect's leadership — in your own voice, not a templated report.
+
+QUIZ-TAKER'S ORGANIZATION PROFILE:
+- Role: {{role}} / Department: {{department}} / Industry: {{industry}}
+- Collaboration pattern(s): {{collaboration}}
+- Data sensitivity in scope: {{sensitivity}}
+- Outcome priorities: {{outcomePriorities}}
+
+REAL GENERATED PERSONAS this assessment surfaced for this organization ({{personaCount}} total):
+{{personasBlock}}
+
+REAL GENERATED USE CASES, grounded in the personas above ({{useCaseCount}} total):
+{{useCasesBlock}}
+
+REAL GOVERNANCE CONFIGURATION selected during this assessment — a configuration snapshot only, NOT a scored or telemetry-derived finding (no live tenant scan has run yet):
+{{governanceBlock}}
+
+REAL ROI SCORE — deterministic, computed from this quiz-taker's own workload answers:
+{{roiBlock}}
+
+INSTRUCTIONS:
+- Output ONLY a semantic HTML fragment — h3/h4 headings, p, strong, em, ul/li only. NO <html>, <head>, <body>, <style>, <script>, inline CSS, or markdown code fences. This must be ready to inject directly into an already-styled page.
+- Write 6-8 sentences total, Microsoft-native tone: short, high-impact sentences, no hype adjectives ("game-changing", "revolutionary", "seamless", "cutting-edge"), credibility from specificity — cite the real names/numbers above, never invented ones.
+- Cover, in order: (1) what this assessment evaluated, (2) the strongest real opportunity from the personas/use cases above, (3) the real governance configuration and what it means for rollout readiness, (4) the real ROI score and what it implies, (5) a recommended deployment path, (6) a recommended next step.
+- Never state or imply a security or governance SCORE of any kind — no telemetry-based governance or security scoring exists yet for this assessment. Describe the real configuration values above as facts only, never as a weighted score or letter grade.
+- Never invent a dollar figure, seat count, or percentage that is not directly present in the blocks above. Never scale the ROI score's per-user figures into a tenant-wide total.
+- If REAL GENERATED USE CASES says none were generated, do not describe any specific use case — speak to the personas and their opportunity in general terms instead.
+- CRITICAL: output the HTML fragment and then STOP. No commentary before or after.`,
+  },
 ];
 
 

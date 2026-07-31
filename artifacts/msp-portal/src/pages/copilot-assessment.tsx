@@ -37,6 +37,7 @@ import {
   DOCUMENT_DELIVERABLES
 } from '@/components/copilot-assessment/assessmentData';
 import { fetchPersonaStories } from '@/components/copilot-assessment/personaGenerationClient';
+import { fetchFinalReportNarrative } from '@/components/copilot-assessment/finalReportClient';
 
 import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
 
@@ -108,9 +109,13 @@ export default function CopilotAssessmentPage() {
       adoptionRate: 80,
       personaCoverage: 75,
       useCaseIntensity: 70
-    }
+    },
+    finalReportNarrative: null,
+    finalReportRoiScore: null,
+    finalReportStatus: 'idle'
   });
   const [personasError, setPersonasError] = useState<string | null>(null);
+  const [finalReportError, setFinalReportError] = useState<string | null>(null);
 
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
 
@@ -136,6 +141,35 @@ export default function CopilotAssessmentPage() {
     return () => { cancelled = true; };
   }, [currentStep, state.quizProfile, state.personasStatus, fetchWithAuth]);
 
+  // Real Final Report narrative generation (#191) — fires once per fresh
+  // quizProfile/persona set, the first time the report step is reached.
+  // Requires real personas to already be ready (#186); a quiz retake resets
+  // finalReportStatus back to 'idle' (see handleCompleteQuiz) so the report
+  // regenerates rather than serving a stale narrative for a different quiz.
+  useEffect(() => {
+    if (currentStep !== 'report' || !state.quizProfile || state.personasStatus !== 'ready' || state.personas.length === 0) return;
+    if (state.finalReportStatus !== 'idle') return;
+    let cancelled = false;
+    setState(prev => ({ ...prev, finalReportStatus: 'loading' }));
+    setFinalReportError(null);
+    fetchFinalReportNarrative(fetchWithAuth, state.quizProfile, state.personas, state.governance)
+      .then(result => {
+        if (cancelled) return;
+        setState(prev => ({
+          ...prev,
+          finalReportNarrative: result.narrativeHtml,
+          finalReportRoiScore: result.roiScore,
+          finalReportStatus: 'ready'
+        }));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setFinalReportError(err.message);
+        setState(prev => ({ ...prev, finalReportStatus: 'error' }));
+      });
+    return () => { cancelled = true; };
+  }, [currentStep, state.quizProfile, state.personas, state.personasStatus, state.governance, state.finalReportStatus, fetchWithAuth]);
+
   const currentStepIndex = STEP_ORDER.indexOf(currentStep);
   const progressPercent = Math.round((currentStepIndex / (STEP_ORDER.length - 1)) * 100);
 
@@ -149,11 +183,15 @@ export default function CopilotAssessmentPage() {
 
   // Quiz Handler — receives the completed structured profile (#183/#184)
   const handleCompleteQuiz = (profile: QuizProfile) => {
+    setFinalReportError(null);
     setState(prev => ({
       ...prev,
       quizProfile: profile,
       personas: [],
       personasStatus: 'idle',
+      finalReportNarrative: null,
+      finalReportRoiScore: null,
+      finalReportStatus: 'idle',
       currentStep: 'telemetry'
     }));
   };
@@ -212,6 +250,7 @@ export default function CopilotAssessmentPage() {
 
   const handleReset = () => {
     setPersonasError(null);
+    setFinalReportError(null);
     setState({
       currentQuestionIndex: 0,
       quizAnswers: {},
@@ -235,7 +274,10 @@ export default function CopilotAssessmentPage() {
         adoptionRate: 80,
         personaCoverage: 75,
         useCaseIntensity: 70
-      }
+      },
+      finalReportNarrative: null,
+      finalReportRoiScore: null,
+      finalReportStatus: 'idle'
     });
     handleNavigate('home');
   };
@@ -344,6 +386,11 @@ export default function CopilotAssessmentPage() {
           <FinalReportScreen
             governance={state.governance}
             roi={state.roi}
+            personas={state.personas}
+            narrativeStatus={state.finalReportStatus}
+            narrativeHtml={state.finalReportNarrative}
+            narrativeError={finalReportError}
+            roiScore={state.finalReportRoiScore}
             onContinue={() => handleNavigate('documents')}
             {...commonScreenProps}
           />
