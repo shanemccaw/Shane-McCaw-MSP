@@ -194,6 +194,7 @@ export default function CopilotAssessmentPage() {
       finalReportStatus: 'idle',
       currentStep: 'telemetry'
     }));
+    handleNavigate('telemetry');
   };
 
   // Telemetry Engine Simulation Handler

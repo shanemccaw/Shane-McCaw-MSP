@@ -197,11 +197,19 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
       }
 
       case 'use-cases': {
-        const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
+        const fullCatalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
+        const selectedPersonaIds = getSelectedArray('personas');
+        let filteredCatalog = fullCatalog;
+
+        // If personas were selected, filter use cases by those personas.
+        if (selectedPersonaIds.length > 0) {
+          filteredCatalog = fullCatalog.filter(u => !u.personaId || selectedPersonaIds.includes(u.personaId));
+        }
+
         return {
           title: 'Select All Relevant Copilot Use Cases',
           description: 'High-value use-case scenarios calculate initial feasibility, Graph grounding requirements, and ROI.',
-          options: catalog,
+          options: filteredCatalog,
           hint: 'Use cases determine feasibility and ROI.'
         };
       }

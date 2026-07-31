@@ -481,7 +481,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
               </div>
             </div>
 
-            <div className="p-3 bg-status-green/40 border border-status-green/30/60 rounded-xl text-[11px] text-status-green flex items-start gap-2">
+            <div className="p-3 bg-status-green/40 border border-status-green/60 rounded-xl text-[11px] text-status-green flex items-start gap-2">
               <Lock className="w-4 h-4 shrink-0 mt-0.5" />
               <span>Includes 30-day guaranteed price lock and $15,000 Microsoft Partner Assessment Funding Credit. Net 30 payment terms apply upon kickoff.</span>
             </div>
