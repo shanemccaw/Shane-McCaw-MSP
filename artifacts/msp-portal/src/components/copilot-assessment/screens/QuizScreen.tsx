@@ -15,6 +15,9 @@ import {
 import {
   QUIZ_NAV_ITEMS,
   INDUSTRY_OPTIONS,
+  ADAPTIVE_CLUSTERS,
+  ADAPTIVE_PERSONAS,
+  ADAPTIVE_USE_CASES,
   ADAPTIVE_DATA_SENSITIVITY,
   ADAPTIVE_COLLABORATION,
   UNIVERSAL_AI_COMFORT,
@@ -156,6 +159,44 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
           hint: 'Industry determines persona clusters, personas, and use cases.'
         };
 
+      case 'clusters': {
+        const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
+        return {
+          title: 'Select All Persona Clusters You Support',
+          description: 'Persona clusters organize functional teams into structured Copilot enablement tracks.',
+          options: catalog,
+          hint: 'Clusters organize personas into logical groups.'
+        };
+      }
+
+      case 'personas': {
+        const fullCatalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
+        const selectedClusterIds = getSelectedArray('clusters');
+        let filteredCatalog = fullCatalog;
+
+        // If clusters were selected, filter personas by those clusters
+        if (selectedClusterIds.length > 0) {
+          filteredCatalog = fullCatalog.filter(p => !p.clusterId || selectedClusterIds.includes(p.clusterId));
+        }
+
+        return {
+          title: 'Select All Personas You Support',
+          description: 'Copilot deployments support multi-role workflows and specialized job descriptions.',
+          options: filteredCatalog,
+          hint: 'Copilot deployments support multiple personas.'
+        };
+      }
+
+      case 'use-cases': {
+        const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
+        return {
+          title: 'Select All Relevant Copilot Use Cases',
+          description: 'High-value use-case scenarios calculate initial feasibility, Graph grounding requirements, and ROI.',
+          options: catalog,
+          hint: 'Use cases determine feasibility and ROI.'
+        };
+      }
+
       case 'sensitivity': {
         const catalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
         return {
@@ -291,6 +332,30 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     if (key === 'industry') {
       const found = INDUSTRY_OPTIONS.find(o => o.id === arr[0]);
       return found ? found.title : arr[0];
+    }
+
+    if (key === 'clusters') {
+      const catalog = ADAPTIVE_CLUSTERS[currentIndustry] || ADAPTIVE_CLUSTERS['default'];
+      return arr.map(id => {
+        const f = catalog.find(o => o.id === id);
+        return f ? f.title : id;
+      }).join(', ');
+    }
+
+    if (key === 'personas') {
+      const catalog = ADAPTIVE_PERSONAS[currentIndustry] || ADAPTIVE_PERSONAS['default'];
+      return arr.map(id => {
+        const f = catalog.find(o => o.id === id);
+        return f ? f.title : id;
+      }).join(', ');
+    }
+
+    if (key === 'use-cases') {
+      const catalog = ADAPTIVE_USE_CASES[currentIndustry] || ADAPTIVE_USE_CASES['default'];
+      return arr.map(id => {
+        const f = catalog.find(o => o.id === id);
+        return f ? f.title : id;
+      }).join(', ');
     }
 
     if (key === 'sensitivity') {
@@ -658,6 +723,27 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
                     <div className="text-sm font-bold text-foreground mt-1 flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-primary"></span>
                       {getReviewTitles('industry')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Persona Clusters (Multi)</span>
+                    <div className="text-sm font-bold text-status-green mt-1">
+                      {getReviewTitles('clusters')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Target Personas (Multi)</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('personas')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Use Case Clusters (Multi)</span>
+                    <div className="text-sm font-bold text-primary mt-1">
+                      {getReviewTitles('use-cases')}
                     </div>
                   </div>
 
