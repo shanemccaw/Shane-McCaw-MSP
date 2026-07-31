@@ -96,6 +96,48 @@ export const ADAPTIVE_CLUSTERS: Record<string, QuizOptionTile[]> = {
     { id: 'design', title: 'Design', description: 'UX research, UI prototyping & design system management', iconName: 'Palette' },
     { id: 'support', title: 'Support', description: 'Technical customer support, KB documentation & incident retros', iconName: 'LifeBuoy' },
   ],
+  legal: [
+    { id: 'litigation', title: 'Litigation', description: 'Courtroom prep, discovery review & brief drafting', iconName: 'Gavel' },
+    { id: 'corporate_transactional', title: 'Corporate & Transactional', description: 'Contract drafting, M&A due diligence & deal structuring', iconName: 'Briefcase' },
+    { id: 'legal_compliance', title: 'Compliance & Regulatory', description: 'Regulatory filings, policy review & audit response', iconName: 'ShieldCheck' },
+    { id: 'practice_mgmt', title: 'Practice Management', description: 'Billing, client intake & matter administration', iconName: 'FileSpreadsheet' },
+  ],
+  retail: [
+    { id: 'merchandising', title: 'Merchandising', description: 'Assortment planning, pricing strategy & vendor negotiations', iconName: 'Tag' },
+    { id: 'store_ops', title: 'Store Operations', description: 'Staffing, inventory counts & loss prevention', iconName: 'Store' },
+    { id: 'ecommerce', title: 'E-Commerce', description: 'Product listings, digital marketing & fulfillment ops', iconName: 'ShoppingBag' },
+    { id: 'customer_experience', title: 'Customer Experience', description: 'Service scripts, loyalty programs & returns handling', iconName: 'Smile' },
+  ],
+  energy: [
+    { id: 'field_ops', title: 'Field Operations', description: 'Well/rig site inspections, pipeline monitoring & safety walkthroughs', iconName: 'Zap' },
+    { id: 'engineering_technical', title: 'Engineering & Technical', description: 'Reservoir modeling, grid load analysis & turbine specs', iconName: 'Cpu' },
+    { id: 'regulatory_environmental', title: 'Regulatory & Environmental', description: 'Permitting, emissions reporting & compliance audits', iconName: 'ShieldCheck' },
+    { id: 'trading_commercial', title: 'Trading & Commercial', description: 'Contract structuring, market analysis & hedging strategy', iconName: 'LineChart' },
+  ],
+  transportation: [
+    { id: 'logistics_dispatch', title: 'Logistics & Dispatch', description: 'Route planning, load scheduling & carrier coordination', iconName: 'Truck' },
+    { id: 'fleet_ops', title: 'Fleet Operations', description: 'Maintenance logs, driver compliance & vehicle telemetry', iconName: 'Activity' },
+    { id: 'transport_safety', title: 'Safety & Compliance', description: 'DOT audits, incident reports & hazmat documentation', iconName: 'ShieldAlert' },
+    { id: 'freight_services', title: 'Customer & Freight Services', description: 'Shipment tracking, billing & claims resolution', iconName: 'FileText' },
+  ],
+  agriculture: [
+    { id: 'field_crop_ops', title: 'Field & Crop Operations', description: 'Planting schedules, yield tracking & soil analysis', iconName: 'Sprout' },
+    { id: 'livestock_mgmt', title: 'Livestock & Herd Management', description: 'Health records, breeding logs & feed planning', iconName: 'Heart' },
+    { id: 'agronomy_research', title: 'Agronomy & Research', description: 'Field trials, pest/disease analysis & seed research', iconName: 'Microscope' },
+    { id: 'ag_supply_chain', title: 'Supply Chain & Trading', description: 'Commodity contracts, storage logistics & market pricing', iconName: 'TrendingUp' },
+  ],
+  nonprofit: [
+    { id: 'programs_services', title: 'Programs & Services', description: 'Beneficiary case management, program reporting & outcome tracking', iconName: 'Heart' },
+    { id: 'development_fundraising', title: 'Development & Fundraising', description: 'Donor cultivation, grant writing & campaign planning', iconName: 'Users' },
+    { id: 'nonprofit_finance', title: 'Finance & Compliance', description: '990 filings, grant compliance & budget reporting', iconName: 'FileCheck' },
+    { id: 'comms_outreach', title: 'Communications & Outreach', description: 'Newsletters, social campaigns & community engagement', iconName: 'Megaphone' },
+  ],
+  other: [
+    { id: 'leadership_strategy', title: 'Leadership & Strategy', description: 'Org planning, board reporting & strategic initiatives', iconName: 'Crown' },
+    { id: 'ops_delivery', title: 'Operations & Delivery', description: 'Project execution, process management & vendor coordination', iconName: 'Boxes' },
+    { id: 'knowledge_analysis', title: 'Knowledge & Analysis', description: 'Research synthesis, reporting & documentation', iconName: 'FileText' },
+    { id: 'client_relations', title: 'Client & Stakeholder Relations', description: 'Account management, communications & service delivery', iconName: 'Users' },
+  ],
   default: [
     { id: 'exec_strategy', title: 'Executive & Strategy', description: 'Organizational leadership, strategic planning & board reporting', iconName: 'Crown' },
     { id: 'tech_ops', title: 'Technical Operations', description: 'System administration, security engineering & IT support', iconName: 'Cpu' },
