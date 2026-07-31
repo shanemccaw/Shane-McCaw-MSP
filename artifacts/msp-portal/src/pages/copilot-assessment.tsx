@@ -119,6 +119,27 @@ export default function CopilotAssessmentPage() {
 
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
 
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // isTestbed gates QuizScreen's [DEBUG] auto-fill button (#231). Resolved
+  // server-side from the real tenants.isTestbed flag (GET
+  // /portal/assessment/testbed-status), never from a client-only heuristic.
+  // Defaults false so the button is genuinely absent until a testbed account
+  // is confirmed, not just hidden while this fetch is in flight.
+  const [isTestbed, setIsTestbed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithAuth("/api/portal/assessment/testbed-status", undefined, { silent: true })
+      .then(async (res) => {
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { isTestbed: boolean };
+        if (!cancelled) setIsTestbed(data.isTestbed === true);
+      })
+      .catch(() => {
+        // best-effort — stays false (button stays hidden) on any failure
+      });
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
+
   // Real persona generation (#186) — fires once per fresh quizProfile, the
   // first time the personas step is reached. Re-completing the quiz resets
   // personasStatus back to 'idle' (see handleCompleteQuiz), so a retake
@@ -325,6 +346,7 @@ export default function CopilotAssessmentPage() {
           <QuizScreen
             initialProfile={state.quizProfile ?? undefined}
             userName={user?.name}
+            isTestbed={isTestbed}
             onCompleteQuiz={handleCompleteQuiz}
             onHelpClick={() => setIsSpecModalOpen(true)}
             onExitClick={() => handleNavigate('home')}

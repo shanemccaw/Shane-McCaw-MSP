@@ -92,6 +92,8 @@ const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
 // locked logging taxonomy — the SOW flow-control above stays on engine.dashboard.
 const billingLog = logger.child({ channel: "billing" });
+// isTestbed exposure (below) is an identity/gating check, not flow-control — auth channel.
+const authLog = logger.child({ channel: "auth" });
 
 const router: IRouter = Router();
 
@@ -905,6 +907,38 @@ router.post(
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/assessment/debug-trigger-scan failed");
       if (!res.headersSent) res.status(500).json({ error: "Failed to trigger scan" });
+    }
+  },
+);
+
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// GET /portal/assessment/testbed-status
+// Exists only so QuizScreen.tsx's [DEBUG] auto-fill button can gate itself off
+// the real server-side isTestbed flag instead of a client-only heuristic —
+// same discipline, and the same tenantsTable.isTestbed lookup, as
+// debug-trigger-scan just above. Remove this route (and the button that calls
+// it) entirely before production. See backlog: [Shane to add ticket].
+router.get(
+  "/portal/assessment/testbed-status",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const [customer] = await db
+        .select({ isTestbed: tenantsTable.isTestbed })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      res.json({ isTestbed: customer?.isTestbed === true });
+    } catch (err) {
+      authLog.error({ err, customerId }, "GET /portal/assessment/testbed-status failed");
+      res.status(500).json({ error: "Failed to resolve testbed status" });
     }
   },
 );

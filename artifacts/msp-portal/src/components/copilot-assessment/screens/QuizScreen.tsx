@@ -49,6 +49,11 @@ interface QuizScreenProps {
   // onward blank rather than fully restoring prior selections. Real gap,
   // flagged rather than silently half-fixed.
   initialProfile?: QuizProfile;
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Server-resolved real tenants.isTestbed flag (#231), gating the [DEBUG]
+  // auto-fill button below. Defaults false so the button stays absent if the
+  // parent's fetch hasn't resolved yet, not just visually hidden.
+  isTestbed?: boolean;
 }
 
 // Icon Resolver Component
@@ -141,7 +146,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
   onHelpClick,
   onExitClick,
   userName,
-  initialProfile
+  initialProfile,
+  isTestbed
 }) => {
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>(externalAnswers || {});
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
@@ -494,6 +500,52 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
     onCompleteQuiz(buildQuizProfile());
   };
 
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Fills one deterministic default answer per QUIZ_NAV_ITEMS step (#231) so
+  // a testbed account can iterate on the flow without a 13-step re-click on
+  // every refresh (quiz answers have no persistence layer yet -- separate,
+  // bigger issue, out of scope here). Same fixed industry/cluster/persona
+  // chain the rest of the quiz's own filtering logic above depends on, so the
+  // filtered persona/use-case picks are always valid for the fixed industry --
+  // not randomized, always the same answer set.
+  const handleDebugAutoFill = () => {
+    const industry = 'space';
+
+    const clusterCatalog = ADAPTIVE_CLUSTERS[industry] || ADAPTIVE_CLUSTERS['default'];
+    const clusterId = clusterCatalog[0].id;
+
+    const personaCatalogFull = ADAPTIVE_PERSONAS[industry] || ADAPTIVE_PERSONAS['default'];
+    const personaCatalog = personaCatalogFull.filter(p => !p.clusterId || p.clusterId === clusterId);
+    const personaId = (personaCatalog[0] ?? personaCatalogFull[0]).id;
+
+    const useCaseCatalogFull = ADAPTIVE_USE_CASES[industry] || ADAPTIVE_USE_CASES['default'];
+    const useCaseCatalog = useCaseCatalogFull.filter(u => !u.personaId || u.personaId === personaId);
+    const useCaseId = (useCaseCatalog[0] ?? useCaseCatalogFull[0]).id;
+
+    const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[industry] || ADAPTIVE_DATA_SENSITIVITY['default'];
+    const collaborationCatalog = ADAPTIVE_COLLABORATION[industry] || ADAPTIVE_COLLABORATION['default'];
+    const outcomesCatalog = ADAPTIVE_OUTCOME_PRIORITIES[industry] || ADAPTIVE_OUTCOME_PRIORITIES['default'];
+
+    setRole('QA Test Engineer');
+    setDepartment('IT');
+    setCompany('Debug Test Co');
+    setPhone('555-000-1234');
+
+    setLocalAnswers({
+      industry,
+      clusters: clusterId,
+      personas: personaId,
+      'use-cases': useCaseId,
+      sensitivity: sensitivityCatalog[0].id,
+      collaboration: collaborationCatalog[0].id,
+      'ai-comfort': UNIVERSAL_AI_COMFORT[0].id,
+      workflow: UNIVERSAL_WORKFLOW_STRUCTURE[0].id,
+      'adoption-speed': UNIVERSAL_ADOPTION_SPEED[0].id,
+      outcomes: outcomesCatalog[0].id,
+      'change-mgmt': UNIVERSAL_CHANGE_MGMT[0].id,
+    });
+  };
+
   return (
     <div className="flex flex-col h-full bg-background text-foreground select-none">
       {/* TOP TOOLBAR */}
@@ -515,6 +567,19 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
 
         {/* Right: Help & Exit */}
         <div className="flex items-center gap-3">
+          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+              Testbed-only auto-fill trigger (#231). isTestbed is the real
+              server-resolved tenants.isTestbed flag, not a client heuristic --
+              this button is absent (not just hidden) for every other account. */}
+          {isTestbed && (
+            <button
+              onClick={handleDebugAutoFill}
+              className="px-3 py-1 bg-status-amber/20 text-status-amber border border-status-amber/50 text-xs font-mono font-bold rounded hover:bg-status-amber/30 transition-colors cursor-pointer"
+              title="Testbed only -- fills all quiz steps with deterministic default answers"
+            >
+              [DEBUG] Auto-Fill
+            </button>
+          )}
           <button
             onClick={onHelpClick}
             className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors cursor-pointer"
