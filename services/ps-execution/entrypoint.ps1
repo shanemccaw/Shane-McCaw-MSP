@@ -72,7 +72,13 @@ function Write-Log {
         timestamp = [DateTimeOffset]::UtcNow.ToString("o")
     }
     foreach ($key in $Extra.Keys) { $entry[$key] = $Extra[$key] }
-    Write-Output ($entry | ConvertTo-Json -Compress)
+    # [Console]::WriteLine, not Write-Output: this still lands in the
+    # container's stdout stream (Azure's log capture reads stdout), but
+    # does NOT enter PowerShell's success output pipeline — Write-Output
+    # here got silently captured as part of a caller's return value
+    # whenever Write-Log was invoked inside a function whose result the
+    # caller assigned (#207, caused by #206's diagnostic logging addition).
+    [Console]::WriteLine(($entry | ConvertTo-Json -Compress))
 }
 
 # --- Managed Identity token acquisition (IMDS) -------------------------------
