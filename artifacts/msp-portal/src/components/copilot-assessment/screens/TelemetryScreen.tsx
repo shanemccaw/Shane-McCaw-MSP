@@ -39,7 +39,6 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import {
-  GRAPH_API_STEPS,
   TELEMETRY_ENGINES,
   TELEMETRY_DOCS,
   generateDynamicHintCards,
@@ -47,6 +46,7 @@ import {
   TelemetryEngineDef,
   TelemetryDocDef
 } from '../telemetryCatalog';
+import { useRealGraphScanSteps } from '../useRealGraphScanSteps';
 
 interface TelemetryScreenProps {
   quizAnswers?: Record<string, string>;
@@ -68,15 +68,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [simSpeed, setSimSpeed] = useState<number>(1); // 1x, 2x, 4x speed
 
-  // Phase 1 Graph API State
-  const [graphStepIndex, setGraphStepIndex] = useState<number>(0);
-  const [graphStepProgress, setGraphStepProgress] = useState<number>(0);
-  const [graphStatus, setGraphStatus] = useState<Array<'pending' | 'running' | 'complete'>>([
-    'running',
-    'pending',
-    'pending',
-    'pending'
-  ]);
+  // Phase 1 — REAL Microsoft Graph scan state (#228).
+  // No local step state and no timer here any more: the four tiles' statuses and
+  // message lines come from the real diagnostics run for this customer's tenant
+  // (see useRealGraphScanSteps.ts for the milestone mapping). Phases 2 and 3
+  // below are still the simulated flow — replacing those is separate work
+  // (#226 phases 2/3), deliberately untouched here.
+  const graphScan = useRealGraphScanSteps();
 
   // Phase 2 Engines State
   const [engines, setEngines] = useState<
@@ -104,10 +102,9 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   );
   const [activeDocIndex, setActiveDocIndex] = useState<number>(0);
 
-  // SSE Stream Message
-  const [currentSseStream, setCurrentSseStream] = useState<string>(
-    'Initiating OAuth2 session with Microsoft Graph API...'
-  );
+  // Stream message. During phase 1 this is the REAL scan's current line
+  // (graphScan.streamMessage); phases 2/3 keep driving it from the simulation.
+  const [currentSseStream, setCurrentSseStream] = useState<string>('');
 
   // Dynamic Hint Cards Carousel Index
   const [hintCardIndex, setHintCardIndex] = useState<number>(0);
@@ -131,10 +128,9 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
   // Phase 3 = 75% to 100%
   let overallProgress = 0;
   if (phase === 'phase1_graph') {
-    const stepWeight = 25 / GRAPH_API_STEPS.length;
-    const completedSteps = graphStatus.filter(s => s === 'complete').length;
-    const runningStepContrib = graphStatus.includes('running') ? (graphStepProgress / 100) * stepWeight : 0;
-    overallProgress = Math.min(25, Math.round(completedSteps * stepWeight + runningStepContrib));
+    // Real scan progress (0–100 across the four real steps) scaled into this
+    // page's 0–25% band for phase 1.
+    overallProgress = Math.min(25, Math.round(graphScan.scanProgressPct * 0.25));
   } else if (phase === 'phase2_engines') {
     const engineWeight = 50 / TELEMETRY_ENGINES.length;
     const runningContrib = engines[activeEngineIndex]?.status === 'running' ? (engines[activeEngineIndex].progress / 100) * engineWeight : 0;
@@ -160,54 +156,29 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     return () => clearInterval(interval);
   }, [dynamicHints.length]);
 
-  // Main Simulation Engine Effect
+  // PHASE 1 — REAL: mirror the real scan's live line into the stream row.
   useEffect(() => {
-    if (!isSimulating) return;
+    if (phase !== 'phase1_graph') return;
+    setCurrentSseStream(graphScan.streamMessage);
+  }, [phase, graphScan.streamMessage]);
+
+  // PHASE 1 → PHASE 2 — driven by the REAL run reaching a terminal state with
+  // real results, not by a timer. A failed/blocked scan deliberately does NOT
+  // advance: the page holds on the real failure instead of pretending forward.
+  useEffect(() => {
+    if (phase !== 'phase1_graph' || !graphScan.scanComplete) return;
+    setPhase('phase2_engines');
+    setEngines(prev => prev.map((e, idx) => (idx === 0 ? { ...e, status: 'running', progress: 0 } : e)));
+  }, [phase, graphScan.scanComplete]);
+
+  // Main Simulation Engine Effect — phases 2 and 3 only (phase 1 is real).
+  useEffect(() => {
+    if (!isSimulating || phase === 'phase1_graph') return;
 
     const intervalTime = 120 / simSpeed;
     const timer = setInterval(() => {
-      // PHASE 1: GRAPH API
-      if (phase === 'phase1_graph') {
-        setGraphStepProgress(prevProgress => {
-          if (prevProgress < 100) {
-            const nextProgress = prevProgress + 10;
-            // Update SSE message
-            const currentStepDef = GRAPH_API_STEPS[graphStepIndex];
-            if (currentStepDef) {
-              const msgIdx = Math.min(
-                currentStepDef.sseMessages.length - 1,
-                Math.floor((nextProgress / 100) * currentStepDef.sseMessages.length)
-              );
-              setCurrentSseStream(currentStepDef.sseMessages[msgIdx]);
-            }
-            return nextProgress;
-          } else {
-            // Step complete
-            setGraphStatus(prev => {
-              const copy = [...prev];
-              copy[graphStepIndex] = 'complete';
-              if (graphStepIndex + 1 < GRAPH_API_STEPS.length) {
-                copy[graphStepIndex + 1] = 'running';
-              }
-              return copy;
-            });
-
-            if (graphStepIndex + 1 < GRAPH_API_STEPS.length) {
-              setGraphStepIndex(prev => prev + 1);
-              return 0;
-            } else {
-              // Transition to Phase 2
-              setPhase('phase2_engines');
-              setCurrentSseStream('Graph API session established. Starting 12 Correlation Engines...');
-              setEngines(prev => prev.map((e, idx) => (idx === 0 ? { ...e, status: 'running', progress: 0 } : e)));
-              return 100;
-            }
-          }
-        });
-      }
-
       // PHASE 2: ENGINES EXECUTION
-      else if (phase === 'phase2_engines') {
+      if (phase === 'phase2_engines') {
         setEngines(prevEngines => {
           const activeEngine = prevEngines[activeEngineIndex];
           if (!activeEngine) return prevEngines;
@@ -294,14 +265,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
     }, intervalTime);
 
     return () => clearInterval(timer);
-  }, [phase, isSimulating, simSpeed, graphStepIndex, activeEngineIndex, activeDocIndex]);
+  }, [phase, isSimulating, simSpeed, activeEngineIndex, activeDocIndex]);
 
-  // Restart Handler
+  // Restart Handler — replays the SIMULATED phases (2 and 3). It deliberately
+  // does not re-run the real tenant scan: phase 1 simply re-reads the real run's
+  // current state, so an already-completed scan lands straight back on phase 2.
   const handleRestart = () => {
     setPhase('phase1_graph');
-    setGraphStepIndex(0);
-    setGraphStepProgress(0);
-    setGraphStatus(['running', 'pending', 'pending', 'pending']);
     setEngines(
       TELEMETRY_ENGINES.map(e => ({ ...e, status: 'pending', progress: 0, currentSseMsg: e.sseMessages[0] }))
     );
@@ -310,7 +280,7 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
       TELEMETRY_DOCS.map(d => ({ ...d, status: 'pending', progress: 0, currentSseMsg: d.sseMessages[0] }))
     );
     setActiveDocIndex(0);
-    setCurrentSseStream('Initiating OAuth2 session with Microsoft Graph API...');
+    setCurrentSseStream(graphScan.streamMessage);
     setIsSimulating(true);
   };
 
@@ -427,12 +397,22 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
         {/* Action Controls & Toolbar Right */}
         <div className="flex items-center gap-3">
-          {/* Simulation Controls */}
+          {/* Playback Controls — phases 2/3 only. Phase 1 is a real tenant scan
+              running server-side, so pausing or speeding it up is not something
+              this page can do; the controls disable themselves rather than
+              silently doing nothing. */}
           <div className="flex items-center gap-1.5 bg-[#161616] border border-[#2D2D2D] rounded px-2 py-1 text-[11px] font-mono">
             <button
               onClick={() => setIsSimulating(!isSimulating)}
-              className="text-[#CCCCCC] hover:text-white flex items-center gap-1 transition-colors px-1"
-              title={isSimulating ? 'Pause Analysis' : 'Resume Analysis'}
+              disabled={phase === 'phase1_graph'}
+              className="text-[#CCCCCC] hover:text-white flex items-center gap-1 transition-colors px-1 disabled:opacity-40 disabled:hover:text-[#CCCCCC]"
+              title={
+                phase === 'phase1_graph'
+                  ? 'Live tenant scan — playback controls apply to the simulated phases only'
+                  : isSimulating
+                  ? 'Pause Analysis'
+                  : 'Resume Analysis'
+              }
             >
               {isSimulating ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
               <span>{isSimulating ? 'Pause' : 'Resume'}</span>
@@ -440,8 +420,13 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
             <span className="text-[#333333]">|</span>
             <button
               onClick={() => setSimSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1))}
-              className="text-[#0078D4] font-bold hover:underline px-1"
-              title="Toggle Speed"
+              disabled={phase === 'phase1_graph'}
+              className="text-[#0078D4] font-bold hover:underline px-1 disabled:opacity-40 disabled:hover:no-underline"
+              title={
+                phase === 'phase1_graph'
+                  ? 'Live tenant scan — playback controls apply to the simulated phases only'
+                  : 'Toggle Speed'
+              }
             >
               {simSpeed}x Speed
             </button>
@@ -514,20 +499,30 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     <span className="text-xs font-bold text-white">1. Graph API</span>
                   </div>
 
+                  {/* Real state: a blocked/failed tenant scan says so here
+                      instead of sitting on a permanent "Running". */}
                   <span
                     className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
-                      phase === 'phase1_graph'
-                        ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
-                        : phase !== 'phase1_graph'
+                      phase !== 'phase1_graph'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold'
-                        : 'bg-[#222222] text-[#666666]'
+                        : graphScan.scanFailed
+                        ? 'bg-rose-500/10 text-rose-300 border border-rose-500/40 font-bold'
+                        : graphScan.scanActive || graphScan.triggering
+                        ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
+                        : 'bg-[#222222] text-[#888888] border border-[#333333]'
                     }`}
                   >
-                    {phase === 'phase1_graph' ? 'Running' : 'Complete'}
+                    {phase !== 'phase1_graph'
+                      ? 'Complete'
+                      : graphScan.scanFailed
+                      ? 'Blocked'
+                      : graphScan.scanActive || graphScan.triggering
+                      ? 'Running'
+                      : 'Waiting'}
                   </span>
                 </div>
                 <p className="text-[10px] text-[#888888] mt-1.5 leading-relaxed">
-                  Microsoft Graph API connection, scope validation & telemetry stream.
+                  Real Microsoft Graph diagnostics run for your tenant — consent, package and per-check results.
                 </p>
               </div>
 
@@ -644,7 +639,12 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                     <span>Real-Time Telemetry Correlation</span>
                   </div>
                   <h2 className="text-xl font-bold text-white">
-                    {phase === 'phase1_graph' && 'Connecting to Microsoft 365'}
+                    {phase === 'phase1_graph' &&
+                      (graphScan.scanFailed
+                        ? 'Microsoft 365 scan blocked'
+                        : graphScan.scanActive
+                        ? 'Scanning your Microsoft 365 tenant'
+                        : 'Connecting to Microsoft 365')}
                     {phase === 'phase2_engines' && 'Analyzing Tenant Telemetry'}
                     {phase === 'phase3_docs' && 'Generating Assessment Documents'}
                     {phase === 'complete' && 'Telemetry Analysis Complete'}
@@ -671,9 +671,25 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                 </div>
 
                 {/* SSE Inline Stream Message Display */}
-                <div className="flex items-center gap-2 pt-1 text-xs font-mono text-emerald-400 bg-[#111111] px-3 py-1.5 rounded border border-[#222222]">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  <span className="truncate">SSE Stream: {currentSseStream}</span>
+                {/* Phase 1 labels itself honestly: that line is the real scan's
+                    current state (poll + diagnostics SSE), not the simulation's
+                    scripted stream. */}
+                <div
+                  className={`flex items-center gap-2 pt-1 text-xs font-mono bg-[#111111] px-3 py-1.5 rounded border border-[#222222] ${
+                    phase === 'phase1_graph' && graphScan.scanFailed ? 'text-rose-300' : 'text-emerald-400'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      phase === 'phase1_graph' && graphScan.scanFailed
+                        ? 'bg-rose-400'
+                        : 'bg-emerald-400 animate-ping'
+                    }`}
+                  />
+                  <span className="truncate">
+                    {phase === 'phase1_graph' ? 'Live scan: ' : 'SSE Stream: '}
+                    {currentSseStream}
+                  </span>
                 </div>
               </div>
 
@@ -719,24 +735,56 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
               </div>
             </div>
 
-            {/* PHASE 1 TILE GRID — GRAPH API CONNECTION */}
+            {/* PHASE 1 TILE GRID — REAL MICROSOFT GRAPH SCAN (#228)
+                Same four-tile layout as before, but every status badge and every
+                log line below is real state of the real diagnostics run for this
+                customer's tenant (useRealGraphScanSteps.ts). Nothing here is on a
+                timer, and a tile with no real signal behind it stays pending. */}
             {phase === 'phase1_graph' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#A1A1A1]">
                     Tile Group: Microsoft Graph Connection
                   </h3>
-                  <span className="text-xs font-mono text-[#0078D4]">4 Steps</span>
+                  <div className="flex items-center gap-3">
+                    {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+                        Testbed-only manual trigger for a REAL scan, so the real
+                        run can be watched live during development. It posts to
+                        the platform's one existing debug endpoint
+                        (POST /portal/assessment/debug-trigger-scan), which is
+                        hard-gated server-side to isTestbed=true customers — this
+                        isTestbed check only hides the button, it is NOT the gate.
+                        Remove this button with that route.
+                        See backlog: [Shane to add ticket]. */}
+                    {graphScan.isTestbed && (
+                      <button
+                        onClick={() => void graphScan.triggerScan()}
+                        disabled={graphScan.triggering || graphScan.scanActive}
+                        className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide px-2.5 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 transition-colors disabled:opacity-40"
+                        title="Testbed only — starts a real diagnostics run against this tenant"
+                      >
+                        {graphScan.triggering ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Play className="w-3 h-3" />
+                        )}
+                        <span>[Debug] Run real scan</span>
+                      </button>
+                    )}
+                    <span className="text-xs font-mono text-[#0078D4]">4 Steps</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {GRAPH_API_STEPS.map((step, idx) => {
-                    const st = graphStatus[idx];
+                  {graphScan.steps.map(step => {
+                    const st = step.status;
                     return (
                       <div
                         key={step.id}
                         className={`p-3.5 rounded-xl border transition-all ${
-                          st === 'running'
+                          st === 'error'
+                            ? 'bg-[#161616] border-rose-500/60 ring-1 ring-rose-500/20 shadow-lg'
+                            : st === 'running'
                             ? 'bg-[#161616] border-[#0078D4] ring-1 ring-[#0078D4]/30 shadow-lg'
                             : st === 'complete'
                             ? 'bg-[#161616]/80 border-[#2D2D2D]'
@@ -747,14 +795,18 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
-                                st === 'complete'
+                                st === 'error'
+                                  ? 'bg-rose-950/80 border-rose-700 text-rose-400'
+                                  : st === 'complete'
                                   ? 'bg-emerald-950/80 border-emerald-700 text-emerald-400'
                                   : st === 'running'
                                   ? 'bg-[#0078D4]/20 border-[#0078D4] text-[#0078D4]'
                                   : 'bg-[#222222] border-[#333333] text-[#666666]'
                               }`}
                             >
-                              {st === 'complete' ? (
+                              {st === 'error' ? (
+                                <AlertCircle className="w-4 h-4" />
+                              ) : st === 'complete' ? (
                                 <CheckCircle2 className="w-4 h-4" />
                               ) : st === 'running' ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -770,7 +822,9 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
 
                           <span
                             className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded border ${
-                              st === 'complete'
+                              st === 'error'
+                                ? 'bg-rose-950/80 text-rose-300 border-rose-800 font-bold'
+                                : st === 'complete'
                                 ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
                                 : st === 'running'
                                 ? 'bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40 font-bold'
@@ -781,10 +835,15 @@ export const TelemetryScreen: React.FC<TelemetryScreenProps> = ({
                           </span>
                         </div>
 
-                        {/* Details / Log Subtitle */}
-                        <div className="mt-2.5 pt-2 border-t border-[#222222] text-[10px] font-mono text-[#A1A1A1] flex items-center gap-1">
-                          <span className="text-[#0078D4]">↳</span>
-                          <span className="truncate">{step.details}</span>
+                        {/* Real log line for this step — live run state, no script */}
+                        <div
+                          className={`mt-2.5 pt-2 border-t border-[#222222] text-[10px] font-mono flex items-center gap-1 ${
+                            st === 'error' ? 'text-rose-300' : 'text-[#A1A1A1]'
+                          }`}
+                          title={step.message}
+                        >
+                          <span className={st === 'error' ? 'text-rose-400' : 'text-[#0078D4]'}>↳</span>
+                          <span className="truncate">{step.message}</span>
                         </div>
                       </div>
                     );

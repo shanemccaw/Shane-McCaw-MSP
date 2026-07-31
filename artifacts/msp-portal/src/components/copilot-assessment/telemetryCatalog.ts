@@ -1,9 +1,21 @@
+/**
+ * The Scan step's four visual tiles.
+ *
+ * These are LABELS ONLY — deliberately no `details` string and no scripted
+ * `sseMessages` array any more. Every status and every message line the Scan
+ * step shows now comes from the real diagnostics run for the signed-in
+ * customer's tenant (see useRealGraphScanSteps.ts, which maps each tile onto a
+ * genuinely observable milestone of the real runDiagnostics call). The old
+ * hardcoded strings — a fake tenant GUID, invented SKU/seat counts, a scripted
+ * "permissions verified" sequence — were the whole reason this step read as a
+ * simulation, so they are gone rather than kept as a fallback: a tile with no
+ * real signal behind it renders as pending, never as a plausible-looking lie.
+ */
 export interface GraphApiStep {
   id: string;
   title: string;
+  /** Plain description of what the real run does at this stage — not a claim about outcome. */
   subtitle: string;
-  details: string;
-  sseMessages: string[];
 }
 
 export interface TelemetryEngineDef {
@@ -30,47 +42,22 @@ export const GRAPH_API_STEPS: GraphApiStep[] = [
   {
     id: 'graph-conn',
     title: 'Connecting to Microsoft 365',
-    subtitle: 'Establishing secure OAuth2 / MSAL session',
-    details: 'Connecting to https://graph.microsoft.com/v1.0 with certificate auth...',
-    sseMessages: [
-      'Authenticating tenant admin credentials...',
-      'Validating SSL certificates and TLS 1.3 session...',
-      'Graph API Endpoint reachable (200 OK).'
-    ]
+    subtitle: 'Starting a real diagnostics run against your tenant'
   },
   {
     id: 'graph-perm',
     title: 'Validating Permissions',
-    subtitle: 'Checking Directory.Read.All & Reports.Read.All',
-    details: 'Verifying API scopes required for tenant-wide telemetry aggregation...',
-    sseMessages: [
-      'Checking scope: Directory.Read.All... Verified',
-      'Checking scope: Reports.Read.All... Verified',
-      'Checking scope: SecurityEvents.Read.All... Verified',
-      'Permissions check completed successfully.'
-    ]
+    subtitle: 'Checking the Graph consent this tenant actually granted'
   },
   {
     id: 'graph-profile',
     title: 'Retrieving Tenant Profile',
-    subtitle: 'Extracting tenant ID, domain metadata & license topology',
-    details: 'Querying /v1.0/organization and /v1.0/subscribedSkus...',
-    sseMessages: [
-      'Tenant ID: 0a1ef2c3-b00c-4692-9163-2e88dbe88d84 verified.',
-      'Active SKUs: M365 E5 (4,500 seats), Copilot for M365 (1,200 seats).',
-      'Primary domain verified: corp.enterprise.com.'
-    ]
+    subtitle: 'Resolving your monitoring package and its check inventory'
   },
   {
     id: 'graph-pull',
     title: 'Pulling Telemetry Stream',
-    subtitle: 'Aggregating SharePoint ACLs, MIP labels & audit stream',
-    details: 'Initiating parallel REST streams across Graph Security & Purview endpoints...',
-    sseMessages: [
-      'Pulling SharePoint site collection ACLs...',
-      'Pulling Microsoft Purview MIP label catalog...',
-      'Streaming audit logs for 12 correlation engines...'
-    ]
+    subtitle: 'Executing each package check against Microsoft Graph'
   }
 ];
 

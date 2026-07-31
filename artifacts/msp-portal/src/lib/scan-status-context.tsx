@@ -36,6 +36,23 @@ export interface ScanStatusPayload {
     checksTotal: number;
     startedAt: string;
   } | null;
+  /**
+   * Real summary of the customer's most recent diagnostics run, whether or not
+   * it is still active (`active` above is null the moment a run finishes). Any
+   * surface that reports a scan's real outcome after it completed — the Copilot
+   * Assessment telemetry page's Scan step — reads this. Optional at the wire
+   * boundary: an older-but-still-live api-server process won't send it.
+   */
+  lastRunSummary?: {
+    runId: string;
+    status: string;
+    checksTotal: number;
+    checksOk: number;
+    checksError: number;
+    checksLicenseGap: number;
+    startedAt: string;
+    completedAt: string | null;
+  } | null;
   isTestbed: boolean;
   /** Real tenant_consent.consent_status for this customer's tenant, or null if no row yet. */
   consentStatus: "pending" | "granted" | "declined" | "revoked" | null;

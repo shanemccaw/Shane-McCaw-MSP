@@ -577,6 +577,25 @@ router.get(
               startedAt: latestRun.startedAt ?? latestRun.createdAt,
             }
           : null,
+        // Real terminal summary of the customer's most recent run, present
+        // whether or not that run is still active. `active` above goes null the
+        // instant a run finishes, so a finished run's real check counts would
+        // otherwise be unreadable — a surface that reports a scan's outcome (the
+        // Copilot Assessment telemetry page's Scan step) needs them after the
+        // fact too, e.g. when the page is opened after the scan already ran.
+        // Same row already selected above; no extra query.
+        lastRunSummary: latestRun
+          ? {
+              runId: latestRun.runId,
+              status: latestRun.status,
+              checksTotal: latestRun.checksTotal ?? 0,
+              checksOk: latestRun.checksOk ?? 0,
+              checksError: latestRun.checksError ?? 0,
+              checksLicenseGap: latestRun.checksLicenseGap ?? 0,
+              startedAt: latestRun.startedAt ?? latestRun.createdAt,
+              completedAt: latestRun.completedAt ?? null,
+            }
+          : null,
         isTestbed: customerRow?.isTestbed === true,
         consentStatus,
         scopesStale,
