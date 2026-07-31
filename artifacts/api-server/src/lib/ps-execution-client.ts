@@ -57,7 +57,8 @@ async function getBearerToken(forceRefresh = false): Promise<string> {
  * ConsentRevokedError/LicenseGapError by construction — this function never
  * touches Graph, so neither of those classes can originate here.
  *
- * `kind` is the narrower 3-value discriminator #209's design settled on:
+ * `kind` is the discriminator #209's design settled on (extended to 4 values
+ * by #250 — see "cmdlet_unavailable" below):
  *   - "unreachable": network failure, or a 5xx that isn't the container's own
  *     Connect-IPPSSession auth_failed case.
  *   - "auth_failed": the container's Connect-IPPSSession/cert failure (502),
@@ -65,13 +66,29 @@ async function getBearerToken(forceRefresh = false): Promise<string> {
  *     markTenantConsentRevoked() — a cert/permission problem on our side is a
  *     completely different failure domain from a customer revoking Graph
  *     OAuth consent.
- *   - "script_error": the resolved cmdlet itself threw (500), or the request
- *     was malformed/misconfigured (400 bad_request/unknown_cmdlet, 405) —
+ *   - "script_error": the resolved cmdlet itself threw (500) for a reason
+ *     OTHER than cmdlet-not-found (see below), or the request was
+ *     malformed/misconfigured (400 bad_request/unknown_cmdlet, 405) —
  *     grouped here because both are defects in the check definition itself,
  *     not a tenant-auth or network condition.
+ *   - "cmdlet_unavailable": #250 — the container caught a real
+ *     CommandNotFoundException invoking the resolved cmdlet (still 500, but
+ *     `containerErrorKind: "cmdlet_unavailable"` from entrypoint.ps1). This
+ *     is NOT a coding/spelling defect: every cmdlet name in the container's
+ *     CmdletCatalog is a fixed, code-owned literal already confirmed correct
+ *     for other tenants, so this can only mean the cmdlet was never
+ *     dynamically registered into THIS tenant's Security & Compliance
+ *     session. Investigated (#250, not assumed): that registration depends
+ *     on BOTH the tenant's Purview licensing AND the connecting app's own
+ *     Purview role-group membership (see dlp-role-group-provisioning.ts) —
+ *     the identical "not recognized" symptom fires for either cause, and the
+ *     container-side text match can't tell them apart. Callers must treat
+ *     this as "DLP/label compliance features unavailable in this tenant"
+ *     (licensing OR role-provisioning gap), never assert "not licensed"
+ *     specifically.
  */
 export class PsExecutionError extends Error {
-  readonly kind: "unreachable" | "auth_failed" | "script_error";
+  readonly kind: "unreachable" | "auth_failed" | "script_error" | "cmdlet_unavailable";
   readonly cmdletKey: string;
   /** The container's own `error` field (e.g. "unknown_cmdlet", "script_error"), when present. */
   readonly containerErrorKind?: string;
@@ -157,11 +174,13 @@ export async function callPsExecution(
     }
 
     const kind: PsExecutionError["kind"] =
-      containerErrorKind === "auth_failed" || res.status === 401
-        ? "auth_failed"
-        : res.status >= 500 && containerErrorKind !== "script_error"
-          ? "unreachable"
-          : "script_error";
+      containerErrorKind === "cmdlet_unavailable"
+        ? "cmdlet_unavailable"
+        : containerErrorKind === "auth_failed" || res.status === 401
+          ? "auth_failed"
+          : res.status >= 500 && containerErrorKind !== "script_error"
+            ? "unreachable"
+            : "script_error";
 
     log.error({ cmdletKey, status: res.status, containerErrorKind }, "ps-execution: request failed");
     throw new PsExecutionError(kind, cmdletKey, message || `ps-execution container returned ${res.status}`, {

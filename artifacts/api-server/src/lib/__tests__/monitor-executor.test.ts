@@ -1252,6 +1252,46 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     expect(result.errorMessage).toContain("Security & Compliance session");
     expect(markTenantConsentRevoked).not.toHaveBeenCalled();
   });
+
+  it("#250: a PsExecutionError with kind 'cmdlet_unavailable' persists as license_gap (DLP) — not a generic error", async () => {
+    const { markTenantConsentRevoked } = await import("../graph");
+    mockCallPsExecution.mockRejectedValueOnce(
+      new PsExecutionError(
+        "cmdlet_unavailable",
+        "get-dlp-policies",
+        "The 'Get-DlpCompliancePolicy' cmdlet is not available in this tenant's Security & Compliance session (missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role).",
+      ),
+    );
+
+    const result = await executeMonitorCheck({
+      check: { ...psCheck, key: "compliance:weak-dlp-policies", psCmdletKey: "get-dlp-policies" },
+      tenantId: "tenant-guid-dlp",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("license_gap");
+    expect(result.licenseFeature).toBe("Microsoft Purview Data Loss Prevention (DLP)");
+    expect(result.extractedProperties._licenseGap).toBe(true);
+    expect(result.extractedProperties._licenseGapFeature).toBe("Microsoft Purview Data Loss Prevention (DLP)");
+    expect(markTenantConsentRevoked).not.toHaveBeenCalled();
+  });
+
+  it("#250: 'cmdlet_unavailable' names sensitivity labels for get-labels/get-label-policies cmdletKeys", async () => {
+    mockCallPsExecution.mockRejectedValueOnce(
+      new PsExecutionError("cmdlet_unavailable", "get-labels", "not available in this tenant's session"),
+    );
+
+    const result = await executeMonitorCheck({
+      check: { ...psCheck, key: "compliance:missing-labels", psCmdletKey: "get-labels" },
+      tenantId: "tenant-guid-labels",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("license_gap");
+    expect(result.licenseFeature).toBe("Microsoft Purview sensitivity labels");
+  });
 });
 
 describe("appendQueryParams", () => {

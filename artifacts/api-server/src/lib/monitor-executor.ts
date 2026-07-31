@@ -791,6 +791,28 @@ export function licenseGapProfileFlags(feature: string): Record<string, boolean>
   return {};
 }
 
+/**
+ * #250: the customer-safe feature name stamped into `_licenseGapFeature` when
+ * a PS-backed check hits "cmdlet_unavailable" — deliberately named after the
+ * Purview capability area, not a specific cmdlet, since the same missing-
+ * cmdlet symptom can mean either a licensing gap or a role-group provisioning
+ * gap (see the "cmdlet_unavailable" branch's own comment). Keyed off
+ * check.psCmdletKey, not the check's `key`, since the cmdlet identity is what
+ * determines which Purview area is actually gated.
+ */
+function purviewFeatureForCmdletKey(cmdletKey: string | null): string {
+  switch (cmdletKey) {
+    case "get-dlp-policies":
+    case "get-dlp-incidents":
+      return "Microsoft Purview Data Loss Prevention (DLP)";
+    case "get-labels":
+    case "get-label-policies":
+      return "Microsoft Purview sensitivity labels";
+    default:
+      return "Microsoft Purview compliance features";
+  }
+}
+
 // ── PowerShell-backed check executor ──────────────────────────────────────────
 //
 // Runs a check whose data can only be read via Connect-IPPSSession (DLP/Label
@@ -1361,6 +1383,66 @@ export async function executeMonitorCheck(opts: {
         pageCount: 0,
         profileId: row?.profileId,
         licenseFeature: err.feature,
+      };
+    }
+
+    // PsExecutionError with kind "cmdlet_unavailable" (#250): the ps-execution
+    // container caught a real CommandNotFoundException resolving the check's
+    // cmdlet — see ps-execution-client.ts's PsExecutionError doc comment for
+    // why this can ONLY mean the tenant's Security & Compliance session never
+    // got this cmdlet registered (a Purview licensing gap OR the app not yet
+    // being in the right Purview role group — the two are indistinguishable
+    // from the error text alone, confirmed by inspecting
+    // dlp-role-group-provisioning.ts's own problem statement). Reuses the
+    // EXISTING "license_gap" status/shape (not a new status value) so this
+    // slides into every consumer that already treats license_gap as an
+    // honest, non-alarming "couldn't evaluate" state — dashboard-resolvers.ts's
+    // customer-safe message, copilot-readiness.ts's collectedCount (already
+    // nulls a score rather than scoring it as 0), diagnostics-runner.ts's
+    // narrative branch, telemetryComparison.ts's non-scored treatment — none
+    // of which need to change for this to work. `_licenseGapFeature` names
+    // BOTH possible causes rather than asserting "not licensed" specifically,
+    // per the ambiguity above.
+    if (err instanceof PsExecutionError && err.kind === "cmdlet_unavailable") {
+      const feature = purviewFeatureForCmdletKey(check.psCmdletKey);
+      const licenseFlags = licenseGapProfileFlags(feature);
+      const extracted: Record<string, unknown> = {
+        _licenseGap: true,
+        _licenseGapFeature: feature,
+        _licenseGapCode: "cmdlet_unavailable",
+        ...licenseFlags,
+      };
+      log.info(
+        { checkKey: check.key, tenantId, cmdletKey: check.psCmdletKey, feature },
+        "monitor-executor: check unavailable — cmdlet not registered in this tenant's Security & Compliance session (license or role-group gap)",
+      );
+      const [row] = await db
+        .insert(tenantMonitorProfilesTable)
+        .values({
+          tenantId,
+          checkKey: check.key,
+          checkSchemaVersion: check.schemaVersion,
+          triggerId,
+          idempotencyKey,
+          status: "license_gap",
+          extractedProperties: extracted,
+          errorMessage: `Requires ${feature}`,
+          itemCount: 0,
+          pageCount: 0,
+        })
+        .onConflictDoNothing()
+        .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+      return {
+        checkKey: check.key,
+        status: "license_gap",
+        extractedProperties: extracted,
+        severityMatched: null,
+        errorMessage: `Requires ${feature}`,
+        itemCount: 0,
+        pageCount: 0,
+        profileId: row?.profileId,
+        licenseFeature: feature,
       };
     }
 

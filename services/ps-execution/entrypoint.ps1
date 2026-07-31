@@ -458,10 +458,13 @@ function Test-BearerToken {
 #
 # Structured error responses, never a raw PowerShell exception message or
 # stack trace in the body. `kind` is the field #211's PsExecutionError
-# (api-server side, not built yet) discriminates on: "bad_request" and
-# "unknown_cmdlet" are both request-shape problems (never reach
-# Connect-IPPSSession), "auth_failed" is a Connect-IPPSSession failure,
-# "script_error" is the resolved cmdlet itself throwing.
+# (api-server side) discriminates on: "bad_request" and "unknown_cmdlet" are
+# both request-shape problems (never reach Connect-IPPSSession), "auth_failed"
+# is a Connect-IPPSSession failure, "script_error" is the resolved cmdlet
+# itself throwing for any other reason, "cmdlet_unavailable" (#250) is the
+# resolved cmdlet throwing a real CommandNotFoundException — see the
+# CommandNotFoundException-detection comment below for what that means and
+# doesn't mean.
 function Send-JsonResponse {
     param(
         [System.Net.HttpListenerResponse]$Response,
@@ -652,6 +655,42 @@ try {
                 $result = @{ status = $writeOutcome }
             }
             else {
+                # #250: distinguish "this cmdlet was never registered into THIS
+                # session" from a genuine script/runtime error. Detected two
+                # ways, deliberately not just a message-text guess:
+                #   1. The .NET exception TYPE is CommandNotFoundException —
+                #      the stable, locale-independent signal PowerShell throws
+                #      for exactly this condition (verified against real-world
+                #      reports before relying on it — this exception type is
+                #      raised ONLY for command-resolution failures, never for
+                #      a cmdlet's own internal/runtime errors, so it cannot be
+                #      confused with an unrelated genuine script error).
+                #   2. Message-text fallback, in case some PS host surfaces
+                #      this as a different wrapping exception type: the exact
+                #      "is not recognized as a/the name of a cmdlet, function,
+                #      script file, or executable program" phrase is
+                #      PowerShell's fixed CommandNotFoundException wording and
+                #      not reused for any other error class.
+                # Every cmdlet name here comes from $script:CmdletCatalog — a
+                # fixed, code-owned literal already confirmed correct (it
+                # works for other tenants) — so this can only mean the tenant's
+                # Security & Compliance session never got this cmdlet
+                # dynamically registered into it. That happens for EITHER of
+                # two separate causes this container cannot distinguish from
+                # here: the tenant lacks the underlying Purview license/add-on,
+                # or the connecting app-only identity isn't a member of the
+                # Purview role group that grants it (see
+                # dlp-role-group-provisioning.ts) — so the message below
+                # names both possibilities rather than asserting either one.
+                $isCmdletNotFound = ($_.Exception -is [System.Management.Automation.CommandNotFoundException]) -or
+                    ($_.Exception.Message -match "(?i)is not recognized as (a|the) name of a cmdlet, function, script file, or executable program")
+
+                if ($isCmdletNotFound) {
+                    Write-Log -Level "warn" -Message "cmdlet not available in this tenant's session (license or role-group provisioning gap)" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
+                    Send-ErrorResponse -Response $response -StatusCode 500 -Kind "cmdlet_unavailable" -Message "The '$($invocation.Cmdlet)' cmdlet is not available in this tenant's Security & Compliance session (missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role)."
+                    continue
+                }
+
                 Write-Log -Level "error" -Message "cmdlet execution failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
                 if ($catalogEntry.IsWrite) {
                     Write-Log -Level "error" -Channel "audit" -Message "write action failed" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; member = $invocation.Params["Member"]; error = $_.Exception.Message }
