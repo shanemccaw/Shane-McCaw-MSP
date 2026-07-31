@@ -38,32 +38,32 @@ export const SecurityHeatMap: React.FC<SecurityHeatMapProps> = ({
   };
 
   const getHeatColor = (val: number) => {
-    if (val > 80) return 'bg-rose-950/90 text-rose-300 border-rose-600 shadow-[0_0_12px_rgba(244,63,94,0.3)] font-black';
-    if (val > 60) return 'bg-amber-950/80 text-amber-300 border-amber-600 font-bold';
-    if (val > 40) return 'bg-sky-950/70 text-sky-300 border-sky-600';
-    return 'bg-emerald-950/60 text-emerald-300 border-emerald-800';
+    if (val > 80) return 'bg-destructive/10/90 text-destructive border-destructive shadow-[0_0_12px_rgba(244,63,94,0.3)] font-black';
+    if (val > 60) return 'bg-status-amber/15 text-status-amber border-status-amber font-bold';
+    if (val > 40) return 'bg-primary/70 text-primary border-primary';
+    return 'bg-status-green/10 text-status-green border-status-green/30';
   };
 
   return (
-    <div className="bg-[#060912] border border-white/10 rounded-2xl p-4 space-y-4 my-3 select-none">
+    <div className="bg-background border border-border rounded-2xl p-4 space-y-4 my-3 select-none">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 border-b border-white/10">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 border-b border-border">
         <div className="flex items-center space-x-2.5">
-          <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+          <div className="w-7 h-7 rounded-lg bg-destructive/20 border border-destructive/40 flex items-center justify-center text-destructive">
             <Layers className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">
+            <h3 className="text-xs font-extrabold text-foreground uppercase tracking-wider">
               Security Heat Map — Blast Radius at Scale
             </h3>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-muted-foreground">
               Cross-evaluating Copilot Action Vectors against Data Sensitivity Classifications
             </p>
           </div>
         </div>
 
-        <span className="text-[9.5px] font-mono text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-800 font-bold">
+        <span className="text-[9.5px] font-mono text-status-amber bg-status-amber/15 px-2.5 py-1 rounded-lg border border-status-amber/30 font-bold">
           {mode === 'projected' ? 'LATENT RISK MAP' : 'LIVE THREAT DENSITY'}
         </span>
       </div>
@@ -72,7 +72,7 @@ export const SecurityHeatMap: React.FC<SecurityHeatMapProps> = ({
       <div className="overflow-x-auto scrollbar-thin">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-white/10 text-[10px] font-mono text-slate-400 uppercase">
+            <tr className="border-b border-border text-[10px] font-mono text-muted-foreground uppercase">
               <th className="p-2 min-w-[130px]">Classification</th>
               {actionModes.map((act) => (
                 <th key={act.key} className="p-2 min-w-[110px] text-center">
@@ -86,12 +86,12 @@ export const SecurityHeatMap: React.FC<SecurityHeatMapProps> = ({
           </thead>
           <tbody>
             {sensitivityTypes.map((st) => (
-              <tr key={st.key} className="border-b border-white/5 hover:bg-slate-900/40 transition-colors">
+              <tr key={st.key} className="border-b border-border/50 hover:bg-secondary/40 transition-colors">
                 <td className="p-2">
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-white">{st.label}</span>
+                    <span className="text-xs font-bold text-foreground">{st.label}</span>
                     <span className={`text-[8px] font-mono font-bold px-1.5 py-0.2 rounded border ${
-                      st.severity === 'Critical' ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-amber-950 text-amber-300 border-amber-800'
+                      st.severity === 'Critical' ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-status-amber/10 text-status-amber border-status-amber/30'
                     }`}>
                       {st.severity}
                     </span>
@@ -121,18 +121,18 @@ export const SecurityHeatMap: React.FC<SecurityHeatMapProps> = ({
 
       {/* KEY CALLOUT WARNING STRIP */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-        <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-[10.5px] text-rose-200 font-mono flex items-center space-x-2">
-          <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+        <div className="p-2.5 rounded-xl bg-destructive/10/40 border border-destructive/40 text-[10.5px] text-destructive font-mono flex items-center space-x-2">
+          <ShieldAlert className="w-4 h-4 text-destructive shrink-0" />
           <span>Copilot WOULD READ <strong>3,420 exposed PHI records</strong></span>
         </div>
 
-        <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-[10.5px] text-amber-200 font-mono flex items-center space-x-2">
-          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+        <div className="p-2.5 rounded-xl bg-status-amber/10/40 border border-status-amber/40 text-[10.5px] text-status-amber font-mono flex items-center space-x-2">
+          <ShieldAlert className="w-4 h-4 text-status-amber shrink-0" />
           <span>Copilot WOULD SUMMARIZE <strong>14 overshared CUI sites</strong></span>
         </div>
 
-        <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/40 text-[10.5px] text-purple-200 font-mono flex items-center space-x-2">
-          <ShieldAlert className="w-4 h-4 text-purple-400 shrink-0" />
+        <div className="p-2.5 rounded-xl bg-accent/10 border border-accent/40 text-[10.5px] text-accent font-mono flex items-center space-x-2">
+          <ShieldAlert className="w-4 h-4 text-accent shrink-0" />
           <span>Copilot WOULD ACT with <strong>12 permanent admin roles</strong></span>
         </div>
       </div>

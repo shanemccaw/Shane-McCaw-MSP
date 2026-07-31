@@ -62,7 +62,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 15000,
     durationWeeks: 3,
     badge: 'Recommended',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    badgeColor: 'bg-status-green/20 text-status-green border-status-green/40',
     description: 'Baseline M365 Copilot environment deployment, admin center service principal provisioning, app assignment, and IT team technical briefing.',
     deliverables: [
       'Tenant Technical Assessment & Prerequisites Validation',
@@ -84,7 +84,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 18500,
     durationWeeks: 3,
     badge: 'High Value',
-    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    badgeColor: 'bg-status-amber/20 text-status-amber border-status-amber/40',
     description: 'Remediate critical data exposure risks by deploying Microsoft Purview sensitivity labels across unlabeled SharePoint sites and setting external DLP rules.',
     deliverables: [
       'Microsoft Purview Auto-Labeling Deployment',
@@ -106,7 +106,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 22000,
     durationWeeks: 3,
     badge: 'High Value',
-    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    badgeColor: 'bg-destructive/20 text-destructive border-destructive/40',
     description: 'Enforce Entra ID Conditional Access CA01 policies for compliant endpoint isolation and configure Privileged Identity Management (PIM) for Copilot admins.',
     deliverables: [
       'Entra ID CA01 Conditional Access Policy Enforcement',
@@ -128,7 +128,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 28000,
     durationWeeks: 4,
     badge: 'High Value',
-    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    badgeColor: 'bg-accent/20 text-accent border-accent/40',
     description: 'Accelerate productivity with 2 custom declarative Copilot Studio agents for RFP generation and contract review, plus Power Automate flows.',
     deliverables: [
       '2 Declarative Copilot Studio Enterprise Agents',
@@ -150,7 +150,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 9500,
     durationWeeks: 2,
     badge: 'Recommended',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    badgeColor: 'bg-status-green/20 text-status-green border-status-green/40',
     description: 'Role-specific prompt engineering workshops for Sales, HR, Legal, and Finance teams, complete with custom department prompt cheat-sheets.',
     deliverables: [
       '4 Department-Specific Enablement Masterclasses',
@@ -173,7 +173,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     isRecurring: true,
     durationWeeks: 4,
     badge: 'Optional',
-    badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+    badgeColor: 'bg-primary/20 text-primary border-primary/40',
     description: 'Continuous monthly license utilization audits, prompt telemetry analysis, quarterly security posture checks, and recurring MSP optimization.',
     deliverables: [
       'Monthly Unused License Reallocation & Waste Audit',
@@ -195,7 +195,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 8000,
     durationWeeks: 1,
     badge: 'High Value',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    badgeColor: 'bg-status-green/20 text-status-green border-status-green/40',
     description: 'Identify inactive or low-usage Copilot licenses within 30 days and establish automated seat recycling rules to eliminate seat waste.',
     deliverables: [
       'Copilot License Utilization Telemetry Audit Report',
@@ -217,7 +217,7 @@ export const SCOPE_MODULES: SowScopeModule[] = [
     price: 16500,
     durationWeeks: 3,
     badge: 'Optional',
-    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    badgeColor: 'bg-accent/20 text-accent border-accent/40',
     description: 'Deep line-of-business custom integration extending Copilot to SAP/Salesforce data sources via custom Graph Connectors.',
     deliverables: [
       'Custom Graph Connector for SAP & Salesforce Data',
@@ -350,12 +350,12 @@ export const SowScreen: React.FC<SowScreenProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen bg-[#07090E] text-slate-100 flex flex-col font-sans overflow-hidden antialiased select-none relative">
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none relative">
 
       {/* Top Floating Toast Notification */}
       {toastMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/90 border border-emerald-500/80 text-emerald-200 font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-status-green/90 border border-status-green/80 text-status-green font-mono text-xs px-5 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-status-green shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -364,51 +364,51 @@ export const SowScreen: React.FC<SowScreenProps> = ({
       {/* CONFIRMATION PURCHASE MODAL                                          */}
       {/* ==================================================================== */}
       {isPurchaseModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0B0F19] border border-emerald-500/50 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 relative">
+        <div className="fixed inset-0 z-50 bg-muted/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-background border border-status-green/50 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 relative">
             <button
               onClick={() => setIsPurchaseModalOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center space-x-3 pb-3 border-b border-white/10">
-              <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+            <div className="flex items-center space-x-3 pb-3 border-b border-border">
+              <div className="w-10 h-10 rounded-xl bg-status-green/10 border border-status-green/50 flex items-center justify-center text-status-green">
                 <ShoppingBag className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-white">Authorize Statement of Work</h3>
-                <p className="text-xs text-slate-400 font-mono">Microsoft 365 Copilot Enterprise Engagement</p>
+                <h3 className="text-base font-extrabold text-foreground">Authorize Statement of Work</h3>
+                <p className="text-xs text-muted-foreground font-mono">Microsoft 365 Copilot Enterprise Engagement</p>
               </div>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300 font-mono bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+            <div className="space-y-3 text-xs text-muted-foreground font-mono bg-secondary/80 p-3.5 rounded-xl border border-border">
               <div className="flex justify-between">
-                <span className="text-slate-400">Client Entity:</span>
-                <span className="text-white font-bold">{companyName}</span>
+                <span className="text-muted-foreground">Client Entity:</span>
+                <span className="text-foreground font-bold">{companyName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Authorized Signer:</span>
-                <span className="text-white">{signerName}</span>
+                <span className="text-muted-foreground">Authorized Signer:</span>
+                <span className="text-foreground">{signerName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Purchase Order #:</span>
-                <span className="text-emerald-400 font-bold">{poNumber}</span>
+                <span className="text-muted-foreground">Purchase Order #:</span>
+                <span className="text-status-green font-bold">{poNumber}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Readiness Score Achieved:</span>
-                <span className={`font-bold ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className="text-muted-foreground">Readiness Score Achieved:</span>
+                <span className={`font-bold ${isCopilotReady ? 'text-status-green' : 'text-status-amber'}`}>
                   {readinessScore}/100 ({isCopilotReady ? 'Copilot Ready' : 'Remediation Required'})
                 </span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-slate-800 text-sm">
-                <span className="text-slate-200 font-bold">Total Net Investment:</span>
-                <span className="text-emerald-400 font-black">${totalInvestment.toLocaleString()} USD</span>
+              <div className="flex justify-between pt-2 border-t border-border text-sm">
+                <span className="text-foreground font-bold">Total Net Investment:</span>
+                <span className="text-status-green font-black">${totalInvestment.toLocaleString()} USD</span>
               </div>
             </div>
 
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-[11px] text-emerald-300 flex items-start gap-2">
+            <div className="p-3 bg-status-green/40 border border-status-green/30/60 rounded-xl text-[11px] text-status-green flex items-start gap-2">
               <Lock className="w-4 h-4 shrink-0 mt-0.5" />
               <span>Includes 30-day guaranteed price lock and $15,000 Microsoft Partner Assessment Funding Credit. Net 30 payment terms apply upon kickoff.</span>
             </div>
@@ -416,13 +416,13 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             <div className="flex space-x-3 pt-2">
               <button
                 onClick={() => setIsPurchaseModalOpen(false)}
-                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono rounded-xl text-xs border border-slate-800 cursor-pointer"
+                className="flex-1 py-2.5 bg-secondary hover:bg-secondary text-muted-foreground font-mono rounded-xl text-xs border border-border cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmPurchase}
-                className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-emerald-950/60"
+                className="flex-1 py-2.5 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-status-green/60"
               >
                 Confirm & Sign SOW
               </button>
@@ -434,38 +434,38 @@ export const SowScreen: React.FC<SowScreenProps> = ({
       {/* ==================================================================== */}
       {/* NAVBAR                                                               */}
       {/* ==================================================================== */}
-      <header className="h-14 bg-[#0B0F19]/95 border-b border-white/10 px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+      <header className="h-14 bg-background/95 border-b border-border px-5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-950 border border-indigo-500/50 flex items-center justify-center text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+          <div className="w-9 h-9 rounded-xl bg-accent/10 border border-accent/50 flex items-center justify-center text-accent shadow-[0_0_15px_rgba(99,102,241,0.3)]">
             <Briefcase className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm font-black uppercase tracking-wider text-white">
+              <span className="text-sm font-black uppercase tracking-wider text-foreground">
                 Statement of Work & Scope Selection
               </span>
-              <span className="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-2 py-0.5 rounded font-extrabold">
+              <span className="text-[10px] font-mono bg-accent/20 text-accent border border-accent/40 px-2 py-0.5 rounded font-extrabold">
                 LIVE SCORE CALCULATOR
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-muted-foreground">
               Microsoft Consulting Services SOW-2026-M365-092 • Interactive Real-Time SOW Configurator
             </p>
           </div>
         </div>
 
         {/* Live Top Status Bar */}
-        <div className="hidden lg:flex items-center space-x-4 bg-black/60 px-4 py-1.5 rounded-xl border border-white/10 font-mono">
+        <div className="hidden lg:flex items-center space-x-4 bg-muted/60 px-4 py-1.5 rounded-xl border border-border font-mono">
           <div className="flex items-center space-x-2">
-            <span className="text-[10px] uppercase text-slate-400 font-bold">Readiness Score:</span>
-            <span className={`text-sm font-black ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+            <span className="text-[10px] uppercase text-muted-foreground font-bold">Readiness Score:</span>
+            <span className={`text-sm font-black ${isCopilotReady ? 'text-status-green' : 'text-status-amber'}`}>
               {readinessScore}/100
             </span>
           </div>
-          <div className="w-px h-4 bg-white/10" />
+          <div className="w-px h-4 bg-foreground/10" />
           <div className="flex items-center space-x-2">
-            <span className="text-[10px] uppercase text-slate-400 font-bold">Total Investment:</span>
-            <span className="text-sm font-black text-emerald-400">
+            <span className="text-[10px] uppercase text-muted-foreground font-bold">Total Investment:</span>
+            <span className="text-sm font-black text-status-green">
               ${totalInvestment.toLocaleString()} USD
             </span>
           </div>
@@ -476,7 +476,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
           {onExitClick && (
             <button
               onClick={onExitClick}
-              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg border border-border transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -492,13 +492,13 @@ export const SowScreen: React.FC<SowScreenProps> = ({
         {/* ================================================================== */}
         {/* LEFT PANEL — SCOPE OPTIONS (SELECTABLE MODULES)                    */}
         {/* ================================================================== */}
-        <aside className="w-84 bg-[#0A0E17]/95 border-r border-white/10 p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 font-mono">
-              <Layers className="w-4 h-4 text-indigo-400" />
+        <aside className="w-84 bg-sidebar/95 border-r border-border p-3.5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-3 z-20">
+          <div className="flex items-center justify-between pb-2 border-b border-border">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5 font-mono">
+              <Layers className="w-4 h-4 text-accent" />
               <span>Scope Modules (8 Available)</span>
             </span>
-            <span className="text-[9px] font-mono text-indigo-300 bg-indigo-950 border border-indigo-800 px-2 py-0.5 rounded font-bold">
+            <span className="text-[9px] font-mono text-accent bg-accent/10 border border-accent px-2 py-0.5 rounded font-bold">
               {selectedModuleIds.length}/8 Active
             </span>
           </div>
@@ -513,14 +513,14 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                   onClick={() => toggleModule(mod.id)}
                   className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
                     isSelected
-                      ? 'bg-[#0E1A2B] border-sky-500 ring-1 ring-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                      : 'bg-[#0E131F] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
+                      ? 'bg-background border-primary ring-1 ring-primary/50 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+                      : 'bg-background border-border hover:border-border opacity-70 hover:opacity-100'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center space-x-2">
                       <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                        isSelected ? 'bg-sky-500 border-sky-400 text-slate-950' : 'border-slate-700 bg-slate-900'
+                        isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border bg-secondary'
                       }`}>
                         {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                       </div>
@@ -529,26 +529,26 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                       </span>
                     </div>
 
-                    <span className="text-xs font-mono font-black text-emerald-400">
+                    <span className="text-xs font-mono font-black text-status-green">
                       ${mod.price.toLocaleString()} {mod.isRecurring ? '/mo' : ''}
                     </span>
                   </div>
 
-                  <h3 className={`text-xs font-bold leading-tight mb-1 ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                  <h3 className={`text-xs font-bold leading-tight mb-1 ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {mod.title}
                   </h3>
 
-                  <p className="text-[10.5px] text-slate-400 leading-snug mb-2">
+                  <p className="text-[10.5px] text-muted-foreground leading-snug mb-2">
                     {mod.subtitle}
                   </p>
 
-                  <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                  <div className="pt-1.5 border-t border-border/80 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-sky-400" />
+                      <Clock className="w-3 h-3 text-primary" />
                       {mod.durationWeeks} Wks
                     </span>
-                    <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                      <Zap className="w-3 h-3 text-amber-400" />
+                    <span className="flex items-center gap-1 text-status-green font-bold">
+                      <Zap className="w-3 h-3 text-status-amber" />
                       +{mod.impactReadiness} Score
                     </span>
                   </div>
@@ -561,27 +561,27 @@ export const SowScreen: React.FC<SowScreenProps> = ({
         {/* ================================================================== */}
         {/* CENTER PANEL — DYNAMIC SOW BUILDER                                 */}
         {/* ================================================================== */}
-        <main className="flex-1 overflow-y-auto bg-[#05070C] p-6 flex flex-col relative scrollbar-thin space-y-6">
+        <main className="flex-1 overflow-y-auto bg-background p-6 flex flex-col relative scrollbar-thin space-y-6">
 
           {/* Dynamic Impact Delta Notification Banner */}
           {lastImpactDelta && (
             <div className={`p-3 rounded-xl border font-mono text-xs flex items-center justify-between shadow-lg transition-all animate-fadeIn ${
               lastImpactDelta.type === 'added'
-                ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-200'
-                : 'bg-rose-950/80 border-rose-500/80 text-rose-200'
+                ? 'bg-status-green/15 border-status-green/80 text-status-green'
+                : 'bg-destructive/15 border-destructive/80 text-destructive'
             }`}>
               <div className="flex items-center space-x-2">
                 {lastImpactDelta.type === 'added' ? (
-                  <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Sparkles className="w-4 h-4 text-status-green shrink-0" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                 )}
                 <span>
                   <strong>{lastImpactDelta.type === 'added' ? 'Scope Added:' : 'Scope Removed:'}</strong> {lastImpactDelta.title}
                 </span>
               </div>
               <span className={`font-black px-2.5 py-0.5 rounded text-xs ${
-                lastImpactDelta.type === 'added' ? 'bg-emerald-900 text-emerald-300' : 'bg-rose-900 text-rose-300'
+                lastImpactDelta.type === 'added' ? 'bg-status-green/10 text-status-green' : 'bg-destructive/10 text-destructive'
               }`}>
                 {lastImpactDelta.type === 'added' ? '+' : ''}{lastImpactDelta.delta} Readiness
               </span>
@@ -589,35 +589,35 @@ export const SowScreen: React.FC<SowScreenProps> = ({
           )}
 
           {/* SOW Document Main Container */}
-          <div className="bg-[#090D16] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6 relative">
+          <div className="bg-background border border-border rounded-2xl p-6 shadow-2xl space-y-6 relative">
             
             {/* Header Document Metadata */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <span className="text-[10px] font-mono uppercase bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded font-bold">
+                <span className="text-[10px] font-mono uppercase bg-accent/10 text-accent border border-accent px-2.5 py-0.5 rounded font-bold">
                   MICROSOFT CONSULTING SERVICES STATEMENT OF WORK
                 </span>
-                <h1 className="text-xl font-extrabold text-white mt-1">
+                <h1 className="text-xl font-extrabold text-foreground mt-1">
                   M365 COPILOT ENTERPRISE SCOPE & DEPLOYMENT AGREEMENT
                 </h1>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">
                   Ref: SOW-2026-M365-092 • Organization: {companyName}
                 </p>
               </div>
 
               <div className="text-right font-mono">
-                <span className="text-[10px] text-slate-400 block">NET INVESTMENT</span>
-                <span className="text-2xl font-black text-emerald-400">${totalInvestment.toLocaleString()} USD</span>
+                <span className="text-[10px] text-muted-foreground block">NET INVESTMENT</span>
+                <span className="text-2xl font-black text-status-green">${totalInvestment.toLocaleString()} USD</span>
               </div>
             </div>
 
             {/* Engagement Overview & Executive Context */}
             <div className="space-y-2">
-              <h3 className="text-xs font-bold text-sky-300 font-mono uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-sky-400" />
+              <h3 className="text-xs font-bold text-primary font-mono uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
                 <span>Executive Engagement Context</span>
               </h3>
-              <p className="text-xs text-slate-300 leading-relaxed font-sans bg-slate-950/60 p-4 rounded-xl border border-white/5">
+              <p className="text-xs text-muted-foreground leading-relaxed font-sans bg-secondary/60 p-4 rounded-xl border border-border/50">
                 This Statement of Work (SOW) details the technical deliverables, governance guardrails, security hardening, and persona enablement services required for <strong>{companyName}</strong> to achieve operational readiness for 500 Microsoft 365 Copilot seats. Services are delivered in accordance with Microsoft enterprise architectural standards and Microsoft Solution Assessment best practices.
               </p>
             </div>
@@ -625,37 +625,37 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             {/* Selected Scope Modules List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-mono flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-status-green" />
                   <span>Configured Scope Modules ({selectedModules.length} Active)</span>
                 </h3>
-                <span className="text-[10px] font-mono text-slate-400">Click Trash Icon to Remove Module</span>
+                <span className="text-[10px] font-mono text-muted-foreground">Click Trash Icon to Remove Module</span>
               </div>
 
               <div className="space-y-2">
                 {selectedModules.map((mod) => (
-                  <div key={mod.id} className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-start justify-between">
+                  <div key={mod.id} className="bg-secondary/80 p-3.5 rounded-xl border border-border flex items-start justify-between">
                     <div className="space-y-1 pr-4">
                       <div className="flex items-center space-x-2">
-                        <span className="text-xs font-bold text-white font-mono">{mod.title}</span>
+                        <span className="text-xs font-bold text-foreground font-mono">{mod.title}</span>
                         <span className={`text-[9px] font-mono px-2 py-0.5 rounded border ${mod.badgeColor}`}>
                           {mod.badge}
                         </span>
-                        <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">
+                        <span className="text-[9px] font-mono text-status-green bg-status-green/15 border border-status-green/30 px-2 py-0.5 rounded">
                           +{mod.impactReadiness} Readiness
                         </span>
                       </div>
-                      <p className="text-[11.5px] text-slate-300">{mod.description}</p>
+                      <p className="text-[11.5px] text-muted-foreground">{mod.description}</p>
                     </div>
 
                     <div className="flex items-center space-x-3 shrink-0">
                       <div className="text-right font-mono">
-                        <span className="text-xs font-bold text-emerald-400 block">${mod.price.toLocaleString()}</span>
-                        <span className="text-[10px] text-slate-400">{mod.durationWeeks} Wks</span>
+                        <span className="text-xs font-bold text-status-green block">${mod.price.toLocaleString()}</span>
+                        <span className="text-[10px] text-muted-foreground">{mod.durationWeeks} Wks</span>
                       </div>
                       <button
                         onClick={() => toggleModule(mod.id)}
-                        className="p-1 hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-rose-800"
+                        className="p-1 hover:bg-destructive/15 text-muted-foreground hover:text-destructive rounded-lg transition-colors cursor-pointer border border-transparent hover:border-destructive/30"
                         title="Remove module"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -667,21 +667,21 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             </div>
 
             {/* Dynamic Deliverables List */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
+            <div className="space-y-3 pt-3 border-t border-border">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                  <Award className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Award className="w-4 h-4 text-accent" />
                   <span>Aggregated Deliverables ({aggregatedDeliverables.length} Items)</span>
                 </h3>
-                <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950 border border-indigo-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-accent bg-accent/10 border border-accent px-2 py-0.5 rounded">
                   Auto-Expanding SOW List
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {aggregatedDeliverables.map((del, dIdx) => (
-                  <div key={dIdx} className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 text-[11px] font-mono text-slate-200 flex items-center space-x-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <div key={dIdx} className="bg-secondary/60 p-2.5 rounded-lg border border-border/80 text-[11px] font-mono text-foreground flex items-center space-x-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-status-green shrink-0" />
                     <span>{del}</span>
                   </div>
                 ))}
@@ -689,58 +689,58 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             </div>
 
             {/* Project Timeline & Phases Schedule */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
+            <div className="space-y-3 pt-3 border-t border-border">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-sky-400" />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
                   <span>Execution Schedule & Timeline ({totalWeeks} Weeks Total)</span>
                 </h3>
-                <span className="text-[10px] font-mono text-sky-400 bg-sky-950 border border-sky-800 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded">
                   Parallel Phased Execution
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-amber-500/40 space-y-1">
-                  <span className="text-[10px] text-amber-400 font-bold block">WEEKS 1–2</span>
-                  <span className="text-white font-bold block">Remediation & Hardening</span>
-                  <p className="text-[10px] text-slate-400">Purview auto-labeling & Entra ID CA01 policy setup</p>
+                <div className="bg-secondary/80 p-3 rounded-xl border border-status-amber/40 space-y-1">
+                  <span className="text-[10px] text-status-amber font-bold block">WEEKS 1–2</span>
+                  <span className="text-foreground font-bold block">Remediation & Hardening</span>
+                  <p className="text-[10px] text-muted-foreground">Purview auto-labeling & Entra ID CA01 policy setup</p>
                 </div>
 
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-sky-500/40 space-y-1">
-                  <span className="text-[10px] text-sky-400 font-bold block">WEEKS 3–4</span>
-                  <span className="text-white font-bold block">Deployment & Onboarding</span>
-                  <p className="text-[10px] text-slate-400">Tenant config & cohort prompt engineering workshops</p>
+                <div className="bg-secondary/80 p-3 rounded-xl border border-primary/40 space-y-1">
+                  <span className="text-[10px] text-primary font-bold block">WEEKS 3–4</span>
+                  <span className="text-foreground font-bold block">Deployment & Onboarding</span>
+                  <p className="text-[10px] text-muted-foreground">Tenant config & cohort prompt engineering workshops</p>
                 </div>
 
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-indigo-500/40 space-y-1">
-                  <span className="text-[10px] text-indigo-400 font-bold block">WEEKS 5–6</span>
-                  <span className="text-white font-bold block">Workflow Agents</span>
-                  <p className="text-[10px] text-slate-400">Copilot Studio agent creation & Power Automate integration</p>
+                <div className="bg-secondary/80 p-3 rounded-xl border border-accent/40 space-y-1">
+                  <span className="text-[10px] text-accent font-bold block">WEEKS 5–6</span>
+                  <span className="text-foreground font-bold block">Workflow Agents</span>
+                  <p className="text-[10px] text-muted-foreground">Copilot Studio agent creation & Power Automate integration</p>
                 </div>
 
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-emerald-500/40 space-y-1">
-                  <span className="text-[10px] text-emerald-400 font-bold block">WEEKS 7–8</span>
-                  <span className="text-white font-bold block">Hand-off & Optimization</span>
-                  <p className="text-[10px] text-slate-400">Final telemetry review & ongoing MSP seat optimization</p>
+                <div className="bg-secondary/80 p-3 rounded-xl border border-status-green/40 space-y-1">
+                  <span className="text-[10px] text-status-green font-bold block">WEEKS 7–8</span>
+                  <span className="text-foreground font-bold block">Hand-off & Optimization</span>
+                  <p className="text-[10px] text-muted-foreground">Final telemetry review & ongoing MSP seat optimization</p>
                 </div>
               </div>
             </div>
 
             {/* Financial Breakdown */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-emerald-400" />
+            <div className="space-y-3 pt-3 border-t border-border">
+              <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-mono flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-status-green" />
                 <span>Financial Summary & Microsoft Credit Application</span>
               </h3>
 
-              <div className="bg-slate-950/90 rounded-xl border border-slate-800 p-4 font-mono text-xs space-y-2">
-                <div className="flex justify-between text-slate-300">
+              <div className="bg-secondary/90 rounded-xl border border-border p-4 font-mono text-xs space-y-2">
+                <div className="flex justify-between text-muted-foreground">
                   <span>Selected Modules Subtotal ({selectedModules.length} Modules):</span>
-                  <span className="font-bold text-white">${subtotal.toLocaleString()} USD</span>
+                  <span className="font-bold text-foreground">${subtotal.toLocaleString()} USD</span>
                 </div>
 
-                <div className="flex justify-between text-emerald-400">
+                <div className="flex justify-between text-status-green">
                   <span className="flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
                     Microsoft Assessment Partner Funding Credit:
@@ -748,9 +748,9 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                   <span className="font-bold">-${msCredit.toLocaleString()} USD</span>
                 </div>
 
-                <div className="flex justify-between pt-2 border-t border-slate-800 text-sm font-black">
-                  <span className="text-white">Net Investment Authorization Amount:</span>
-                  <span className="text-emerald-400">${totalInvestment.toLocaleString()} USD</span>
+                <div className="flex justify-between pt-2 border-t border-border text-sm font-black">
+                  <span className="text-foreground">Net Investment Authorization Amount:</span>
+                  <span className="text-status-green">${totalInvestment.toLocaleString()} USD</span>
                 </div>
               </div>
             </div>
@@ -762,13 +762,13 @@ export const SowScreen: React.FC<SowScreenProps> = ({
         {/* ================================================================== */}
         {/* RIGHT PANEL — REAL-TIME SCORE + PURCHASE SUMMARY                   */}
         {/* ================================================================== */}
-        <aside className="w-88 bg-[#0A0E17]/95 border-l border-white/10 p-4 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20 font-mono">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-emerald-400" />
+        <aside className="w-88 bg-sidebar/95 border-l border-border p-4 flex flex-col shrink-0 overflow-y-auto scrollbar-thin space-y-4 z-20 font-mono">
+          <div className="flex items-center justify-between pb-2 border-b border-border">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-status-green" />
               <span>Real-Time Scoring Engine</span>
             </span>
-            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded font-bold">
+            <span className="text-[9px] font-mono text-status-green bg-status-green/15 border border-status-green/30 px-2 py-0.5 rounded font-bold">
               LIVE CALCULATOR
             </span>
           </div>
@@ -776,40 +776,40 @@ export const SowScreen: React.FC<SowScreenProps> = ({
           {/* 1. COPILOT READINESS OVERALL SCORE */}
           <div className={`p-4 rounded-2xl border transition-all space-y-3 relative overflow-hidden ${
             isCopilotReady 
-              ? 'bg-gradient-to-br from-slate-900 via-emerald-950/40 to-[#0A1828] border-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
-              : 'bg-gradient-to-br from-slate-900 via-amber-950/40 to-[#0A1828] border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+              ? 'bg-gradient-to-br from-secondary via-status-green/40 to-background border-status-green/60 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+              : 'bg-gradient-to-br from-secondary via-status-amber/40 to-background border-status-amber/60 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase text-slate-400 tracking-wider font-bold">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-bold">
                 Copilot Readiness Score
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                 isCopilotReady 
-                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500' 
-                  : 'bg-amber-950 text-amber-300 border-amber-500'
+                  ? 'bg-status-green/10 text-status-green border-status-green' 
+                  : 'bg-status-amber/10 text-status-amber border-status-amber'
               }`}>
                 {isCopilotReady ? 'Copilot Ready' : 'Remediation Required'}
               </span>
             </div>
 
             <div className="flex items-baseline space-x-2">
-              <span className={`text-3xl font-black ${isCopilotReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+              <span className={`text-3xl font-black ${isCopilotReady ? 'text-status-green' : 'text-status-amber'}`}>
                 {readinessScore}
               </span>
-              <span className="text-sm text-slate-500 font-bold">/ 100</span>
+              <span className="text-sm text-muted-foreground font-bold">/ 100</span>
             </div>
 
             {/* Animated Progress Bar */}
-            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-white/10 p-0.5">
+            <div className="w-full bg-secondary h-2.5 rounded-full overflow-hidden border border-border p-0.5">
               <div 
                 className={`h-full rounded-full transition-all duration-500 ${
-                  isCopilotReady ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-amber-500 to-rose-400'
+                  isCopilotReady ? 'bg-gradient-to-r from-status-green to-status-teal' : 'bg-gradient-to-r from-status-amber to-destructive'
                 }`}
                 style={{ width: `${readinessScore}%` }}
               />
             </div>
 
-            <p className="text-[10px] text-slate-400 leading-snug">
+            <p className="text-[10px] text-muted-foreground leading-snug">
               {isCopilotReady 
                 ? 'High readiness threshold achieved! All key governance, security, and enablement requirements met.'
                 : 'Threshold < 80: Select Governance or Security modules to remediate risk before deployment.'}
@@ -818,81 +818,81 @@ export const SowScreen: React.FC<SowScreenProps> = ({
 
           {/* SUB-CATEGORICAL SCORES */}
           <div className="space-y-2.5">
-            <span className="text-[10px] uppercase text-slate-400 font-bold block border-b border-white/10 pb-1">
+            <span className="text-[10px] uppercase text-muted-foreground font-bold block border-b border-border pb-1">
               Category Score Breakdown
             </span>
 
             {/* 2. Governance Score */}
-            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+            <div className="bg-secondary/90 p-3 rounded-xl border border-border space-y-1">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-muted-foreground font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-primary" />
                   Governance Score
                 </span>
-                <span className="font-extrabold text-sky-400">{governanceScore}/100</span>
+                <span className="font-extrabold text-primary">{governanceScore}/100</span>
               </div>
-              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-sky-500 h-full transition-all duration-500" style={{ width: `${governanceScore}%` }} />
+              <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                <div className="bg-primary h-full transition-all duration-500" style={{ width: `${governanceScore}%` }} />
               </div>
-              <p className="text-[9.5px] text-slate-400">
+              <p className="text-[9.5px] text-muted-foreground">
                 Purview labels, DLP policies, oversharing containment
               </p>
             </div>
 
             {/* 3. Security Score */}
-            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+            <div className="bg-secondary/90 p-3 rounded-xl border border-border space-y-1">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-muted-foreground font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-destructive" />
                   Security Score
                 </span>
-                <span className="font-extrabold text-rose-400">{securityScore}/100</span>
+                <span className="font-extrabold text-destructive">{securityScore}/100</span>
               </div>
-              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${securityScore}%` }} />
+              <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                <div className="bg-destructive h-full transition-all duration-500" style={{ width: `${securityScore}%` }} />
               </div>
-              <p className="text-[9.5px] text-slate-400">
+              <p className="text-[9.5px] text-muted-foreground">
                 Entra ID CA01, PIM elevation & blast radius reduction
               </p>
             </div>
 
             {/* 4. ROI Score */}
-            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1">
+            <div className="bg-secondary/90 p-3 rounded-xl border border-border space-y-1">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-muted-foreground font-bold flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-status-green" />
                   ROI & Automation Score
                 </span>
-                <span className="font-extrabold text-emerald-400">{roiScore}/100</span>
+                <span className="font-extrabold text-status-green">{roiScore}/100</span>
               </div>
-              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${roiScore}%` }} />
+              <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                <div className="bg-status-green h-full transition-all duration-500" style={{ width: `${roiScore}%` }} />
               </div>
-              <p className="text-[9.5px] text-slate-400">
+              <p className="text-[9.5px] text-muted-foreground">
                 Workflow automation, agent buildout & waste reduction
               </p>
             </div>
           </div>
 
           {/* Terms & Authorization Summary */}
-          <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 text-[10.5px]">
-            <span className="text-[10px] uppercase text-indigo-400 font-bold block flex items-center gap-1">
-              <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="p-3 rounded-xl bg-secondary/90 border border-border space-y-2 text-[10.5px]">
+            <span className="text-[10px] uppercase text-accent font-bold block flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5 text-accent" />
               SOW Authorization Details
             </span>
 
-            <div className="space-y-1.5 text-slate-300">
+            <div className="space-y-1.5 text-muted-foreground">
               <div className="flex justify-between">
-                <span className="text-slate-400">Entity:</span>
-                <span className="text-white font-bold">{companyName}</span>
+                <span className="text-muted-foreground">Entity:</span>
+                <span className="text-foreground font-bold">{companyName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">PO Number:</span>
-                <span className="text-emerald-400 font-bold">{poNumber}</span>
+                <span className="text-muted-foreground">PO Number:</span>
+                <span className="text-status-green font-bold">{poNumber}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Terms:</span>
-                <span className="text-slate-200">Net 30 • 30-Day Lock</span>
+                <span className="text-muted-foreground">Terms:</span>
+                <span className="text-foreground">Net 30 • 30-Day Lock</span>
               </div>
             </div>
           </div>
@@ -903,7 +903,7 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             {/* 1. Main Purchase Button */}
             <button
               onClick={() => setIsPurchaseModalOpen(true)}
-              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-emerald-950/60 cursor-pointer border border-white/20 uppercase tracking-wider"
+              className="w-full py-3 px-4 bg-gradient-to-r from-status-green via-status-teal to-accent hover:from-status-green hover:to-accent text-primary-foreground font-black rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-xl shadow-status-green/60 cursor-pointer border border-border uppercase tracking-wider"
             >
               <ShoppingBag className="w-4 h-4" />
               <span>Purchase & Authorize SOW</span>
@@ -917,11 +917,11 @@ export const SowScreen: React.FC<SowScreenProps> = ({
                   value={procurementEmail}
                   onChange={(e) => setProcurementEmail(e.target.value)}
                   placeholder="procurement@company.com"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-[10.5px] text-slate-200 focus:outline-none focus:border-sky-500"
+                  className="flex-1 bg-secondary border border-border rounded-lg px-2.5 py-1 text-[10.5px] text-foreground focus:outline-none focus:border-primary"
                 />
                 <button
                   type="submit"
-                  className="py-1 px-3 bg-sky-600 hover:bg-sky-500 text-slate-950 font-bold rounded-lg text-[10.5px] shrink-0 cursor-pointer"
+                  className="py-1 px-3 bg-primary hover:bg-primary text-primary-foreground font-bold rounded-lg text-[10.5px] shrink-0 cursor-pointer"
                 >
                   Procurement
                 </button>
@@ -931,9 +931,9 @@ export const SowScreen: React.FC<SowScreenProps> = ({
             {/* 3. Download SOW PDF Button */}
             <button
               onClick={() => triggerToast(`Downloading "Statement_of_Work_SOW-2026-M365-092.pdf"... File ready!`)}
-              className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs flex items-center justify-center space-x-2 border border-slate-800 transition-colors cursor-pointer"
+              className="w-full py-2.5 px-3 bg-secondary hover:bg-secondary text-muted-foreground rounded-xl text-xs flex items-center justify-center space-x-2 border border-border transition-colors cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-sky-400" />
+              <Download className="w-3.5 h-3.5 text-primary" />
               <span>Download SOW PDF</span>
             </button>
 

@@ -501,10 +501,15 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={AssessmentDashboardPage} />
       </Route>
 
-      {/* Copilot Assessment — new AI-Studio-designed exemplar UI (mechanical
-          import-path fix + routing only; still on static/mock data, real
-          telemetry wiring is future work). */}
+      {/* Copilot Assessment — each step (home/quiz/telemetry/personas/
+          use-cases/security/security2/governance/roi/report/documents/sow)
+          is now its own deep-linkable URL under this dynamic route, rather
+          than one fixed URL with an in-memory step. Still on static/mock
+          data in most steps; real telemetry/signal wiring is future work. */}
       <Route path="/copilot-assessment">
+        <Redirect to="/copilot-assessment/home" />
+      </Route>
+      <Route path="/copilot-assessment/:step">
         <ProtectedRoute component={CopilotAssessmentPage} />
       </Route>
 

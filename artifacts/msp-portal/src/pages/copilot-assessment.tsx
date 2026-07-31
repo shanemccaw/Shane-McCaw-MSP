@@ -1,4 +1,25 @@
+/**
+ * copilot-assessment.tsx
+ *
+ * Route: /copilot-assessment/:step
+ *
+ * Each step of the guided Copilot assessment flow (home, quiz, telemetry,
+ * personas, use-cases, security, security2, governance, roi, report,
+ * documents, sow) now has its own real, deep-linkable URL under this
+ * dynamic route, instead of a single fixed /copilot-assessment URL with
+ * an in-memory currentStep. wouter does not remount this component when
+ * only the :step param changes (confirmed by the existing analogous
+ * pattern in assessment-dashboard.tsx's :serviceSlug usage), so quiz
+ * answers / telemetry progress / selected persona / governance / roi
+ * state can safely stay in local useState across step navigation without
+ * a separate Context provider.
+ *
+ * Navigating between steps now does a real setLocation() (URL change),
+ * not a local setState -- Back/Forward, refresh, and sharing a link to a
+ * specific step all work correctly as a result.
+ */
 import React, { useState } from 'react';
+import { useParams, useLocation } from 'wouter';
 import {
   AssessmentStep,
   AssessmentState,
@@ -17,8 +38,6 @@ import {
 } from '@/components/copilot-assessment/assessmentData';
 
 import { TopToolbar } from '@/components/copilot-assessment/TopToolbar';
-import { LeftPanel } from '@/components/copilot-assessment/LeftPanel';
-import { RightPanel } from '@/components/copilot-assessment/RightPanel';
 
 import { HomeScreen } from '@/components/copilot-assessment/screens/HomeScreen';
 import { QuizScreen } from '@/components/copilot-assessment/screens/QuizScreen';
@@ -52,9 +71,19 @@ const STEP_ORDER: AssessmentStep[] = [
   'sow'
 ];
 
-export default function App() {
-  const [state, setState] = useState<AssessmentState>({
-    currentStep: 'home',
+const VALID_STEPS = new Set<string>(STEP_ORDER);
+
+type SharedState = Omit<AssessmentState, 'currentStep'>;
+
+export default function CopilotAssessmentPage() {
+  const { step: rawStep } = useParams<{ step?: string }>();
+  const [, setLocation] = useLocation();
+
+  // Falls back to 'home' for a missing/invalid :step (e.g. a stale or
+  // hand-typed link) rather than crashing on an unrecognized step.
+  const currentStep: AssessmentStep = (rawStep && VALID_STEPS.has(rawStep) ? rawStep : 'home') as AssessmentStep;
+
+  const [state, setState] = useState<SharedState>({
     currentQuestionIndex: 0,
     quizAnswers: {},
     quizProfile: null,
@@ -80,20 +109,15 @@ export default function App() {
 
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
 
-  // Calculate Overall Progress
-  const currentStepIndex = STEP_ORDER.indexOf(state.currentStep);
+  const currentStepIndex = STEP_ORDER.indexOf(currentStep);
   const progressPercent = Math.round((currentStepIndex / (STEP_ORDER.length - 1)) * 100);
 
-  // Navigation handlers
+  // Real navigation -- changes the URL, so Back/Forward/refresh/sharing a
+  // link all behave correctly. Every screen already only calls this same
+  // onNavigate/onContinue callback contract, so none of them needed to
+  // change.
   const handleNavigate = (step: AssessmentStep) => {
-    setState(prev => ({ ...prev, currentStep: step }));
-  };
-
-  const handleNextStep = () => {
-    const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEP_ORDER.length) {
-      setState(prev => ({ ...prev, currentStep: STEP_ORDER[nextIndex] }));
-    }
+    setLocation(`/copilot-assessment/${step}`);
   };
 
   // Quiz Handler — receives the completed structured profile (#183/#184)
@@ -114,7 +138,6 @@ export default function App() {
       engines: prev.engines.map(e => ({ ...e, status: 'pending', progress: 0 }))
     }));
 
-    // Simulate progressive running of 5 engines
     let stepCount = 0;
     const interval = setInterval(() => {
       stepCount++;
@@ -150,20 +173,16 @@ export default function App() {
     }, 600);
   };
 
-  // Governance Handler
   const handleUpdateGovernance = (updated: Partial<GovernanceState>) => {
     setState(prev => ({ ...prev, governance: { ...prev.governance, ...updated } }));
   };
 
-  // ROI Handler
   const handleUpdateRoi = (updated: Partial<RoiState>) => {
     setState(prev => ({ ...prev, roi: { ...prev.roi, ...updated } }));
   };
 
-  // Reset Assessment
   const handleReset = () => {
     setState({
-      currentStep: 'home',
       currentQuestionIndex: 0,
       quizAnswers: {},
       quizProfile: null,
@@ -186,249 +205,132 @@ export default function App() {
         useCaseIntensity: 70
       }
     });
+    handleNavigate('home');
+  };
+
+  const commonScreenProps = {
+    onHelpClick: () => setIsSpecModalOpen(true),
+    onExitClick: () => handleNavigate('home'),
+    onNavigate: handleNavigate,
   };
 
   return (
-    <div className="h-screen w-screen bg-[#0A0A0A] text-[#E1E1E1] flex flex-col font-sans overflow-hidden antialiased select-none">
-      {/* 1. Top Toolbar */}
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col font-sans overflow-hidden antialiased select-none">
       <TopToolbar
-        currentStep={state.currentStep}
+        currentStep={currentStep}
         progressPercent={progressPercent}
         onNavigate={handleNavigate}
         onOpenArchitectureSpec={() => setIsSpecModalOpen(true)}
         onReset={handleReset}
       />
 
-      {state.currentStep === 'quiz' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+      <div className="fixed inset-0 z-40 bg-background">
+        {currentStep === 'home' && (
+          <HomeScreen
+            onStart={() => handleNavigate('quiz')}
+            onOpenSpec={() => setIsSpecModalOpen(true)}
+          />
+        )}
+
+        {currentStep === 'quiz' && (
           <QuizScreen
             initialProfile={state.quizProfile ?? undefined}
             onCompleteQuiz={handleCompleteQuiz}
             onHelpClick={() => setIsSpecModalOpen(true)}
             onExitClick={() => handleNavigate('home')}
           />
-        </div>
-      ) : state.currentStep === 'telemetry' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'telemetry' && (
           <TelemetryScreen
             quizAnswers={state.quizAnswers}
             onContinue={() => handleNavigate('personas')}
             onHelpClick={() => setIsSpecModalOpen(true)}
             onExitClick={() => handleNavigate('home')}
           />
-        </div>
-      ) : state.currentStep === 'personas' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'personas' && (
           <PersonasScreen
             quizAnswers={state.quizAnswers}
             personas={PERSONA_STORIES}
             onSelectPersona={(persona) => setState(prev => ({ ...prev, selectedPersona: persona }))}
             onContinue={() => handleNavigate('use-cases')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'use-cases' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'use-cases' && (
           <UseCasesScreen
             quizAnswers={state.quizAnswers}
             useCases={USE_CASE_TILES}
             onContinue={() => handleNavigate('security')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'security' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'security' && (
           <SecurityScreen
             governance={state.governance}
             onUpdateGovernance={handleUpdateGovernance}
             onContinue={() => handleNavigate('security2')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'security2' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'security2' && (
           <Security2Screen
             governance={state.governance}
             onUpdateGovernance={handleUpdateGovernance}
             onContinue={() => handleNavigate('governance')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'governance' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'governance' && (
           <GovernanceScreen
             governance={state.governance}
             onUpdateGovernance={handleUpdateGovernance}
             onContinue={() => handleNavigate('roi')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'roi' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'roi' && (
           <RoiScreen
             roi={state.roi}
             onUpdateRoi={handleUpdateRoi}
             onContinue={() => handleNavigate('report')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'report' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'report' && (
           <FinalReportScreen
             governance={state.governance}
             roi={state.roi}
             onContinue={() => handleNavigate('documents')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'documents' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'documents' && (
           <DocumentsScreen
             documents={DOCUMENT_DELIVERABLES}
             onSelectDocument={(doc) => setState(prev => ({ ...prev, selectedDocument: doc }))}
             onOpenArchitectureSpec={() => setIsSpecModalOpen(true)}
             onContinue={() => handleNavigate('sow')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : state.currentStep === 'sow' ? (
-        <div className="fixed inset-0 z-40 bg-[#0A0A0A]">
+        )}
+
+        {currentStep === 'sow' && (
           <SowScreen
             onContinue={() => handleNavigate('home')}
-            onHelpClick={() => setIsSpecModalOpen(true)}
-            onExitClick={() => handleNavigate('home')}
-            onNavigate={(step) => handleNavigate(step)}
+            {...commonScreenProps}
           />
-        </div>
-      ) : (
-        /* Main Body (Left Panel + Center Stage + Right Context Panel) */
-        <div className="flex-1 flex overflow-hidden relative">
-        {/* 2. Left Panel (Collapsible Vertical Navigation) */}
-        <LeftPanel
-          currentStep={state.currentStep}
-          isCollapsed={state.isLeftPanelCollapsed}
-          onToggleCollapse={() => setState(prev => ({ ...prev, isLeftPanelCollapsed: !prev.isLeftPanelCollapsed }))}
-          onNavigate={handleNavigate}
-          quizProgress={Object.keys(state.quizAnswers).length}
-        />
-
-        {/* 3. Center Panel (Primary Content Stage) */}
-        <main className="flex-1 overflow-y-auto bg-[#0F0F0F] relative scrollbar-thin">
-          {state.currentStep === 'home' && (
-            <HomeScreen
-              onStart={() => handleNavigate('quiz')}
-              onOpenSpec={() => setIsSpecModalOpen(true)}
-            />
-          )}
-
-          {state.currentStep === 'telemetry' && (
-            <TelemetryScreen
-              engines={state.engines}
-              isRunning={state.isTelemetryRunning}
-              overallProgress={state.telemetryProgress}
-              onRunTelemetry={handleRunTelemetry}
-              onContinue={() => handleNavigate('personas')}
-            />
-          )}
-
-          {state.currentStep === 'personas' && (
-            <PersonasScreen
-              personas={PERSONA_STORIES}
-              onSelectPersona={(persona) => setState(prev => ({ ...prev, selectedPersona: persona }))}
-              onContinue={() => handleNavigate('use-cases')}
-            />
-          )}
-
-          {state.currentStep === 'use-cases' && (
-            <UseCasesScreen
-              useCases={USE_CASE_TILES}
-              onContinue={() => handleNavigate('security')}
-            />
-          )}
-
-          {state.currentStep === 'security' && (
-            <SecurityScreen
-              governance={state.governance}
-              onUpdateGovernance={handleUpdateGovernance}
-              onContinue={() => handleNavigate('security2')}
-            />
-          )}
-
-          {state.currentStep === 'security2' && (
-            <Security2Screen
-              governance={state.governance}
-              onUpdateGovernance={handleUpdateGovernance}
-              onContinue={() => handleNavigate('governance')}
-            />
-          )}
-
-          {state.currentStep === 'governance' && (
-            <GovernanceScreen
-              governance={state.governance}
-              onUpdateGovernance={handleUpdateGovernance}
-              onContinue={() => handleNavigate('roi')}
-            />
-          )}
-
-          {state.currentStep === 'roi' && (
-            <RoiScreen
-              roi={state.roi}
-              onUpdateRoi={handleUpdateRoi}
-              onContinue={() => handleNavigate('report')}
-            />
-          )}
-
-          {state.currentStep === 'report' && (
-            <FinalReportScreen
-              governance={state.governance}
-              roi={state.roi}
-              onContinue={() => handleNavigate('documents')}
-            />
-          )}
-
-          {state.currentStep === 'documents' && (
-            <DocumentsScreen
-              documents={DOCUMENT_DELIVERABLES}
-              onSelectDocument={(doc) => setState(prev => ({ ...prev, selectedDocument: doc }))}
-              onOpenArchitectureSpec={() => setIsSpecModalOpen(true)}
-              onContinue={() => handleNavigate('sow')}
-            />
-          )}
-
-          {state.currentStep === 'sow' && (
-            <SowScreen
-              onContinue={() => handleNavigate('home')}
-            />
-          )}
-        </main>
-
-        {/* 4. Right Panel (Contextual Insights Panel) */}
-        <RightPanel
-          currentStep={state.currentStep}
-          isCollapsed={state.isRightPanelCollapsed}
-          onToggleCollapse={() => setState(prev => ({ ...prev, isRightPanelCollapsed: !prev.isRightPanelCollapsed }))}
-          quizAnswers={state.quizAnswers}
-          governance={state.governance}
-          roi={state.roi}
-        />
+        )}
       </div>
-      )}
 
       {/* Modals */}
       <PersonaModal

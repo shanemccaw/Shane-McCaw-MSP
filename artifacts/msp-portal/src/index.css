@@ -338,6 +338,36 @@
   }
 }
 
+/* Copilot CTA pulse-glow + shimmer — Shane's own design for the "Evaluate
+ * Use-Case Stories" button, translated faithfully from his HTML mockup.
+ * Distinct from shimmer-sweep above (that one is a plain horizontal sweep
+ * for progress-style surfaces; this one is a skewed diagonal sweep sized
+ * for a pill button, plus its own slower breathing box-shadow glow that
+ * shimmer-sweep has no equivalent for), so it's its own pair rather than
+ * reusing/overloading the existing one. */
+@theme {
+  --animate-copilot-pulse-glow: copilot-pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-copilot-shimmer: copilot-shimmer 4s infinite;
+
+  @keyframes copilot-pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 35px rgba(139, 92, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.3);
+    }
+  }
+
+  @keyframes copilot-shimmer {
+    0% {
+      transform: translateX(-150%) skewX(-25deg);
+    }
+    100% {
+      transform: translateX(150%) skewX(-25deg);
+    }
+  }
+}
+
 /* Heartbeat / ECG hero trace — a bright pulse segment that travels along an
  * SVG heartbeat path (security-overview + m365-health hero bands). The path
  * sets pathLength="100"; the dasharray is a 14-unit bright segment on an
@@ -446,5 +476,34 @@
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after {
     inset: -1px;
+  }
+
+  /* Thin, theme-aware scrollbar. Referenced as `scrollbar-thin` in ~23 places
+     across the app; this class name existed with no backing CSS anywhere
+     until now, so every one of those was silently falling back to the
+     default OS/browser scrollbar. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
   }
 }
