@@ -546,8 +546,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         </aside>
 
         {/* CENTER PANEL (Primary Content Stage) */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-background">
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 scrollbar-thin">
+        <main className="flex-1 overflow-y-auto bg-background p-6 sm:p-8 flex flex-col justify-between scrollbar-thin">
           <div className="max-w-4xl mx-auto w-full space-y-6">
             {/* Screen Header */}
             {stepId !== 'about-you' && stepId !== 'review' && (
