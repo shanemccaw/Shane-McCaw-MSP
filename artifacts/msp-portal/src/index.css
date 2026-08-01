@@ -2,6 +2,13 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* Tailwind v4's automatic source detection does not look inside workspace
+   packages, so utilities that appear only in a lib/* package are never emitted
+   (verified against a real build — see #285). The JSON viewer moved out of this
+   app's src/ into @workspace/json-viewer, so without this line the debug panel's
+   tree would lose the classes only it uses. */
+@source "../../../lib/json-viewer/src";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

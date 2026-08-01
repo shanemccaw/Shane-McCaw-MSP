@@ -366,6 +366,12 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/debug-console':
+        specifier: workspace:*
+        version: link:../../lib/debug-console
+      '@workspace/json-viewer':
+        specifier: workspace:*
+        version: link:../../lib/json-viewer
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -917,6 +923,12 @@ importers:
       '@workspace/dashboard-canvas':
         specifier: workspace:*
         version: link:../../lib/dashboard-canvas
+      '@workspace/debug-console':
+        specifier: workspace:*
+        version: link:../../lib/debug-console
+      '@workspace/json-viewer':
+        specifier: workspace:*
+        version: link:../../lib/json-viewer
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1633,6 +1645,8 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
+  lib/debug-console: {}
+
   lib/integrations-anthropic-ai:
     dependencies:
       '@anthropic-ai/sdk':
@@ -1666,6 +1680,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+
+  lib/json-viewer:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.14
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.545.0(react@19.1.0)
 
   lib/offer-card:
     devDependencies:

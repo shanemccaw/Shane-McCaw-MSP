@@ -1,26 +1,33 @@
-// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// ⚠️ DEBUG-ONLY CODE — never reachable by a real customer ⚠️
 //
-// artifacts/msp-portal/src/components/copilot-assessment/debug/networkRecorder.ts
+// lib/debug-console/src/network-recorder.ts  (@workspace/debug-console)
 //
-// Records the real HTTP + SSE traffic this page makes, for the testbed-only
-// debug panel (#279).
+// Records the real HTTP + SSE traffic the current page makes, for the floating
+// debug panels: msp-portal's testbed-gated Copilot-assessment panel (#279) and
+// admin-panel's requireAdmin-gated panel (#285).
 //
-// It works by patching window.fetch and window.EventSource while the panel is
-// mounted. That is deliberate and it is the only way to see the page's *own*
-// real traffic without rewriting every client module: the Copilot assessment
-// screens talk to the server through a dozen different call sites (scan
-// polls via useRealGraphScanSteps, the doc-workflow SSE stream in
-// useRealDocWorkflowPhases, persona/report generation clients, the quiz
-// profile restore, scan-status-context …), most of them going through
-// fetchWithAuth but some — every EventSource — not.
+// It works by patching window.fetch and window.EventSource while a panel is
+// mounted. That is deliberate and it is the only way to see a page's *own* real
+// traffic without rewriting every client module: pages talk to the server
+// through many different call sites (polls, SSE streams, generation clients,
+// react-query fetchers …), most going through some fetchWithAuth wrapper but
+// some — every EventSource — not.
 //
-// Because it patches globals, it is installed ONLY behind the same real
-// server-side tenants.isTestbed gate every other debug tool in this flow uses
-// (#228/#231/#234/#253). install() is reference-counted and fully restores the
-// originals on the last uninstall, so React StrictMode's double-effect and a
-// remount cannot leave a patch behind or double-record.
+// Because it patches globals, a panel installs it ONLY behind that app's real
+// server-side gate: `tenants.isTestbed` in msp-portal, the admin JWT role claim
+// `requireAdmin` enforces in admin-panel. install() is reference-counted and
+// fully restores the originals on the last uninstall, so React StrictMode's
+// double-effect and a remount cannot leave a patch behind or double-record.
 //
-// Nothing outside the debug panel imports this module.
+// Why this is a shared package rather than a copy per app (#285): the redaction
+// key list and the body/entry caps below are the security-shaped part of the
+// debug console. Two forks of them would silently drift — one app learning
+// about a new credential-bearing query param while the other keeps logging it
+// verbatim is a real leak, not a cosmetic difference. The panel *chrome* is
+// deliberately NOT here: it is app-specific presentation (title, accent, gating
+// source, which live state it shows) and each app owns its own.
+//
+// This module is DOM-only and framework-free — no React import, no app imports.
 
 /** Bodies are truncated at this many characters — big report payloads must not
  *  turn the debug panel into a memory leak. Truncation is always visible in
