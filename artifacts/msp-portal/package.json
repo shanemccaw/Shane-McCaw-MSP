@@ -12,6 +12,8 @@
     "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
+    "@fluentui/react-components": "^9.74.4",
+    "@fluentui/react-icons": "^2.0.334",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",

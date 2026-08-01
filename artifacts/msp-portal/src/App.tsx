@@ -87,6 +87,7 @@ import ProjectKanbanPage from "@/pages/project-kanban";
 import ZohoProjectBoardPage from "@/pages/zoho-project-board";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import CopilotAssessmentPage from "@/pages/copilot-assessment";
+import CopilotAssessmentFluentPreviewPage from "@/pages/copilot-assessment-fluent-preview";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
@@ -566,6 +567,17 @@ function SlugInnerSwitch() {
           not linked in nav. Visual QA only; no real page migrates yet. */}
       <Route path="/dev/style-guide">
         <ProtectedRoute component={DevStyleGuidePage} />
+      </Route>
+
+      {/* Real Fluent 2 mock of the Personas page (#288, epic #183) — an isolated
+          duplicate of PersonasScreen restyled in @fluentui/react-components,
+          fed the customer's own real quiz profile + real generated personas.
+          Deliberately NOT under /copilot-assessment/:step: it is a design
+          evaluation artifact, testbed-gated inside the page, not linked from
+          nav or from the wizard, and the production Personas screen and route
+          are untouched. No migration decision is implied by its existence. */}
+      <Route path="/dev/fluent-personas-preview">
+        <ProtectedRoute component={CopilotAssessmentFluentPreviewPage} />
       </Route>
 
       {/* AI Billing */}
