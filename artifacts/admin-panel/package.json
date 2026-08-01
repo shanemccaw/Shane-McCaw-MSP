@@ -60,6 +60,8 @@
     "@workspace/dashboard-canvas": "workspace:*",
     "@workspace/dashboard-registry": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/debug-console": "workspace:*",
+    "@workspace/json-viewer": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",

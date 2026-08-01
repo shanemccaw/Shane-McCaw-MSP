@@ -2,6 +2,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4's automatic source detection does not look inside workspace
+   packages, so utilities that appear only in a lib/* package are never emitted
+   (verified against a real build — see #285). Any lib/* package whose markup is
+   styled with Tailwind has to be registered explicitly, or it renders unstyled. */
+@source "../../../lib/json-viewer/src";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

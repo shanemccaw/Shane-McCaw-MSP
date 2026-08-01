@@ -1,28 +1,33 @@
-// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// ⚠️ DEBUG-ONLY CODE — staff tooling, never customer-facing ⚠️
 //
-// artifacts/msp-portal/src/components/copilot-assessment/debug/DebugPanel.tsx
+// artifacts/admin-panel/src/components/debug/AdminDebugPanel.tsx
 //
-// Floating, draggable, collapsible debug console for the Copilot assessment
-// flow (#279): the page's live in-memory state on one tab, its real network /
-// SSE traffic on the other, both rendered through the standalone JsonViewer
-// (@workspace/json-viewer).
+// Floating, draggable, resizable, collapsible debug console for admin-panel
+// (#285) — the client-side counterpart of msp-portal's Copilot-assessment
+// panel (#279). State tab: the live in-memory state behind whatever page is
+// open. Network tab: this tab's own real fetch/EventSource traffic. Both are
+// rendered with @workspace/json-viewer.
 //
-// Gating: this component is only ever rendered when the page's `isTestbed` is
-// true, and that flag comes from GET /portal/assessment/testbed-status — the
-// real server-side tenants.isTestbed lookup, same discipline as every other
-// debug tool in this flow (#228/#231/#234/#253). It defaults to false, so for
-// a non-testbed customer the panel is genuinely never mounted (and the network
-// recorder never patches anything) rather than being rendered-and-hidden.
+// GATING — requireAdmin, not isTestbed. Reaching admin-panel at all already
+// means the caller holds a `role: "admin"` access token: App.tsx's RequireAdmin
+// wrapper redirects anyone else to /login, that role claim is issued by the
+// server on /api/auth/login and /api/auth/refresh (both of which refuse to hand
+// a non-admin an admin session), and it is the exact same claim the server's
+// requireAdmin middleware checks before serving any /api/admin/* route — which
+// 403s "Admin access required" without it. This panel is mounted *inside* that
+// wrapper and additionally checks the same server-issued claim itself, so for a
+// non-admin it is never mounted at all: the recorder never patches window.fetch
+// and nothing is rendered-then-hidden.
 //
-// The JsonViewer it consumes knows nothing about any of this — see that file's
-// header for why it is deliberately generic.
+// NOT the same thing as the shell's ConsolePanel / SimulatorLogStream, and
+// deliberately does not overlap them: those stream SERVER-side output (the
+// app's own logger buffer and the simulator's server log firehose). This shows
+// CLIENT-side React/in-memory state and browser network traffic, which nothing
+// else in admin-panel exposes.
 //
-// #285 moved the two app-agnostic pieces this panel is built on out of
-// msp-portal and into workspace packages, because admin-panel now runs the same
-// console: the viewer is @workspace/json-viewer and the fetch/EventSource
-// recorder (with its redaction and capping rules) is @workspace/debug-console.
-// Only this chrome — the testbed framing, the reset-session button, which live
-// state it shows — is still app-specific and still lives here.
+// z-index sits above modals (z-[200]) so a page can be debugged with a dialog
+// open, but below the shell's toasts and context menus (z-[999]/z-[9999]) so
+// those still work over the top of it.
 
 import {
   useCallback,
@@ -36,9 +41,10 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import { Bug, ChevronDown, ChevronUp, RotateCcw, Trash2, X } from "lucide-react";
+import { useLocation, useSearch } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+import { Bug, ChevronDown, ChevronUp, Trash2, X } from "lucide-react";
 import { JsonViewer } from "@workspace/json-viewer";
-import { useAuth } from "@/lib/auth-context";
 import {
   clearNetworkLog,
   getNetworkLog,
@@ -47,14 +53,22 @@ import {
   subscribeNetworkLog,
   type NetworkEntry,
 } from "@workspace/debug-console";
+import { useAuth } from "@/contexts/AuthContext";
+import { getDebugStateSlices, subscribeDebugState } from "./debugState";
 
-const STORAGE_KEY = "copilot-assessment.debug-panel.v1";
+const STORAGE_KEY = "admin-panel.debug-panel.v1";
 
-const DEFAULT_WIDTH = 440;
-const DEFAULT_HEIGHT = 520;
+const DEFAULT_WIDTH = 460;
+const DEFAULT_HEIGHT = 540;
 const MIN_WIDTH = 300;
 const MIN_HEIGHT = 220;
 const HEADER_HEIGHT = 30;
+
+/** Same discipline as the network recorder's body cap: a react-query entry
+ *  holding a huge list must not turn the panel into a memory hog or freeze the
+ *  tree render. Over the cap the data is replaced by a visible marker that says
+ *  so — never a silent drop. */
+const MAX_QUERY_DATA_CHARS = 20_000;
 
 type PanelLayout = {
   x: number;
@@ -65,19 +79,19 @@ type PanelLayout = {
   tab: "state" | "network";
 };
 
-export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, unknown> }) {
+export function AdminDebugPanel() {
+  const { user, accessToken } = useAuth();
   const [layout, setLayout] = useState<PanelLayout>(() => loadLayout());
   const [dismissed, setDismissed] = useState(false);
   const [entries, setEntries] = useState<NetworkEntry[]>(getNetworkLog);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [urlFilter, setUrlFilter] = useState("");
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
-
   // Patch fetch/EventSource for as long as the panel is mounted — i.e. only
-  // ever on a real testbed tenant, since that is the only case this component
-  // is rendered at all.
+  // ever for a server-authenticated admin, since that is the only case this
+  // component is rendered at all.
   useEffect(() => {
     const uninstall = installNetworkRecorder();
     setRecordingStartedAt(getRecordingStartedAt());
@@ -105,7 +119,9 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
 
   const startDrag = useDragHandle(panelRef, setLayout, "move");
   const startResize = useDragHandle(panelRef, setLayout, "resize");
-  const resetSession = useResetSession();
+
+  const stateVisible = !dismissed && !layout.collapsed && layout.tab === "state";
+  const pageState = useLivePageState(stateVisible, user, accessToken);
 
   const filtered = useMemo(() => {
     const q = urlFilter.trim().toLowerCase();
@@ -117,9 +133,10 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
     return (
       <button
         type="button"
+        data-testid="admin-debug-reopen"
         onClick={() => setDismissed(false)}
-        className="fixed right-3 bottom-3 z-[70] flex items-center gap-1.5 rounded-full border border-amber-500/60 bg-amber-500/15 px-3 py-1.5 text-[11px] font-semibold text-amber-600 shadow-lg backdrop-blur transition-colors hover:bg-amber-500/25 dark:text-amber-300"
-        title="Reopen the testbed debug panel"
+        className="fixed right-3 bottom-3 z-[300] flex items-center gap-1.5 rounded-full border border-primary/60 bg-primary/15 px-3 py-1.5 text-[11px] font-semibold text-primary shadow-lg backdrop-blur transition-colors hover:bg-primary/25"
+        title="Reopen the admin debug panel"
       >
         <Bug className="h-3.5 w-3.5" />
         Debug
@@ -130,8 +147,8 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
   return (
     <div
       ref={panelRef}
-      data-testid="copilot-debug-panel"
-      className="fixed z-[70] flex flex-col overflow-hidden rounded-lg border border-amber-500/50 bg-card/95 shadow-2xl backdrop-blur select-none"
+      data-testid="admin-debug-panel"
+      className="fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-primary/50 bg-card/95 shadow-2xl backdrop-blur select-none"
       style={{
         left: layout.x,
         top: layout.y,
@@ -142,48 +159,17 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
       {/* Drag handle */}
       <div
         onPointerDown={startDrag}
-        data-testid="copilot-debug-panel-header"
-        className="flex h-[30px] shrink-0 cursor-move items-center gap-1.5 border-b border-amber-500/30 bg-amber-500/10 px-2"
+        data-testid="admin-debug-panel-header"
+        className="flex h-[30px] shrink-0 cursor-move items-center gap-1.5 border-b border-primary/30 bg-primary/10 px-2"
       >
-        <Bug className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <span className="truncate text-[10px] font-semibold tracking-wider text-amber-700 uppercase dark:text-amber-300">
-          Testbed Debug
+        <Bug className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span className="truncate text-[10px] font-semibold tracking-wider text-primary uppercase">
+          Admin Debug
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           <button
             type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={resetSession.requestReset}
-            disabled={resetSession.status === "pending"}
-            data-testid="copilot-debug-reset-session"
-            title={
-              resetSession.status === "confirm"
-                ? "Click again to confirm — wipes quiz, scans, findings, workflow runs, and documents for this account"
-                : "[DEBUG] Reset session — clear quiz, scans, and documents (leaves entitlement intact)"
-            }
-            className={`flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold tracking-wide uppercase transition-colors disabled:opacity-50 ${
-              resetSession.status === "confirm"
-                ? "bg-red-500/20 text-red-600 hover:bg-red-500/30 dark:text-red-400"
-                : resetSession.status === "error"
-                  ? "text-red-600 dark:text-red-400"
-                  : resetSession.status === "done"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-          >
-            <RotateCcw className={`h-3 w-3 shrink-0 ${resetSession.status === "pending" ? "animate-spin" : ""}`} />
-            {resetSession.status === "confirm"
-              ? "Confirm?"
-              : resetSession.status === "pending"
-                ? "Resetting…"
-                : resetSession.status === "done"
-                  ? "Reset ✓"
-                  : resetSession.status === "error"
-                    ? "Failed"
-                    : "Reset"}
-          </button>
-          <button
-            type="button"
+            data-testid="admin-debug-collapse"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setLayout((p) => ({ ...p, collapsed: !p.collapsed }))}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -193,6 +179,7 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
           </button>
           <button
             type="button"
+            data-testid="admin-debug-dismiss"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setDismissed(true)}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -215,11 +202,11 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
               <button
                 key={key}
                 type="button"
-                data-testid={`copilot-debug-tab-${key}`}
+                data-testid={`admin-debug-tab-${key}`}
                 onClick={() => setLayout((p) => ({ ...p, tab: key }))}
                 className={`relative h-full px-2 text-[10px] font-semibold tracking-wider uppercase transition-colors ${
                   layout.tab === key
-                    ? "text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-amber-500"
+                    ? "text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -231,7 +218,7 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
           <div className="flex min-h-0 min-w-0 flex-1 flex-col p-1.5">
             {layout.tab === "state" ? (
               <JsonViewer
-                value={state}
+                value={pageState}
                 rootLabel="page"
                 className="min-h-0 flex-1"
                 initialExpandDepth={2}
@@ -257,6 +244,7 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
           {/* Resize handle */}
           <div
             onPointerDown={startResize}
+            data-testid="admin-debug-resize"
             className="absolute right-0 bottom-0 h-3 w-3 cursor-nwse-resize"
             title="Resize"
           >
@@ -266,6 +254,93 @@ export function CopilotAssessmentDebugPanel({ state }: { state: Record<string, u
       )}
     </div>
   );
+}
+
+// ── Live state ────────────────────────────────────────────────────────────────
+
+/**
+ * Assembles the live in-memory state behind the current page.
+ *
+ * Unlike msp-portal's panel — which watches one page's single state object —
+ * admin-panel has ~295 components and no shared page-state shape, so this reads
+ * the state that genuinely exists on every page: the route, the authenticated
+ * identity, and the live react-query cache (admin-panel's actual client-side
+ * data store). Pages holding interesting local state add it on top by calling
+ * useDebugState(); those slices land under `page`.
+ *
+ * Only recomputed while the State tab is actually showing — the cache
+ * subscription and the stringify-based capping below should not run for a panel
+ * sitting collapsed in the corner.
+ */
+function useLivePageState(
+  enabled: boolean,
+  user: { id: number; email: string; role: string } | null,
+  accessToken: string | null,
+): Record<string, unknown> | undefined {
+  const [location] = useLocation();
+  const search = useSearch();
+  const queryClient = useQueryClient();
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const bump = () => setVersion((v) => v + 1);
+    const unsubCache = queryClient.getQueryCache().subscribe(bump);
+    const unsubSlices = subscribeDebugState(bump);
+    bump();
+    return () => {
+      unsubCache();
+      unsubSlices();
+    };
+  }, [enabled, queryClient]);
+
+  return useMemo(() => {
+    if (!enabled) return undefined;
+    void version;
+    const queries = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((query) => ({
+        queryKey: query.queryKey,
+        status: query.state.status,
+        fetchStatus: query.state.fetchStatus,
+        isStale: query.isStale(),
+        observers: query.getObserversCount(),
+        dataUpdatedAt: query.state.dataUpdatedAt ? new Date(query.state.dataUpdatedAt).toISOString() : null,
+        error: query.state.error instanceof Error ? query.state.error.message : (query.state.error ?? null),
+        data: capForPanel(query.state.data),
+      }));
+
+    return {
+      route: {
+        location,
+        search: search ? `?${search}` : "",
+        base: import.meta.env.BASE_URL,
+        href: window.location.href,
+      },
+      // Identity only — the bearer token is deliberately never surfaced, same
+      // reasoning as the recorder redacting query-string JWTs: this panel is
+      // exactly the sort of thing that ends up in a screenshot.
+      auth: user
+        ? { id: user.id, email: user.email, role: user.role, accessToken: accessToken ? "REDACTED" : null }
+        : null,
+      reactQuery: { count: queries.length, queries },
+      page: getDebugStateSlices(),
+    };
+  }, [enabled, version, location, search, user, accessToken, queryClient]);
+}
+
+/** Keeps an oversized cache entry out of the tree, visibly. */
+function capForPanel(value: unknown): unknown {
+  if (value === undefined || value === null) return value ?? null;
+  try {
+    const text = JSON.stringify(value);
+    if (text === undefined) return String(value);
+    if (text.length <= MAX_QUERY_DATA_CHARS) return value;
+    return `…[${text.length} chars — over the ${MAX_QUERY_DATA_CHARS}-char panel cap, not shown]`;
+  } catch {
+    return "…[unserializable value]";
+  }
 }
 
 // ── Network tab ───────────────────────────────────────────────────────────────
@@ -301,6 +376,7 @@ function NetworkTab({
         />
         <button
           type="button"
+          data-testid="admin-debug-net-clear"
           onClick={onClear}
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title="Clear the log"
@@ -314,7 +390,7 @@ function NetworkTab({
         {entries.length === 0 ? (
           <div className="px-2 py-3 text-[11px] italic text-muted-foreground/70">
             {totalCount === 0
-              ? "No requests recorded yet — navigate the flow to capture traffic."
+              ? "No requests recorded yet — navigate the admin panel to capture traffic."
               : "No request matches this filter."}
           </div>
         ) : (
@@ -322,7 +398,7 @@ function NetworkTab({
             <button
               key={e.id}
               type="button"
-              data-testid="copilot-debug-net-row"
+              data-testid="admin-debug-net-row"
               onClick={() => onSelect(selected?.id === e.id ? null : e.id)}
               className={`flex w-full items-center gap-1.5 border-b border-border/50 px-1.5 py-1 text-left font-mono text-[10px] transition-colors last:border-b-0 hover:bg-accent/60 ${
                 selected?.id === e.id ? "bg-accent" : ""
@@ -387,59 +463,6 @@ function statusColor(entry: NetworkEntry): string {
   if (entry.status != null && entry.status >= 400) return "text-red-600 dark:text-red-400";
   if (entry.state === "pending") return "text-muted-foreground/60";
   return "text-emerald-600 dark:text-emerald-400";
-}
-
-// ── Reset session (#284) ────────────────────────────────────────────────────────
-
-type ResetStatus = "idle" | "confirm" | "pending" | "done" | "error";
-
-/**
- * Two-click confirm before the destructive call fires: the first click only
- * arms a 4s-window "Confirm?" state (auto-reverts to idle if never followed
- * up), the second click within that window is what actually calls
- * POST /portal/assessment/debug-reset-session. The endpoint itself is the
- * real gate (hard server-side isTestbed check) — this is purely a
- * misclick guard on a destructive, un-undoable action.
- */
-function useResetSession() {
-  const { fetchWithAuth } = useAuth();
-  const [status, setStatus] = useState<ResetStatus>("idle");
-  const confirmTimer = useRef<number | null>(null);
-  const settleTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
-      if (settleTimer.current) window.clearTimeout(settleTimer.current);
-    },
-    [],
-  );
-
-  const requestReset = useCallback(() => {
-    if (status === "pending") return;
-
-    if (status !== "confirm") {
-      setStatus("confirm");
-      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
-      confirmTimer.current = window.setTimeout(() => setStatus("idle"), 4000);
-      return;
-    }
-
-    if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
-    setStatus("pending");
-    void fetchWithAuth("/api/portal/assessment/debug-reset-session", { method: "POST" })
-      .then((res) => {
-        setStatus(res.ok ? "done" : "error");
-      })
-      .catch(() => {
-        setStatus("error");
-      })
-      .finally(() => {
-        settleTimer.current = window.setTimeout(() => setStatus("idle"), 3000);
-      });
-  }, [status, fetchWithAuth]);
-
-  return { status, requestReset };
 }
 
 // ── Layout: drag, resize, persistence ─────────────────────────────────────────

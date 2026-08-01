@@ -1,26 +1,35 @@
-// artifacts/msp-portal/src/components/ui/json-viewer.tsx
+// lib/json-viewer/src/json-viewer.tsx  (@workspace/json-viewer)
 //
 // Standalone, reusable pretty-JSON viewer: collapsible tree, per-node
 // expand/collapse, search, a verbatim Raw tab, and copy-to-clipboard.
 //
-// Deliberately generic and deliberately placed in components/ui rather than
-// next to any one caller (#279). Two unrelated consumers are already known:
-// the testbed-only Copilot-assessment debug panel (internal live state +
-// network log) and, later, the customer-facing Security page's "now -> new"
-// comparison (#262). So this component knows nothing about debugging,
-// network traffic, testbed gating, or assessments — it takes a value and
-// renders it. Anything caller-specific (which data is safe to show, labels,
-// framing) belongs in the wrapper, not here.
+// Deliberately generic (#279): it knows nothing about debugging, network
+// traffic, gating, or assessments — it takes a value and renders it. Anything
+// caller-specific (which data is safe to show, labels, framing) belongs in the
+// wrapper, not here. Known consumers: the testbed-gated Copilot-assessment
+// debug panel and the requireAdmin-gated admin-panel debug panel (both
+// internal live state + network log), and later the customer-facing Security
+// page's "now -> new" comparison (#262).
 //
-// Why a port rather than an import: admin-panel/src/components/JsonResponseViewer.tsx
-// solves the same problem, but admin-panel and msp-portal are separate Vite
-// apps — msp-portal's tsconfig `paths` is only `@/* -> ./src/*`, its vite
-// alias set is only `@`/`@assets`, admin-panel is not one of its workspace
-// deps, and vite's `server.fs.strict` blocks reaching outside the app root.
-// A shared lib/* package would be the answer if the consumers straddled apps;
-// both real consumers here are inside msp-portal, so the same pattern is
-// ported (Raw tab + copy + never-crash stringify) and extended with the tree,
-// expand/collapse and search this issue needs.
+// Why this lives in lib/* rather than in one app's src (#285): it was written
+// inside msp-portal when both known consumers were in that app. admin-panel is
+// now a second real consumer, and admin-panel/msp-portal are separate Vite apps
+// with no cross-app import path (each app's tsconfig `paths` is only
+// `@/* -> ./src/*`, each vite alias set is only `@`/`@assets`, and vite's
+// `server.fs.strict` blocks reaching outside the app root). A workspace package
+// is the only way two apps share one copy — and 500+ lines of tree/search/
+// circular-ref handling is exactly the kind of thing that must not fork.
+//
+// ⚠️ CONSUMING APPS MUST REGISTER THIS PACKAGE WITH TAILWIND. Tailwind v4's
+// automatic source detection does not look inside workspace packages, so an app
+// that only adds the dependency renders this component unstyled. Each consumer's
+// entry CSS needs, next to `@import "tailwindcss"`:
+//
+//     @source "../../../lib/json-viewer/src";
+//
+// (Verified by build, not assumed: classes that exist only in a lib/* package
+// are otherwise absent from the app's emitted CSS.) The classes used here are
+// all semantic-token or plain-palette utilities that both apps already define.
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, Copy, Search, X } from "lucide-react";

@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { InboxProvider } from "@/contexts/InboxContext";
 import LoginPage from "@/pages/Login";
 import GlobalIDEShell from "@/components/GlobalIDEShell";
+import { AdminDebugPanel } from "@/components/debug/AdminDebugPanel";
 
 // ─── Workspace pages ──────────────────────────────────────────────────────────
 import CommandWorkspace from "@/pages/workspaces/CommandWorkspace";
@@ -64,7 +65,16 @@ function RequireAdmin({ children }: { children: ReactNode }) {
     }
     return <Redirect to="/login" />;
   }
-  return <>{children}</>;
+  // The debug panel (#285) mounts here rather than per-page: this is the single
+  // choke point every admin route already passes through, and putting it after
+  // the role check means it is genuinely never mounted for a non-admin — the
+  // network recorder never patches window.fetch — rather than rendered-and-hidden.
+  return (
+    <>
+      {children}
+      <AdminDebugPanel />
+    </>
+  );
 }
 
 function PostLoginRedirect() {

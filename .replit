@@ -163,6 +163,36 @@ router = "path"
 PORT = "8081"
 BASE_PATH = "/__mockup"
 
+[[workflows.workflow]]
+name = "artifacts/msp-website: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/msp-website"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/msp-website run dev"
+cwd = "./artifacts/msp-website"
+waitForPort = 23333
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "23333"
+BASE_PATH = "/msp/"
+
+[[workflows.workflow]]
+name = "Git  pull"
+mode = "sequential"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git pull"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
