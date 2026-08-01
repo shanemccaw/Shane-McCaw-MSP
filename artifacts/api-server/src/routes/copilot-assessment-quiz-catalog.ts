@@ -40,7 +40,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { asc, inArray } from "drizzle-orm";
+import { asc, inArray, sql } from "drizzle-orm";
 import {
   db,
   quizPersonaClustersTable,
@@ -108,6 +108,159 @@ function pickLevel<T extends { industry: string }>(
 /** '*' is storage's way of saying "no persona linkage"; the wire format says it with an absent field. */
 function toPersonaId(personaKey: string): string | undefined {
   return personaKey === QUIZ_CATALOG_ALL_PERSONAS ? undefined : personaKey;
+}
+
+// ── Failure diagnostics (#286) ───────────────────────────────────────────────
+//
+// This route 500'd persistently and the ONE time the server-side error was
+// captured it logged as an empty `{}`, which left the cause unknown across
+// several sessions. That emptiness is not pino mangling the error — it is
+// structural, and would happen to any `logger.error({ err }, …)` call site in
+// this codebase:
+//
+//   logger.ts's `logMethod` hook mirrors every log call into
+//   `platform_log_stream.meta` (a jsonb column) and out over the SSE log hub
+//   that Simulator Studio's console reads. Both paths JSON-serialize the
+//   merging object, and `JSON.stringify(new Error("boom"))` is exactly `"{}"` —
+//   an Error's message/stack are non-enumerable, so they never survive. pino's
+//   own stdout copy is fine; the console Shane was reading is not.
+//
+// So the fix is not a better serializer — it is to hand the logger a plain,
+// already-JSON-safe object. `errorDetail` below is that object. The raw `err`
+// is still passed alongside it, deliberately: pino-pretty's stdout output wants
+// it, and logger.ts only feeds `captureException` when `mergingObject.err` is a
+// real Error instance.
+//
+// Second reason the cause was invisible: drizzle 0.45.x wraps EVERY driver
+// error in a `DrizzleQueryError` whose message is just "Failed query: …". The
+// real node-postgres error — with the SQLSTATE `code`, `detail`, `hint`,
+// `schema`, `table` and `routine` that name the actual problem — is on `.cause`.
+// Nothing here unwrapped it, so even a healthy log line would have said nothing
+// more useful than "Failed query". `describeThrown` walks the cause chain.
+
+/** node-postgres error fields, plus the two DrizzleQueryError adds. Named explicitly so a non-enumerable one is still captured. */
+const ERROR_FIELDS_OF_INTEREST = [
+  "code", "severity", "detail", "hint", "position", "internalPosition",
+  "internalQuery", "where", "schema", "table", "column", "dataType",
+  "constraint", "file", "line", "routine", "errno", "syscall", "address",
+  "port", "query", "params",
+] as const;
+
+/** Anything at all can be thrown; render it as something jsonb can hold without losing it. */
+function jsonSafe(value: unknown): unknown {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+    case "undefined":
+      return undefined;
+    case "bigint":
+      return value.toString();
+    case "function":
+      return `[Function ${value.name || "anonymous"}]`;
+    case "symbol":
+      return value.toString();
+    default:
+      try {
+        // Round-trips through JSON so a nested Error/circular ref can't take
+        // the whole log line down. Length-capped: a DrizzleQueryError carries
+        // the full query text and params.
+        const json = JSON.stringify(value);
+        return json === undefined ? String(value) : json.slice(0, 2000);
+      } catch {
+        return "[unserializable]";
+      }
+  }
+}
+
+/**
+ * Everything knowable about a thrown value, as plain JSON.
+ *
+ * Deliberately does not assume an Error: the whole point of #286 is that we did
+ * not know what was being thrown. `getOwnPropertyNames` (not `Object.keys`)
+ * because pg sets several of its fields non-enumerable, and message/stack always
+ * are.
+ */
+function describeThrown(value: unknown, depth = 0): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    return { thrownType: typeof value, value: jsonSafe(value) };
+  }
+
+  const err = value as Record<string, unknown>;
+  const detail: Record<string, unknown> = {
+    thrownType: typeof value,
+    constructorName: value.constructor?.name ?? "(no constructor)",
+    isErrorInstance: value instanceof Error,
+    name: typeof err.name === "string" ? err.name : undefined,
+    message: typeof err.message === "string" ? err.message.slice(0, 2000) : undefined,
+    stack: typeof err.stack === "string" ? err.stack.slice(0, 4000) : undefined,
+  };
+
+  for (const field of ERROR_FIELDS_OF_INTEREST) {
+    if (err[field] !== undefined) detail[field] = jsonSafe(err[field]);
+  }
+
+  // Own properties beyond the known set — the catch-all for a thrown shape we
+  // have not seen before, which is precisely the case this exists for.
+  const known = new Set<string>([...ERROR_FIELDS_OF_INTEREST, "name", "message", "stack", "cause"]);
+  const extras: Record<string, unknown> = {};
+  for (const key of Object.getOwnPropertyNames(err)) {
+    if (known.has(key)) continue;
+    extras[key] = jsonSafe(err[key]);
+  }
+  if (Object.keys(extras).length > 0) detail.ownProperties = extras;
+
+  // drizzle wraps pg; pg can wrap a socket error. Bounded so a self-referencing
+  // cause cannot loop.
+  if (err.cause !== undefined && err.cause !== null && depth < 4) {
+    detail.cause = describeThrown(err.cause, depth + 1);
+  }
+
+  return detail;
+}
+
+/**
+ * Ask the SAME connection the failed query used what it can actually see.
+ *
+ * This is here because of how #286 stayed unsolved: the query was verified by
+ * hand in a SQL console and came back clean, which proves nothing about the
+ * pool the API server holds — a different database, a different role, or a
+ * search_path that doesn't include the schema the tables were created in all
+ * look exactly like this. `to_regclass` returns NULL instead of raising when a
+ * table isn't visible, and `has_table_privilege` is strict, so this probe is
+ * safe to run even when all four tables are missing or unreadable.
+ *
+ * Runs on the failure path only, and never throws — a diagnostic that can break
+ * the response it is diagnosing is worse than no diagnostic.
+ */
+async function probeCatalogVisibility(): Promise<Record<string, unknown>> {
+  try {
+    if (typeof (db as { execute?: unknown }).execute !== "function") {
+      return { probe: "skipped — db.execute unavailable" };
+    }
+    const result = await db.execute(sql`
+      select current_database()                                            as database,
+             current_user                                                  as db_user,
+             current_schema()                                              as current_schema,
+             current_setting('search_path')                                as search_path,
+             to_regclass('quiz_persona_clusters')::text                    as clusters_regclass,
+             to_regclass('quiz_personas')::text                            as personas_regclass,
+             to_regclass('quiz_use_cases')::text                           as use_cases_regclass,
+             to_regclass('quiz_outcomes')::text                            as outcomes_regclass,
+             has_table_privilege(to_regclass('quiz_persona_clusters'), 'SELECT') as clusters_selectable,
+             has_table_privilege(to_regclass('quiz_personas'), 'SELECT')         as personas_selectable,
+             has_table_privilege(to_regclass('quiz_use_cases'), 'SELECT')        as use_cases_selectable,
+             has_table_privilege(to_regclass('quiz_outcomes'), 'SELECT')         as outcomes_selectable
+    `);
+    const rows = (result as unknown as { rows?: Record<string, unknown>[] }).rows;
+    return (Array.isArray(rows) ? rows[0] : undefined) ?? { probe: "returned no rows" };
+  } catch (probeErr) {
+    // The probe failing is itself a finding — it means the connection, not the
+    // four tables, is what is broken.
+    return { probeFailed: describeThrown(probeErr) };
+  }
 }
 
 router.get(
@@ -207,7 +360,16 @@ router.get(
 
       res.json(payload);
     } catch (err) {
-      log.error({ err, industry }, "GET /portal/copilot-assessment/quiz-catalog failed");
+      // See the "Failure diagnostics (#286)" block above for why this is not
+      // just `log.error({ err }, …)`: that form reaches the DB-backed log stream
+      // and Simulator Studio's console as an empty `{}`, which is how this
+      // route's real cause stayed unknown across several sessions.
+      const errorDetail = describeThrown(err);
+      const connection = await probeCatalogVisibility();
+      log.error(
+        { err, errorDetail, connection, industry, personaKey: personaKey || null, industries },
+        "GET /portal/copilot-assessment/quiz-catalog failed",
+      );
       res.status(500).json({ error: "Failed to load quiz catalog" });
     }
   },
