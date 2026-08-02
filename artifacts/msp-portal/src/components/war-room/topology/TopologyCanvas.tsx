@@ -196,6 +196,67 @@ const NO_DATA_DASH = "10 6";
 /** Radius a pillar's spoke anchor sits at (see hubPos) — inside the r=670 pillar wedges. */
 const HUB_ORBIT = 620;
 
+/* ── #335: the real per-node topology, brought in from TopologyCenterPiece ─────
+ * The registry above already carries MapView's own connection model — every leaf
+ * names the hub(s) it answers to in `connectedTo`, and five leaves deliberately
+ * name a hub OUTSIDE their own pillar. In embed mode (the only mode the War Room
+ * ever runs) none of it reached the screen: `links` was gated off behind
+ * `quiet`, `nodes` was hard-coded to `[]`, and the one thing that did draw
+ * cross-pillar coupling was a separate hand-written seven-pair hub-to-hub list.
+ *
+ * Three features already anchored to leaf coordinates and so were pointing at
+ * nothing: `focusLink` draws a 6-wide line from the core to the focused node,
+ * `pins` drops numbered badges beside a node, and `blastRings`/`blastTags`
+ * detonate on one. All three now land on a node that is actually drawn.
+ *
+ * Radial budget inside a pillar wedge (r 160..670), chosen so the three layers
+ * that share a pillar's spoke cannot collide at the ~0.26 fit the War Room
+ * actually renders at:
+ *
+ *     core badge      r    0..92
+ *     hub junction    r  210          (HUB_NODE_ORBIT)
+ *     findings        r  275..425     fanned +/-12 deg off the spoke
+ *     leaf nodes      r  460..580     registry coordinates, untouched
+ *     wedge edge      r  670
+ *
+ * Those four numbers were tuned against measured on-screen gaps, not by eye: at
+ * 1280x800 (the tightest fit the room renders at) the closest finding-to-leaf and
+ * finding-to-junction pairs were grazing at -2.8px and 5.5px on the first pass.
+ *
+ * The junction is a War-Room-specific orbit rather than the registry's own r=300
+ * for the same reason the pillar chip sits at r~800 (#313) and hubPos() at r=620
+ * (#324): this canvas shows a 1900-unit square where MapView shows 2400x1500, so
+ * radii are layout, not data. The connection model — who connects to whom — is
+ * the part that is real, and that is taken verbatim. */
+const HUB_NODE_ORBIT = 210;
+
+/** Findings fan along their pillar's spoke by ANGLE, not by a fixed perpendicular
+ * offset. A fixed offset kept every finding within 30 units of the centre line,
+ * which put the third of four straight on top of the leaf node that sits on that
+ * same centre line at r=460. An angular fan widens with radius and keeps the
+ * whole group inside its own +/-25.7 deg wedge. */
+const FINDING_R_INNER = 275;
+const FINDING_R_OUTER = 425;
+const FINDING_FAN_DEG = 12;
+const FINDING_FAN_DEG_OPEN = 16;
+
+/** `@keyframes flowDash` (war-room.css) runs stroke-dashoffset 40 -> 0, so a dash
+ * pattern only loops seamlessly if it sums to a divisor of 40. Kept off the
+ * fit-compensation scale for that reason. */
+const FLOW_DASH = "16,24";
+
+/** What each real cross-pillar edge actually means, keyed `<leaf id>|<foreign
+ * pillar>`. The replaced seven-pair list carried captions too — but nothing ever
+ * rendered them, so the arcs were unlabelled decoration. These surface as the
+ * arc's native SVG tooltip. */
+const CROSS_STORY = {
+  "node-sec-extaccess|Governance": "External access sits outside governed sharing",
+  "node-gov-baseline|Security": "Baseline drift weakens the security floor",
+  "node-adopt-feat|Licensing": "Entitlements paid for but never switched on",
+  "node-comp-labels|Copilot": "Unclassified content becomes citable",
+  "node-health-auto|Governance": "Failed automation leaves policy unapplied"
+};
+
 class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> {
   state = { scores: null, scenario: "baseline", selectedNode: null, selectedSegment: null, fit: 0.55, zoom: 1, panX: 0, panY: 0, dragging: false };
 
@@ -317,6 +378,23 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
     return { x: CX + (rx / r) * HUB_ORBIT, y: CY + (ry / r) * HUB_ORBIT };
   }
 
+  /** Where a pillar's junction marker is drawn — same direction as hubPos, pulled
+   *  in to HUB_NODE_ORBIT so it clears both the core badge and the findings band
+   *  (#335). This, not the registry coordinate, is where a pillar's spokes meet. */
+  hubNodePos(h) {
+    const rx = h.x - CX, ry = h.y - CY;
+    const r = Math.sqrt(rx * rx + ry * ry) || 1;
+    return { x: CX + (rx / r) * HUB_NODE_ORBIT, y: CY + (ry / r) * HUB_NODE_ORBIT };
+  }
+
+  /** Drawing position of any registry node: leaves and the core keep their real
+   *  coordinates, a hub resolves to its junction marker. Every edge, pin, focus
+   *  line and blast reads a position through here so they all agree. */
+  drawPos(n) {
+    if (!n) return null;
+    return n.kind === "hub" ? this.hubNodePos(n) : { x: n.x, y: n.y };
+  }
+
   renderVals() {
     const st = this.state;
     const demoScores = st.scores || this.baseScores();
@@ -386,6 +464,8 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
 
     const nodeById = {};
     NODES.forEach(n => { nodeById[n.id] = n; });
+    const hubByGroup = {};
+    NODES.forEach(n => { if (n.kind === "hub") hubByGroup[n.group] = n; });
 
     const fnRaw = this.props.focusNode;
     const focusNodeObj = fnRaw ? NODES.find(n => n.id === fnRaw || n.label === fnRaw) : null;
@@ -393,32 +473,72 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
     const focus = { node: focusNodeObj, group: activeGroup };
     const dim = (group) => (activeGroup && group !== activeGroup ? "0.14" : "1");
 
+    /* Fit-compensation. The SVG is one 1900-unit viewBox scaled to the host, so a
+     * stroke authored in world units renders at `width * fit` px — and the War Room
+     * runs this at fit ~0.26. Anything meant to be read at a fixed on-screen size
+     * (a 1px spoke, a 7px node dot) has to be authored as `px / fit`. The design's
+     * own overlay already does this for findings and pillar keys; the SVG layer
+     * never did, which is part of why turning the links on naively renders
+     * sub-pixel hairlines. Non-embed keeps S = 1 and its original numbers. */
+    const S = this.props.embed ? 1 / Math.max(st.fit, 0.12) : 1;
+    const scoreOf = (g) => (typeof scores[g] === "number" && isFinite(scores[g]) ? scores[g] : 60);
+    const heatOf = (g) => Math.max(0, Math.min(1, (100 - scoreOf(g)) / 60));
+
+    /* The marks hold a constant on-screen size while the radii they sit on shrink
+     * with the canvas, so there is a width below which the leaf ring and the
+     * findings band must collide. Measured gap between the closest finding/leaf pair
+     * was 2.9px at fit .360, 8.7 at .475 and 20.3 at .710 — a straight line that
+     * reaches zero at about fit .30, i.e. a ~570px canvas. `mapSize` floors at 280px,
+     * so that is reachable in a small window. Below the threshold the structural
+     * layer switches off and the canvas degrades to junctions, core spokes, cross
+     * links and findings — still more than it drew before this change, and never
+     * overlapping. */
+    const MIN_GRAPH_FIT = 0.3;
+    const showLeaves = !this.props.embed || st.fit >= MIN_GRAPH_FIT;
+
+    /* #335: the real graph. Every leaf-to-hub and hub-to-core edge in the registry,
+     * drawn for the first time in embed mode. Cross-pillar edges are deliberately
+     * excluded here and drawn as bowed interference arcs by `crossLinks` below —
+     * bowing them toward the core is the design's own language for "this is
+     * coupling, not structure", and it is now fed by real data.
+     *
+     * Severity is spent on the seven spokes that carry a pillar's verdict into the
+     * tenant core, and on the cross-pillar arcs. The original code applied it to
+     * every edge (`heat > 0.15` -> red), which against real engine scores in the
+     * 28-58 band turns all 42 edges crimson and says nothing at all. Structure
+     * reads in the pillar's own colour; only the two layers that carry a judgement
+     * are allowed to carry a severity colour. */
     const links = [];
-    const quiet = !!this.props.embed;
-    if (!quiet) NODES.forEach(src => {
+    NODES.forEach(src => {
       src.connectedTo.forEach(tid => {
         const tgt = nodeById[tid];
         if (!tgt) return;
+        if (tgt.kind === "hub" && tgt.group !== src.group) return;
+        if (!showLeaves && src.kind === "node") return;
+        const a = this.drawPos(src), b = this.drawPos(tgt);
         const highlighted = sel === src.id || sel === tgt.id;
         const isCore = tgt.id === "hub-core" || src.id === "hub-core";
-        const isCross = !isCore && src.kind !== "hub" && tgt.kind !== "hub";
-        const heat = Math.max(0, Math.min(1, (100 - scores[src.group]) / 60));
-        const base = highlighted ? "#38bdf8" : isCross ? "#a855f7" : isCore ? "#3b82f6" : src.colorHex;
-        const stroke = heat > 0.15 && !highlighted ? "#D13438" : base;
+        const heat = heatOf(src.group);
+        const stroke = highlighted ? "#38bdf8"
+          : isCore ? (heat > 0.55 ? "#D13438" : heat > 0.3 ? "#D97706" : "#3b82f6")
+          : src.colorHex;
         links.push({
-          x1: String(src.x), y1: String(src.y), x2: String(tgt.x), y2: String(tgt.y),
+          x1: a.x.toFixed(1), y1: a.y.toFixed(1), x2: b.x.toFixed(1), y2: b.y.toFixed(1),
           stroke,
-          width: String((highlighted ? 3 : isCore ? 2.5 : isCross ? 1.8 : 1.4) + heat * 3),
-          opacity: String(highlighted ? 0.9 : Math.min(0.95, (isCross ? 0.6 : 0.45) + heat * 0.5)),
-          dash: isCross ? "4,6" : "none",
-          particle: heat > 0.15 ? "#f87171" : isCross ? "#c084fc" : isCore ? "#60a5fa" : "#38bdf8",
-          flowWidth: String(isCore ? 2.2 : 1.5),
-          flowDash: isCore ? "8,12" : "6,10",
-          flowDur: (isCore ? 1.8 - heat * 0.9 : 2.4 - heat * 1.2).toFixed(2) + "s",
-          pulseDur: (isCore ? 1.8 : 2.2).toFixed(1) + "s",
-          dim: isCore ? (activeGroup ? "0.35" : "1") : dim(src.group),
-          dot: String(isCore ? 5 : 3.2),
-          path: "M " + src.x + " " + src.y + " L " + tgt.x + " " + tgt.y
+          width: ((highlighted ? 2.4 : isCore ? 1.6 + heat * 1.5 : 1.15) * S).toFixed(2),
+          opacity: (highlighted ? 0.95 : isCore ? Math.min(0.95, 0.5 + heat * 0.45) : 0.55).toFixed(2),
+          dash: "none",
+          // Motion is reserved for the seven spokes that mean something. 42 animated
+          // edges at this scale is shimmer, and it costs 42 SMIL timelines.
+          flow: isCore, pulse: isCore,
+          particle: heat > 0.55 ? "#f87171" : heat > 0.3 ? "#fbbf24" : "#60a5fa",
+          flowWidth: (1.3 * S).toFixed(2),
+          flowDash: FLOW_DASH,
+          flowDur: (2.6 - heat * 1.1).toFixed(2) + "s",
+          pulseDur: (2.4 - heat * 0.8).toFixed(2) + "s",
+          dim: isCore ? (activeGroup ? "0.4" : "1") : dim(src.group),
+          dot: (2.6 * S).toFixed(2),
+          path: "M " + a.x.toFixed(1) + " " + a.y.toFixed(1) + " L " + b.x.toFixed(1) + " " + b.y.toFixed(1)
         });
       });
     });
@@ -429,15 +549,24 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
       chrome: this.props.embed
         ? { show: false, minH: "0", pad: "0", bg: "transparent", maxW: "100%", radius: "0", border: "none", cardBg: "transparent" }
         : { show: true, minH: "100vh", pad: "18px 22px", bg: "#020617", maxW: "1280px", radius: "20px", border: "1px solid rgba(30,41,59,.9)", cardBg: "#070D1C" },
-      focusLink: focus.node ? {
-        x1: String(CX), y1: String(CY), x2: String(focus.node.x), y2: String(focus.node.y),
-        color: focus.node.colorHex,
-        path: "M " + CX + " " + CY + " L " + focus.node.x + " " + focus.node.y
-      } : null,
+      // Reads the drawing position (#335) so it terminates on the node that is
+      // actually rendered rather than on a bare registry coordinate.
+      focusLink: focus.node ? (() => {
+        const p = this.drawPos(focus.node);
+        return {
+          x1: String(CX), y1: String(CY), x2: p.x.toFixed(1), y2: p.y.toFixed(1),
+          color: focus.node.colorHex,
+          width: (3.2 * S).toFixed(2),
+          dot: (4.5 * S).toFixed(2),
+          glowPx: (7 * S).toFixed(1) + "px",
+          path: "M " + CX + " " + CY + " L " + p.x.toFixed(1) + " " + p.y.toFixed(1)
+        };
+      })() : null,
       blastRings: (this.props.blast && focusNodeObj) ? [0, 1, 2].map(i => {
         const tone = this.props.outcome === "good" ? "#10B981" : "#D13438";
+        const fp = this.drawPos(focusNodeObj);
         return {
-          x: this.px(focusNodeObj.x, "x"), y: this.px(focusNodeObj.y, "y"),
+          x: this.px(fp.x, "x"), y: this.px(fp.y, "y"),
           size: (2 * (230 + i * 250)) + "px", color: tone, glow: tone + "66",
           opacity: String(0.8 - i * 0.2), delay: (i * 160) + "ms"
         };
@@ -447,15 +576,16 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         const data = this.props.blastData;
         if (!this.props.blast || !focusNodeObj || !data || !data.length) return [];
         const tone = this.props.outcome === "good" ? "#10B981" : "#D13438";
-        const base = Math.atan2(focusNodeObj.y - CY, focusNodeObj.x - CX);
+        const fp = this.drawPos(focusNodeObj);
+        const base = Math.atan2(fp.y - CY, fp.x - CX);
         return data.slice(0, 3).map((d, i) => {
           const r = 230 + i * 250, a = base + [0, -0.44, 0.44][i];
           return {
             value: d[0], label: d[1], color: tone, glow: tone + "55",
             gap: 7 * K + "px", pad: (5 * K) + "px " + (11 * K) + "px", radius: 10 * K + "px",
             valueSize: 15 * K + "px", labelSize: 10.5 * K + "px", delay: (220 + i * 160) + "ms",
-            x: this.px(focusNodeObj.x + r * Math.cos(a), "x"),
-            y: this.px(focusNodeObj.y + r * Math.sin(a), "y")
+            x: this.px(fp.x + r * Math.cos(a), "x"),
+            y: this.px(fp.y + r * Math.sin(a), "y")
           };
         });
       })(),
@@ -511,11 +641,20 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         const rad = mid * Math.PI / 180;
         const bx = CX + 410 * Math.cos(rad), by = CY + 410 * Math.sin(rad);
         const scale = 6.8, off = -12 * scale;
+        const embed = !!this.props.embed;
         return {
           color: s.colorHex,
           opacity: dim(s.group),
           path: this.sector(CX, CY, 160, 670, mid - sectorAngle / 2 + 0.6, mid + sectorAngle / 2 - 0.6),
           icon: ZONE_ICON[s.group],
+          /* #335: the wedge is a backdrop now that a real graph is drawn on top of
+           * it. A 0.3 fill of a saturated colour under a 0.55 watermark glyph was
+           * fine on an empty wedge and swallows the nodes and spokes on a full one. */
+          fillOpacity: embed ? ".16" : ".3",
+          strokeOpacity: embed ? ".5" : ".65",
+          strokeW: embed ? (1 * S).toFixed(2) : "2",
+          edgeW: embed ? (2.5 * S).toFixed(2) : "4",
+          iconOpacity: embed ? ".3" : ".55",
           iconTransform: "translate(" + (bx + off).toFixed(1) + ", " + (by + off).toFixed(1) + ") scale(" + scale + ")"
         };
       }),
@@ -630,25 +769,68 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         };
       }),
 
-      nodes: (this.props.embed ? [] : NODES.filter(n => n.kind === "node")).map(n => {
+      /* #335: the 35 leaf nodes, drawn in embed mode for the first time — this array
+       * was `[]` whenever `embed` was set, i.e. always, in the only place this
+       * component is used.
+       *
+       * At the fit the War Room renders at they are deliberately quiet: a bare
+       * pillar-coloured dot with no chip, no border and no label, so 35 of them read
+       * as the texture of a pillar rather than 35 competing chips. Trouble is a halo,
+       * not a fill. The full chip — border, background, label — comes back for the
+       * one node the script is focused on and for a clicked node, which is the only
+       * time a name is worth the room. */
+      nodes: (showLeaves ? NODES.filter(n => n.kind === "node") : []).map(n => {
         const score = this.nodeScore(n, scores);
         const status = score < 50 ? "alert" : score < 80 ? "drift" : "healthy";
         const isSel = sel === n.id;
         const isFocus = focusNodeObj && focusNodeObj.id === n.id;
         const embed = !!this.props.embed;
+        const chip = !embed || isFocus || isSel;
+        // Severity is a halo on the dot, never a fill: 35 dots whose own colour is the
+        // pillar keep the fans legible as structure, and a ring reads as "and this one
+        // is in trouble" without 35 red blobs competing with the finding markers.
+        // Kept deliberately quiet — at this density a heavy ring on every dot (almost
+        // every node is drift or alert against real scores) is just noise.
+        const halo = status === "alert"
+          ? "0 0 0 " + (1.4 * S).toFixed(1) + "px rgba(248,113,113,.7),0 0 " + (4 * S).toFixed(1) + "px rgba(248,113,113,.3)"
+          : status === "drift"
+          ? "0 0 0 " + (1.1 * S).toFixed(1) + "px rgba(251,191,36,.4)"
+          : "none";
+        // Clicking a node is the only way to read its name in embed mode, so a
+        // selected node gets the label too — otherwise the click grew a chip with
+        // nothing written in it.
+        const showLabel = embed ? (!!isFocus || isSel) : true;
+        const dotPx = (embed ? (isFocus ? 11 : isSel ? 9 : 7) * S : isFocus ? 10 : 7);
+        /* The chip is positioned by its own centre, so as soon as a label appears the
+         * DOT slides left by half the label — away from the point the spokes, the
+         * focus line and the pin all converge on. Measured live at 1280x800 that was
+         * an 85px offset for "Sharing Governance" while every unlabelled node landed
+         * within 9px. Anchoring the transform on the dot instead of the chip centre
+         * keeps the dot on the node's real coordinate whatever the label says, and
+         * moving transform-origin with it stops the focus scale() undoing it. */
+        const dotAnchor = chip && showLabel && embed
+          ? (1.4 * S) + (5 * S) + dotPx / 2
+          : null;
         return {
           label: n.label,
+          title: n.label + " · " + score,
           opacity: dim(n.group),
-          showLabel: embed ? !!isFocus : true,
-          labelSize: (embed ? Math.round(12 * K) : 11) + "px",
-          dotSize: (isFocus ? 10 : embed ? 5 : 7) + "px",
+          xform: dotAnchor === null ? "translate(-50%,-50%)" : "translate(-" + dotAnchor.toFixed(1) + "px,-50%)",
+          origin: dotAnchor === null ? "50% 50%" : dotAnchor.toFixed(1) + "px 50%",
+          showLabel,
+          labelSize: (embed ? 11 * S : 11).toFixed(1) + "px",
+          dotSize: dotPx.toFixed(1) + "px",
+          pad: chip ? (embed ? (2.5 * S).toFixed(1) + "px " + (5 * S).toFixed(1) + "px" : "3px 7px") : "0px",
+          gap: chip ? (embed ? (4 * S).toFixed(1) + "px" : "5px") : "0px",
+          radius: chip ? (embed ? (7 * S).toFixed(1) + "px" : "9px") : "999px",
+          borderW: chip ? (embed ? (1.4 * S).toFixed(1) + "px" : "2px") : "0px",
           x: this.px(n.x, "x"), y: this.px(n.y, "y"),
           dot: n.colorHex,
           scale: isFocus ? "1.35" : isSel ? "1.1" : "1",
-          border: isFocus ? "#ffffff" : isSel ? "#60a5fa" : status === "alert" ? "rgba(239,68,68,.8)" : status === "drift" ? "rgba(245,158,11,.8)" : "rgba(30,41,59,.9)",
-          bg: isSel ? "rgba(30,58,138,.8)" : status === "alert" ? "rgba(69,10,10,.7)" : status === "drift" ? "rgba(69,42,4,.7)" : "rgba(15,23,42,.8)",
+          border: !chip ? "transparent" : isFocus ? "#ffffff" : isSel ? "#60a5fa" : status === "alert" ? "rgba(239,68,68,.8)" : status === "drift" ? "rgba(245,158,11,.8)" : "rgba(30,41,59,.9)",
+          bg: !chip ? "transparent" : isSel ? "rgba(30,58,138,.8)" : status === "alert" ? "rgba(69,10,10,.7)" : status === "drift" ? "rgba(69,42,4,.7)" : "rgba(15,23,42,.8)",
           text: isSel ? "#ffffff" : status === "alert" ? "#fecaca" : status === "drift" ? "#fde68a" : "#e2e8f0",
-          glow: isFocus ? "0 0 22px " + n.colorHex : isSel ? "0 0 0 3px rgba(96,165,250,.5)" : "none",
+          glow: isFocus ? "0 0 " + (10 * S).toFixed(1) + "px " + n.colorHex : isSel ? "0 0 0 " + (2.5 * S).toFixed(1) + "px rgba(96,165,250,.5)" : embed ? halo : "none",
           anim: this.props.sweep === "fast"
             ? "tcPop 500ms cubic-bezier(.22,1,.36,1) both " + (((Math.atan2(n.y - CY, n.x - CX) * 180 / Math.PI + 450) % 360) / 360 * 2.2).toFixed(2) + "s"
             : "none",
@@ -695,16 +877,25 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         Object.keys(byGroup).forEach(g => {
           const d = hubDir[g];
           if (!d) return;
-          // the wedge only has room for two at rest; opening a pillar reveals the rest
           const open = activeGroup === g;
           const items = byGroup[g];
+          const baseAng = Math.atan2(d.uy, d.ux);
+          const fan = (open ? FINDING_FAN_DEG_OPEN : FINDING_FAN_DEG) * Math.PI / 180;
           items.forEach((x, i) => {
+            /* #335: an ANGULAR fan over an absolute radial band, instead of the old
+             * fixed 30-unit perpendicular offset over 0.40..0.90 of the spoke. The
+             * old layout put findings within 30 units of the centre line out to
+             * r=558, which lands the third of four straight on top of the leaf node
+             * sitting on that same centre line at r=460 — invisible while the leaves
+             * were not drawn, a collision now that they are. Fanning by angle widens
+             * the group as it goes out, keeps it inside its own +/-25.7 deg wedge,
+             * and stops short of the leaf ring at FINDING_R_OUTER. */
             const span = Math.max(1, items.length - 1);
-            const t = 0.40 + (i / span) * 0.5;
-            const rad = d.r * t;
-            const perp = (i % 2 === 0 ? -1 : 1) * (open ? 46 : 30);
-            const px = CX + d.ux * rad - d.uy * perp;
-            const py = CY + d.uy * rad + d.ux * perp;
+            const t = items.length === 1 ? 0.5 : i / span;
+            const rad = FINDING_R_INNER + t * (FINDING_R_OUTER - FINDING_R_INNER);
+            const ang = baseAng + (i % 2 === 0 ? -1 : 1) * fan;
+            const px = CX + Math.cos(ang) * rad;
+            const py = CY + Math.sin(ang) * rad;
             const sev = x.sev || "alert";
             const tone = sev === "alert" ? "#f87171" : sev === "drift" ? "#fbbf24" : "#34d399";
             const on = this.state.selectedNode === x.id;
@@ -714,19 +905,25 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
               x: this.px(px, "x"), y: this.px(py, "y"),
               tone: tone, color: d.color, open: open, n: String(i + 1),
               title: x.short || x.t,
-              gap: open ? "7px" : "0px",
-              pad: open ? "5px 11px 5px 5px" : "3px",
-              bw: open ? "1.5px" : "1px",
-              dot: Math.round(Math.min(19, Math.max(15, 17 / Math.max(this.state.fit, 0.05)))) + "px",
-              num: Math.round(Math.min(11, Math.max(9, 10 / Math.max(this.state.fit, 0.05)))) + "px",
-              w: Math.round(Math.min(112, Math.max(78, 96 / Math.max(this.state.fit, 0.05)))) + "px",
+              /* Every one of these was `Math.min(<cap>, Math.max(<floor>, <px> / fit))`.
+               * The intent was the fit compensation pillarKeys does correctly, but the
+               * outer Math.min collapses it: at any fit below ~0.9 the division always
+               * exceeds the cap, so the whole expression is a constant in world units
+               * and scales back DOWN with the canvas. At the fit the War Room actually
+               * renders at that made a finding a ~5px dot with 3px type on it. */
+              gap: open ? (6 * S).toFixed(1) + "px" : "0px",
+              pad: open ? (4 * S).toFixed(1) + "px " + (9 * S).toFixed(1) + "px " + (4 * S).toFixed(1) + "px " + (4 * S).toFixed(1) + "px" : (2 * S).toFixed(1) + "px",
+              bw: (open ? 1.4 * S : 1 * S).toFixed(1) + "px",
+              dot: (15 * S).toFixed(1) + "px",
+              num: (9 * S).toFixed(1) + "px",
+              w: (96 * S).toFixed(1) + "px",
               opacity: active ? "0.15" : "1",
               scale: on ? "1.08" : "1",
               border: on ? "#ffffff" : tone + "99",
               bg: on ? "rgba(15,23,42,.98)" : "rgba(7,13,28,.92)",
-              glow: on ? "0 0 26px " + tone : "0 0 14px rgba(2,6,23,.8)",
-              size: Math.round(Math.min(10, Math.max(8, 9 / Math.max(this.state.fit, 0.05)))) + "px",
-              sub: Math.round(Math.min(9, Math.max(7, 7.5 / Math.max(this.state.fit, 0.05)))) + "px",
+              glow: on ? "0 0 " + (13 * S).toFixed(1) + "px " + tone : "0 0 " + (7 * S).toFixed(1) + "px rgba(2,6,23,.8)",
+              size: (9 * S).toFixed(1) + "px",
+              sub: (7.5 * S).toFixed(1) + "px",
               onClick: () => {
                 this.setState({ selectedNode: x.id });
                 if (this.props.onFinding) this.props.onFinding(x.id);
@@ -753,51 +950,100 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
       pins: (this.props.pins || []).map(p => {
         const n = NODES.find(x => x.id === p.node || x.label === p.node);
         if (!n) return null;
-        const ang = Math.atan2(n.y - CY, n.x - CX);
-        const off = 34;
+        // #335: pinned beside the node's drawing position, and sized off the fit so
+        // the number is legible — a pin was previously a ~9px badge floating next to
+        // a leaf node that embed mode never drew.
+        const q = this.drawPos(n);
+        const ang = Math.atan2(q.y - CY, q.x - CX);
+        const off = this.props.embed ? 17 * S : 34;
         return {
           n: String(p.n), color: p.tone || "#D13438",
-          size: Math.round(30 * K) + "px", font: Math.round(14 * K) + "px",
-          x: this.px(n.x + Math.cos(ang - 0.6) * off, "x"),
-          y: this.px(n.y + Math.sin(ang - 0.6) * off, "y")
+          size: (this.props.embed ? 17 * S : 30 * K).toFixed(1) + "px",
+          font: (this.props.embed ? 9.5 * S : 14 * K).toFixed(1) + "px",
+          bw: (this.props.embed ? 1.4 * S : 2).toFixed(1) + "px",
+          glowPx: (this.props.embed ? 8 * S : 18).toFixed(1) + "px",
+          x: this.px(q.x + Math.cos(ang - 0.6) * off, "x"),
+          y: this.px(q.y + Math.sin(ang - 0.6) * off, "y")
         };
       }).filter(Boolean),
 
+      /* #335. What was here: a hand-written seven-pair hub-to-hub list asserting
+       * which pillars interfere with each other, bowed between two hubPos() anchors.
+       * It named no specific cause, its own caption column was never rendered, and
+       * being hard-coded it could not disagree with the registry.
+       *
+       * The registry states the real thing per node: five leaves name a hub outside
+       * their own pillar in `connectedTo`, and each one is a specific artefact that
+       * bridges two pillars — "External Access Risk" answers to both Security and
+       * Governance, "Sensitivity Labels" to both Compliance and Copilot. Those five
+       * edges are the honest cross-pillar model, and they run leaf -> foreign hub,
+       * so the arc starts at the thing that actually causes the coupling. */
       crossLinks: (() => {
-        const pos = {};
-        NODES.filter(n => n.kind === "hub").forEach(h => { pos[h.group] = this.hubPos(h); });
-        const PAIRS = [
-          ["Governance", "Compliance", "Oversharing meets unlabelled content"],
-          ["Governance", "Copilot", "Open sharing widens the grounding surface"],
-          ["Compliance", "Copilot", "Unclassified content becomes citable"],
-          ["Security", "Copilot", "No session policy over Copilot"],
-          ["Compliance", "Security", "DLP gaps leave labels unenforced"],
-          ["Health", "Security", "Drifted devices weaken conditional access"],
-          ["Licensing", "Copilot", "Seats without a safe boundary"]
-        ];
-        return PAIRS.map((p, i) => {
-          const a = pos[p[0]], b = pos[p[1]];
-          if (!a || !b) return null;
-          const sa = scores[p[0]] === undefined ? 60 : scores[p[0]];
-          const sb = scores[p[1]] === undefined ? 60 : scores[p[1]];
-          const heat = Math.max(0, Math.min(1, (100 - Math.min(sa, sb)) / 60));
-          if (heat < 0.18) return null;
-          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-          // bow the arc toward the core so it reads as interference, not structure
-          const cx = mx + (CX - mx) * 0.55, cy = my + (CY - my) * 0.55;
-          const d = "M " + a.x.toFixed(1) + " " + a.y.toFixed(1) + " Q " + cx.toFixed(1) + " " + cy.toFixed(1) + " " + b.x.toFixed(1) + " " + b.y.toFixed(1);
-          const col = heat > 0.62 ? "#f87171" : heat > 0.35 ? "#fbbf24" : "#7dd3fc";
-          const on = !activeGroup || activeGroup === p[0] || activeGroup === p[1];
-          return {
-            id: "x" + i, d: d, color: col,
-            width: (1.2 + heat * 2.2).toFixed(2),
-            opacity: (on ? 0.28 + heat * 0.42 : 0.06).toFixed(2),
-            dot: (3 + heat * 3).toFixed(1),
-            dur: (3.4 - heat * 1.9).toFixed(2) + "s",
-            glow: on && heat > 0.5 ? "drop-shadow(0 0 6px " + col + ")" : "none"
-          };
-        }).filter(Boolean);
+        const out = [];
+        NODES.forEach(src => {
+          if (src.kind !== "node") return;
+          src.connectedTo.forEach(tid => {
+            const tgt = nodeById[tid];
+            if (!tgt || tgt.kind !== "hub" || tgt.group === src.group) return;
+            // With the structural layer off there is no leaf to start from, so the arc
+            // falls back to the source pillar's own junction. Which two pillars couple,
+            // and why, still comes from the registry either way.
+            const ownHub = hubByGroup[src.group];
+            const a = showLeaves || !ownHub ? this.drawPos(src) : this.hubNodePos(ownHub);
+            const b = this.drawPos(tgt);
+            const heat = Math.max(0, Math.min(1, (100 - Math.min(scoreOf(src.group), scoreOf(tgt.group))) / 60));
+            const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+            // bow the arc toward the core so it reads as interference, not structure
+            const cx = mx + (CX - mx) * 0.55, cy = my + (CY - my) * 0.55;
+            const d = "M " + a.x.toFixed(1) + " " + a.y.toFixed(1) + " Q " + cx.toFixed(1) + " " + cy.toFixed(1) + " " + b.x.toFixed(1) + " " + b.y.toFixed(1);
+            const col = heat > 0.62 ? "#f87171" : heat > 0.35 ? "#fbbf24" : "#7dd3fc";
+            const on = !activeGroup || activeGroup === src.group || activeGroup === tgt.group;
+            const key = src.id + "|" + tgt.group;
+            out.push({
+              id: key, d: d, color: col,
+              story: CROSS_STORY[key] || (src.label + " couples " + src.group + " to " + tgt.group),
+              width: ((1.1 + heat * 1.7) * S).toFixed(2),
+              opacity: (on ? 0.3 + heat * 0.42 : 0.06).toFixed(2),
+              dot: ((1.9 + heat * 1.5) * S).toFixed(2),
+              dur: (3.4 - heat * 1.9).toFixed(2) + "s",
+              dash: (2.6 * S).toFixed(1) + " " + (11 * S).toFixed(1),
+              glow: on && heat > 0.5 ? "drop-shadow(0 0 " + (3 * S).toFixed(1) + "px " + col + ")" : "none"
+            });
+          });
+        });
+        return out;
       })(),
+
+      /* The junction every one of a pillar's spokes meets at (#335). Without it the
+       * five leaf spokes and the core spoke converge on an empty point. */
+      hubNodes: NODES.filter(n => n.kind === "hub").map(h => {
+        const p = this.hubNodePos(h);
+        const score = this.nodeScore(h, scores);
+        const status = score < 35 ? "alert" : score < 62 ? "drift" : "healthy";
+        // With no spokes converging on it the junction is only a marker, so it gives
+        // ground back to the findings band: measured gap to the nearest finding at a
+        // 900x620 window goes 2.2px -> 6.5px. Below roughly a 400px canvas the whole
+        // surface overlaps regardless — the pillar chips at r~870 are already outside
+        // the box by then — so this buys headroom rather than solving it outright.
+        const r = (showLeaves ? 9 : 6) * S;
+        const glyph = r * 1.25;
+        return {
+          cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: r.toFixed(1),
+          icon: HUB_ICON[h.group], color: h.colorHex,
+          ring: status === "alert" ? "#f87171" : status === "drift" ? "#fbbf24" : h.colorHex,
+          ringW: (1.7 * S).toFixed(2),
+          // authored inside a scale(glyph/24) group, so this is 1.4 * S in world units
+          iconW: "3",
+          iconTransform: "translate(" + (p.x - glyph / 2).toFixed(1) + ", " + (p.y - glyph / 2).toFixed(1) + ") scale(" + (glyph / 24).toFixed(3) + ")",
+          opacity: dim(h.group),
+          title: h.group + " · " + score,
+          onClick: () => {
+            const cb = this.props.onPillar;
+            if (typeof cb === "function") { cb(h.group); return; }
+            this.setState({ selectedNode: h.id });
+          }
+        };
+      }),
 
       links: links
     };
@@ -962,11 +1208,11 @@ function TopologyCanvasView({ v }: { v: any }) {
                   {" "}
                   <g opacity={z?.opacity} style={css(`transition:opacity 500ms ease`)}>
                     {" "}
-                    <path d={z?.path} fill={z?.color} fillOpacity={".3"} stroke={z?.color} strokeWidth={"2"} strokeOpacity={".65"} />
+                    <path d={z?.path} fill={z?.color} fillOpacity={z?.fillOpacity} stroke={z?.color} strokeWidth={z?.strokeW} strokeOpacity={z?.strokeOpacity} />
                     {" "}
-                    <path d={z?.path} fill={"none"} stroke={z?.color} strokeWidth={"4"} strokeOpacity={".25"} />
+                    <path d={z?.path} fill={"none"} stroke={z?.color} strokeWidth={z?.edgeW} strokeOpacity={".25"} />
                     {" "}
-                    <g transform={z?.iconTransform} opacity={".55"}>
+                    <g transform={z?.iconTransform} opacity={z?.iconOpacity}>
                       {" "}
                       <path d={z?.icon} fill={z?.color} fillOpacity={".22"} stroke={z?.color} strokeWidth={"2.2"} strokeOpacity={".95"} strokeLinecap={"round"} strokeLinejoin={"round"} />
                       {" "}
@@ -982,7 +1228,9 @@ function TopologyCanvasView({ v }: { v: any }) {
                   {" "}
                   <g style={css(`transition:opacity 500ms ease`)}>
                     {" "}
-                    <path d={xl?.d} fill={"none"} stroke={xl?.color} strokeWidth={xl?.width} strokeOpacity={xl?.opacity} strokeDasharray={"3 13"} strokeLinecap={"round"} filter={xl?.glow} />
+                    <title>{xl?.story}</title>
+                    {" "}
+                    <path d={xl?.d} fill={"none"} stroke={xl?.color} strokeWidth={xl?.width} strokeOpacity={xl?.opacity} strokeDasharray={xl?.dash} strokeLinecap={"round"} filter={xl?.glow} />
                     {" "}
                     <circle r={xl?.dot} fill={xl?.color} opacity={xl?.opacity}>
                       {" "}
@@ -1008,13 +1256,40 @@ function TopologyCanvasView({ v }: { v: any }) {
                     {" "}
                     <line x1={l?.x1} y1={l?.y1} x2={l?.x2} y2={l?.y2} stroke={l?.stroke} strokeWidth={l?.width} strokeOpacity={l?.opacity} strokeDasharray={l?.dash} />
                     {" "}
-                    <line x1={l?.x1} y1={l?.y1} x2={l?.x2} y2={l?.y2} stroke={l?.particle} strokeWidth={l?.flowWidth} strokeDasharray={l?.flowDash} strokeOpacity={".7"} style={css(`animation:flowDash ${l?.flowDur} linear infinite`)} />
+                    {l?.flow && (
+                      <line x1={l?.x1} y1={l?.y1} x2={l?.x2} y2={l?.y2} stroke={l?.particle} strokeWidth={l?.flowWidth} strokeDasharray={l?.flowDash} strokeOpacity={".7"} style={css(`animation:flowDash ${l?.flowDur} linear infinite`)} />
+                    )}
                     {" "}
-                    <circle r={l?.dot} fill={l?.particle}>
+                    {l?.pulse && (
+                      <circle r={l?.dot} fill={l?.particle}>
+                        {" "}
+                        <animatemotion dur={l?.pulseDur} repeatCount={"indefinite"} path={l?.path} />
+                        {" "}
+                      </circle>
+                    )}
+                    {" "}
+                  </g>
+                  {" "}
+                </React.Fragment>
+              ))}
+              {" "}
+              {/* #335: pillar junctions — where each pillar's five leaf spokes and its
+                  core spoke actually meet. Drawn after the links so the spokes run
+                  under the marker rather than across it. */}
+              {(v.hubNodes || []).map((hn, hnIdx) => (
+                <React.Fragment key={hnIdx}>
+                  {" "}
+                  <g onClick={hn?.onClick} opacity={hn?.opacity} style={css(`cursor:pointer;transition:opacity 500ms ease`)}>
+                    {" "}
+                    <title>{hn?.title}</title>
+                    {" "}
+                    <circle cx={hn?.cx} cy={hn?.cy} r={hn?.r} fill={"#050C1A"} fillOpacity={".94"} stroke={hn?.ring} strokeWidth={hn?.ringW} />
+                    {" "}
+                    <g transform={hn?.iconTransform}>
                       {" "}
-                      <animatemotion dur={l?.pulseDur} repeatCount={"indefinite"} path={l?.path} />
+                      <path d={hn?.icon} fill={"none"} stroke={hn?.color} strokeWidth={hn?.iconW} strokeLinecap={"round"} strokeLinejoin={"round"} />
                       {" "}
-                    </circle>
+                    </g>
                     {" "}
                   </g>
                   {" "}
@@ -1040,9 +1315,9 @@ function TopologyCanvasView({ v }: { v: any }) {
                   {" "}
                   <g>
                     {" "}
-                    <line x1={v.focusLink?.x1} y1={v.focusLink?.y1} x2={v.focusLink?.x2} y2={v.focusLink?.y2} stroke={v.focusLink?.color} strokeWidth={"6"} strokeOpacity={".95"} strokeLinecap={"round"} filter={`drop-shadow(0 0 12px ${v.focusLink?.color})`} />
+                    <line x1={v.focusLink?.x1} y1={v.focusLink?.y1} x2={v.focusLink?.x2} y2={v.focusLink?.y2} stroke={v.focusLink?.color} strokeWidth={v.focusLink?.width} strokeOpacity={".95"} strokeLinecap={"round"} filter={`drop-shadow(0 0 ${v.focusLink?.glowPx} ${v.focusLink?.color})`} />
                     {" "}
-                    <circle r={"9"} fill={v.focusLink?.color}>
+                    <circle r={v.focusLink?.dot} fill={v.focusLink?.color}>
                       {" "}
                       <animatemotion dur={"1.5s"} repeatCount={"indefinite"} path={v.focusLink?.path} />
                       {" "}
@@ -1209,20 +1484,14 @@ function TopologyCanvasView({ v }: { v: any }) {
                 </React.Fragment>
               ))}
               {" "}
-              {(v.findings || []).map((fd, fdIdx) => (
-                <React.Fragment key={fdIdx}>
-                  {" "}
-                  <Hov as="div" onClick={fd?.onClick} title={fd?.title} style={css(`position:absolute;left:${fd?.x};top:${fd?.y};width:${fd?.dot};height:${fd?.dot};transform:translate(-50%,-50%) scale(${fd?.scale});display:flex;align-items:center;justify-content:center;border-radius:999px;cursor:pointer;pointer-events:auto;opacity:${fd?.opacity};font-family:ui-monospace,Menlo,monospace;font-size:${fd?.num};font-weight:800;color:#04121f;background:${fd?.tone};border:${fd?.bw} solid ${fd?.border};box-shadow:${fd?.glow};transition:all 320ms cubic-bezier(.22,1,.36,1)`)} hoverStyle={css(`border-color:#ffffff`)}>
-                    <Txt v={fd?.n} />
-                  </Hov>
-                  {" "}
-                </React.Fragment>
-              ))}
-              {" "}
+              {/* #335: leaf nodes are painted BEFORE findings, not after. They are the
+                  structural layer and findings are the interactive foreground — with
+                  the old order a leaf dot could sit over a finding and, being
+                  pointer-events:auto itself, swallow the click that opens it. */}
               {(v.nodes || []).map((n, nIdx) => (
                 <React.Fragment key={nIdx}>
                   {" "}
-                  <div onClick={n?.onClick} style={css(`position:absolute;left:${n?.x};top:${n?.y};transform:translate(-50%,-50%) scale(${n?.scale});display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:9px;cursor:pointer;pointer-events:auto;white-space:nowrap;opacity:${n?.opacity};border:2px solid ${n?.border};background:${n?.bg};box-shadow:${n?.glow};animation:${n?.anim};transition:all 250ms cubic-bezier(.22,1,.36,1)`)}>
+                  <div onClick={n?.onClick} title={n?.title} style={css(`position:absolute;left:${n?.x};top:${n?.y};transform:${n?.xform} scale(${n?.scale});transform-origin:${n?.origin};display:flex;align-items:center;gap:${n?.gap};padding:${n?.pad};border-radius:${n?.radius};cursor:pointer;pointer-events:auto;white-space:nowrap;opacity:${n?.opacity};border:${n?.borderW} solid ${n?.border};background:${n?.bg};box-shadow:${n?.glow};animation:${n?.anim};transition:all 250ms cubic-bezier(.22,1,.36,1)`)}>
                     <span style={css(`flex:none;width:${n?.dotSize};height:${n?.dotSize};border-radius:99px;background:${n?.dot}`)} />
                     {n?.showLabel && (
                       <>
@@ -1238,10 +1507,20 @@ function TopologyCanvasView({ v }: { v: any }) {
                 </React.Fragment>
               ))}
               {" "}
+              {(v.findings || []).map((fd, fdIdx) => (
+                <React.Fragment key={fdIdx}>
+                  {" "}
+                  <Hov as="div" onClick={fd?.onClick} title={fd?.title} style={css(`position:absolute;left:${fd?.x};top:${fd?.y};width:${fd?.dot};height:${fd?.dot};transform:translate(-50%,-50%) scale(${fd?.scale});display:flex;align-items:center;justify-content:center;border-radius:999px;cursor:pointer;pointer-events:auto;opacity:${fd?.opacity};font-family:ui-monospace,Menlo,monospace;font-size:${fd?.num};font-weight:800;color:#04121f;background:${fd?.tone};border:${fd?.bw} solid ${fd?.border};box-shadow:${fd?.glow};transition:all 320ms cubic-bezier(.22,1,.36,1)`)} hoverStyle={css(`border-color:#ffffff`)}>
+                    <Txt v={fd?.n} />
+                  </Hov>
+                  {" "}
+                </React.Fragment>
+              ))}
+              {" "}
               {(v.pins || []).map((p, pIdx) => (
                 <React.Fragment key={pIdx}>
                   {" "}
-                  <div style={css(`position:absolute;left:${p?.x};top:${p?.y};width:${p?.size};height:${p?.size};transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;border-radius:999px;pointer-events:none;font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:${p?.font};color:#fff;background:${p?.color};border:2px solid rgba(255,255,255,.85);box-shadow:0 0 18px ${p?.color};animation:tcPinIn 420ms cubic-bezier(.22,1,.36,1)`)}>
+                  <div style={css(`position:absolute;left:${p?.x};top:${p?.y};width:${p?.size};height:${p?.size};transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;border-radius:999px;pointer-events:none;font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:${p?.font};color:#fff;background:${p?.color};border:${p?.bw} solid rgba(255,255,255,.85);box-shadow:0 0 ${p?.glowPx} ${p?.color};animation:tcPinIn 420ms cubic-bezier(.22,1,.36,1)`)}>
                     <Txt v={p?.n} />
                   </div>
                   {" "}
