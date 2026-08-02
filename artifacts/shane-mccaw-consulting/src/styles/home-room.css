@@ -1,0 +1,790 @@
+/* ============================================================
+   HOME "ROOM" — scoped design-system layer
+   ------------------------------------------------------------
+   Ported from the Claude Design export `Copilot Assessment.dc.html`
+   (project 7dae6918-23d3-475c-8815-3ce2b49e4eee) together with the
+   token files that export imports:
+     _ds/.../tokens/{colors,typography,spacing,elevation,fonts}.css
+
+   EVERYTHING here is scoped to `.smcr-root` or prefixed `smcr-`.
+   That is deliberate and load-bearing, for two reasons:
+
+   1. The upstream token files publish their scale on bare `:root`
+      (`--radius`, `--primary`, `--shadow-lg`, `--font-sans`…). This
+      app already defines its own values for those exact names in
+      index.css, and every other page paints from them. Importing the
+      DS `:root` block globally would silently restyle the entire
+      site, so each token is re-declared here on the page root only.
+
+   2. index.css inverts the usual convention — bare `:root` is the
+      DARK palette and `.dark` flips to LIGHT. The design export puts
+      `class="dark"` on its scroller, which in this app would mean
+      "go light". The page therefore never sets `dark`; it paints
+      from the `--smcr-*` tokens below instead.
+
+   Fonts are already loaded by index.css (Inter 400–800), so the DS
+   fonts.css @import would be a duplicate request and is omitted.
+   ============================================================ */
+
+.smcr-root {
+  /* ---- Brand core (tokens/colors.css) ---- */
+  --smcr-brand-navy: #0a2540;
+  --smcr-brand-blue: #0078d4;
+  --smcr-brand-blue-strong: #005a9e;
+  --smcr-brand-teal: #00b4d8;
+
+  /* ---- Room surfaces: the aurora-on-void stage this page paints on ---- */
+  --smcr-void: #0a0618;
+  --smcr-deep: #120b33;
+  --smcr-deep-2: #160b2e;
+  --smcr-ink: rgba(16, 11, 38, 0.74);
+  --smcr-ink-solid: rgba(20, 14, 44, 0.55);
+  --smcr-ink-bubble: rgba(20, 14, 44, 0.72);
+
+  /* ---- Text ramp (slate scale) ---- */
+  --smcr-text: #f1f5f9;
+  --smcr-text-2: #e2e8f0;
+  --smcr-text-3: #cbd5e1;
+  --smcr-muted: #94a3b8;
+  --smcr-faint: #64748b;
+  --smcr-dim: #475569;
+
+  /* ---- Accents ---- */
+  --smcr-cyan: #67e8f9;
+  --smcr-sky: #7dd3fc;
+  --smcr-blue: #0078d4;
+  --smcr-blue-2: #60a5fa;
+  --smcr-blue-3: #3b82f6;
+  --smcr-violet: #8b5cf6;
+  --smcr-violet-2: #a78bfa;
+  --smcr-indigo: #7a56f0;
+  --smcr-magenta: #d63f8c;
+  --smcr-teal: #26c1c9;
+  --smcr-teal-2: #2dd4bf;
+  --smcr-green: #4ade80;
+  --smcr-red: #f87171;
+  --smcr-amber: #fbbf24;
+  --smcr-orange: #fb923c;
+  --smcr-bone: #f3f4f6;
+
+  /* ---- Hairlines ---- */
+  --smcr-rule: rgba(148, 163, 184, 0.12);
+  --smcr-rule-2: rgba(148, 163, 184, 0.16);
+  --smcr-rule-3: rgba(148, 163, 184, 0.18);
+
+  /* ---- Radius (tokens/spacing.css, marketing end of the scale) ---- */
+  --smcr-radius-sm: 6px;
+  --smcr-radius: 9px;
+  --smcr-radius-lg: 13px;
+  --smcr-radius-xl: 18px;
+  --smcr-radius-2xl: 20px;
+  --smcr-radius-full: 99px;
+
+  /* ---- Elevation (tokens/elevation.css, dark-surface + glow families) ---- */
+  --smcr-shadow-card: 0 22px 60px rgba(10, 6, 24, 0.6);
+  --smcr-shadow-card-lg: 0 30px 80px rgba(10, 6, 24, 0.72);
+  --smcr-shadow-close: 0 34px 90px rgba(10, 6, 24, 0.8);
+  --smcr-glow-blue: 0 16px 46px rgba(0, 120, 212, 0.42);
+  --smcr-glow-blue-sm: 0 8px 26px rgba(0, 120, 212, 0.34);
+
+  /* ---- Type (tokens/typography.css) ---- */
+  --smcr-weight-bold: 700;
+  --smcr-weight-extrabold: 800;
+  --smcr-tracking-tight: -0.03em;
+  --smcr-tracking-wider: 0.14em;
+  --smcr-tracking-widest: 0.16em;
+  --smcr-mono: ui-monospace, Menlo, "SF Mono", Consolas, monospace;
+
+  /* ---- Fixed chrome geometry, shared by the rails and the scroll math ---- */
+  --smcr-header-h: 62px;
+
+  position: relative;
+  min-height: 100vh;
+  background: var(--smcr-void);
+  color: var(--smcr-text);
+  font-family: var(--app-font-sans), Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+/* Scoped to the narrative column on purpose: the real site Footer renders inside
+   .smcr-root at the end of the page and paints its own link colours from Tailwind
+   utilities, which a `.smcr-root a` rule would outrank and recolour. */
+.smcr-convo a {
+  color: var(--smcr-blue-2);
+  text-decoration: none;
+}
+.smcr-convo a:hover {
+  color: #93c5fd;
+}
+.smcr-root ::selection {
+  background: rgba(103, 232, 249, 0.28);
+}
+.smcr-root input::placeholder {
+  color: var(--smcr-dim);
+}
+.smcr-root button {
+  font-family: inherit;
+}
+
+/* ============================================================
+   Reveal / focus choreography.
+   Driven by data-attributes set imperatively from the scroll loop,
+   NOT by inline style: React owns `style` on these nodes and would
+   overwrite an imperative write on the next state change. It never
+   touches `data-in` / `data-soft`, so these survive re-render.
+   ============================================================ */
+.smcr-reveal,
+.smcr-reveal-l,
+.smcr-reveal-r {
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.smcr-reveal[data-in="0"] {
+  opacity: 0;
+  transform: translateY(22px);
+}
+.smcr-reveal-l[data-in="0"] {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+.smcr-reveal-r[data-in="0"] {
+  opacity: 0;
+  transform: translateX(40px);
+}
+.smcr-reveal[data-in="1"],
+.smcr-reveal-l[data-in="1"],
+.smcr-reveal-r[data-in="1"] {
+  opacity: 1;
+  transform: none;
+}
+/* One frame of suppression while the loop arms the below-the-fold nodes, so
+   "arming" is never itself animated into view. */
+.smcr-root[data-arming="1"] * {
+  transition: none !important;
+}
+
+/* Focus mode — everything below the chapter being read softens back. */
+.smcr-chapter {
+  transition:
+    filter 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.smcr-chapter[data-soft="1"] {
+  filter: blur(5px);
+  opacity: 0.38;
+}
+
+/* Copilot "generating" beat — each assistant turn resolves out of a blur. */
+.smcr-gen-body {
+  transition:
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.smcr-gen[data-gen="pending"] .smcr-gen-body {
+  opacity: 0.18;
+  filter: blur(4px);
+}
+.smcr-gen[data-gen="pending"] .smcr-gen-avatar {
+  animation: smcr-speakglow 1.2s ease-in-out infinite;
+}
+
+/* The fixed rails step aside once the footer is on screen, so site
+   navigation is never sitting underneath a floating panel. */
+.smcr-root[data-chrome="off"] .smcr-seatrail,
+.smcr-root[data-chrome="off"] .smcr-dossier {
+  opacity: 0;
+  pointer-events: none;
+}
+.smcr-seatrail,
+.smcr-dossier {
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ============================================================
+   Layout that varies by breakpoint.
+
+   These declarations live here rather than in the components' inline
+   `style` props even though the rest of the ported layout does not.
+   Inline styles outrank any stylesheet rule, so a media query cannot
+   turn off `style={{display:"flex"}}` — the export papered over this
+   with `!important` on every override. Owning the base value here
+   instead keeps the cascade normal and the overrides plain.
+   ============================================================ */
+.smcr-convo {
+  display: flex;
+  justify-content: center;
+  padding: 0 max(320px, 4vw) clamp(60px, 10vh, 120px) max(210px, 9vw);
+}
+.smcr-seatrail {
+  display: flex;
+}
+.smcr-dossier {
+  display: flex;
+}
+.smcr-navlinks {
+  display: flex;
+}
+.smcr-castgrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* Cards sit under the transcript's 34px avatar + 12px gutter. */
+.smcr-indent {
+  margin-left: 46px;
+}
+.smcr-hero h1 {
+  font-size: clamp(30px, 4.6vw, 54px);
+  line-height: 1.05;
+}
+.smcr-hero p {
+  font-size: clamp(14px, 1.15vw, 17px);
+  line-height: 1.62;
+  max-width: 54ch;
+}
+
+/* ============================================================
+   Buttons / chrome
+   ============================================================ */
+.smcr-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  font-weight: var(--smcr-weight-bold);
+  min-height: 52px;
+  padding: 0 26px;
+  font-size: 14.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 180ms,
+    border-color 180ms,
+    color 180ms;
+}
+.smcr-cta-primary {
+  background: var(--smcr-blue);
+  border: 1px solid rgba(103, 232, 249, 0.4);
+  color: #fff;
+  box-shadow: var(--smcr-glow-blue);
+}
+.smcr-cta-primary:hover {
+  background: #2563eb;
+  color: #fff;
+}
+.smcr-cta-outline {
+  background: rgba(103, 232, 249, 0.08);
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  color: var(--smcr-sky);
+}
+.smcr-cta-outline:hover {
+  background: rgba(103, 232, 249, 0.16);
+  border-color: rgba(103, 232, 249, 0.6);
+  color: var(--smcr-sky);
+}
+.smcr-cta-nav {
+  min-height: 44px;
+  padding: 0 15px;
+  font-size: 11.5px;
+  border-radius: var(--smcr-radius-full);
+  box-shadow: var(--smcr-glow-blue-sm);
+}
+.smcr-navlink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: var(--smcr-weight-bold);
+  color: var(--smcr-muted);
+  white-space: nowrap;
+  transition: color 180ms;
+}
+.smcr-navlink:hover {
+  color: var(--smcr-text-2);
+}
+
+/* Chip / option buttons — hover was `style-hover` in the export, which
+   the dc runtime does not implement; real CSS hover is the port. */
+.smcr-opt:hover:not(:disabled) {
+  background: rgba(103, 232, 249, 0.18);
+  border-color: rgba(103, 232, 249, 0.6);
+}
+.smcr-quiet {
+  transition:
+    color 180ms,
+    border-color 180ms;
+}
+.smcr-quiet:hover {
+  color: var(--smcr-text-3);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+.smcr-reset:hover {
+  color: var(--smcr-red);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+.smcr-ladder-row:hover .smcr-ladder-label {
+  color: var(--smcr-text);
+}
+
+/* Brand lockup — ported from the DS bundle's marketing/Logo.jsx */
+.smcr-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+.smcr-logo-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 14px;
+  background: linear-gradient(135deg, var(--smcr-brand-blue), var(--smcr-brand-teal));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: var(--smcr-weight-extrabold);
+  letter-spacing: -1px;
+  box-shadow: 0 4px 12px -4px rgba(0, 120, 212, 0.5);
+  flex-shrink: 0;
+}
+.smcr-logo-txt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+  min-width: 0;
+}
+.smcr-logo-name {
+  font-size: 15px;
+  font-weight: var(--smcr-weight-bold);
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.smcr-logo-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Eyebrow — DS marketing/Eyebrow.jsx, plain variant at the export's overrides */
+.smcr-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 10px;
+  font-weight: var(--smcr-weight-extrabold);
+  letter-spacing: var(--smcr-tracking-widest);
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--smcr-cyan);
+}
+
+/* Badge — DS core/Badge.jsx, soft/teal at the export's `.bdg` overrides */
+.smcr-badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 0.375rem;
+  padding: 5px 11px;
+  border-radius: var(--smcr-radius-full);
+  font-size: 9.5px;
+  font-weight: var(--smcr-weight-extrabold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--smcr-brand-teal);
+  background: rgba(0, 180, 216, 0.1);
+  border: 1px solid rgba(0, 180, 216, 0.2);
+}
+
+/* ============================================================
+   Keyframes — every name prefixed so nothing collides with
+   index.css (smcAutofillDetect / hiwDashMarch / hiwTravelDot).
+   ============================================================ */
+@keyframes smcr-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes smcr-speakglow {
+  0%,
+  100% {
+    box-shadow: 0 0 30px rgba(103, 232, 249, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 66px rgba(103, 232, 249, 0.44);
+  }
+}
+@keyframes smcr-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.24);
+  }
+}
+@keyframes smcr-slidein {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes smcr-fly {
+  0% {
+    opacity: 0;
+    transform: translateX(-120px) scale(0.7);
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(6px) scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes smcr-drop {
+  from {
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+  to {
+    transform: scaleY(1);
+    transform-origin: top;
+  }
+}
+@keyframes smcr-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+@keyframes smcr-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-14deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes smcr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes smcr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes smcr-typedot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@keyframes smcr-shimmer {
+  0% {
+    transform: translateX(-90px);
+  }
+  100% {
+    transform: translateX(620px);
+  }
+}
+@keyframes smcr-flare {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.4);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(1.6);
+  }
+}
+@keyframes smcr-wipe {
+  0% {
+    opacity: 0;
+    transform: translateX(-30%);
+  }
+  22% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(30%);
+  }
+}
+@keyframes smcr-seatdrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-46px) scale(0.82);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(5px) scale(1.04);
+  }
+  80% {
+    transform: translateY(-2px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes smcr-hsweep {
+  0% {
+    transform: translateX(-45%);
+  }
+  100% {
+    transform: translateX(150%);
+  }
+}
+@keyframes smcr-vbeam {
+  0% {
+    transform: translateY(-70%);
+  }
+  100% {
+    transform: translateY(170%);
+  }
+}
+@keyframes smcr-gridpulse {
+  0%,
+  100% {
+    opacity: 0.14;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes smcr-heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.26;
+  }
+  12% {
+    transform: scale(1.05);
+    opacity: 0.58;
+  }
+  22% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  34% {
+    transform: scale(1.09);
+    opacity: 0.62;
+  }
+  48% {
+    transform: scale(1);
+    opacity: 0.26;
+  }
+}
+@keyframes smcr-ripple {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+@keyframes smcr-arc {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes smcr-hue {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+@keyframes smcr-burst {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+  }
+}
+@keyframes smcr-float {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(-70vh);
+    opacity: 0;
+  }
+}
+
+/* Seat rail arrival cascade */
+.smcr-seatrail > div {
+  flex: 0 1 auto;
+  animation: smcr-seatdrop 620ms cubic-bezier(0.34, 1.4, 0.5, 1) both;
+}
+.smcr-seatrail > div:nth-child(2) {
+  animation-delay: 80ms;
+}
+.smcr-seatrail > div:nth-child(3) {
+  animation-delay: 160ms;
+}
+.smcr-seatrail > div:nth-child(4) {
+  animation-delay: 240ms;
+}
+.smcr-seatrail > div:nth-child(5) {
+  animation-delay: 320ms;
+}
+.smcr-seatrail > div:nth-child(6) {
+  animation-delay: 400ms;
+}
+.smcr-seatrail > div:nth-child(7) {
+  animation-delay: 480ms;
+}
+
+/* ============================================================
+   Responsive — carried over from the export's own breakpoints.
+   ============================================================ */
+@media (max-height: 820px) {
+  .smcr-seatrail [data-seattile] {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+    font-size: 8.5px;
+  }
+}
+@media (max-height: 640px) {
+  .smcr-seatrail [data-seattile] {
+    width: 27px;
+    height: 27px;
+    flex-basis: 27px;
+    font-size: 7.5px;
+  }
+  .smcr-seatrail [data-seatmeta] {
+    display: none;
+  }
+}
+@media (max-width: 1080px) {
+  .smcr-castgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .smcr-castgrid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 1240px) {
+  .smcr-dossier {
+    display: none;
+  }
+  .smcr-convo {
+    padding-right: clamp(12px, 3vw, 40px);
+  }
+}
+@media (max-width: 900px) {
+  .smcr-stage {
+    opacity: 0.4;
+  }
+  .smcr-seatrail {
+    display: none;
+  }
+  .smcr-convo {
+    padding-left: clamp(12px, 3vw, 28px);
+  }
+  .smcr-navlinks {
+    display: none;
+  }
+  .smcr-logo-tag {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  /* The transcript indents by the 34px avatar + gap on desktop; on a phone
+     that indent costs more than the alignment it buys. */
+  .smcr-indent {
+    margin-left: 0;
+  }
+}
+@media (max-height: 700px) {
+  .smcr-hero h1 {
+    font-size: clamp(22px, 4.4vh, 34px);
+    line-height: 1.08;
+  }
+  .smcr-hero p {
+    font-size: 12.5px;
+    line-height: 1.5;
+    max-width: 52ch;
+  }
+  .smcr-hero {
+    gap: 10px;
+  }
+}
+
+/* Paused while the tab is hidden — the export's `body.wr-idle` rule. */
+.smcr-root[data-idle="1"] *,
+.smcr-root[data-idle="1"] [style*="animation"] {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smcr-root *,
+  .smcr-root *::before,
+  .smcr-root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .smcr-reveal[data-in="0"],
+  .smcr-reveal-l[data-in="0"],
+  .smcr-reveal-r[data-in="0"] {
+    opacity: 1;
+    transform: none;
+  }
+  .smcr-chapter[data-soft="1"] {
+    filter: none;
+    opacity: 1;
+  }
+}

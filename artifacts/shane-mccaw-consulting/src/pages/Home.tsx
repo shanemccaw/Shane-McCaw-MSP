@@ -1,1027 +1,1245 @@
-import { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
-import { Link } from "wouter";
-import {
-  ShieldCheck,
-  Zap,
-  ArrowRight,
-  Activity,
-  CheckCircle2,
-  Clock,
-  ChevronRight,
-  Lock,
-  AlertTriangle,
-  Layers,
-  Users,
-  Sparkles,
-  ScanLine,
-  ClipboardList,
-  FileSearch,
-  FolderOpen,
-  type LucideIcon,
-} from "lucide-react";
-import { Layout } from "@/components/Layout";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, Sparkles } from "lucide-react";
 import { SEOMeta } from "@/components/SEOMeta";
-import { ChatCTA } from "@/components/ChatCTA";
-import { GlassPanel } from "@/components/design-system/GlassPanel";
-import { GradientText } from "@/components/design-system/GradientText";
-import { StatPanel } from "@/components/design-system/StatPanel";
-import { HowItWorksShowcase } from "@/components/design-system/HowItWorksShowcase";
-import { useServices, type PublicService } from "@/hooks/useServices";
-import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
-import { usePersonalizationState } from "@/hooks/usePersonalizationState";
-import { useHealthPillars } from "@/hooks/usePersonalizationData";
-import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-import { EngagementProjectCard } from "@/components/EngagementProjectCard";
-import { HEALTH_PILLAR_LABELS, PILLAR_TO_TOPIC_SLUG } from "@/data/solutionsTopics";
-import { trackEvent } from "@/lib/analytics";
-import { ZONES, type ZoneKey, getZoneForService } from "@/lib/assessmentZones";
+import { Footer } from "@/components/Footer";
+import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
+import "@/styles/home-room.css";
 
-const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
-
-// The funnel this site actually runs, in order — replaces the old Monitoring-first hero
-// pitch. Each stage links to where a visitor actually goes next.
-const FUNNEL_STAGES: { icon: LucideIcon; title: string; description: string; href: string }[] = [
-  {
-    icon: ClipboardList,
-    title: "Take the Quiz",
-    description: "A 3-question self-reported read on where your tenant likely stands — 60 seconds, no consent required.",
-    href: "/quiz",
-  },
-  {
-    icon: ScanLine,
-    title: "Free Assessment",
-    description: "A real, consent-gated Graph API scan of your live tenant — not a questionnaire.",
-    href: "/assessments?tab=free",
-  },
-  {
-    icon: FileSearch,
-    title: "Paid Assessment",
-    description: "Go deeper on the zone that matters most — identity, compliance, data, Copilot, cost, or the whole tenant.",
-    href: "/assessments",
-  },
-  {
-    icon: FolderOpen,
-    title: "Project SOW",
-    description: "A real gap becomes a scoped, priced engagement — not a self-checkout cart.",
-    href: "/projects",
-  },
-];
-
-// Tenant-facing engines only — the platform's full engine registry (12) also runs internal
-// business-ops engines (Pricing, CRM, MSP Portfolio, etc.) that don't watch a customer tenant,
-// so this list isn't labeled as "the platform's total engine count" anywhere on this page.
-const ENGINES = [
-  {
-    id: "drift",
-    name: "Drift Engine",
-    description:
-      "Every admin change is fingerprinted against your baseline and flagged the next time your tenant is evaluated — not discovered six months later in an audit.",
-    badge: "Configuration Baseline",
-    icon: Layers,
-  },
-  {
-    id: "security",
-    name: "Security Engine",
-    description:
-      "Hunts anonymous share links, stale guest access, over-privileged OAuth apps, and MFA gaps before they become the incident report.",
-    badge: "Threat Minimization",
-    icon: Lock,
-  },
-  {
-    id: "health",
-    name: "Health Engine",
-    description:
-      "Scores tenant risk on every scheduled check. Where write-back remediation is configured for your tenant, common issues get resolved automatically — otherwise, they're flagged for you to act on.",
-    badge: "SLA Remediation",
-    icon: Activity,
-  },
-  {
-    id: "sla",
-    name: "SLA Engine",
-    description:
-      "Tracks every support commitment against the clock — response times, milestone delivery, uptime — so nothing slips quietly.",
-    badge: "Delivery Performance",
-    icon: Clock,
-  },
-  {
-    id: "scope-creep",
-    name: "Scope Creep Engine",
-    description:
-      "Checks live engineering work against the signed SOW on every scheduled review, catching drift between what was promised and what's being delivered.",
-    badge: "Statement of Work Auditing",
-    icon: AlertTriangle,
-  },
-  {
-    id: "monitoring",
-    name: "Monitoring Engine",
-    description:
-      "Runs platform-authored checks against your tenant on a real cadence — hourly to daily — and classifies what it finds by severity.",
-    badge: "Scheduled Tenant Scans",
-    icon: ScanLine,
-  },
-  {
-    id: "recommendation",
-    name: "Recommendation Engine",
-    description:
-      "Compares what your tenant actually needs against what you have today, and tells you exactly what to fix first — no generic upsells.",
-    badge: "Gap-Closing Guidance",
-    icon: Zap,
-  },
-];
-
-// "What We Do" overview cards (Home §2) — deliberately category-level, not a re-listing of
-// the named engines below (§6/ENGINES): a cold visitor should understand the kind of scan
-// this is before meeting the specific engines that do it.
-const WHAT_WE_DO = [
-  {
-    title: "Configuration & Drift Visibility",
-    description:
-      "Every admin change in your tenant is checked against your baseline, so configuration drift shows up on a scan instead of an incident report.",
-    icon: Layers,
-  },
-  {
-    title: "Security & Access Posture",
-    description:
-      "Anonymous share links, stale guest access, risky OAuth grants, and MFA gaps get surfaced from real Graph API data — not a self-reported checklist.",
-    icon: Lock,
-  },
-  {
-    title: "License, Cost & Adoption Signals",
-    description:
-      "Seat utilization, Copilot adoption, and licensing waste are tracked from your actual tenant usage, not estimated on a sales call.",
-    icon: Users,
-  },
-  {
-    title: "Compliance & Governance Mapping",
-    description:
-      "Governance and compliance posture are checked against your real tenant configuration on a running schedule, with every finding traceable back to the rule that raised it.",
-    icon: ShieldCheck,
-  },
-];
-
-// Differentiation copy (Home §4) — real Graph-based telemetry vs. the self-reported
-// questionnaire/checklist model most MSPs and compliance vendors run on.
-const TELEMETRY_COMPARISON = {
-  themTitle: "Typical MSPs & Compliance Checklists",
-  usTitle: "Real Tenant Telemetry",
-  them: [
-    "Self-reported surveys and static checklists",
-    "A snapshot from the day someone filled out a form",
-    'Generic "best practices" scored against a template, not your tenant',
-    "Findings you have to take on faith, since nobody actually connected to your environment",
-  ],
-  us: [
-    "A live Graph API connection into your actual tenant",
-    "A real-time scan of your live configuration — not a cached snapshot from a form",
-    "Every score traceable to a real, inspectable signal rule against your real configuration",
-    "Findings generated by engines reading your tenant, not a person reading your answers",
-  ],
-};
-
-// Index-aligned with HowItWorksShowcase's five fixed stage visuals (Connect, Scan, Findings,
-// Score, Remediate — HowItWorksShowcase.tsx) so each step's left-column copy pairs with the
-// right-column animation that actually illustrates it. Steps 1/2/4 keep this page's existing
-// Establish-the-link / Full-spectrum-scan / composite-score copy verbatim; steps 3 and 5 are
-// reworded (not reused from Governance) around Home's own real Findings and remediation
-// claims — step 5 paraphrases the Health Engine's real remediation behavior from the ENGINES
-// list below ("Where write-back remediation is configured for your tenant, common issues get
-// resolved automatically. Otherwise, they're flagged for you to act on.").
-const HOW_IT_WORKS_STEPS = [
-  {
-    step: 1,
-    title: "Establish the link",
-    railLabel: "Connect",
-    description:
-      "A quick, consent-gated connection to your Microsoft 365 tenant — no agents to install, no scripts to run.",
-  },
-  {
-    step: 2,
-    title: "Full-spectrum scan",
-    railLabel: "Scan",
-    description:
-      "Real Graph API checks across governance, compliance, adoption, Copilot readiness, architecture, licensing, and security.",
-  },
-  {
-    step: 3,
-    title: "Every gap, logged",
-    railLabel: "Findings",
-    description:
-      "Configuration drift, security gaps, licensing waste, and compliance exceptions are logged as real, inspectable findings — not a generic score with no explanation.",
-  },
-  {
-    step: 4,
-    title: "A real number, not a guess",
-    railLabel: "Score",
-    description:
-      "A composite health score plus a pillar-by-pillar breakdown — not a generic questionnaire estimate.",
-  },
-  {
-    step: 5,
-    title: "Fixed automatically, or flagged for you",
-    railLabel: "Remediate",
-    description:
-      "Where write-back remediation is configured for your tenant, common issues resolve automatically. Everything else is ranked and re-checked on your next scheduled evaluation.",
-  },
-];
-
-// Scan-surface rows for the How It Works showcase's Scan stage — condensed from WHAT_WE_DO
-// above (same four real categories, same claims, shortened to fit the animated panel's
-// compact status-row layout) rather than inventing separate coverage language.
-const HOME_SCAN_SURFACES = [
-  { icon: Layers, label: "Configuration & Drift", sublabel: "Every admin change checked against your baseline" },
-  { icon: Lock, label: "Security & Access Posture", sublabel: "Anonymous links, guest access, OAuth risk, MFA gaps" },
-  { icon: Users, label: "License, Cost & Adoption", sublabel: "Seat utilization, Copilot adoption, licensing waste" },
-  { icon: ShieldCheck, label: "Compliance & Governance", sublabel: "Governance posture against your real configuration" },
-];
-
-// Illustrative-only mockup data for the How It Works showcase's Findings/Score/Remediate
-// stages — not a live/real customer score, same convention as the (now-replaced) static
-// Mission Control preview panel this section used to show. ringValue 49 (red tier per
-// PillarScoreRing's scoreTone) matches the same treatment applied to the Governance topic
-// page's illustrative ring; remediatedRingValue 92 (green tier) is the Remediate stage's
-// illustrative after-state.
-const HOME_HOW_IT_WORKS_DASHBOARD = {
-  panelLabel: "Mission Control preview",
-  ringLabel: "Composite tenant health",
-  ringValue: 49,
-  remediatedRingValue: 92,
-  metrics: [
-    { label: "Configuration drift flags", count: 9 },
-    { label: "Security & access gaps", count: 14 },
-    { label: "Licensing & adoption gaps", count: 5 },
-    { label: "Compliance exceptions", count: 3 },
-  ],
-  caption: "Example data — not your real score",
-};
+import {
+  CAST,
+  CHAP,
+  CHAP_ORDER,
+  DEFAULT_VOICE,
+  FIVE_W,
+  FOCUS_LABEL,
+  FEE_UNRESOLVED,
+  HERO_LINE,
+  HERO_STATS,
+  INTRO_MESSAGES,
+  INDUSTRY_PRIORITY,
+  PILLARS,
+  READINESS,
+  VOICE,
+  fillTokens,
+  type ChapterId,
+  type Persona,
+  type PillarId,
+} from "./home/roomData";
+import {
+  TOTAL_CHECKS,
+  buildMessage,
+  computeScore,
+  formatCents,
+  getIndustry,
+  getProblem,
+} from "./home/roomModel";
+import { RoomStage } from "./home/RoomStage";
+import { SeatRail, type SeatView } from "./home/SeatRail";
+import { Dossier, type FactPill, type LadderRow, type RosterRow } from "./home/Dossier";
+import { DiscoveryCard } from "./home/DiscoveryCard";
+import { PillarSection } from "./home/PillarSection";
+import { MessageRow } from "./home/RoomTranscript";
+import { useRoomState } from "./home/useRoomState";
+import { useRoomChoreography, scrollToChapter, prefersReducedMotion } from "./home/useRoomChoreography";
 
 /**
- * Assessment-tier real pillar overview (website-rebuild-reference-v2.md §3): a logged-in,
- * Assessment-verified visitor sees their actual Architecture Health Engine score front and
- * center, directing them to whichever topic page needs attention most. Cold and quiz-tier
- * visitors never see this section — it's added on top of Stage 3's hero, not a replacement
- * (Stage 4b task scope). Renders nothing while resolving or outside the "assessment" tier.
+ * The catalog row this page sells. Matched by exact service name, the same
+ * convention lib/assessmentZones.ts uses — the slug and the price both come from
+ * `/api/services`, never from a literal in this file.
  */
-function AssessmentHealthOverview() {
-  const { tier, loading: tierLoading } = usePersonalizationState();
-  const { loading: pillarsLoading, score, pillars } = useHealthPillars();
+const COPILOT_ASSESSMENT_NAME = "Copilot Readiness Assessment";
 
-  const worst = useMemo(
-    () => (pillars.length ? [...pillars].sort((a, b) => a.score - b.score)[0] : null),
-    [pillars],
-  );
+/** Types HERO_LINE out once, at the export's default 22ms/2chars. */
+function useTypedHeroLine(): string {
+  const [n, setN] = useState(() => (prefersReducedMotion() ? HERO_LINE.length : 0));
 
   useEffect(() => {
-    if (tier === "assessment" && !pillarsLoading && pillars.length > 0) {
-      trackEvent("personalization_shown", { tier: "assessment", surface: "home_health_overview" });
-    }
-  }, [tier, pillarsLoading, pillars.length]);
+    if (prefersReducedMotion()) return;
+    const t0 = Date.now();
+    const id = window.setInterval(() => {
+      const want = Math.floor((Date.now() - t0) / 22) * 2;
+      if (want >= HERO_LINE.length) {
+        setN(HERO_LINE.length);
+        window.clearInterval(id);
+        return;
+      }
+      setN(Math.max(2, want));
+    }, 22);
+    return () => window.clearInterval(id);
+  }, []);
 
-  if (tierLoading || tier !== "assessment") return null;
-  if (pillarsLoading || pillars.length === 0) return null;
-
-  const worstSlug = worst ? PILLAR_TO_TOPIC_SLUG[worst.pillar] : null;
-  const worstLabel = worst ? (HEALTH_PILLAR_LABELS[worst.pillar] ?? worst.pillar) : null;
-
-  return (
-    <section className="py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        <GlassPanel className="p-8 sm:p-10">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-text-secondary mb-2">
-                Your real tenant health, right now
-              </p>
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-                {score !== null ? (
-                  <>
-                    Composite score:{" "}
-                    <span className="font-numeric text-accent-blue">{Math.round(score)}</span>
-                  </>
-                ) : (
-                  "Composite score not yet available"
-                )}
-              </h2>
-            </div>
-            {worst && worstSlug && (
-              <Link
-                href={`/projects/${worstSlug}`}
-                className="shrink-0 px-6 py-3 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
-                style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
-                data-track="cta"
-                onClick={() =>
-                  trackEvent("personalization_nudge_click", {
-                    tier: "assessment",
-                    surface: "home_health_overview",
-                    pillar: worst.pillar,
-                    destination: worstSlug,
-                  })
-                }
-              >
-                <span>{worstLabel} needs attention</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {pillars.map((p) => (
-              <StatPanel
-                key={p.pillar}
-                label={HEALTH_PILLAR_LABELS[p.pillar] ?? p.pillar}
-                value={Math.round(p.score)}
-                className={worst && p.pillar === worst.pillar ? "border-accent-violet/50" : undefined}
-              />
-            ))}
-          </div>
-        </GlassPanel>
-      </div>
-    </section>
-  );
+  return HERO_LINE.slice(0, n);
 }
 
 export default function Home() {
-  // {{db.services.all}}
-  const { services, loading: servicesLoading, error: servicesError } = useServices();
-  const { projects, loading: projectsLoading } = useEngagementProjects();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { state, actions, latches } = useRoomState();
+  const { services } = useServices();
+  const typed = useTypedHeroLine();
 
-  // Narrows the "Go deeper — paid assessments" grid by the same 6-zone taxonomy
-  // Assessments.tsx uses for its full zone browsing — null = show every paid
-  // assessment, unfiltered.
-  const [paidAssessmentZone, setPaidAssessmentZone] = useState<ZoneKey | null>(null);
-  const { leadDisplayed, gradientDisplayed, headlines } = useTypewriterHeadline();
+  /* ------------------------------------------------------------------ *
+   * Catalog wiring — price and destination for the close card + header CTA
+   * ------------------------------------------------------------------ */
+  const service = useMemo(
+    () => services.find((s) => s.name.trim() === COPILOT_ASSESSMENT_NAME) ?? null,
+    [services],
+  );
+  const feeCents = service ? resolvePublicServicePriceCents(service) : null;
+  const feePrice = feeCents != null && feeCents > 0 ? formatCents(feeCents) : null;
+  /** Inline, mid-sentence form. */
+  const fee = feePrice ?? FEE_UNRESOLVED;
+  /** The close card's headline number. */
+  const feeDisplay = feePrice ?? "Fixed fee";
+  const bookHref = service?.slug ? `/checkout/${service.slug}` : "/assessments";
 
-  // Measures every candidate headline's actual rendered height (off-screen, visibility:hidden
-  // so layout is still computed) and reserves that max as the h1's min-height, instead of a
-  // guessed Tailwind min-h that can't account for every headline wrapping differently per
-  // viewport width. Re-measures on resize since wrap points shift with width. Runs in
-  // useLayoutEffect (before paint) so the reserved space is in place before typing starts.
-  const heroMeasureRef = useRef<HTMLDivElement>(null);
-  const [heroMinHeight, setHeroMinHeight] = useState<number | null>(null);
+  /* ------------------------------------------------------------------ *
+   * Derived room — port of the export's renderVals()
+   * ------------------------------------------------------------------ */
+  const ind = getIndustry(state.industry);
+  const problem = getProblem(state.problem);
+  const voice = VOICE[state.persona] ?? DEFAULT_VOICE;
+  const focus = problem.focus;
+  const chap = CHAP[state.active] ?? CHAP.hero;
 
-  useLayoutEffect(() => {
-    const measure = () => {
-      const container = heroMeasureRef.current;
-      if (!container) return;
-      const max = Array.from(container.children).reduce(
-        (tallest, el) => Math.max(tallest, (el as HTMLElement).offsetHeight),
-        0,
-      );
-      if (max > 0) setHeroMinHeight(max);
-    };
+  const sel = useMemo(
+    () => ({
+      clusters: state.clusters.length ? state.clusters : ind.clusters,
+      people: state.people.length ? state.people : ind.personas.map((p) => p.name),
+      useCases: state.useCases.length ? state.useCases : ind.useCases,
+    }),
+    [state.clusters, state.people, state.useCases, ind],
+  );
 
-    measure();
+  const roster: Persona[] = useMemo(() => {
+    const chosen = ind.personas.filter((p) => sel.people.includes(p.name));
+    const extras: Persona[] = sel.people
+      .filter((n) => !ind.personas.some((p) => p.name === n))
+      .map((n, i) => ({
+        id: `x${i}`,
+        name: n,
+        short: n.split(" ")[0],
+        role: "Added by you",
+        initials: n.slice(0, 2).toUpperCase(),
+        color: "#67E8F9",
+        tile: "linear-gradient(135deg,#0078D4,#67E8F9)",
+        bd: "rgba(103,232,249,.45)",
+        day: "You named this one, so you know the day better than I do.",
+        win: "We test Copilot against their real workload during the assessment.",
+        risk: "And we check what their permissions actually reach before anyone gets a licence.",
+      }));
+    return chosen.concat(extras).slice(0, 3);
+  }, [ind, sel.people]);
 
-    let resizeTimeout: ReturnType<typeof setTimeout>;
-    const onResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(measure, 150);
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      clearTimeout(resizeTimeout);
-    };
-  }, [headlines]);
+  const answeredCount = Object.keys(state.checks).length;
+  const score = computeScore(state.checks);
 
-  const assessments = services.filter((s) => s.serviceType === "assessment");
-  const retainers = services.filter((s) => s.serviceType === "retainer");
+  // How far the visitor has read. `at()` returns true for anything not in
+  // CHAP_ORDER (indexOf -1), which is how the export's first dossier pills
+  // ("clusters"/"people"/"usecases") show as soon as the room exists.
+  const seen = CHAP_ORDER.indexOf(state.active as ChapterId);
+  const at = useCallback(
+    (id: string) => seen >= CHAP_ORDER.indexOf(id as ChapterId),
+    [seen],
+  );
 
-  const renderProductGrid = (items: PublicService[]) => {
-    if (servicesLoading) {
-      return (
-        <div className="flex justify-center items-center py-20 w-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
-        </div>
-      );
-    }
+  /** Pillar order is fixed once the page is laid out — re-sorting mid-scroll teleports the reader. */
+  if (!latches.order.current) {
+    latches.order.current = PILLARS.slice()
+      .sort((a, b) => {
+        if (a.id === "copilot") return 1;
+        if (b.id === "copilot") return -1;
+        return (a.id === focus ? -1 : 0) - (b.id === focus ? -1 : 0);
+      })
+      .map((p) => p.id);
+  }
+  const ordered = useMemo(
+    () => (latches.order.current ?? []).map((id) => PILLARS.find((p) => p.id === id)!).filter(Boolean),
+    // Recomputed when the latch is cleared by Reset, which also bumps state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.industryPicked, state.problem, latches.order.current],
+  );
 
-    if (servicesError || items.length === 0) {
-      return (
-        <div className="text-center py-12 text-text-secondary w-full border border-white/[0.08] rounded-2xl bg-charcoal-1">
-          No active offerings found in the database. Please contact support.
-        </div>
-      );
-    }
+  /* ---- seats ---- */
+  const seats: SeatView[] = useMemo(() => {
+    const keys = ["shane"]
+      .concat(at("cast") ? roster.map((c) => c.id) : [])
+      .concat(at("cast") ? ["kira"] : [])
+      .concat(at("industry") ? ["you"] : []);
+    return keys.flatMap((k) => {
+      const c = (CAST as Record<string, (typeof CAST)["shane"]>)[k] ?? roster.find((x) => x.id === k);
+      if (!c) return [];
+      const live = k === chap.who;
+      const isYou = k === "you";
+      return [
+        {
+          key: k,
+          initials: c.initials,
+          short: isYou ? "You" : c.short || c.name.split(" ")[0],
+          title: c.name + (c.role ? ` — ${c.role}` : ""),
+          state: live ? "Speaking" : isYou ? "Seated" : c.role,
+          live,
+          color: c.color,
+          tile: c.tile,
+          bd: c.bd,
+          isYou,
+        },
+      ];
+    });
+  }, [at, roster, chap.who]);
 
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-        {items.map((item) => (
-          <div
-            key={item.slug}
-            className="flex flex-col rounded-2xl p-6 bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30 transition-all duration-200"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08]">
-                {item.category ? item.category.toUpperCase() : "ENTERPRISE"}
-              </span>
-              {item.durationDays && (
-                <span className="flex items-center gap-1 text-xs text-text-secondary">
-                  <Clock className="w-3.5 h-3.5" />
-                  {item.durationDays} Days
-                </span>
-              )}
-            </div>
+  /* ---- dossier ---- */
+  const roomVisible =
+    (state.industryPicked || state.autoSkipped) &&
+    CHAP_ORDER.indexOf(state.active as ChapterId) >= CHAP_ORDER.indexOf("industry");
+  const roomSeated = state.confirmed.people || state.autoSkipped;
 
-            <h3 className="font-display text-xl font-bold text-text-primary mb-2">{item.name}</h3>
-            <p className="text-sm text-text-secondary mb-6 flex-grow line-clamp-3">{item.description}</p>
+  const dossierRoster: RosterRow[] = useMemo(() => {
+    if (!(roomVisible && roomSeated)) return [];
+    const rows = [...roster, ...(at("cast") ? [CAST.kira] : [])];
+    return rows.map((r, i) => ({
+      key: r.id,
+      initials: r.initials,
+      name: r.name,
+      role: r.role,
+      color: r.color,
+      tile: r.tile,
+      isKira: r.id === "kira",
+      index: i,
+    }));
+  }, [roomVisible, roomSeated, roster, at]);
 
-            <div className="pt-4 border-t border-white/[0.06] flex items-center justify-between mt-auto">
-              <div>
-                <span className="font-numeric text-2xl font-medium text-text-primary">
-                  {item.isFreeOffering ? "FREE" : item.basePrice ? `$${Number(item.basePrice).toLocaleString()}` : "Custom"}
-                </span>
-                {!item.isFreeOffering && item.basePrice && (
-                  <span className="text-xs text-text-secondary ml-1">/ one-time</span>
-                )}
-              </div>
-              <Link
-                href={`/checkout/${item.slug}`}
-                className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
-                style={GRADIENT_BG}
-                data-track="cta"
-              >
-                <span>{item.isFreeOffering ? "Request" : "Purchase"}</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const facts: FactPill[] = useMemo(() => {
+    const out: FactPill[] = [];
+    const pill = (t: string, full?: string, hot = false) => out.push({ key: t, t, full: full ?? t, hot });
+    if (at("clusters")) pill(state.industry, state.industry, state.industryPicked);
+    if (at("people")) pill(`${sel.clusters.length} clusters`, sel.clusters.join(", "));
+    if (at("usecases")) roster.forEach((r) => pill(r.short, `${r.name} — ${r.role}`));
+    if (at("cast")) pill(`${sel.useCases.length} use cases`, sel.useCases.join(", "));
+    if (at("governance")) pill(ind.reg.length > 22 ? `${ind.reg.slice(0, 21)}…` : ind.reg, ind.reg);
+    if (at("governance")) pill(`Opens on ${FOCUS_LABEL[focus]}`);
+    return out.slice(0, 6);
+  }, [at, state.industry, state.industryPicked, sel, roster, ind.reg, focus]);
 
-  // Free stays understated/plain glass; Paid gets the gradient-bordered treatment — a
-  // starker split than a plain "highlighted vs not" accent border would give within a
-  // single tier grid.
-  const renderAssessmentCard = (item: PublicService, isPaid: boolean) => {
-    const card = (
-      <div
-        className={`flex flex-col h-full rounded-2xl p-6 transition-all duration-200 ${
-          isPaid ? "bg-charcoal-1" : "glass-panel hover:border-white/[0.18]"
-        }`}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08]">
-            {item.category ? item.category.toUpperCase() : "ENTERPRISE"}
-          </span>
-          {item.durationDays && (
-            <span className="flex items-center gap-1 text-xs text-text-secondary">
-              <Clock className="w-3.5 h-3.5" />
-              {item.durationDays} Days
-            </span>
-          )}
-        </div>
+  const ladder: LadderRow[] = useMemo(
+    () =>
+      ordered.map((p) => {
+        const qs = READINESS[p.id] ?? [];
+        return {
+          key: p.id,
+          name: p.title,
+          primary: p.primary,
+          accent: p.accent,
+          now: state.active === p.id,
+          past: CHAP_ORDER.indexOf(state.active as ChapterId) > CHAP_ORDER.indexOf(p.id),
+          done: qs.filter((q) => state.checks[q.id] !== undefined).length,
+          total: qs.length,
+          flag: state.industryPicked ? ((INDUSTRY_PRIORITY[state.industry] ?? {})[p.id] ?? null) : null,
+        };
+      }),
+    [ordered, state.active, state.checks, state.industryPicked, state.industry],
+  );
 
-        <h3 className="font-display text-xl font-bold text-text-primary mb-2">{item.name}</h3>
-        <p className="text-sm text-text-secondary mb-6 flex-grow line-clamp-3">{item.description}</p>
+  const verdict =
+    answeredCount === 0
+      ? "Answer the readiness checks and this builds as you go"
+      : answeredCount < TOTAL_CHECKS
+        ? `Building — ${TOTAL_CHECKS - answeredCount} check${TOTAL_CHECKS - answeredCount === 1 ? "" : "s"} still to answer`
+        : score < 55
+          ? "Indicative: significant gaps before enablement"
+          : score < 75
+            ? "Indicative: promising, with known gaps"
+            : "Indicative: strong footing, worth confirming";
 
-        <div className="pt-4 border-t border-white/[0.06] flex items-center justify-between mt-auto">
-          <div>
-            <span className="font-numeric text-2xl font-medium text-text-primary">
-              {item.isFreeOffering ? "FREE" : item.basePrice ? `$${Number(item.basePrice).toLocaleString()}` : "Custom"}
-            </span>
-            {!item.isFreeOffering && item.basePrice && (
-              <span className="text-xs text-text-secondary ml-1">/ one-time</span>
-            )}
-          </div>
-          <Link
-            href={`/checkout/${item.slug}`}
-            className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
-            style={GRADIENT_BG}
-            data-track="cta"
-          >
-            <span>{item.isFreeOffering ? "Begin Mission Readiness" : "Run My Full Evaluation"}</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </div>
-    );
+  const dossierVerdict =
+    answeredCount === 0
+      ? "Not enough signal yet"
+      : answeredCount < TOTAL_CHECKS
+        ? `${answeredCount} of ${TOTAL_CHECKS} answered`
+        : score < 55
+          ? "Significant gaps"
+          : score < 75
+            ? "Promising, with gaps"
+            : "Strong footing";
 
-    if (!isPaid) {
-      return <div key={item.slug}>{card}</div>;
-    }
+  const closeLine = `${fillTokens(problem.close, ind, fee)} Nine documents in total, and ${ind.reg} gets the version written for them.`;
 
-    return (
-      <div key={item.slug} className="rounded-2xl p-[1.5px]" style={GRADIENT_BG}>
-        {card}
-      </div>
-    );
-  };
+  /* ------------------------------------------------------------------ *
+   * Choreography
+   * ------------------------------------------------------------------ */
+  useRoomChoreography(rootRef, {
+    onChapter: actions.setChapter,
+    onScrolledPast: actions.markScrolledPast,
+    onAutoSkip: actions.autoSkip,
+  });
 
-  const renderAssessmentSplit = () => {
-    if (servicesLoading) {
-      return (
-        <div className="flex justify-center items-center py-20 w-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
-        </div>
-      );
-    }
+  /** Any jump link into gated content builds the room first, so no anchor is ever dead. */
+  const unlockThen = useCallback(
+    (id: PillarId | string) => (e: React.MouseEvent) => {
+      e.preventDefault();
+      actions.autoSkip();
+      window.setTimeout(() => scrollToChapter(id), 90);
+    },
+    [actions],
+  );
 
-    if (servicesError || assessments.length === 0) {
-      return (
-        <div className="text-center py-12 text-text-secondary w-full border border-white/[0.08] rounded-2xl bg-charcoal-1">
-          No active offerings found in the database. Please contact support.
-        </div>
-      );
-    }
+  const castMessages = useMemo(() => {
+    const first = roster[0];
+    return [
+      buildMessage(
+        "shane",
+        "One more person before we start, and she is not optional. Kira Vance is an independent security assessor — she is the one who signs off, or does not, and I would rather she asked her questions here than in your steering committee three months from now.",
+        roster,
+      ),
+      buildMessage(
+        "kira",
+        "Kira Vance. I assess security for a living, which makes me the least popular person in most of these meetings. I have no stake in you buying anything — I only care whether the tenant can survive the retrieval.",
+        roster,
+      ),
+      buildMessage(
+        "shane",
+        `Now the people who actually do the work. In ${state.industry.toLowerCase()} the room usually looks like this. Copilot has built three personas from your sector — these are the people whose day actually changes, and the people the seven pillars are really about.`,
+        roster,
+      ),
+      ...(first ? [buildMessage(first.id, `${first.win} ${first.risk}`, roster)] : []),
+      buildMessage(
+        "shane",
+        "Three people, three Copilot wins, three readiness conditions sitting in front of them. The pillars below are just those conditions, one at a time.",
+        roster,
+      ),
+    ];
+  }, [roster, state.industry]);
 
-    const freeAssessments = assessments.filter((a) => a.isFreeOffering);
-    const paidAssessments = assessments.filter((a) => !a.isFreeOffering);
+  const introMessages = useMemo(
+    () => INTRO_MESSAGES.map((m) => buildMessage(m.who, m.text, roster)),
+    [roster],
+  );
 
-    // Zones actually represented among the paid catalog, in the same fixed
-    // ZONES order — a zone with zero paid assessments doesn't get a chip.
-    const paidZoneCounts = ZONES.map((zone) => ({
-      zone,
-      count: paidAssessments.filter((a) => getZoneForService(a) === zone.key).length,
-    })).filter((z) => z.count > 0);
-
-    const visiblePaidAssessments = paidAssessmentZone
-      ? paidAssessments.filter((a) => getZoneForService(a) === paidAssessmentZone)
-      : paidAssessments;
-
-    return (
-      <div className="w-full space-y-12">
-        {freeAssessments.length > 0 && (
-          <div>
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
-              Start here — no cost
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {freeAssessments.map((item) => renderAssessmentCard(item, false))}
-            </div>
-          </div>
-        )}
-        {paidAssessments.length > 0 && (
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <p className="text-xs uppercase tracking-widest text-text-secondary">
-                Go deeper — paid assessments
-              </p>
-              {paidZoneCounts.length > 1 && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setPaidAssessmentZone(null)}
-                    aria-pressed={paidAssessmentZone === null}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                      paidAssessmentZone === null
-                        ? "bg-accent-blue/15 text-accent-blue border-accent-blue/40"
-                        : "text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]"
-                    }`}
-                  >
-                    All
-                  </button>
-                  {paidZoneCounts.map(({ zone, count }) => (
-                    <button
-                      key={zone.key}
-                      onClick={() => setPaidAssessmentZone(zone.key)}
-                      aria-pressed={paidAssessmentZone === zone.key}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                        paidAssessmentZone === zone.key
-                          ? "bg-accent-blue/15 text-accent-blue border-accent-blue/40"
-                          : "text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]"
-                      }`}
-                    >
-                      {zone.label} <span className="opacity-70">{count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {visiblePaidAssessments.map((item) => renderAssessmentCard(item, true))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderProjectsShowcase = () => {
-    if (projectsLoading) {
-      return (
-        <div className="flex justify-center items-center py-20 w-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
-        </div>
-      );
-    }
-
-    const visible = projects.filter((p) => p.isVisible);
-    if (visible.length === 0) return null;
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-        {visible.map((project, i) => (
-          <EngagementProjectCard key={project.id} project={project} index={i} />
-        ))}
-      </div>
-    );
-  };
+  const assembleChips = useMemo(
+    () =>
+      [state.industry, ...sel.clusters.slice(0, 2), ...roster.map((r) => r.short), `${sel.useCases.length} use cases`],
+    [state.industry, sel, roster],
+  );
 
   return (
-    <Layout>
+    <div className="smcr-root" ref={rootRef}>
       <SEOMeta
-        title="Shane McCaw Consulting | Microsoft 365 Assessments & Projects"
-        description="A free, real Graph API assessment of your Microsoft 365 tenant, with a clear path to scoped projects — built on the governance discipline Shane McCaw wrote for NASA."
+        title="Shane McCaw Consulting | Is your tenant ready for Microsoft 365 Copilot?"
+        description="Walk the seven Copilot readiness pillars with a security assessor and the people who would actually use it — then find out whether you need the paid assessment. Built on the governance framework Shane McCaw wrote for NASA."
       />
 
-      {/* HERO */}
-      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
-        <div className="max-w-5xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
-            <ShieldCheck className="w-4 h-4" />
-            Built by a NASA M365 Architect
-          </div>
+      <RoomStage />
 
-          <div
-            ref={heroMeasureRef}
-            aria-hidden="true"
-            className="font-display text-4xl sm:text-6xl font-bold tracking-tight leading-tight max-w-4xl mx-auto invisible"
-            style={{ height: 0, overflow: "hidden" }}
+      {/* ---------------------------------------------------------------- */}
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 70,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 14,
+          padding: "11px clamp(14px,3vw,32px)",
+          background: "rgba(16,11,38,.74)",
+          backdropFilter: "blur(22px)",
+          borderBottom: "1px solid var(--smcr-rule)",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+          <a href="/" className="smcr-logo" aria-label="Shane McCaw Consulting — home">
+            <span className="smcr-logo-mark" aria-hidden="true">
+              SM
+            </span>
+            <span className="smcr-logo-txt">
+              <span className="smcr-logo-name">Shane McCaw</span>
+              <span className="smcr-logo-tag">Copilot Readiness</span>
+            </span>
+          </a>
+          <span
+            style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, paddingLeft: 44 }}
+            aria-live="polite"
           >
-            {headlines.map((h, i) => (
-              <div key={i}>
-                {h.leadText}
-                {h.gradientText}
-              </div>
-            ))}
-          </div>
-
-          <h1
-            className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6 min-h-[1.2em] sm:min-h-[2.4em]"
-            style={heroMinHeight ? { minHeight: `${heroMinHeight}px` } : undefined}
-          >
-            {leadDisplayed}
-            <GradientText>{gradientDisplayed}</GradientText>
             <span
-              className="inline-block w-[3px] h-[0.85em] bg-accent-blue ml-1 align-middle animate-pulse"
-              aria-hidden="true"
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: 99,
+                flex: "0 0 5px",
+                background: chap.color,
+                boxShadow: `0 0 10px ${chap.color}`,
+              }}
             />
-          </h1>
-
-          <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
-            Real Graph-based scans. Real engines. Not a questionnaire pretending to know your
-            environment.
-          </p>
-
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-2xl mx-auto mb-14">
-            <Link
-              href="/assessments?tab=free"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-white shadow-lg shadow-accent-blue/20 transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-base whitespace-nowrap"
-              style={GRADIENT_BG}
-              data-track="cta"
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: ".14em",
+                textTransform: "uppercase",
+                color: "var(--smcr-muted)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
             >
-              <span>Start a Free Assessment</span>
-              <ArrowRight className="w-5 h-5" />
-            </Link>
-            <Link
-              href="/quiz"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base whitespace-nowrap"
-              data-track="cta"
-            >
-              Take the 60-Second Quiz First
-            </Link>
-          </div>
-
-          {/* Signature stat panel — verified platform facts only, no fabricated live numbers
-              on the cold-visitor hero (personalized real tenant scores are Stage 4, website-rebuild-reference-v2.md §3/§5) */}
-          <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-            Real infrastructure reading your tenant — not marketing numbers
-          </p>
-          <div className="flex flex-wrap items-stretch justify-center gap-4 max-w-4xl mx-auto">
-            <StatPanel label="Platform engines" value="12" className="min-w-[180px]" />
-            <StatPanel label="Scan source" value="Live Graph API" className="min-w-[220px]" />
-            <StatPanel label="Consent" value="Scoped, read-only" className="min-w-[260px]" />
-          </div>
+              {chap.label}
+            </span>
+          </span>
         </div>
-      </section>
 
-      {/* FUNNEL STRIP — Quiz → Free Assessment → Paid Assessment → Project SOW */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-2xl mx-auto mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">How This Works</p>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-              From a <GradientText>60-second quiz</GradientText> to a scoped project
-            </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div className="smcr-navlinks" style={{ alignItems: "center", gap: 16 }}>
+            <a href="#industry" className="smcr-navlink" onClick={unlockThen("industry")}>
+              Discovery
+            </a>
+            <a href="#health" className="smcr-navlink" onClick={unlockThen("health")}>
+              Your profile
+            </a>
+            <a href="/assessments" className="smcr-navlink">
+              Assessments
+            </a>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {FUNNEL_STAGES.map((stage, i) => {
-              const Icon = stage.icon;
-              return (
-                <Link key={stage.title} href={stage.href} className="group relative" data-track="nav">
-                  <div className="h-full flex flex-col p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] group-hover:border-accent-blue/30 transition-all">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-blue shrink-0">
-                        <Icon className="w-4 h-4" />
-                      </span>
-                      <span className="font-numeric text-xs font-bold text-text-secondary">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                    </div>
-                    <h3 className="font-display font-semibold text-text-primary mb-2">{stage.title}</h3>
-                    <p className="text-sm text-text-secondary leading-relaxed flex-grow">{stage.description}</p>
-                    <span className="mt-4 flex items-center gap-1.5 text-sm font-medium text-accent-blue group-hover:gap-2.5 transition-all">
-                      Go <ArrowRight className="w-3.5 h-3.5" />
+          <a href={bookHref} className="smcr-cta smcr-cta-primary smcr-cta-nav" data-track="cta">
+            Book the Assessment
+          </a>
+        </div>
+      </header>
+
+      <SeatRail seats={seats} />
+
+      {/* ---------------------------------------------------------------- */}
+      {/* display / justify / padding live in home-room.css so the breakpoints can reach them */}
+      <div className="smcr-convo" style={{ position: "relative", zIndex: 1 }}>
+        <div
+          style={{
+            width: "min(760px,100%)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "clamp(26px,4vh,44px)",
+          }}
+        >
+          {/* ---------------- 01 · the room ---------------- */}
+          <section
+            id="hero"
+            data-chapter="hero"
+            data-reveal
+            className="smcr-chapter smcr-reveal smcr-hero"
+            style={{
+              minHeight: "calc(100vh - var(--smcr-header-h))",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: "clamp(14px,2.2vh,26px)",
+              padding: "clamp(24px,5vh,64px) 0",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 99,
+                  background: "#67e8f9",
+                  boxShadow: "0 0 12px #67e8f9",
+                  animation: "smcr-pulse 2.6s ease-in-out infinite",
+                }}
+              />
+              <span className="smcr-eyebrow">Persona workshop · room is live</span>
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                fontWeight: 800,
+                letterSpacing: "-.03em",
+                color: "var(--smcr-text)",
+                textWrap: "pretty",
+              }}
+            >
+              Meet your personas. See how Copilot changes their day.
+            </h1>
+
+            <p
+              style={{ margin: 0, color: "var(--smcr-text-3)", textWrap: "pretty" }}>
+              <span>{typed}</span>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 2,
+                  height: "1.05em",
+                  marginLeft: 2,
+                  verticalAlign: -2,
+                  background: "#67e8f9",
+                  animation: "smcr-caret 1s step-end infinite",
+                }}
+              />
+            </p>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <a
+                href="#industry"
+                onClick={unlockThen("industry")}
+                style={{
+                  minHeight: 50,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "0 22px",
+                  borderRadius: 13,
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: "#fff",
+                  background: "#0078D4",
+                  border: "1px solid rgba(103,232,249,.4)",
+                  boxShadow: "0 14px 40px rgba(0,120,212,.38)",
+                }}
+              >
+                Meet the room
+                <ArrowDown width={15} height={15} />
+              </a>
+              <a
+                href="#copilot"
+                onClick={unlockThen("copilot")}
+                style={{
+                  minHeight: 50,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "0 20px",
+                  borderRadius: 13,
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: "var(--smcr-sky)",
+                  background: "rgba(103,232,249,.08)",
+                  border: "1px solid rgba(103,232,249,.35)",
+                }}
+              >
+                Skip to the price
+              </a>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "clamp(14px,3vw,32px)",
+                paddingTop: "clamp(8px,1.6vh,18px)",
+                borderTop: "1px solid var(--smcr-rule)",
+              }}
+            >
+              {HERO_STATS.map((s) => (
+                <div key={s.k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--smcr-mono)",
+                      fontSize: 20,
+                      fontWeight: 800,
+                      color: "var(--smcr-text)",
+                    }}
+                  >
+                    {s.v}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: ".16em",
+                      textTransform: "uppercase",
+                      color: "var(--smcr-muted)",
+                    }}
+                  >
+                    {s.k}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ---------------- 02 · who is running this ---------------- */}
+          <section
+            id="intro"
+            data-chapter="intro"
+            data-reveal
+            className="smcr-chapter smcr-reveal"
+            style={{
+              minHeight: "92vh",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: 14,
+              padding: "clamp(20px,6vh,60px) 0",
+            }}
+          >
+            {introMessages.map((m, i) => (
+              <MessageRow key={`${m.key}|${i}`} m={m} gen />
+            ))}
+
+            <div
+              data-reveal
+              className="smcr-reveal-r smcr-indent"
+              style={{
+                padding: 16,
+                borderRadius: 18,
+                background: "linear-gradient(160deg,rgba(122,86,240,.14),rgba(16,11,38,.74))",
+                backdropFilter: "blur(18px)",
+                border: "1px solid rgba(122,86,240,.34)",
+                boxShadow: "var(--smcr-shadow-card)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  flexWrap: "wrap",
+                  paddingBottom: 12,
+                  borderBottom: "1px solid var(--smcr-rule)",
+                }}
+              >
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    flex: "0 0 22px",
+                    borderRadius: 7,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#A78BFA",
+                    background: "rgba(122,86,240,.2)",
+                    border: "1px solid rgba(122,86,240,.4)",
+                  }}
+                >
+                  <Sparkles width={11} height={11} />
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: ".14em",
+                    textTransform: "uppercase",
+                    color: "var(--smcr-text-2)",
+                  }}
+                >
+                  Active card · Meeting summary
+                </span>
+                <span
+                  style={{
+                    padding: "3px 9px",
+                    borderRadius: 99,
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    letterSpacing: ".12em",
+                    textTransform: "uppercase",
+                    color: "#A78BFA",
+                    background: "rgba(122,86,240,.16)",
+                    border: "1px solid rgba(122,86,240,.4)",
+                  }}
+                >
+                  Generated
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(min(210px,100%),1fr))",
+                  gap: 9,
+                  padding: "13px 0",
+                }}
+              >
+                {FIVE_W.map((w) => (
+                  <div
+                    key={w.k}
+                    style={{
+                      padding: "13px 14px",
+                      borderRadius: 13,
+                      background: "var(--smcr-ink-solid)",
+                      border: "1px solid var(--smcr-rule-2)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: ".16em",
+                        textTransform: "uppercase",
+                        color: "var(--smcr-sky)",
+                      }}
+                    >
+                      {w.k}
+                    </span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--smcr-text)" }}>{w.v}</span>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        lineHeight: 1.5,
+                        color: "var(--smcr-muted)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {w.d}
                     </span>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <AssessmentHealthOverview />
-
-      {/* WHAT WE DO */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">What We Do</p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Mission-Grade <GradientText>Assessments for Microsoft 365</GradientText>
-            </h2>
-            <p className="text-text-secondary">
-              A real Graph API connection into your tenant — the same category of infrastructure
-              teams run for servers and cloud estates, built specifically for Microsoft 365 — scored
-              against your actual configuration, not a one-time PDF built from a questionnaire.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {WHAT_WE_DO.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.title}
-                  className="p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/20 transition-all"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-display font-semibold text-lg text-text-primary mb-2">{item.title}</h3>
-                  <p className="text-sm text-text-secondary leading-relaxed">{item.description}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* CREDIBILITY */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-              Operator Credential
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary">
-              Built by the <GradientText>Microsoft 365 Architect</GradientText> for NASA
-            </h2>
-          </div>
-          <GlassPanel className="p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <p className="text-sm text-text-secondary">
-                I wrote the M365 Copilot governance framework NASA distributed agency-wide,
-                and I work day-to-day inside NASA's BOD-25 secure-configuration push, CISA's
-                SCuBA hardening baselines, and its Zero Trust architecture rollout. This
-                platform doesn't score your tenant against those specific federal
-                frameworks — that's not what it's built to do — but every engine on it runs
-                on the same discipline I bring to NASA's own environment.
-              </p>
-            </div>
-            <div className="text-sm text-text-secondary max-w-md md:text-right">
-              Risk, drift, and compliance are checked against your real tenant on a real
-              schedule — not estimated from a questionnaire, and not left running in the
-              background hoping nothing changed.
-            </div>
-          </GlassPanel>
-        </div>
-      </section>
-
-      {/* REAL TENANT TELEMETRY */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">The Difference</p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Real Tenant Telemetry — <GradientText>Not Questionnaires</GradientText>
-            </h2>
-            <p className="text-text-secondary">
-              Most MSPs and compliance vendors start with a form. This platform starts with a
-              live connection to your tenant.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-2xl p-6 sm:p-8 bg-charcoal-1 border border-white/[0.06]">
-              <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-5">
-                {TELEMETRY_COMPARISON.themTitle}
-              </h3>
-              <ul className="space-y-3">
-                {TELEMETRY_COMPARISON.them.map((line) => (
-                  <li key={line} className="flex items-start gap-2.5 text-sm text-text-secondary">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                    <span>{line}</span>
-                  </li>
                 ))}
-              </ul>
-            </div>
-
-            <GlassPanel className="p-6 sm:p-8">
-              <h3 className="text-xs uppercase tracking-widest text-accent-blue mb-5">
-                {TELEMETRY_COMPARISON.usTitle}
-              </h3>
-              <ul className="space-y-3">
-                {TELEMETRY_COMPARISON.us.map((line) => (
-                  <li key={line} className="flex items-start gap-2.5 text-sm text-text-secondary">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </GlassPanel>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS — same text-left/visual-right flagship pairing established on the
-          Governance topic page (SolutionTopicPage.tsx): one header block above a single
-          max-w-5xl wrapper, then HowItWorksShowcase's own paired grid (real steps on the
-          left, one animated visual per step on the right, both columns matched height via
-          the showcase's own items-stretch/h-full layout) — replacing the old mismatched
-          max-w-6xl grid + max-w-3xl centered header + static Mission Control panel, which
-          left a visible height gap next to the short step list. */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-            The Scan Process
-          </p>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-3">
-            How the <GradientText>Assessment</GradientText> Actually Works
-          </h2>
-          <p className="text-text-secondary mb-10 max-w-2xl">
-            Five real steps, on a real schedule. No black box.
-          </p>
-
-          <HowItWorksShowcase
-            steps={HOW_IT_WORKS_STEPS}
-            dashboard={HOME_HOW_IT_WORKS_DASHBOARD}
-            scanSurfaces={HOME_SCAN_SURFACES}
-          />
-        </div>
-      </section>
-
-      {/* ENGINE OVERVIEW */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-              Operational Intelligence Systems
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              The <GradientText>Engines</GradientText> That Power Your Tenant
-            </h2>
-            <p className="text-text-secondary">
-              {ENGINES.length} real engines, running real checks, on a real schedule against
-              your actual tenant — not a marketing number.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ENGINES.map((eng) => {
-              const Icon = eng.icon;
-              return (
-                <div
-                  key={eng.id}
-                  className="p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/20 transition-all flex flex-col"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-accent-blue mb-1">{eng.badge}</span>
-                  <h3 className="font-display font-semibold text-lg text-text-primary mb-2">{eng.name}</h3>
-                  <p className="text-sm text-text-secondary leading-relaxed">{eng.description}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* CATALOG */}
-      <section id="catalog" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-              Commercial Tenant Pricing
-            </p>
-            <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
-              From Free Assessment to <GradientText>Scoped Project</GradientText>
-            </h2>
-            <p className="text-text-secondary max-w-xl mx-auto">
-              Real catalog pricing, no sales call required. This is commercial Microsoft 365
-              assessment and project pricing, not a federal compliance score or a government
-              contract vehicle.
-            </p>
-          </div>
-
-          {/* Full-width stacked rows in funnel order — Assessment (the free qualifying step)
-              → Projects (the real engagements a gap turns into) → Retainer (the ongoing
-              upgrade path). Each row owns a full-width band and reads cleanly top-to-bottom
-              on mobile. */}
-          <div className="space-y-16">
-            {/* ROW 1 — ASSESSMENT (free qualifying step) */}
-            <div>
-              <div className="text-center max-w-2xl mx-auto mb-8">
-                <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
-                  Start Here — Free
-                </span>
-                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-                  Mission Readiness <GradientText>Evaluation</GradientText>
-                </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2">
-                  A real Graph API scan of your tenant — know exactly where you stand before you
-                  commit to anything.
-                </p>
               </div>
-              {renderAssessmentSplit()}
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  paddingTop: 11,
+                  borderTop: "1px solid var(--smcr-rule)",
+                }}
+              >
+                <span style={{ fontSize: 9.5, fontWeight: 700, color: "var(--smcr-muted)" }}>Grounded in</span>
+                {["NASA M365 governance framework", "150+ tenant checks"].map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 99,
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      color: "var(--smcr-text-3)",
+                      background: "rgba(148,163,184,.1)",
+                      border: "1px solid rgba(148,163,184,.18)",
+                    }}
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ---------------- 03 · discovery ---------------- */}
+          <section
+            id="industry"
+            data-chapter="industry"
+            data-reveal
+            className="smcr-chapter smcr-reveal"
+            style={{
+              minHeight: "92vh",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: 14,
+              padding: "clamp(20px,6vh,60px) 0",
+              scrollMarginTop: 80,
+            }}
+          >
+            <DiscoveryCard state={state} actions={actions} ind={ind} roster={roster} sel={sel} />
+          </section>
+
+          {/* ---------------- assembling ---------------- */}
+          <div
+            data-assemble
+            style={{
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 18,
+              padding: "clamp(56px,14vh,120px) 0 clamp(30px,7vh,60px)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: 0,
+                width: 2,
+                height: "46%",
+                transform: "translateX(-50%)",
+                background: "linear-gradient(180deg,transparent,rgba(103,232,249,.55))",
+                animation: "smcr-drop 900ms cubic-bezier(.22,1,.36,1) both",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "46%",
+                width: "min(560px,80%)",
+                height: "min(560px,80%)",
+                transform: "translate(-50%,-8%)",
+                pointerEvents: "none",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  inset: "18%",
+                  borderRadius: 99,
+                  border: "1px solid rgba(103,232,249,.22)",
+                  animation: "smcr-ring 2.6s cubic-bezier(.22,1,.36,1) .25s both",
+                }}
+              />
+              <span
+                style={{
+                  position: "absolute",
+                  inset: "18%",
+                  borderRadius: 99,
+                  border: "1px solid rgba(139,92,246,.2)",
+                  animation: "smcr-ring 2.6s cubic-bezier(.22,1,.36,1) .6s both",
+                }}
+              />
+              <span
+                style={{
+                  position: "absolute",
+                  inset: "18%",
+                  borderRadius: 99,
+                  border: "1px dashed rgba(148,163,184,.16)",
+                  animation: "smcr-spin 44s linear infinite",
+                }}
+              />
             </div>
 
-            {/* ROW 2 — PROJECTS (what a real gap turns into) */}
-            <div className="pt-12 border-t border-white/[0.06]">
-              <div className="mb-8">
+            <div
+              style={{
+                position: "relative",
+                width: 52,
+                height: 52,
+                borderRadius: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "linear-gradient(135deg,#7A56F0,#26C1C9)",
+                boxShadow: "0 0 40px rgba(103,232,249,.4)",
+                animation: "smcr-pop 700ms cubic-bezier(.34,1.56,.64,1) .2s both",
+              }}
+            >
+              <Sparkles width={24} height={24} style={{ color: "#fff" }} />
+            </div>
+
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 7,
+                textAlign: "center",
+                animation: "smcr-rise 700ms cubic-bezier(.22,1,.36,1) .42s both",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 800,
+                  letterSpacing: ".2em",
+                  textTransform: "uppercase",
+                  color: "#67E8F9",
+                }}
+              >
+                Assembling your room
+              </span>
+              <span
+                style={{
+                  fontSize: "clamp(19px,2.6vw,28px)",
+                  fontWeight: 800,
+                  letterSpacing: "-.02em",
+                  color: "var(--smcr-text)",
+                  textWrap: "pretty",
+                }}
+              >
+                {`Your ${state.industry.toLowerCase()} room is ready`}
+              </span>
+              <span
+                style={{
+                  maxWidth: "46ch",
+                  fontSize: 12.5,
+                  lineHeight: 1.6,
+                  color: "var(--smcr-muted)",
+                  textWrap: "pretty",
+                }}
+              >
+                Three people, one assessor, and seven pillars — every finding below is now measured against
+                their permissions and their workload, not a generic tenant.
+              </span>
+            </div>
+
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                gap: 7,
+              }}
+            >
+              {assembleChips.map((label, i) => (
                 <span
-                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-3"
-                  style={GRADIENT_BG}
+                  key={`${label}-${i}`}
+                  style={{
+                    padding: "5px 11px",
+                    borderRadius: 99,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: ".02em",
+                    color: "var(--smcr-text-3)",
+                    background: "rgba(148,163,184,.09)",
+                    border: "1px solid rgba(148,163,184,.2)",
+                    animation: `smcr-rise 600ms cubic-bezier(.22,1,.36,1) ${(0.55 + i * 0.08).toFixed(2)}s both`,
+                  }}
                 >
-                  <Sparkles className="w-3 h-3" />
-                  Where An Assessment Leads
+                  {label}
                 </span>
-                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-                  Scoped <GradientText>Projects</GradientText>
-                </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
-                  Once an assessment surfaces a real gap, this is the kind of scoped engagement
-                  it turns into — every project starts with a conversation, not a cart.
-                </p>
-              </div>
-              {renderProjectsShowcase()}
+              ))}
             </div>
 
-            {/* ROW 3 — RETAINER / ADVISORY (upgrade path) */}
-            <div className="pt-12 border-t border-white/[0.06]">
-              <div className="mb-8">
-                <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
-                  Ongoing Advisory
-                </span>
-                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
-                  Advisory <GradientText>Retainers</GradientText>
-                </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
-                  Fractional M365 architecture guidance, best paired with tenants already
-                  running projects — but open to anyone ready to start.
-                </p>
-              </div>
-              {renderProductGrid(retainers)}
-            </div>
+            <div
+              aria-hidden="true"
+              style={{
+                position: "relative",
+                width: 2,
+                height: "clamp(40px,7vh,70px)",
+                background: "linear-gradient(180deg,rgba(103,232,249,.55),transparent)",
+                animation: "smcr-drop 900ms cubic-bezier(.22,1,.36,1) .9s both",
+              }}
+            />
           </div>
-        </div>
-      </section>
 
-      {/* CTA */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
-        <div className="max-w-3xl mx-auto">
-          <GlassPanel className="p-8 sm:p-12">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Begin <GradientText>Mission Readiness</GradientText>
-            </h2>
-            <p className="text-text-secondary max-w-xl mx-auto mb-8 text-sm sm:text-base">
-              Start with a free Mission Readiness Evaluation to see where your tenant stands
-              today — built on the same discipline I bring to M365 governance at NASA.
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4 max-w-xs sm:max-w-none mx-auto">
-              <Link
-                href="/assessments?tab=free"
-                className="px-6 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
-                style={GRADIENT_BG}
-                data-track="cta"
+          {/* ---------------- 04 · your personas ---------------- */}
+          <section
+            id="cast"
+            data-chapter="cast"
+            data-reveal
+            className="smcr-chapter smcr-reveal"
+            style={{
+              minHeight: "92vh",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: 14,
+              padding: "clamp(20px,6vh,60px) 0",
+            }}
+          >
+            {castMessages.map((m, i) => (
+              <MessageRow key={`${m.key}|${i}`} m={m} gen />
+            ))}
+
+            {/* Kira — the assessor who is not on the payroll */}
+            <div
+              data-reveal
+              className="smcr-reveal-r smcr-indent"
+              style={{
+                padding: "16px 17px",
+                borderRadius: 18,
+                background: "linear-gradient(160deg,rgba(139,92,246,.16),rgba(16,11,38,.74))",
+                backdropFilter: "blur(18px)",
+                border: "1px solid rgba(167,139,250,.4)",
+                boxShadow: "0 24px 60px rgba(10,6,24,.6)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 13,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    position: "relative",
+                    width: 42,
+                    height: 42,
+                    flex: "0 0 42px",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#f8fafc",
+                    background: "linear-gradient(135deg,#5b21b6,#A78BFA)",
+                    border: "1px solid rgba(167,139,250,.5)",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background:
+                        "repeating-linear-gradient(0deg,rgba(103,232,249,.16) 0 1px,transparent 1px 3px)",
+                    }}
+                  />
+                  <span style={{ position: "relative" }}>KV</span>
+                </span>
+                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span
+                    style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.01em", color: "var(--smcr-text)" }}
+                  >
+                    Kira Vance
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 800,
+                      letterSpacing: ".12em",
+                      textTransform: "uppercase",
+                      color: "#A78BFA",
+                    }}
+                  >
+                    Independent Security Assessor
+                  </span>
+                </div>
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    padding: "4px 10px",
+                    borderRadius: 99,
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    letterSpacing: ".12em",
+                    textTransform: "uppercase",
+                    color: "#A78BFA",
+                    background: "rgba(167,139,250,.14)",
+                    border: "1px solid rgba(167,139,250,.36)",
+                  }}
+                >
+                  Not on my payroll
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))",
+                  gap: 9,
+                }}
               >
-                Start a Free Assessment
-              </Link>
-              <ChatCTA
-                className="px-6 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
-                data-track="cta"
-              >
-                Contact Shane McCaw
-              </ChatCTA>
+                {[
+                  [
+                    "Why she is here",
+                    "To ask the questions your own security team will ask later, when the answer is more expensive.",
+                  ],
+                  [
+                    "What she blocks on",
+                    "Blast radius, MFA exceptions, report-only Conditional Access, and DLP that never sees the Copilot path.",
+                  ],
+                  [
+                    "What wins her over",
+                    "A finite, ordered, evidenced list she can watch shrink. Never an assurance.",
+                  ],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <span
+                      style={{
+                        fontSize: 8.5,
+                        fontWeight: 800,
+                        letterSpacing: ".14em",
+                        textTransform: "uppercase",
+                        color: "var(--smcr-muted)",
+                      }}
+                    >
+                      {k}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        lineHeight: 1.5,
+                        color: "var(--smcr-text-3)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {v}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </GlassPanel>
+
+            {/* the three personas */}
+            <div
+              className="smcr-castgrid smcr-indent"
+              style={{ gap: 10 }}
+            >
+              {roster.map((c) => (
+                <div
+                  key={c.id}
+                  data-reveal
+                  className="smcr-reveal-r"
+                  style={{
+                    padding: "15px 16px",
+                    borderRadius: 18,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    background: `linear-gradient(160deg,${c.color}12, rgba(16,11,38,.7))`,
+                    backdropFilter: "blur(18px)",
+                    border: `1px solid ${c.color}3d`,
+                    boxShadow: "0 22px 60px rgba(10,6,24,.55)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        position: "relative",
+                        width: 38,
+                        height: 38,
+                        flex: "0 0 38px",
+                        borderRadius: 13,
+                        overflow: "hidden",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: "#f8fafc",
+                        background: c.tile,
+                        border: `1px solid ${c.bd}`,
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background:
+                            "repeating-linear-gradient(0deg,rgba(103,232,249,.16) 0 1px,transparent 1px 3px)",
+                        }}
+                      />
+                      <span style={{ position: "relative" }}>{c.initials}</span>
+                    </span>
+                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          letterSpacing: "-.01em",
+                          color: "var(--smcr-text)",
+                        }}
+                      >
+                        {c.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          letterSpacing: ".12em",
+                          textTransform: "uppercase",
+                          color: c.color,
+                        }}
+                      >
+                        {c.role}
+                      </span>
+                    </div>
+                  </div>
+                  {(
+                    [
+                      ["Their day", c.day, "var(--smcr-muted)", true],
+                      ["What Copilot gives them", c.win, "#4ADE80", false],
+                      ["What has to be true first", c.risk, "#F87171", false],
+                    ] as const
+                  ).map(([k, v, color, ruled]) => (
+                    <div
+                      key={k}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 7,
+                        ...(ruled ? { paddingTop: 12, borderTop: "1px solid var(--smcr-rule)" } : null),
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          letterSpacing: ".14em",
+                          textTransform: "uppercase",
+                          color,
+                        }}
+                      >
+                        {k}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          lineHeight: 1.5,
+                          color: "var(--smcr-text-3)",
+                          textWrap: "pretty",
+                        }}
+                      >
+                        {v}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ---------------- the seven pillars ---------------- */}
+          {ordered.map((p, i) => (
+            <PillarSection
+              key={p.id}
+              p={p}
+              index={i}
+              state={state}
+              actions={actions}
+              ind={ind}
+              roster={roster}
+              problem={problem}
+              focus={focus}
+              voiceAlly={voice.ally}
+              voiceLine={voice.line}
+              fee={fee}
+              feeDisplay={feeDisplay}
+              feeResolved={feePrice !== null}
+              opened={latches.opened}
+              score={score}
+              verdict={verdict}
+              bookHref={bookHref}
+              closeLine={closeLine}
+            />
+          ))}
         </div>
-      </section>
-    </Layout>
+      </div>
+
+      <Dossier
+        chapterColor={chap.color}
+        captured={state.industryPicked}
+        canReset={
+          state.industryPicked ||
+          state.clusters.length > 0 ||
+          state.people.length > 0 ||
+          state.useCases.length > 0 ||
+          answeredCount > 0
+        }
+        onReset={actions.reset}
+        roomVisible={roomVisible}
+        roomCount={!roomVisible ? "empty" : roomSeated ? `${roster.length} seated` : "building"}
+        industry={state.industry}
+        roster={dossierRoster}
+        hasFacts={roomVisible && !!(state.confirmed.useCases || state.autoSkipped)}
+        facts={facts}
+        score={score}
+        verdict={dossierVerdict}
+        checksLine={`${answeredCount} / ${TOTAL_CHECKS} checks answered`}
+        ladder={ladder}
+      />
+
+      {/*
+        The design is a self-contained scroll narrative with its own header, so it
+        does not use the site <Layout>. The real Footer still ships here: it is the
+        page's only route to /services, /pricing, /resources and the legal pages,
+        and the home page must not be a navigation dead end. The fixed rails fade
+        out over it — see the `data-chrome` rule in home-room.css.
+      */}
+      <div data-room-footer style={{ position: "relative", zIndex: 2 }}>
+        <Footer />
+      </div>
+    </div>
   );
 }
