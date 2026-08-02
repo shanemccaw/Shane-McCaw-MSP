@@ -7,6 +7,9 @@ import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
 import "@/components/war-room/war-room.css";
 
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+import { CopilotAssessmentDebugPanel } from "@/components/copilot-assessment/debug/DebugPanel";
+
 /**
  * M365 War Room — the full-screen Copilot readiness briefing.
  *
@@ -38,7 +41,7 @@ import "@/components/war-room/war-room.css";
 export default function WarRoomPage() {
   const [, setLocation] = useLocation();
   const { section } = useParams<{ section?: string }>();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
   const { data, scanCheckResults, streamedRunId, triggeredRunId, reportTriggerStarted, reportTriggerError } =
     useScanStatus();
 
@@ -149,6 +152,26 @@ export default function WarRoomPage() {
     [setLocation],
   );
 
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Reuses the exact same testbed debug panel (#279) the Copilot assessment
+  // flow already renders -- see that file's header for the gating discipline.
+  // The briefing itself (WarRoomLogic) is a class component, so this can't
+  // live inside it the way the assessment page's version does; it's rendered
+  // here instead, as a sibling fixed-position overlay, fed by the same
+  // real state (`data`, `scan`, `section`) this page already assembles for
+  // WarRoomLogic's own props.
+  const debugState = useMemo(
+    () => ({
+      route: { section: section ?? null },
+      scan,
+      docWorkflow: data?.docWorkflow ?? null,
+      customerName,
+      derived: { isTestbed: data?.isTestbed ?? false, streamedRunId, triggeredRunId },
+      user: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+    }),
+    [section, scan, data?.docWorkflow, customerName, data?.isTestbed, streamedRunId, triggeredRunId, user],
+  );
+
   return (
     <div className="wr-root">
       <WarRoomLogic
@@ -159,6 +182,9 @@ export default function WarRoomPage() {
         onTriggerScan={handleTriggerScan}
         customerName={customerName}
       />
+
+      {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ */}
+      {data?.isTestbed && <CopilotAssessmentDebugPanel state={debugState} />}
 
       <button
         type="button"
