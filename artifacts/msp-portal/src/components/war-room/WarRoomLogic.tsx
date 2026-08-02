@@ -576,13 +576,13 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const n = (i) => (m[i] ? m[i][1] : "—");
     return [
       { key: "fix", label: "What's the fix?", who: "shane",
-        text: "The fix is sequenced, not simultaneous. First: " + (t.bad[0] || t.ugly[0]) + ". Then " + (t.bad[1] || "the dependent work item") + ". " + (t.actions && t.actions[0] ? "I'd put " + t.actions[0][0].toLowerCase() + " on the plan this week." : "") },
+        text: "The fix is sequenced, not simultaneous. First: " + (t.bad?.[0] || t.ugly?.[0] || "the highest-priority item on this finding") + ". Then " + (t.bad?.[1] || "the dependent work item") + ". " + (t.actions && t.actions[0] ? "I'd put " + t.actions[0][0].toLowerCase() + " on the plan this week." : "") },
       { key: "cost", label: "What does it cost me?", who: "priya",
         text: "In numbers: " + (m[0] ? m[0][0] + " sits at " + m[0][1] : "the exposure is measurable") + ", " + (m[1] ? m[1][0].toLowerCase() + " " + m[1][1] : "") + ". Against a $317K annual license position, this is the difference between paying for governed value and paying for exposure." },
       { key: "who", label: "Who owns it and by when?", who: "marcus",
         text: "My team owns the change. Ten working days on the current window, evidence pack attached to the finding. " + (m[3] ? m[3][0] + " lands at " + m[3][1] + " on close." : "") },
       { key: "risk", label: "What's the legal exposure?", who: "beth",
-        text: "If this surfaces regulated content through a grounded answer, it is reportable under MSA §7.4 — not an internal issue. " + (t.ugly[0] || "") + " That is the line I care about." },
+        text: "If this surfaces regulated content through a grounded answer, it is reportable under MSA §7.4 — not an internal issue. " + (t.ugly?.[0] || "") + " That is the line I care about." },
       { key: "proof", label: "Prove it from my tenant", who: "kirk",
         text: "Pulled live this morning: " + m.map(x => x[0] + " " + x[1]).join(", ") + ". Read-only against your own Graph, no sampling." }
     ];
@@ -600,7 +600,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     this.logSaid("user", q);
     this.setState({ draft: "", playing: false, injected: null, focus, qa: { q, who, topicId, thinking: true, answer: null } });
     this.answerTimer = setTimeout(() => {
-      const answer = t.ugly[0] + ". " + t.copilot;
+      const answer = (t.ugly?.[0] || "This finding is still being characterized") + ". " + t.copilot;
       this.logSaid(who, answer);
       this.setState(s => (s.qa ? { qa: Object.assign({}, s.qa, { thinking: false, answer }) } : null));
     }, 1400);
@@ -5985,7 +5985,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               };
             };
             return [
-              mk("Show me the blast radius", "Show me the blast radius on this one.", who, t.ugly[0] + ". The ring you are looking at is everything that finding touches today.", () => this.setState({ blast: s.card })),
+              mk("Show me the blast radius", "Show me the blast radius on this one.", who, (t.ugly?.[0] || "This finding is still being characterized") + ". The ring you are looking at is everything that finding touches today.", () => this.setState({ blast: s.card })),
               mk("Why does this matter?", "Why does this matter to us?", who === "shane" ? "jane" : who, t.copilot, null),
               mk("Model the impact on my score", "Model what fixing it does to my score.", "shane", "Modelled: that workstream returns roughly " + pts + " readiness points. Projected score moves to " + Math.min(100, Math.round(61 + pts + Object.keys(s.applied).reduce((a, k) => a + (k === s.card ? 0 : s.applied[k]), 0))) + " percent once delivered.", () => { this.applyCard(s.card, CARDS[s.card].control === "slider" ? (CARDS[s.card].invert ? CARDS[s.card].min : CARDS[s.card].max) : undefined); this.setState({ cardDone: true }); })
             ];
