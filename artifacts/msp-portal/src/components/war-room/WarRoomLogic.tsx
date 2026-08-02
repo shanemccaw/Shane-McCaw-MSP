@@ -275,6 +275,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     demoQA: [],
     demoDraft: "",
     hidden: false,
+    // #342: the speech bubble's real collapsed/expanded state. Collapsed is the
+    // resting state — it expands on hover or keyboard focus and collapses again on
+    // leave/blur. Distinct from `hidden`, which is the ✕ and also stops playback.
+    bubbleOpen: false,
     quantified: false,
     payoff: false,
     closing: false,
@@ -811,10 +815,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     return { x: 50 + (0.34 * mapPx / W) * 100 * Math.cos(a), y: 50 + (0.34 * mapPx / H) * 100 * Math.sin(a) };
   }
 
-  bubblePos(seat, focusPt) {
+  // #342: `collapsed` is the resting state, so the placement search has to solve
+  // against the height the bubble will actually render at — a collapsed chip is
+  // ~56px against the expanded bubble's ~200px, and feeding the expanded height in
+  // either way pushed the chip much further from its speaker than it needed to be.
+  bubblePos(seat, focusPt, collapsed) {
     const W = this.stageW || 460, H = this.stageH || 400;
     const bwPx = Math.min(340, Math.max(230, W * 0.46));
-    const bw = (bwPx / W) * 100, bh = Math.min(54, (200 / H) * 100);
+    const bw = (bwPx / W) * 100, bh = Math.min(54, ((collapsed ? 56 : 200) / H) * 100);
     const xs = [bw / 2 + 1.5, 98.5 - bw / 2];
     const ys = [bh / 2 + 2, 96 - bh / 2];
     const focus = focusPt || { x: 50, y: 50 };
@@ -2997,10 +3005,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const seatPlan = this.computeSeats(roster);
     const focusPt = this.focusPoint(s);
 
+    const bubbleCollapsed = !s.bubbleOpen;
     const persona = (key) => {
       const p = PERSONAS[key];
       const seat = seatPlan[key] || { x: parseFloat(p.seatX), y: parseFloat(p.seatY) };
-      const place = this.bubblePos(seat, focusPt);
+      const place = this.bubblePos(seat, focusPt, bubbleCollapsed);
       const speaking = speaker === key;
       return {
         key, name: p.name, role: p.role, initials: p.initials, tile: p.tile, roleColor: p.color,
@@ -3126,7 +3135,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       findingTicks: Array.from({ length: 10 }, (_, i) => ({ color: i < s.remediated ? "#0078D4" : "rgba(51,65,85,.7)" })),
 
       seats: ["shane"].concat(roster).concat(["user"]).map(persona),
-      bubble: (speaker && !s.hidden && !s.qa) ? persona(speaker) : null,
+      bubble: (speaker && !s.hidden && !s.qa) ? Object.assign(persona(speaker), { collapsed: bubbleCollapsed }) : null,
+      // #342: hover/keyboard-focus is the expand trigger Shane picked. Guarded so a
+      // repeat enter/leave from a child element cannot thrash setState.
+      onBubbleOpen: () => { if (!this.state.bubbleOpen) this.setState({ bubbleOpen: true }); },
+      onBubbleClose: () => { if (this.state.bubbleOpen) this.setState({ bubbleOpen: false }); },
       onCloseBubble: () => { clearTimeout(this.timer); clearTimeout(this.injTimer); this.exitPending = false; this.setState({ hidden: true, playing: false }); },
       sowBoard: (() => {
         if (s.dive !== "sow") return { show: false, phases: [] };
@@ -5990,10 +6003,19 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       showStandby: false,
 
       coreScore: Math.max(40, 100 - NODES.filter(n => s.statuses[n.id] !== "healthy").length * 7),
+      // #342: the focus state used to inset the box by 2x36px, purely to give
+      // `mapTransform`'s paired 40px translate somewhere to go — and that translate
+      // exists (see its own comment below) to keep the highlighted node clear of the
+      // speaking bubble. The bubble is now collapsed at rest and a transparent
+      // blurred overlay when open, so the clearance is bought with transparency
+      // instead of with radar size, and both halves of the push are gone. Dropping
+      // the inset without dropping the translate would clip the top pillar badge:
+      // the badges reach r=931 of the viewBox's own 950 half-width, so a focused
+      // radar at full box size has only ~10 units of spare travel.
       mapSize: (() => {
-        const z = focusNode ? 1.1 : 1, push = focusNode ? 36 : 0;
+        const z = focusNode ? 1.1 : 1;
         const w = (this.stageW || 460), h = (this.stageH || 400);
-        return Math.round(Math.max(280, Math.min(w * 1.06 - 2 * push, h - 2 * push) / z)) + "px";
+        return Math.round(Math.max(280, Math.min(w * 1.06, h) / z)) + "px";
       })(),
       setMapBox: this.setMapBox,
       boundarySize: (() => {
@@ -6112,18 +6134,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         return out;
       })(),
       mapTransform: (() => {
-        // keep the highlighted node clear of the speaking bubble
+        // #342: the 40px translate that used to shove the highlighted node clear of
+        // the speaking bubble is gone, along with the matching inset in `mapSize`
+        // above — the bubble no longer occupies opaque space that has to be dodged.
+        // The focus zoom stays: it is emphasis, and it is size-neutral because
+        // `mapSize` divides the box by the same z.
         const ANG = { security: -90, governance: -38.6, licensing: 12.9, adoption: 64.3, copilot: 115.7, compliance: 167.1, health: -141.4 };
         const pillar = focusNode ? (NODES.find(n => n.id === focusNode) || {}).pillar : null;
         const a = pillar && ANG[pillar] != null ? ANG[pillar] * Math.PI / 180 : null;
-        const side = s.persona === "shane" ? "top" : s.persona === "user" ? "bottom"
-          : ["jane", "priya", "marcus"].indexOf(s.persona) >= 0 ? "left" : "right";
         const zoom = a != null ? 1.1 : 1;
-        const push = a != null ? 40 : 0;
-        const tx = a != null ? -Math.cos(a) * push : 0;
-        const ty = a != null ? -Math.sin(a) * push : 0;
-        return "perspective(1900px) rotateX(11deg) scale(" + ((s.selected ? 0.92 : 1) * zoom).toFixed(3) +
-          ") translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px)";
+        return "perspective(1900px) rotateX(11deg) scale(" + ((s.selected ? 0.92 : 1) * zoom).toFixed(3) + ")";
       })(),
       hostCardOpacity: speaker === "shane" ? "0" : "1",
       hostCardEvents: speaker === "shane" ? "none" : "auto",
