@@ -1,8 +1,13 @@
 import React from "react";
 import type { CSSProperties } from "react";
 
-/** Assets copied from the design bundle live under public/war-room/. */
-const ASSET_BASE = "/war-room/";
+/**
+ * Assets copied from the design bundle live in public/war-room/, which Vite serves
+ * at the app's base URL. msp-portal requires BASE_PATH (vite.config.ts) and is served
+ * under /portal, so this must go through BASE_URL — a root-absolute "/war-room/"
+ * resolves above the base and 404s everywhere except a base of "/".
+ */
+const ASSET_BASE = `${import.meta.env.BASE_URL.replace(/\/?$/, "/")}war-room/`;
 
 type ImageSlotProps = {
   id?: string;
