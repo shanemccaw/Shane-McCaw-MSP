@@ -160,6 +160,7 @@ export default defineConfig({
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
       "src/lib/zoho-desk.test.ts",
+      "src/lib/war-room-pillar-stats.test.ts",
     ],
     coverage: {
       provider: "v8",

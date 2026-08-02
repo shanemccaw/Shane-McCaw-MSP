@@ -78,6 +78,52 @@
  *   "test prompts returned PHI", "PHI exposure priced" — the Copilot test-prompt
  *       harness does not exist; nothing prices PHI exposure.
  *
+ * ── Why five of seven cards can be empty next to a real score (#341) ─────────
+ * Shane's post-completion screenshot showed Governance/Licensing/Adoption/
+ * Compliance/Health with a real dial score (19/24/31/28/41) but no stat text at
+ * all, while Security and Copilot showed both. That is NOT a matching or
+ * reading bug in this module, and the audit that proves it is worth keeping:
+ *
+ *   • The SCORE path and the STAT path read different things. A pillar's score
+ *     is `computePillarDisplayScore` over the SIGNALS that fired, and a signal's
+ *     impact is many-to-many across pillars — one `identity:*` signal can carry
+ *     a nonzero `governanceImpact`, `licensingImpact`, `adoptionImpact` and so
+ *     on. So checks from ONE domain can legitimately score all seven pillars.
+ *   • A stat, by contrast, needs ITS OWN named check to have a
+ *     `tenant_monitor_profiles` row. There is no cross-pillar substitute, by
+ *     design — that is what stops a card inventing a number.
+ *   • The 28 specs below name 22 distinct checks. The platform's canonical scan
+ *     package, `core:security-baseline` (2026-07-21-repopulate-monitoring-
+ *     package-checks.sql), curates 29 checks — and exactly FOUR of the 22 are in
+ *     it: `identity:mfa-registration`, `identity:global-admin-count`,
+ *     `identity:legacy-auth-usage`, `identity:risky-users`. Three feed the
+ *     Security card; the fourth feeds Copilot, whose headline stat is the pillar
+ *     score itself and so is never empty. Every stat on the other five cards
+ *     names a check that package never runs. That is the whole symptom, exactly.
+ *
+ * So the empty cards are honest — but the REASON they carried was not. Every one
+ * of them resolved to `no_data`, which reads as "this check ran and found
+ * nothing" when the truth is "this check was never in the scan". Those are
+ * different statements to a customer, and only the second is true here, which is
+ * why the cards' blanket placeholder ends up contradicting the real score beside
+ * it. `refineStatUnavailability` below turns that into a distinct, honest
+ * `not_in_scan_package`, resolved from the real `monitoring_package_checks` rows
+ * of the packages this customer has actually run — the same table
+ * pillar-coverage.ts joins for the radar's coverage decision.
+ *
+ * NOT changed here, deliberately: the Health card's four stats name `intune:*`
+ * checks while `core:security-baseline` runs four semantically parallel
+ * `devices:*` ones (`devices:compliant-vs-noncompliant`,
+ * `devices:encryption-status`, `devices:os-patch-compliance`,
+ * `devices:bitlocker-key-escrow`), and the registry has no `devices:*` metric at
+ * all. Re-pointing them looks like a one-line win and is exactly the #333 trap:
+ * a check whose `mapping` declares no numeric targetField falls through to
+ * `_itemCount`, i.e. the raw row count of whatever its endpoint returned, which
+ * would render a whole device inventory under "non-compliant devices". The
+ * endpoint and mapping are DB-resident, so that call cannot be made from the
+ * repo — the SQL that decides it is in
+ * `lib/db/migrations/manual/2026-08-02-war-room-pillar-stat-coverage-341.sql`.
+ *
  * ── Findings ─────────────────────────────────────────────────────────────────
  * Real `msp_diagnostic_findings` rows, grouped per pillar by their check key's
  * domain (`WAR_ROOM_PILLAR_CHECK_DOMAINS` — the same grouping #305 uses to light
@@ -90,7 +136,13 @@
  * honestly rather than passing a previous run's findings off as this one's.
  */
 
-import { db, tenantsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable } from "@workspace/db";
+import {
+  db,
+  tenantsTable,
+  mspDiagnosticRunsTable,
+  mspDiagnosticFindingsTable,
+  monitoringPackageChecksTable,
+} from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getMetric } from "@workspace/dashboard-registry";
 import { calculateArchitectureHealthScore, getSignalHealthImpacts } from "./health-engine.ts";
@@ -383,13 +435,63 @@ export interface WarRoomStat {
   value: number | null;
   /**
    * Why `value` is null — the resolver's own machine-stable reason
-   * (`no_data`, `unknown_check_key`, `license_gap`, `no_seat_data`, …). Present
-   * only when value is null, so a consumer can say WHICH kind of nothing it is.
+   * (`no_data`, `not_in_scan_package`, `unknown_check_key`, `license_gap`,
+   * `no_seat_data`, …). Present only when value is null, so a consumer can say
+   * WHICH kind of nothing it is.
    */
   unavailableReason?: string;
+  /**
+   * The real `monitor_checks.key` this stat needs, so a consumer can name the
+   * missing check instead of guessing at it (#341). Null for the two stats that
+   * aren't check-backed: the Copilot readiness score (the pillar's own score)
+   * and the seat figures when no `/subscribedSkus` row exists to name a key.
+   */
+  checkKey: string | null;
   /** Where the number came from, for provenance (`monitor_profile:<checkKey>`, …). */
   source: string;
   replaces: string;
+}
+
+/**
+ * A stat whose check is not in ANY monitoring package this customer has ever
+ * been scanned with — so it never ran, as opposed to running and finding
+ * nothing. Distinct from `no_data` (the check is in the scan and reported
+ * nothing) and from `unknown_check_key` (no such check exists in the catalog at
+ * all, i.e. a registry wiring bug). See the header for why this distinction is
+ * the whole of #341: five of seven cards were reporting "ran, found nothing"
+ * for checks that were never scanned, which reads as a broken pillar sitting
+ * next to a perfectly real score.
+ */
+export const WAR_ROOM_STAT_NOT_SCANNED = "not_in_scan_package";
+
+/**
+ * Pure: correct a stat's `no_data` to `not_in_scan_package` when its check is
+ * genuinely outside every package this customer has run.
+ *
+ * Only ever RE-labels a stat that already has no value, and only the one reason
+ * that is ambiguous:
+ *   • a stat with a real value (including a real 0) is never touched;
+ *   • `license_gap` / `unknown_check_key` / `no_seat_data` / `no_sku_prices` are
+ *     already specific and already true — leave them alone;
+ *   • with no scanned package known (a customer who has never run a scan, or a
+ *     package with no curated checks) nothing can be claimed, so `no_data`
+ *     stands. Silence is better than a confident wrong reason.
+ *
+ * Note this stays correct across a customer whose packages changed over time:
+ * `tenant_monitor_profiles` keeps the newest row per check forever, so a check
+ * dropped from today's package but scanned last month still has a value and
+ * exits at the first guard.
+ */
+export function refineStatUnavailability(
+  stat: WarRoomStat,
+  scannedCheckKeys: ReadonlySet<string> | null,
+): WarRoomStat {
+  if (stat.value != null) return stat;
+  if (stat.unavailableReason !== "no_data") return stat;
+  if (!stat.checkKey) return stat;
+  if (scannedCheckKeys == null || scannedCheckKeys.size === 0) return stat;
+  if (scannedCheckKeys.has(stat.checkKey)) return stat;
+  return { ...stat, unavailableReason: WAR_ROOM_STAT_NOT_SCANNED };
 }
 
 export interface WarRoomPillarFinding {
@@ -419,6 +521,15 @@ export interface WarRoomPillarStatsPayload {
   findingsRunStatus: string | null;
   /** The run in flight right now, if any. */
   activeRunId: string | null;
+  /**
+   * Every distinct `msp_diagnostic_runs.package_key` this customer has been
+   * scanned with, and how many curated checks those packages cover between them
+   * — the evidence behind any `not_in_scan_package` reason above, so a reader
+   * can see WHICH scan a stat was measured against rather than taking the
+   * verdict on trust. Empty when the customer has never run a scan.
+   */
+  scannedPackageKeys: string[];
+  scannedCheckCount: number;
   generatedAt: string;
 }
 
@@ -439,7 +550,13 @@ export function statFromMetricResult(
   metricSourceKey: string,
   result: MetricResult | null,
 ): WarRoomStat {
-  const base = { id: spec.id, label: spec.label, unit: spec.unit, replaces: spec.replaces };
+  const base = {
+    id: spec.id,
+    label: spec.label,
+    unit: spec.unit,
+    checkKey: metricSourceKey,
+    replaces: spec.replaces,
+  };
   const source = `monitor_profile:${metricSourceKey}`;
 
   if (result == null) {
@@ -559,6 +676,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   );
 
   const { findingsByPillar, findingsRunId, findingsRunStatus } = await fetchPillarFindings(customerId);
+  const scanned = await fetchScannedCheckKeys(customerId);
 
   const [activeRun] = await db
     .select({ runId: mspDiagnosticRunsTable.runId })
@@ -578,7 +696,13 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     const score = view?.displayScore ?? null;
 
     const stats = WAR_ROOM_PILLAR_STAT_SPECS[pillar].map((spec): WarRoomStat => {
-      const base = { id: spec.id, label: spec.label, unit: spec.unit, replaces: spec.replaces };
+      const base = {
+        id: spec.id,
+        label: spec.label,
+        unit: spec.unit,
+        checkKey: null as string | null,
+        replaces: spec.replaces,
+      };
 
       if (spec.source.kind === "pillarScore") {
         return score == null
@@ -591,6 +715,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
         if (!seats) {
           return { ...base, value: null, unavailableReason: "no_seat_data", source };
         }
+        base.checkKey = seats.checkKey;
         const value =
           spec.source.field === "provisioned"
             ? seats.provisioned
@@ -604,7 +729,11 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
 
       const resolved = metricResults.get(spec.source.metricKey);
       return statFromMetricResult(spec, resolved?.sourceKey ?? spec.source.metricKey, resolved?.result ?? null);
-    });
+    })
+      // Applied to every source kind, not just the metric branch, so a
+      // never-scanned check can't keep an "it ran and found nothing" label
+      // whichever path produced it (#341).
+      .map((stat) => refineStatUnavailability(stat, scanned.checkKeys));
 
     const found = findingsByPillar.get(pillar) ?? [];
     return {
@@ -626,8 +755,53 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     findingsRunId,
     findingsRunStatus,
     activeRunId: activeRun?.runId ?? null,
+    scannedPackageKeys: scanned.packageKeys,
+    scannedCheckCount: scanned.checkKeys?.size ?? 0,
     generatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Every check key the customer's own scans could genuinely have collected: the
+ * union of `monitoring_package_checks` over the distinct `package_key`s of that
+ * customer's `msp_diagnostic_runs`.
+ *
+ * The union (rather than just the newest run's package) is deliberate — a
+ * customer whose entitlement moved them from `core:security-baseline` to
+ * `assess:copilot-readiness` still legitimately holds rows from the earlier
+ * package, and calling those "not in the scan" would be a new wrong answer in
+ * place of the old one.
+ *
+ * Returns a null `checkKeys` when there is nothing to conclude from — no runs at
+ * all, or packages with no curated checks (the platform-wide state before
+ * 2026-07-21's repopulation, which would otherwise mark every stat unscanned).
+ */
+async function fetchScannedCheckKeys(customerId: number): Promise<{
+  packageKeys: string[];
+  checkKeys: Set<string> | null;
+}> {
+  const runRows = await db
+    .selectDistinct({ packageKey: mspDiagnosticRunsTable.packageKey })
+    .from(mspDiagnosticRunsTable)
+    .where(eq(mspDiagnosticRunsTable.customerId, customerId));
+
+  const packageKeys = runRows.map((r) => r.packageKey).filter((k): k is string => !!k);
+  if (packageKeys.length === 0) return { packageKeys: [], checkKeys: null };
+
+  const checkRows = await db
+    .selectDistinct({ checkKey: monitoringPackageChecksTable.checkKey })
+    .from(monitoringPackageChecksTable)
+    .where(inArray(monitoringPackageChecksTable.packageKey, packageKeys));
+
+  const checkKeys = new Set(checkRows.map((r) => r.checkKey));
+  if (checkKeys.size === 0) {
+    log.warn(
+      { customerId, packageKeys },
+      "war-room-pillar-stats: scanned packages curate no checks — stat unavailability cannot be attributed",
+    );
+    return { packageKeys, checkKeys: null };
+  }
+  return { packageKeys, checkKeys };
 }
 
 /**
