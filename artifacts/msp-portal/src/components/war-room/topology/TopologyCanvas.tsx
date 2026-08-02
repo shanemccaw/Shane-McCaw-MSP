@@ -181,6 +181,9 @@ const PROJ_RING_INNER = 726;
 /** Neutral grey for a segment no real pillar score feeds — never a severity colour. */
 const NO_DATA_COLOR = "#475569";
 
+/** Radius a pillar's spoke anchor sits at (see hubPos) — inside the r=670 pillar wedges. */
+const HUB_ORBIT = 620;
+
 class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> {
   state = { scores: null, scenario: "baseline", selectedNode: null, selectedSegment: null, fit: 0.55, zoom: 1, panX: 0, panY: 0, dragging: false };
 
@@ -276,15 +279,30 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
     return Math.max(0, Math.min(100, Math.round(n.score * (target / base))));
   }
 
-  hubPos(h, K) {
-    if (!this.props.embed) return { x: h.x, y: h.y };
-    const rot = 25.7 * Math.PI / 180;
+  /* A pillar's anchor point on its own spoke — the direction everything that hangs off a
+   * pillar (the finding dots, the cross-pillar interference arcs) is laid out along.
+   *
+   * #324. The ported design's embed branch rotated that direction by 25.7 degrees and
+   * pushed it out to r=1420, and both halves of that were wrong:
+   *
+   *   - 25.7 deg is 360/7/2, i.e. exactly HALF a pillar sector, so every pillar's spoke
+   *     landed on the boundary it shares with its neighbour. Measured live: each anchor
+   *     came out 22.6-24.4 deg off its own wedge's mid-angle, and half the finding dots
+   *     read as belonging to the pillar next door.
+   *   - r=1420 is more than double the r=686 disc and outside the 1900-unit viewBox's own
+   *     950-unit half-extent, so three of every four finding dots rendered off the diagram
+   *     and the interference arcs ran in from off-canvas — the dotted lines shooting
+   *     diagonally across the whole diagram at angles matching no wedge.
+   *
+   * The direction is taken from the hub's own registry coordinates, whose angles already
+   * agree exactly with PILLAR_SECTORS (Security -90, Governance -38.6, ... Health 218.6);
+   * only the rotation and the radius were ever wrong. HUB_ORBIT is the design's own
+   * non-embed target, which sits inside the r=670 pillar wedges, so an anchor and
+   * everything laid out along it stay within the pillar they belong to. */
+  hubPos(h) {
     const rx = h.x - CX, ry = h.y - CY;
-    const dx = rx * Math.cos(rot) - ry * Math.sin(rot), dy = rx * Math.sin(rot) + ry * Math.cos(rot);
-    const r = Math.sqrt(dx * dx + dy * dy) || 1;
-    const boxPx = this.state.fit * 1900;
-    const target = this.props.embed ? 1420 : 620;
-    return { x: CX + (dx / r) * target, y: CY + (dy / r) * target };
+    const r = Math.sqrt(rx * rx + ry * ry) || 1;
+    return { x: CX + (rx / r) * HUB_ORBIT, y: CY + (ry / r) * HUB_ORBIT };
   }
 
   renderVals() {
@@ -561,8 +579,9 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         const wasScore = this.nodeScore(h, baseScores);
         const status = score < 35 ? "alert" : score < 62 ? "drift" : "healthy";
         // outer-edge label position, reusing ringLabels' formula against the business-impact
-        // segment that spans this pillar's own angle (see #313) -- hubPos() stays untouched,
-        // it's still load-bearing for pillarKeys/findings/crossLinks direction math below.
+        // segment that spans this pillar's own angle (see #313). This is the chip's own
+        // position and is independent of hubPos(), which anchors what hangs off the pillar
+        // (findings, cross-pillar arcs) on the same angle but inside the wedges (#324).
         const hubIdx = PILLAR_SECTORS.findIndex(p => p.group === h.group);
         const hubMid = -90 + hubIdx * sectorAngle;
         const hubRad = hubMid * Math.PI / 180;
@@ -649,7 +668,7 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         if (!list.length) return [];
         const hubDir = {};
         NODES.filter(n => n.kind === "hub").forEach(h => {
-          const p = this.hubPos(h, 1);
+          const p = this.hubPos(h);
           const dx = p.x - CX, dy = p.y - CY, r = Math.sqrt(dx * dx + dy * dy) || 1;
           hubDir[h.group] = { ux: dx / r, uy: dy / r, r: r, color: h.colorHex };
         });
@@ -728,9 +747,8 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
       }).filter(Boolean),
 
       crossLinks: (() => {
-        const K = 1;
         const pos = {};
-        NODES.filter(n => n.kind === "hub").forEach(h => { pos[h.group] = this.hubPos(h, K); });
+        NODES.filter(n => n.kind === "hub").forEach(h => { pos[h.group] = this.hubPos(h); });
         const PAIRS = [
           ["Governance", "Compliance", "Oversharing meets unlabelled content"],
           ["Governance", "Copilot", "Open sharing widens the grounding surface"],
