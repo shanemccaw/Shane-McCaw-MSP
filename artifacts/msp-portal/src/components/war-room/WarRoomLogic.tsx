@@ -34,7 +34,6 @@ import {
   smartIcon,
   HERO_PHASE,
   HERO_SCAN,
-  HERO_Q,
   DOCS,
   DIVE_INV,
   DIVES,
@@ -76,6 +75,7 @@ import {
 } from "./data/warRoomData";
 import {
   WAR_ROOM_DEFAULT_INDUSTRY,
+  buildWarRoomHeroSteps,
   buildWarRoomPersonas,
   buildWarRoomQuestions,
   fetchSavedIndustry,
@@ -85,12 +85,77 @@ import {
 } from "./warRoomQuizCatalog";
 import { getCurrentAccessToken } from "@/lib/auth-context";
 import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./warRoomScan";
+import { buildWarRoomBoard } from "./warRoomBoard";
 import {
   WAR_ROOM_SECTIONS,
   deriveWarRoomSection,
   isWarRoomSectionLive,
   resolveWarRoomSection,
 } from "./warRoomSections";
+
+/**
+ * The hero prelude's first two real steps (#308) — not catalog-tile levels, so
+ * `buildWarRoomHeroSteps` (warRoomQuizCatalog.ts) does not build them. `about-you`
+ * mirrors the real assessment quiz's role/department screen (QuizScreen.tsx,
+ * `case 'about-you'`) collapsed into one free-text prompt, the way every other
+ * hero question already collects one line of text rather than two fields;
+ * `industry` is unchanged from the original `HERO_Q` — it already asks for, and
+ * resolves to, the real INDUSTRY_OPTIONS catalog via #306's `matchIndustryKey`.
+ */
+const HERO_FIXED_PRE = [
+  { id: "about-you", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+    q: "First — what's your role, and which department are you in?",
+    l: "About You", ph: "e.g. IT Director, Information Technology",
+    r: "Good to meet you." },
+  { id: "industry", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6",
+    q: "So — tell me a little about you. What industry are you in?",
+    l: "Industry", ph: "Healthcare, financial services, manufacturing…",
+    hints: ["Healthcare", "Financial services", "Manufacturing", "Government / public sector", "Professional services"],
+    r: "Perfect. That helps me understand your world." }
+];
+
+/**
+ * Reply lines for the catalog-backed steps `buildWarRoomHeroSteps` returns (#308).
+ * Kept here rather than in warRoomQuizCatalog.ts because they are hero conversation
+ * flavour text, not quiz content — the same split #306 drew between
+ * `WarRoomQuestion.q` (real) and the room's own narrative wrapping around it.
+ */
+const HERO_STEP_REPLY = {
+  clusters: "Those are the people I'll build into the room with you.",
+  personas: "Noted — that's who this actually affects.",
+  "use-cases": "Good. Those are the wins I'll lead with.",
+  sensitivity: "Understood. That raises the bar on what Copilot is allowed to see.",
+  collaboration: "That tells me where Copilot will actually be reading from.",
+  tools: "That's where I'll look first for adoption signal.",
+  "ai-comfort": "That sets how much hand-holding the rollout script assumes.",
+  workflow: "Got it — that shapes how disruptive a new tool feels here.",
+  "adoption-speed": "Noted. That sets the pace I'll recommend.",
+  outcomes: "That's the outcome I'll measure everything against today.",
+  "change-mgmt": "Noted. I'll make sure the plan matches that."
+};
+
+/**
+ * Fallback board/tile icon per catalog-backed step (#308). The real catalog's
+ * `iconName` is a Lucide icon name (e.g. "Rocket"), and this ported file's tiles
+ * render a raw SVG `<path d>` string, not a component — mapping every tile's own
+ * icon would mean a Lucide-name-to-path table covering 50+ names across every
+ * industry catalog. One fallback per STEP (not per tile) keeps the picker honest
+ * about which real tiles exist without inventing that table; `smartIcon()`
+ * already exists for picking a closer icon once the step is answered.
+ */
+const HERO_STEP_ICON = {
+  clusters: "M20 7h-9M14 17H5M17 14l3 3-3 3M7 10L4 7l3-3",
+  personas: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 .01",
+  "use-cases": "M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",
+  sensitivity: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+  collaboration: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 .01M23 21v-2a4 4 0 0 0-3-3.87",
+  tools: "M5 2h14a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM11 18h2",
+  "ai-comfort": "M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",
+  workflow: "M12 20v-8M6 20v-4M18 20V8M3 20h18",
+  "adoption-speed": "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12.2 19",
+  outcomes: "M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",
+  "change-mgmt": "M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"
+};
 
 /**
  * Drives the whole War Room: the scripted briefing beat machine, the topology focus
@@ -110,6 +175,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     changes: {},
     prelude: "hero",
     heroTick: 0,
+    // The real tile ids behind each answered hero step (#308) — `heroAns` keeps
+    // the human-readable text for the transcript/whiteboard, this keeps the ids
+    // `heroQuestions()` needs to narrow personas by cluster and use-cases/
+    // outcomes by persona, the same predicates the real quiz uses.
+    heroAnsIds: {},
     onb: [],
     onbPicked: [],
     wizStep: 0,
@@ -1963,6 +2033,28 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   );
 
   /**
+   * The hero prelude's real conversational quiz, in place of the fictional
+   * `HERO_Q` (#308). `about-you` and `industry` are the two fixed free-text
+   * steps; everything after them is built fresh from the real catalog, narrowed
+   * by whichever cluster/persona tiles the customer has already picked THIS
+   * conversation — `heroAnsIds` is the id-keyed twin of `heroAns` that exists
+   * for exactly this, since `heroAns` stores the human-readable answer text
+   * (what the transcript and the whiteboard display), not the real tile ids the
+   * cascade needs to filter on.
+   */
+  heroQuestions = () => {
+    const ids = this.state.heroAnsIds || {};
+    return HERO_FIXED_PRE.concat(
+      buildWarRoomHeroSteps(
+        this.state.wizCatalog,
+        this.state.wizIndustry,
+        ids.clusters || [],
+        ids.personas || []
+      )
+    );
+  };
+
+  /**
    * The industry on this customer's saved QuizProfile. `undefined` until the
    * lookup has been attempted, '' once it has and there was nothing — the two
    * are different, and only the first should trigger a fetch.
@@ -2252,7 +2344,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           heroThread: (st.heroThread || []).concat([{ who: "shane", text: "Likewise. And I promise this is the least painful meeting anyone will book you into this quarter — I do the reading, you do the talking." }])
         })), 420);
         this.heroSmartT2 = setTimeout(() => this.setState(st => ({
-          heroThread: (st.heroThread || []).concat([{ who: "shane", text: "So — tell me, what industry are you in?", q: true }])
+          // The real first hero question (#308) — read off `heroQuestions()`
+          // rather than hardcoded, so this banter line can never drift from
+          // whichever step actually opens the quiz.
+          heroThread: (st.heroThread || []).concat([{ who: "shane", text: this.heroQuestions()[0].q, q: true }])
         })), 1900);
         return;
       }
@@ -2316,35 +2411,48 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   heroAnswer = (preset) => {
     const s = this.state;
     const i = s.heroQ || 0;
-    const q = HERO_Q[i];
+    const heroSteps = this.heroQuestions();
+    const q = heroSteps[i];
     const typed = typeof preset === "string" && preset
       ? preset
       : ((this.heroInput && this.heroInput.value) || s.heroDraft || "").trim();
-    const picked = q && q.opts ? (s.heroPick || []) : [];
-    const v = picked.length ? picked.concat(typed ? [typed] : []).join(" · ") : typed;
+    // `heroPick` holds real tile ids now, not display text (#308) — it has to,
+    // so cascading steps (personas by cluster, use-cases/outcomes by persona)
+    // can filter on the same ids the real quiz filters on. The joined answer
+    // text shown in the transcript and the whiteboard is still the tiles' real
+    // titles, resolved back out of this step's own option list.
+    const pickedIds = q && q.opts ? (s.heroPick || []) : [];
+    const pickedTitles = pickedIds
+      .map(id => { const o = (q.opts || []).find(opt => opt.id === id); return o ? o.v : null; })
+      .filter(Boolean);
+    const v = pickedTitles.length ? pickedTitles.concat(typed ? [typed] : []).join(" · ") : typed;
     if (!q || !v) return;
     const ans = Object.assign({}, s.heroAns || {});
     ans[q.id] = v;
+    const ansIds = Object.assign({}, s.heroAnsIds || {});
+    if (q.opts) ansIds[q.id] = pickedIds;
     if (this.heroInput) this.heroInput.value = "";
-    const last = i + 1 >= HERO_Q.length;
-    const nq = HERO_Q[i + 1];
+    const last = i + 1 >= heroSteps.length;
+    const nq = heroSteps[i + 1];
+    const reply = q.r || HERO_STEP_REPLY[q.id] || "Noted.";
     // `heroDone` used to be advanced here too, so answering a question moved the
     // pillar scan along — that was the fake progression's other half (#305).
     // Pillar state now comes only from the real run.
     this.setState(st => ({
-      heroAns: ans, heroDraft: "", heroPick: [], heroQ: i + 1,
-      heroWrap: i + 1 >= HERO_Q.length ? true : (st.heroWrap || false),
+      heroAns: ans, heroAnsIds: ansIds, heroDraft: "", heroPick: [], heroQ: i + 1,
+      heroWrap: i + 1 >= heroSteps.length ? true : (st.heroWrap || false),
       heroThread: (st.heroThread || []).concat([{ who: "you", text: v }])
     }), () => {
-      // HERO_Q's first question is the industry, and it is the customer telling
-      // us which catalog the rest of the conversation should come from (#306).
-      // Re-run on every answer rather than only that one: it is idempotent, and
-      // it also picks up a saved-profile industry landing mid-conversation.
+      // The industry question is the customer telling us which catalog the rest
+      // of the conversation — and now the hero questions themselves (#308) —
+      // should come from (#306). Re-run on every answer rather than only that
+      // one: it is idempotent, and it also picks up a saved-profile industry
+      // landing mid-conversation.
       this.ensureWizCatalog();
       clearTimeout(this.heroReplyT);
       this.heroReplyT = setTimeout(() => {
         this.setState(st => {
-          const add = [{ who: "shane", text: q.r }];
+          const add = [{ who: "shane", text: reply }];
           if (nq) {
             if (nq.lead) add.push({ who: "shane", text: nq.lead });
             add.push({ who: "shane", text: nq.q, q: true });
@@ -2618,6 +2726,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     // constants the way WIZ_QUESTIONS / WIZ_PERSONAS were.
     const wizQuestions = this.wizQuestions();
     const wizRoster = this.wizRoster();
+    // The hero prelude's real conversational quiz (#308), replacing `HERO_Q`.
+    // Resolved once per render for the same reason as `wizQuestions` above: the
+    // clusters/personas/use-cases/outcomes levels narrow as the conversation
+    // goes on, so this cannot be a module constant either.
+    const heroSteps = this.heroQuestions();
 
     // ── The real scan (#305) ──────────────────────────────────────────────────
     // Derived per render from the props the page feeds off useScanStatus(), NOT
@@ -3412,14 +3525,15 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       floorAnim: s.beginning ? "wr-floorburst 620ms cubic-bezier(.22,1,.36,1) forwards" : "none",
       heroQ: (() => {
         const i = s.heroQ || 0;
-        const q = HERO_Q[i];
+        const q = heroSteps[i];
         return q ? q.q : "That's everything I need. Let's look at your tenant.";
       })(),
       heroReply: (() => {
         const i = s.heroQ || 0;
         if (!i) return "Welcome. I'm Shane. I'm really glad you're here.";
-        const prev = HERO_Q[i - 1].r;
-        const lead = (HERO_Q[i] || {}).lead;
+        const prevQ = heroSteps[i - 1];
+        const prev = prevQ.r || HERO_STEP_REPLY[prevQ.id] || "Noted.";
+        const lead = (heroSteps[i] || {}).lead;
         return lead ? prev + " " + lead : prev;
       })(),
       heroDock: (() => {
@@ -3438,18 +3552,18 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           }))
         };
       })(),
-      heroPh: (HERO_Q[s.heroQ || 0] || {}).ph || "",
+      heroPh: (heroSteps[s.heroQ || 0] || {}).ph || "",
       heroHintsShow: (() => {
-        const q = HERO_Q[s.heroQ || 0];
+        const q = heroSteps[s.heroQ || 0];
         const live = (s.heroThread || []).some(m => m.q);
         return !!(q && q.hints && live && !s.heroScanning && !s.heroFinished);
       })(),
-      heroHints: (((HERO_Q[s.heroQ || 0] || {}).hints) || []).map(h => ({
+      heroHints: (((heroSteps[s.heroQ || 0] || {}).hints) || []).map(h => ({
         l: h, onClick: () => this.heroAnswer(h)
       })),
       heroDraft: s.heroDraft || "",
-      heroDone: (s.heroQ || 0) >= HERO_Q.length,
-      heroStep: Math.min((s.heroQ || 0) + 1, HERO_Q.length) + " of " + HERO_Q.length,
+      heroDone: (s.heroQ || 0) >= heroSteps.length,
+      heroStep: Math.min((s.heroQ || 0) + 1, heroSteps.length) + " of " + heroSteps.length,
       setHeroInput: (el) => { this.heroInput = el; },
       setHeroThread: (el) => { this.heroThreadEl = el; if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; }); },
       onHeroDraft: (e) => this.setState({ heroDraft: e.target.value }),
@@ -3472,7 +3586,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const ans = Object.keys(s.heroAns || {}).length;
         return [
           { l: "Pillars scanned", base: "4%", w: Math.max(4, Math.round((done / nPillars) * 100)) + "%", span: Math.max(0, Math.round((done / nPillars) * 100) - 4) + "%", sub: "0", v: done + " / " + nPillars },
-          { l: "Profile captured", base: "4%", w: Math.max(4, Math.round((ans / HERO_Q.length) * 100)) + "%", span: Math.max(0, Math.round((ans / HERO_Q.length) * 100) - 4) + "%", sub: "0", v: ans + " / " + HERO_Q.length }
+          { l: "Profile captured", base: "4%", w: Math.max(4, Math.round((ans / heroSteps.length) * 100)) + "%", span: Math.max(0, Math.round((ans / heroSteps.length) * 100) - 4) + "%", sub: "0", v: ans + " / " + heroSteps.length }
         ];
       })(),
       heroScan: (() => {
@@ -3676,33 +3790,43 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             };
           });
         }
-        const ans = s.heroAns || {};
-        return HERO_Q.map((q, i) => ({
-          l: q.l, icon: smartIcon(ans[q.id], q.icon),
-          d: ans[q.id] || "",
-          hasNext: i < HERO_Q.length - 1,
-          delay: (i * 0.12).toFixed(2) + "s",
-          filled: !!ans[q.id],
-          state: ans[q.id] ? "LOCKED" : "PENDING",
-          hint: ans[q.id] ? "locked in from your answer" : "waiting on your answer",
-          stateColor: ans[q.id] ? "#67e8f9" : "#818cf8",
-          border: ans[q.id] ? "rgba(103,232,249,.55)" : "rgba(103,232,249,.16)",
-          bg: ans[q.id] ? "linear-gradient(100deg,rgba(103,232,249,.16),rgba(124,58,237,.09))" : "linear-gradient(100deg,rgba(103,232,249,.04),rgba(124,58,237,.03))",
-          glow: ans[q.id] ? "0 0 26px rgba(103,232,249,.28)" : "none",
-          anim: ans[q.id] ? "wr-tilelock 620ms cubic-bezier(.22,1,.36,1)" : "none",
-          sub: ans[q.id] ? q.l : "waiting",
-          textColor: ans[q.id] ? "#e0e7ff" : "#94a3b8",
-          valColor: ans[q.id] ? "#a5f3fc" : "#64748b",
-          val: ans[q.id] || "—",
-          tag: q.l, tagColor: ans[q.id] ? "#67e8f9" : "#475569",
-          iconBg: ans[q.id] ? "rgba(103,232,249,.14)" : "rgba(103,232,249,.04)",
-          iconBd: ans[q.id] ? "rgba(103,232,249,.45)" : "rgba(103,232,249,.12)",
-          weight: ans[q.id] ? "700" : "500",
-          v: ans[q.id] || "waiting on your answer",
-          ink: ans[q.id] ? "#e2e8f0" : "#64748b"
-        }));
+        // The Briefing Whiteboard's real 12 rows (#308), computed by the pure,
+        // unit-tested `buildWarRoomBoard` (warRoomBoard.ts) — see its own doc
+        // comment for the grouping and lighting rules.
+        const boardRows = buildWarRoomBoard(s.heroAns, s.heroWrap);
+        return boardRows.map((row, i) => {
+          const val = row.value;
+          const filled = row.filled;
+          const fallbackIcon = HERO_STEP_ICON[row.ids[0]]
+            || (HERO_FIXED_PRE.find(f => f.id === row.ids[0]) || {}).icon
+            || "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11";
+          return {
+            l: row.l, icon: smartIcon(val, fallbackIcon),
+            d: val,
+            hasNext: i < boardRows.length - 1,
+            delay: (i * 0.12).toFixed(2) + "s",
+            filled: filled,
+            state: filled ? "LOCKED" : "PENDING",
+            hint: filled ? "locked in from your answer" : "waiting on your answer",
+            stateColor: filled ? "#67e8f9" : "#818cf8",
+            border: filled ? "rgba(103,232,249,.55)" : "rgba(103,232,249,.16)",
+            bg: filled ? "linear-gradient(100deg,rgba(103,232,249,.16),rgba(124,58,237,.09))" : "linear-gradient(100deg,rgba(103,232,249,.04),rgba(124,58,237,.03))",
+            glow: filled ? "0 0 26px rgba(103,232,249,.28)" : "none",
+            anim: filled ? "wr-tilelock 620ms cubic-bezier(.22,1,.36,1)" : "none",
+            sub: filled ? row.l : "waiting",
+            textColor: filled ? "#e0e7ff" : "#94a3b8",
+            valColor: filled ? "#a5f3fc" : "#64748b",
+            val: val || "—",
+            tag: row.l, tagColor: filled ? "#67e8f9" : "#475569",
+            iconBg: filled ? "rgba(103,232,249,.14)" : "rgba(103,232,249,.04)",
+            iconBd: filled ? "rgba(103,232,249,.45)" : "rgba(103,232,249,.12)",
+            weight: filled ? "700" : "500",
+            v: val || "waiting on your answer",
+            ink: filled ? "#e2e8f0" : "#64748b"
+          };
+        });
       })(),
-      heroAsking: (s.heroQ || 0) < HERO_Q.length,
+      heroAsking: (s.heroQ || 0) < heroSteps.length,
       heroThread: (s.heroThread || []).map((m, idx) => {
         const p = m.who === "scan" ? HERO_PHASE[m.phase] : null;
         const complete = p ? rStates[m.phase] === "done" : false;
@@ -3711,9 +3835,12 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           isShane: m.who === "shane" && !m.profile && !m.chips && !m.wrap, isYou: m.who === "you", isScan: m.who === "scan", neverScan: false,
           isProfile: !!m.profile,
           isWrap: !!m.wrap,
-          wrapRows: !m.wrap ? [] : HERO_Q.map((qq, qi) => ({
+          // Pre-existing bug fixed in passing (#308): this indexed `heroAns` by the
+          // loop position (`qi`) rather than the step's real id, so the wrap
+          // summary always read undefined and showed "—" for every real answer.
+          wrapRows: !m.wrap ? [] : heroSteps.map((qq) => ({
             l: qq.l,
-            v: (s.heroAns || {})[qi] || "—"
+            v: (s.heroAns || {})[qq.id] || "—"
           })),
           onAsk: () => this.setState(st => ({ heroThread: (st.heroThread || []).concat([{ who: "shane", chips: true, asked: true }]) })),
           onGo: () => this.heroSmart("go"),
@@ -3778,12 +3905,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const p = HERO_PHASE[rLiveIdx];
         return p ? p.glow : "rgba(59,130,246,.16)";
       })(),
-      heroHasOpts: !!(HERO_Q[s.heroQ || 0] || {}).opts,
+      heroHasOpts: !!(heroSteps[s.heroQ || 0] || {}).opts,
       heroOpts: (() => {
-        const q = HERO_Q[s.heroQ || 0];
+        const q = heroSteps[s.heroQ || 0];
         if (!q || !q.opts) return { count: "", items: [], ready: false, onConfirm: () => {} };
+        // Real tile ids now (#308), not display text — see heroAnswer for why.
         const sel = s.heroPick || [];
+        // One fallback icon per STEP, not per tile — see HERO_STEP_ICON's own note.
+        const tileIcon = HERO_STEP_ICON[q.id] || "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11";
         return {
+          label: q.l || "Options",
           count: sel.length ? sel.length + " selected" : "pick any that apply",
           ready: sel.length > 0,
           notReady: sel.length === 0,
@@ -3795,9 +3926,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           ctaOp: sel.length ? "1" : ".5",
           onConfirm: this.heroAnswer,
           items: q.opts.map(o => {
-            const on = sel.indexOf(o.v) >= 0;
+            const on = sel.indexOf(o.id) >= 0;
             return {
-              v: o.v, d: o.d, icon: o.icon,
+              v: o.v, d: o.d, icon: tileIcon,
               glow: on ? "0 0 22px rgba(0,180,216,.28)" : "none",
               border: on ? "rgba(103,232,249,.75)" : "rgba(51,65,85,.85)",
               bg: on ? "rgba(0,180,216,.16)" : "rgba(2,6,23,.5)",
@@ -3806,15 +3937,15 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               boxBg: on ? "rgba(0,180,216,.35)" : "transparent",
               onClick: () => this.setState(st => {
                 const cur = st.heroPick || [];
-                const next = cur.indexOf(o.v) >= 0 ? cur.filter(x => x !== o.v) : cur.concat([o.v]);
-                return { heroPick: q.multi ? next : [o.v] };
+                const next = cur.indexOf(o.id) >= 0 ? cur.filter(x => x !== o.id) : cur.concat([o.id]);
+                return { heroPick: q.multi ? next : [o.id] };
               })
             };
           })
         };
       })(),
       heroFilled: Object.keys(s.heroAns || {}).length,
-      heroCount: s.heroScan ? Math.min(s.heroScan.i, HERO_SCAN.length) + " / " + HERO_SCAN.length + " PILLARS" : Object.keys(s.heroAns || {}).length + " / " + HERO_Q.length,
+      heroCount: s.heroScan ? Math.min(s.heroScan.i, HERO_SCAN.length) + " / " + HERO_SCAN.length + " PILLARS" : Object.keys(s.heroAns || {}).length + " / " + heroSteps.length,
       onBegin: () => {
         this.setState({ beginning: true });
         clearTimeout(this.beginT);

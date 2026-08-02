@@ -382,7 +382,7 @@ export function PreludeScreen({ v }: { v: any }) {
                       <div style={css(`display:flex;align-items:center;gap:8px`)}>
                         <span style={css(`width:5px;height:5px;border-radius:99px;background:#67e8f9;box-shadow:0 0 8px #67e8f9`)} />
                         <span style={css(`flex:1;font-size:9px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#a5f3fc`)}>
-                          {"Role groups"}
+                          <Txt v={v.heroOpts?.label || "Options"} />
                         </span>
                         <span style={css(`font-size:9px;font-weight:700;color:#a5b4fc;font-family:ui-monospace,Menlo,monospace`)}>
                           <Txt v={v.heroOpts?.count} />

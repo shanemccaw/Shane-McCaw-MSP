@@ -58,6 +58,7 @@ import {
 import {
   fetchQuizCatalog,
   resolveQuizCatalog,
+  filterPersonasByClusters,
   filterUseCasesByPersonas,
   filterOutcomesByPersonas,
   type ResolvedQuizCatalog,
@@ -264,6 +265,119 @@ export function buildWarRoomQuestions(
     // transcript verbatim, exactly as the old string options were.
     opts: optionsFor(step.level).map((tile) => tile.title),
   })).filter((question) => question.opts.length > 0);
+}
+
+/** One tile a "hero" step offers, carrying both the display value and the real catalog id (#308). */
+export interface WarRoomHeroOption {
+  v: string;
+  d: string;
+  icon: string;
+  id: string;
+}
+
+/** One step of the hero prelude's real conversational quiz — the real, id-bearing sibling of `WarRoomQuestion` (#308). */
+export interface WarRoomHeroStep {
+  id: string;
+  q: string;
+  /** The real QUIZ_NAV_ITEMS label, used as the Briefing Whiteboard's row tag. */
+  l: string;
+  multi: boolean;
+  opts: WarRoomHeroOption[];
+}
+
+/**
+ * The hero prelude's real step spine (#308), extending #306's `QUESTION_SPINE`
+ * with the one level it left out: `personas`, asked as its own tile-picker step
+ * between clusters and use cases, exactly where QUIZ_NAV_ITEMS puts it. `about-you`,
+ * `industry` and `review` are not here — they are not catalog-tile levels (the
+ * first two are free text, the last is a summary), so WarRoomLogic prepends /
+ * appends them itself rather than this module inventing option tiles for them.
+ *
+ * `l` mirrors QUIZ_NAV_ITEMS' own `label` for each id, and `multi` mirrors its
+ * `isMultiSelect`, so the Briefing Whiteboard and the real assessment quiz never
+ * disagree about which steps are multi-select.
+ */
+const HERO_STEP_SPINE: Array<{ id: string; q: string; l: string; level: string; multi: boolean }> = [
+  { id: 'clusters', q: 'Which of these groups makes up the bulk of the day-to-day here?', l: 'Persona Clusters', level: 'clusters', multi: true },
+  { id: 'personas', q: 'And within that, which of these roles are actually real in your tenant?', l: 'Personas', level: 'personas', multi: true },
+  { id: 'use-cases', q: 'Of the work those people do, which would you want Copilot taking on first?', l: 'Use Cases', level: 'useCases', multi: true },
+  { id: 'sensitivity', q: 'And what kind of sensitive material sits in the tenant alongside it?', l: 'Data Sensitivity', level: 'sensitivity', multi: true },
+  { id: 'collaboration', q: 'How does work actually move between people here?', l: 'Collaboration Pattern', level: 'collaboration', multi: true },
+  { id: 'tools', q: 'Which Microsoft 365 app does the team genuinely live in?', l: 'Tool Usage', level: 'tools', multi: true },
+  { id: 'ai-comfort', q: 'How comfortable is the team with AI-generated content today?', l: 'AI Comfort', level: 'aiComfort', multi: false },
+  { id: 'workflow', q: 'How structured is a normal working day?', l: 'Workflow Structure', level: 'workflow', multi: false },
+  { id: 'adoption-speed', q: 'How quickly does this organisation take up new technology?', l: 'Adoption Speed', level: 'adoptionSpeed', multi: false },
+  { id: 'outcomes', q: 'If Copilot went well, what would be different in six months?', l: 'Outcome Priorities', level: 'outcomes', multi: true },
+  { id: 'change-mgmt', q: 'And how much hand-holding would a rollout need?', l: 'Change Management', level: 'changeMgmt', multi: false },
+];
+
+/**
+ * The real option tiles for one hero step's level, narrowed by the clusters/
+ * personas the customer has already picked where the level depends on it.
+ *
+ * Deliberately a standalone lookup rather than a shared one with
+ * `buildWarRoomQuestions`'s `optionsFor`: that function's behaviour (and its
+ * #306 tests) is pinned to a signature with no cluster narrowing, and this adds
+ * a level (`personas`) it does not have. Duplicating the eleven-line switch
+ * keeps both call sites simple instead of forcing one generic function to carry
+ * options neither caller needs.
+ */
+function heroLevelTiles(
+  catalog: ResolvedQuizCatalog,
+  industry: string,
+  level: string,
+  selectedClusterIds: string[],
+  selectedPersonaIds: string[],
+): QuizOptionTile[] {
+  switch (level) {
+    case 'clusters': return catalog.clusters;
+    case 'personas': return filterPersonasByClusters(catalog.personas, selectedClusterIds);
+    case 'useCases': return filterUseCasesByPersonas(catalog.useCases, selectedPersonaIds);
+    case 'outcomes': return filterOutcomesByPersonas(catalog.outcomes, selectedPersonaIds);
+    case 'sensitivity': return industryLevel(ADAPTIVE_DATA_SENSITIVITY, industry);
+    case 'collaboration': return industryLevel(ADAPTIVE_COLLABORATION, industry);
+    case 'tools': return UNIVERSAL_TOOL_USAGE;
+    case 'aiComfort': return UNIVERSAL_AI_COMFORT;
+    case 'workflow': return UNIVERSAL_WORKFLOW_STRUCTURE;
+    case 'adoptionSpeed': return UNIVERSAL_ADOPTION_SPEED;
+    case 'changeMgmt': return UNIVERSAL_CHANGE_MGMT;
+    default: return [];
+  }
+}
+
+/**
+ * The hero prelude's real conversational quiz steps (#308), replacing the
+ * fictional 7-question `HERO_Q` (`warRoomData.ts`): "Biggest drag", "Decision
+ * owner" and "Success looks like" were never real quiz steps anywhere, and
+ * "Core roles"/"Collaboration"/"Sensitivity" were free text rather than the
+ * real catalog's option tiles.
+ *
+ * `selectedClusterIds`/`selectedPersonaIds` are the real tile ids the customer
+ * has picked so far in THIS conversation — narrowing personas by cluster and
+ * use-cases/outcomes by persona through the exact same predicates the real
+ * assessment quiz uses, no second copy of that logic.
+ *
+ * A level with no options at all is dropped rather than asked as an empty
+ * step, same real-content-only rule #306 established for `buildWarRoomQuestions`.
+ */
+export function buildWarRoomHeroSteps(
+  catalog: ResolvedQuizCatalog,
+  industry: string,
+  selectedClusterIds: string[] = [],
+  selectedPersonaIds: string[] = [],
+): WarRoomHeroStep[] {
+  return HERO_STEP_SPINE.map((step) => ({
+    id: step.id,
+    q: step.q,
+    l: step.l,
+    multi: step.multi,
+    opts: heroLevelTiles(catalog, industry, step.level, selectedClusterIds, selectedPersonaIds).map((tile) => ({
+      v: tile.title,
+      d: tile.description,
+      icon: tile.iconName,
+      id: tile.id,
+    })),
+  })).filter((step) => step.opts.length > 0);
 }
 
 /**
