@@ -1491,16 +1491,25 @@ export async function executeMonitorCheck(opts: {
 
 // ── Monitoring Package executor ────────────────────────────────────────────────
 
-export async function executeMonitoringPackage(opts: {
-  packageKey: string;
-  tenantId: string;
-  triggerId: string;
-  onProgress?: ProgressCallback;
-}): Promise<PackageRunResult> {
-  const { packageKey, tenantId, triggerId, onProgress } = opts;
-  const startedAt = new Date().toISOString();
-
-  // Load package
+/**
+ * Resolves an active package to its ordered, active check list.
+ *
+ * Extracted verbatim out of `executeMonitoringPackage` so a second package
+ * runner — the full-item detail collector (#339), which runs its own package in
+ * parallel with the scoring scan — resolves "which checks are in this package"
+ * through the exact same query rather than a second copy that could drift.
+ *
+ * `linkedCheckCount` is returned alongside `checks` because the two are NOT the
+ * same question and the caller's "no_checks" answer depends on the first:
+ * a package with junction rows whose checks are all inactive has
+ * linkedCheckCount > 0 and checks.length === 0, and that is a package that ran
+ * and found nothing to do, not a package that doesn't exist.
+ */
+export async function loadOrderedPackageChecks(packageKey: string): Promise<{
+  pkg: MonitoringPackage | null;
+  linkedCheckCount: number;
+  checks: MonitorCheck[];
+}> {
   const [pkg] = await db
     .select()
     .from(monitoringPackagesTable)
@@ -1510,20 +1519,7 @@ export async function executeMonitoringPackage(opts: {
     ))
     .limit(1);
 
-  if (!pkg) {
-    return {
-      packageKey,
-      tenantId,
-      triggerId,
-      runStatus: "no_checks",
-      checks: [],
-      enginesRecomputed: [],
-      licenseGapCount: 0,
-      licenseGapFeatures: [],
-      startedAt,
-      completedAt: new Date().toISOString(),
-    };
-  }
+  if (!pkg) return { pkg: null, linkedCheckCount: 0, checks: [] };
 
   // Load checks for this package in order
   const packageChecks = await db
@@ -1532,20 +1528,7 @@ export async function executeMonitoringPackage(opts: {
     .where(eq(monitoringPackageChecksTable.packageKey, packageKey))
     .orderBy(monitoringPackageChecksTable.sortOrder);
 
-  if (packageChecks.length === 0) {
-    return {
-      packageKey,
-      tenantId,
-      triggerId,
-      runStatus: "no_checks",
-      checks: [],
-      enginesRecomputed: [],
-      licenseGapCount: 0,
-      licenseGapFeatures: [],
-      startedAt,
-      completedAt: new Date().toISOString(),
-    };
-  }
+  if (packageChecks.length === 0) return { pkg, linkedCheckCount: 0, checks: [] };
 
   const checkKeys = packageChecks.map(pc => pc.checkKey);
   const checks = await db
@@ -1561,6 +1544,38 @@ export async function executeMonitoringPackage(opts: {
   const orderedChecks = packageChecks
     .map(pc => checkMap.get(pc.checkKey))
     .filter((c): c is MonitorCheck => c != null);
+
+  return { pkg, linkedCheckCount: packageChecks.length, checks: orderedChecks };
+}
+
+export async function executeMonitoringPackage(opts: {
+  packageKey: string;
+  tenantId: string;
+  triggerId: string;
+  onProgress?: ProgressCallback;
+}): Promise<PackageRunResult> {
+  const { packageKey, tenantId, triggerId, onProgress } = opts;
+  const startedAt = new Date().toISOString();
+
+  const { pkg, linkedCheckCount, checks: orderedChecks } = await loadOrderedPackageChecks(packageKey);
+
+  // Unchanged semantics: "no_checks" means the package is missing/inactive or
+  // has no junction rows at all. A package whose linked checks are all inactive
+  // still runs (to completion, over zero checks) — it is not "no_checks".
+  if (!pkg || linkedCheckCount === 0) {
+    return {
+      packageKey,
+      tenantId,
+      triggerId,
+      runStatus: "no_checks",
+      checks: [],
+      enginesRecomputed: [],
+      licenseGapCount: 0,
+      licenseGapFeatures: [],
+      startedAt,
+      completedAt: new Date().toISOString(),
+    };
+  }
 
   const results: CheckResult[] = [];
   let consentRevoked = false;

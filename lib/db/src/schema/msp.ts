@@ -1727,6 +1727,79 @@ export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
 
 export type TenantMonitorProfile = typeof tenantMonitorProfilesTable.$inferSelect;
 
+// ── Full per-check item detail ─────────────────────────────────────────────────
+//
+// One row per check per full-item-detail collection run: the COMPLETE fetched
+// item list behind a check's count, kept so a remediation document can list
+// every affected item rather than a sample.
+//
+// WHY THIS IS A SEPARATE TABLE AND NOT rawResponse/extra columns on
+// tenant_monitor_profiles (the decision, stated once — it mirrors the same
+// reasoning simulator_check_runs already records for the same table):
+//   * tenant_monitor_profiles.rawResponse is deliberately only the FIRST page
+//     (`if (pageCount === 0) rawResponse = page`), and for a CSV usage report
+//     only the first five rows (`value: csvRows.slice(0, 5)`). It is a
+//     lightweight debug trace, and widening it would change what every existing
+//     reader of the production monitoring record is looking at.
+//   * The scoring scan computes the full item list and then discards it on
+//     purpose, to keep no extra memory on the hot path. That behaviour is
+//     unchanged; this table is populated by a SEPARATE package run, so a scan's
+//     profile row and this row are different collections of the same check and
+//     must stay independently attributable.
+//
+// THE TRUNCATION RULE, the same one simulator_check_runs follows: a row holds
+// the FULL item list or none of it and says why (`items_omitted`). A truncated
+// prefix is never stored — a remediation document built from a silent prefix
+// would confidently under-report affected items, which is precisely the failure
+// this table exists to prevent.
+//
+// `status` reuses TENANT_MONITOR_PROFILE_STATUS verbatim: a detail collection
+// runs the same real checks through the same executor, so it can land in exactly
+// the same states (license_gap, requires_script, consent_revoked, partial), and
+// giving those a second vocabulary here would invite the two to drift.
+export const tenantCheckItemDetailsTable = pgTable("tenant_check_item_details", {
+  id: serial("id").primaryKey(),
+  detailId: uuid("detail_id").notNull().unique().defaultRandom(),
+  /** Groups every check row produced by ONE detail-collection run. */
+  runId: uuid("run_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  /** tenants.id when known. Nullable for the same pre-customer/orphaned case msp_diagnostic_runs allows. */
+  customerId: integer("customer_id"),
+  checkKey: text("check_key").notNull(),
+  checkSchemaVersion: integer("check_schema_version").notNull().default(1),
+  /** The detail package this run executed — recorded so a later package edit can't rewrite history. */
+  packageKey: text("package_key").notNull(),
+  /**
+   * The executor triggerId this collection used. Deliberately its OWN value,
+   * never the scoring run's: the executor's idempotency key is
+   * "{tenantId}:{checkKey}:{triggerId}", so sharing a triggerId with the scoring
+   * scan would return that run's cached, item-less result instead of fetching.
+   */
+  triggerId: text("trigger_id").notNull(),
+  /** The tenant_monitor_profiles row this same collection wrote, for traceability. */
+  profileId: uuid("profile_id"),
+  status: text("status", { enum: TENANT_MONITOR_PROFILE_STATUS }).notNull().default("ok"),
+  itemCount: integer("item_count").notNull().default(0),
+  pageCount: integer("page_count").notNull().default(0),
+  /** The FULL fetched item list — never a prefix. NULL when omitted (see items_omitted). */
+  items: jsonb("items").$type<unknown[]>(),
+  itemsOmitted: boolean("items_omitted").notNull().default(false),
+  itemsOmittedReason: text("items_omitted_reason"),
+  errorMessage: text("error_message"),
+  collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("tenant_check_item_details_run_check_idx").on(t.runId, t.checkKey),
+  // The primary read: "the most recent complete item list for this check on this
+  // tenant" — what a remediation document or a War Room per-item dialog asks for.
+  index("tenant_check_item_details_tenant_check_collected_idx").on(t.tenantId, t.checkKey, t.collectedAt),
+  index("tenant_check_item_details_tenant_idx").on(t.tenantId),
+  index("tenant_check_item_details_run_idx").on(t.runId),
+]);
+
+export type TenantCheckItemDetail = typeof tenantCheckItemDetailsTable.$inferSelect;
+export type InsertTenantCheckItemDetail = typeof tenantCheckItemDetailsTable.$inferInsert;
+
 export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),

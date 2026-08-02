@@ -46,6 +46,7 @@ import { requireRole, requireAuth, assertCustomerAccess, isCustomerBlockedByStaf
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { runDiagnostics } from "../lib/diagnostics-runner";
+import { runItemDetailCollection } from "../lib/item-detail-collector";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-channels";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
 import { computeDisplayHealth } from "../lib/health-display";
@@ -181,6 +182,23 @@ router.post(
         .catch((err: unknown) => {
           log.error({ err, runId }, "msp-diagnostics: async run failed");
         });
+
+      // 6. In PARALLEL with (never chained after) the scoring run above: collect
+      //    the COMPLETE per-check item lists into tenant_check_item_details
+      //    (#339), so remediation documents and War Room per-item dialogs have
+      //    full detail already gathered rather than fetched at the point of need.
+      //    Its own package, triggerId and table — it cannot affect this run's
+      //    scoring, findings or SSE stream. Skipped when the customer has no
+      //    connected tenant, which the scoring run reports as its own failure.
+      if (customer.tenantId) {
+        void runItemDetailCollection({ tenantId: customer.tenantId, customerId, parallelToRunId: runId })
+          .catch((err: unknown) => {
+            // runItemDetailCollection resolves rather than rejects; this is a
+            // belt-and-braces guard against an unhandled rejection, never the
+            // primary error path.
+            log.warn({ err, runId }, "msp-diagnostics: full-item detail collection failed (non-fatal)");
+          });
+      }
 
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;

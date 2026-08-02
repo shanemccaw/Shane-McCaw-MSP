@@ -785,6 +785,36 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   })();
 
+  // Fire-and-forget full-item detail collection (#339) — a SEPARATE void block,
+  // started here rather than chained after the diagnostics run above, so the two
+  // genuinely run in parallel rather than one waiting on the other.
+  //
+  // It runs its own `detail:full-item-collection` package with includeItems, so
+  // by the time a remediation document (which promises to list ALL affected
+  // items) or a War Room per-item dialog needs full detail, it has already been
+  // collected instead of being fetched reactively at the point of need.
+  //
+  // It never touches the scoring scan: its own package (engines: []), its own
+  // triggerId, its own table, and it resolves rather than rejects on every
+  // failure path — see item-detail-collector.ts's NON-INTERFERENCE notes. The
+  // packageKey is deliberately NOT the ordered product's `resolvedPackageKey`
+  // (that is the scoring package); detail collection covers the whole catalog.
+  void (async () => {
+    try {
+      const { runItemDetailCollection } = await import("../lib/item-detail-collector.js");
+      const detail = await runItemDetailCollection({
+        tenantId: tenant,
+        customerId: inviteRecord?.customerId ?? prospectCustomerId ?? consentTenant.id,
+      });
+      log.info(
+        { tenant, runId: detail.runId, status: detail.status, checksWithItems: detail.checksWithItems, itemsPersisted: detail.itemsPersisted },
+        "consent.granted: full-item detail collection finished",
+      );
+    } catch (detailErr) {
+      log.warn({ err: detailErr, tenant }, "consent.granted: full-item detail collection failed (non-fatal)");
+    }
+  })();
+
   // Fire-and-forget DLP/Label Purview role-group provisioning (#249, #246
   // chunk C) — must not delay the consent redirect, and must never fail the
   // consent grant itself. Fires on every `graph` consent success (this chain
