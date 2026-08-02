@@ -97,6 +97,7 @@ import {
   Package,
   Play,
   Plus,
+  Radar,
   Receipt,
   Rocket,
   Scale,
@@ -548,6 +549,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: KeyRound,
         label: "Licensing",
         href: "/licensing",
+        roles: ["CustomerUser"],
+      },
+      {
+        icon: Radar,
+        label: "War Room",
+        href: "/war-room",
         roles: ["CustomerUser"],
       },
       {

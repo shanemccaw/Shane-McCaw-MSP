@@ -103,6 +103,7 @@ import AdoptionPage from "@/pages/adoption";
 import CopilotPage from "@/pages/copilot";
 import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
+import WarRoomPage from "@/pages/war-room";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
@@ -444,6 +445,12 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/licensing">
         <ProtectedRoute component={LicensingPage} />
+      </Route>
+      {/* M365 War Room — full-screen Copilot readiness briefing, ported from the
+          Claude Design prototype. Owns the whole viewport, so it renders without
+          AppShell (its root is position:fixed) and carries its own exit control. */}
+      <Route path="/war-room">
+        <ProtectedRoute component={WarRoomPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other
