@@ -29,6 +29,8 @@ import {
   shouldTriggerWarRoomScan,
   warRoomPhaseStates,
   warRoomPillarForCheckKey,
+  warRoomPlannedPillarCounts,
+  warRoomScanningNote,
   type WarRoomCheckResult,
 } from "./warRoomScan.ts";
 
@@ -129,10 +131,14 @@ test("the live pillar follows the check that is actually reporting", () => {
   assert.equal(afterMfa.pillarsDone, 0);
   assert.equal(afterMfa.currentCheckLabel, "MFA state");
 
-  // Event 3 is sharepoint:* → Governance takes over as live, Security is done.
+  // Event 3 is sharepoint:* → Governance takes over as live. Security has real
+  // results and is no longer the one being read, but `running()` supplies no
+  // scan plan, so how many checks Security is still owed is genuinely unknown —
+  // it reads `scanning`, not `done` (#340). See the plan-driven tests below for
+  // the same moment with the run's real check list in hand.
   const afterSharePoint = running(3);
   assert.equal(afterSharePoint.pillars.governance, "live");
-  assert.equal(afterSharePoint.pillars.security, "done");
+  assert.equal(afterSharePoint.pillars.security, "scanning");
   assert.equal(afterSharePoint.currentCheckLabel, "Anonymous sharing links");
 
   // Pillars no check has reached yet are still waiting — never pre-lit.
@@ -430,6 +436,256 @@ test("nothing known at all does not block the trigger", () => {
   assert.equal(shouldTriggerWarRoomScan(null), true);
   assert.equal(shouldTriggerWarRoomScan({ scan: null }), true);
   assert.equal(shouldTriggerWarRoomScan({ scan: WAR_ROOM_SCAN_IDLE }), true);
+});
+
+// ── Per-pillar completion against the run's REAL check plan (#340) ───────────
+//
+// The bug: the per-run pillar loop wrote `done` the moment ANY single result
+// mapped to a pillar. Real results arrive interleaved across pillars, so a
+// pillar with several real checks read finished after its first one — and
+// #331/#334's honest NO DATA treatment, which is correct for a pillar that
+// genuinely finished with no score, fired on pillars still being scanned.
+//
+// The fix needs a real count of each pillar's checks. That count comes from the
+// run's package: `GET /api/portal/scan-plan` returns
+// `loadOrderedPackageChecks(packageKey).checks.map(c => c.key)` — the exact list
+// `executeMonitoringPackage` iterates and emits one progress event per. The plan
+// below is that shape: real catalog check keys, one per event the run will send.
+
+/**
+ * A real package plan for the RUN above, plus a THIRD identity check that has
+ * not reported yet. Security therefore owns 3 real checks while the stream has
+ * delivered 2 — the exact shape that used to declare the pillar finished.
+ */
+const PLAN = [
+  "identity:mfa-state",
+  "identity:legacy-auth",
+  "identity:ca-policy-count",
+  "sharepoint:anonymous-links",
+  "teams:orphaned-teams",
+  "licensing:sku-usage",
+  "compliance:missing-labels",
+  "usage:teams-activity",
+  "devices:compliance",
+  "copilot:readiness",
+];
+
+/** The same replay as `running()`, but with the run's real plan in hand. */
+const runningWithPlan = (n: number) =>
+  deriveWarRoomScan({
+    scanCheckResults: streamed(n),
+    streamedRunId: "run-1",
+    triggeredRunId: "run-1",
+    plannedCheckKeys: PLAN,
+    plannedRunId: "run-1",
+  });
+
+test("planned check counts come from the real plan, per real pillar", () => {
+  const counts = warRoomPlannedPillarCounts(PLAN);
+  assert.equal(counts.security, 3);     // identity:mfa-state / legacy-auth / ca-policy-count
+  assert.equal(counts.governance, 2);   // sharepoint:anonymous-links + teams:orphaned-teams
+  assert.equal(counts.licensing, 1);
+  assert.equal(counts.compliance, 1);
+  assert.equal(counts.adoption, 1);     // usage:teams-activity
+  assert.equal(counts.health, 1);       // devices:compliance
+  assert.equal(counts.copilot, 1);
+
+  // A planned key no pillar claims is counted nowhere — the same domains the
+  // reporting side ignores, so a pillar can never be owed a check that could
+  // not have arrived for it.
+  const withStray = warRoomPlannedPillarCounts([...PLAN, "exchange:mailbox-audit"]);
+  assert.deepEqual(withStray, counts);
+
+  // Duplicates collapse, for the same reason the reporting side counts distinct
+  // keys: the stream replays cached events on reconnect.
+  assert.deepEqual(warRoomPlannedPillarCounts([...PLAN, ...PLAN]), counts);
+
+  // No plan at all is zeroes — "unknown", handled explicitly everywhere.
+  for (const key of WAR_ROOM_PILLAR_KEYS) {
+    assert.equal(warRoomPlannedPillarCounts(null)[key], 0);
+    assert.equal(warRoomPlannedPillarCounts(undefined)[key], 0);
+  }
+});
+
+test("THE BUG: one real result no longer finishes a pillar that has more checks", () => {
+  // Three events in: Security has really reported 2 of its 3 checks, and
+  // Governance is now the one being read. Before #340 Security read `done` here
+  // — off its FIRST result, two events earlier.
+  const mid = runningWithPlan(3);
+  assert.equal(mid.phase, "running");
+  assert.equal(mid.pillars.security, "scanning");
+  assert.notEqual(mid.pillars.security, "done");
+  assert.equal(mid.pillarChecksDone.security, 2);
+  assert.equal(mid.pillarChecksTotal.security, 3);
+  // Nothing downstream may read it as scanned, either.
+  assert.equal(mid.pillarsDone, 0);
+  assert.equal(mid.pillarsScanning, 1);
+});
+
+test("a pillar resolves to done exactly when its real checks have all reported", () => {
+  // Governance owns 2 real checks (sharepoint + teams). Event 4 delivers its
+  // second, so from event 5 — the first result belonging to someone else — it is
+  // genuinely finished and may show its real score.
+  const fourIn = runningWithPlan(4);
+  assert.equal(fourIn.pillars.governance, "live", "still the one being read");
+  assert.equal(fourIn.pillarChecksDone.governance, 2);
+
+  const fiveIn = runningWithPlan(5);
+  assert.equal(fiveIn.pillars.governance, "done");
+  assert.equal(fiveIn.pillars.licensing, "live");
+  // ...while Security, still owed its third check, stays honestly in progress.
+  assert.equal(fiveIn.pillars.security, "scanning");
+  assert.equal(fiveIn.pillarsDone, 1);
+
+  // Never scanned pillars are untouched by any of this.
+  assert.equal(fiveIn.pillars.copilot, "wait");
+});
+
+test("the actively-checked pillar still lights up, plan or no plan (hard constraint)", () => {
+  // #340's own constraint: the live/flash behaviour must be exactly what it was.
+  // The pillar the run is reading right now is `live` at every point of the run,
+  // whether or not its checks are complete, and whether or not a plan exists.
+  for (let n = 1; n <= RUN.length; n++) {
+    const withPlan = runningWithPlan(n);
+    const withoutPlan = running(n);
+    const livePillar = warRoomPillarForCheckKey(RUN[n - 1]!.checkKey);
+    assert.equal(withPlan.pillars[livePillar!], "live", `event ${n} lights its pillar`);
+    assert.equal(withoutPlan.pillars[livePillar!], "live", `event ${n} lights its pillar`);
+    // Exactly one pillar is live at a time, in both cases.
+    assert.equal(WAR_ROOM_PILLAR_KEYS.filter((k) => withPlan.pillars[k] === "live").length, 1);
+    assert.equal(WAR_ROOM_PILLAR_KEYS.filter((k) => withoutPlan.pillars[k] === "live").length, 1);
+  }
+
+  // A pillar whose last planned check is the one reporting right now is live,
+  // not done — it settles into `done` on the next pillar's first event, which is
+  // the same beat the row already animated on.
+  assert.equal(runningWithPlan(2).pillarChecksDone.security, 2);
+  assert.equal(runningWithPlan(4).pillars.governance, "live");
+});
+
+test("no plan means honestly in progress, never prematurely finished", () => {
+  // The plan fetch has not landed, or the api-server predates the route. The
+  // pillar count is genuinely unknown, so nothing is declared finished — which
+  // is the state that must NOT resolve to NO DATA.
+  const noPlan = running(5);
+  assert.equal(noPlan.pillars.security, "scanning");
+  assert.equal(noPlan.pillars.governance, "scanning");
+  assert.equal(noPlan.pillarsDone, 0);
+  // The unknown total is reported as 0 — "we don't know", and every reader is
+  // required to treat it as such rather than as "this pillar has no checks".
+  assert.equal(noPlan.pillarChecksTotal.security, 0);
+  assert.equal(noPlan.pillarChecksDone.security, 2);
+});
+
+test("a plan belonging to a different run is never applied", () => {
+  // Same discipline as retained results: a plan from another run would finish
+  // pillars against a check list this run never executed.
+  const wrongRun = deriveWarRoomScan({
+    scanCheckResults: streamed(5),
+    streamedRunId: "run-1",
+    triggeredRunId: "run-1",
+    plannedCheckKeys: PLAN,
+    plannedRunId: "run-OTHER",
+  });
+  assert.equal(wrongRun.pillars.governance, "scanning");
+  assert.equal(wrongRun.pillarChecksTotal.governance, 0);
+
+  // And an absent runId on the plan is not a wildcard.
+  const noRunId = deriveWarRoomScan({
+    scanCheckResults: streamed(5),
+    streamedRunId: "run-1",
+    triggeredRunId: "run-1",
+    plannedCheckKeys: PLAN,
+    plannedRunId: null,
+  });
+  assert.equal(noRunId.pillarChecksTotal.governance, 0);
+});
+
+test("when the real run ends, in-progress pillars resolve and empty ones stay queued", () => {
+  // Security never got its third check — the run ended first. Whatever it was
+  // owed is not coming, so its real results are all there will be: it is done,
+  // and only now may it read as a real score or an honest NO DATA.
+  const finished = deriveWarRoomScan({
+    scanCheckResults: [],
+    streamedRunId: null,
+    triggeredRunId: null,
+    active: null,
+    lastRunSummary: {
+      runId: "run-1", status: "partial",
+      checksTotal: PLAN.length, checksOk: RUN.length, checksError: 0, checksLicenseGap: 0,
+    },
+    retainedResults: streamed(RUN.length),
+    retainedRunId: "run-1",
+    plannedCheckKeys: PLAN,
+    plannedRunId: "run-1",
+  });
+  assert.equal(finished.phase, "complete");
+  assert.equal(finished.pillars.security, "done");
+  assert.equal(finished.pillarChecksDone.security, 2);
+  assert.equal(finished.pillarChecksTotal.security, 3);
+  assert.equal(finished.pillarsScanning, 0);
+  assert.equal(finished.pillarsDone, WAR_ROOM_PILLAR_KEYS.length);
+
+  // A pillar the run genuinely never reported anything for stays queued, and is
+  // still never mistaken for a scanned-but-empty one.
+  const narrow = deriveWarRoomScan({
+    scanCheckResults: [{ checkKey: "identity:mfa-state", checkLabel: "MFA state", index: 1, total: 1 }],
+    streamedRunId: "run-3",
+    triggeredRunId: null,
+    plannedCheckKeys: ["identity:mfa-state"],
+    plannedRunId: "run-3",
+  });
+  assert.equal(narrow.pillars.security, "done");
+  assert.equal(narrow.pillars.compliance, "wait");
+  assert.equal(narrow.pillarsScanning, 0);
+});
+
+test("the scanning line is real, reassuring, and never the no-data language", () => {
+  const mid = runningWithPlan(3);
+  assert.equal(warRoomScanningNote(mid, "security"), "scanning your tenant · 2 of 3 checks");
+
+  // Unknown plan: the counts are dropped rather than printed as "2 of 0".
+  const noPlan = running(3);
+  const line = warRoomScanningNote(noPlan, "security");
+  assert.equal(line, "scanning your tenant");
+  assert.equal(/ of /.test(line), false);
+
+  // Nothing an in-progress pillar says may read as a verdict on it.
+  for (const text of [warRoomScanningNote(mid, "security"), warRoomScanningNote(noPlan, "security")]) {
+    assert.equal(/no data/i.test(text), false);
+    assert.equal(/n\/a/i.test(text), false);
+    assert.equal(/fail|error|missing|problem/i.test(text), false);
+  }
+
+  // A replayed stream cannot push the reported count past the planned one.
+  const replayed = deriveWarRoomScan({
+    scanCheckResults: [...streamed(3), ...streamed(3)],
+    streamedRunId: "run-1",
+    triggeredRunId: "run-1",
+    plannedCheckKeys: PLAN,
+    plannedRunId: "run-1",
+  });
+  assert.equal(warRoomScanningNote(replayed, "security"), "scanning your tenant · 2 of 3 checks");
+});
+
+test("every pillar is in exactly one honest state at every point of a real run", () => {
+  // The four states are exhaustive and mutually exclusive, and — the whole point
+  // of #340 — a pillar with real results mid-run is never in the state the
+  // NO DATA treatment keys off.
+  for (let n = 0; n <= RUN.length; n++) {
+    const scan = runningWithPlan(n);
+    for (const key of WAR_ROOM_PILLAR_KEYS) {
+      const state = scan.pillars[key];
+      assert.equal(["wait", "live", "scanning", "done"].includes(state), true);
+      if (state === "wait") assert.equal(scan.pillarChecksDone[key], 0);
+      if (state === "scanning" || state === "live") assert.equal(scan.phase, "running");
+      // `done` mid-run is only ever earned against the real plan.
+      if (state === "done" && scan.phase === "running") {
+        assert.equal(scan.pillarChecksTotal[key] > 0, true);
+        assert.equal(scan.pillarChecksDone[key] >= scan.pillarChecksTotal[key], true);
+      }
+    }
+  }
 });
 
 test("phase states line up with the order the intro renders them", () => {

@@ -103,8 +103,23 @@ export function warRoomPillarForCheckKey(checkKey: string | null | undefined): W
   return PILLAR_BY_DOMAIN.get(domain) ?? null;
 }
 
-/** What one pillar row shows. Same three states the fake advancement produced. */
-export type WarRoomPillarState = "wait" | "live" | "done";
+/**
+ * What one pillar row shows.
+ *
+ * `wait` / `live` / `done` are the three states the original fake advancement
+ * produced. `scanning` is the fourth, added by #340: a pillar that has real
+ * results but has NOT yet been given back all of the checks the run owes it.
+ *
+ * Why it has to exist as its own state: `done` is what every downstream surface
+ * reads as "this pillar's scan is over", and #331/#334 correctly render a done
+ * pillar with no real score as an honest NO DATA. Before #340 a pillar flipped
+ * to `done` on its FIRST result, so a pillar with five real checks was declared
+ * finished after one of them — and NO DATA, which is the truth for a pillar that
+ * genuinely finished empty, was shown for pillars still being read. Collapsing
+ * this state back into `wait` would be just as wrong: a pillar with real results
+ * on screen is not queued.
+ */
+export type WarRoomPillarState = "wait" | "live" | "scanning" | "done";
 
 export interface WarRoomScanState {
   /** `idle` = no run to show, `running` = a real run is in flight, `complete` = a real run finished. */
@@ -118,8 +133,22 @@ export interface WarRoomScanState {
   currentCheckLabel: string | null;
   /** Real per-pillar state, keyed by pillar. */
   pillars: Record<WarRoomPillarKey, WarRoomPillarState>;
-  /** How many pillars have real results and are no longer the live one. */
+  /** How many pillars have really finished every check the run owes them. */
   pillarsDone: number;
+  /** How many pillars have real results but are still owed checks (#340). */
+  pillarsScanning: number;
+  /**
+   * Real per-pillar check counts (#340): how many of that pillar's checks have
+   * reported, and how many the run's package genuinely contains for it.
+   *
+   * `pillarChecksTotal` is 0 for a pillar whose planned count is not known —
+   * either no scan plan reached this derivation, or the plan belongs to a
+   * different run. Zero here means "unknown", never "this pillar has no checks":
+   * a real 0 and an unknown 0 are indistinguishable from the plan alone, so no
+   * caller may read a total of 0 as evidence of anything.
+   */
+  pillarChecksDone: Record<WarRoomPillarKey, number>;
+  pillarChecksTotal: Record<WarRoomPillarKey, number>;
   /** The run all of the above describes. */
   runId: string | null;
 }
@@ -134,6 +163,16 @@ const IDLE_PILLARS = (): Record<WarRoomPillarKey, WarRoomPillarState> => ({
   copilot: "wait",
 });
 
+const ZERO_PER_PILLAR = (): Record<WarRoomPillarKey, number> => ({
+  governance: 0,
+  licensing: 0,
+  adoption: 0,
+  compliance: 0,
+  health: 0,
+  security: 0,
+  copilot: 0,
+});
+
 export const WAR_ROOM_SCAN_IDLE: WarRoomScanState = {
   phase: "idle",
   checksDone: 0,
@@ -142,8 +181,42 @@ export const WAR_ROOM_SCAN_IDLE: WarRoomScanState = {
   currentCheckLabel: null,
   pillars: IDLE_PILLARS(),
   pillarsDone: 0,
+  pillarsScanning: 0,
+  pillarChecksDone: ZERO_PER_PILLAR(),
+  pillarChecksTotal: ZERO_PER_PILLAR(),
   runId: null,
 };
+
+/**
+ * How many of the run's real checks each pillar owns (#340).
+ *
+ * The input is the run's real check PLAN — `GET /api/portal/scan-plan`, which
+ * returns `loadOrderedPackageChecks(packageKey).checks.map(c => c.key)`: the
+ * exact, active, sort-ordered list `executeMonitoringPackage` iterates and emits
+ * one progress event per. So a pillar's total here is a count of the real rows
+ * behind the real run, not an assumption about how many checks a pillar "should"
+ * have.
+ *
+ * A planned key whose domain no pillar claims is counted nowhere, exactly as
+ * `warRoomPillarForCheckKey` ignores it on the reporting side — the two sides
+ * have to agree or a pillar could be owed a check that can never arrive for it.
+ * Duplicate keys are collapsed for the same reason the reporting side counts
+ * distinct keys: the stream replays cached events on reconnect.
+ */
+export function warRoomPlannedPillarCounts(
+  checkKeys: readonly string[] | null | undefined,
+): Record<WarRoomPillarKey, number> {
+  const counts = ZERO_PER_PILLAR();
+  if (!checkKeys) return counts;
+  const seen = new Set<string>();
+  for (const key of checkKeys) {
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const pillar = warRoomPillarForCheckKey(key);
+    if (pillar) counts[pillar] += 1;
+  }
+  return counts;
+}
 
 export interface WarRoomScanInput {
   /** Every per-check result the currently streamed run has delivered (context's `scanCheckResults`). */
@@ -170,6 +243,21 @@ export interface WarRoomScanInput {
    */
   retainedResults?: readonly WarRoomCheckResult[] | null;
   retainedRunId?: string | null;
+  /**
+   * The run's real check plan (#340) — every check key the run's monitoring
+   * package genuinely executes, from `GET /api/portal/scan-plan`.
+   *
+   * This is what makes "this pillar has finished" answerable while the run is
+   * still going: the SSE stream says which checks HAVE reported, and only the
+   * plan says how many a pillar is still owed.
+   *
+   * Optional, and only ever applied to the run it belongs to (`plannedRunId`).
+   * Absent/mismatched is a real state — the plan fetch hasn't landed yet, or the
+   * api-server predates the route — and is handled honestly rather than guessed
+   * at: see `deriveWarRoomScan` for what a pillar reads without it.
+   */
+  plannedCheckKeys?: readonly string[] | null;
+  plannedRunId?: string | null;
 }
 
 /**
@@ -188,14 +276,31 @@ const TERMINAL_RUN_STATUSES = new Set(["completed", "partial", "failed"]);
  * already finished sees its real result rather than an empty room.
  *
  * How a pillar lights up, and why it is not simply "the next one in order": real
- * checks do not arrive grouped by pillar, so there is no honest way to say a
- * pillar is finished while the run is still going. What IS real is which checks
- * have reported. So a pillar is `live` when the most recent real check result
- * belongs to it, `done` once it has real results and something else is now
- * reporting, and `wait` while it has none. When the run ends, every pillar with
- * real results is `done` and every pillar with none stays `wait` — a package
- * that genuinely contains no compliance checks leaves Compliance queued rather
- * than claiming a score for it.
+ * checks do not arrive grouped by pillar. What IS real is which checks have
+ * reported, and — since #340 — how many the run still owes each pillar:
+ *
+ *   - `live`   the most recent real check result belongs to it. Unchanged, and
+ *              deliberately still the LAST writer regardless of anything below,
+ *              because that is the pillar the run is reading right now and it is
+ *              what drives the row's flash/light-up while the scan is going.
+ *   - `done`   every check the run's real plan gives this pillar has reported
+ *              (or the run itself has ended, which means nothing more is coming).
+ *              This is the state every downstream surface treats as "scanned",
+ *              so it is also the only state allowed to resolve to a real score
+ *              or to #331/#334's honest NO DATA.
+ *   - `scanning` it has real results but is still owed checks (#340). Its checks
+ *              are genuinely still running, so it is neither scored nor empty.
+ *   - `wait`   it has no real results yet.
+ *
+ * Without a plan for this run, "still owed checks" is unknowable, so a pillar
+ * with results stays `scanning` for as long as the run is in flight rather than
+ * being declared finished on incomplete evidence — the pre-#340 behaviour, which
+ * showed NO DATA on pillars that were still being read, is the thing this must
+ * never fall back to.
+ *
+ * When the run ends, every pillar with real results is `done` and every pillar
+ * with none stays `wait` — a package that genuinely contains no compliance
+ * checks leaves Compliance queued rather than claiming a score for it.
  */
 export function deriveWarRoomScan(input: WarRoomScanInput | null | undefined): WarRoomScanState {
   if (!input) return WAR_ROOM_SCAN_IDLE;
@@ -247,22 +352,72 @@ export function deriveWarRoomScan(input: WarRoomScanInput | null | undefined): W
       ? (input.retainedResults ?? [])
       : [];
 
+  // The run's real check plan, and only if it really is THIS run's — the same
+  // discipline `detail` above applies to retained results. A plan from another
+  // run would declare pillars finished against a check list they never ran.
+  const plannedForThisRun =
+    input.plannedRunId != null && input.plannedRunId === runId
+      ? (input.plannedCheckKeys ?? null)
+      : null;
+  const pillarChecksTotal = warRoomPlannedPillarCounts(plannedForThisRun);
+  const pillarChecksDone = ZERO_PER_PILLAR();
+
   if (detail.length > 0) {
+    // Distinct keys per pillar, not event count: the stream replays cached
+    // events on reconnect, so the same check can arrive more than once and must
+    // not count twice towards its pillar being finished.
+    const reported: Record<WarRoomPillarKey, Set<string>> = {
+      governance: new Set(),
+      licensing: new Set(),
+      adoption: new Set(),
+      compliance: new Set(),
+      health: new Set(),
+      security: new Set(),
+      copilot: new Set(),
+    };
     // Walk in arrival order so the LAST result wins the `live` slot.
     let livePillar: WarRoomPillarKey | null = null;
     for (const result of detail) {
       const pillar = warRoomPillarForCheckKey(result.checkKey);
       if (!pillar) continue;
-      pillars[pillar] = "done";
+      reported[pillar].add(result.checkKey);
       livePillar = pillar;
     }
+
+    for (const pillar of WAR_ROOM_PILLAR_KEYS) {
+      const done = reported[pillar].size;
+      pillarChecksDone[pillar] = done;
+      if (done === 0) continue;
+      if (complete) {
+        // The run is over. Whatever this pillar was owed is not coming, so its
+        // real results are all the results there will ever be.
+        pillars[pillar] = "done";
+        continue;
+      }
+      const planned = pillarChecksTotal[pillar];
+      // `planned > 0` is the "we really know this pillar's check count" test —
+      // a 0 is an unknown plan, not a pillar with no checks (a pillar with no
+      // checks can never have reported one, so it never reaches here anyway).
+      pillars[pillar] = planned > 0 && done >= planned ? "done" : "scanning";
+    }
+
     const last = detail[detail.length - 1]!;
     currentCheckLabel = last.checkLabel || last.checkKey || null;
+    // Deliberately last, and deliberately unconditional on the states above: the
+    // pillar the run is reading right now is `live` even if its own final check
+    // was the one that just landed. Sequential execution means the next event
+    // belongs to another pillar, which is exactly when this one settles into
+    // `done` — so the light-up/flash of an actively-checked pillar is byte-for-
+    // byte the behaviour it had before #340.
     if (!complete && livePillar) pillars[livePillar] = "live";
   }
 
   const pillarsDone = WAR_ROOM_PILLAR_KEYS.reduce(
     (n, key) => (pillars[key] === "done" ? n + 1 : n),
+    0,
+  );
+  const pillarsScanning = WAR_ROOM_PILLAR_KEYS.reduce(
+    (n, key) => (pillars[key] === "scanning" ? n + 1 : n),
     0,
   );
 
@@ -274,8 +429,33 @@ export function deriveWarRoomScan(input: WarRoomScanInput | null | undefined): W
     currentCheckLabel,
     pillars,
     pillarsDone,
+    pillarsScanning,
+    pillarChecksDone,
+    pillarChecksTotal,
     runId,
   };
+}
+
+/**
+ * The line a pillar in the `scanning` state shows (#340).
+ *
+ * Real, and deliberately reassuring: a pillar being read is not a problem, so
+ * this must never borrow the language of a finding, a failure, or the honest
+ * NO DATA that belongs to a pillar which genuinely finished with nothing. The
+ * check numbers in it are the pillar's own real reported/planned counts, so it
+ * says how far along this pillar actually is rather than "please wait".
+ *
+ * With no plan for the run, the counts are unknown (see `pillarChecksTotal`) —
+ * so the line drops them rather than printing "3 of 0" or inventing a total.
+ */
+export function warRoomScanningNote(
+  scan: Pick<WarRoomScanState, "pillarChecksDone" | "pillarChecksTotal">,
+  pillar: WarRoomPillarKey,
+): string {
+  const done = scan.pillarChecksDone[pillar] ?? 0;
+  const total = scan.pillarChecksTotal[pillar] ?? 0;
+  if (total > 0) return `scanning your tenant · ${Math.min(done, total)} of ${total} checks`;
+  return "scanning your tenant";
 }
 
 export interface WarRoomTriggerInput {

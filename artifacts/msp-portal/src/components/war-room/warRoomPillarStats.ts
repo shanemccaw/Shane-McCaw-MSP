@@ -102,6 +102,20 @@ export const WAR_ROOM_PILLAR_VIEW_EMPTY: WarRoomPillarView = {
 export const WAR_ROOM_NO_DATA_COLOR = "#e879f9";
 
 /**
+ * Dedicated colour for the "still being scanned" indicator (#340) — a pillar
+ * whose real checks have started reporting but have not all come back yet.
+ *
+ * Deliberately a calm sky-cyan, in the same family as the live/READING accent
+ * the row already uses for the pillar being read this instant, because it means
+ * the same reassuring thing: work in progress, nothing wrong. Just as
+ * deliberately NOT `WAR_ROOM_NO_DATA_COLOR` — the whole point of #340 is that a
+ * pillar mid-scan must not wear the "we looked and found nothing" treatment —
+ * and not the red/amber/green severity spectrum, which would read as a verdict
+ * on a pillar that hasn't been judged yet.
+ */
+export const WAR_ROOM_SCANNING_COLOR = "#7dd3fc";
+
+/**
  * Render one real number the way the card showed its fictional predecessor:
  * thousands-separated counts ("1,204"), whole-dollar currency ("$847,608"),
  * percentages with a sign ("34%").

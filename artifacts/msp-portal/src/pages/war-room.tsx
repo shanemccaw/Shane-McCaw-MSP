@@ -5,6 +5,7 @@ import { warRoomUrlSync } from "@/components/war-room/warRoomSections";
 import { deriveWarRoomScan } from "@/components/war-room/warRoomScan";
 import { toTopologyBaseline } from "@/components/war-room/warRoomTopologyScores";
 import { useWarRoomPillarStats } from "@/components/war-room/useWarRoomPillarStats";
+import { useWarRoomScanPlan } from "@/components/war-room/useWarRoomScanPlan";
 import { useRealTelemetryComparison } from "@/components/copilot-assessment/useRealTelemetryComparison";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
@@ -126,6 +127,11 @@ export default function WarRoomPage() {
     }
   }, [streamedRunId, scanCheckResults]);
 
+  // The run's real check plan (#340) — the only thing that can say how many
+  // checks a pillar is still owed, and therefore the only honest basis for
+  // marking one finished mid-run. Fetched once per run, not on the poll.
+  const scanPlan = useWarRoomScanPlan();
+
   const scan = useMemo(
     () =>
       deriveWarRoomScan({
@@ -136,8 +142,18 @@ export default function WarRoomPage() {
         lastRunSummary: data?.lastRunSummary ?? null,
         retainedResults: retained.results,
         retainedRunId: retained.runId,
+        plannedCheckKeys: scanPlan.checkKeys,
+        plannedRunId: scanPlan.runId,
       }),
-    [scanCheckResults, streamedRunId, triggeredRunId, data?.active, data?.lastRunSummary, retained],
+    [
+      scanCheckResults,
+      streamedRunId,
+      triggeredRunId,
+      data?.active,
+      data?.lastRunSummary,
+      retained,
+      scanPlan,
+    ],
   );
 
   /**

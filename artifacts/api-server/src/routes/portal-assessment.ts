@@ -79,6 +79,9 @@ import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
+// The executor's OWN package→ordered-checks resolver, reused verbatim so the
+// scan plan below can never disagree with what the run actually executes (#340).
+import { loadOrderedPackageChecks } from "../lib/monitor-executor";
 import { buildTelemetryComparison } from "../lib/telemetry-comparison";
 import { buildWarRoomPillarStats } from "../lib/war-room-pillar-stats";
 import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
@@ -714,6 +717,83 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-status failed");
       res.status(500).json({ error: "Failed to load scan status" });
+    }
+  },
+);
+
+// ── The run's real check PLAN (#340) ──────────────────────────────────────────
+//
+//   GET /api/portal/scan-plan
+//
+// The check keys the customer's latest diagnostics run really executes, in the
+// order it executes them.
+//
+// Why this exists: the War Room's pillar row/stack marks a pillar "done" off the
+// per-check SSE stream, but that stream only says which checks HAVE reported —
+// never how many a pillar is still owed. #340: the first result mapping to a
+// pillar was marking the whole pillar finished, so a pillar with five real
+// checks read complete after one, and #331/#334's honest "NO DATA" treatment
+// (correct for a pillar that genuinely finished with no score) fired mid-scan on
+// pillars that were still being read.
+//
+// The real source of truth for "how many checks does this pillar have" is the
+// same one the executor itself uses: `loadOrderedPackageChecks(packageKey)` —
+// the monitoring_package_checks junction rows for the run's package, narrowed to
+// monitor_checks that are actually `active`, in sortOrder. That is *literally*
+// the list `executeMonitoringPackage` iterates and emits one progress event per
+// (see monitor-executor.ts) — not a count derived from it, so the two can't
+// drift. It is deliberately NOT the run row's `checksTotal` (a single number
+// with no per-check identity) and NOT a hardcoded per-pillar tally.
+//
+// Its own route rather than more fields on /portal/scan-status: scan-status is
+// polled every 3s from the whole shell while a run is live, and the plan for a
+// given run never changes, so the War Room reads this once per runId instead.
+//
+// Grouping the keys into pillars is deliberately left to the client: the
+// domain→pillar mapping lives in one place (msp-portal's warRoomScan.ts,
+// WAR_ROOM_PILLAR_DOMAINS) and a second copy here would be free to drift from
+// the one that renders the row.
+router.get(
+  "/portal/scan-plan",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      // The SAME row /portal/scan-status reports on — its `active`, its
+      // `lastRunSummary` and this plan are all the customer's latest run, so the
+      // runId returned here is the one the caller is already watching. It is
+      // returned explicitly regardless, so the client can refuse to apply a plan
+      // to a run it doesn't belong to rather than assuming they match.
+      const [latestRun] = await db
+        .select({
+          runId: mspDiagnosticRunsTable.runId,
+          packageKey: mspDiagnosticRunsTable.packageKey,
+        })
+        .from(mspDiagnosticRunsTable)
+        .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      if (!latestRun) {
+        // Never scanned. A real, reportable state — not an error.
+        res.json({ runId: null, packageKey: null, checkKeys: [] });
+        return;
+      }
+
+      const { checks } = await loadOrderedPackageChecks(latestRun.packageKey);
+      res.json({
+        runId: latestRun.runId,
+        packageKey: latestRun.packageKey,
+        checkKeys: checks.map((c) => c.key),
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/scan-plan failed");
+      res.status(500).json({ error: "Failed to load scan plan" });
     }
   },
 );

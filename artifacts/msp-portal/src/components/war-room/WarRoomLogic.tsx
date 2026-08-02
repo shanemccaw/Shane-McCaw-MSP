@@ -86,9 +86,9 @@ import {
   warRoomCatalogFor,
 } from "./warRoomQuizCatalog";
 import { getCurrentAccessToken } from "@/lib/auth-context";
-import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, shouldTriggerWarRoomScan, warRoomPhaseStates } from "./warRoomScan";
+import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, shouldTriggerWarRoomScan, warRoomPhaseStates, warRoomScanningNote } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
-import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY, WAR_ROOM_NO_DATA_COLOR } from "./warRoomPillarStats";
+import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY, WAR_ROOM_NO_DATA_COLOR, WAR_ROOM_SCANNING_COLOR } from "./warRoomPillarStats";
 import { govWalkCard, WAR_ROOM_NOT_WIRED_LABEL, WAR_ROOM_NOT_WIRED_NOTE } from "./warRoomGovernanceWalk";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
 import { cardScrollTop } from "./warRoomCardScroll";
@@ -3937,7 +3937,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
                 // pillar, not HERO_PHASE's fictional `find` strings. A pillar with
                 // no real finding shows only its request lines.
                 rPillarAt(i).findings.forEach(fd => lines.push({ u: fd, s: "HIT", ms: "", c: "#fbbf24" }));
-              } else if (rStates[i] === "live") {
+              } else if (rStates[i] === "live" || rStates[i] === "scanning") {
+                // A scanning pillar (#340) still has requests genuinely in
+                // flight, so it keeps the in-progress request lines rather than
+                // dropping out of the feed the way a queued pillar does.
                 const shown = Math.min(paths.length, 1 + (tick % (paths.length + 1)));
                 paths.slice(0, shown).forEach((u, j) => lines.push({ u: u, s: j === shown - 1 ? "···" : "200", ms: j === shown - 1 ? "" : (90 + ((i * 37 + j * 53) % 260)) + "ms", c: j === shown - 1 ? "#7dd3fc" : "#34d399" }));
               }
@@ -3992,6 +3995,15 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         // drops the two document rows, which are the trailing HERO_PHASE entries,
         // so `i` still indexes rStates correctly.
         const complete = rStates[i] === "done", live = rStates[i] === "live";
+        // #340: this pillar's real checks have started coming back but have NOT
+        // all reported yet. It is neither scored nor empty, and `complete` is
+        // deliberately false for it — every "the scan is over for this pillar"
+        // conclusion below (the score, the NO DATA treatment) is gated on
+        // `complete`, and that used to become true on this pillar's very first
+        // result. `mid` is "in progress by either route", for the visuals that
+        // simply mean work is happening.
+        const scanning = rStates[i] === "scanning";
+        const mid = live || scanning;
         // Real score + real stat callouts for this pillar (#320). `score` is null
         // when no evaluable rule feeds the pillar — the dial then reads "—" and
         // the ring stays empty rather than drawing a fabricated arc.
@@ -4020,18 +4032,23 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           label: p.t.replace(" Scan", "").replace(" Readiness Model", "").replace("Tenant ", ""),
           glyph: glyphs[p.k] || glyphs.governance,
           done: complete,
+          // Unchanged, and it must stay that way: `live` alone drives the row's
+          // sheen/light-up animation in PreludeScreen, and #340's hard constraint
+          // is that the flash of an actively-checked pillar behaves exactly as it
+          // does today. A scanning pillar is NOT live — it is not being read this
+          // instant — so it gets the calmer treatment below instead.
           live: live,
           score: hasScore ? String(rv.score) : "—",
           bg: p.k === "copilot"
             ? (live ? "linear-gradient(100deg,#0078D47a,#00B4D866 42%,#8B5CF659)"
-              : complete ? "linear-gradient(100deg,#0078D44d,#00B4D842 42%,#8B5CF63b)"
+              : complete || scanning ? "linear-gradient(100deg,#0078D44d,#00B4D842 42%,#8B5CF63b)"
               : "linear-gradient(100deg,#0078D41a,#00B4D814 42%,#8B5CF611)")
             : live ? "linear-gradient(180deg," + p.c + "70," + p.c + "3d)"
-            : complete ? "linear-gradient(180deg," + p.c + "26," + p.c + "12)"
+            : complete || scanning ? "linear-gradient(180deg," + p.c + "26," + p.c + "12)"
             : "linear-gradient(180deg," + p.c + "0f," + p.c + "08)",
-          state: complete ? "COMPLETE" : live ? "RUNNING" : "QUEUED",
-          stateColor: complete ? "#6ee7b7" : live ? "#f8fafc" : "#64748b",
-          stateBorder: complete ? "rgba(52,211,153,.5)" : live ? "rgba(255,255,255,.45)" : "rgba(100,116,139,.4)",
+          state: complete ? "COMPLETE" : live ? "RUNNING" : scanning ? "SCANNING" : "QUEUED",
+          stateColor: complete ? "#6ee7b7" : live ? "#f8fafc" : scanning ? WAR_ROOM_SCANNING_COLOR : "#64748b",
+          stateBorder: complete ? "rgba(52,211,153,.5)" : live ? "rgba(255,255,255,.45)" : scanning ? "rgba(125,211,252,.45)" : "rgba(100,116,139,.4)",
           checks: (p.checks || []).slice(0, 2).map((cv, ci) => ({ v: cv, c: "#fff", op: ci === 0 ? ".95" : ".6" })),
           // The ring, its colour and its number all key off the REAL score. A
           // completed pillar with no real score draws a dashed ring in the
@@ -4039,36 +4056,57 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           // queued pillar (not yet complete) still draws no ring at all, so
           // the two "nothing to show" states stay visually distinct too. The
           // banding thresholds (82 / 51) are the design's own and are unchanged.
-          dash: noData ? "6 5" : (complete && hasScore ? (rv.score / 100) * 113 : live ? 22 : 0).toFixed(1) + " 113",
-          dialColor: complete && hasScore ? (rv.score >= 82 ? "#34d399" : rv.score >= 51 ? "#fbbf24" : "#f87171") : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(255,255,255,.85)" : "rgba(148,163,184,.4)",
-          dialText: complete && hasScore ? (rv.score >= 82 ? "#6ee7b7" : rv.score >= 51 ? "#fcd34d" : "#fca5a5") : noData ? WAR_ROOM_NO_DATA_COLOR : "rgba(226,232,240,.55)",
-          dialLabel: complete && hasScore ? String(rv.score) : noData ? "N/A" : live ? "··" : "—",
+          // A scanning pillar draws the same short in-progress arc a live one
+          // does — a real "started, not finished" mark — never the dashed
+          // no-data ring, and never a fabricated score arc.
+          dash: noData ? "6 5" : (complete && hasScore ? (rv.score / 100) * 113 : mid ? 22 : 0).toFixed(1) + " 113",
+          dialColor: complete && hasScore ? (rv.score >= 82 ? "#34d399" : rv.score >= 51 ? "#fbbf24" : "#f87171") : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(255,255,255,.85)" : scanning ? WAR_ROOM_SCANNING_COLOR : "rgba(148,163,184,.4)",
+          dialText: complete && hasScore ? (rv.score >= 82 ? "#6ee7b7" : rv.score >= 51 ? "#fcd34d" : "#fca5a5") : noData ? WAR_ROOM_NO_DATA_COLOR : scanning ? WAR_ROOM_SCANNING_COLOR : "rgba(226,232,240,.55)",
+          // "N/A" is reserved for a pillar that genuinely finished with no score.
+          // A scanning one shows the same in-progress ellipsis as a live one —
+          // the honest answer to "what did this pillar score" is still "we're
+          // finding out", not "nothing".
+          dialLabel: complete && hasScore ? String(rv.score) : noData ? "N/A" : mid ? "··" : "—",
           n: String(i + 1).padStart(2, "0"),
-          numOp: live ? ".85" : complete ? ".5" : ".26",
-          textureOp: live ? ".5" : complete ? ".26" : ".14",
-          bloom: live ? "rgba(255,255,255,.14)" : complete ? p.c + "2e" : p.c + "14",
-          edgeGlow: live ? "0 0 22px " + p.c + "cc" : complete ? "0 0 14px " + p.c + "aa" : "none",
-          edge: live ? p.c : complete ? p.c : p.c + "44",
-          icon: live || complete ? "#fff" : p.c,
-          statV: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(219,227,238,.82)" : "rgba(190,201,216,.76)",
+          numOp: live ? ".85" : complete || scanning ? ".5" : ".26",
+          textureOp: live ? ".5" : complete || scanning ? ".26" : ".14",
+          bloom: live ? "rgba(255,255,255,.14)" : complete || scanning ? p.c + "2e" : p.c + "14",
+          edgeGlow: live ? "0 0 22px " + p.c + "cc" : complete || scanning ? "0 0 14px " + p.c + "aa" : "none",
+          edge: live || complete || scanning ? p.c : p.c + "44",
+          icon: live || complete || scanning ? "#fff" : p.c,
+          statV: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : scanning ? WAR_ROOM_SCANNING_COLOR : live ? "rgba(219,227,238,.82)" : "rgba(190,201,216,.76)",
           statGlow: "rgba(2,6,23,.85)",
-          statL: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(226,232,240,.58)" : "rgba(148,163,184,.62)",
-          iconOp: live ? ".2" : complete ? ".13" : ".09",
-          labelOp: live ? ".17" : complete ? ".12" : ".09",
+          statL: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : scanning ? "rgba(125,211,252,.7)" : live ? "rgba(226,232,240,.58)" : "rgba(148,163,184,.62)",
+          iconOp: live ? ".2" : complete || scanning ? ".13" : ".09",
+          labelOp: live ? ".17" : complete || scanning ? ".12" : ".09",
           labelAnim: live ? "wr-labeldrift 9s ease-in-out infinite" : "none",
           // The four real stat callouts (#320). Only stats the tenant genuinely
           // has a number for are in `rv.stats` at all, so a card can honestly
           // show fewer than four — or none. The two-at-a-time reveal while a
           // pillar is still live is the design's own behaviour, unchanged.
+          // The stat grid is the one place on this screen that renders words, so
+          // it is where the three outcomes have to be told apart (#340). A
+          // scanning pillar LEADS with its real in-progress line — reported vs
+          // planned checks, both real counts — because a blank grid on a pillar
+          // that is mid-scan is what made the old premature NO DATA readable as
+          // a verdict in the first place. Any real stat it already has follows
+          // it, so nothing true is hidden while it finishes.
           stats: noStatsAtAll
             ? [{ v: "NO DATA", l: "no evaluable check fed this pillar", delay: "0ms" }]
-            : (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
-              .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
-          text: live || complete ? "#fff" : "#cbd5e1"
+            : scanning
+              ? [{ v: "SCANNING", l: warRoomScanningNote(rScan, p.k), delay: "0ms" }]
+                .concat(rv.stats.slice(0, 1).map(sv => ({ v: sv.v, l: sv.l, delay: "260ms" })))
+              : (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
+                .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
+          text: live || complete || scanning ? "#fff" : "#cbd5e1"
         };
       }),
       heroPillarRows: HERO_PHASE.map((p, i) => {
         const complete = rStates[i] === "done", live = rStates[i] === "live";
+        // #340's third state, on this view too — see heroPillarStack above.
+        // The two trailing document rows are driven by warRoomDocState, which
+        // has no `scanning`, so `scanning` is only ever true for a real pillar.
+        const scanning = rStates[i] === "scanning";
         // Real score + real finding note (#320) for the seven PILLAR rows.
         //
         // The two trailing rows are document generation, not pillars: no check
@@ -4090,20 +4128,20 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         return {
           t: p.t, c: p.c, active: live,
           short: p.t.replace(" Scan", "").replace(" Readiness Model", ""),
-          bar: complete && hasScore ? rowScore + "%" : live ? "8%" : "0%",
+          bar: complete && hasScore ? rowScore + "%" : live || scanning ? "8%" : "0%",
           dotAnim: live ? "wr-blink 1.1s ease-in-out infinite" : "none",
-          ink: complete || live ? "#e2e8f0" : "#64748b",
-          state: complete && hasScore ? "SCORED" : noData ? "NO DATA" : live ? "READING" : "QUEUED",
-          stateInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "#a5f3fc" : "#475569",
-          border: live ? p.c + "99" : complete ? p.c + "4d" : "rgba(30,41,59,.9)",
-          bg: live ? "linear-gradient(150deg," + p.c + "24,rgba(2,6,23,.5))" : complete ? "rgba(2,6,23,.55)" : "rgba(2,6,23,.4)",
+          ink: complete || live || scanning ? "#e2e8f0" : "#64748b",
+          state: complete && hasScore ? "SCORED" : noData ? "NO DATA" : live ? "READING" : scanning ? "SCANNING" : "QUEUED",
+          stateInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "#a5f3fc" : scanning ? WAR_ROOM_SCANNING_COLOR : "#475569",
+          border: live ? p.c + "99" : complete || scanning ? p.c + "4d" : "rgba(30,41,59,.9)",
+          bg: live ? "linear-gradient(150deg," + p.c + "24,rgba(2,6,23,.5))" : complete || scanning ? "rgba(2,6,23,.55)" : "rgba(2,6,23,.4)",
           glow: live ? "0 0 26px " + p.c + "33" : "none",
-          note: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? p.checks[0] + "…" : "waiting",
+          note: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? p.checks[0] + "…" : scanning ? warRoomScanningNote(rScan, p.k) : "waiting",
           score: complete && hasScore ? String(rowScore) : noData ? "N/A" : "—",
-          deg: (complete && hasScore ? Math.round(rowScore * 3.6) : live ? 26 : 0) + "deg",
+          deg: (complete && hasScore ? Math.round(rowScore * 3.6) : live || scanning ? 26 : 0) + "deg",
           icon: PILLAR_GLYPH[p.t.replace(" Scan", "").replace(" Readiness Model", "")] || "M22 12h-4l-3 9L9 3l-3 9H2",
-          sub: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? "reading…" : "queued",
-          scoreInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : "#475569"
+          sub: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? "reading…" : scanning ? warRoomScanningNote(rScan, p.k) : "queued",
+          scoreInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : scanning ? WAR_ROOM_SCANNING_COLOR : "#475569"
         };
       }),
       // Real check-level completion of the real run (#305).
@@ -4176,6 +4214,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const p = m.who === "scan" ? HERO_PHASE[m.phase] : null;
         const complete = p ? rStates[m.phase] === "done" : false;
         const live = p ? rStates[m.phase] === "live" : false;
+        // #340 — same third state as the stack/rows, on the thread's inline card.
+        const scanning = p ? rStates[m.phase] === "scanning" : false;
         // The thread's inline scan card shows the same pillar as the stack, so it
         // reads the same real score and real findings (#320) rather than the
         // fictional HERO_PHASE constants it used to echo. A document row keeps
@@ -4220,14 +4260,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           shadow: m.q ? "0 0 26px rgba(0,180,216,.24), inset 0 0 22px rgba(103,232,249,.08)" : "none",
           scan: p ? {
             t: p.t,
-            sub: complete ? "Complete" : live ? p.sub : "Queued",
-            c: complete ? "#34d399" : p.c,
-            state: complete ? "COMPLETE" : live ? "RUNNING" : "QUEUED",
+            sub: complete ? "Complete" : live ? p.sub : scanning ? warRoomScanningNote(rScan, p.k) : "Queued",
+            c: complete ? "#34d399" : scanning ? WAR_ROOM_SCANNING_COLOR : p.c,
+            state: complete ? "COMPLETE" : live ? "RUNNING" : scanning ? "SCANNING" : "QUEUED",
             pulse: complete ? "none" : "wr-scanbeat 1.9s ease-in-out infinite",
             checks: p.checks.map((cv, ci) => ({
               v: cv,
-              c: complete ? "#34d399" : live && ci <= 1 ? p.c : "#475569",
-              op: complete ? "1" : live ? (ci <= 1 ? "1" : ".45") : ".3",
+              c: complete ? "#34d399" : live && ci <= 1 ? p.c : scanning ? WAR_ROOM_SCANNING_COLOR : "#475569",
+              op: complete ? "1" : live ? (ci <= 1 ? "1" : ".45") : scanning ? ".6" : ".3",
               tick: complete ? "1" : "0"
             })),
             findShow: complete && (mIsDoc ? p.find.length > 0 : mv.findings.length > 0),
