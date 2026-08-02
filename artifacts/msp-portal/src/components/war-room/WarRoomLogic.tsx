@@ -84,6 +84,7 @@ import {
   warRoomCatalogFor,
 } from "./warRoomQuizCatalog";
 import { getCurrentAccessToken } from "@/lib/auth-context";
+import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./warRoomScan";
 import {
   WAR_ROOM_SECTIONS,
   deriveWarRoomSection,
@@ -124,7 +125,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     // industry is known. See warRoomQuizCatalog.ts.
     wizIndustry: WAR_ROOM_DEFAULT_INDUSTRY,
     wizCatalog: warRoomCatalogFor(WAR_ROOM_DEFAULT_INDUSTRY),
-    scanStep: 0,
     govAt: "c0",
     govTab: "sharepoint",
     licTab: "mismatch",
@@ -278,7 +278,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (!restored && this.state.intro === null && !this.state.prelude && !this.state.introStage) this.tick();
 
   }
-  componentWillUnmount() { clearTimeout(this.timer); clearInterval(this.noise); if (this.ro) this.ro.disconnect(); }
+  componentWillUnmount() { clearTimeout(this.timer); clearInterval(this.noise); clearInterval(this.scanClock); clearInterval(this.heroTickT); if (this.ro) this.ro.disconnect(); }
 
   get speed() { return (this.props.dialogSpeed ?? 5.4) * 1000; }
 
@@ -407,8 +407,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     this.sectionAt = key;
     this.sectionPending = key;
     clearTimeout(this.timer);
-    clearTimeout(this.scanT);
-    clearInterval(this.scanClock);
     // "Introductions" IS the arrivals sequence, so it restores as a real entry
     // into the room rather than by skipping past it.
     if (key === "intro") { this.enterRoom(); return true; }
@@ -774,6 +772,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   }
 
   componentDidUpdate(prevProps, prevState) {
+    this.trackRealScan(prevProps);
+
     // /war-room/:section (#303). A changed `section` prop that we did not
     // ourselves emit is the browser navigating us — Back/Forward, or a pasted
     // link on an already-mounted room; anything else means the briefing moved
@@ -2060,7 +2060,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           { who: "shane", text: "That is everything I need. I'm going to run the scan now — read-only, no agent, nothing written to your tenant." },
           { who: "shane", card: "scan" }
         ]);
-        setTimeout(() => this.runScan(), 2600);
+        setTimeout(() => this.triggerScan(), 2600);
       } else {
         this.onbSay({ who: "shane", q: i + 1 });
       }
@@ -2073,7 +2073,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (s.prelude === "personas") { this.setState({ prelude: "questions", wizStep: 0 }); return; }
     if (s.prelude === "questions") {
       if (s.wizStep < this.wizQuestions().length - 1) { this.setState({ wizStep: s.wizStep + 1 }); return; }
-      this.setState({ prelude: "scan", scanStep: 0 }, this.runScan);
+      this.setState({ prelude: "scan" }, this.triggerScan);
       return;
     }
   };
@@ -2083,45 +2083,82 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (s.prelude === "questions") { this.setState({ prelude: "personas" }); return; }
     if (s.prelude === "personas") { this.setState({ prelude: "welcome" }); return; }
   };
-  wizSkip = () => { clearTimeout(this.scanT); this.setState({ prelude: null, scanStep: SCAN_PHASES.length, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, this.startArrivals); };
-  simulateScan = () => {
-    clearTimeout(this.scanT);
-    // run the pillar scan in place, on the page the customer is already on
-    clearInterval(this.simT);
-    this.setState({ heroDone: 0, heroRunning: true }, this.heroFeedTick);
-    this.simT = setInterval(() => {
-      this.setState(st => {
-        const n = (st.heroDone || 0) + 1;
-        if (n >= 7) { clearInterval(this.simT); return { heroDone: 7, heroRunning: false }; }
-        return { heroDone: n };
-      });
-    }, 2600);
+  wizSkip = () => { this.setState({ prelude: null, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, this.startArrivals); };
+
+  // ── The real scan (#305) ────────────────────────────────────────────────────
+  // simulateScan() and runScan() used to live here: two setIntervals that walked
+  // `heroDone` 0→7 every 2600ms and `scanStep` up the SCAN_PHASES list every
+  // 1200/2200ms. Both are gone. Everything they drove is now derived in
+  // renderVals() from the real run on `this.props.scan` (see warRoomScan.ts), and
+  // the only thing left to do here is ask for a real scan and keep the feed
+  // ticker alive while one is running.
+
+  /**
+   * Start a real scan. The page owns the request (it is where useScanStatus()
+   * lives); this only fires it and starts the feed animation. Deliberately does
+   * NOT set any progress state — progress arrives on props, from the run.
+   */
+  triggerScan = () => {
+    this.heroFeedTick();
+    const trigger = this.props.onTriggerScan;
+    if (typeof trigger === "function") Promise.resolve(trigger()).catch(() => {});
+  };
+
+  /**
+   * Real elapsed seconds for the scan panel's clock — measured from when this
+   * room first saw the run running, not from a step counter. Zero before that,
+   * and it stops climbing the moment the real run finishes.
+   */
+  realScanSeconds = () => {
+    if (!this.scanStartedAt) return 0;
+    const end = this.scanEndedAt || Date.now();
+    return Math.max(0, Math.floor((end - this.scanStartedAt) / 1000));
+  };
+
+  /**
+   * Watch the real run across renders for the two things that are events rather
+   * than derived values: the elapsed clock's start/stop, and the line Shane says
+   * when the scan finishes.
+   *
+   * Keyed on runId as well as phase, so a second real run starts a fresh clock
+   * and can announce itself again, while re-renders during one run do neither.
+   */
+  trackRealScan = (prevProps) => {
+    const scan = (this.props && this.props.scan) || null;
+    if (!scan) return;
+    const prev = (prevProps && prevProps.scan) || null;
+    if (prev && prev.phase === scan.phase && prev.runId === scan.runId) return;
+
+    if (scan.phase === "running") {
+      if (this.scanRunId !== scan.runId || !this.scanStartedAt) {
+        this.scanRunId = scan.runId;
+        this.scanStartedAt = Date.now();
+        this.scanEndedAt = null;
+        this.scanAnnounced = false;
+        // Re-render once a second purely so the elapsed clock ticks; the scan's
+        // own numbers arrive on their own via props.
+        clearInterval(this.scanClock);
+        this.scanClock = setInterval(() => this.forceUpdate(), 1000);
+        this.heroFeedTick();
+      }
+      return;
+    }
+
+    if (scan.phase === "complete" && this.scanStartedAt && !this.scanAnnounced) {
+      this.scanAnnounced = true;
+      this.scanEndedAt = Date.now();
+      clearInterval(this.scanClock);
+      this.scanClock = null;
+      if ((this.state.onb || []).length) {
+        this.onbSay({ who: "shane", text: "Scan complete. The findings are on the register and the room is ready when you are.", done: true });
+      }
+    }
   };
   togglePersona = (id) => this.setState(st => ({
     wizPersonas: st.wizPersonas.indexOf(id) >= 0 ? st.wizPersonas.filter(x => x !== id) : st.wizPersonas.concat([id])
   }));
   answer = (qid, opt) => this.setState(st => ({ wizAnswers: Object.assign({}, st.wizAnswers, { [qid]: opt }) }));
-  runScan = () => {
-    clearTimeout(this.scanT);
-    this.setState({ scanStart: Date.now() });
-    clearInterval(this.scanClock);
-    this.scanClock = setInterval(() => { if (this.state.prelude === "scan") this.forceUpdate(); }, 1000);
-    const step = () => {
-      const n = (this.state.scanStep || 0) + 1;
-      if (n > SCAN_PHASES.length) {
-        clearInterval(this.scanClock);
-        this.setState({ scanStep: SCAN_PHASES.length });
-        this.onbSay({ who: "shane", text: "Scan complete. Nine documents generated, twenty-four findings on the register, and the room is ready when you are.", done: true });
-        return;
-      }
-      this.setState({ scanStep: n });
-      // longer on the heavy passes so the pacing reads like a real tenant crawl
-      const heavy = n >= 3 && n <= 8;
-      this.scanT = setTimeout(step, heavy ? 2200 : 1200);
-    };
-    this.scanT = setTimeout(step, 700);
-  };
-  enterRoom = () => { clearTimeout(this.scanT); clearInterval(this.scanClock); this.setState({ prelude: null, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, this.startArrivals); };
+  enterRoom = () => { this.setState({ prelude: null, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, this.startArrivals); };
 
   applyChange = (id, on) => {
     const c = CHANGES[id];
@@ -2291,9 +2328,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (this.heroInput) this.heroInput.value = "";
     const last = i + 1 >= HERO_Q.length;
     const nq = HERO_Q[i + 1];
+    // `heroDone` used to be advanced here too, so answering a question moved the
+    // pillar scan along — that was the fake progression's other half (#305).
+    // Pillar state now comes only from the real run.
     this.setState(st => ({
       heroAns: ans, heroDraft: "", heroPick: [], heroQ: i + 1,
-      heroDone: Math.max(st.heroDone || 0, i + 1),
       heroWrap: i + 1 >= HERO_Q.length ? true : (st.heroWrap || false),
       heroThread: (st.heroThread || []).concat([{ who: "you", text: v }])
     }), () => {
@@ -2579,6 +2618,28 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     // constants the way WIZ_QUESTIONS / WIZ_PERSONAS were.
     const wizQuestions = this.wizQuestions();
     const wizRoster = this.wizRoster();
+
+    // ── The real scan (#305) ──────────────────────────────────────────────────
+    // Derived per render from the props the page feeds off useScanStatus(), NOT
+    // mirrored into state: state would be a second copy of something that is
+    // already the truth, and the whole point of this issue is that there is only
+    // one source for scan progress. `heroDone`/`heroRunning`/`scanStep` used to
+    // be timer-written state fields; the four constants below replace them and
+    // every former reader now reads these.
+    const rScan = this.props.scan || WAR_ROOM_SCAN_IDLE;
+    const rStates = warRoomPhaseStates(rScan, this.props.docWorkflow);
+    const rDone = rScan.pillarsDone;
+    const rRunning = rScan.phase === "running";
+    // The prelude's phase list is a narrative rendering of one real run, so its
+    // position is the run's real completion fraction projected onto the list
+    // rather than a step counter of its own. The bar itself uses rScan.pct
+    // directly, so it moves with every real check even between two list rows.
+    const scanN = Math.round(rScan.pct * SCAN_PHASES.length);
+    // The pillar the real stream is reporting into; when nothing is live, the
+    // last one that finished, so the ambience settles rather than resetting.
+    const rLiveIdx = rStates.indexOf("live") >= 0
+      ? rStates.indexOf("live")
+      : Math.max(0, Math.min(rDone, HERO_PHASE.length - 1));
 
     const nodes = NODES.map(n => {
       const st = s.statuses[n.id], c = STATUS[st].color;
@@ -3395,39 +3456,55 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       onHeroKey: (e) => { if (e.key === "Enter") this.heroAnswer(); },
       onHeroSend: () => this.heroAnswer(),
       heroFindings: (() => {
-        const done = s.heroDone || 0;
         const out = [];
         HERO_PHASE.forEach((p, i) => {
-          if (i < done) p.find.forEach(v => out.push({ v: v, c: p.c, n: p.t.replace(" Scan", "").replace(" Readiness Model", "") }));
+          if (rStates[i] === "done") p.find.forEach(v => out.push({ v: v, c: p.c, n: p.t.replace(" Scan", "").replace(" Readiness Model", "") }));
         });
         return out.slice(-6);
       })(),
-      heroHasFindings: (s.heroDone || 0) > 0,
+      heroHasFindings: rDone > 0,
       heroRails: (() => {
-        const done = Math.min(s.heroDone || 0, HERO_PHASE.length);
+        // Out of the seven real pillars, not HERO_PHASE.length — the two trailing
+        // HERO_PHASE rows are document generation and no check scores them, so
+        // counting them here would cap a fully scanned tenant at 78%.
+        const nPillars = WAR_ROOM_PILLAR_KEYS.length;
+        const done = Math.min(rDone, nPillars);
         const ans = Object.keys(s.heroAns || {}).length;
         return [
-          { l: "Pillars scanned", base: "4%", w: Math.max(4, Math.round((done / HERO_PHASE.length) * 100)) + "%", span: Math.max(0, Math.round((done / HERO_PHASE.length) * 100) - 4) + "%", sub: "0", v: done + " / " + HERO_PHASE.length },
+          { l: "Pillars scanned", base: "4%", w: Math.max(4, Math.round((done / nPillars) * 100)) + "%", span: Math.max(0, Math.round((done / nPillars) * 100) - 4) + "%", sub: "0", v: done + " / " + nPillars },
           { l: "Profile captured", base: "4%", w: Math.max(4, Math.round((ans / HERO_Q.length) * 100)) + "%", span: Math.max(0, Math.round((ans / HERO_Q.length) * 100) - 4) + "%", sub: "0", v: ans + " / " + HERO_Q.length }
         ];
       })(),
       heroScan: (() => {
         const n = HERO_PHASE.length;
-        const done = Math.min(s.heroDone || 0, n);
-        const live = done < n ? HERO_PHASE[done] : null;
-        const pct = Math.round((done / n) * 100);
-        const secs = done * 26 + (live ? 11 : 0);
+        const done = Math.min(rDone, n);
+        // The live pillar is whichever one the real stream is reporting into,
+        // which is not necessarily the next one in HERO_PHASE order.
+        const liveIdx = rStates.indexOf("live");
+        const live = liveIdx >= 0 ? HERO_PHASE[liveIdx] : null;
+        // Real check-level progress, not a pillar count: the bar advances on
+        // every check the run reports, so it moves continuously rather than in
+        // seven jumps.
+        const pct = Math.round(rScan.pct * 100);
+        const secs = this.realScanSeconds();
         const mm = String(Math.floor(secs / 60)).padStart(2, "0"), ss = String(secs % 60).padStart(2, "0");
+        const idle = rScan.phase === "idle";
         return {
           tone: live ? live.c : "#34d399",
-          title: !s.heroRunning && !s.heroDone ? "Waiting to start" : live ? "Running…" : "Scan complete",
-          caption: !s.heroRunning && !s.heroDone ? "press simulate or answer to begin" : live ? "reading " + live.t.toLowerCase() : "complete",
-          step: done + " / " + n,
+          title: idle ? "Waiting to start" : rRunning ? "Running…" : "Scan complete",
+          caption: idle
+            ? "press simulate or answer to begin"
+            : rRunning
+              ? (rScan.currentCheckLabel ? "reading " + rScan.currentCheckLabel.toLowerCase() : "reading your tenant")
+              : "complete",
+          step: rScan.checksDone + " / " + (rScan.checksTotal || "—"),
           pct: pct + "%",
           w: Math.max(2, pct) + "%",
           elapsed: mm + ":" + ss + " elapsed · read-only",
-          phase: live ? live.t + " — " + live.checks[0] + "…" : "Seven pillars scored · nine documents generated",
-          scored: done + " of " + n + " scored",
+          phase: rScan.currentCheckLabel
+            ? ((live ? live.t + " — " : "") + rScan.currentCheckLabel)
+            : (idle ? "Waiting for the tenant scan" : "Seven pillars scored · nine documents generated"),
+          scored: done + " of " + WAR_ROOM_PILLAR_KEYS.length + " scored",
           ticks: HERO_PHASE.slice(1).map((p, i) => ({ x: Math.round(((i + 1) / n) * 100) + "%" })),
           feed: (() => {
             const ep = {
@@ -3443,17 +3520,17 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             const tick = s.heroTick || 0;
             HERO_PHASE.forEach((p, i) => {
               const paths = ep[p.k] || [];
-              if (done > i) {
+              if (rStates[i] === "done") {
                 paths.forEach((u, j) => lines.push({ u: u, s: "200", ms: (90 + ((i * 37 + j * 53) % 260)) + "ms", c: "#34d399" }));
                 (p.find || []).forEach(fd => lines.push({ u: fd, s: "HIT", ms: "", c: "#fbbf24" }));
-              } else if (done === i) {
+              } else if (rStates[i] === "live") {
                 const shown = Math.min(paths.length, 1 + (tick % (paths.length + 1)));
                 paths.slice(0, shown).forEach((u, j) => lines.push({ u: u, s: j === shown - 1 ? "···" : "200", ms: j === shown - 1 ? "" : (90 + ((i * 37 + j * 53) % 260)) + "ms", c: j === shown - 1 ? "#7dd3fc" : "#34d399" }));
               }
             });
             return lines.slice(-7);
           })(),
-          feedLive: (s.heroDone || 0) > 0
+          feedLive: rDone > 0
         };
       })(),
       heroDocs: (() => {
@@ -3469,11 +3546,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           { t: "Remediation Plan", c: "#A78BFA", meta: "10 pp" }
         ];
         const total = HERO_PHASE.length;
-        const done = s.heroDone || 0;
+        const done = rDone;
         const firstDoc = HERO_PHASE.findIndex(p => p.doc);
         if (firstDoc < 0 || done < firstDoc) return { show: false, items: [] };
         const span = total - firstDoc;
-        const prog = Math.max(0, Math.min(1, (done - firstDoc + (s.heroRunning ? 0.45 : 1)) / span));
+        const prog = Math.max(0, Math.min(1, (done - firstDoc + (rRunning ? 0.45 : 1)) / span));
         const made = Math.round(prog * DOCLIST.length);
         return {
           show: true,
@@ -3497,8 +3574,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         };
       })(),
       heroPillarStack: HERO_PHASE.filter(p => !p.doc).map((p, i) => {
-        const done = s.heroDone || 0;
-        const complete = done > i, live = done === i;
+        // Real per-pillar state off the real check stream (#305). The filter above
+        // drops the two document rows, which are the trailing HERO_PHASE entries,
+        // so `i` still indexes rStates correctly.
+        const complete = rStates[i] === "done", live = rStates[i] === "live";
         const glyphs = {
           governance: "M12 2l8 5H4l8-5zM6 11v7M10 11v7M14 11v7M18 11v7M3 21h18",
           security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
@@ -3548,8 +3627,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         };
       }),
       heroPillarRows: HERO_PHASE.map((p, i) => {
-        const done = s.heroDone || 0;
-        const complete = done > i, live = done === i;
+        const complete = rStates[i] === "done", live = rStates[i] === "live";
         return {
           t: p.t, c: p.c, active: live,
           short: p.t.replace(" Scan", "").replace(" Readiness Model", ""),
@@ -3569,7 +3647,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           scoreInk: complete ? p.c : "#475569"
         };
       }),
-      heroScanPct: Math.round((Math.min(s.heroDone || 0, HERO_PHASE.length) / HERO_PHASE.length) * 100) + "%",
+      // Real check-level completion of the real run (#305).
+      heroScanPct: Math.round(rScan.pct * 100) + "%",
       heroBoard: (() => {
         const sc = s.heroScan;
         if (sc) {
@@ -3625,10 +3704,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       })(),
       heroAsking: (s.heroQ || 0) < HERO_Q.length,
       heroThread: (s.heroThread || []).map((m, idx) => {
-        const done = (s.heroDone || 0);
         const p = m.who === "scan" ? HERO_PHASE[m.phase] : null;
-        const complete = p ? done > m.phase : false;
-        const live = p ? done === m.phase : false;
+        const complete = p ? rStates[m.phase] === "done" : false;
+        const live = p ? rStates[m.phase] === "live" : false;
         return {
           isShane: m.who === "shane" && !m.profile && !m.chips && !m.wrap, isYou: m.who === "you", isScan: m.who === "scan", neverScan: false,
           isProfile: !!m.profile,
@@ -3690,12 +3768,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         }), 1050);
       },
       roomAnim: s.roomEnter ? "wr-roomin 1200ms cubic-bezier(.22,1,.36,1) both" : "none",
+      // The room's ambient beam/glow follows whichever pillar the real scan is
+      // reading, falling back to the last one it finished.
       heroBeamLive: (() => {
-        const p = HERO_PHASE[Math.min(s.heroDone || 0, HERO_PHASE.length - 1)];
+        const p = HERO_PHASE[rLiveIdx];
         return p ? p.beam : "rgba(139,92,246,.16)";
       })(),
       heroGlowLive: (() => {
-        const p = HERO_PHASE[Math.min(s.heroDone || 0, HERO_PHASE.length - 1)];
+        const p = HERO_PHASE[rLiveIdx];
         return p ? p.glow : "rgba(59,130,246,.16)";
       })(),
       heroHasOpts: !!(HERO_Q[s.heroQ || 0] || {}).opts,
@@ -3750,13 +3830,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       ].map((r, i, a) => ({ l: r[0], d: r[1], icon: r[2], hasNext: i < a.length - 1, delay: (0.25 + i * 0.12).toFixed(2) + "s" })),
       scanBeam: (function () {
         const P = ["rgba(59,130,246,.26)", "rgba(139,92,246,.26)", "rgba(255,255,255,.16)", "rgba(20,184,166,.24)", "rgba(34,197,94,.22)", "rgba(52,211,153,.22)", "rgba(103,232,249,.28)"];
-        const n = s.scanStep || 0;
-        return s.prelude === "scan" ? P[Math.min(P.length - 1, Math.floor(n / 2))] : "rgba(139,92,246,.18)";
+        return s.prelude === "scan" ? P[Math.min(P.length - 1, Math.floor(scanN / 2))] : "rgba(139,92,246,.18)";
       })(),
       scanGlow: (function () {
         const P = ["rgba(59,130,246,.2)", "rgba(139,92,246,.2)", "rgba(255,255,255,.12)", "rgba(20,184,166,.18)", "rgba(34,197,94,.16)", "rgba(52,211,153,.16)", "rgba(103,232,249,.22)"];
-        const n = s.scanStep || 0;
-        return s.prelude === "scan" ? P[Math.min(P.length - 1, Math.floor(n / 2))] : "rgba(59,130,246,.14)";
+        return s.prelude === "scan" ? P[Math.min(P.length - 1, Math.floor(scanN / 2))] : "rgba(59,130,246,.14)";
       })(),
       dust: (function () {
         const cols = ["rgba(103,232,249,.8)", "rgba(139,92,246,.75)", "rgba(59,130,246,.8)"];
@@ -3785,7 +3863,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           { l: "Role group", v: s.onbCluster || "not chosen", done: !!s.onbCluster },
           { l: "Personas named", v: picked.length ? String(picked.length) : "—", done: picked.length > 0 },
           { l: "Questions answered", v: ans + " of 12", done: ans >= 12 },
-          { l: "Tenant scan", v: s.prelude === "scan" ? (Math.round(Math.min(1, (s.scanStep || 0) / 8) * 100) + "%") : "queued", done: (s.scanStep || 0) >= 8 }
+          // Real run completion, and "done" only when a real run has actually finished.
+          { l: "Tenant scan", v: rScan.phase === "idle" ? "queued" : Math.round(rScan.pct * 100) + "%", done: rScan.phase === "complete" && rScan.checksDone > 0 }
         ];
         return rows.map(r => Object.assign(r, {
           ink: r.done ? "#6ee7b7" : "#64748b",
@@ -3874,7 +3953,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const step = s.wizStep || 0;
         const q = wizQuestions[step];
         const picked = s.wizPersonas || [];
-        const scanN = s.scanStep || 0;
+        // `scanN` is the outer real one (#305) — this block used to shadow it
+        // with the fake `s.scanStep` counter.
         return {
           isWelcome: s.prelude === "welcome",
           isPersonas: s.prelude === "personas",
@@ -3913,14 +3993,12 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             : s.prelude === "personas" ? "Start the questions"
             : step < wizQuestions.length - 1 ? "Next question" : "Scan the tenant",
           canBack: s.prelude === "personas" || s.prelude === "questions",
-          onNext: this.wizNext, onBack: this.wizBack, onSkip: this.wizSkip, onSimulate: this.simulateScan,
-          elapsed: (function () {
-            const t0 = s.scanStart;
-            if (!t0) return "0:00";
-            const sec = Math.floor((Date.now() - t0) / 1000);
+          onNext: this.wizNext, onBack: this.wizBack, onSkip: this.wizSkip, onSimulate: this.triggerScan,
+          elapsed: (() => {
+            const sec = this.realScanSeconds();
             return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
           })(),
-          scanLabel: (s.scanStep || 0) >= SCAN_PHASES.length ? "Scan and generation complete" : "Scanning and generating",
+          scanLabel: rScan.phase === "complete" ? "Scan and generation complete" : "Scanning and generating",
           scan: SCAN_PHASES.map((p, i) => ({
             l: p.l, d: p.d, n: p.n, grp: p.grp || "",
             showGrp: i === 0 || (SCAN_PHASES[i - 1].grp || "") !== (p.grp || ""),
@@ -3930,9 +4008,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             opacity: i <= scanN ? "1" : "0.4",
             isLive: i === scanN, isDone: i < scanN
           })),
-          scanDone: scanN >= SCAN_PHASES.length,
+          // Real: the run has genuinely finished, and the bar is the run's own
+          // completion fraction rather than a position in the phase list.
+          scanDone: rScan.phase === "complete" && rScan.checksDone > 0,
           onEnter: this.enterRoom,
-          scanPct: Math.round(Math.min(1, scanN / SCAN_PHASES.length) * 100) + "%"
+          scanPct: Math.round(rScan.pct * 100) + "%"
         };
       }).call(this) : null,
       dcfg: (function () {

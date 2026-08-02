@@ -1,7 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { WarRoomLogic } from "@/components/war-room/WarRoomLogic";
 import { warRoomUrlSync } from "@/components/war-room/warRoomSections";
+import { deriveWarRoomScan } from "@/components/war-room/warRoomScan";
+import { useAuth } from "@/lib/auth-context";
+import { useScanStatus } from "@/lib/scan-status-context";
 import "@/components/war-room/war-room.css";
 
 /**
@@ -24,10 +27,95 @@ import "@/components/war-room/war-room.css";
  * The exit control below is the one piece of chrome that is NOT in the design: the
  * prototype was a standalone page with nowhere to return to, and without it a user who
  * opens this route inside the portal has no way back out.
+ *
+ * Real scan (#305): the intro's progress bar and pillar states are driven from the real
+ * diagnostics run via `useScanStatus()`. That hook has to be called here rather than in
+ * WarRoomLogic because the briefing is a class component; the derived state and the
+ * trigger go down as props, the same shape #303's `section`/`onSectionChange` already
+ * established. `ScanStatusProvider` wraps the router in App.tsx, so it is in scope here
+ * even though the War Room renders outside AppShell.
  */
 export default function WarRoomPage() {
   const [, setLocation] = useLocation();
   const { section } = useParams<{ section?: string }>();
+  const { fetchWithAuth } = useAuth();
+  const { data, scanCheckResults, streamedRunId, triggeredRunId, reportTriggerStarted, reportTriggerError } =
+    useScanStatus();
+
+  // Hold on to the last per-check results we really saw. The provider empties
+  // `scanCheckResults` as soon as a run finishes (it releases the held runId,
+  // which tears the subscription down), so without this the pillar row would
+  // light up check by check all the way through the scan and then blank back to
+  // all-queued at the very moment it completed. Tagged with its runId so a
+  // later run never inherits an earlier one's pillars.
+  const [retained, setRetained] = useState<{ runId: string | null; results: typeof scanCheckResults }>({
+    runId: null,
+    results: [],
+  });
+  useEffect(() => {
+    if (streamedRunId && scanCheckResults.length > 0) {
+      setRetained({ runId: streamedRunId, results: scanCheckResults });
+    }
+  }, [streamedRunId, scanCheckResults]);
+
+  const scan = useMemo(
+    () =>
+      deriveWarRoomScan({
+        scanCheckResults,
+        streamedRunId,
+        triggeredRunId,
+        active: data?.active ?? null,
+        lastRunSummary: data?.lastRunSummary ?? null,
+        retainedResults: retained.results,
+        retainedRunId: retained.runId,
+      }),
+    [scanCheckResults, streamedRunId, triggeredRunId, data?.active, data?.lastRunSummary, retained],
+  );
+
+  /**
+   * Start a real scan, when this account is actually allowed to start one.
+   *
+   * `debug-trigger-scan` is the ONLY customer-reachable trigger in the platform and it
+   * is hard-gated server-side to testbed tenants — its own header says real customers
+   * never get a self-serve trigger, to stop AI-credit spam. So for a real customer this
+   * deliberately does not POST: a guaranteed 403 would surface as a trigger error on a
+   * narrative button, and it is not needed. Their scan is the real one that already
+   * fired at consent time (consent.ts fires runDiagnostics for every assessment order),
+   * which is exactly the run `scan` above is reporting — the room reads it rather than
+   * starting a second one.
+   *
+   * Nothing about the intro's progress depends on who started the run, so the button
+   * advances the conversation either way.
+   */
+  const handleTriggerScan = useCallback(async () => {
+    if (!data?.isTestbed) return;
+    try {
+      const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      if (!res.ok) {
+        let message = `Trigger request failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) message = body.error;
+        } catch {
+          // non-JSON error body — keep the status-code message
+        }
+        reportTriggerError(message);
+        return;
+      }
+      // Hand the 202 body's own runId straight over so the run's SSE stream opens now
+      // rather than only if the poll happens to catch the run active (#243).
+      let startedRunId: string | null = null;
+      try {
+        const body = (await res.json()) as { runId?: unknown };
+        if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+      } catch {
+        // No/unreadable body — fall back to poll discovery.
+      }
+      reportTriggerStarted(startedRunId);
+    } catch (err) {
+      reportTriggerError(err instanceof Error ? err.message : "Network error triggering scan");
+    }
+  }, [data?.isTestbed, fetchWithAuth, reportTriggerStarted, reportTriggerError]);
 
   // The briefing's own beat machine still owns navigation; this only mirrors it
   // into the address bar. An explicitly chosen stop pushes a history entry, a
@@ -42,7 +130,13 @@ export default function WarRoomPage() {
 
   return (
     <div className="wr-root">
-      <WarRoomLogic section={section} onSectionChange={handleSectionChange} />
+      <WarRoomLogic
+        section={section}
+        onSectionChange={handleSectionChange}
+        scan={scan}
+        docWorkflow={data?.docWorkflow ?? null}
+        onTriggerScan={handleTriggerScan}
+      />
 
       <button
         type="button"
