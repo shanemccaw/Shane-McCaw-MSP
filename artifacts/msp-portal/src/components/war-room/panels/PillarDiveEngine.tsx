@@ -635,8 +635,15 @@ export function PillarDiveEngine({ v }: { v: any }) {
                             )}
                           </div>
                           <div style={css(`display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;border:1px solid rgba(248,113,113,.34);background:rgba(248,113,113,.07)`)}>
-                            <span style={css(`font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#fca5a5`)}>
+                            <span style={css(`display:flex;align-items:center;gap:7px;font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#fca5a5`)}>
                               {"What's wrong"}
+                              {/* #331 — the narrative below is walkthrough sample
+                                  content until real generation exists. */}
+                              {m?.walk?.wrongNotWired && (
+                                <span style={css(`padding:2px 6px;border-radius:6px;font-size:7.5px;letter-spacing:.14em;color:#e2e8f0;border:1px dashed #94a3b8;background:rgba(148,163,184,.14);font-family:ui-monospace,Menlo,monospace`)}>
+                                  <Txt v={m?.walk?.notWiredLabel} />
+                                </span>
+                              )}
                             </span>
                             {(m?.walk?.wrong || []).map((w, wIdx) => (
                               <React.Fragment key={wIdx}>
@@ -652,8 +659,15 @@ export function PillarDiveEngine({ v }: { v: any }) {
                             ))}
                           </div>
                           <div style={css(`display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;border:1px solid rgba(52,211,153,.34);background:rgba(16,185,129,.07)`)}>
-                            <span style={css(`font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#6ee7b7`)}>
+                            <span style={css(`display:flex;align-items:center;gap:7px;font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#6ee7b7`)}>
                               {"Resolution"}
+                              {/* #331 — same as What's wrong: analyst prose, not
+                                  derived from this tenant's findings yet. */}
+                              {m?.walk?.fixNotWired && (
+                                <span style={css(`padding:2px 6px;border-radius:6px;font-size:7.5px;letter-spacing:.14em;color:#e2e8f0;border:1px dashed #94a3b8;background:rgba(148,163,184,.14);font-family:ui-monospace,Menlo,monospace`)}>
+                                  <Txt v={m?.walk?.notWiredLabel} />
+                                </span>
+                              )}
                             </span>
                             {(m?.walk?.fix || []).map((fx, fxIdx) => (
                               <React.Fragment key={fxIdx}>

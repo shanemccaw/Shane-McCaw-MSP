@@ -89,6 +89,7 @@ import { getCurrentAccessToken } from "@/lib/auth-context";
 import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, shouldTriggerWarRoomScan, warRoomPhaseStates } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
 import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY, WAR_ROOM_NO_DATA_COLOR } from "./warRoomPillarStats";
+import { govWalkCard, WAR_ROOM_NOT_WIRED_LABEL, WAR_ROOM_NOT_WIRED_NOTE } from "./warRoomGovernanceWalk";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
 import { cardScrollTop } from "./warRoomCardScroll";
 import {
@@ -1355,9 +1356,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       actions: [["Show me how", "win:c0"], ["Next — Overshared Locations", "walk:c1"]] }
   ];
 
+  // The walk card as it is actually presented: the five Governance topics with
+  // their real head/bars/delta values off the #320 payload and everything
+  // unwireable marked (#331). Every other card passes through untouched. Both
+  // the render site and walkAsk go through here, so the inspector a customer
+  // opens off a card can never quote a different number than the card shows.
+  govCard = (i) => govWalkCard(walkAt(i), walkPillarRef.current, this.props.pillarStats);
+
   // anything on a walkthrough card is a question the customer can ask out loud
   walkAsk = (i, kind, label, value) => {
-    const w = walkAt(i);
+    const w = this.govCard(i);
     if (!w) return;
     const who = w.who || (i === "c2" ? "beth" : i === "c3" ? "kirk" : i === "c1" ? "jane" : "shane");
     const has = value !== undefined && value !== null && String(value).length > 0;
@@ -1447,6 +1455,28 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       }
     };
     const card = Object.assign({ section: w.title }, cards[kind] || cards.bar);
+
+    // Every card above asserts the figure was "measured directly from the
+    // tenant". For a piece nothing produces yet that assertion is the exact
+    // thing #331 exists to stop, so it is replaced outright rather than
+    // prefixed — and the "model this remediated" toggle goes with it, because a
+    // simulation over placeholder numbers is a second fabricated claim.
+    const clicked = (list, key) => (w[list] || []).find(x => x.l === label && x[key]);
+    const notWired =
+      kind === "head" ? !!(w.head && w.head.notWired)
+      : kind === "bar" ? !!clicked("bars", "notWired")
+      : kind === "heat" ? !!clicked("heat", "notWired")
+      : kind === "wrong" ? !!w.wrongNotWired
+      : kind === "fix" ? !!w.fixNotWired
+      : kind === "delta" ? String(label).indexOf(WAR_ROOM_NOT_WIRED_LABEL) >= 0
+      : false;
+    if (notWired) {
+      card.what = WAR_ROOM_NOT_WIRED_NOTE
+        + ". Nothing in the platform produces this figure yet, so what is on the card is placeholder"
+        + " content from the walkthrough script — not a reading from your tenant.";
+      card.sim = null;
+    }
+
     const norm = (rows) => rows.slice(0, 4).map(r => [r[0], String(r[1])]);
     const hobj = Object.assign({}, card, { before: norm(card.before), after: norm(card.after) });
 
@@ -4914,7 +4944,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               })() : null,
               isWalk: m.walk != null,
               walk: m.walk != null && walkAt(m.walk) ? (() => {
-                const w = walkAt(m.walk);
+                const w = this.govCard(m.walk);
                 return {
                   n: w.n, title: w.title, hasLead: !!m.lead, lead: m.lead || "",
                   isGate: !!w.gate,
@@ -4942,16 +4972,24 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
                       gateNow: String(now) + "%",
                       gateThen: String(then) + "%",
                       gateNowW: now + "%", gateThenW: then + "%", gateGapW: Math.max(0, then - now) + "%",
-                      gateBlockLabel: open ? open + " of " + blockers.length + " governance blockers still open" : "All governance blockers answered",
+                      // The whole strip — the "now" score, the "with changes"
+                      // score and every number embedded in the blocker list — is
+                      // the walkthrough script's projection model, and nothing in
+                      // the platform models a post-remediation score (#331). It
+                      // is marked as one block rather than half-wired, because
+                      // wiring "now" to the real pillar score would leave a real
+                      // number sitting inside an invented projection.
+                      gateBlockLabel: (open ? open + " of " + blockers.length + " governance blockers still open" : "All governance blockers answered")
+                        + (w.gateNotWired ? " · " + WAR_ROOM_NOT_WIRED_LABEL : ""),
                       gateBlockers: blockers.map(b => ({
                         t: b.t,
                         c: on[b.id] ? "#34d399" : "#f87171",
                         ink: on[b.id] ? "#6ee7b7" : "#fecaca",
                         icon: on[b.id] ? "m5 12 5 5L20 7" : "M18 6 6 18M6 6l12 12"
                       })),
-                      gateNote: cleared
+                      gateNote: (w.gateNotWired ? WAR_ROOM_NOT_WIRED_NOTE + ". " : "") + (cleared
                         ? "Governance is clear. The remaining pillars — licensing, adoption, compliance, health, security — still have to answer before a tenant-wide rollout."
-                        : "Every switch you flip on these cards moves the needle. Governance alone can carry you to 64% — the other five pillars close the last eleven points to the 75% gate."
+                        : "Every switch you flip on these cards moves the needle. Governance alone can carry you to 64% — the other five pillars close the last eleven points to the 75% gate.")
                     };
                   }).call(this),
                   hasTimeline: !!w.timeline,
@@ -5086,7 +5124,12 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
                   onHead: () => this.walkAsk(m.walk, "head", w.head.l, w.head.v),
                   onTitle: () => this.walkAsk(m.walk, "topic", w.title, w.head.v),
                   headTip: w.head.note + ". Click to ask what this number means and what moves it.",
-                  spark: [12, 19, 24, 31, 36, 41].join(","),
+                  // The sparkline was a fixed six-point climb (12→41) drawn under
+                  // every headline on every card. No per-metric history is
+                  // collected, so on a wired card it is dropped rather than
+                  // decorating a real number with an invented trend; the tooltip
+                  // renderer hides the panel on an empty value (#331).
+                  spark: w.govWired ? "" : [12, 19, 24, 31, 36, 41].join(","),
                   stats: (w.delta || []).slice(0, 2).map(d => d[0] + "|" + d[1] + " → " + d[2] + "|#6ee7b7").join(";"),
                   change: (Object.keys(CHANGES).find(id => CHANGES[id].match.test(w.title)) || ""),
                   titleTip: w.title + " — one of five governance topics. Click to ask why it matters and what closing it involves.",
@@ -5094,19 +5137,39 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
                   isBars: w.chartKind === "bars", isHeat: w.chartKind === "heat",
                   bars: (w.bars || []).map(b => Object.assign({}, b, {
                     w: b.pct + "%",
-                    tip: b.flag + " — measured this morning across 1,204 sites. " + (w.head.note || ""),
-                    spark: [Math.round(b.pct * .42), Math.round(b.pct * .55), Math.round(b.pct * .61), Math.round(b.pct * .78), Math.round(b.pct * .9), b.pct].join(","),
-                    stats: "90-day trend|" + (b.pct > 60 ? "rising" : "flat") + "|" + b.c + ";Threshold|" + (b.pct > 60 ? "breached" : "within") + "|" + b.c,
+                    // "measured this morning across 1,204 sites" was asserted on
+                    // every bar of every pillar and was never true of any tenant.
+                    // A wired card carries its own real site count in scanNote;
+                    // anything else simply drops the claim (#331).
+                    tip: b.notWired ? WAR_ROOM_NOT_WIRED_NOTE + "."
+                      : b.flag + (w.scanNote ? " — " + w.scanNote : "") + ". " + (w.head.note || ""),
+                    // Same as the headline sparkline: no per-metric history exists,
+                    // so a wired bar gets no invented 90-day trend.
+                    spark: (w.govWired || b.notWired) ? ""
+                      : [Math.round(b.pct * .42), Math.round(b.pct * .55), Math.round(b.pct * .61), Math.round(b.pct * .78), Math.round(b.pct * .9), b.pct].join(","),
+                    stats: b.notWired ? "Source|" + WAR_ROOM_NOT_WIRED_LABEL + "|#94a3b8"
+                      : b.wired ? "Source|" + b.check + "|" + b.c
+                      : b.noData ? "Source|" + b.check + " · no data|" + b.c
+                      : "90-day trend|" + (b.pct > 60 ? "rising" : "flat") + "|" + b.c + ";Threshold|" + (b.pct > 60 ? "breached" : "within") + "|" + b.c,
                     change: (Object.keys(CHANGES).find(id => CHANGES[id].match.test(b.l)) || ""),
                     onClick: () => this.walkAsk(m.walk, "bar", b.l, b.v)
                   })),
                   heat: (w.heat || []).map(h => Object.assign({}, h, {
                     bg: h.c + "1f", bd: h.c + "66",
-                    tip: h.sub + ". A first-line account resolves to this today, and Copilot returns it with a citation.",
-                    stats: "Reachable by|1,876 accounts|" + h.c + ";Classification|" + (/label/i.test(h.sub) ? h.sub.replace(/.*?(\d+% labelled).*/, "$1") : "inherited") + "|#94a3b8",
+                    tip: h.notWired ? WAR_ROOM_NOT_WIRED_NOTE + "."
+                      : h.sub + ". A first-line account resolves to this today, and Copilot returns it with a citation.",
+                    // "Reachable by 1,876 accounts" is not collected anywhere; on a
+                    // marked cell it would just be a second fabricated figure.
+                    stats: h.notWired ? "Source|" + WAR_ROOM_NOT_WIRED_LABEL + "|#94a3b8"
+                      : "Reachable by|1,876 accounts|" + h.c + ";Classification|" + (/label/i.test(h.sub) ? h.sub.replace(/.*?(\d+% labelled).*/, "$1") : "inherited") + "|#94a3b8",
                     change: (Object.keys(CHANGES).find(id => CHANGES[id].match.test(h.l)) || ""),
                     onClick: () => this.walkAsk(m.walk, "heat", h.l, h.v)
                   })),
+                  // Whole-block markers: both narrative lists are analyst prose,
+                  // and generating them for a real tenant is deferred to ShaneBot.
+                  wrongNotWired: !!w.wrongNotWired,
+                  fixNotWired: !!w.fixNotWired,
+                  notWiredLabel: WAR_ROOM_NOT_WIRED_LABEL,
                   wrong: (w.wrong || []).map(v => ({ v, tip: "Finding. Click to ask how serious this is and what the fix is.", onClick: () => this.walkAsk(m.walk, "wrong", v, "") })),
                   fix: (w.fix || []).map((v, i) => ({ v, n: String(i + 1),
                     tip: walkPillarRef.current === "remediation"
