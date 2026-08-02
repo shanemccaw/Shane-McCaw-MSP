@@ -4025,29 +4025,12 @@ export const PERSONA_CATALOG = [
     ] }
 ];
 
-export const WIZ_PERSONAS = [
-  { id: "clinician", label: "Attending Clinician", n: "2,140", tools: "Outlook · Teams · Word", default: true },
-  { id: "nurse", label: "Nurse Manager", n: "480", tools: "Teams · Excel · Planner", default: true },
-  { id: "revcycle", label: "Revenue Cycle Analyst", n: "310", tools: "Excel · SharePoint · Outlook", default: true },
-  { id: "compliance", label: "Compliance Officer", n: "40", tools: "Purview · Word · Teams", default: true },
-  { id: "support", label: "Support Team Lead", n: "24", tools: "Teams · ServiceNow · Intune", default: false },
-  { id: "exec", label: "Executive / Board", n: "18", tools: "Outlook · Teams · PowerPoint", default: false }
-];
-
-export const WIZ_QUESTIONS = [
-  { id: "q1", q: "What is driving the interest in Copilot?", opts: ["Documentation burden", "Competitive pressure", "Board mandate", "Cost reduction"] },
-  { id: "q2", q: "Which regulations apply to your tenant?", opts: ["HIPAA / HITECH", "42 CFR Part 2", "State breach law", "Joint Commission"] },
-  { id: "q3", q: "Where does most work actually happen?", opts: ["Teams chat", "SharePoint libraries", "Email", "Line-of-business apps"] },
-  { id: "q4", q: "Has anyone owned governance in the last year?", opts: ["Yes, named owner", "Shared responsibility", "No", "Unsure"] },
-  { id: "q5", q: "How are licences assigned today?", opts: ["By group", "By ticket", "By manager request", "Mixed"] },
-  { id: "q6", q: "What would success look like in six months?", opts: ["Hours returned", "Fewer tickets", "Faster documentation", "Audit confidence"] },
-  { id: "q7", q: "Who signs off on a change to sharing policy?", opts: ["Change board", "IT director", "Security", "Nobody formally"] },
-  { id: "q8", q: "Have you run a Copilot pilot before?", opts: ["No", "Yes, stalled", "Yes, ongoing", "Planning one"] },
-  { id: "q9", q: "How is sensitive content classified today?", opts: ["Purview labels", "Folder convention", "Not classified", "Mixed"] },
-  { id: "q10", q: "What is your appetite for change windows?", opts: ["Weekly", "Fortnightly", "Monthly", "Quarterly only"] },
-  { id: "q11", q: "Who would run remediation internally?", opts: ["Platform team", "MSP", "Mixed", "Nobody available"] },
-  { id: "q12", q: "What is the hard deadline, if any?", opts: ["Renewal date", "Fiscal year end", "Board meeting", "None"] }
-];
+// WIZ_PERSONAS and WIZ_QUESTIONS used to sit here: a six-role roster with
+// invented seat counts ("Attending Clinician · 2,140") and twelve invented
+// questions, all belonging to the Northline Health demo org this prototype was
+// designed around. Every customer in the platform saw the same fictional
+// hospital. Both are now built per customer from the real quiz catalog, scoped
+// to their own industry — see warRoomQuizCatalog.ts (#306).
 
 export const SCAN_PHASES = [
   { l: "Establishing read-only consent", d: "Graph · SharePoint admin · Purview · Intune", n: "4 scopes", grp: "Connect" },
