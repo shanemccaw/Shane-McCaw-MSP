@@ -4265,6 +4265,35 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         });
         const PC = (DIVE_CFG[s.dive] || DIVE_CFG.governance).color;
         const PI = (DIVE_CFG[s.dive] || DIVE_CFG.governance).ink;
+        // Real per-pillar gate (#325) — every dive routed through this shared
+        // engine used to read Governance's own `gate`/`gateColor` no matter which
+        // pillar was open (Compliance's dialog showed "GOVERNANCE: COPILOT
+        // GATE"). Governance itself keeps its existing lever-driven cleared/anyOn
+        // computation unchanged; Licensing gets its own real gate from
+        // `licOverride()` below (Object.assign'd over `base` after it's built).
+        // Every other pillar (security, health, compliance, adoption, copilot)
+        // now reads its own real scanned score off `rPillars` (#320's real
+        // pillar-card payload) instead of Governance's, with the same 85/60
+        // CLEAR/PARTIAL/BLOCKED thresholds the Governance and Licensing gates
+        // already use. A pillar the scan hasn't scored yet says so honestly
+        // rather than defaulting to a fabricated BLOCKED/red state.
+        const PW = (DIVE_CFG[s.dive] || DIVE_CFG.governance).word;
+        const pillarGate = (() => {
+          if (s.dive === "governance" || !DIVE_CFG[s.dive]) {
+            return {
+              gate: "GOVERNANCE: COPILOT GATE · " + (cleared ? "CLEAR" : anyOn ? "PARTIAL" : "BLOCKED"),
+              gateColor: cleared ? "#34d399" : anyOn ? "#fbbf24" : "#f87171"
+            };
+          }
+          const rv = rPillars[s.dive] || WAR_ROOM_PILLAR_VIEW_EMPTY;
+          if (typeof rv.score !== "number") {
+            return { gate: PW + ": COPILOT GATE · NOT YET SCORED", gateColor: "#94a3b8" };
+          }
+          return {
+            gate: PW + ": COPILOT GATE · " + (rv.score >= 85 ? "CLEAR" : rv.score >= 60 ? "PARTIAL" : "BLOCKED"),
+            gateColor: rv.score >= 85 ? "#34d399" : rv.score >= 60 ? "#fbbf24" : "#f87171"
+          };
+        })();
         const licOverride = () => {
           const c = s.changes || {};
           const seats = s.licSeats === undefined ? 1308 : s.licSeats;      // unassigned seats still being paid for
@@ -4346,8 +4375,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           scoreColor: p.score >= 85 ? "#34d399" : p.score >= 60 ? "#fbbf24" : "#f87171",
           delta: (p.score - GOV_BASE.score > 0 ? "+" : "") + (p.score - GOV_BASE.score),
           deltaShow: p.score !== GOV_BASE.score,
-          gate: "GOVERNANCE: COPILOT GATE · " + (cleared ? "CLEAR" : anyOn ? "PARTIAL" : "BLOCKED"),
-          gateColor: cleared ? "#34d399" : anyOn ? "#fbbf24" : "#f87171",
+          gate: pillarGate.gate,
+          gateColor: pillarGate.gateColor,
           effort: (() => { const w = GOV_LEVERS.filter(l => on[l.id]).length; return w === 0 ? "no work selected" : w + " workstream" + (w > 1 ? "s" : "") + " selected"; })(),
           metrics: [
             metric("Sites with org-wide links", GOV_BASE.sites, p.sites, "", "down"),
