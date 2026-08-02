@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-02 | ⏳ IN FLIGHT | Git #322 - Epic: #302 War Room — real scan trigger wired to wrong button: Simulate scan works, Nice to meet you does not. | |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #325 - Epic: #302 War Room — pillar dive gate badge always shows Governance's hardcoded label/color regardless of actual pillar. | |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #324 - Epic: #302 War Room — radial diagram connector lines shoot diagonally across the whole diagram at angles that do not match their pillar's wedge. | |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #323 - Epic: #302 War Room — large Active Cards (e.g. cluster selection) render off-screen, not scrollable into view. | |
