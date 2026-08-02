@@ -262,7 +262,13 @@ export function WarRoomView({ v }: { v: any }) {
               {v.bubble && <SpeakerBubble v={v} />}
             </div>
           </div>
-          <div style={css(`position:relative;z-index:35;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px;padding-top:4px`)}>
+          {/* #337: chat composer is real chrome sitting directly below the stage's
+              flex:1 row (both are siblings in this flex-column) — every px it takes
+              is a px `this.stageH` (WarRoomLogic's setStage measurement) doesn't get,
+              and the radar is height-bound (#302/#335/#336's own audit). Trimmed its
+              padding/control heights (still a usable single-line composer) rather
+              than touching the mapSize formula itself. */}
+          <div style={css(`position:relative;z-index:35;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px;padding-top:2px`)}>
             {v.userSpeaking && <UserSpeakingBubble v={v} />}
             {v.qaOpen && <QaPanel v={v} />}
             {v.showDemo && <DemoPanel v={v} />}
@@ -273,21 +279,21 @@ export function WarRoomView({ v }: { v: any }) {
             {v.personaPanel && <PersonaPanel v={v} />}
             {v.topic && <TopicPanel v={v} />}
             <div style={css(`position:relative;display:flex;flex-direction:column;gap:8px;width:min(520px,100%);margin-left:auto`)}>
-              <div style={css(`display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:14px;border:1px solid rgba(103,232,249,.3);background:linear-gradient(160deg,rgba(15,23,42,.88),rgba(2,6,23,.8));backdrop-filter:blur(14px);box-shadow:0 18px 48px rgba(2,6,23,.65),0 0 46px rgba(0,120,212,.16),inset 0 0 40px rgba(0,120,212,.06)`)}>
+              <div style={css(`display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:14px;border:1px solid rgba(103,232,249,.3);background:linear-gradient(160deg,rgba(15,23,42,.88),rgba(2,6,23,.8));backdrop-filter:blur(14px);box-shadow:0 18px 48px rgba(2,6,23,.65),0 0 46px rgba(0,120,212,.16),inset 0 0 40px rgba(0,120,212,.06)`)}>
                 <span style={css(`flex:none;display:flex;flex-direction:column;align-items:center;gap:3px`)}>
-                  <span style={css(`width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(103,232,249,.35);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;color:#7dd3fc`)}>
+                  <span style={css(`width:24px;height:24px;border-radius:9px;background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(103,232,249,.35);display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;color:#7dd3fc`)}>
                     {"YOU"}
                   </span>
                 </span>
-                <textarea value={v.draft} onChange={v.onDraft} onKeyDown={v.onDraftKey} rows={"1"} placeholder={v.composerPlaceholder} style={css(`flex:1;min-width:0;height:32px;max-height:80px;padding:7px 11px;border-radius:9px;resize:none;outline:none;font-family:inherit;font-size:12.5px;line-height:1.4;color:#e2e8f0;border:1px solid rgba(51,65,85,.7);background:rgba(2,6,23,.65)`)} />
-                <Hov as="button" style={css(`flex:none;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#7dd3fc;border:1px solid rgba(103,232,249,.28);background:rgba(2,6,23,.65)`)} hoverStyle={css(`border-color:rgba(103,232,249,.6)`)}>
+                <textarea value={v.draft} onChange={v.onDraft} onKeyDown={v.onDraftKey} rows={"1"} placeholder={v.composerPlaceholder} style={css(`flex:1;min-width:0;height:26px;max-height:80px;padding:5px 11px;border-radius:9px;resize:none;outline:none;font-family:inherit;font-size:12.5px;line-height:1.4;color:#e2e8f0;border:1px solid rgba(51,65,85,.7);background:rgba(2,6,23,.65)`)} />
+                <Hov as="button" style={css(`flex:none;width:26px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#7dd3fc;border:1px solid rgba(103,232,249,.28);background:rgba(2,6,23,.65)`)} hoverStyle={css(`border-color:rgba(103,232,249,.6)`)}>
                   <svg width={"14"} height={"14"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}>
                     <path d={"M12 19v3"} />
                     <path d={"M19 10v2a7 7 0 0 1-14 0v-2"} />
                     <rect x={"9"} y={"2"} width={"6"} height={"13"} rx={"3"} />
                   </svg>
                 </Hov>
-                <Hov as="button" onClick={v.onSend} style={css(`flex:none;display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:9px;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#0078D4;box-shadow:0 8px 24px rgba(0,120,212,.35);transition:background 180ms ease`)} hoverStyle={css(`background:#2563eb`)}>
+                <Hov as="button" onClick={v.onSend} style={css(`flex:none;display:flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:9px;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#0078D4;box-shadow:0 8px 24px rgba(0,120,212,.35);transition:background 180ms ease`)} hoverStyle={css(`background:#2563eb`)}>
                   {"Send "}
                   <svg width={"13"} height={"13"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} strokeLinecap={"round"} strokeLinejoin={"round"}>
                     <path d={"m22 2-7 20-4-9-9-4Z"} />
