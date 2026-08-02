@@ -80,6 +80,7 @@ import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
 import { buildTelemetryComparison } from "../lib/telemetry-comparison";
+import { buildWarRoomPillarStats } from "../lib/war-room-pillar-stats";
 import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
@@ -503,6 +504,40 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/assessment/telemetry-comparison failed");
       res.status(500).json({ error: "Failed to compute telemetry comparison" });
+    }
+  },
+);
+
+// ── War Room pillar summary cards (#320, epic #302) ──────────────────────────
+//
+//   GET /api/portal/assessment/war-room-pillars
+//
+// The seven completed-scan pillar cards in the War Room — each card's SCORE and
+// its four STAT CALLOUTS — computed from the REAL health engine (the same
+// `computePillarDisplayScore` path #245 already uses, no new formula) and the
+// customer's REAL `tenant_monitor_profiles` / `msp_diagnostic_findings` rows.
+// See lib/war-room-pillar-stats.ts for the per-stat provenance table, including
+// which of the original fictional callouts had no real producer at all.
+//
+// A separate route from telemetry-comparison for the same reason that one is
+// separate from /status: it resolves ~20 distinct monitor metrics plus the seat
+// arithmetic, which the telemetry panel neither needs nor should pay for.
+router.get(
+  "/portal/assessment/war-room-pillars",
+  // Same floor as the telemetry panel — the assessment/War Room role.
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      res.json(await buildWarRoomPillarStats(customerId));
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/assessment/war-room-pillars failed");
+      res.status(500).json({ error: "Failed to compute War Room pillar stats" });
     }
   },
 );
