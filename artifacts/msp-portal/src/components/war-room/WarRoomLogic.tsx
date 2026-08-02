@@ -60,8 +60,6 @@ import {
   DOCS_WALK,
   TIMELINE,
   PERSONA_CATALOG,
-  WIZ_PERSONAS,
-  WIZ_QUESTIONS,
   SCAN_PHASES,
   GOV_BASE,
   GOV_LEVERS,
@@ -76,6 +74,16 @@ import {
   AMBIENCE,
   walkPillarRef,
 } from "./data/warRoomData";
+import {
+  WAR_ROOM_DEFAULT_INDUSTRY,
+  buildWarRoomPersonas,
+  buildWarRoomQuestions,
+  fetchSavedIndustry,
+  loadWarRoomCatalog,
+  resolveWarRoomIndustry,
+  warRoomCatalogFor,
+} from "./warRoomQuizCatalog";
+import { getCurrentAccessToken } from "@/lib/auth-context";
 import {
   WAR_ROOM_SECTIONS,
   deriveWarRoomSection,
@@ -104,8 +112,18 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     onb: [],
     onbPicked: [],
     wizStep: 0,
-    wizPersonas: WIZ_PERSONAS.filter(p => p.default).map(p => p.id),
+    // Nothing pre-ticked (#306). The roster is now the customer's real industry
+    // catalog, and pre-selecting roles would be asserting which of them exist in
+    // their tenant — the question the step is there to ask.
+    wizPersonas: [],
     wizAnswers: {},
+    // The industry the roster and questions are scoped to, and that industry's
+    // resolved catalog. Seeded with the real 'default' row set rather than null
+    // so the conversation has real content to ask from on the first frame; both
+    // are re-pointed by ensureWizCatalog() as soon as the customer's own
+    // industry is known. See warRoomQuizCatalog.ts.
+    wizIndustry: WAR_ROOM_DEFAULT_INDUSTRY,
+    wizCatalog: warRoomCatalogFor(WAR_ROOM_DEFAULT_INDUSTRY),
     scanStep: 0,
     govAt: "c0",
     govTab: "sharepoint",
@@ -1926,9 +1944,72 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   };
   // the prelude dissolves rather than cutting to the room
 
+  // ── Real quiz catalog (#306) ───────────────────────────────────────────────
+  // The roster and the question list used to be WIZ_PERSONAS / WIZ_QUESTIONS —
+  // two hardcoded arrays describing a fictional hospital. They are now derived,
+  // per render, from the customer's own industry catalog. Derived rather than
+  // stored because the use-case and outcome questions narrow to whichever roles
+  // the customer has ticked so far, exactly as the real quiz's do, so the list
+  // genuinely changes as the conversation goes on.
+
+  /** The industry catalog's roster, in place of WIZ_PERSONAS. */
+  wizRoster = () => buildWarRoomPersonas(this.state.wizCatalog);
+
+  /** The industry catalog's questions, in place of WIZ_QUESTIONS. */
+  wizQuestions = () => buildWarRoomQuestions(
+    this.state.wizCatalog,
+    this.state.wizIndustry,
+    this.state.wizPersonas || []
+  );
+
+  /**
+   * The industry on this customer's saved QuizProfile. `undefined` until the
+   * lookup has been attempted, '' once it has and there was nothing — the two
+   * are different, and only the first should trigger a fetch.
+   */
+  wizSavedIndustry = undefined;
+
+  /**
+   * Point the roster and the questions at the right industry.
+   *
+   * Called when the conversation starts and again whenever the customer answers
+   * the room's own industry question, which is free text with suggestion chips
+   * rather than a picker — so what they say has to be matched back onto a
+   * catalog key (see resolveWarRoomIndustry).
+   *
+   * The swap to that industry's static catalog is synchronous and the DB fetch
+   * only upgrades it, so there is never a frame with nothing to ask. A fetch
+   * that lands after the customer has changed their mind is discarded on the
+   * industry check rather than overwriting the newer answer.
+   */
+  ensureWizCatalog = () => {
+    const spoken = (this.state.heroAns || {}).industry;
+    const industry = resolveWarRoomIndustry({ spoken, saved: this.wizSavedIndustry });
+
+    if (industry !== this.state.wizIndustry) {
+      this.setState({ wizIndustry: industry, wizCatalog: warRoomCatalogFor(industry) });
+      loadWarRoomCatalog(industry, getCurrentAccessToken).then(catalog => {
+        if (this.state.wizIndustry !== industry) return;
+        this.setState({ wizCatalog: catalog });
+      });
+    }
+
+    // Only worth asking for once, and only useful before they have said it
+    // themselves — a spoken answer outranks it either way.
+    if (this.wizSavedIndustry === undefined) {
+      this.wizSavedIndustry = "";
+      fetchSavedIndustry(getCurrentAccessToken).then(saved => {
+        if (!saved) return;
+        this.wizSavedIndustry = saved;
+        this.ensureWizCatalog();
+      });
+    }
+  };
+
   startOnb = () => {
     if (this.onbStarted) return;
     this.onbStarted = true;
+    this.ensureWizCatalog();
     setTimeout(() => this.onbAll([
       { who: "shane", text: "Morning. I'm Shane McCaw — I run Microsoft 365 architecture at NASA, and I wrote the governance framework the agency distributed. Today I'm doing something simpler: showing you your own tenant." },
       { who: "shane", card: "intro" },
@@ -1958,16 +2039,21 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     setTimeout(() => this.onbAll([
       { who: "shane", text: "Good. " + first.p + " is the one I'd watch. " + first.d + " — and every one of those tasks depends on finding the right document, which is exactly where this usually falls apart." },
       { who: "shane", card: "outcomes" },
-      { who: "shane", text: "Now twelve questions. They shape which findings I lead with — they do not change what the scan measures.", q: 0 }
+      // The count is read off the real list rather than stated: an industry
+      // whose catalog is mid-backfill genuinely has fewer than the twelve this
+      // line used to promise (#306).
+      { who: "shane", text: "Now " + this.wizQuestions().length + " questions. They shape which findings I lead with — they do not change what the scan measures.", q: 0 }
     ]), 300);
   };
   answerQ = (i, opt) => {
-    const q = WIZ_QUESTIONS[i];
+    const questions = this.wizQuestions();
+    const q = questions[i];
+    if (!q) return;
     this.setState(st => ({
       wizAnswers: Object.assign({}, st.wizAnswers, { [q.id]: opt }),
       onb: (st.onb || []).concat([{ who: "you", text: opt }])
     }));
-    const last = i >= WIZ_QUESTIONS.length - 1;
+    const last = i >= questions.length - 1;
     setTimeout(() => {
       if (last) {
         this.onbAll([
@@ -1986,7 +2072,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (s.prelude === "welcome") { this.setState({ prelude: "personas" }); return; }
     if (s.prelude === "personas") { this.setState({ prelude: "questions", wizStep: 0 }); return; }
     if (s.prelude === "questions") {
-      if (s.wizStep < WIZ_QUESTIONS.length - 1) { this.setState({ wizStep: s.wizStep + 1 }); return; }
+      if (s.wizStep < this.wizQuestions().length - 1) { this.setState({ wizStep: s.wizStep + 1 }); return; }
       this.setState({ prelude: "scan", scanStep: 0 }, this.runScan);
       return;
     }
@@ -2211,6 +2297,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       heroWrap: i + 1 >= HERO_Q.length ? true : (st.heroWrap || false),
       heroThread: (st.heroThread || []).concat([{ who: "you", text: v }])
     }), () => {
+      // HERO_Q's first question is the industry, and it is the customer telling
+      // us which catalog the rest of the conversation should come from (#306).
+      // Re-run on every answer rather than only that one: it is idempotent, and
+      // it also picks up a saved-profile industry landing mid-conversation.
+      this.ensureWizCatalog();
       clearTimeout(this.heroReplyT);
       this.heroReplyT = setTimeout(() => {
         this.setState(st => {
@@ -2483,6 +2574,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const focusNode = inj ? inj.focus : s.focus;
     const activeTopic = (beat && beat.chain && !inj) ? "riskchain" : (TOPIC_FOR[focusNode] || "copilotready");
     const focusPillar = focusNode ? (NODES.find(n => n.id === focusNode) || {}).pillar : null;
+    // The customer's real industry catalog, resolved once per render (#306).
+    // Both lists narrow as the conversation goes on, so they cannot be module
+    // constants the way WIZ_QUESTIONS / WIZ_PERSONAS were.
+    const wizQuestions = this.wizQuestions();
+    const wizRoster = this.wizRoster();
 
     const nodes = NODES.map(n => {
       const st = s.statuses[n.id], c = STATUS[st].color;
@@ -3704,7 +3800,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       })(),
       onbAnswers: (function () {
         const a = s.wizAnswers || {};
-        const rows = WIZ_QUESTIONS.filter(q => a[q.id]).slice(-4).map(q => ({ q: q.q, a: a[q.id] }));
+        const rows = wizQuestions.filter(q => a[q.id]).slice(-4).map(q => ({ q: q.q, a: a[q.id] }));
         return { show: rows.length > 0, rows: rows };
       })(),
       onbTyping: (function () {
@@ -3719,7 +3815,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const cl = PERSONA_CATALOG.find(x => x.cluster === s.onbCluster);
         const picked = s.onbPicked || [];
         const first = cl ? cl.personas.find(x => picked.indexOf(x.p) >= 0) : null;
-        const q = m.q != null ? WIZ_QUESTIONS[m.q] : null;
+        const q = m.q != null ? wizQuestions[m.q] : null;
         return {
           you: you, isText: !!m.text && m.q == null,
           name: you ? "You" : (p.name || "Shane McCaw"),
@@ -3758,7 +3854,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
 
           isQ: m.q != null,
           qText: q ? q.q : "",
-          qNum: m.q != null ? "Question " + (m.q + 1) + " of " + WIZ_QUESTIONS.length : "",
+          qNum: m.q != null ? "Question " + (m.q + 1) + " of " + wizQuestions.length : "",
           qOpts: q ? q.opts.map(o => {
             const on = (s.wizAnswers || {})[q.id] === o;
             return {
@@ -3776,7 +3872,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       wizCanNext: s.prelude !== "scan",
       wiz: s.prelude ? (function () {
         const step = s.wizStep || 0;
-        const q = WIZ_QUESTIONS[step];
+        const q = wizQuestions[step];
         const picked = s.wizPersonas || [];
         const scanN = s.scanStep || 0;
         return {
@@ -3784,14 +3880,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           isPersonas: s.prelude === "personas",
           isQuestions: s.prelude === "questions",
           isScan: s.prelude === "scan",
-          stepLabel: s.prelude === "questions" ? "Question " + (step + 1) + " of " + WIZ_QUESTIONS.length : s.prelude === "personas" ? "Step 2 of 3" : s.prelude === "scan" ? "Scanning" : "Step 1 of 3",
+          stepLabel: s.prelude === "questions" ? "Question " + (step + 1) + " of " + wizQuestions.length : s.prelude === "personas" ? "Step 2 of 3" : s.prelude === "scan" ? "Scanning" : "Step 1 of 3",
           progress: s.prelude === "welcome" ? "8%" : s.prelude === "personas" ? "22%"
-            : s.prelude === "questions" ? (22 + Math.round((step + 1) / WIZ_QUESTIONS.length * 58)) + "%"
+            : s.prelude === "questions" ? (22 + Math.round((step + 1) / wizQuestions.length * 58)) + "%"
             : (80 + Math.round(scanN / SCAN_PHASES.length * 20)) + "%",
-          personas: WIZ_PERSONAS.map(p => {
+          personas: wizRoster.map(p => {
             const on = picked.indexOf(p.id) >= 0;
             return {
-              label: p.label, n: p.n + " seats", tools: p.tools,
+              // Blank rather than "undefined seats": the roster is shown before
+              // the scan, so there is no real headcount to state yet (#306).
+              label: p.label, n: p.n ? p.n + " seats" : "", tools: p.tools,
               border: on ? "rgba(103,232,249,.75)" : "rgba(51,65,85,.9)",
               bg: on ? "rgba(103,232,249,.12)" : "rgba(2,6,23,.5)",
               ink: on ? "#67e8f9" : "#94a3b8",
@@ -3799,7 +3897,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               onClick: () => this.togglePersona(p.id)
             };
           }),
-          pickedCount: picked.length + " of " + WIZ_PERSONAS.length + " personas selected",
+          pickedCount: picked.length + " of " + wizRoster.length + " personas selected",
           q: q ? q.q : "",
           opts: q ? q.opts.map(o => {
             const on = (s.wizAnswers || {})[q.id] === o;
@@ -3813,7 +3911,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           }) : [],
           nextLabel: s.prelude === "welcome" ? "Define the personas"
             : s.prelude === "personas" ? "Start the questions"
-            : step < WIZ_QUESTIONS.length - 1 ? "Next question" : "Scan the tenant",
+            : step < wizQuestions.length - 1 ? "Next question" : "Scan the tenant",
           canBack: s.prelude === "personas" || s.prelude === "questions",
           onNext: this.wizNext, onBack: this.wizBack, onSkip: this.wizSkip, onSimulate: this.simulateScan,
           elapsed: (function () {
