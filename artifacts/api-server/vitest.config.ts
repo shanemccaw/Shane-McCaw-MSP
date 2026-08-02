@@ -111,6 +111,7 @@ export default defineConfig({
       "src/lib/dashboard-resolvers.test.ts",
       "src/lib/cost-engine.test.ts",
       "src/lib/license-waste-source.test.ts",
+      "src/lib/license-waste-paid-seats.test.ts",
       "src/lib/sla-uptime.test.ts",
       "src/routes/dashboard-data.test.ts",
       "src/routes/dashboard-templates.test.ts",

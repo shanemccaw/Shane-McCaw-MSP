@@ -41,12 +41,15 @@
  *                   fabricate: it distinguishes `no_data`, `unknown_check_key`
  *                   and `license_gap` from a real zero, and this module passes
  *                   that distinction straight through.
- *   licenseSeats  → `resolveLicenseWasteCounts` + `computeSkuCostBreakdown`, the
+ *   licenseSeats  → `resolvePaidSeatFigures` + `computeSkuCostBreakdown`, the
  *                   real `/subscribedSkus` arithmetic (seats bought − seats
- *                   assigned, priced from `sku_price_reference`). This is the
- *                   one source that can answer "seats provisioned" and "annual
- *                   waste" honestly; see license-waste-source.ts for the two
- *                   traps it exists to avoid.
+ *                   assigned) restricted to SKUs with a real price in
+ *                   `sku_price_reference`. This is the one source that can answer
+ *                   "seats provisioned" and "annual waste" honestly; see
+ *                   license-waste-source.ts for the three traps it exists to
+ *                   avoid — the third (#333) being Microsoft's free/viral SKUs,
+ *                   whose sentinel `prepaidUnits.enabled` capacities are not
+ *                   seats anyone bought.
  *   pillarScore   → the pillar's own real display score (Copilot readiness only,
  *                   whose headline stat IS the readiness percentage).
  *
@@ -95,7 +98,7 @@ import { fetchEvaluableSignalKeys, type RadarPillar } from "./pillar-coverage.ts
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { buildPillarViews } from "./telemetry-comparison.ts";
 import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
-import { resolveLicenseWasteCounts } from "./license-waste-source.ts";
+import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 import { logger } from "./logger.ts";
 
@@ -235,7 +238,10 @@ export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRo
   // replaces "Copilot owned / used", which has no scalar producer (the Copilot
   // readiness check emits a breakdown, not an owned/used pair).
   licensing: [
-    { id: "licensing.provisioned", label: "seats provisioned", unit: "count",
+    // "paid" is load-bearing in the caption, not decoration: the number counts
+    // only SKUs with a real price, so the free/viral capacity Graph reports is
+    // deliberately absent from it (#333).
+    { id: "licensing.provisioned", label: "paid seats provisioned", unit: "count",
       source: { kind: "licenseSeats", field: "provisioned" },
       replaces: "6,180 seats provisioned" },
     { id: "licensing.unassigned", label: "paid, unassigned", unit: "count",
@@ -462,14 +468,29 @@ interface SeatFigures {
   checkKey: string;
 }
 
+/**
+ * The card's three licensing numbers, all over the PAID estate (#333).
+ *
+ * This originally read `resolveLicenseWasteCounts`' every-SKU totals, which count
+ * Microsoft's free / viral / self-service SKUs at the sentinel capacity Graph
+ * reports for them (1,000,000 for POWER_BI_STANDARD, 10,000 for FLOW_FREE and the
+ * viral trials). Those are not seats anyone provisioned or paid for, and on a real
+ * tenant with five active users they rendered as "1,020,000 seats provisioned" and
+ * "1,019,995 paid, unassigned" under captions that both say otherwise.
+ *
+ * The giveaway was already on the card: annual waste stayed BLANK next to a
+ * million unassigned seats, because those SKUs have no price and the dollar figure
+ * has always been priced-estate-only. `resolvePaidSeatFigures` puts the two counts
+ * on that same footing, so all three describe one estate — see license-waste-source.ts
+ * for why `sku_price_reference` is the authority on "paid" and not a capacity heuristic.
+ */
 async function resolveSeatFigures(tenantId: string): Promise<SeatFigures | null> {
-  const waste = await resolveLicenseWasteCounts(tenantId);
-  if (!waste) return null;
+  const seats = await resolvePaidSeatFigures(tenantId);
+  if (!seats) return null;
 
-  const unassigned = waste.lines.reduce((sum, line) => sum + line.unused, 0);
   let annualWasteDollars: number | null = null;
   try {
-    const breakdown = await computeSkuCostBreakdown(waste.counts);
+    const breakdown = await computeSkuCostBreakdown(seats.paidCounts);
     // A total of zero with every SKU unpriced is "we couldn't price it", not "$0".
     annualWasteDollars =
       breakdown.totalAnnualCents > 0 ? centsToDollars(breakdown.totalAnnualCents) : null;
@@ -478,10 +499,10 @@ async function resolveSeatFigures(tenantId: string): Promise<SeatFigures | null>
   }
 
   return {
-    provisioned: waste.totalEnabledSeats,
-    unassigned,
+    provisioned: seats.provisioned,
+    unassigned: seats.unassigned,
     annualWasteDollars,
-    checkKey: waste.checkKey,
+    checkKey: seats.checkKey,
   };
 }
 

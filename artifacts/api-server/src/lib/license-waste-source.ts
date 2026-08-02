@@ -53,6 +53,7 @@
 
 import { db, monitorChecksTable, tenantMonitorProfilesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
+import { lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -243,4 +244,125 @@ export async function resolveLicenseWasteCounts(
     "license-waste-source: no /subscribedSkus check has a complete stored Graph page for this tenant",
   );
   return null;
+}
+
+// ── Paid seats (#333) ─────────────────────────────────────────────────────────
+//
+// `totalEnabledSeats` and `lines[].unused` above count EVERY subscribed SKU,
+// which is right for the question they were written for ("what did the estate
+// look like") but wrong for any figure presented as a SEAT the tenant provisioned
+// or PAID for.
+//
+// Microsoft reports free / viral / self-service SKUs through the same
+// `/subscribedSkus` shape as purchased ones, with `prepaidUnits.enabled` set to a
+// sentinel CAPACITY rather than a bought quantity — 1,000,000 for
+// POWER_BI_STANDARD, 10,000 for FLOW_FREE and the viral trial SKUs, and so on.
+// Nobody bought those seats and nobody is billed for the unassigned ones, so
+// summing them produces a number that is not wrong by a few percent but by
+// several orders of magnitude: a real tenant with three such SKUs and five active
+// users reports 1,020,000 seats provisioned / 1,019,995 unassigned (#333).
+//
+// The authority on whether a seat was paid for is the same one the dollar figures
+// already use: `sku_price_reference`. A SKU with no price row, or a row priced at
+// zero, is not a paid seat — which is exactly why the waste total stayed silent
+// on the tenant above while the two counts went to seven figures. Restricting the
+// counts to the priced estate makes all three licensing numbers describe the SAME
+// set of SKUs, instead of two of them describing an estate the third refuses to
+// price.
+//
+// Excluded SKUs are returned, not silently dropped, so a caller (or a log line)
+// can say WHAT was left out rather than presenting a quietly narrowed number.
+
+/** Why a SKU's seats are not counted as paid. */
+export type UnpaidSkuReason = "no_price_on_file" | "zero_price";
+
+export interface PaidSeatFigures {
+  /** Seats bought across SKUs with a known, non-zero price. */
+  provisioned: number;
+  /** Paid seats nobody is assigned to — the real recoverable figure. */
+  unassigned: number;
+  /** { skuPartNumber: unusedSeatCount } over priced SKUs only — what to price. */
+  paidCounts: Record<string, number>;
+  /** SKUs deliberately left out, with the capacity each was claiming. */
+  excluded: { skuPartNumber: string; enabled: number; reason: UnpaidSkuReason }[];
+}
+
+/**
+ * Pure: reduce per-SKU seat lines to the PAID estate, given each SKU's real
+ * monthly price. `null` in the map means "no price on file" (the lookup's own
+ * "never fabricate a price" answer); `0` means a row exists and says the SKU is
+ * free. Both are excluded, and both are reported.
+ *
+ * Exported separately from the async resolver so the arithmetic is testable
+ * without a database — the same split `unusedSeatsFromSubscribedSkus` uses.
+ */
+export function paidSeatFiguresFromLines(
+  lines: readonly LicenseWasteCounts["lines"][number][],
+  monthlyPriceCentsBySku: ReadonlyMap<string, number | null>,
+): PaidSeatFigures {
+  const paidCounts: Record<string, number> = {};
+  const excluded: PaidSeatFigures["excluded"] = [];
+  let provisioned = 0;
+  let unassigned = 0;
+
+  for (const line of lines) {
+    const price = monthlyPriceCentsBySku.get(line.skuPartNumber) ?? null;
+    if (price == null || price <= 0) {
+      excluded.push({
+        skuPartNumber: line.skuPartNumber,
+        enabled: line.enabled,
+        reason: price == null ? "no_price_on_file" : "zero_price",
+      });
+      continue;
+    }
+    provisioned += line.enabled;
+    unassigned += line.unused;
+    if (line.unused > 0) paidCounts[line.skuPartNumber] = (paidCounts[line.skuPartNumber] ?? 0) + line.unused;
+  }
+
+  return { provisioned, unassigned, paidCounts, excluded };
+}
+
+/**
+ * The tenant's real PAID seat figures, or null when no SKU on the stored page
+ * has a price on file at all — in which case there is no honest seat count to
+ * show, and a caller must omit the figure rather than fall back to the
+ * every-SKU total that produced #333.
+ */
+export async function resolvePaidSeatFigures(
+  tenantId: string,
+): Promise<(PaidSeatFigures & { checkKey: string; collectedAt: Date | null }) | null> {
+  const waste = await resolveLicenseWasteCounts(tenantId);
+  if (!waste) return null;
+
+  const priceBySku = new Map<string, number | null>();
+  for (const line of waste.lines) {
+    if (priceBySku.has(line.skuPartNumber)) continue;
+    const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: line.skuPartNumber });
+    priceBySku.set(line.skuPartNumber, priceCents);
+  }
+
+  const figures = paidSeatFiguresFromLines(waste.lines, priceBySku);
+  if (figures.excluded.length > 0) {
+    log.info(
+      {
+        tenantId,
+        checkKey: waste.checkKey,
+        excluded: figures.excluded,
+        paidProvisioned: figures.provisioned,
+      },
+      "license-waste-source: unpriced/free SKUs excluded from the paid seat counts",
+    );
+  }
+
+  // Every SKU unpriced → we know nothing about what this tenant pays for.
+  if (figures.provisioned === 0 && Object.keys(figures.paidCounts).length === 0) {
+    log.warn(
+      { tenantId, checkKey: waste.checkKey, skusInspected: waste.lines.length },
+      "license-waste-source: no subscribed SKU has a price on file — paid seat counts cannot be sourced",
+    );
+    return null;
+  }
+
+  return { ...figures, checkKey: waste.checkKey, collectedAt: waste.collectedAt };
 }
