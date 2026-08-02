@@ -21,6 +21,7 @@ import { ReadinessPanel } from "./panels/ReadinessPanel";
 import { LicensingDive } from "./panels/LicensingDive";
 import { PillarDiveEngine } from "./panels/PillarDiveEngine";
 import { PreludeScreen } from "./panels/PreludeScreen";
+import { BriefingScene } from "./panels/BriefingScene";
 import { ArrivalOverlay } from "./panels/ArrivalOverlay";
 import { PickOverlay } from "./panels/PickOverlay";
 import { IntroPanel } from "./panels/IntroPanel";
@@ -72,7 +73,7 @@ export function WarRoomView({ v }: { v: any }) {
       </div>
       <div style={css(`position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 78% 68% at 50% 52%,transparent 42%,rgba(2,6,23,.35) 88%)`)} />
       <div style={css(`position:absolute;left:0;right:0;bottom:0;height:22%;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(2,6,23,.85));transform:translateX(${v.roomNear});transition:transform 700ms cubic-bezier(.22,1,.36,1)`)} />
-      {!v.preludeOpen && (
+      {!v.preludeOpen && !v.briefingOpen && (
         <div style={css(`position:fixed;right:18px;bottom:18px;z-index:140;display:flex;flex-direction:column;align-items:flex-end;gap:10px`)}>
           {v.chatOpenLog && <ChatLogPanel v={v} />}
           <Hov as="button" onClick={v.onToggleChatLog} style={css(`position:relative;width:52px;height:52px;border-radius:50%;border:1px solid rgba(103,232,249,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(15,23,42,.96),rgba(2,6,23,.94));backdrop-filter:blur(14px);box-shadow:0 16px 40px rgba(2,6,23,.7),0 0 30px rgba(0,120,212,.28);color:#7dd3fc;transition:all 200ms cubic-bezier(.22,1,.36,1)`)} hoverStyle={css(`border-color:rgba(103,232,249,.85);color:#e0f2fe`)}>
@@ -124,6 +125,8 @@ export function WarRoomView({ v }: { v: any }) {
           {v.licOpen && <LicensingDive v={v} />}
           {v.govOpen && <PillarDiveEngine v={v} />}
           {v.preludeOpen && <PreludeScreen v={v} />}
+          {/* Between the scan finishing and the arrivals sequence (#332). */}
+          {v.briefingOpen && <BriefingScene v={v} />}
           {v.arrivalShow && <ArrivalOverlay v={v} />}
           {v.pickShow && <PickOverlay v={v} />}
           {v.introOpen && <IntroPanel v={v} />}

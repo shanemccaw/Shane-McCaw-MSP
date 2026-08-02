@@ -97,6 +97,19 @@ import {
   isWarRoomSectionLive,
   resolveWarRoomSection,
 } from "./warRoomSections";
+import {
+  BRIEFING_BEATS,
+  BRIEFING_MAX_REGENERATIONS,
+  briefingProgress,
+  buildBriefingPersonas,
+  canRegenerate,
+  confirmPersona,
+  describePersona,
+  isBriefingComplete,
+  nextUnsettledIndex,
+  regeneratePersona,
+  rejectPersona,
+} from "./warRoomBriefing";
 
 /**
  * The hero prelude's first two real steps (#308) — not catalog-tile levels, so
@@ -200,6 +213,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     // industry is known. See warRoomQuizCatalog.ts.
     wizIndustry: WAR_ROOM_DEFAULT_INDUSTRY,
     wizCatalog: warRoomCatalogFor(WAR_ROOM_DEFAULT_INDUSTRY),
+    // ── The briefing scene (#332) ────────────────────────────────────────────
+    // Shane's introduction/tutorial and the persona confirmation loop that sit
+    // between the scan completing and the room's arrival sequence. Null until
+    // openBriefing() builds the roster off the customer's real quiz answers; see
+    // warRoomBriefing.ts for everything these four fields mean.
+    briefPersonas: null,
+    briefStage: "intro",
+    briefBeat: 0,
+    briefDescribeOpen: false,
+    briefDescribeDraft: "",
     govAt: "c0",
     govTab: "sharepoint",
     licTab: "mismatch",
@@ -2256,6 +2279,131 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   answer = (qid, opt) => this.setState(st => ({ wizAnswers: Object.assign({}, st.wizAnswers, { [qid]: opt }) }));
   enterRoom = () => { this.setState({ prelude: null, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, this.startArrivals); };
 
+  // ── The briefing scene (#332) ───────────────────────────────────────────────
+  // Sequence: hero conversation → real scan → THIS SCENE → enterRoom().
+  //
+  // Every real path that used to reach enterRoom() from the opening prelude now
+  // reaches openBriefing() instead, and enterRoom() is called from exactly one
+  // place afterwards — finishBriefing(), which will not fire until
+  // isBriefingComplete() says every persona has been settled. The two paths that
+  // deliberately still call enterRoom() directly are not customers arriving
+  // through the front of the experience:
+  //   • restoreSection("intro") — a URL restore straight into the arrivals
+  //     sequence, which must land where the URL says rather than replaying a
+  //     scene the viewer may already have done.
+  //   • wizSkip() — the explicit skip out of the whole opening.
+  //
+  // The scene lives on `prelude` because everything that gates on a prelude being
+  // up should also gate on this: tick() stays paused, deriveWarRoomSection()
+  // keeps the URL where it was, and the room's chat bubble stays hidden.
+
+  /**
+   * Open the scene, building its roster from the customer's own quiz answers.
+   *
+   * `heroAnsIds.personas` is the real catalog persona ids they ticked at the
+   * hero quiz's persona step (#308), resolved against the industry catalog
+   * ensureWizCatalog() has already pointed at their industry. Nothing about the
+   * roster is invented — see warRoomBriefing.ts for what IS placeholder here
+   * (the profile written under each persona) and why.
+   */
+  openBriefing = () => {
+    const ids = (this.state.heroAnsIds || {}).personas || [];
+    this.setState({
+      prelude: "briefing",
+      beginning: false,
+      playing: false,
+      briefPersonas: buildBriefingPersonas(this.state.wizCatalog, ids),
+      briefStage: "intro",
+      briefBeat: 0,
+      briefDescribeOpen: false,
+      briefDescribeDraft: "",
+    });
+  };
+
+  /** The persona the loop is currently asking about, or null. */
+  briefCurrent = () => {
+    const list = this.state.briefPersonas || [];
+    const i = nextUnsettledIndex(list);
+    return i < 0 ? null : list[i];
+  };
+
+  /** Walk Shane's tutorial; the last card hands off to the persona loop. */
+  briefNextBeat = () => {
+    const i = this.state.briefBeat || 0;
+    if (i + 1 < BRIEFING_BEATS.length) { this.setState({ briefBeat: i + 1 }); return; }
+    this.setState({ briefStage: "personas" });
+  };
+  briefBackBeat = () => {
+    const i = this.state.briefBeat || 0;
+    if (i > 0) this.setState({ briefBeat: i - 1 });
+  };
+
+  briefConfirm = () => {
+    const p = this.briefCurrent();
+    if (!p) return;
+    this.setState(st => ({
+      briefPersonas: confirmPersona(st.briefPersonas || [], p.id),
+      briefDescribeOpen: false,
+      briefDescribeDraft: "",
+    }));
+  };
+
+  briefReject = () => {
+    const p = this.briefCurrent();
+    if (!p) return;
+    this.setState(st => ({ briefPersonas: rejectPersona(st.briefPersonas || [], p.id) }));
+  };
+
+  /**
+   * Ask for another attempt at the current persona.
+   *
+   * STUBBED GENERATION (#332): regeneratePersona() advances the placeholder
+   * phrasing rather than calling a model — real AI generation is gated behind
+   * Shane's go-ahead to spend tokens (#302). The cycle count, the cap and the
+   * re-review are real and do not change when the call is wired in.
+   */
+  briefRegenerate = () => {
+    const p = this.briefCurrent();
+    if (!p || !canRegenerate(p)) return;
+    this.setState(st => ({
+      briefPersonas: regeneratePersona(st.briefPersonas || [], p.id),
+      briefDescribeOpen: false,
+      briefDescribeDraft: "",
+    }));
+  };
+
+  briefDescribeStart = () => this.setState({ briefDescribeOpen: true, briefDescribeDraft: "" });
+  briefDescribeCancel = () => this.setState({ briefDescribeOpen: false, briefDescribeDraft: "" });
+  briefDescribeSave = () => {
+    const p = this.briefCurrent();
+    if (!p) return;
+    const text = (this.state.briefDescribeDraft || "").trim();
+    if (!text) return;
+    this.setState(st => ({
+      briefPersonas: describePersona(st.briefPersonas || [], p.id, text),
+      briefDescribeOpen: false,
+      briefDescribeDraft: "",
+    }));
+  };
+
+  /**
+   * The ONLY thing that releases the room.
+   *
+   * Re-checks completeness rather than trusting the button that called it: the
+   * CTA only renders when the scene is finished, but this is the gate the issue
+   * asks to be real, so it holds it itself.
+   */
+  finishBriefing = () => {
+    if (!isBriefingComplete(this.state.briefPersonas || [])) return;
+    this.setState({ beginning: true });
+    clearTimeout(this.enterT);
+    this.enterT = setTimeout(() => this.setState({ beginning: false, roomEnter: true }, () => {
+      this.enterRoom();
+      clearTimeout(this.roomT);
+      this.roomT = setTimeout(() => this.setState({ roomEnter: false }), 1400);
+    }), 900);
+  };
+
   applyChange = (id, on) => {
     const c = CHANGES[id];
     if (!c) return;
@@ -3546,10 +3694,125 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         };
       })(),
 
-      preludeOpen: !!s.prelude,
+      // The briefing scene (#332) is its own full screen, not a PreludeScreen
+      // state — it sits on `prelude` so everything that pauses for a prelude also
+      // pauses for it, but PreludeScreen must not render underneath it.
+      preludeOpen: !!s.prelude && s.prelude !== "briefing",
+      briefingOpen: s.prelude === "briefing",
       preludeAnim: s.beginning ? "wr-preludeout 1150ms cubic-bezier(.4,0,.2,1) forwards" : "wr-rise 340ms cubic-bezier(.22,1,.36,1)",
       heroOpen: s.prelude === "hero",
-      chatOpen: s.prelude && s.prelude !== "hero",
+      chatOpen: s.prelude && s.prelude !== "hero" && s.prelude !== "briefing",
+      brief: (function () {
+        if (s.prelude !== "briefing") return null;
+        const personas = s.briefPersonas || [];
+        const prog = briefingProgress(personas);
+        const cur = this.briefCurrent();
+        const beatIdx = Math.min(s.briefBeat || 0, BRIEFING_BEATS.length - 1);
+        const beat = BRIEFING_BEATS[beatIdx];
+        const onIntro = s.briefStage === "intro";
+        const lastBeat = beatIdx >= BRIEFING_BEATS.length - 1;
+        const left = cur ? BRIEFING_MAX_REGENERATIONS - cur.regenerations : 0;
+        const initials = (name) => String(name || "")
+          .split(/[\s&/]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
+        // The scene's own two-part progress: the tutorial is the first third of
+        // it, the persona loop the rest, so the rail never jumps backwards.
+        const pct = onIntro
+          ? Math.round(((beatIdx + 1) / BRIEFING_BEATS.length) * 34)
+          : 34 + Math.round(prog.fraction * 66);
+        return {
+          stage: onIntro ? "intro" : "personas",
+          anim: s.beginning
+            ? "wr-preludeout 900ms cubic-bezier(.4,0,.2,1) forwards"
+            : "wr-rise 420ms cubic-bezier(.22,1,.36,1)",
+          progressPct: pct + "%",
+          stepLabel: onIntro
+            ? "Introduction · " + (beatIdx + 1) + " of " + BRIEFING_BEATS.length
+            : prog.total
+              ? "Your people · " + Math.min(prog.settled + 1, prog.total) + " of " + prog.total
+              : "Your people",
+          beat: beat ? { id: beat.id, tag: beat.tag, title: beat.title, lines: beat.lines } : null,
+          beatNextLabel: lastBeat ? "Let's check the people" : "Go on",
+          canBeatBack: beatIdx > 0,
+          onBeatNext: this.briefNextBeat,
+          onBeatBack: this.briefBackBeat,
+          beatDots: BRIEFING_BEATS.map((_, i) => ({
+            w: i === beatIdx ? "18px" : "5px",
+            bg: i <= beatIdx ? "#67e8f9" : "rgba(51,65,85,.9)"
+          })),
+          shaneLine: cur
+            ? (cur.status === "rejected"
+              ? "Fair enough — let's fix it before it gets baked into everything after this."
+              : cur.regenerations > 0
+                ? "Second go at " + cur.name + ". Closer?"
+                : "Here's how I've read " + cur.name + ". Does that match the people you actually have?")
+            : "That's your side of the table sorted.",
+          person: cur ? {
+            key: cur.id + ":" + cur.draft.variant + ":" + cur.status + ":" + (cur.ownWords ? "own" : ""),
+            name: cur.name,
+            initials: initials(cur.name),
+            position: "Person " + (prog.settled + 1) + " of " + prog.total,
+            headline: cur.draft.headline,
+            dayToDay: cur.draft.dayToDay,
+            copilotFit: cur.draft.copilotFit,
+            watchFor: cur.draft.watchFor,
+            // Driven off the draft's own flag, so the day real generation lands
+            // this badge stops claiming placeholder without anyone editing it.
+            badge: cur.draft.generated ? "Generated" : "Placeholder profile",
+            badgeInk: cur.draft.generated ? "#7dd3fc" : "#fbbf24",
+            badgeBorder: cur.draft.generated ? "rgba(103,232,249,.4)" : "rgba(251,191,36,.4)",
+            badgeBg: cur.draft.generated ? "rgba(103,232,249,.1)" : "rgba(251,191,36,.1)",
+            border: cur.status === "rejected" ? "rgba(248,113,113,.4)" : "rgba(103,232,249,.32)",
+            rejected: cur.status === "rejected",
+            showChoices: cur.status !== "rejected",
+            showOwnWords: !!cur.ownWords,
+            ownWords: cur.ownWords,
+            canRegen: canRegenerate(cur),
+            regenLabel: "Try again (" + left + " left)",
+            rejectLine: canRegenerate(cur)
+              ? "I can have another go at it, or you can just tell me what this role really is — your words go in the room either way."
+              : "I'm clearly not getting this one out of the data. Tell me what this role really is, in your own words, and we'll use that.",
+            attemptNote: cur.regenerations > 0
+              ? "Attempt " + (cur.regenerations + 1) + " of " + (BRIEFING_MAX_REGENERATIONS + 1)
+              : "",
+            describePlaceholder: "e.g. what " + cur.name + " actually spend their day doing here, and what you'd want Copilot to take off them"
+          } : null,
+          onConfirm: this.briefConfirm,
+          onReject: this.briefReject,
+          onRegenerate: this.briefRegenerate,
+          onDescribeOpen: this.briefDescribeStart,
+          onDescribeCancel: this.briefDescribeCancel,
+          onDescribeSave: this.briefDescribeSave,
+          onDescribeDraft: (e) => this.setState({ briefDescribeDraft: e.target.value }),
+          describeOpen: !!s.briefDescribeOpen,
+          describeDraft: s.briefDescribeDraft || "",
+          describeValid: !!(s.briefDescribeDraft || "").trim(),
+          describeHint: "Goes in exactly as you write it.",
+          roster: personas.map(p => {
+            const done = p.status === "confirmed";
+            const live = cur && cur.id === p.id;
+            return {
+              name: p.name,
+              initials: initials(p.name),
+              state: done ? (p.source === "customer" ? "Yours" : "Confirmed") : live ? "Now" : "Waiting",
+              stateInk: done ? "#6ee7b7" : live ? "#67e8f9" : "#475569",
+              ink: done || live ? "#e2e8f0" : "#94a3b8",
+              border: live ? "rgba(103,232,249,.5)" : done ? "rgba(52,211,153,.32)" : "rgba(30,41,59,.9)",
+              bg: live ? "rgba(8,42,60,.6)" : "rgba(2,6,23,.5)",
+              chipInk: done || live ? "#04202a" : "#94a3b8",
+              chipBg: done ? "linear-gradient(135deg,#6ee7b7,#34d399)" : live ? "linear-gradient(135deg,#67E8F9,#8B5CF6)" : "rgba(30,41,59,.9)",
+              opacity: done || live ? "1" : ".6"
+            };
+          }),
+          rosterEmpty: prog.total === 0,
+          rosterEmptyNote: "Your industry catalog hasn't got a persona list yet, so there's nothing to confirm here — the room is ready when you are.",
+          complete: prog.complete,
+          closingLine: prog.total
+            ? "Good. Everything from here is built around those " + prog.total + (prog.total === 1 ? " role" : " roles") + " and your own scan results. Let's go in — the rest of the team is already waiting."
+            : "Let's go in — the rest of the team is already waiting.",
+          onEnter: this.finishBriefing,
+          footNote: "Read-only · nothing in your tenant has been changed"
+        };
+      }).call(this),
       floorAnim: s.beginning ? "wr-floorburst 620ms cubic-bezier(.22,1,.36,1) forwards" : "none",
       heroQ: (() => {
         const i = s.heroQ || 0;
@@ -3956,14 +4219,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         };
       }),
       heroCta: !!s.heroFinished,
+      // The hero CTA no longer opens the room — it opens the briefing scene
+      // (#332), which is the only thing that may then call enterRoom(). The
+      // 1050ms hold is the prelude's own dissolve, unchanged; what lands after it
+      // is a different screen, not the arrivals sequence.
       onHeroEnter: () => {
         this.setState({ beginning: true });
         clearTimeout(this.enterT);
-        this.enterT = setTimeout(() => this.setState({ prelude: null, beginning: false, roomEnter: true, playing: false, intro: null, introStage: "arriving", introArrived: [], introHeard: [], focus: null }, () => {
-          this.startArrivals();
-          clearTimeout(this.roomT);
-          this.roomT = setTimeout(() => this.setState({ roomEnter: false }), 1400);
-        }), 1050);
+        this.enterT = setTimeout(this.openBriefing, 1050);
       },
       roomAnim: s.roomEnter ? "wr-roomin 1200ms cubic-bezier(.22,1,.36,1) both" : "none",
       // The room's ambient beam/glow follows whichever pillar the real scan is
@@ -4213,7 +4476,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           // Real: the run has genuinely finished, and the bar is the run's own
           // completion fraction rather than a position in the phase list.
           scanDone: rScan.phase === "complete" && rScan.checksDone > 0,
-          onEnter: this.enterRoom,
+          // The legacy wizard's own post-scan CTA, routed through the briefing
+          // scene for the same reason the hero CTA is (#332).
+          onEnter: this.openBriefing,
           scanPct: Math.round(rScan.pct * 100) + "%"
         };
       }).call(this) : null,
