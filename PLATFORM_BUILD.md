@@ -691,3 +691,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #339 - Full-item detail collection package (parallel to the scoring scan) | |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #341 - Epic: #302 War Room |  |
 | 2026-08-02 | ⏳ IN FLIGHT | Git #340 - Epic: #302 War Room |  |
+| 2026-08-02 | ⏳ IN FLIGHT | Git #342 - Epic: #302 War Room |  |
