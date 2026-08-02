@@ -105,6 +105,7 @@ import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
 import WarRoomPage from "@/pages/war-room";
 import WarRoomRadarPage from "@/pages/war-room-radar";
+import WarRoomLadderPage from "@/pages/war-room-ladder";
 import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
@@ -466,6 +467,12 @@ function SlugInnerSwitch() {
           because it is not a position in the briefing. */}
       <Route path="/war-room-radar">
         <ProtectedRoute component={WarRoomRadarPage} />
+      </Route>
+      {/* Candidate replacement for the radial diagram — the seven pillars as
+          rows on one shared 0-100 axis, sorted worst-first, with every real
+          stat callout named. Same real payload the room's pillar cards use. */}
+      <Route path="/war-room-ladder">
+        <ProtectedRoute component={WarRoomLadderPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other
