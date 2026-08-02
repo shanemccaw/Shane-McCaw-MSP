@@ -495,6 +495,15 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         const score = this.nodeScore(h, scores);
         const wasScore = this.nodeScore(h, baseScores);
         const status = score < 35 ? "alert" : score < 62 ? "drift" : "healthy";
+        // outer-edge label position, reusing ringLabels' formula against the business-impact
+        // segment that spans this pillar's own angle (see #313) -- hubPos() stays untouched,
+        // it's still load-bearing for pillarKeys/findings/crossLinks direction math below.
+        const hubIdx = PILLAR_SECTORS.findIndex(p => p.group === h.group);
+        const hubMid = -90 + hubIdx * sectorAngle;
+        const hubRad = hubMid * Math.PI / 180;
+        const hubSeg = segs.find(s => hubMid >= s.start - 1 && hubMid < s.end + 1) || segs[0];
+        const hubR = hubSeg.rOuter + 46;
+        const hubOuterPos = { x: CX + hubR * Math.cos(hubRad), y: CY + hubR * Math.sin(hubRad) };
         return {
           was: String(wasScore), showWas: ghosting && wasScore !== score,
           label: this.props.embed ? h.group : h.label,
@@ -506,7 +515,7 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
             const b = (this.props.pillarBadges || {})[h.group];
             return b ? String(b.v) : String(score);
           })(),
-          x: this.px(this.hubPos(h, K).x, "x"), y: this.px(this.hubPos(h, K).y, "y"),
+          x: this.px(hubOuterPos.x, "x"), y: this.px(hubOuterPos.y, "y"),
           opacity: dim(h.group),
           border: activeGroup === h.group ? "#ffffff" : h.colorHex,
           bg: status === "alert" ? "rgba(69,10,10,.85)" : status === "drift" ? "rgba(69,42,4,.85)" : "rgba(15,23,42,.92)",
@@ -549,9 +558,14 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
       pillarKeys: (() => {
         if (!(this.props.findings || []).length) return [];
         return NODES.filter(n => n.kind === "hub").map(h => {
-          const p = this.hubPos(h, 1);
-          const dx = p.x - CX, dy = p.y - CY, r = Math.sqrt(dx * dx + dy * dy) || 1;
-          const rad = r * 0.16;
+          // outer-edge position, same pillar-angle + segment lookup as hubs above (#313
+          // follow-up) -- pushed a bit further out so it doesn't sit directly on top of
+          // the hub chip it's paired with.
+          const pkIdx = PILLAR_SECTORS.findIndex(p => p.group === h.group);
+          const pkMid = -90 + pkIdx * sectorAngle;
+          const pkRad = pkMid * Math.PI / 180;
+          const pkSeg = segs.find(s => pkMid >= s.start - 1 && pkMid < s.end + 1) || segs[0];
+          const pkR = pkSeg.rOuter + 46 + 64;
           const sc = Math.round(scores[h.group] || 0);
           return {
             label: h.group, color: h.colorHex,
@@ -560,7 +574,7 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
             opacity: activeGroup && activeGroup !== h.group ? "0.2" : "1",
             size: Math.round(10 / Math.max(this.state.fit, 0.28)) + "px",
             sub: Math.round(10.5 / Math.max(this.state.fit, 0.28)) + "px",
-            x: this.px(CX + (dx / r) * rad, "x"), y: this.px(CY + (dy / r) * rad, "y")
+            x: this.px(CX + pkR * Math.cos(pkRad), "x"), y: this.px(CY + pkR * Math.sin(pkRad), "y")
           };
         });
       })(),
