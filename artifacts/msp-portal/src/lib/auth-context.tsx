@@ -289,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // the impersonated identity's role.
               const landing =
                 data.user.mspRole === "Assessment"
-                  ? "copilot-assessment"
+                  ? "war-room"
                   : data.user.mspRole === "CustomerUser"
                     ? "m365-health"
                     : "dashboard";
