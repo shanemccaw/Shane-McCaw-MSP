@@ -198,62 +198,69 @@ export function WarRoomView({ v }: { v: any }) {
               {" "}
             </div>
           </div>
-          <div ref={v.setStage} style={css(`position:relative;flex:1;min-height:200px;overflow:visible;margin:0 0 -10px;display:flex;align-items:center;justify-content:center;overflow:visible`)}>
-            <div style={css(`position:absolute;left:50%;top:50%;width:${v.tableSpan};height:${v.tableSpan};transform:translate(calc(-50% + ${v.parFar}),-38%) perspective(1500px) rotateX(74deg);pointer-events:none;transition:transform 500ms cubic-bezier(.22,1,.36,1)`)}>
-              {" "}
-              <div style={css(`position:absolute;inset:0;border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,120,212,.26),rgba(103,232,249,.08) 48%,transparent 74%);filter:blur(16px)`)} />
-              {" "}
-              <div style={css(`position:absolute;inset:6%;border-radius:50%;background:linear-gradient(160deg,rgba(15,23,42,.9),rgba(2,6,23,.55) 55%,rgba(0,120,212,.12));backdrop-filter:blur(10px);border:1px solid rgba(103,232,249,.34);box-shadow:0 0 90px rgba(0,120,212,.3),inset 0 0 120px rgba(0,120,212,.18),inset 0 0 0 1px rgba(255,255,255,.03)`)} />
-              {" "}
-              <div style={css(`position:absolute;inset:6%;border-radius:50%;background:conic-gradient(from 0deg,rgba(103,232,249,.16),transparent 22%,rgba(103,232,249,.12) 48%,transparent 72%,rgba(103,232,249,.16));opacity:.55;mask-image:radial-gradient(circle,transparent 42%,#000 70%,transparent 96%)`)} />
-              {" "}
-              <div style={css(`position:absolute;inset:26%;border-radius:50%;border:1px solid rgba(103,232,249,.2)`)} />
-              {" "}
-              <div style={css(`position:absolute;inset:44%;border-radius:50%;border:1px solid rgba(103,232,249,.28);box-shadow:0 0 40px rgba(103,232,249,.35)`)} />
-              {" "}
-            </div>
-            <div style={css(`position:absolute;left:50%;top:50%;width:${v.tableSpan};height:${v.tableSpan};transform:translate(calc(-50% + ${v.parFar}),-38%) perspective(1500px) rotateX(74deg) scale(1.12);pointer-events:none;border-radius:50%;background:radial-gradient(ellipse at center,rgba(103,232,249,.12),transparent 62%);filter:blur(26px);transition:transform 500ms cubic-bezier(.22,1,.36,1)`)} />
-            {v.pillarGhost?.show && <PillarGhost v={v} />}
-            <div style={css(`position:absolute;left:${v.boundaryX};top:${v.boundaryY};width:${v.boundarySize};height:${v.boundarySize};transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:1;border:1px dashed rgba(103,232,249,.16);box-shadow:0 0 44px rgba(0,120,212,.1) inset;transition:all 500ms cubic-bezier(.22,1,.36,1)`)} />
-            {(v.seats || []).map((p, pIdx) => (
-              <React.Fragment key={pIdx}>
-                {" "}
-                <div style={css(`position:absolute;left:${p?.seatX};top:${p?.seatY};transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;opacity:${p?.seatOpacity};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
-                  <div onClick={p?.onClick} style={css(`display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;pointer-events:auto`)}>
-                    <div style={css(`position:relative;width:${p?.avatarSize};height:${p?.avatarSize};border-radius:50%;padding:3px;background:${p?.tile};box-shadow:${p?.seatGlow};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
-                      {" "}
-                      <div style={css(`position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;background:rgba(6,12,26,.96);display:flex;align-items:center;justify-content:center`)}>
-                        <span style={css(`position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;letter-spacing:.02em;color:#e2e8f0;background:${p?.tile};opacity:.9`)}>
-                          <Txt v={p?.initials} />
+          {/* #336 interim: personas moved into a left-side vertical strip so the radar
+              can claim the freed center rectangle instead of being flanked on all sides.
+              A later pass will re-arrange them around the radar deliberately. */}
+          <div style={css(`position:relative;flex:1;min-height:200px;overflow:visible;margin:0 0 -10px;display:flex;flex-direction:row;align-items:stretch;gap:6px;overflow:visible`)}>
+            <div style={css(`position:relative;flex:none;width:104px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:14px;padding:6px 0;overflow-y:auto;overflow-x:visible`)}>
+              {(v.seats || []).map((p, pIdx) => (
+                <React.Fragment key={pIdx}>
+                  {" "}
+                  <div style={css(`display:flex;flex-direction:column;align-items:center;gap:3px;opacity:${p?.seatOpacity};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
+                    <div onClick={p?.onClick} style={css(`display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;pointer-events:auto`)}>
+                      <div style={css(`position:relative;width:${p?.avatarSize};height:${p?.avatarSize};border-radius:50%;padding:3px;background:${p?.tile};box-shadow:${p?.seatGlow};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
+                        {" "}
+                        <div style={css(`position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;background:rgba(6,12,26,.96);display:flex;align-items:center;justify-content:center`)}>
+                          <span style={css(`position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;letter-spacing:.02em;color:#e2e8f0;background:${p?.tile};opacity:.9`)}>
+                            <Txt v={p?.initials} />
+                          </span>
+                          <ImageSlot id={p?.slotId} shape={"circle"} src={p?.photo} placeholder={""} style={css(`width:100%;height:100%;position:relative;color:transparent`)} />
+                        </div>
+                        {" "}
+                        <span style={css(`position:absolute;top:-3px;right:-3px;width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${p?.roleColor};box-shadow:0 0 12px ${p?.roleColor}aa`)}>
+                          <svg width={"10"} height={"10"} viewBox={"0 0 24 24"} fill={"none"} stroke={"#fff"} strokeWidth={"2.4"} strokeLinecap={"round"} strokeLinejoin={"round"}>
+                            <path d={p?.badgeIcon} />
+                          </svg>
                         </span>
-                        <ImageSlot id={p?.slotId} shape={"circle"} src={p?.photo} placeholder={""} style={css(`width:100%;height:100%;position:relative;color:transparent`)} />
+                        {" "}
                       </div>
-                      {" "}
-                      <span style={css(`position:absolute;top:-3px;right:-3px;width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${p?.roleColor};box-shadow:0 0 12px ${p?.roleColor}aa`)}>
-                        <svg width={"10"} height={"10"} viewBox={"0 0 24 24"} fill={"none"} stroke={"#fff"} strokeWidth={"2.4"} strokeLinecap={"round"} strokeLinejoin={"round"}>
-                          <path d={p?.badgeIcon} />
-                        </svg>
-                      </span>
-                      {" "}
-                    </div>
-                    <div style={css(`display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid ${p?.seatBorder};background:rgba(3,8,20,.9);box-shadow:${p?.plateGlow};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
-                      <span style={css(`width:7px;height:7px;border-radius:50%;background:${p?.roleColor};box-shadow:0 0 8px ${p?.roleColor}`)} />
-                      <span style={css(`font-size:11px;font-weight:800;letter-spacing:.01em;color:${p?.nameColor}`)}>
-                        <Txt v={p?.first} />
-                      </span>
-                    </div>
-                    <div style={css(`font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;color:${p?.roleCaption}`)}>
-                      <Txt v={p?.roleShort} />
+                      <div style={css(`display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid ${p?.seatBorder};background:rgba(3,8,20,.9);box-shadow:${p?.plateGlow};transition:all 500ms cubic-bezier(.22,1,.36,1)`)}>
+                        <span style={css(`width:7px;height:7px;border-radius:50%;background:${p?.roleColor};box-shadow:0 0 8px ${p?.roleColor}`)} />
+                        <span style={css(`font-size:11px;font-weight:800;letter-spacing:.01em;color:${p?.nameColor}`)}>
+                          <Txt v={p?.first} />
+                        </span>
+                      </div>
+                      <div style={css(`font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;color:${p?.roleCaption}`)}>
+                        <Txt v={p?.roleShort} />
+                      </div>
                     </div>
                   </div>
-                </div>
-                {" "}
-              </React.Fragment>
-            ))}
-            <div ref={v.setMapBox} style={css(`position:relative;flex:none;width:${v.mapSize};height:${v.mapSize};flex:none;display:flex;align-items:center;justify-content:center;transform:${v.mapTransform};transition:transform 900ms cubic-bezier(.22,1,.36,1)`)}>
-              <TopologyCanvas embed={true} findings={v.mapFindings} onFinding={v.onMapFinding} pillarBadges={v.mapBadges} onPillar={v.onMapPillar} scenario={v.mapScenario} baseline={v.mapBaseline} projected={v.mapProjected} focusNode={v.mapFocusNode} focusPillar={v.mapFocusPillar} sweep={v.mapSweep} pins={v.mapPins} blast={v.mapBlast} blastData={v.mapBlastData} outcome={v.mapOutcome} style={css(`width:100%;height:100%`)} />
+                  {" "}
+                </React.Fragment>
+              ))}
             </div>
-            {v.bubble && <SpeakerBubble v={v} />}
+            <div ref={v.setStage} style={css(`position:relative;flex:1;min-width:0;height:100%;overflow:visible;display:flex;align-items:center;justify-content:center`)}>
+              <div style={css(`position:absolute;left:50%;top:50%;width:${v.tableSpan};height:${v.tableSpan};transform:translate(calc(-50% + ${v.parFar}),-38%) perspective(1500px) rotateX(74deg);pointer-events:none;transition:transform 500ms cubic-bezier(.22,1,.36,1)`)}>
+                {" "}
+                <div style={css(`position:absolute;inset:0;border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,120,212,.26),rgba(103,232,249,.08) 48%,transparent 74%);filter:blur(16px)`)} />
+                {" "}
+                <div style={css(`position:absolute;inset:6%;border-radius:50%;background:linear-gradient(160deg,rgba(15,23,42,.9),rgba(2,6,23,.55) 55%,rgba(0,120,212,.12));backdrop-filter:blur(10px);border:1px solid rgba(103,232,249,.34);box-shadow:0 0 90px rgba(0,120,212,.3),inset 0 0 120px rgba(0,120,212,.18),inset 0 0 0 1px rgba(255,255,255,.03)`)} />
+                {" "}
+                <div style={css(`position:absolute;inset:6%;border-radius:50%;background:conic-gradient(from 0deg,rgba(103,232,249,.16),transparent 22%,rgba(103,232,249,.12) 48%,transparent 72%,rgba(103,232,249,.16));opacity:.55;mask-image:radial-gradient(circle,transparent 42%,#000 70%,transparent 96%)`)} />
+                {" "}
+                <div style={css(`position:absolute;inset:26%;border-radius:50%;border:1px solid rgba(103,232,249,.2)`)} />
+                {" "}
+                <div style={css(`position:absolute;inset:44%;border-radius:50%;border:1px solid rgba(103,232,249,.28);box-shadow:0 0 40px rgba(103,232,249,.35)`)} />
+                {" "}
+              </div>
+              <div style={css(`position:absolute;left:50%;top:50%;width:${v.tableSpan};height:${v.tableSpan};transform:translate(calc(-50% + ${v.parFar}),-38%) perspective(1500px) rotateX(74deg) scale(1.12);pointer-events:none;border-radius:50%;background:radial-gradient(ellipse at center,rgba(103,232,249,.12),transparent 62%);filter:blur(26px);transition:transform 500ms cubic-bezier(.22,1,.36,1)`)} />
+              {v.pillarGhost?.show && <PillarGhost v={v} />}
+              <div style={css(`position:absolute;left:${v.boundaryX};top:${v.boundaryY};width:${v.boundarySize};height:${v.boundarySize};transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:1;border:1px dashed rgba(103,232,249,.16);box-shadow:0 0 44px rgba(0,120,212,.1) inset;transition:all 500ms cubic-bezier(.22,1,.36,1)`)} />
+              <div ref={v.setMapBox} style={css(`position:relative;flex:none;width:${v.mapSize};height:${v.mapSize};flex:none;display:flex;align-items:center;justify-content:center;transform:${v.mapTransform};transition:transform 900ms cubic-bezier(.22,1,.36,1)`)}>
+                <TopologyCanvas embed={true} findings={v.mapFindings} onFinding={v.onMapFinding} pillarBadges={v.mapBadges} onPillar={v.onMapPillar} scenario={v.mapScenario} baseline={v.mapBaseline} projected={v.mapProjected} focusNode={v.mapFocusNode} focusPillar={v.mapFocusPillar} sweep={v.mapSweep} pins={v.mapPins} blast={v.mapBlast} blastData={v.mapBlastData} outcome={v.mapOutcome} style={css(`width:100%;height:100%`)} />
+              </div>
+              {v.bubble && <SpeakerBubble v={v} />}
+            </div>
           </div>
           <div style={css(`position:relative;z-index:35;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px;padding-top:4px`)}>
             {v.userSpeaking && <UserSpeakingBubble v={v} />}

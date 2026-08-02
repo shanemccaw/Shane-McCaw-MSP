@@ -777,55 +777,23 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     this.pushLog({ method: "PATCH", url: "https://graph.microsoft.com/beta/remediation/" + id, status: 204, latency: 297, text: "remediation applied" });
   };
 
+  // #336 interim: personas now render in a dedicated left-side strip (see WarRoomView),
+  // so this no longer orbits the radar disc — it just spaces every seat evenly down
+  // the strip's band and hands back a left-edge anchor point for the speech bubble's
+  // pointer math (bubblePos/focusPoint), which still reads seat.x/seat.y in stage %.
+  // A later pass will re-arrange seats around the radar deliberately (not this one).
   computeSeats(rosterKeys) {
-    const W = this.stageW || 460, H = this.stageH || 400;
-    const box = this.mapBox || { cx: 50, cy: 50, rPx: Math.max(280, Math.min(W * 1.06, H)) / 2 };
-    const clearPx = 78;
-    const rxC = ((box.rPx + clearPx) / W) * 100;
-    const ryC = ((box.rPx + clearPx) / H) * 100;
-    const CXP = box.cx, CYP = box.cy;
-    const halfSeatPct = ((126 / 2) / H) * 100;
-    const halfSeatWPct = ((124 / 2) / W) * 100;
+    const H = this.stageH || 400;
     const headerPct = (78 / H) * 100;
-    const clampX = (x) => Math.max(halfSeatWPct + 0.5, Math.min(100 - halfSeatWPct - 0.5, x));
-    const clampY = (y) => Math.max(headerPct + halfSeatPct, Math.min(100 - halfSeatPct - 2, y));
-
-    // Every seat, host included, is laid out in ONE pass so slots cannot collide
-    // by construction: each flank arc divides by the number of seats it carries.
-    const cols = { left: [], right: [] };
-    rosterKeys.forEach(k => {
-      const pref = (PERSONAS[k] || {}).side === "right" ? "right" : "left";
-      const other = pref === "left" ? "right" : "left";
-      cols[cols[pref].length >= 5 && cols[other].length < 5 ? other : pref].push(k);
-    });
-    // the host takes the topmost slot on the emptier flank; the user the bottom of the other
-    const hostSide = cols.left.length > cols.right.length ? "right" : "left";
-    const userSide = hostSide === "left" ? "right" : "left";
-    cols[hostSide].unshift("shane");
-    cols[userSide].push("user");
-
+    const order = ["shane"].concat(rosterKeys).concat(["user"]);
+    const n = order.length || 1;
+    const yMin = Math.min(94, headerPct + 6), yMax = 97;
+    const span = Math.max(0, yMax - yMin);
+    const step = n > 1 ? span / (n - 1) : 0;
     const out = {};
-    ["left", "right"].forEach(side => {
-      const arr = cols[side], n = arr.length || 1;
-      const dirX = side === "left" ? -1 : 1;
-      // Space seats evenly down the usable band so vertical gap >= one seat where
-      // the stage allows, then solve x FROM the ellipse (with a floor) so nothing
-      // can drift toward the disc.
-      const yMin = clampY(-999), yMax = clampY(999);
-      const span = Math.max(0, yMax - yMin);
-      // spread across the FULL band (endpoints included) so short stages still fit
-      const step = n > 1 ? span / (n - 1) : span;
-      arr.forEach((k, i) => {
-        const y = n === 1 ? (yMin + yMax) / 2 : yMin + step * i;
-        const dy = Math.abs(CYP - y);
-        const kk = ryC > 0 ? Math.min(1, dy / ryC) : 1;
-        let dx = Math.max(rxC * 0.46, rxC * Math.sqrt(Math.max(0, 1 - kk * kk)));
-        // if the band cannot give a full seat of vertical clearance, stagger
-        // alternate seats outward so their boxes still cannot intersect
-        const seatHPct = halfSeatPct * 2;
-        if (step < seatHPct * 1.02 && i % 2 === 1) dx += halfSeatWPct * 1.15;
-        out[k] = { x: clampX(CXP + dirX * dx), y, side: k === "shane" ? "host" : k === "user" ? "user" : side };
-      });
+    order.forEach((k, i) => {
+      const y = n === 1 ? (yMin + yMax) / 2 : yMin + step * i;
+      out[k] = { x: 4, y, side: k === "shane" ? "host" : k === "user" ? "user" : "left" };
     });
     return out;
   }
