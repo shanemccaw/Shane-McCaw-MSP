@@ -278,6 +278,60 @@ export function deriveWarRoomScan(input: WarRoomScanInput | null | undefined): W
   };
 }
 
+export interface WarRoomTriggerInput {
+  /** The real scan state the room is currently rendering. */
+  scan?: Pick<WarRoomScanState, "phase"> | null;
+  /**
+   * True between a trigger request leaving and it settling — the caller's own
+   * flag, because nothing about an in-flight POST is on `scan` yet.
+   */
+  triggerPending?: boolean;
+}
+
+/**
+ * Whether a real trigger control should actually ask for a run right now (#329).
+ *
+ * The guard this replaces was `scan.phase !== "idle"`, added by #322 to stop the
+ * hero's "Nice to meet you" chip and the prelude footer's "Simulate scan" button
+ * — both on screen at once — from each POSTing and inserting a second
+ * `msp_diagnostic_runs` row. But `idle` is only ever the state of an account
+ * with NO scan history at all: `deriveWarRoomScan` reports `running` while a run
+ * is in flight and `complete` for the most recent finished run forever after,
+ * and there is no path back to `idle` once real history exists. So on any tenant
+ * that has ever been scanned — which is every testbed tenant the trigger exists
+ * for — that guard rejected every trigger from the very first render,
+ * permanently. Same bug class as #234, where the Telemetry page keyed its
+ * phase-advance on `scanComplete`, a value that likewise reflected the tenant's
+ * most recent run ever regardless of age.
+ *
+ * What actually makes a second request wrong is a run being in flight *now*, not
+ * the tenant having been scanned before:
+ *   - `phase === "running"` covers a run this session started (the context is
+ *     still holding its runId) and one started anywhere else — another tab, or
+ *     the real post-consent run. Both are already on `scan`.
+ *   - `triggerPending` covers the one window `phase` cannot see: between the POST
+ *     leaving and its runId reaching the provider, the request exists only in the
+ *     caller. This is #234's "did THIS session ask" flag
+ *     (`testbedScanTriggeredThisSession`) adapted to the request's own lifetime
+ *     rather than the whole session, because the War Room has two live trigger
+ *     controls a real session can reach repeatedly, not one debug button.
+ *
+ * A *finished* run deliberately does not block: once it is over, asking for a
+ * fresh one is the entire point of the control.
+ *
+ * Note this is only about not double-asking. Who is *allowed* to start a run is
+ * a separate, server-side question that this never second-guesses:
+ * `debug-trigger-scan` is hard-gated to testbed tenants, and the page's own
+ * trigger handler does not POST at all for a real customer — their scan is the
+ * one that already ran at consent time (#305), which is the run this room is
+ * reporting.
+ */
+export function shouldTriggerWarRoomScan(input?: WarRoomTriggerInput | null): boolean {
+  if (!input) return true;
+  if (input.triggerPending) return false;
+  return (input.scan?.phase ?? "idle") !== "running";
+}
+
 /**
  * The two document rows (HERO_PHASE `docs` and `sow`) in the pillar list. No
  * monitoring check produces a document, so these read the real Assessment

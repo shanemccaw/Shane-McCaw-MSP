@@ -85,7 +85,7 @@ import {
   warRoomCatalogFor,
 } from "./warRoomQuizCatalog";
 import { getCurrentAccessToken } from "@/lib/auth-context";
-import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./warRoomScan";
+import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, shouldTriggerWarRoomScan, warRoomPhaseStates } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
 import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY } from "./warRoomPillarStats";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
@@ -2200,16 +2200,27 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
    * footer) renders on screen at the same time as the hero chat, so a real
    * session can reach both this and heroSmart('go')'s call to this same
    * method. Neither `onTriggerScan` nor the debug-trigger-scan route it calls
-   * dedupes — every POST inserts a fresh `msp_diagnostic_runs` row — so once a
-   * run is already known (running or complete) this is a no-op instead of a
-   * second run.
+   * dedupes — every POST inserts a fresh `msp_diagnostic_runs` row — so while a
+   * run is already in flight this is a no-op instead of a second run.
+   *
+   * That guard used to read `scan.phase !== "idle"`, which also rejected a
+   * FINISHED run — and `phase` never returns to "idle" once a tenant has any
+   * scan history, so it blocked every trigger forever on exactly the testbed
+   * accounts the trigger exists for (#329). `shouldTriggerWarRoomScan` holds the
+   * real rule now, with `scanTriggerPending` covering the window between the
+   * POST leaving and its run showing up on props; see warRoomScan.ts.
    */
+  scanTriggerPending = false;
+
   triggerScan = () => {
-    const scan = this.props.scan;
-    if (scan && scan.phase !== "idle") return;
+    if (!shouldTriggerWarRoomScan({ scan: this.props.scan, triggerPending: this.scanTriggerPending })) return;
     this.heroFeedTick();
     const trigger = this.props.onTriggerScan;
-    if (typeof trigger === "function") Promise.resolve(trigger()).catch(() => {});
+    if (typeof trigger !== "function") return;
+    this.scanTriggerPending = true;
+    Promise.resolve(trigger())
+      .catch(() => {})
+      .then(() => { this.scanTriggerPending = false; });
   };
 
   /**

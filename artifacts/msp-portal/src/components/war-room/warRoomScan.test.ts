@@ -26,6 +26,7 @@ import {
   WAR_ROOM_SCAN_IDLE,
   deriveWarRoomScan,
   warRoomDocState,
+  shouldTriggerWarRoomScan,
   warRoomPhaseStates,
   warRoomPillarForCheckKey,
   type WarRoomCheckResult,
@@ -301,6 +302,134 @@ test("document rows read the real doc workflow, never the scan", () => {
 
   const withDocs = warRoomPhaseStates(scan, { status: "completed" });
   assert.deepEqual(withDocs.slice(-2), ["done", "done"]);
+});
+
+// ── The trigger gate (#329) ─────────────────────────────────────────────────
+// `triggerScan()` in WarRoomLogic.tsx refused to fire whenever
+// `scan.phase !== "idle"`. `idle` is only ever the state of an account that has
+// never been scanned at all, so on a testbed tenant with real history — which is
+// every testbed tenant, and the only kind of tenant the trigger is reachable for
+// — every click of "Nice to meet you — let's get started" was silently dropped,
+// from the first render, forever. These replay that exact account state.
+
+/** A real terminal run from earlier: a tenant that has genuinely been scanned. */
+const PRIOR_RUN = {
+  runId: "run-earlier",
+  status: "partial",
+  checksTotal: 137,
+  checksOk: 121,
+  checksError: 9,
+  checksLicenseGap: 7,
+};
+
+/** What the room derives on first render for an account with prior history. */
+const withHistory = () =>
+  deriveWarRoomScan({
+    scanCheckResults: [],
+    streamedRunId: null,
+    triggeredRunId: null,
+    active: null,
+    lastRunSummary: PRIOR_RUN,
+  });
+
+test("a testbed account with real prior scan history can still trigger a fresh scan", () => {
+  const scan = withHistory();
+  // First render, nothing streaming and nothing active: the room is reporting a
+  // real run that finished earlier.
+  assert.equal(scan.phase, "complete");
+  assert.equal(scan.runId, PRIOR_RUN.runId);
+  // The old guard's own condition, spelled out — true here, which is exactly why
+  // the trigger was dead on this account.
+  assert.equal(scan.phase !== "idle", true);
+  // The real rule lets the click through.
+  assert.equal(shouldTriggerWarRoomScan({ scan, triggerPending: false }), true);
+});
+
+test("no state an account with real history can reach ever reads idle again", () => {
+  // Which is why keying the guard on `idle` could never re-open once history
+  // existed: mid-run it is `running`, and every moment after it is `complete`.
+  const midRun = deriveWarRoomScan({
+    scanCheckResults: streamed(4),
+    streamedRunId: "run-now",
+    triggeredRunId: "run-now",
+    lastRunSummary: PRIOR_RUN,
+  });
+  assert.equal(midRun.phase, "running");
+  assert.equal(withHistory().phase, "complete");
+  // Only a tenant that has genuinely never been scanned reads idle.
+  assert.equal(deriveWarRoomScan({ scanCheckResults: [], streamedRunId: null }).phase, "idle");
+  assert.equal(shouldTriggerWarRoomScan({ scan: deriveWarRoomScan({}) }), true);
+});
+
+test("a run really in flight still blocks a second one (#322)", () => {
+  // The run this session started — the context is still holding its runId.
+  const mine = deriveWarRoomScan({
+    scanCheckResults: streamed(2),
+    streamedRunId: "run-now",
+    triggeredRunId: "run-now",
+  });
+  assert.equal(mine.phase, "running");
+  assert.equal(shouldTriggerWarRoomScan({ scan: mine }), false);
+
+  // A run started anywhere else — another tab, or the real post-consent run a
+  // customer never triggered themselves — arrives on the poll's `active` block
+  // with no triggeredRunId at all.
+  const elsewhere = deriveWarRoomScan({
+    scanCheckResults: [],
+    streamedRunId: null,
+    triggeredRunId: null,
+    active: { runId: "run-consent", checksOk: 12, checksError: 0, checksLicenseGap: 1, checksTotal: 137 },
+    lastRunSummary: PRIOR_RUN,
+  });
+  assert.equal(elsewhere.phase, "running");
+  assert.equal(shouldTriggerWarRoomScan({ scan: elsewhere }), false);
+});
+
+test("the in-flight request blocks the other control before any run is visible", () => {
+  // "Nice to meet you" and the prelude footer's "Simulate scan" are on screen at
+  // the same time (#322). Between the first POST leaving and its runId reaching
+  // the provider, `scan` still shows the historical run — so `phase` alone
+  // cannot dedupe the two, and the caller's own pending flag has to.
+  assert.equal(shouldTriggerWarRoomScan({ scan: withHistory(), triggerPending: true }), false);
+});
+
+test("the gate re-opens once the run this session started has finished", () => {
+  // The whole real sequence, on a testbed account that already had history.
+  const before = withHistory();
+  assert.equal(shouldTriggerWarRoomScan({ scan: before, triggerPending: false }), true);
+
+  // POST away, nothing on props yet.
+  assert.equal(shouldTriggerWarRoomScan({ scan: before, triggerPending: true }), false);
+
+  // The new run is streaming — the pending flag has cleared, `phase` holds it now.
+  const live = deriveWarRoomScan({
+    scanCheckResults: streamed(3),
+    streamedRunId: "run-new",
+    triggeredRunId: "run-new",
+  });
+  assert.equal(shouldTriggerWarRoomScan({ scan: live, triggerPending: false }), false);
+
+  // Run over: the room is reporting a finished run again, and a fresh one can be
+  // asked for without reloading the page.
+  const finished = deriveWarRoomScan({
+    scanCheckResults: [],
+    streamedRunId: null,
+    triggeredRunId: null,
+    active: null,
+    lastRunSummary: { ...PRIOR_RUN, runId: "run-new", status: "completed" },
+    retainedResults: streamed(RUN.length),
+    retainedRunId: "run-new",
+  });
+  assert.equal(finished.phase, "complete");
+  assert.equal(finished.runId, "run-new");
+  assert.equal(shouldTriggerWarRoomScan({ scan: finished, triggerPending: false }), true);
+});
+
+test("nothing known at all does not block the trigger", () => {
+  assert.equal(shouldTriggerWarRoomScan(), true);
+  assert.equal(shouldTriggerWarRoomScan(null), true);
+  assert.equal(shouldTriggerWarRoomScan({ scan: null }), true);
+  assert.equal(shouldTriggerWarRoomScan({ scan: WAR_ROOM_SCAN_IDLE }), true);
 });
 
 test("phase states line up with the order the intro renders them", () => {
