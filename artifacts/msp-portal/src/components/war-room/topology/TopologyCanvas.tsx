@@ -149,6 +149,38 @@ const BUSINESS_IMPACT_SEGMENTS = [
 
 const CX = 1200, CY = 750, VB_X = 250, VB_Y = -220, VB = 1900;
 
+/* ── Business-impact ring geometry (#312) ───────────────────────────────────
+ * The two thin rings encode severity as SIZE: a segment's inner radius is
+ * fixed and its outer radius grows with impact, so a worse segment is a
+ * visibly heavier band. That language was already in the ported design; the
+ * numbers made it unreadable. `rOuter = rOut + (impact/100) * 12` against a
+ * 34-unit band on a 700+ radius moved a segment by at most 12 units — under
+ * 2% of the radius, and about a third of one band's own thickness — so five
+ * segments with genuinely different severities all looked identical.
+ *
+ * Sizing it from what the eye can actually resolve rather than from the old
+ * constant: a length difference reads reliably at roughly 20% relative
+ * difference and comfortably at ~50%. Real per-pillar engine scores put the
+ * five segments' impacts in a ~30-70 band, i.e. a spread of ~40 points, so
+ * for that spread to clear 50% we need IMPACT_RADIUS_UNITS >= 1.25 x the
+ * base thickness. The full 0-100 range then spans 16 -> 44 units, a 2.75x
+ * thickness ratio between a healthy segment and a critical one.
+ *
+ * The envelope is fixed at both ends and is what caps these: the pillar
+ * wedges end at r=670 and the outermost ring must stay near 770, because
+ * the pillar badges (#313) hang off `seg.rOuter + 46` and the findings keys
+ * off `+ 46 + 64`, and pushing those further out clips them. 672 + 2*(16+28)
+ * + a 10-unit minimum separation lands the outer edge at 770 — the two rings
+ * therefore cannot collide however bad the scan is, and the gap between them
+ * closing as severity rises is a second, free reading of the same signal. */
+const RING_BASE_THICKNESS = 16;
+const IMPACT_RADIUS_UNITS = 28;
+const SCAN_RING_INNER = 672;
+const PROJ_RING_INNER = 726;
+
+/** Neutral grey for a segment no real pillar score feeds — never a severity colour. */
+const NO_DATA_COLOR = "#475569";
+
 class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> {
   state = { scores: null, scenario: "baseline", selectedNode: null, selectedSegment: null, fit: 0.55, zoom: 1, panX: 0, panY: 0, dragging: false };
 
@@ -257,31 +289,62 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
 
   renderVals() {
     const st = this.state;
-    const baseScores = Object.assign({}, st.scores || this.baseScores(), this.props.baseline || {});
+    const demoScores = st.scores || this.baseScores();
+    // `baseline` carries the real engine's per-pillar scores (#312) and holds
+    // `null` for a pillar it genuinely measured nothing for. Two views of it:
+    //
+    //   numeric  — nulls dropped back to the canvas's own demo score, so the
+    //              wedges/hubs/nodes/core keep rendering something. Same
+    //              behaviour these had before this change.
+    //   measured — null-preserving, and the ONLY thing the impact rings read,
+    //              because a ring is the one element whose colour and size are
+    //              a claim about what the scan found.
+    const numericOverlay = (src) => {
+      if (!src) return null;
+      const o = {};
+      PILLAR_SECTORS.forEach(p => {
+        const v = src[p.group];
+        if (typeof v === "number" && isFinite(v)) o[p.group] = v;
+      });
+      return o;
+    };
+    const baseScores = Object.assign({}, demoScores, numericOverlay(this.props.baseline) || {});
     const proj = this.props.projected || null;
-    const scores = proj ? Object.assign({}, baseScores, proj) : baseScores;
+    const scores = proj ? Object.assign({}, baseScores, numericOverlay(proj) || {}) : baseScores;
     const ghosting = !!proj && PILLAR_SECTORS.some(p => proj[p.group] !== undefined && proj[p.group] !== baseScores[p.group]);
     const sel = st.selectedNode;
 
+    const measuredBase = this.props.baseline || demoScores;
+    const measuredProj = proj ? Object.assign({}, measuredBase, proj) : measuredBase;
+
     const band = (src, rIn, rOut) => BUSINESS_IMPACT_SEGMENTS.map(seg => {
       let sum = 0, total = 0;
-      seg.w.forEach(p => { sum += src[p[0]] * p[1]; total += p[1]; });
-      const weighted = Math.round(sum / total);
-      const impact = Math.max(0, Math.min(100, 100 - weighted));
-      const severity = impact > 30 ? "critical" : impact > 15 ? "elevated" : "stable";
-      const colorHex = severity === "critical" ? "#D13438" : severity === "elevated" ? "#D97706" : "#10B981";
+      seg.w.forEach(p => {
+        const v = src[p[0]];
+        // A pillar with no real score is dropped from the weighting rather than
+        // filled in — the segment reads on what was actually measured, and a
+        // segment with nothing behind it says so instead of inventing severity.
+        if (typeof v !== "number" || !isFinite(v)) return;
+        sum += v * p[1]; total += p[1];
+      });
+      const measured = total > 0;
+      const weighted = measured ? Math.round(sum / total) : 0;
+      const impact = measured ? Math.max(0, Math.min(100, 100 - weighted)) : 0;
+      const severity = !measured ? "nodata" : impact > 30 ? "critical" : impact > 15 ? "elevated" : "stable";
+      const colorHex = severity === "nodata" ? NO_DATA_COLOR
+        : severity === "critical" ? "#D13438" : severity === "elevated" ? "#D97706" : "#10B981";
       return {
         id: seg.id, label: seg.label, start: seg.start, end: seg.end,
-        impact, severity, colorHex,
-        rInner: rIn, rOuter: rOut + Math.round((impact / 100) * 12),
-        fillOpacity: severity === "critical" ? 0.78 : severity === "elevated" ? 0.48 : 0.35,
-        strokeOpacity: severity === "critical" ? 0.95 : severity === "elevated" ? 0.75 : 0.65
+        impact, measured, severity, colorHex,
+        rInner: rIn, rOuter: rOut + Math.round((impact / 100) * IMPACT_RADIUS_UNITS),
+        fillOpacity: severity === "nodata" ? 0.12 : severity === "critical" ? 0.78 : severity === "elevated" ? 0.48 : 0.35,
+        strokeOpacity: severity === "nodata" ? 0.3 : severity === "critical" ? 0.95 : severity === "elevated" ? 0.75 : 0.65
       };
     });
 
     // inner thin ring = what the scan found; outer thin ring = where their answers take it
-    const scanSegs = band(baseScores, 672, 706);
-    const projSegs = band(scores, 722, 756);
+    const scanSegs = band(measuredBase, SCAN_RING_INNER, SCAN_RING_INNER + RING_BASE_THICKNESS);
+    const projSegs = band(measuredProj, PROJ_RING_INNER, PROJ_RING_INNER + RING_BASE_THICKNESS);
     const segs = projSegs;
     const ghostSegs = [];
 
@@ -467,8 +530,8 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         return {
           id: seg.id,
           path: this.sector(CX, CY, seg.rInner, seg.rOuter, seg.start, seg.end),
-          edgePath: seg.severity === "stable" || !moved ? "" : this.sector(CX, CY, seg.rOuter - 4, seg.rOuter, seg.start, seg.end),
-          edgeAnim: seg.severity === "stable" || !moved ? "none" : "tcPulse 2s ease-in-out infinite",
+          edgePath: seg.severity === "stable" || seg.severity === "nodata" || !moved ? "" : this.sector(CX, CY, seg.rOuter - 4, seg.rOuter, seg.start, seg.end),
+          edgeAnim: seg.severity === "stable" || seg.severity === "nodata" || !moved ? "none" : "tcPulse 2s ease-in-out infinite",
           color: seg.colorHex,
           stroke: st.selectedSegment === seg.id ? "#FFFFFF" : seg.colorHex,
           strokeWidth: st.selectedSegment === seg.id ? "4" : moved ? "3" : "2",
@@ -483,7 +546,9 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
       ringLabels: (this.props.embed ? [] : segs).map(seg => {
         const mid = (seg.start + seg.end) / 2, rad = mid * Math.PI / 180, r = seg.rOuter + 46;
         return {
-          label: seg.label.toUpperCase(), impact: String(seg.impact), color: seg.colorHex,
+          // "—" rather than "0" when nothing real feeds this segment: a 0% impact
+          // reading is a claim of perfect health, not an absence of measurement.
+          label: seg.label.toUpperCase(), impact: seg.measured ? String(seg.impact) : "—", color: seg.colorHex,
           border: st.selectedSegment === seg.id ? "#FFFFFF" : seg.colorHex,
           borderWidth: st.selectedSegment === seg.id ? "3px" : "2px",
           x: this.px(CX + r * Math.cos(rad), "x"), y: this.px(CY + r * Math.sin(rad), "y"),

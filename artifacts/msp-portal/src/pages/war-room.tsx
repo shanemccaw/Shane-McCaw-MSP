@@ -3,6 +3,8 @@ import { useLocation, useParams } from "wouter";
 import { WarRoomLogic } from "@/components/war-room/WarRoomLogic";
 import { warRoomUrlSync } from "@/components/war-room/warRoomSections";
 import { deriveWarRoomScan } from "@/components/war-room/warRoomScan";
+import { toTopologyBaseline } from "@/components/war-room/warRoomTopologyScores";
+import { useRealTelemetryComparison } from "@/components/copilot-assessment/useRealTelemetryComparison";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
 import "@/components/war-room/war-room.css";
@@ -65,6 +67,24 @@ export default function WarRoomPage() {
       cancelled = true;
     };
   }, [fetchWithAuth]);
+
+  // Real per-pillar scores for the radial diagram's two business-impact rings
+  // (#312). Same hook, same endpoint and same health engine the Telemetry
+  // page's radar already runs on (#245) — `GET /portal/assessment/
+  // telemetry-comparison` → `calculateArchitectureHealthScore` — rather than a
+  // second scoring path built for this diagram. It shares the `Assessment` role
+  // floor with `/portal/scan-status`, which this page already polls, so it is
+  // reachable for every role that can open the War Room, and it recomputes off
+  // the same live run this page is already watching.
+  //
+  // `pillars` has already dropped every pillar the engine has no real score
+  // for, so `toTopologyBaseline` leaves those null and the canvas renders their
+  // segments as "no data" instead of colouring them.
+  const telemetry = useRealTelemetryComparison();
+  const pillarScores = useMemo(
+    () => (telemetry.loaded ? toTopologyBaseline(telemetry.pillars) : null),
+    [telemetry.loaded, telemetry.pillars],
+  );
 
   // Hold on to the last per-check results we really saw. The provider empties
   // `scanCheckResults` as soon as a run finishes (it releases the held runId,
@@ -166,10 +186,27 @@ export default function WarRoomPage() {
       scan,
       docWorkflow: data?.docWorkflow ?? null,
       customerName,
+      // #312 — the real per-pillar scores behind the radial diagram's rings, so
+      // "why is that segment grey/red" is answerable without a rebuild.
+      pillarScores,
+      telemetry: { loaded: telemetry.loaded, live: telemetry.live, generatedAt: telemetry.generatedAt },
       derived: { isTestbed: data?.isTestbed ?? false, streamedRunId, triggeredRunId },
       user: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
     }),
-    [section, scan, data?.docWorkflow, customerName, data?.isTestbed, streamedRunId, triggeredRunId, user],
+    [
+      section,
+      scan,
+      data?.docWorkflow,
+      customerName,
+      pillarScores,
+      telemetry.loaded,
+      telemetry.live,
+      telemetry.generatedAt,
+      data?.isTestbed,
+      streamedRunId,
+      triggeredRunId,
+      user,
+    ],
   );
 
   return (
@@ -181,6 +218,7 @@ export default function WarRoomPage() {
         docWorkflow={data?.docWorkflow ?? null}
         onTriggerScan={handleTriggerScan}
         customerName={customerName}
+        pillarScores={pillarScores}
       />
 
       {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ */}

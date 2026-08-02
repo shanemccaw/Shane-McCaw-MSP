@@ -86,6 +86,7 @@ import {
 import { getCurrentAccessToken } from "@/lib/auth-context";
 import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
+import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
 import {
   WAR_ROOM_SECTIONS,
   deriveWarRoomSection,
@@ -5604,49 +5605,32 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         Object.keys(FINDINGS).forEach(k => { const m = FINDINGS[k].find(x => x.id === id); if (m) { hit = m; pillar = k; } });
         if (hit) this.setState({ findingCard: Object.assign({}, hit, { pillar: pillar }), playing: false });
       },
-      mapBaseline: (() => {
-        let baseMo = 0;
-        LIC_SKUS.forEach(sk => { baseMo += sk.purchased * sk.cost; });
-        const licBase = Math.max(18, Math.round(100 - (LIC_SKUS.reduce((a, sk) => a + Math.max(0, sk.purchased - sk.assigned) * sk.cost, 0) / baseMo) * 250));
-        return {
-          Security: DIVES.security.score, Governance: GOV_BASE.score, Licensing: licBase,
-          Adoption: DIVES.adoption.score, Copilot: COPILOT_BASE,
-          Compliance: DIVES.compliance.score, Health: DIVES.health.score
-        };
-      })(),
-      mapProjected: (() => {
-        const on = s.levers || {};
-        const staged = s.changes || {};
-        const cap = (v) => Math.min(99, Math.round(v));
-        const out = {};
-        // every staged change feeds the pillar it belongs to
-        let cGov = 0, cSec = 0, cRdy = 0;
-        Object.keys(CHANGES).forEach(id => {
-          if (!staged[id]) return;
-          const c = CHANGES[id];
-          cGov += c.gov || 0; cSec += c.sec || 0; cRdy += c.ready || 0;
-        });
-        const govGain = GOV_LEVERS.filter(l => on[l.id]).reduce((a, l) => a + l.d.score, 0) + cGov;
-        if (govGain) out.Governance = cap(GOV_BASE.score + govGain);
-        if (cSec) out.Security = cap((DIVES.security ? DIVES.security.score : 41) + cSec);
-        if (cRdy) out.Copilot = cap(28 + cRdy);
-        Object.keys(DIVES).forEach(k => {
-          let gain = DIVES[k].levers.filter(l => on[k + ":" + l.id]).reduce((a, l) => a + l.score, 0);
-          const ic = DIVE_INV[k];
-          if (ic && on[k + ":" + ic.toggle.id]) gain += 9;
-          if (ic && s.invRun && s.invRun[k] === "done") gain += 4;
-          if (gain) out[k.charAt(0).toUpperCase() + k.slice(1)] = cap(DIVES[k].score + gain);
-        });
-        const adj = s.lic || {};
-        if (Object.keys(adj).length) {
-          let nowMo = 0, wasteMo = 0;
-          LIC_SKUS.forEach(sk => { const q = adj[sk.id] === undefined ? sk.purchased : adj[sk.id]; nowMo += q * sk.cost; wasteMo += Math.max(0, q - sk.assigned) * sk.cost; });
-          out.Licensing = Math.max(18, Math.min(99, Math.round(100 - (nowMo > 0 ? wasteMo / nowMo : 0) * 250)));
-          const seats = adj.copilot === undefined ? 25 : adj.copilot;
-          out.Copilot = cap(28 + Math.min(62, (seats / 1876) * 120));
-        }
-        return Object.keys(out).length ? out : null;
-      })(),
+      // Radial diagram, inner ring (#312) — the REAL scan's per-pillar scores,
+      // straight off the platform's own health engine via the same
+      // `useRealTelemetryComparison()` path #245 proved on the Telemetry page
+      // (war-room.tsx maps them onto the canvas's seven groups). Null until the
+      // real payload lands; the canvas then falls back to its own demo scores
+      // for that first moment rather than rendering an empty diagram.
+      //
+      // What was here: the fictional Northline Health constants —
+      // `DIVES.security.score`, `GOV_BASE.score`, `COPILOT_BASE` and a waste
+      // ratio over the demo `LIC_SKUS` inventory. That, plus a projection built
+      // on the same constants, is why both rings drew from effectively one
+      // low-skewed source and rendered uniformly red.
+      mapBaseline: this.props.pillarScores || null,
+      // Outer ring (#312) — the same real baseline moved by the customer's own
+      // live toggle state. Their levers, staged changes, inventory runs and
+      // licence adjustments are real input and are unchanged; the arithmetic
+      // that turns them into points now yields a DELTA (see
+      // warRoomTopologyScores.ts) applied to the real baseline above, instead of
+      // an absolute score anchored to a demo constant.
+      mapProjected: projectTopologyScores(
+        this.props.pillarScores || null,
+        computeTopologyDeltas(
+          { levers: s.levers, changes: s.changes, lic: s.lic, invRun: s.invRun },
+          { CHANGES, GOV_LEVERS, DIVES, DIVE_INV, LIC_SKUS },
+        ),
+      ),
       mapFocusNode: (() => {
         const site = SITES.find(x => x.id === s.demoSite);
         if (site) return site.type === "Teams" ? "External Access Risk" : "Sharing Governance";
