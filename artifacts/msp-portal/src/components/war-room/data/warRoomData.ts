@@ -4271,6 +4271,24 @@ export const TOPIC_FOR = {
   meter: "licensing", seatdrift: "licensing"
 };
 
+// Same finding-text categorization WarRoomLogic's route() uses for chat
+// questions, reused so a whiteboard finding (askFinding) resolves to a real
+// TOPICS entry instead of leaving qa.topicId unset (#328).
+export const routeFindingFocus = (text: string) => {
+  const t = (text || "").toLowerCase();
+  if (/dlp|egress|mailbox/.test(t)) return "dlp";
+  if (/onedrive|personal store|external shar/.test(t)) return "guests";
+  if (/sharepoint|oversharing|org-wide|link/.test(t)) return "sharepoint";
+  if (/intune|device|baseline|drift/.test(t)) return "intune";
+  if (/licen|seat|roi|cost|spend/.test(t)) return "meter";
+  if (/conditional|ca policy|mfa|sign-in|identity/.test(t)) return "ca";
+  if (/risk|msa|legal|exposure|contract/.test(t)) return "dlp";
+  return "copilotready";
+};
+
+export const resolveFindingTopicId = (fx: { t?: string; m?: string }) =>
+  TOPIC_FOR[routeFindingFocus((fx.t || "") + " " + (fx.m || ""))] || "copilotready";
+
 // war-room finding → node label on the tenant map
 export const MAP_NODE = {
   entra: "MFA Coverage", ca: "Policy Compliance", defender: "Risky Sign-ins",

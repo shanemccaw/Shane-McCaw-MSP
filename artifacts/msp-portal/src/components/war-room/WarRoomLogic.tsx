@@ -66,6 +66,7 @@ import {
   TOPICS,
   TOPIC_NODE,
   TOPIC_FOR,
+  resolveFindingTopicId,
   MAP_NODE,
   MAP_PILLAR,
   SITES,
@@ -1489,7 +1490,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   // a finding on the whiteboard opens a targeted conversation about that finding
   askFinding = (pillar, fx) => {
     if (this.state.dive !== "governance") {
-      this.setState(st => ({ qa: { who: "shane", text: fx.t + " — " + fx.m + ". That one carries into " + fx.sow + "." } }));
+      const topicId = resolveFindingTopicId(fx);
+      const answer = fx.t + " — " + fx.m + ". That one carries into " + fx.sow + ".";
+      this.setState(st => ({ qa: { q: "Explain " + fx.t, who: "shane", topicId, thinking: false, answer } }));
       return;
     }
     const who = /label|retention|MSA|regulated/i.test(fx.t + fx.m) ? "beth"
