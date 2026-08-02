@@ -104,6 +104,7 @@ import CopilotPage from "@/pages/copilot";
 import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
 import WarRoomPage from "@/pages/war-room";
+import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
@@ -448,8 +449,12 @@ function SlugInnerSwitch() {
       </Route>
       {/* M365 War Room — full-screen Copilot readiness briefing, ported from the
           Claude Design prototype. Owns the whole viewport, so it renders without
-          AppShell (its root is position:fixed) and carries its own exit control. */}
-      <Route path="/war-room">
+          AppShell (its root is position:fixed) and carries its own exit control.
+          :section is optional so bare /war-room still opens on the hero prelude
+          (which is not one of the named stops) while every named stop is its own
+          deep-linkable URL — and so one route serves both, keeping the briefing
+          mounted across section changes rather than remounting it. */}
+      <Route path={WAR_ROOM_ROUTE_PATTERN}>
         <ProtectedRoute component={WarRoomPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment

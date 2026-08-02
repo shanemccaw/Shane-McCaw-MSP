@@ -1,5 +1,7 @@
-import { useLocation } from "wouter";
+import { useCallback } from "react";
+import { useLocation, useParams } from "wouter";
 import { WarRoomLogic } from "@/components/war-room/WarRoomLogic";
+import { warRoomUrlSync } from "@/components/war-room/warRoomSections";
 import "@/components/war-room/war-room.css";
 
 /**
@@ -9,16 +11,38 @@ import "@/components/war-room/war-room.css";
  * the whole viewport (its root is `position:fixed; inset:0`), so it deliberately renders
  * outside AppShell rather than inside it — the shell would be covered either way.
  *
+ * Route: /war-room/:section? — each of the stops the transport jump-menu already names
+ * (introductions, the six pillar deep-dives, the live demo, readiness, SOW, remediation,
+ * timeline, documents) is its own deep-linkable URL, so the position survives a refresh
+ * and Back/Forward work (#303). The `:section` param is optional rather than the
+ * redirect-to-a-default shape /copilot-assessment/:step uses, for two reasons: the War
+ * Room opens on a hero prelude that is genuinely not one of the named stops, so there is
+ * nothing honest to redirect a bare /war-room to; and a single route keeps this one
+ * component mounted across every section change, which is the remount concern that
+ * pattern exists to solve in the first place.
+ *
  * The exit control below is the one piece of chrome that is NOT in the design: the
  * prototype was a standalone page with nowhere to return to, and without it a user who
  * opens this route inside the portal has no way back out.
  */
 export default function WarRoomPage() {
   const [, setLocation] = useLocation();
+  const { section } = useParams<{ section?: string }>();
+
+  // The briefing's own beat machine still owns navigation; this only mirrors it
+  // into the address bar. An explicitly chosen stop pushes a history entry, a
+  // position the briefing reached on its own replaces one — see warRoomUrlSync.
+  const handleSectionChange = useCallback(
+    (next: string, explicit: boolean) => {
+      const { path, replace } = warRoomUrlSync(next, explicit);
+      setLocation(path, { replace });
+    },
+    [setLocation],
+  );
 
   return (
     <div className="wr-root">
-      <WarRoomLogic />
+      <WarRoomLogic section={section} onSectionChange={handleSectionChange} />
 
       <button
         type="button"

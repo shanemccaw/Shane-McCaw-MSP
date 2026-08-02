@@ -60,6 +60,8 @@ import {
   DOCS_WALK,
   TIMELINE,
   PERSONA_CATALOG,
+  WIZ_PERSONAS,
+  WIZ_QUESTIONS,
   SCAN_PHASES,
   GOV_BASE,
   GOV_LEVERS,
@@ -75,15 +77,11 @@ import {
   walkPillarRef,
 } from "./data/warRoomData";
 import {
-  WAR_ROOM_DEFAULT_INDUSTRY,
-  buildWarRoomPersonas,
-  buildWarRoomQuestions,
-  fetchSavedIndustry,
-  loadWarRoomCatalog,
-  resolveWarRoomIndustry,
-  warRoomCatalogFor,
-} from "./warRoomQuizCatalog";
-import { getCurrentAccessToken } from "@/lib/auth-context";
+  WAR_ROOM_SECTIONS,
+  deriveWarRoomSection,
+  isWarRoomSectionLive,
+  resolveWarRoomSection,
+} from "./warRoomSections";
 
 /**
  * Drives the whole War Room: the scripted briefing beat machine, the topology focus
@@ -106,18 +104,8 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     onb: [],
     onbPicked: [],
     wizStep: 0,
-    // Nothing pre-ticked (#306). The roster is now the customer's real industry
-    // catalog, and pre-selecting roles would be asserting which of them exist in
-    // their tenant — the question the step is there to ask.
-    wizPersonas: [],
+    wizPersonas: WIZ_PERSONAS.filter(p => p.default).map(p => p.id),
     wizAnswers: {},
-    // The industry the roster and questions are scoped to, and that industry's
-    // resolved catalog. Seeded with the real 'default' row set rather than null
-    // so the conversation has real content to ask from on the first frame; both
-    // are re-pointed by ensureWizCatalog() as soon as the customer's own
-    // industry is known. See warRoomQuizCatalog.ts.
-    wizIndustry: WAR_ROOM_DEFAULT_INDUSTRY,
-    wizCatalog: warRoomCatalogFor(WAR_ROOM_DEFAULT_INDUSTRY),
     scanStep: 0,
     govAt: "c0",
     govTab: "sharepoint",
@@ -259,11 +247,17 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   };
 
   componentDidMount() {
-    if (this.state.prelude === "hero") this.heroSeed();
+    // A deep link or a refresh arrives with a section already in the URL (#303).
+    // Restore straight to it rather than seeding the opening prelude and its
+    // timers, which the restore would only have to tear down again. `restored`
+    // has to carry that decision because the setState behind it has not landed
+    // in this.state yet.
+    const restored = this.restoreSection(this.props.section);
+    if (!restored && this.state.prelude === "hero") this.heroSeed();
     this.mountTips();
-    if (this.state.prelude === "chat") this.startOnb();
+    if (!restored && this.state.prelude === "chat") this.startOnb();
     if (!!DIVE_CFG[this.state.dive] && !this.govSeeded) { this.govSeeded = true; walkPillarRef.current = this.state.dive; this.seededFor = this.state.dive; this.startGovThread(); }
-    if (this.state.intro === null && !this.state.prelude && !this.state.introStage) this.tick();
+    if (!restored && this.state.intro === null && !this.state.prelude && !this.state.introStage) this.tick();
 
   }
   componentWillUnmount() { clearTimeout(this.timer); clearInterval(this.noise); if (this.ro) this.ro.disconnect(); }
@@ -349,6 +343,74 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   jumpAct = (act) => {
     const i = SCRIPT.findIndex(b => (b.act || 0) === act);
     if (i >= 0) this.jumpTo(i);
+  };
+
+  // ── /war-room/:section — URL <-> beat-machine sync (#303) ───────────────────
+  // The section a URL names is applied through applySection(), which is the
+  // transport jump-menu's own branch logic; nothing here is a second way to
+  // navigate. `sectionAt` is the section the URL and this component agree on,
+  // and is what stops an emit -> prop-change -> re-apply feedback loop.
+  sectionAt = null;
+  // A move is asked for before the state reflects it — jumpTo() lands a beat one
+  // exit-animation later, and restoreSection() clears the prelude first. Until
+  // it settles the state still describes the OLD position, so mirroring it back
+  // out would overwrite the URL with where we just came from.
+  sectionPending = null;
+
+  /** Move to a named section exactly the way the transport jump-menu does. */
+  applySection = (key) => {
+    const target = resolveWarRoomSection(key);
+    if (target.kind === "unreachable") return false;
+    this.sectionAt = key;
+    this.sectionPending = key;
+    if (target.kind === "intro") { this.setState({ intro: 0, playing: false }); return true; }
+    if (target.kind === "panel") { this.setState({ dive: target.dive, playing: false }); return true; }
+    this.jumpTo(target.index);
+    return true;
+  };
+
+  /** Tell the page where we are, so it can mirror it into the URL. */
+  emitSection = (key, explicit) => {
+    this.sectionAt = key;
+    if (typeof this.props.onSectionChange === "function") this.props.onSectionChange(key, explicit);
+  };
+
+  /**
+   * Land on a section that came from the URL (first load, refresh, or a
+   * back/forward step) rather than from a click inside the room.
+   *
+   * The jump-menu only exists once the room is up, so a URL restore has to make
+   * the same transition first: leave the opening prelude and the arrivals gate
+   * behind, the way enterRoom() and onPickSkip() already do, and only then hand
+   * off to applySection().
+   */
+  restoreSection = (key) => {
+    if (!isWarRoomSectionLive(key)) return false;
+    this.sectionAt = key;
+    this.sectionPending = key;
+    clearTimeout(this.timer);
+    clearTimeout(this.scanT);
+    clearInterval(this.scanClock);
+    // "Introductions" IS the arrivals sequence, so it restores as a real entry
+    // into the room rather than by skipping past it.
+    if (key === "intro") { this.enterRoom(); return true; }
+    this.setState({
+      prelude: null, beginning: false, roomEnter: true,
+      introStage: null, intro: null, introSel: null, introSpeaking: null, focus: null,
+      playing: false
+    }, () => this.applySection(key));
+    return true;
+  };
+
+  /** Mirror wherever the briefing has actually got to back out into the URL. */
+  syncSectionToUrl = () => {
+    const derived = deriveWarRoomSection(this.state);
+    if (this.sectionPending) {
+      // Still settling — say nothing until the state agrees with what we asked for.
+      if (derived === this.sectionPending) this.sectionPending = null;
+      return;
+    }
+    if (derived && derived !== this.sectionAt) this.emitSection(derived, false);
   };
 
   scrollChat = () => {
@@ -694,6 +756,21 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   }
 
   componentDidUpdate(prevProps, prevState) {
+    // /war-room/:section (#303). A changed `section` prop that we did not
+    // ourselves emit is the browser navigating us — Back/Forward, or a pasted
+    // link on an already-mounted room; anything else means the briefing moved
+    // under its own steam and the URL should follow it.
+    if (prevProps.section !== this.props.section) {
+      if (this.props.section !== this.sectionAt && !this.restoreSection(this.props.section)) {
+        // Nothing restorable — Back to bare /war-room, or a stale link. The room
+        // is already mid-briefing and the opening prelude cannot be un-played, so
+        // re-assert where it really is rather than let the address bar lie.
+        if (this.sectionAt) this.emitSection(this.sectionAt, false);
+      }
+    } else {
+      this.syncSectionToUrl();
+    }
+
     // seed whenever the dive is open and unseeded — the beat that opens it can
     // arrive in the same setState as other changes, so a transition test is fragile
     const dk = this.state.dive;
@@ -1849,72 +1926,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
   };
   // the prelude dissolves rather than cutting to the room
 
-  // ── Real quiz catalog (#306) ───────────────────────────────────────────────
-  // The roster and the question list used to be WIZ_PERSONAS / WIZ_QUESTIONS —
-  // two hardcoded arrays describing a fictional hospital. They are now derived,
-  // per render, from the customer's own industry catalog. Derived rather than
-  // stored because the use-case and outcome questions narrow to whichever roles
-  // the customer has ticked so far, exactly as the real quiz's do, so the list
-  // genuinely changes as the conversation goes on.
-
-  /** The industry catalog's roster, in place of WIZ_PERSONAS. */
-  wizRoster = () => buildWarRoomPersonas(this.state.wizCatalog);
-
-  /** The industry catalog's questions, in place of WIZ_QUESTIONS. */
-  wizQuestions = () => buildWarRoomQuestions(
-    this.state.wizCatalog,
-    this.state.wizIndustry,
-    this.state.wizPersonas || []
-  );
-
-  /**
-   * The industry on this customer's saved QuizProfile. `undefined` until the
-   * lookup has been attempted, '' once it has and there was nothing — the two
-   * are different, and only the first should trigger a fetch.
-   */
-  wizSavedIndustry = undefined;
-
-  /**
-   * Point the roster and the questions at the right industry.
-   *
-   * Called when the conversation starts and again whenever the customer answers
-   * the room's own industry question, which is free text with suggestion chips
-   * rather than a picker — so what they say has to be matched back onto a
-   * catalog key (see resolveWarRoomIndustry).
-   *
-   * The swap to that industry's static catalog is synchronous and the DB fetch
-   * only upgrades it, so there is never a frame with nothing to ask. A fetch
-   * that lands after the customer has changed their mind is discarded on the
-   * industry check rather than overwriting the newer answer.
-   */
-  ensureWizCatalog = () => {
-    const spoken = (this.state.heroAns || {}).industry;
-    const industry = resolveWarRoomIndustry({ spoken, saved: this.wizSavedIndustry });
-
-    if (industry !== this.state.wizIndustry) {
-      this.setState({ wizIndustry: industry, wizCatalog: warRoomCatalogFor(industry) });
-      loadWarRoomCatalog(industry, getCurrentAccessToken).then(catalog => {
-        if (this.state.wizIndustry !== industry) return;
-        this.setState({ wizCatalog: catalog });
-      });
-    }
-
-    // Only worth asking for once, and only useful before they have said it
-    // themselves — a spoken answer outranks it either way.
-    if (this.wizSavedIndustry === undefined) {
-      this.wizSavedIndustry = "";
-      fetchSavedIndustry(getCurrentAccessToken).then(saved => {
-        if (!saved) return;
-        this.wizSavedIndustry = saved;
-        this.ensureWizCatalog();
-      });
-    }
-  };
-
   startOnb = () => {
     if (this.onbStarted) return;
     this.onbStarted = true;
-    this.ensureWizCatalog();
     setTimeout(() => this.onbAll([
       { who: "shane", text: "Morning. I'm Shane McCaw — I run Microsoft 365 architecture at NASA, and I wrote the governance framework the agency distributed. Today I'm doing something simpler: showing you your own tenant." },
       { who: "shane", card: "intro" },
@@ -1944,21 +1958,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     setTimeout(() => this.onbAll([
       { who: "shane", text: "Good. " + first.p + " is the one I'd watch. " + first.d + " — and every one of those tasks depends on finding the right document, which is exactly where this usually falls apart." },
       { who: "shane", card: "outcomes" },
-      // The count is read off the real list rather than stated: an industry
-      // whose catalog is mid-backfill genuinely has fewer than the twelve this
-      // line used to promise (#306).
-      { who: "shane", text: "Now " + this.wizQuestions().length + " questions. They shape which findings I lead with — they do not change what the scan measures.", q: 0 }
+      { who: "shane", text: "Now twelve questions. They shape which findings I lead with — they do not change what the scan measures.", q: 0 }
     ]), 300);
   };
   answerQ = (i, opt) => {
-    const questions = this.wizQuestions();
-    const q = questions[i];
-    if (!q) return;
+    const q = WIZ_QUESTIONS[i];
     this.setState(st => ({
       wizAnswers: Object.assign({}, st.wizAnswers, { [q.id]: opt }),
       onb: (st.onb || []).concat([{ who: "you", text: opt }])
     }));
-    const last = i >= questions.length - 1;
+    const last = i >= WIZ_QUESTIONS.length - 1;
     setTimeout(() => {
       if (last) {
         this.onbAll([
@@ -1977,7 +1986,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     if (s.prelude === "welcome") { this.setState({ prelude: "personas" }); return; }
     if (s.prelude === "personas") { this.setState({ prelude: "questions", wizStep: 0 }); return; }
     if (s.prelude === "questions") {
-      if (s.wizStep < this.wizQuestions().length - 1) { this.setState({ wizStep: s.wizStep + 1 }); return; }
+      if (s.wizStep < WIZ_QUESTIONS.length - 1) { this.setState({ wizStep: s.wizStep + 1 }); return; }
       this.setState({ prelude: "scan", scanStep: 0 }, this.runScan);
       return;
     }
@@ -2202,11 +2211,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       heroWrap: i + 1 >= HERO_Q.length ? true : (st.heroWrap || false),
       heroThread: (st.heroThread || []).concat([{ who: "you", text: v }])
     }), () => {
-      // HERO_Q's first question is the industry, and it is the customer telling
-      // us which catalog the rest of the conversation should come from (#306).
-      // Re-run on every answer rather than only that one: it is idempotent, and
-      // it also picks up a saved-profile industry landing mid-conversation.
-      this.ensureWizCatalog();
       clearTimeout(this.heroReplyT);
       this.heroReplyT = setTimeout(() => {
         this.setState(st => {
@@ -2479,11 +2483,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const focusNode = inj ? inj.focus : s.focus;
     const activeTopic = (beat && beat.chain && !inj) ? "riskchain" : (TOPIC_FOR[focusNode] || "copilotready");
     const focusPillar = focusNode ? (NODES.find(n => n.id === focusNode) || {}).pillar : null;
-    // The customer's real industry catalog, resolved once per render (#306).
-    // Both lists narrow as the conversation goes on, so they cannot be module
-    // constants the way WIZ_QUESTIONS / WIZ_PERSONAS were.
-    const wizQuestions = this.wizQuestions();
-    const wizRoster = this.wizRoster();
 
     const nodes = NODES.map(n => {
       const st = s.statuses[n.id], c = STATUS[st].color;
@@ -3705,7 +3704,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       })(),
       onbAnswers: (function () {
         const a = s.wizAnswers || {};
-        const rows = wizQuestions.filter(q => a[q.id]).slice(-4).map(q => ({ q: q.q, a: a[q.id] }));
+        const rows = WIZ_QUESTIONS.filter(q => a[q.id]).slice(-4).map(q => ({ q: q.q, a: a[q.id] }));
         return { show: rows.length > 0, rows: rows };
       })(),
       onbTyping: (function () {
@@ -3720,7 +3719,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const cl = PERSONA_CATALOG.find(x => x.cluster === s.onbCluster);
         const picked = s.onbPicked || [];
         const first = cl ? cl.personas.find(x => picked.indexOf(x.p) >= 0) : null;
-        const q = m.q != null ? wizQuestions[m.q] : null;
+        const q = m.q != null ? WIZ_QUESTIONS[m.q] : null;
         return {
           you: you, isText: !!m.text && m.q == null,
           name: you ? "You" : (p.name || "Shane McCaw"),
@@ -3759,7 +3758,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
 
           isQ: m.q != null,
           qText: q ? q.q : "",
-          qNum: m.q != null ? "Question " + (m.q + 1) + " of " + wizQuestions.length : "",
+          qNum: m.q != null ? "Question " + (m.q + 1) + " of " + WIZ_QUESTIONS.length : "",
           qOpts: q ? q.opts.map(o => {
             const on = (s.wizAnswers || {})[q.id] === o;
             return {
@@ -3777,7 +3776,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       wizCanNext: s.prelude !== "scan",
       wiz: s.prelude ? (function () {
         const step = s.wizStep || 0;
-        const q = wizQuestions[step];
+        const q = WIZ_QUESTIONS[step];
         const picked = s.wizPersonas || [];
         const scanN = s.scanStep || 0;
         return {
@@ -3785,16 +3784,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           isPersonas: s.prelude === "personas",
           isQuestions: s.prelude === "questions",
           isScan: s.prelude === "scan",
-          stepLabel: s.prelude === "questions" ? "Question " + (step + 1) + " of " + wizQuestions.length : s.prelude === "personas" ? "Step 2 of 3" : s.prelude === "scan" ? "Scanning" : "Step 1 of 3",
+          stepLabel: s.prelude === "questions" ? "Question " + (step + 1) + " of " + WIZ_QUESTIONS.length : s.prelude === "personas" ? "Step 2 of 3" : s.prelude === "scan" ? "Scanning" : "Step 1 of 3",
           progress: s.prelude === "welcome" ? "8%" : s.prelude === "personas" ? "22%"
-            : s.prelude === "questions" ? (22 + Math.round((step + 1) / wizQuestions.length * 58)) + "%"
+            : s.prelude === "questions" ? (22 + Math.round((step + 1) / WIZ_QUESTIONS.length * 58)) + "%"
             : (80 + Math.round(scanN / SCAN_PHASES.length * 20)) + "%",
-          personas: wizRoster.map(p => {
+          personas: WIZ_PERSONAS.map(p => {
             const on = picked.indexOf(p.id) >= 0;
             return {
-              // Blank rather than "undefined seats": the roster is shown before
-              // the scan, so there is no real headcount to state yet (#306).
-              label: p.label, n: p.n ? p.n + " seats" : "", tools: p.tools,
+              label: p.label, n: p.n + " seats", tools: p.tools,
               border: on ? "rgba(103,232,249,.75)" : "rgba(51,65,85,.9)",
               bg: on ? "rgba(103,232,249,.12)" : "rgba(2,6,23,.5)",
               ink: on ? "#67e8f9" : "#94a3b8",
@@ -3802,7 +3799,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               onClick: () => this.togglePersona(p.id)
             };
           }),
-          pickedCount: picked.length + " of " + wizRoster.length + " personas selected",
+          pickedCount: picked.length + " of " + WIZ_PERSONAS.length + " personas selected",
           q: q ? q.q : "",
           opts: q ? q.opts.map(o => {
             const on = (s.wizAnswers || {})[q.id] === o;
@@ -3816,7 +3813,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           }) : [],
           nextLabel: s.prelude === "welcome" ? "Define the personas"
             : s.prelude === "personas" ? "Start the questions"
-            : step < wizQuestions.length - 1 ? "Next question" : "Scan the tenant",
+            : step < WIZ_QUESTIONS.length - 1 ? "Next question" : "Scan the tenant",
           canBack: s.prelude === "personas" || s.prelude === "questions",
           onNext: this.wizNext, onBack: this.wizBack, onSkip: this.wizSkip, onSimulate: this.simulateScan,
           elapsed: (function () {
@@ -5181,45 +5178,26 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       transportOpen: !!s.transportOpen,
       transportChevron: s.transportOpen ? "180deg" : "0deg",
       onTransportMenu: () => this.setState(st => ({ transportOpen: !st.transportOpen })),
-      transportJumps: (() => {
-        const targets = [
-          ["Introductions", "intro", "#67E8F9"],
-          ["Governance deep-dive", "governance", "#3B82F6"],
-          ["Licensing deep-dive", "licensing", "#14B8A6"],
-          ["Adoption deep-dive", "adoption", "#F97316"],
-          ["Compliance deep-dive", "compliance", "#F3F4F6"],
-          ["Health deep-dive", "health", "#22C55E"],
-          ["Security deep-dive", "security", "#0078D4"],
-          ["Live Copilot demo", "demo", "#34d399"],
-          ["Copilot readiness — go / no-go", "copilot", "#67E8F9"],
-          ["Statement of work", "sow", "#0078D4"],
-          ["Full remediation plan", "remediation", "#34d399"],
-          ["Remediation timeline", "timeline", "#0078D4"],
-          ["Documents", "docs", "#7dd3fc"]
-        ];
-        return targets.map(t => {
-          const key = t[1];
-          const i = key === "intro"
-            ? SCRIPT.findIndex(b => b.intro !== undefined || b.act === 0)
-            : key === "demo"
-              ? SCRIPT.findIndex(b => b.demo)
-              : SCRIPT.findIndex(b => b.dive === key);
-          const live = i >= 0 || key === "sow" || key === "docs" || key === "remediation" || key === "timeline";
-          return {
-            label: t[0],
-            color: live ? "#cbd5e1" : "#475569",
-            dot: live ? t[2] : "rgba(71,85,105,.6)",
-            bg: s.dive === key ? "rgba(0,120,212,.14)" : "transparent",
-            onClick: () => {
-              this.setState({ transportOpen: false });
-              if (!live) return;
-              if (key === "intro") { this.setState({ intro: 0, playing: false }); return; }
-              if (i < 0) { this.setState({ dive: key, playing: false }); return; }
-              this.jumpTo(i);
-            }
-          };
-        });
-      })(),
+      // The target list and its resolution moved to warRoomSections.ts (#303) so
+      // the URL restore path goes through this exact same mechanism. Same stops,
+      // same labels, same colours, same liveness test, same branch order — the
+      // only addition is emitSection(), which mirrors the chosen stop into the
+      // URL as an explicit (Back-stop-worthy) navigation.
+      transportJumps: WAR_ROOM_SECTIONS.map(t => {
+        const key = t.key;
+        const live = isWarRoomSectionLive(key);
+        return {
+          label: t.label,
+          color: live ? "#cbd5e1" : "#475569",
+          dot: live ? t.dot : "rgba(71,85,105,.6)",
+          bg: s.dive === key ? "rgba(0,120,212,.14)" : "transparent",
+          onClick: () => {
+            this.setState({ transportOpen: false });
+            if (!this.applySection(key)) return;
+            this.emitSection(key, true);
+          }
+        };
+      }),
       onTransport: () => {
         this.setState({ transportOpen: false });
         if (this.state.playing) {
