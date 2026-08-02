@@ -11,8 +11,10 @@
  * ------------------------------------------------------------------------- */
 import React from "react";
 import { css, Txt, Hov, ImageSlot } from "../runtime";
+import { useVersionInfo } from "../../../hooks/useVersionInfo";
 
 export function PreludeScreen({ v }: { v: any }) {
+  const versionInfo = useVersionInfo();
   return (
     <>
     {" "}
@@ -253,7 +255,7 @@ export function PreludeScreen({ v }: { v: any }) {
                               <div style={css(`padding:9px 16px;border-top:1px solid rgba(30,41,59,.9);background:rgba(2,6,23,.5)`)}>
                                 {" "}
                                 <span style={css(`font-size:9.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace`)}>
-                                  {"read-only · nothing written · document contents never read"}
+                                  {`read-only · nothing written · document contents never read · v${versionInfo.display}`}
                                 </span>
                                 {" "}
                               </div>
