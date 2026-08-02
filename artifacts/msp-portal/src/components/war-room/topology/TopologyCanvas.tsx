@@ -15,6 +15,20 @@
 import React from "react";
 import { css, Txt, Hov } from "../runtime";
 
+/** Style props the design runtime lets an <dc-import> push onto its host wrapper. */
+const HOST_STYLE_PROPS = new Set([
+  "position", "left", "right", "top", "bottom", "inset", "width", "height", "zIndex", "transform",
+]);
+
+function hostPositionStyle(style) {
+  if (!style || typeof style !== "object") return { display: "contents" };
+  const out = {};
+  for (const [k, val] of Object.entries(style)) {
+    if (HOST_STYLE_PROPS.has(k)) out[k] = val;
+  }
+  return Object.keys(out).length ? out : { display: "contents" };
+}
+
 const PILLAR_SECTORS = [
   { group: "Security", colorHex: "#8B5CF6" },
   { group: "Governance", colorHex: "#3B82F6" },
@@ -676,7 +690,16 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
   }
 
   render() {
-    return <TopologyCanvasView v={{ ...this.props, ...this.renderVals() }} />;
+    // The design runtime renders an imported component inside an injected host div and
+    // applies the <dc-import> element's own style to it (support.js:725-731), filtered to
+    // HOST_STYLE_PROPS. The War Room passes width:100%;height:100% that way. Without this
+    // wrapper the canvas root is a shrink-to-fit flex item and the SVG's width:100%
+    // collapses, rendering the radar far smaller than its container.
+    return (
+      <div className="sc-host-x" style={hostPositionStyle(this.props.style)}>
+        <TopologyCanvasView v={{ ...this.props, ...this.renderVals() }} />
+      </div>
+    );
   }
 }
 
