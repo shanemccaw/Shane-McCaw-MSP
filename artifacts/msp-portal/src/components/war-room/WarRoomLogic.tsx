@@ -4051,23 +4051,29 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const rv = rPillarAt(i);
         const hasScore = isDoc ? complete : typeof rv.score === "number";
         const rowScore = isDoc ? p.score : rv.score;
+        // A pillar the scan genuinely finished but that produced no evaluable
+        // score (as opposed to one still queued/reading). Same #334 concept as
+        // heroPillarStack above: this row must never say "SCORED" or show a
+        // bare "—" for a real completion with no real number, since both read
+        // as a broken/missing result rather than an honest empty one.
+        const noData = complete && !hasScore;
         return {
           t: p.t, c: p.c, active: live,
           short: p.t.replace(" Scan", "").replace(" Readiness Model", ""),
           bar: complete && hasScore ? rowScore + "%" : live ? "8%" : "0%",
           dotAnim: live ? "wr-blink 1.1s ease-in-out infinite" : "none",
           ink: complete || live ? "#e2e8f0" : "#64748b",
-          state: complete ? "SCORED" : live ? "READING" : "QUEUED",
-          stateInk: complete ? p.c : live ? "#a5f3fc" : "#475569",
+          state: complete && hasScore ? "SCORED" : noData ? "NO DATA" : live ? "READING" : "QUEUED",
+          stateInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "#a5f3fc" : "#475569",
           border: live ? p.c + "99" : complete ? p.c + "4d" : "rgba(30,41,59,.9)",
           bg: live ? "linear-gradient(150deg," + p.c + "24,rgba(2,6,23,.5))" : complete ? "rgba(2,6,23,.55)" : "rgba(2,6,23,.4)",
           glow: live ? "0 0 26px " + p.c + "33" : "none",
           note: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? p.checks[0] + "…" : "waiting",
-          score: complete && hasScore ? String(rowScore) : "—",
+          score: complete && hasScore ? String(rowScore) : noData ? "N/A" : "—",
           deg: (complete && hasScore ? Math.round(rowScore * 3.6) : live ? 26 : 0) + "deg",
           icon: PILLAR_GLYPH[p.t.replace(" Scan", "").replace(" Readiness Model", "")] || "M22 12h-4l-3 9L9 3l-3 9H2",
           sub: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? "reading…" : "queued",
-          scoreInk: complete ? p.c : "#475569"
+          scoreInk: complete && hasScore ? p.c : noData ? WAR_ROOM_NO_DATA_COLOR : "#475569"
         };
       }),
       // Real check-level completion of the real run (#305).
