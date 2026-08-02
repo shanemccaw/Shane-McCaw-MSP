@@ -88,6 +88,7 @@ import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./
 import { buildWarRoomBoard } from "./warRoomBoard";
 import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY } from "./warRoomPillarStats";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
+import { cardScrollTop } from "./warRoomCardScroll";
 import {
   WAR_ROOM_SECTIONS,
   deriveWarRoomSection,
@@ -5222,14 +5223,18 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             this.lastThreadLen = len;
             requestAnimationFrame(() => {
               // land on the TOP of the newest message when it carries a card,
-              // otherwise follow the conversation to the bottom
+              // otherwise follow the conversation to the bottom — but a card
+              // taller than the visible container lands on its BOTTOM instead,
+              // so the interactive portion (inputs, confirm actions) at the
+              // end of the card is what's actually in view, not its header (#323)
               const kids = el.children;
               const last = kids[kids.length - 1];
               const th = s.govThread || [];
               const lastMsg = th[th.length - 1];
               const isCardMsg = !!(lastMsg && (lastMsg.walk != null || lastMsg.hobj || lastMsg.help || lastMsg.win || lastMsg.docs || lastMsg.copilot || lastMsg.sites || lastMsg.card));
-              if (isCardMsg && last) el.scrollTop = Math.max(0, last.offsetTop - 12);
-              else el.scrollTop = el.scrollHeight;
+              el.scrollTop = isCardMsg && last
+                ? cardScrollTop(last.offsetTop, last.offsetHeight, el.clientHeight)
+                : el.scrollHeight;
             });
           },
           chat: (s.govChat || []).map(m => {
