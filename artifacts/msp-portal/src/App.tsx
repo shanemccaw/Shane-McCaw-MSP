@@ -104,6 +104,7 @@ import CopilotPage from "@/pages/copilot";
 import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
 import WarRoomPage from "@/pages/war-room";
+import WarRoomRadarPage from "@/pages/war-room-radar";
 import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
@@ -456,6 +457,15 @@ function SlugInnerSwitch() {
           mounted across section changes rather than remounting it. */}
       <Route path={WAR_ROOM_ROUTE_PATTERN}>
         <ProtectedRoute component={WarRoomPage} />
+      </Route>
+      {/* The radar on its own, with none of the room around it — a reference
+          surface for how large the diagram can actually get once the persona
+          strip, composer, bubble, host card and right dock are gone. Same
+          real per-pillar scores as the room; `?labels=1` drops embed mode so
+          every node chip is drawn. Its own path, not a /war-room/:section stop,
+          because it is not a position in the briefing. */}
+      <Route path="/war-room-radar">
+        <ProtectedRoute component={WarRoomRadarPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other
