@@ -16,6 +16,11 @@
  *   - GET /api/portal/mission-control/overview — real findings feed (Compliance count, via the
  *     same TOPIC_KEYWORDS filter compliance.tsx already uses)
  *   - GET /api/portal/assessment/status       — real pillar radar (M365 Health circle score)
+ *
+ * The first three are requireRole("CustomerUser") server-side; Assessment/Free
+ * accounts sit below that floor and skip them entirely (#317) rather than
+ * polling a guaranteed 403 every 5 minutes. assessment/status is floored at
+ * "Assessment" itself, so it stays on for every role.
  */
 
 import {
@@ -76,13 +81,23 @@ const ShellStatusContext = createContext<ShellStatusValue | null>(null);
 const REFRESH_MS = 5 * 60_000;
 
 export function ShellStatusProvider({ children }: { children: ReactNode }) {
-  const { accessToken, fetchWithAuth } = useAuth();
+  const { user, accessToken, fetchWithAuth } = useAuth();
   const [scopeStatus, setScopeStatus] = useState<ScopeStatusPayload | null>(null);
   const [slaStatus, setSlaStatus] = useState<SlaStatusPayload | null>(null);
   const [complianceFindingCount, setComplianceFindingCount] = useState<number | null>(null);
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // scope-status/sla-status/mission-control/overview are all requireRole("CustomerUser")
+  // server-side, and Assessment/Free both sit below that floor (see ROLE_ORDER in
+  // requireAuth.ts) — for those two roles every one of these three calls is a
+  // guaranteed 403, every 5 minutes, for data that isn't meaningful for that role
+  // in the first place. #317: `silent: true` already suppresses any toast for that
+  // 403 (see fetchWithAuth), so this isn't fixing a visible bug — it's cutting the
+  // dead traffic these roles can never get a real answer from. `assessment/status`
+  // below is floored at "Assessment" itself, so it stays on for every role.
+  const belowCustomerFloor = user?.mspRole === "Assessment" || user?.mspRole === "Free";
 
   useEffect(() => {
     if (!accessToken) return;
@@ -142,7 +157,9 @@ export function ShellStatusProvider({ children }: { children: ReactNode }) {
 
     const tick = async () => {
       if (cancelled) return;
-      await Promise.allSettled([loadScope(), loadSla(), loadCompliance(), loadHealth()]);
+      await Promise.allSettled(
+        belowCustomerFloor ? [loadHealth()] : [loadScope(), loadSla(), loadCompliance(), loadHealth()],
+      );
       if (cancelled) return;
       setLoaded(true);
       timerRef.current = setTimeout(() => void tick(), REFRESH_MS);
@@ -154,7 +171,7 @@ export function ShellStatusProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [accessToken, fetchWithAuth]);
+  }, [accessToken, fetchWithAuth, belowCustomerFloor]);
 
   return (
     <ShellStatusContext.Provider value={{ loaded, scopeStatus, slaStatus, complianceFindingCount, healthScore }}>
