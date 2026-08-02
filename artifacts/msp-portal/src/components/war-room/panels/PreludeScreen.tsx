@@ -256,7 +256,7 @@ export function PreludeScreen({ v }: { v: any }) {
                               <div style={css(`padding:9px 16px;border-top:1px solid rgba(30,41,59,.9);background:rgba(2,6,23,.5)`)}>
                                 {" "}
                                 <span style={css(`font-size:9.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace`)}>
-                                  {`read-only · nothing written · document contents never read · v${versionInfo.display}`}
+                                  {"read-only · nothing written · document contents never read"}
                                 </span>
                                 {" "}
                               </div>
@@ -1129,7 +1129,7 @@ export function PreludeScreen({ v }: { v: any }) {
           </Hov>
           <span style={css(`flex:1`)} />
           <span style={css(`font-size:10px;font-weight:700;color:#475569;font-family:ui-monospace,Menlo,monospace`)}>
-            {"read-only · nothing written"}
+            {`v${versionInfo.display}`}
           </span>
         </div>
       </div>
