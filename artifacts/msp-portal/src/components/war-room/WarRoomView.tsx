@@ -72,23 +72,25 @@ export function WarRoomView({ v }: { v: any }) {
       </div>
       <div style={css(`position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 78% 68% at 50% 52%,transparent 42%,rgba(2,6,23,.35) 88%)`)} />
       <div style={css(`position:absolute;left:0;right:0;bottom:0;height:22%;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(2,6,23,.85));transform:translateX(${v.roomNear});transition:transform 700ms cubic-bezier(.22,1,.36,1)`)} />
-      <div style={css(`position:fixed;right:18px;bottom:18px;z-index:140;display:flex;flex-direction:column;align-items:flex-end;gap:10px`)}>
-        {v.chatOpenLog && <ChatLogPanel v={v} />}
-        <Hov as="button" onClick={v.onToggleChatLog} style={css(`position:relative;width:52px;height:52px;border-radius:50%;border:1px solid rgba(103,232,249,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(15,23,42,.96),rgba(2,6,23,.94));backdrop-filter:blur(14px);box-shadow:0 16px 40px rgba(2,6,23,.7),0 0 30px rgba(0,120,212,.28);color:#7dd3fc;transition:all 200ms cubic-bezier(.22,1,.36,1)`)} hoverStyle={css(`border-color:rgba(103,232,249,.85);color:#e0f2fe`)}>
-          <svg width={"21"} height={"21"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.9"} strokeLinecap={"round"} strokeLinejoin={"round"}>
-            <path d={"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"} />
-          </svg>
-          {v.chatHasCount && (
-            <>
-              {" "}
-              <span style={css(`position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;color:#fff;background:#8B5CF6;box-shadow:0 0 14px rgba(139,92,246,.6)`)}>
-                <Txt v={v.chatCount} />
-              </span>
-              {" "}
-            </>
-          )}
-        </Hov>
-      </div>
+      {!v.preludeOpen && (
+        <div style={css(`position:fixed;right:18px;bottom:18px;z-index:140;display:flex;flex-direction:column;align-items:flex-end;gap:10px`)}>
+          {v.chatOpenLog && <ChatLogPanel v={v} />}
+          <Hov as="button" onClick={v.onToggleChatLog} style={css(`position:relative;width:52px;height:52px;border-radius:50%;border:1px solid rgba(103,232,249,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(15,23,42,.96),rgba(2,6,23,.94));backdrop-filter:blur(14px);box-shadow:0 16px 40px rgba(2,6,23,.7),0 0 30px rgba(0,120,212,.28);color:#7dd3fc;transition:all 200ms cubic-bezier(.22,1,.36,1)`)} hoverStyle={css(`border-color:rgba(103,232,249,.85);color:#e0f2fe`)}>
+            <svg width={"21"} height={"21"} viewBox={"0 0 24 24"} fill={"none"} stroke={"currentColor"} strokeWidth={"1.9"} strokeLinecap={"round"} strokeLinejoin={"round"}>
+              <path d={"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"} />
+            </svg>
+            {v.chatHasCount && (
+              <>
+                {" "}
+                <span style={css(`position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;color:#fff;background:#8B5CF6;box-shadow:0 0 14px rgba(139,92,246,.6)`)}>
+                  <Txt v={v.chatCount} />
+                </span>
+                {" "}
+              </>
+            )}
+          </Hov>
+        </div>
+      )}
       {v.flight?.show && <FlightToast v={v} />}
       <main data-room={"true"} style={css(`position:relative;z-index:10;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(196px,17vw,266px);gap:14px;padding:14px 16px`)}>
         {/* CENTER STAGE */}
