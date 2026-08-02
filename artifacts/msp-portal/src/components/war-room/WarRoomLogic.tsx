@@ -28,6 +28,7 @@ import {
   GOV_WALK,
   walkSet,
   walkAt,
+  walkBands,
   QUICK_WINS,
   PILLAR_GLYPH,
   fixProfileFor,
@@ -978,11 +979,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Prove It With Copilot", rows: [["Prompts returning regulated content", "3 of 3"], ["Elevated rights needed", "None"], ["Acceptance test defined", "No"]] },
         { h: "The Value On The Other Side", rows: [["Annual value at full adoption", "$4.1M"], ["Hours returned weekly", "1,140"], ["Return on the pilot", "7×"]] },
         { h: "Go / No-Go", rows: [["Tenant-wide verdict", "NO-GO"], ["Scoped pilot verdict", "GO"], ["Time to gate", "12 weeks"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "The programme, sequenced",
-      sections: [
-        { h: "Remediation Sequence", rows: [["Elapsed to gate", "12 weeks"], ["New budget required", "$0"], ["Critical path", "Sharing → DLP → Labels"]] },
-        { h: "What If We Do Nothing", rows: [["Monthly cost of delay", "$412K"], ["Exposure trend", "Flat"], ["Evidence at renewal", "None"]] }
       ] }
   ];
 
@@ -1000,11 +996,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Egress & Data Loss", rows: [["Mailboxes uncovered", "1,412"], ["Copilot prompt coverage", "0%"], ["Endpoint DLP", "0%"]] },
         { h: "The Risk Chain", rows: [["Open chain links", "4"], ["Reportable exposure", "Yes"], ["Chain owner", "None"]] },
         { h: "Security & the Copilot Gate", rows: [["Copilot session policy", "None"], ["Defender coverage", "98.4%"], ["Open high alerts", "0"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by entry point",
-      sections: [
-        { h: "Attack Surface", rows: [["Guest identities", "612"], ["Anonymous links", "23"], ["OAuth app grants", "94"]] },
-        { h: "Detection & Response", rows: [["AI-specific detections", "0"], ["Audit retention", "180 days"], ["Incident drill", "Never"]] }
       ] }
   ];
 
@@ -1022,11 +1013,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Change & Configuration", rows: [["Changes outside control", "47"], ["Standing global admins", "18"], ["Changes with a rollback plan", "31%"]] },
         { h: "Backup & Resilience", rows: [["Backup success rate", "97%"], ["Restore tested", "Never"], ["Recovery time objective", "Undefined"]] },
         { h: "Health & the Copilot Gate", rows: [["Devices blocked at enforcement", "312"], ["Support capacity", "At limit"], ["Service health", "Nominal"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by remediation action",
-      sections: [
-        { h: "Endpoint Estate", rows: [["Devices needing action", "312"], ["Ungrouped devices", "94"], ["Out-of-support devices", "12"]] },
-        { h: "Operational Readiness", rows: [["Automated runbooks", "0"], ["After-hours alerts", "62/wk"], ["Copilot escalation path", "None"]] }
       ] }
   ];
 
@@ -1044,11 +1030,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Retention & Audit", rows: [["Audit log retention", "180 days"], ["Copilot history retained", "No"], ["Legal hold coverage", "41%"]] },
         { h: "Regulatory Exposure", rows: [["Regimes in scope", "4"], ["Regimes fully met", "1 of 4"], ["Breach drill", "Never run"]] },
         { h: "Compliance & the Copilot Gate", rows: [["Provable containment", "No"], ["Change record", "Drafted"], ["Reportable exposure", "Open"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by control object",
-      sections: [
-        { h: "Policy Estate", rows: [["DLP rules enforcing", "15 of 18"], ["Uncovered locations", "4"], ["Rules with no owner", "7"]] },
-        { h: "Evidence & Defensibility", rows: [["AI-specific controls", "0"], ["Evidence pack readiness", "Weeks"], ["Control testing", "Annual"]] }
       ] }
   ];
 
@@ -1066,12 +1047,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Champions & Enablement", rows: [["Named champions", "0"], ["Role-based tracks", "0 of 4"], ["Managers briefed", "12%"]] },
         { h: "Workflows Worth Automating", rows: [["Hours lost weekly, per person", "6.4"], ["Tickets deflectable weekly", "136"], ["Workflows instrumented", "0"]] },
         { h: "Adoption & the Copilot Gate", rows: [["Copilot active users", "31%"], ["Pilot benchmark", "70%"], ["Week-3 retention tracked", "No"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by enablement action",
-      sections: [
-        { h: "Cohort Readiness", rows: [["Cohorts scored", "0 of 4"], ["Pilot-ready seats", "40"], ["Largest cohort readiness", "38%"]] },
-        { h: "Content Readiness", rows: [["Files in owned libraries", "29%"], ["Duplicate versions per doc", "3.4"], ["Documents with an owner", "31%"]] },
-        { h: "Measurement & Retention", rows: [["Adoption metrics reported", "0"], ["Baseline captured", "No"], ["Adoption owner", "None"]] }
       ] }
   ];
 
@@ -1089,13 +1064,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Copilot Seat Readiness", rows: [["Copilot owned / assigned", "25 / 2"], ["Eligible under governance", "0"], ["Required for pilot", "400"]] },
         { h: "Cost Recovery", rows: [["Recoverable in year one", "$1,010,000"], ["Duplicate tooling", "$142,000"], ["Cost of the pilot", "$144,000"]] },
         { h: "Licensing & the Copilot Gate", rows: [["New budget required", "$0"], ["Licensing meter", "38%"], ["Monthly cost of delay", "$70,000"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by procurement action",
-      sections: [
-        { h: "SKU Distribution", rows: [["E5 assignment rate", "41%"], ["E3 assignment rate", "95%"], ["Copilot assignment rate", "8%"]] },
-        { h: "Licence Lifecycle", rows: [["Departed, still licensed", "47"], ["Group-based assignment", "62%"], ["Reclaim SLA", "none"]] },
-        { h: "Tooling Overlap", rows: [["Seats on duplicate tools", "1,180"], ["Duplicate annual spend", "$142,000"], ["Contracts unmapped", "4"]] },
-        { h: "Forecast & Renewal", rows: [["Next-year spend, current path", "$3.4M"], ["Corrected forecast", "$2.2M"], ["Evidence at renewal", "none"]] }
       ] }
   ];
 
@@ -1107,16 +1075,6 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         { h: "Sensitive data exposure", rows: [["Files with no sensitivity label", "22%"], ["High-risk data exposed", "PII · PHI · financial"], ["Mission-critical libraries unlabelled", "6"]] },
         { h: "External access", rows: [["External guest accounts", "612"], ["Unmanaged guest identities", "312"], ["External domains with access", "48"]] },
         { h: "Copilot exposure", rows: [["Documents Copilot can see with no owner", "11,400"], ["Unlabelled content visible to Copilot", "40,480"], ["Readiness blocked by governance", "−17 pts"]] }
-      ] },
-    { id: "analyst", label: "Analyst", kicker: "Grouped by remediation priority",
-      sections: [
-        { h: "Sharing & link exposure", rows: [["EEEU enabled at tenant level", "Yes"], ["Org-wide links", "41 · SP 28 / TM 9 / OD 4"], ["Anonymous Anyone links", "23"], ["EEEU risk level", "Critical"]] },
-        { h: "Site & channel oversharing", rows: [["Overshared SharePoint sites", "41"], ["Public Teams channels", "17"], ["Channel sprawl, unmanaged", "94"]] },
-        { h: "Sensitivity & labeling gaps", rows: [["Unlabelled file percentage", "22%"], ["High-risk categories exposed", "3"], ["Libraries drifting from policy", "19"]] },
-        { h: "Identity & access risks", rows: [["External guest accounts", "612"], ["Unmanaged guest identities", "312"], ["Federated external domains", "48"]] },
-        { h: "Permission hygiene", rows: [["Permission sprawl groups", "37"], ["Broken inheritance", "128"], ["Nested / legacy depth", "6 levels"]] },
-        { h: "Governance drift", rows: [["Library configuration drift", "47 settings"], ["Policy compliance drift", "19 libraries"], ["Conditional Access gaps", "CA01 disabled"]] },
-        { h: "Copilot blast radius", rows: [["Groundable docs with no owner", "11,400"], ["Overshared or unlabelled visible", "40,480"], ["Readiness score impact", "−17 pts"]] }
       ] },
     { id: "engine", label: "Engine", kicker: "Signals mapped to the engines that produce them",
       sections: [
@@ -1130,15 +1088,39 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       ] }
   ];
 
-  // each view ends with a persona asking whether to go deeper
+  // Which walk bands the dive that is currently open really has (#330). Mirrors
+  // how walkPillarRef is set during render, so the prompts, the pin CTA and the
+  // section→card lookup all agree on how many views there are.
+  diveBands = () => walkBands(DIVE_CFG[this.state.dive] ? this.state.dive : "governance");
+
+  // Each view ends with a persona asking whether to go deeper. Governance is the
+  // only dive with a second view — the engine surfaces — so it is the only one
+  // that uses both of these. Every other dive has a single view and gets the
+  // handoff built by divePrompt() instead.
   govPrompts = [
-    { who: "jane", text: "That's the plain-language picture. Any questions on it before I show you how our analysts group the same signals?",
-      actions: [["Show me the analyst view", "next"], ["I have a question first", "ask"]] },
-    { who: "shane", text: "That's how a remediation team would sequence it. Want to see the raw engine surfaces underneath — the signals our automation actually acts on?",
+    { who: "shane", text: "That's the plain-language picture, and every figure in it came out of your own tenant this morning. Any questions before I show you the raw engine surfaces underneath — the signals our automation actually acts on?",
       actions: [["Show the engine view", "next"], ["No, that's enough detail", "done"]] },
     { who: "shane", text: "That's the whole governance picture, from your language down to the telemetry. Ready to move on to what it's costing you?",
       actions: [["Move on to licensing", "close"], ["Let me ask something first", "ask"]] }
   ];
+
+  // A single-view dive has nothing left to show once its walk ends, so the beat
+  // after the last card is the handoff to whatever follows this pillar. Same
+  // action and the same per-pillar nextLabel the walk's own closing card uses.
+  divePrompt = () => {
+    const label = (DIVE_CFG[this.state.dive] || DIVE_CFG.governance).nextLabel;
+    return {
+      who: this.state.dive === "adoption" ? "marcus" : "shane",
+      text: "That's it end to end — findings documented, owners named, and everything you staged carries into the statement of work. Ready to move on to " + label + "?",
+      actions: [["Yes — move on to " + label, "tolicensing"], ["I have questions first", "ask"]]
+    };
+  };
+
+  // Prompt for view index v in whichever dive is open.
+  govPromptAt = (v) => {
+    if (this.diveBands().length < 2) return this.divePrompt();
+    return this.govPrompts[Math.min(Math.max(v, 0), this.govPrompts.length - 1)];
+  };
 
   runPreviewChat = () => {
     const list = this.govList(this.state.govTab);
@@ -1368,17 +1350,12 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     }
     if (kind === "ask") { this.govSay({ who: "jane", text: "Go ahead — type it below, or pick anything on the board and I'll take it from there." }); return; }
     if (kind === "close") { this.setState({ dive: null, playing: true }, this.tick); return; }
-    if (kind === "done") { this.govSayAll([{ who: "shane", text: "Understood. The detail is there when your team wants it — it all lands in the governance report either way." }, this.govPrompts[2]]); return; }
-    const nv = Math.min(2, (st.govView || 0) + 1);
+    if (kind === "done") { this.govSayAll([{ who: "shane", text: "Understood. The detail is there when your team wants it — it all lands in the governance report either way." }, this.govPromptAt(this.govPrompts.length - 1)]); return; }
+    const bands = this.diveBands();
+    const nv = Math.min(bands.length - 1, (st.govView || 0) + 1);
+    if (nv === (st.govView || 0)) return;   // single-view dive — nothing further to open
     this.setState({ govView: nv });
-    this.govWalkTo(nv === 1 ? "a0" : "e0");
-    if (nv) return;
-    const nextView = Math.min(2, (st.govView || 0) + 1);
-    const said = nextView === 1
-      ? { who: "jane", text: "Here's the analyst cut — same tenant, grouped the way a remediation team would actually work it. Permission hygiene and drift are the two nobody looks at until Copilot surfaces them." }
-      : { who: "shane", text: "And this is the engine layer. Every number you've seen comes out of one of these seven surfaces, on a schedule — which is how you'd know if it drifts back." };
-    this.setState({ govView: nextView });
-    this.govSayAll([said, this.govPrompts[nextView]]);
+    this.govWalkTo(bands[nv] + "0");
   };
 
   govOpening = [
@@ -2507,27 +2484,24 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const band = s[0], i = Number(s.slice(1));
     const set = walkSet(s);
     const w = set[i];
+    // governance runs customer → engine; every other dive is customer only, so
+    // "is there another view after this band" is what decides the closing beat.
+    const hasNextBand = band === "c" && this.diveBands().length > 1;
     if (!w) {
       if (band === "c") this.govSayAll([
         { who: "shane", text: "That's the governance picture end to end. Nothing there is unusual for a tenant this size — what's unusual is being shown it before somebody sells you licences." },
-        this.govPrompts[0]
+        this.govPromptAt(0)
       ]);
-      else if (band === "a") this.govSay({
-        who: "shane",
-        text: "That's how our remediation team reads the same estate. Governance is covered — findings documented, owners named, and everything you staged is in the statement of work. Are you ready to move on to licensing?",
-        back: "a0",
-        actions: [["Yes — move on to licensing", "tolicensing"], ["I have questions first", "ask"]]
-      });
       else this.govSayAll([
         { who: "shane", text: "That's the machinery. Every figure in this dialog is reproducible by your own team with the same read-only queries." },
-        this.govPrompts[2]
+        this.govPromptAt(this.govPrompts.length - 1)
       ]);
       return;
     }
     const nxt = set[i + 1];
     const nextActions = nxt ? [["Next — " + nxt.title, "walk:" + band + (i + 1)], ["Ask about this", "ask"]]
-                            : band === "c"
-                              ? [["Ready for the analyst review?", "next"], ["Ask about this", "ask"]]
+                            : hasNextBand
+                              ? [["Show the engine view", "next"], ["Ask about this", "ask"]]
                               : [["Yes — move on to " + ((DIVE_CFG[this.state.dive] || DIVE_CFG.governance).nextLabel), "tolicensing"], ["I have questions first", "ask"]];
     const card = { who: w.who || (i === 2 ? "beth" : i === 3 ? "kirk" : "shane"), text: "", walk: s, lead: w.lead };
     this.setState({ govAt: s });
@@ -5050,9 +5024,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           })(),
           pin: (() => {
             const v = s.govView || 0;
-            const p = this.govPrompts[v];
+            const p = this.govPromptAt(v);
             return {
-              text: v === 2
+              text: this.diveBands()[v] === "e"
                 ? "Take your time on the engine surfaces. Let us know when you're ready to move on."
                 : "Ask us anything about what's on the board. Let us know when you're ready to move on.",
               cta: p.actions[0][0],
@@ -5238,13 +5212,13 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
             tip: "Open the walkthrough card for " + sec.h + " — the findings, what's wrong, and what closing it changes.",
             onOpen: () => {
               const norm = (x) => String(x).toLowerCase().replace(/[^a-z]/g, "");
-              const bands = ["c", "a", "e"];
+              const bands = this.diveBands();
               for (let bi = 0; bi < bands.length; bi++) {
                 const band = bands[bi];
                 const set = walkSet(band + "0");
                 const idx = set.findIndex(w => norm(w.title) === norm(sec.h));
                 if (idx >= 0) {
-                  if (band !== ["c", "a", "e"][s.govView || 0]) this.setState({ govView: bi });
+                  if (band !== bands[s.govView || 0]) this.setState({ govView: bi });
                   this.govWalkTo(band + idx);
                   return;
                 }

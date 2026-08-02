@@ -439,160 +439,6 @@ export const GOV_WALK = [
 ];
 
 
-// analyst framing — the same signals, grouped the way a remediation team reads them
-export const GOV_WALK_ANALYST = [
-  { id: "sharing", n: "A1", title: "Sharing & Link Exposure", who: "kirk", lead: "Analyst view — same estate, grouped the way a remediation team works it. First: every sharing grant, by type.",
-    head: { v: "64", l: "standing grants across three workloads", tone: "#f87171", note: "41 org-wide, 23 anonymous" },
-    chartTitle: "Grants by type and workload", chartKind: "bars",
-    bars: [
-      { l: "Org-wide / EEEU · SharePoint", v: "28", pct: 100, c: "#f87171", flag: "site level" },
-      { l: "Org-wide / EEEU · Teams", v: "9", pct: 42, c: "#f87171", flag: "channel level" },
-      { l: "Org-wide / EEEU · OneDrive", v: "4", pct: 22, c: "#fbbf24", flag: "personal" },
-      { l: "Anonymous Anyone links", v: "23", pct: 68, c: "#f87171", flag: "no identity" }
-    ],
-    wrong: [
-      "The tenant default link type is org-wide, so every new share starts at the widest setting available.",
-      "EEEU is applied at site level and inherited by every library beneath it — remediation is per site, not per file.",
-      "23 anonymous links have no recipient on record; the creator is the only lead you have."
-    ],
-    fix: [
-      "Change the tenant default link type first — it stops new grants without touching existing ones.",
-      "Work SharePoint's 28 sites before Teams and OneDrive; they carry the file volume.",
-      "Inventory and contact each anonymous link creator before disabling Anyone links tenant-wide."
-    ],
-    delta: [["Standing grants", "64", "0"], ["Files reachable", "214,806", "18,240"], ["Link expiry", "none", "30 days"]] },
-
-  { id: "channels", n: "A2", title: "Site & Channel Oversharing", who: "jane", lead: "Second: where those grants landed — which sites and channels are actually publishing.",
-    head: { v: "94", l: "unmanaged or orphaned channels", tone: "#fbbf24", note: "no owner, no review, no closure" },
-    chartTitle: "Oversharing by container", chartKind: "bars",
-    bars: [
-      { l: "Overshared SharePoint sites", v: "41", pct: 100, c: "#f87171", flag: "of 1,204" },
-      { l: "Public Teams channels", v: "17", pct: 41, c: "#f87171", flag: "site exposed" },
-      { l: "Unmanaged / orphaned channels", v: "94", pct: 88, c: "#fbbf24", flag: "no owner" },
-      { l: "Sites with a named owner", v: "40", pct: 12, c: "#f87171", flag: "3% coverage" }
-    ],
-    wrong: [
-      "Only 40 of 1,204 sites have an owner who could approve, review or revoke anything.",
-      "94 channels are orphaned — the team that created them has moved on and nobody closed them.",
-      "Site lifecycle reviews are 40 days overdue and run by hand."
-    ],
-    fix: [
-      "Assign an owner to every site before any access review runs; without owners the review has no reviewer.",
-      "Convert the 17 public channels to private — members keep access, the tenant loses it.",
-      "Archive orphaned channels rather than deleting them, so the content survives the cleanup."
-    ],
-    delta: [["Overshared sites", "41", "0"], ["Public channels", "17", "2"], ["Sites with an owner", "40", "1,204"]] },
-
-  { id: "labeling", n: "A3", title: "Sensitivity & Labeling Gaps", who: "beth", lead: "Third: classification. This is the one that decides whether an incident is internal or reportable.",
-    head: { v: "22%", l: "of content carries no label", tone: "#f87171", note: "40,480 regulated files among it" },
-    chartTitle: "Labelling coverage by library class", chartKind: "heat",
-    heat: [
-      { l: "Clinical libraries", v: "64%", sub: "PHI · 3 classifiers in simulation", c: "#f87171" },
-      { l: "Finance libraries", v: "71%", sub: "confidential · partial", c: "#fbbf24" },
-      { l: "Legal libraries", v: "88%", sub: "confidential · near complete", c: "#34d399" },
-      { l: "Everything else", v: "0%", sub: "unclassified at provisioning", c: "#f87171" },
-      { l: "Libraries drifting from policy", v: "19", sub: "label removed or overridden", c: "#fbbf24" },
-      { l: "High-risk categories exposed", v: "3", sub: "PII · PHI · financial", c: "#f87171" }
-    ],
-    wrong: [
-      "Three PHI classifiers sit in simulation — they report matches and block nothing.",
-      "Default labels are not applied at provisioning, so new content is born unclassified.",
-      "19 libraries have drifted off policy through manual label overrides."
-    ],
-    fix: [
-      "Sample 500 classifier matches and measure the false-positive rate before promoting anything.",
-      "Turn on default labels at provisioning so the backlog stops growing while you clear it.",
-      "Auto-label clinical and billing first — that is where the reportable exposure lives."
-    ],
-    delta: [["Unlabelled content", "22%", "1%"], ["Regulated files unlabelled", "40,480", "1,120"], ["Classifiers enforcing", "0 of 3", "3 of 3"]] },
-
-  { id: "identity", n: "A4", title: "Identity & Access Risks", who: "kirk", lead: "Fourth: who holds access that nobody is reviewing.",
-    head: { v: "612", l: "guest identities with standing access", tone: "#fbbf24", note: "last access review: never" },
-    chartTitle: "External identity exposure", chartKind: "bars",
-    bars: [
-      { l: "External guest accounts", v: "612", pct: 100, c: "#fbbf24", flag: "no expiry" },
-      { l: "Unmanaged guest identities", v: "312", pct: 62, c: "#f87171", flag: "no owner" },
-      { l: "Federated external domains", v: "48", pct: 44, c: "#fbbf24", flag: "never pruned" },
-      { l: "Conditional access gaps", v: "CA01 disabled", pct: 80, c: "#f87171", flag: "Copilot ungoverned" }
-    ],
-    wrong: [
-      "There is no expiry and no attestation cycle on any guest identity in the tenant.",
-      "312 guests have no owner, so there is nobody who can meaningfully confirm they are still needed.",
-      "No conditional access policy targets the Copilot app — the one path that reads all your content."
-    ],
-    fix: [
-      "Enable a quarterly access review with owner attestation; 268 clear on the first cycle unrenewed.",
-      "Prune the domain allow-list to the vendors with a current contract.",
-      "Create CA01 in report-only, read two weeks of sign-in logs, then enforce."
-    ],
-    delta: [["Guest identities", "612", "344"], ["Unmanaged guests", "312", "44"], ["Copilot session policy", "off", "enforced"]] },
-
-  { id: "hygiene", n: "A5", title: "Permission Hygiene", who: "kirk", lead: "Fifth: the structural condition underneath all of it.",
-    head: { v: "128", l: "broken inheritance points", tone: "#f87171", note: "nobody can answer “who can see this”" },
-    chartTitle: "Permission structure by condition", chartKind: "bars",
-    bars: [
-      { l: "Broken inheritance", v: "128 libraries", pct: 100, c: "#f87171", flag: "unique ACLs" },
-      { l: "Direct user grants (not groups)", v: "1,940", pct: 82, c: "#f87171", flag: "unmaintainable" },
-      { l: "Permission sprawl groups", v: "37", pct: 58, c: "#fbbf24", flag: "overlapping" },
-      { l: "Nested permission depth", v: "6 levels", pct: 60, c: "#fbbf24", flag: "target 2" }
-    ],
-    wrong: [
-      "1,940 grants are made to individuals rather than groups, so every joiner and leaver is a manual step.",
-      "Permission depth reaches six levels — resolving an effective permission means reading the whole chain.",
-      "37 overlapping groups mean the same person is often granted access three different ways."
-    ],
-    fix: [
-      "Restore inheritance only where the parent is equal to or narrower than the child — never in bulk.",
-      "Replace direct grants with security groups so future changes have one place to happen.",
-      "Add an inheritance check to provisioning so new sites cannot start life broken."
-    ],
-    delta: [["Broken inheritance points", "128", "12"], ["Direct user grants", "1,940", "210"], ["Permission depth", "6 levels", "2 levels"]] },
-
-  { id: "drift", n: "A6", title: "Governance Drift", who: "shane", lead: "Sixth: drift — the gap between what your policy says and what the tenant is doing.",
-    head: { v: "47", l: "settings changed outside change control", tone: "#fbbf24", note: "in the last 90 days" },
-    chartTitle: "Where the estate has moved off baseline", chartKind: "heat",
-    heat: [
-      { l: "Sharing defaults", v: "drifted", sub: "tenant default is org-wide", c: "#f87171" },
-      { l: "Label inheritance", v: "off", sub: "not applied at provisioning", c: "#f87171" },
-      { l: "Guest expiry", v: "not set", sub: "612 standing identities", c: "#f87171" },
-      { l: "Library configuration", v: "47 settings", sub: "outside change control", c: "#fbbf24" },
-      { l: "Policy compliance", v: "19 libraries", sub: "drifted off policy", c: "#fbbf24" },
-      { l: "Conditional access", v: "at baseline", sub: "no drift detected", c: "#34d399" }
-    ],
-    wrong: [
-      "Drift is detected by hand, quarterly — in practice that means it is detected when something breaks.",
-      "There is no alert on a new org-wide link, a new anonymous link, or a rising guest count.",
-      "Baseline documentation exists but is never compared against live state."
-    ],
-    fix: [
-      "Schedule the Sharing and Data access governance reports monthly.",
-      "Alert on the three events that matter: new org-wide link, new anonymous link, guest count +10.",
-      "Track reachable-file count month over month — it is the metric that proves governance is holding."
-    ],
-    delta: [["Settings off baseline", "47", "0"], ["Drift detection", "quarterly", "continuous"], ["Mean time to notice", "~90 days", "24 hours"]] },
-
-  { id: "blast", n: "A7", title: "Copilot Blast Radius", who: "kirk", lead: "Last: what all of it adds up to for a single prompt from a single account.",
-    head: { v: "1,876", l: "accounts with identical reach", tone: "#f87171", note: "no elevated rights required" },
-    chartTitle: "Reach of one first-line account", chartKind: "bars",
-    bars: [
-      { l: "Groundable docs with no owner", v: "11,400", pct: 100, c: "#f87171", flag: "never reviewed" },
-      { l: "Overshared or unlabelled visible", v: "40,480", pct: 88, c: "#f87171", flag: "regulated" },
-      { l: "Files retrievable in total", v: "214,806", pct: 96, c: "#f87171", flag: "citable" },
-      { l: "Readiness score impact", v: "−17 pts", pct: 62, c: "#fbbf24", flag: "governance alone" }
-    ],
-    wrong: [
-      "Blast radius is identical for a new hire on day one and a director of twenty years.",
-      "There is no way today to answer “what could this person's Copilot see” without running the query we ran.",
-      "The semantic index bakes this reach in at build, so remediation after enablement is materially harder."
-    ],
-    fix: [
-      "Measure blast radius per persona before any licence is assigned, and re-measure after each wave.",
-      "Hold the semantic index build until org-wide sharing is closed.",
-      "Pilot into Finance and Legal, whose content boundary is already labelled."
-    ],
-    delta: [["Files one account can cite", "214,806", "18,240"], ["Regulated files in reach", "40,480", "1,120"], ["Readiness impact", "−17 pts", "−2 pts"]] }
-];
-
 // engine view — the machinery underneath every number in this dialog
 export const GOV_WALK_ENGINE = [
   { id: "freshness", n: "E1", title: "Data Freshness", who: "marcus", lead: "Second: how current this is. Nothing on these cards is older than this morning.",
@@ -640,24 +486,27 @@ export const GOV_WALK_ENGINE = [
     delta: [["Governance pillar", "34", "89"], ["Points from sharing alone", "0", "+30"], ["Gate cleared", "no", "yes"]] }
 ];
 
-export const GOV_WALK_SETS = { a: GOV_WALK_ANALYST, e: GOV_WALK_ENGINE };
+export const GOV_WALK_SETS = { e: GOV_WALK_ENGINE };
 export const walkPillarRef = { current: "governance" };
+
+// The walk bands a dive really has, in the order the script presents them. "c"
+// is the customer walk every dive opens on; governance is the only one carrying
+// a second band, the engine surfaces. The analyst band ("a") was removed in
+// #330 — it re-grouped signals the customer walk already presents, and outside
+// governance it was not even a distinct array: every non-governance pillar
+// aliased both "a" and "e" onto its own single *_WALK_ANALYST.
+export function walkBands(pillar) {
+  return (pillar || walkPillarRef.current) === "governance" ? ["c", "e"] : ["c"];
+}
+
 export function walkSet(key) {
   const s = String(key || "c0");
   const P = walkPillarRef.current;
   const base = P === "licensing" ? LIC_WALK : P === "adoption" ? ADO_WALK : P === "compliance" ? CMP_WALK : P === "health" ? HLT_WALK : P === "security" ? SEC_WALK : P === "copilot" ? CPL_WALK : P === "sow" ? SOW_WALK : P === "docs" ? DOCS_WALK : P === "remediation" ? REM_WALK : P === "timeline" ? TL_WALK : GOV_WALK;
-  const sets = P === "licensing" ? { a: LIC_WALK_ANALYST, e: LIC_WALK_ANALYST }
-    : P === "adoption" ? { a: ADO_WALK_ANALYST, e: ADO_WALK_ANALYST }
-    : P === "compliance" ? { a: CMP_WALK_ANALYST, e: CMP_WALK_ANALYST }
-    : P === "health" ? { a: HLT_WALK_ANALYST, e: HLT_WALK_ANALYST }
-    : P === "security" ? { a: SEC_WALK_ANALYST, e: SEC_WALK_ANALYST }
-    : P === "copilot" ? { a: CPL_WALK_ANALYST, e: CPL_WALK_ANALYST }
-    : P === "sow" ? { a: SOW_WALK, e: SOW_WALK }
-    : P === "docs" ? { a: DOCS_WALK, e: DOCS_WALK }
-    : P === "remediation" ? { a: REM_WALK, e: REM_WALK }
-    : P === "timeline" ? { a: TL_WALK, e: TL_WALK }
-    : GOV_WALK_SETS;
   if (s[0] === "c") return base;
+  // Only governance has a non-customer band; anything else falls back to its own
+  // customer walk rather than silently resolving to another pillar's cards.
+  const sets = P === "governance" ? GOV_WALK_SETS : {};
   return sets[s[0]] || base;
 }
 export function walkAt(key) { const s = String(key || "c0"); return walkSet(s)[Number(s.slice(1))] || null; }
@@ -2337,94 +2186,6 @@ export const LIC_WALK = [
     delta: [["New budget required", "$144,000", "$0"], ["Licensing meter", "38%", "88%"], ["Copilot readiness", "34%", "41%"]] }
 ];
 
-export const LIC_WALK_ANALYST = [
-  { id: "skus", n: "A1", title: "SKU Distribution", who: "marcus", lead: "Analyst view — the same spend, grouped the way procurement works it. First: SKU distribution.",
-    head: { v: "6,180", l: "seats across four SKUs", tone: "#fbbf24", note: "1,308 of them unassigned" },
-    chartTitle: "Assignment rate by SKU", chartKind: "bars",
-    bars: [
-      { l: "E5 assigned", v: "41%", pct: 41, c: "#f87171", flag: "888 idle" },
-      { l: "E3 assigned", v: "95%", pct: 95, c: "#34d399", flag: "healthy" },
-      { l: "F3 assigned", v: "86%", pct: 86, c: "#fbbf24", flag: "65 idle" },
-      { l: "Copilot assigned", v: "8%", pct: 8, c: "#f87171", flag: "23 idle" }
-    ],
-    wrong: [
-      "E5 was bought for a compliance programme that was scoped down and never re-negotiated.",
-      "No SKU has a named owner accountable for its assignment rate.",
-      "Assignment rate is not reported anywhere between renewals."
-    ],
-    fix: [
-      "Set an assignment-rate floor of 95% per SKU and report against it monthly.",
-      "Give each SKU an owner who signs off the count at renewal.",
-      "Re-baseline E5 to the population that genuinely needs it."
-    ],
-    delta: [["E5 assignment rate", "41%", "97%"], ["Unassigned seats", "1,308", "0"], ["SKU owners named", "0", "4"]] },
-
-  { id: "lifecycle", n: "A2", title: "Licence Lifecycle", who: "marcus", lead: "Second: how licences arrive and how they leave — this is where the drift comes from.",
-    head: { v: "47", l: "licensed accounts belong to departed staff", tone: "#f87171", note: "the oldest is 14 months" },
-    chartTitle: "Lifecycle integrity", chartKind: "heat",
-    heat: [
-      { l: "Joiner automation", v: "partial", sub: "manual for E5", c: "#fbbf24" },
-      { l: "Mover process", v: "none", sub: "SKU never revisited", c: "#f87171" },
-      { l: "Leaver automation", v: "at ticket close", sub: "not at HR event", c: "#f87171" },
-      { l: "Group-based assignment", v: "62%", sub: "target 100%", c: "#fbbf24" },
-      { l: "Reclaim SLA", v: "none", sub: "no target set", c: "#f87171" },
-      { l: "Renewal true-up", v: "never", sub: "count only grows", c: "#f87171" }
-    ],
-    wrong: [
-      "There is no mover process at all — a person changing role keeps whatever they had.",
-      "Leaver reclaim happens when a ticket closes, which can be weeks after the person left.",
-      "The purchased count has only ever gone up."
-    ],
-    fix: [
-      "Trigger licence removal from the HR termination event directly.",
-      "Add a mover step that re-evaluates SKU on any role change.",
-      "Set a 5-day reclaim SLA and report against it."
-    ],
-    delta: [["Departed, licensed", "47", "0"], ["Reclaim SLA", "none", "5 days"], ["Group-assigned", "62%", "100%"]] },
-
-  { id: "overlap", n: "A3", title: "Tooling Overlap", who: "shane", lead: "Third: what you are buying twice.",
-    head: { v: "1,180", l: "seats on tools E5 already covers", tone: "#fbbf24", note: "$142,000 a year" },
-    chartTitle: "Duplicate spend by category", chartKind: "bars",
-    bars: [
-      { l: "eSignature", v: "$58,000", pct: 100, c: "#fbbf24", flag: "E5 covers" },
-      { l: "Secure file transfer", v: "$41,000", pct: 71, c: "#fbbf24", flag: "E5 covers" },
-      { l: "Meeting transcription", v: "$28,000", pct: 48, c: "#fbbf24", flag: "Teams covers" },
-      { l: "eDiscovery add-on", v: "$15,000", pct: 26, c: "#6ee7b7", flag: "Purview covers" }
-    ],
-    wrong: [
-      "Each tool was bought by a different department with its own budget line.",
-      "Nobody has mapped third-party spend against E5 entitlement.",
-      "Contract end dates are not tracked centrally, so renewals happen by default."
-    ],
-    fix: [
-      "Map every third-party contract against E5 entitlement before its next renewal date.",
-      "Migrate the two largest overlaps first — they account for $99,000 of the $142,000.",
-      "Hold departmental tool purchases behind an entitlement check."
-    ],
-    delta: [["Duplicate spend", "$142,000", "$0"], ["Tools overlapping E5", "4", "0"], ["Entitlement check", "none", "required"]] },
-
-  { id: "forecast", n: "A4", title: "Forecast & Renewal", who: "shane", lead: "Last: what this looks like at the renewal date if nothing changes.",
-    head: { v: "$3.4M", l: "next-year spend on the current path", tone: "#f87171", note: "against $2.2M corrected" },
-    chartTitle: "Twelve-month forecast", chartKind: "bars",
-    bars: [
-      { l: "Current path", v: "$3.4M", pct: 100, c: "#f87171", flag: "no change" },
-      { l: "Reclaim only", v: "$2.9M", pct: 74, c: "#fbbf24", flag: "easy wins" },
-      { l: "Reclaim + right-size", v: "$2.4M", pct: 52, c: "#6ee7b7", flag: "recommended" },
-      { l: "Plus tooling consolidation", v: "$2.2M", pct: 42, c: "#34d399", flag: "full" }
-    ],
-    wrong: [
-      "The renewal date is inside the remediation window, so the decision has to be made before the work finishes.",
-      "Without evidence, the vendor conversation defaults to last year's count plus growth.",
-      "Copilot seats bought at the wrong time sit idle through the governance work."
-    ],
-    fix: [
-      "Take the ninety-day evidence into the renewal rather than the historic count.",
-      "Stage Copilot seat purchase to the pilot date, not to the renewal date.",
-      "Lock the corrected baseline into the contract so it cannot drift back."
-    ],
-    delta: [["Next-year spend", "$3.4M", "$2.2M"], ["Evidence at renewal", "none", "90 days"], ["Copilot timing", "unaligned", "staged"]] }
-];
-
 export const DIVE_CFG = {
   governance: { word: "GOVERNANCE", color: "#3B82F6", ink: "#60A5FA", soft: "#93C5FD",
     icon: "M12 2l8 5H4l8-5zM6 11v7M10 11v7M14 11v7M18 11v7M2 22h20M2 11h20",
@@ -2588,73 +2349,6 @@ export const ADO_WALK = [
     delta: [["Copilot active", "31%", "78%"], ["Adoption pillar", "54", "86"], ["Copilot readiness", "34%", "44%"]] }
 ];
 
-export const ADO_WALK_ANALYST = [
-  { id: "cohorts", n: "A1", title: "Cohort Readiness", who: "jane", lead: "Analyst view — the same population, grouped by who is ready to be given a seat. First: cohorts.",
-    head: { v: "4", l: "distinct role cohorts in the tenant", tone: "#fbbf24", note: "one enablement deck covers all four" },
-    chartTitle: "Readiness by cohort", chartKind: "bars",
-    bars: [
-      { l: "Attending clinicians · 2,140", v: "38%", pct: 38, c: "#f87171", flag: "PHI boundary" },
-      { l: "Nurse managers · 480", v: "61%", pct: 61, c: "#fbbf24", flag: "shift handover" },
-      { l: "Revenue cycle · 310", v: "72%", pct: 72, c: "#fbbf24", flag: "labelled content" },
-      { l: "Compliance · 40", v: "84%", pct: 84, c: "#34d399", flag: "pilot-ready" }
-    ],
-    wrong: [
-      "The largest cohort is the least ready — clinicians work inside the PHI boundary that is not yet labelled.",
-      "Cohort readiness has never been calculated, so pilot selection would be by volunteer rather than by fit.",
-      "Compliance is the most ready cohort and the smallest — a pilot there proves little."
-    ],
-    fix: [
-      "Pilot revenue cycle first — 310 seats, labelled content, measurable outcome.",
-      "Bring clinicians in only after the PHI backlog is labelled.",
-      "Score every cohort on content readiness, device compliance and workload fit before assigning seats."
-    ],
-    delta: [["Cohorts scored", "0", "4"], ["Pilot-ready seats", "40", "350"], ["Selection basis", "volunteer", "measured"]] },
-
-  { id: "content", n: "A2", title: "Content Readiness", who: "jane", lead: "Second: whether the content those people work in is fit for Copilot to read.",
-    head: { v: "64%", l: "of files are shared in chat, not libraries", tone: "#f87171", note: "the worst copy wins" },
-    chartTitle: "Where the work actually lives", chartKind: "heat",
-    heat: [
-      { l: "Shared in Teams chat", v: "64%", sub: "weakly indexed", c: "#f87171" },
-      { l: "In owned libraries", v: "29%", sub: "ideal for grounding", c: "#34d399" },
-      { l: "In personal OneDrive", v: "7%", sub: "invisible to colleagues", c: "#fbbf24" },
-      { l: "Duplicate versions", v: "3.4 avg", sub: "per active document", c: "#f87171" },
-      { l: "With an owner", v: "31%", sub: "nobody to ask", c: "#f87171" },
-      { l: "Labelled", v: "78%", sub: "improving", c: "#fbbf24" }
-    ],
-    wrong: [
-      "An average active document exists in 3.4 versions, and Copilot has no way to know which is current.",
-      "Chat-shared files inherit no site governance and no retention.",
-      "Without owners, no version can be declared authoritative."
-    ],
-    fix: [
-      "Declare one authoritative library per team and move the recurring documents into it.",
-      "Turn off file attachment in chat for the pilot cohort — share links instead.",
-      "Assign owners to the top hundred documents by access volume."
-    ],
-    delta: [["Files in libraries", "29%", "75%"], ["Duplicate versions", "3.4", "1.2"], ["Documents with an owner", "31%", "100%"]] },
-
-  { id: "measure", n: "A3", title: "Measurement & Retention", who: "shane", lead: "Last: how you will know whether any of this worked.",
-    head: { v: "0", l: "adoption metrics currently reported", tone: "#f87171", note: "no baseline, no target, no owner" },
-    chartTitle: "Instrumentation in place", chartKind: "bars",
-    bars: [
-      { l: "Baseline captured", v: "no", pct: 100, c: "#f87171", flag: "start here" },
-      { l: "Week-3 retention tracked", v: "no", pct: 88, c: "#f87171", flag: "the real metric" },
-      { l: "Per-workflow measure", v: "no", pct: 76, c: "#f87171", flag: "no proof" },
-      { l: "Executive report", v: "monthly", pct: 30, c: "#34d399", flag: "channel exists" }
-    ],
-    wrong: [
-      "Day-one logins get reported and week-three retention does not — the first number always looks good.",
-      "Without a baseline taken before the pilot, no improvement can be attributed to Copilot.",
-      "There is no owner for adoption after go-live."
-    ],
-    fix: [
-      "Capture the baseline this month, before any seat is assigned.",
-      "Report week-three retention and hours returned, not licence count.",
-      "Name an adoption owner with the same standing as the security owner."
-    ],
-    delta: [["Metrics reported", "0", "4"], ["Baseline", "none", "captured"], ["Adoption owner", "none", "named"]] }
-];
-
 
 // ── Compliance walkthrough — same shape as the other pillars ─────────────────
 export const CMP_WALK = [
@@ -2768,52 +2462,6 @@ export const CMP_WALK = [
       "Re-run the evidence pack after each wave so the position is documented, not asserted."
     ],
     delta: [["Provable containment", "no", "yes"], ["Compliance pillar", "38", "84"], ["Copilot readiness", "34%", "46%"]] }
-];
-
-export const CMP_WALK_ANALYST = [
-  { id: "policy", n: "A1", title: "Policy Estate", who: "kirk", lead: "Analyst view — the same obligations, grouped by the policy objects that carry them.",
-    head: { v: "18", l: "DLP rules across 6 policy sets", tone: "#fbbf24", note: "3 still in simulation" },
-    chartTitle: "Policy objects by state", chartKind: "bars",
-    bars: [
-      { l: "Enforcing", v: "15", pct: 83, c: "#34d399", flag: "live" },
-      { l: "Simulation", v: "3", pct: 34, c: "#fbbf24", flag: "blocking nothing" },
-      { l: "Unscoped locations", v: "4", pct: 44, c: "#f87171", flag: "gaps" },
-      { l: "Rules with no owner", v: "7", pct: 62, c: "#fbbf24", flag: "unreviewed" }
-    ],
-    wrong: [
-      "Seven rules have no owner, so nobody reviews their match rate or their false positives.",
-      "Four locations are simply not covered by any policy — Teams chat and Copilot among them.",
-      "Policy changes are not tied to change control, so scope drifts silently."
-    ],
-    fix: [
-      "Assign an owner to every rule and review match rates monthly.",
-      "Cover the four uncovered locations with the existing policy rather than new ones.",
-      "Bring policy edits inside the change process so scope cannot drift."
-    ],
-    delta: [["Rules enforcing", "15", "18"], ["Uncovered locations", "4", "0"], ["Rules with an owner", "11", "18"]] },
-
-  { id: "evidence", n: "A2", title: "Evidence & Defensibility", who: "beth", lead: "Second: whether the position is provable rather than asserted.",
-    head: { v: "0", l: "evidence packs produced this year", tone: "#f87171", note: "the position exists only in slides" },
-    chartTitle: "Defensibility of the current position", chartKind: "heat",
-    heat: [
-      { l: "Scan output retained", v: "yes", sub: "raw JSON exportable", c: "#34d399" },
-      { l: "Change records signed", v: "no", sub: "drafted only", c: "#f87171" },
-      { l: "Control testing", v: "annual", sub: "should be continuous", c: "#fbbf24" },
-      { l: "AI-specific controls", v: "none", sub: "no policy covers Copilot", c: "#f87171" },
-      { l: "Board reporting", v: "quarterly", sub: "channel exists", c: "#34d399" },
-      { l: "Regulator-ready pack", v: "no", sub: "would take weeks", c: "#f87171" }
-    ],
-    wrong: [
-      "No policy in the estate mentions AI, so there is nothing to point a regulator at.",
-      "Assembling a regulator-ready pack today would take weeks of manual work.",
-      "Control testing is annual, which means the evidence is stale for eleven months of the year."
-    ],
-    fix: [
-      "Write an AI-use control into the policy estate before the pilot, not after.",
-      "Automate the evidence pack from the scan output so it is always current.",
-      "Move control testing to continuous, aligned to the monitoring cadence."
-    ],
-    delta: [["AI-specific controls", "0", "3"], ["Evidence pack", "weeks", "on demand"], ["Control testing", "annual", "continuous"]] }
 ];
 
 
@@ -2931,52 +2579,6 @@ export const HLT_WALK = [
     delta: [["Devices blocked at enforcement", "312", "41"], ["Health pillar", "58", "88"], ["Copilot readiness", "34%", "43%"]] }
 ];
 
-export const HLT_WALK_ANALYST = [
-  { id: "endpoints", n: "A1", title: "Endpoint Estate", who: "marcus", lead: "Analyst view — the estate grouped by what has to be touched to fix it.",
-    head: { v: "94", l: "devices belonging to no policy group", tone: "#f87171", note: "nothing evaluates them at all" },
-    chartTitle: "Devices by remediation action", chartKind: "bars",
-    bars: [
-      { l: "Re-apply baseline", v: "218", pct: 100, c: "#f87171", flag: "config only" },
-      { l: "Re-assign to a group", v: "94", pct: 44, c: "#fbbf24", flag: "membership" },
-      { l: "Patch to ring 3", v: "218", pct: 84, c: "#fbbf24", flag: "scheduled" },
-      { l: "Replace or retire", v: "12", pct: 8, c: "#94a3b8", flag: "out of support" }
-    ],
-    wrong: [
-      "Most of the drift is configuration rather than hardware — it is a re-publish, not a refresh cycle.",
-      "The 94 ungrouped devices are the ones nobody will notice until a policy is enforced.",
-      "Twelve devices are out of support entirely and should not be in the pilot population."
-    ],
-    fix: [
-      "Re-publish the baseline first — it clears the bulk of the drift in one action.",
-      "Fix group membership before enforcing anything, or the ungrouped devices fail silently.",
-      "Exclude the out-of-support devices from the pilot cohort explicitly."
-    ],
-    delta: [["Devices needing action", "312", "41"], ["Ungrouped devices", "94", "0"], ["Out-of-support in pilot", "12", "0"]] },
-
-  { id: "operations", n: "A2", title: "Operational Readiness", who: "marcus", lead: "Second: whether the team can carry a launch on top of what it already runs.",
-    head: { v: "0", l: "runbooks automated", tone: "#f87171", note: "every fix is a person" },
-    chartTitle: "Operational headroom", chartKind: "heat",
-    heat: [
-      { l: "Tickets per week", v: "340", sub: "at capacity", c: "#fbbf24" },
-      { l: "Automated runbooks", v: "0", sub: "top 5 are repeatable", c: "#f87171" },
-      { l: "After-hours alerts", v: "62/wk", sub: "mostly the same five", c: "#f87171" },
-      { l: "Copilot escalation path", v: "none", sub: "needed before day one", c: "#f87171" },
-      { l: "SLA compliance", v: "99%", sub: "holding for now", c: "#34d399" },
-      { l: "Change board cadence", v: "weekly", sub: "workable", c: "#34d399" }
-    ],
-    wrong: [
-      "Sixty-two after-hours alerts a week, most of them the same five, none of them automated.",
-      "No escalation path exists for Copilot issues, so they will land in the general queue.",
-      "SLA is holding, but there is no headroom to absorb a launch."
-    ],
-    fix: [
-      "Automate the top five alerts — that is roughly forty after-hours interruptions a week returned.",
-      "Define the Copilot escalation path and publish it with the pilot comms.",
-      "Re-measure capacity after deflection lands rather than assuming it."
-    ],
-    delta: [["Automated runbooks", "0", "5"], ["After-hours alerts", "62/wk", "22/wk"], ["Escalation path", "none", "published"]] }
-];
-
 
 // ── Security walkthrough — reachability, not posture scores ──────────────────
 export const SEC_WALK = [
@@ -3090,52 +2692,6 @@ export const SEC_WALK = [
       "Keep the pilot inside Finance and Legal, under audit retention, until the chain is closed."
     ],
     delta: [["Open chain links", "4", "0"], ["Security pillar", "51", "89"], ["Copilot readiness", "34%", "48%"]] }
-];
-
-export const SEC_WALK_ANALYST = [
-  { id: "surface", n: "A1", title: "Attack Surface", who: "kirk", lead: "Analyst view — the surface grouped by what an attacker or an over-eager prompt would actually use.",
-    head: { v: "612", l: "external identities inside the boundary", tone: "#fbbf24", note: "48 domains, never pruned" },
-    chartTitle: "Surface by entry point", chartKind: "bars",
-    bars: [
-      { l: "Guest identities", v: "612", pct: 100, c: "#fbbf24", flag: "no expiry" },
-      { l: "Anonymous links", v: "23", pct: 46, c: "#f87171", flag: "no identity" },
-      { l: "OAuth app grants", v: "94", pct: 62, c: "#fbbf24", flag: "quarterly review" },
-      { l: "Unmanaged browser sessions", v: "allowed", pct: 78, c: "#f87171", flag: "no session control" }
-    ],
-    wrong: [
-      "OAuth grants are reviewed quarterly, which means an over-permissioned app has ninety days of runway.",
-      "Unmanaged browsers can reach everything a managed device can, with no session control in between.",
-      "Anonymous links have no identity, so they are invisible in every access review you run."
-    ],
-    fix: [
-      "Move OAuth grant review to continuous with an alert on any new high-privilege consent.",
-      "Add session controls for unmanaged browsers — read-only, no download.",
-      "Eliminate anonymous links entirely rather than managing them."
-    ],
-    delta: [["Guest identities", "612", "344"], ["Anonymous links", "23", "0"], ["OAuth review", "quarterly", "continuous"]] },
-
-  { id: "detect", n: "A2", title: "Detection & Response", who: "kirk", lead: "Second: what you would actually see if this went wrong tonight.",
-    head: { v: "98.4%", l: "Defender coverage, zero open high alerts", tone: "#34d399", note: "detection is not the weak point" },
-    chartTitle: "Detection position", chartKind: "heat",
-    heat: [
-      { l: "Defender for Endpoint", v: "98.4%", sub: "healthy", c: "#34d399" },
-      { l: "Open high alerts", v: "0", sub: "clean", c: "#34d399" },
-      { l: "Audit retention", v: "180 days", sub: "below obligation", c: "#fbbf24" },
-      { l: "AI-specific detections", v: "none", sub: "no rule covers Copilot", c: "#f87171" },
-      { l: "Mean time to detect", v: "unmeasured", sub: "no baseline", c: "#fbbf24" },
-      { l: "Incident drill", v: "never", sub: "untested", c: "#f87171" }
-    ],
-    wrong: [
-      "There is no detection rule anywhere that mentions Copilot — an anomalous prompt pattern would look like normal traffic.",
-      "Mean time to detect has never been measured, so there is no baseline to improve against.",
-      "The incident process has never been rehearsed against an AI-disclosure scenario."
-    ],
-    fix: [
-      "Write detections for anomalous Copilot retrieval volume and unusual grounding patterns.",
-      "Extend audit retention so an investigation can look back far enough to matter.",
-      "Rehearse the AI-disclosure scenario before the pilot widens."
-    ],
-    delta: [["AI detections", "0", "3"], ["Audit retention", "180 days", "7 years"], ["Incident drill", "never", "quarterly"]] }
 ];
 
 
@@ -3254,53 +2810,6 @@ export const CPL_WALK = [
       "Set the tenant-wide date at the point the gate clears, not at a calendar quarter."
     ],
     delta: [["Verdict", "NO-GO", "GO"], ["Copilot readiness", "34%", "78%"], ["Pilot", "not started", "400 seats"]] }
-];
-
-export const CPL_WALK_ANALYST = [
-  { id: "sequence", n: "A1", title: "Remediation Sequence", who: "shane", lead: "Analyst view — the whole programme in the order it has to happen.",
-    head: { v: "12 weeks", l: "to clear the gate", tone: "#34d399", note: "with your own team, sequenced" },
-    chartTitle: "The critical path", chartKind: "bars",
-    bars: [
-      { l: "Weeks 1–2 · Close org-wide sharing", v: "+30 readiness", pct: 100, c: "#34d399", flag: "biggest lever" },
-      { l: "Weeks 1–3 · DLP scope and Copilot", v: "+12", pct: 44, c: "#34d399", flag: "parallel" },
-      { l: "Weeks 2–6 · Label the backlog", v: "+14", pct: 52, c: "#6ee7b7", flag: "longest" },
-      { l: "Weeks 3–5 · Device baseline", v: "+9", pct: 34, c: "#6ee7b7", flag: "before CA01" },
-      { l: "Weeks 6–12 · Champions and tracks", v: "+8", pct: 30, c: "#60a5fa", flag: "adoption" }
-    ],
-    wrong: [
-      "Doing the easy items first feels productive and moves readiness barely at all.",
-      "CA01 cannot be enforced until the device baseline is fixed, or one user in six is locked out.",
-      "Adoption work started too late is the most common reason a technically successful rollout fails."
-    ],
-    fix: [
-      "Run sharing and DLP in the first fortnight — between them they are worth 42 points.",
-      "Start labelling immediately because it is the longest pole, not because it is the biggest lever.",
-      "Begin champion recruitment in week six so enablement is ready when the gate clears."
-    ],
-    delta: [["Readiness", "34%", "78%"], ["Elapsed", "—", "12 weeks"], ["New budget", "—", "$0"]] },
-
-  { id: "whatif", n: "A2", title: "What If We Do Nothing", who: "beth", lead: "Second, and briefly: the cost of the option nobody writes down.",
-    head: { v: "$70,000", l: "a month, before any incident", tone: "#f87171", note: "licence waste alone" },
-    chartTitle: "Cost of delay", chartKind: "heat",
-    heat: [
-      { l: "Licence waste", v: "$70K/mo", sub: "continues", c: "#f87171" },
-      { l: "Value not realised", v: "$342K/mo", sub: "hours not returned", c: "#f87171" },
-      { l: "Exposure", v: "$4.1M", sub: "static, not reducing", c: "#f87171" },
-      { l: "Reportable risk", v: "open", sub: "every day it stays open", c: "#f87171" },
-      { l: "Competitive position", v: "slipping", sub: "peers are deploying", c: "#fbbf24" },
-      { l: "Renewal leverage", v: "expiring", sub: "no evidence at the table", c: "#fbbf24" }
-    ],
-    wrong: [
-      "Doing nothing is not a neutral option — it has a monthly price and it is the largest number on this card.",
-      "The exposure does not decay on its own; unowned content accumulates rather than expires.",
-      "The renewal date arrives whether or not the evidence has been gathered."
-    ],
-    fix: [
-      "Decide on the pilot now and let the remediation run behind it.",
-      "Take the recovery to the renewal with ninety days of evidence attached.",
-      "Re-read this card at week six — the numbers should already be moving."
-    ],
-    delta: [["Monthly cost of delay", "$412K", "$0"], ["Exposure trend", "flat", "falling"], ["Evidence at renewal", "none", "90 days"]] }
 ];
 
 
