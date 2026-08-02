@@ -42,6 +42,27 @@ export default function WarRoomPage() {
   const { data, scanCheckResults, streamedRunId, triggeredRunId, reportTriggerStarted, reportTriggerError } =
     useScanStatus();
 
+  // Real tenant identity (#315): the prelude used to hardcode the demo org's
+  // name ("Northline Health") where the actual customer's company name
+  // belongs. `/portal/dashboard` is the cheapest existing source for it —
+  // same endpoint customer-home.tsx/app-shell.tsx already call — so this
+  // fetches it directly rather than adding a new endpoint.
+  const [customerName, setCustomerName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithAuth("/api/portal/dashboard")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { customerName?: string | null } | null) => {
+        if (!cancelled && body?.customerName) setCustomerName(body.customerName);
+      })
+      .catch(() => {
+        // Non-fatal — the prelude falls back to a generic label.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
   // Hold on to the last per-check results we really saw. The provider empties
   // `scanCheckResults` as soon as a run finishes (it releases the held runId,
   // which tears the subscription down), so without this the pillar row would
@@ -136,6 +157,7 @@ export default function WarRoomPage() {
         scan={scan}
         docWorkflow={data?.docWorkflow ?? null}
         onTriggerScan={handleTriggerScan}
+        customerName={customerName}
       />
 
       <button

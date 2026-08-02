@@ -86,16 +86,18 @@ router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response)
   // req.user.mspId is already on the token, no join needed for it.
   const customerId = req.user!.customerId;
   let customerStatus: string | null = null;
+  let customerName: string | null = null;
   if (customerId != null) {
-    const [customer] = await db.select({ status: tenantsTable.status })
+    const [customer] = await db.select({ status: tenantsTable.status, customerName: tenantsTable.customerName })
       .from(tenantsTable).where(eq(tenantsTable.id, customerId)).limit(1);
     customerStatus = customer?.status ?? null;
+    customerName = customer?.customerName ?? null;
   }
 
   res.json({
     projects: enrichedProjects, clientServices, invoices, reports,
     unreadNotifications: unread, unreadMessages,
-    customerStatus, mspId: req.user!.mspId ?? null,
+    customerStatus, customerName, mspId: req.user!.mspId ?? null,
   });
 });
 

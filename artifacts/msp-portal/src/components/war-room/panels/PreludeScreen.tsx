@@ -12,6 +12,7 @@
 import React from "react";
 import { css, Txt, Hov, ImageSlot } from "../runtime";
 import { useVersionInfo } from "../../../hooks/useVersionInfo";
+import { resolvePreludeCustomerName } from "../warRoomIdentity";
 
 export function PreludeScreen({ v }: { v: any }) {
   const versionInfo = useVersionInfo();
@@ -683,7 +684,7 @@ export function PreludeScreen({ v }: { v: any }) {
                 </div>
                 {" "}
                 <div style={css(`font-size:14px;font-weight:800;letter-spacing:-.02em;color:#b3bfd2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>
-                  {"Northline Health"}
+                  {resolvePreludeCustomerName(v.customerName)}
                 </div>
                 {" "}
               </div>
