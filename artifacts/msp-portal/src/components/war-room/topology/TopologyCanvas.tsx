@@ -14,6 +14,7 @@
  * ------------------------------------------------------------------------- */
 import React from "react";
 import { css, Txt, Hov } from "../runtime";
+import { WAR_ROOM_NO_DATA_COLOR } from "../warRoomPillarStats";
 
 /** Style props the design runtime lets an <dc-import> push onto its host wrapper. */
 const HOST_STYLE_PROPS = new Set([
@@ -178,8 +179,19 @@ const IMPACT_RADIUS_UNITS = 28;
 const SCAN_RING_INNER = 672;
 const PROJ_RING_INNER = 726;
 
-/** Neutral grey for a segment no real pillar score feeds — never a severity colour. */
-const NO_DATA_COLOR = "#475569";
+/**
+ * Colour for a segment no real pillar score feeds — never a severity colour.
+ * #334: shares `WAR_ROOM_NO_DATA_COLOR` with the Welcome screen's pillar
+ * cards so both surfaces use the same "no data" language; previously this
+ * was a plain neutral grey, faint enough (0.12 fill opacity) to read as
+ * broken/unloaded rather than an honest, intentional absence.
+ */
+const NO_DATA_COLOR = WAR_ROOM_NO_DATA_COLOR;
+
+/** Dash pattern that gives a no-data segment's outline a visibly distinct
+ * texture (not just a colour) from the solid strokes real severity segments
+ * draw — so it reads clearly even without relying on colour perception. */
+const NO_DATA_DASH = "10 6";
 
 /** Radius a pillar's spoke anchor sits at (see hubPos) — inside the r=670 pillar wedges. */
 const HUB_ORBIT = 620;
@@ -355,8 +367,12 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         id: seg.id, label: seg.label, start: seg.start, end: seg.end,
         impact, measured, severity, colorHex,
         rInner: rIn, rOuter: rOut + Math.round((impact / 100) * IMPACT_RADIUS_UNITS),
-        fillOpacity: severity === "nodata" ? 0.12 : severity === "critical" ? 0.78 : severity === "elevated" ? 0.48 : 0.35,
-        strokeOpacity: severity === "nodata" ? 0.3 : severity === "critical" ? 0.95 : severity === "elevated" ? 0.75 : 0.65
+        // #334: nodata's old 0.12/0.3 opacities were faint enough to read as
+        // "nothing rendered" (broken) rather than an honest, intentional
+        // absence — raised so the segment is clearly, deliberately present.
+        fillOpacity: severity === "nodata" ? 0.22 : severity === "critical" ? 0.78 : severity === "elevated" ? 0.48 : 0.35,
+        strokeOpacity: severity === "nodata" ? 0.55 : severity === "critical" ? 0.95 : severity === "elevated" ? 0.75 : 0.65,
+        strokeDasharray: severity === "nodata" ? NO_DATA_DASH : "none"
       };
     });
 
@@ -540,7 +556,8 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
         path: this.sector(CX, CY, seg.rInner, seg.rOuter, seg.start, seg.end),
         color: seg.colorHex,
         fillOpacity: String(seg.fillOpacity * 0.85),
-        strokeOpacity: String(seg.strokeOpacity)
+        strokeOpacity: String(seg.strokeOpacity),
+        strokeDasharray: seg.strokeDasharray
       })),
 
       segments: projSegs.map((seg, i) => {
@@ -555,7 +572,7 @@ class TopologyCanvasLogic extends React.Component<Record<string, unknown>, any> 
           strokeWidth: st.selectedSegment === seg.id ? "4" : moved ? "3" : "2",
           fillOpacity: String(st.selectedSegment === seg.id ? 0.9 : seg.fillOpacity),
           strokeOpacity: String(st.selectedSegment === seg.id ? 1 : seg.strokeOpacity),
-          dash: moved || !ghosting ? "none" : "none",
+          strokeDasharray: seg.strokeDasharray,
           filter: this.props.embed ? "none" : (moved && seg.severity === "critical" ? "url(#fluent-glow-red)" : moved && seg.severity === "elevated" ? "url(#fluent-glow-amber)" : "none"),
           onClick: () => this.setState({ selectedSegment: seg.id })
         };
@@ -921,7 +938,7 @@ function TopologyCanvasView({ v }: { v: any }) {
               {(v.scanSegments || []).map((c, cIdx) => (
                 <React.Fragment key={cIdx}>
                   {" "}
-                  <path d={c?.path} fill={c?.color} fillOpacity={c?.fillOpacity} stroke={c?.color} strokeWidth={"2"} strokeOpacity={c?.strokeOpacity} style={css(`transition:all 700ms cubic-bezier(.22,1,.36,1)`)} />
+                  <path d={c?.path} fill={c?.color} fillOpacity={c?.fillOpacity} stroke={c?.color} strokeWidth={"2"} strokeOpacity={c?.strokeOpacity} strokeDasharray={c?.strokeDasharray} style={css(`transition:all 700ms cubic-bezier(.22,1,.36,1)`)} />
                   {" "}
                 </React.Fragment>
               ))}
@@ -931,7 +948,7 @@ function TopologyCanvasView({ v }: { v: any }) {
                   {" "}
                   <g onClick={s?.onClick} style={css(`cursor:pointer`)}>
                     {" "}
-                    <path d={s?.path} fill={s?.color} fillOpacity={s?.fillOpacity} stroke={s?.stroke} strokeWidth={s?.strokeWidth} strokeOpacity={s?.strokeOpacity} filter={s?.filter} style={css(`transition:all 300ms cubic-bezier(.22,1,.36,1)`)} />
+                    <path d={s?.path} fill={s?.color} fillOpacity={s?.fillOpacity} stroke={s?.stroke} strokeWidth={s?.strokeWidth} strokeOpacity={s?.strokeOpacity} strokeDasharray={s?.strokeDasharray} filter={s?.filter} style={css(`transition:all 300ms cubic-bezier(.22,1,.36,1)`)} />
                     {" "}
                     <path d={s?.edgePath} fill={s?.color} fillOpacity={".9"} style={css(`animation:${s?.edgeAnim}`)} />
                     {" "}

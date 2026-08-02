@@ -88,7 +88,7 @@ import {
 import { getCurrentAccessToken } from "@/lib/auth-context";
 import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, shouldTriggerWarRoomScan, warRoomPhaseStates } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
-import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY } from "./warRoomPillarStats";
+import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY, WAR_ROOM_NO_DATA_COLOR } from "./warRoomPillarStats";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
 import { cardScrollTop } from "./warRoomCardScroll";
 import {
@@ -3999,6 +3999,16 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         // the ring stays empty rather than drawing a fabricated arc.
         const rv = rPillarAt(i);
         const hasScore = typeof rv.score === "number";
+        // A pillar the scan genuinely finished but that produced no evaluable
+        // score at all (as opposed to one still queued/running). #334: this
+        // gets its own distinct visual language — not the muted "queued" grey,
+        // not a fabricated ring — so it never reads as a good, bad, or missing
+        // (broken) result.
+        const noData = complete && !hasScore;
+        // Distinct from `noData` (which is score-specific): this pillar has
+        // genuinely zero real stat callouts to show at all, so the grid gets
+        // a real "NO DATA" placeholder instead of just rendering empty.
+        const noStatsAtAll = complete && !live && (rv.stats?.length ?? 0) === 0;
         const glyphs = {
           governance: "M12 2l8 5H4l8-5zM6 11v7M10 11v7M14 11v7M18 11v7M3 21h18",
           security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
@@ -4026,12 +4036,15 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           stateBorder: complete ? "rgba(52,211,153,.5)" : live ? "rgba(255,255,255,.45)" : "rgba(100,116,139,.4)",
           checks: (p.checks || []).slice(0, 2).map((cv, ci) => ({ v: cv, c: "#fff", op: ci === 0 ? ".95" : ".6" })),
           // The ring, its colour and its number all key off the REAL score. A
-          // completed pillar with no real score draws no arc and reads "—"; the
+          // completed pillar with no real score draws a dashed ring in the
+          // dedicated no-data colour instead of a fabricated arc (#334) — a
+          // queued pillar (not yet complete) still draws no ring at all, so
+          // the two "nothing to show" states stay visually distinct too. The
           // banding thresholds (82 / 51) are the design's own and are unchanged.
-          dash: (complete && hasScore ? (rv.score / 100) * 113 : live ? 22 : 0).toFixed(1) + " 113",
-          dialColor: complete && hasScore ? (rv.score >= 82 ? "#34d399" : rv.score >= 51 ? "#fbbf24" : "#f87171") : live ? "rgba(255,255,255,.85)" : "rgba(148,163,184,.4)",
-          dialText: complete && hasScore ? (rv.score >= 82 ? "#6ee7b7" : rv.score >= 51 ? "#fcd34d" : "#fca5a5") : "rgba(226,232,240,.55)",
-          dialLabel: complete && hasScore ? String(rv.score) : live ? "··" : "—",
+          dash: noData ? "6 5" : (complete && hasScore ? (rv.score / 100) * 113 : live ? 22 : 0).toFixed(1) + " 113",
+          dialColor: complete && hasScore ? (rv.score >= 82 ? "#34d399" : rv.score >= 51 ? "#fbbf24" : "#f87171") : noData ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(255,255,255,.85)" : "rgba(148,163,184,.4)",
+          dialText: complete && hasScore ? (rv.score >= 82 ? "#6ee7b7" : rv.score >= 51 ? "#fcd34d" : "#fca5a5") : noData ? WAR_ROOM_NO_DATA_COLOR : "rgba(226,232,240,.55)",
+          dialLabel: complete && hasScore ? String(rv.score) : noData ? "N/A" : live ? "··" : "—",
           n: String(i + 1).padStart(2, "0"),
           numOp: live ? ".85" : complete ? ".5" : ".26",
           textureOp: live ? ".5" : complete ? ".26" : ".14",
@@ -4039,9 +4052,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           edgeGlow: live ? "0 0 22px " + p.c + "cc" : complete ? "0 0 14px " + p.c + "aa" : "none",
           edge: live ? p.c : complete ? p.c : p.c + "44",
           icon: live || complete ? "#fff" : p.c,
-          statV: live ? "rgba(219,227,238,.82)" : "rgba(190,201,216,.76)",
+          statV: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(219,227,238,.82)" : "rgba(190,201,216,.76)",
           statGlow: "rgba(2,6,23,.85)",
-          statL: live ? "rgba(226,232,240,.58)" : "rgba(148,163,184,.62)",
+          statL: noStatsAtAll ? WAR_ROOM_NO_DATA_COLOR : live ? "rgba(226,232,240,.58)" : "rgba(148,163,184,.62)",
           iconOp: live ? ".2" : complete ? ".13" : ".09",
           labelOp: live ? ".17" : complete ? ".12" : ".09",
           labelAnim: live ? "wr-labeldrift 9s ease-in-out infinite" : "none",
@@ -4049,8 +4062,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           // has a number for are in `rv.stats` at all, so a card can honestly
           // show fewer than four — or none. The two-at-a-time reveal while a
           // pillar is still live is the design's own behaviour, unchanged.
-          stats: (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
-            .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
+          stats: noStatsAtAll
+            ? [{ v: "NO DATA", l: "no evaluable check fed this pillar", delay: "0ms" }]
+            : (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
+              .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
           text: live || complete ? "#fff" : "#cbd5e1"
         };
       }),

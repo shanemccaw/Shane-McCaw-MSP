@@ -89,6 +89,19 @@ export const WAR_ROOM_PILLAR_VIEW_EMPTY: WarRoomPillarView = {
 };
 
 /**
+ * Dedicated colour for the honest "no real data" indicator (#334) — a pillar
+ * that genuinely has no evaluable score or stat, as opposed to one that's
+ * still queued/running or one with a real (good or bad) result. Deliberately
+ * outside the red/amber/green severity spectrum (and the neutral greys used
+ * for "queued"/"muted" states) so it can never be misread as a measured
+ * score of any kind. Shared by the Welcome screen pillar cards
+ * (WarRoomLogic.tsx) and the radial diagram's honest no-data segments
+ * (topology/TopologyCanvas.tsx, #312) so both surfaces agree on what "no
+ * data" looks like.
+ */
+export const WAR_ROOM_NO_DATA_COLOR = "#e879f9";
+
+/**
  * Render one real number the way the card showed its fictional predecessor:
  * thousands-separated counts ("1,204"), whole-dollar currency ("$847,608"),
  * percentages with a sign ("34%").
