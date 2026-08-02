@@ -86,6 +86,7 @@ import {
 import { getCurrentAccessToken } from "@/lib/auth-context";
 import { WAR_ROOM_PILLAR_KEYS, WAR_ROOM_SCAN_IDLE, warRoomPhaseStates } from "./warRoomScan";
 import { buildWarRoomBoard } from "./warRoomBoard";
+import { warRoomPillarViews, warRoomPillarNote, warRoomFindingsFeed, WAR_ROOM_PILLAR_VIEW_EMPTY } from "./warRoomPillarStats";
 import { computeTopologyDeltas, projectTopologyScores } from "./warRoomTopologyScores";
 import {
   WAR_ROOM_SECTIONS,
@@ -2190,8 +2191,18 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
    * Start a real scan. The page owns the request (it is where useScanStatus()
    * lives); this only fires it and starts the feed animation. Deliberately does
    * NOT set any progress state — progress arrives on props, from the run.
+   *
+   * Guarded against re-firing (#322): "Simulate scan" (PreludeScreen's debug
+   * footer) renders on screen at the same time as the hero chat, so a real
+   * session can reach both this and heroSmart('go')'s call to this same
+   * method. Neither `onTriggerScan` nor the debug-trigger-scan route it calls
+   * dedupes — every POST inserts a fresh `msp_diagnostic_runs` row — so once a
+   * run is already known (running or complete) this is a no-op instead of a
+   * second run.
    */
   triggerScan = () => {
+    const scan = this.props.scan;
+    if (scan && scan.phase !== "idle") return;
     this.heroFeedTick();
     const trigger = this.props.onTriggerScan;
     if (typeof trigger === "function") Promise.resolve(trigger()).catch(() => {});
@@ -2340,6 +2351,12 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       heroThread: (st.heroThread || []).filter(m => !m.chips).concat([{ who: "you", text: chip ? chip.l : "" }])
     }), () => {
       if (k === "go") {
+        // The real scan starts alongside the conversation, both off this one
+        // real button (#322) — previously only "Simulate scan" (the debug
+        // footer's onSimulate) reached triggerScan, so a real customer's real
+        // click here never created a real run. triggerScan() itself guards
+        // against firing twice if a run is already known.
+        this.triggerScan();
         clearTimeout(this.heroSmartT);
         this.heroSmartT = setTimeout(() => this.setState(st => ({
           heroThread: (st.heroThread || []).concat([{ who: "shane", text: "Likewise. And I promise this is the least painful meeting anyone will book you into this quarter — I do the reading, you do the talking." }])
@@ -2754,6 +2771,27 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
     const rLiveIdx = rStates.indexOf("live") >= 0
       ? rStates.indexOf("live")
       : Math.max(0, Math.min(rDone, HERO_PHASE.length - 1));
+
+    // ── The real pillar cards (#320) ──────────────────────────────────────────
+    // Each card's score and its four stat callouts, off the real health engine
+    // and the customer's real monitor-profile / findings rows (see
+    // warRoomPillarStats.ts and api-server's lib/war-room-pillar-stats.ts).
+    //
+    // What these replace: `HERO_PHASE[i].score`, `HERO_PHASE[i].stats` and
+    // `HERO_PHASE[i].find` — the fictional Northline Health constants (34/38/54/
+    // 34/58/41/34, "1,204 sites inventoried", "$847,608 annual waste", …), which
+    // were identical for every customer and moved for no scan.
+    //
+    // `HERO_PHASE` is still the source of every NON-numeric thing a card shows:
+    // its title, colour, beam/glow, check-list copy and glyph. Only the numbers
+    // come from here — the design's presentation is untouched.
+    //
+    // A pillar with no real number renders none: `rPillars[k].score` stays null
+    // and `stats` stays empty rather than falling back to the old constant. That
+    // is the whole point of the issue, so it is deliberately not "defensive".
+    const rPillars = warRoomPillarViews(WAR_ROOM_PILLAR_KEYS, this.props.pillarStats);
+    /** The card view for HERO_PHASE index `i`; the two trailing doc rows have none. */
+    const rPillarAt = (i) => rPillars[WAR_ROOM_PILLAR_KEYS[i]] || WAR_ROOM_PILLAR_VIEW_EMPTY;
 
     const nodes = NODES.map(n => {
       const st = s.statuses[n.id], c = STATUS[st].color;
@@ -3570,13 +3608,21 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
       onHeroDraft: (e) => this.setState({ heroDraft: e.target.value }),
       onHeroKey: (e) => { if (e.key === "Enter") this.heroAnswer(); },
       onHeroSend: () => this.heroAnswer(),
-      heroFindings: (() => {
-        const out = [];
-        HERO_PHASE.forEach((p, i) => {
-          if (rStates[i] === "done") p.find.forEach(v => out.push({ v: v, c: p.c, n: p.t.replace(" Scan", "").replace(" Readiness Model", "") }));
-        });
-        return out.slice(-6);
-      })(),
+      // Real findings (#320) — the titles of this tenant's own critical/warning
+      // `msp_diagnostic_findings` rows for each pillar that has really reported,
+      // replacing HERO_PHASE's fictional `find` strings ("41 sites publishing
+      // tenant-wide", "no named champions"). A scored pillar that genuinely
+      // produced no finding contributes nothing rather than a stand-in line.
+      heroFindings: warRoomFindingsFeed(
+        WAR_ROOM_PILLAR_KEYS.map((k, i) => ({
+          pillar: k,
+          label: HERO_PHASE[i].t.replace(" Scan", "").replace(" Readiness Model", ""),
+          color: HERO_PHASE[i].c,
+          scored: rStates[i] === "done",
+        })),
+        this.props.pillarStats,
+        6,
+      ),
       heroHasFindings: rDone > 0,
       heroRails: (() => {
         // Out of the seven real pillars, not HERO_PHASE.length — the two trailing
@@ -3637,7 +3683,10 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               const paths = ep[p.k] || [];
               if (rStates[i] === "done") {
                 paths.forEach((u, j) => lines.push({ u: u, s: "200", ms: (90 + ((i * 37 + j * 53) % 260)) + "ms", c: "#34d399" }));
-                (p.find || []).forEach(fd => lines.push({ u: fd, s: "HIT", ms: "", c: "#fbbf24" }));
+                // Real HIT lines (#320): this tenant's own finding titles for the
+                // pillar, not HERO_PHASE's fictional `find` strings. A pillar with
+                // no real finding shows only its request lines.
+                rPillarAt(i).findings.forEach(fd => lines.push({ u: fd, s: "HIT", ms: "", c: "#fbbf24" }));
               } else if (rStates[i] === "live") {
                 const shown = Math.min(paths.length, 1 + (tick % (paths.length + 1)));
                 paths.slice(0, shown).forEach((u, j) => lines.push({ u: u, s: j === shown - 1 ? "···" : "200", ms: j === shown - 1 ? "" : (90 + ((i * 37 + j * 53) % 260)) + "ms", c: j === shown - 1 ? "#7dd3fc" : "#34d399" }));
@@ -3693,6 +3742,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         // drops the two document rows, which are the trailing HERO_PHASE entries,
         // so `i` still indexes rStates correctly.
         const complete = rStates[i] === "done", live = rStates[i] === "live";
+        // Real score + real stat callouts for this pillar (#320). `score` is null
+        // when no evaluable rule feeds the pillar — the dial then reads "—" and
+        // the ring stays empty rather than drawing a fabricated arc.
+        const rv = rPillarAt(i);
+        const hasScore = typeof rv.score === "number";
         const glyphs = {
           governance: "M12 2l8 5H4l8-5zM6 11v7M10 11v7M14 11v7M18 11v7M3 21h18",
           security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
@@ -3707,7 +3761,7 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           glyph: glyphs[p.k] || glyphs.governance,
           done: complete,
           live: live,
-          score: String(p.score),
+          score: hasScore ? String(rv.score) : "—",
           bg: p.k === "copilot"
             ? (live ? "linear-gradient(100deg,#0078D47a,#00B4D866 42%,#8B5CF659)"
               : complete ? "linear-gradient(100deg,#0078D44d,#00B4D842 42%,#8B5CF63b)"
@@ -3719,10 +3773,13 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           stateColor: complete ? "#6ee7b7" : live ? "#f8fafc" : "#64748b",
           stateBorder: complete ? "rgba(52,211,153,.5)" : live ? "rgba(255,255,255,.45)" : "rgba(100,116,139,.4)",
           checks: (p.checks || []).slice(0, 2).map((cv, ci) => ({ v: cv, c: "#fff", op: ci === 0 ? ".95" : ".6" })),
-          dash: (complete ? (p.score / 100) * 113 : live ? 22 : 0).toFixed(1) + " 113",
-          dialColor: complete ? (p.score >= 82 ? "#34d399" : p.score >= 51 ? "#fbbf24" : "#f87171") : live ? "rgba(255,255,255,.85)" : "rgba(148,163,184,.4)",
-          dialText: complete ? (p.score >= 82 ? "#6ee7b7" : p.score >= 51 ? "#fcd34d" : "#fca5a5") : "rgba(226,232,240,.55)",
-          dialLabel: complete ? String(p.score) : live ? "··" : "—",
+          // The ring, its colour and its number all key off the REAL score. A
+          // completed pillar with no real score draws no arc and reads "—"; the
+          // banding thresholds (82 / 51) are the design's own and are unchanged.
+          dash: (complete && hasScore ? (rv.score / 100) * 113 : live ? 22 : 0).toFixed(1) + " 113",
+          dialColor: complete && hasScore ? (rv.score >= 82 ? "#34d399" : rv.score >= 51 ? "#fbbf24" : "#f87171") : live ? "rgba(255,255,255,.85)" : "rgba(148,163,184,.4)",
+          dialText: complete && hasScore ? (rv.score >= 82 ? "#6ee7b7" : rv.score >= 51 ? "#fcd34d" : "#fca5a5") : "rgba(226,232,240,.55)",
+          dialLabel: complete && hasScore ? String(rv.score) : live ? "··" : "—",
           n: String(i + 1).padStart(2, "0"),
           numOp: live ? ".85" : complete ? ".5" : ".26",
           textureOp: live ? ".5" : complete ? ".26" : ".14",
@@ -3736,17 +3793,33 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           iconOp: live ? ".2" : complete ? ".13" : ".09",
           labelOp: live ? ".17" : complete ? ".12" : ".09",
           labelAnim: live ? "wr-labeldrift 9s ease-in-out infinite" : "none",
-          stats: (complete ? (p.stats || []) : live ? (p.stats || []).slice(0, 2) : [])
-            .map((sv, si) => ({ v: sv[0], l: sv[1], delay: (si * 260) + "ms" })),
+          // The four real stat callouts (#320). Only stats the tenant genuinely
+          // has a number for are in `rv.stats` at all, so a card can honestly
+          // show fewer than four — or none. The two-at-a-time reveal while a
+          // pillar is still live is the design's own behaviour, unchanged.
+          stats: (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
+            .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
           text: live || complete ? "#fff" : "#cbd5e1"
         };
       }),
       heroPillarRows: HERO_PHASE.map((p, i) => {
         const complete = rStates[i] === "done", live = rStates[i] === "live";
+        // Real score + real finding note (#320) for the seven PILLAR rows.
+        //
+        // The two trailing rows are document generation, not pillars: no check
+        // scores them and they have no card view. Their state already comes from
+        // the real doc-generation workflow (`warRoomDocState`, #305), and their
+        // "100" means "the documents really were generated" rather than a health
+        // score — so they deliberately keep the design's own row values instead
+        // of being forced to read "—" for a thing that genuinely completed.
+        const isDoc = !!p.doc;
+        const rv = rPillarAt(i);
+        const hasScore = isDoc ? complete : typeof rv.score === "number";
+        const rowScore = isDoc ? p.score : rv.score;
         return {
           t: p.t, c: p.c, active: live,
           short: p.t.replace(" Scan", "").replace(" Readiness Model", ""),
-          bar: complete ? p.score + "%" : live ? "8%" : "0%",
+          bar: complete && hasScore ? rowScore + "%" : live ? "8%" : "0%",
           dotAnim: live ? "wr-blink 1.1s ease-in-out infinite" : "none",
           ink: complete || live ? "#e2e8f0" : "#64748b",
           state: complete ? "SCORED" : live ? "READING" : "QUEUED",
@@ -3754,11 +3827,11 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           border: live ? p.c + "99" : complete ? p.c + "4d" : "rgba(30,41,59,.9)",
           bg: live ? "linear-gradient(150deg," + p.c + "24,rgba(2,6,23,.5))" : complete ? "rgba(2,6,23,.55)" : "rgba(2,6,23,.4)",
           glow: live ? "0 0 26px " + p.c + "33" : "none",
-          note: complete ? p.find[0] : live ? p.checks[0] + "…" : "waiting",
-          score: complete ? String(p.score) : "—",
-          deg: (complete ? Math.round(p.score * 3.6) : live ? 26 : 0) + "deg",
+          note: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? p.checks[0] + "…" : "waiting",
+          score: complete && hasScore ? String(rowScore) : "—",
+          deg: (complete && hasScore ? Math.round(rowScore * 3.6) : live ? 26 : 0) + "deg",
           icon: PILLAR_GLYPH[p.t.replace(" Scan", "").replace(" Readiness Model", "")] || "M22 12h-4l-3 9L9 3l-3 9H2",
-          sub: complete ? (p.find && p.find[0] ? p.find[0] : "scored") : live ? "reading…" : "queued",
+          sub: complete ? (isDoc ? p.find[0] : warRoomPillarNote(rv, true)) : live ? "reading…" : "queued",
           scoreInk: complete ? p.c : "#475569"
         };
       }),
@@ -3832,6 +3905,14 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
         const p = m.who === "scan" ? HERO_PHASE[m.phase] : null;
         const complete = p ? rStates[m.phase] === "done" : false;
         const live = p ? rStates[m.phase] === "live" : false;
+        // The thread's inline scan card shows the same pillar as the stack, so it
+        // reads the same real score and real findings (#320) rather than the
+        // fictional HERO_PHASE constants it used to echo. A document row keeps
+        // the design's own values for the same reason heroPillarRows does — its
+        // completion is real doc-workflow state, not a pillar score.
+        const mIsDoc = !!(p && p.doc);
+        const mv = p && !mIsDoc ? rPillarAt(m.phase) : WAR_ROOM_PILLAR_VIEW_EMPTY;
+        const mHasScore = mIsDoc ? complete : typeof mv.score === "number";
         return {
           isShane: m.who === "shane" && !m.profile && !m.chips && !m.wrap, isYou: m.who === "you", isScan: m.who === "scan", neverScan: false,
           isProfile: !!m.profile,
@@ -3878,9 +3959,9 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
               op: complete ? "1" : live ? (ci <= 1 ? "1" : ".45") : ".3",
               tick: complete ? "1" : "0"
             })),
-            findShow: complete,
-            find: p.find.map(v => ({ v })),
-            score: complete ? String(p.score) : "—",
+            findShow: complete && (mIsDoc ? p.find.length > 0 : mv.findings.length > 0),
+            find: (mIsDoc ? p.find : mv.findings).map(v => ({ v })),
+            score: complete && mHasScore ? String(mIsDoc ? p.score : mv.score) : "—",
             scoreColor: complete ? p.c : "#475569"
           } : null
         };

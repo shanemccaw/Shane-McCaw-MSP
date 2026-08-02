@@ -4,6 +4,7 @@ import { WarRoomLogic } from "@/components/war-room/WarRoomLogic";
 import { warRoomUrlSync } from "@/components/war-room/warRoomSections";
 import { deriveWarRoomScan } from "@/components/war-room/warRoomScan";
 import { toTopologyBaseline } from "@/components/war-room/warRoomTopologyScores";
+import { useWarRoomPillarStats } from "@/components/war-room/useWarRoomPillarStats";
 import { useRealTelemetryComparison } from "@/components/copilot-assessment/useRealTelemetryComparison";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
@@ -39,6 +40,12 @@ import { CopilotAssessmentDebugPanel } from "@/components/copilot-assessment/deb
  * trigger go down as props, the same shape #303's `section`/`onSectionChange` already
  * established. `ScanStatusProvider` wraps the router in App.tsx, so it is in scope here
  * even though the War Room renders outside AppShell.
+ *
+ * Real pillar cards (#320): the seven completed-scan summary cards' scores and their four
+ * stat callouts each come from `useWarRoomPillarStats()` — the real health engine (the
+ * same `computePillarDisplayScore` path #245 proved) plus the customer's real
+ * `tenant_monitor_profiles` and `msp_diagnostic_findings` rows. Called here and passed
+ * down for the same class-component reason as `scan` above.
  */
 export default function WarRoomPage() {
   const [, setLocation] = useLocation();
@@ -85,6 +92,13 @@ export default function WarRoomPage() {
     () => (telemetry.loaded ? toTopologyBaseline(telemetry.pillars) : null),
     [telemetry.loaded, telemetry.pillars],
   );
+
+  // Real pillar-card data (#320) — each card's score plus its four stat callouts
+  // and its real findings. Deliberately its OWN endpoint rather than more fields
+  // on the telemetry payload above: it resolves ~20 distinct monitor metrics plus
+  // the /subscribedSkus seat arithmetic, which the radial diagram's two rings
+  // neither need nor should pay for. Same `Assessment` role floor.
+  const pillarStats = useWarRoomPillarStats();
 
   // Hold on to the last per-check results we really saw. The provider empties
   // `scanCheckResults` as soon as a run finishes (it releases the held runId,
@@ -190,6 +204,10 @@ export default function WarRoomPage() {
       // "why is that segment grey/red" is answerable without a rebuild.
       pillarScores,
       telemetry: { loaded: telemetry.loaded, live: telemetry.live, generatedAt: telemetry.generatedAt },
+      // #320 — the real card payload, so "where did that stat number come from"
+      // is answerable in the testbed panel: every stat carries its own `source`
+      // (the real check key) and, when null, the resolver's own reason.
+      pillarStats: pillarStats.payload,
       derived: { isTestbed: data?.isTestbed ?? false, streamedRunId, triggeredRunId },
       user: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
     }),
@@ -202,6 +220,7 @@ export default function WarRoomPage() {
       telemetry.loaded,
       telemetry.live,
       telemetry.generatedAt,
+      pillarStats.payload,
       data?.isTestbed,
       streamedRunId,
       triggeredRunId,
@@ -219,6 +238,7 @@ export default function WarRoomPage() {
         onTriggerScan={handleTriggerScan}
         customerName={customerName}
         pillarScores={pillarScores}
+        pillarStats={pillarStats.payload}
       />
 
       {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ */}
