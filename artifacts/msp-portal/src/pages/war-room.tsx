@@ -59,6 +59,16 @@ export default function WarRoomPage() {
   // belongs. `/portal/dashboard` is the cheapest existing source for it —
   // same endpoint customer-home.tsx/app-shell.tsx already call — so this
   // fetches it directly rather than adding a new endpoint.
+  //
+  // This fetch returned nothing usable until #327. Two routers registered
+  // `/portal/dashboard`; the one Express actually matched was
+  // `requireRole("CustomerUser")`-gated and never emitted `customerName`, while
+  // the handler #315 wrote the field onto was shadowed dead code. So every War
+  // Room visitor silently fell through to the generic label below — Assessment
+  // tier on a 403, everyone else on a 200 whose body had no such key. #327
+  // deleted the dead handler, moved `customerName` onto the live one and
+  // dropped its floor to requireAuth, which is what makes this reachable for
+  // the Assessment role the War Room actually runs as.
   const [customerName, setCustomerName] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;

@@ -13,7 +13,6 @@ import downloadsRouter from "./downloads";
 import portalTeamRouter from "./portal-team";
 import portalProfileRouter from "./portal-profile";
 import portalOnboardingRouter from "./portal-onboarding";
-import portalDashboardRouter from "./portal-dashboard";
 import portalProjectsRouter from "./portal-projects";
 import portalDocumentsRouter from "./portal-documents";
 import portalBillingRouter from "./portal-billing";
@@ -243,7 +242,10 @@ router.use(dashboardExportRouter);
 router.use(portalTeamRouter);
 router.use(portalProfileRouter);
 router.use(portalOnboardingRouter);
-router.use(portalDashboardRouter);
+// portalDashboardRouter was mounted here until #327. It registered a second
+// GET /portal/dashboard, which portalCustomerEnginesRouter (mounted above)
+// always won on registration order, so it never served a request. Its payload
+// was a strict subset of the surviving handler's — see the note on that route.
 router.use(portalProjectsRouter);
 router.use(portalDocumentsRouter);
 router.use(portalBillingRouter);

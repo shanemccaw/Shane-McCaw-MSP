@@ -8,16 +8,19 @@
  * or internal operator data are returned — only what a customer needs to
  * know about their service health.
  *
- * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role.
+ * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role — for
+ * every route here EXCEPT GET /portal/dashboard, which is requireAuth (see the
+ * note on that route).
  * The customer's own ID is read from the JWT claim (req.user.customerId).
  *
  * Routes:
  *   GET /api/portal/customer/sla-status
  *   GET /api/portal/customer/scope-status
+ *   GET /api/portal/dashboard
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
@@ -252,10 +255,32 @@ router.get(
 );
 
 // ── GET /api/portal/dashboard ─────────────────────────────────────────────────
-
+//
+// THE single handler for this path (#327). A second one lived in
+// portal-dashboard.ts until #327 deleted it: both files registered the identical
+// path, and since Express matches in registration order (this router is mounted
+// first in routes/index.ts) that other handler never executed for any request
+// from the day it was added. It was not a rival implementation — the block below
+// marked "Merge existing dashboard fields for customer-home.tsx" is a verbatim
+// copy of its body, so it was already a strict subset of this route's payload,
+// short one field (`customerName`, added to the dead file by #315 and carried
+// over here). Nothing was lost by deleting it; the only real symptom was #315's
+// tenant-name fetch silently reading a field no live route emitted.
+//
+// requireAuth, not requireRole("CustomerUser") — Shane's call on #327. The
+// Assessment role sits BELOW CustomerUser in ROLE_ORDER, so the old floor 403'd
+// the War Room and the assessment dashboard, which are Assessment-tier surfaces
+// that call this route. Deliberate consequence: Assessment/Free tier now receive
+// the engine payload (`scores`, `results.summary.compositeScore`, per-pillar
+// `score`, `telemetryStatus`, `type_attributes`). The #164 paywall below is
+// unaffected and still redacts findings/recommendation TEXT for unpaid
+// customers — it keys on the SOW agreement, never on the role — but note that
+// pillar SCORES were never gated by it and are now visible one tier lower.
+// A token with no customerId claim (every MSP-side role) still gets the 400
+// below, exactly as it did under the old floor.
 router.get(
   "/portal/dashboard",
-  requireRole("CustomerUser"),
+  requireAuth,
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -368,8 +393,12 @@ router.get(
         ? Array.from(dashboardModules) 
         : (enabledModules.size > 0 ? Array.from(enabledModules) : ["priority-health", "security", "copilot", "cost"]);
 
+      // customerName rides along on the tenants row this route already reads —
+      // no extra query. It is the real tenant identity #315's War Room prelude
+      // needs (it replaced a hardcoded "Northline Health"), and it was the ONE
+      // field the deleted portal-dashboard.ts emitted that this route did not.
       const [customer] = await db
-        .select({ status: tenantsTable.status })
+        .select({ status: tenantsTable.status, customerName: tenantsTable.customerName })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, customerId))
         .limit(1);
@@ -475,8 +504,15 @@ router.get(
         reports,
         unreadNotifications: unread,
         unreadMessages,
-        customerStatus: customer?.status,
-        mspId: req.user!.mspId
+        // `?? null` on all three: the deleted portal-dashboard.ts coalesced them,
+        // and a bare `undefined` is DROPPED by JSON.stringify, so a customer with
+        // no tenants row would have had the keys vanish from the payload rather
+        // than read null. Consumers (app-shell's inactive banner,
+        // CustomerDashboardExtras' promo gate) treat absent and null the same, so
+        // this is a shape fix, not a behaviour change.
+        customerStatus: customer?.status ?? null,
+        customerName: customer?.customerName ?? null,
+        mspId: req.user!.mspId ?? null
       });
     } catch (err) {
       log.error({ err, customerId }, "portal-customer-engines: dashboard failed");
