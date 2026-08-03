@@ -1627,6 +1627,28 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   fanOutItemIdField: text("fan_out_item_id_field"),
   /** Per-check cap on how many enumerated items are scanned (throttle guard). NULL = platform default (FAN_OUT_MAX_ITEMS_DEFAULT). */
   fanOutMaxItems: integer("fan_out_max_items"),
+  /**
+   * Optional condition-grammar expression (the SAME grammar severity_rules use)
+   * evaluated against EACH enumerated source item; only items that pass are
+   * fanned out. NULL = fan out to every enumerated item, i.e. exactly the prior
+   * behaviour. Exists because some enumerations return a superset of what the
+   * check is about — `/sites/getAllSites` returns every user's OneDrive as
+   * `isPersonalSite: true`, and in a large tenant those would both waste a
+   * request each and consume the fan_out_max_items cap ahead of the real
+   * SharePoint sites, silently truncating the answer.
+   */
+  fanOutItemFilter: text("fan_out_item_filter"),
+  /**
+   * Key resolved server-side against a code-owned normalizer registry
+   * (FAN_OUT_ITEM_NORMALIZERS in monitor-executor.ts) — an identifier only,
+   * never a script string, the same contract ps_cmdlet_key follows. The
+   * normalizer reshapes ONE source item's per-item results before they join the
+   * flattened union, which is what lets a fan-out produce per-source-item rows
+   * (one row per SharePoint site, carrying that site's real name and URL)
+   * instead of an anonymous bag of child objects. NULL = flatten the raw
+   * per-item results as-is, i.e. exactly the prior behaviour.
+   */
+  fanOutItemNormalizer: text("fan_out_item_normalizer"),
   // ── PowerShell-backed execution (additive, NULL/'graph' for every existing check) ──
   /** 'graph' (default, every existing row) = the endpoint/method/... columns above drive a Graph REST fetch. 'powershell' = psCmdletKey/psParams below drive a ps-execution container call instead; endpoint/method/requestBody/selectParams/filterParams/fanOut* are unused. */
   executorType: text("executor_type", { enum: MONITOR_CHECK_EXECUTOR_TYPES }).notNull().default("graph"),

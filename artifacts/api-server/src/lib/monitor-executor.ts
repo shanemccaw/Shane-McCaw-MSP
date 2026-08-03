@@ -25,6 +25,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked } from "./graph";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
+import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -61,6 +62,49 @@ const FAN_OUT_RETRY_BASE_DELAY_MS = 1000;
 
 /** Max distinct per-item failure messages retained on the result for diagnosis. */
 const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
+
+/**
+ * Reshapes ONE enumerated source item's per-item results before they join the
+ * fan-out's flattened union.
+ *
+ * The default fan-out flattens every per-item response into one anonymous bag,
+ * which is right when the aggregate IS the answer (PIM's total eligible
+ * assignments across all groups). It is wrong when the answer is per-source-item
+ * — "which SharePoint sites are overshared, by name and URL" — because the bag
+ * has thrown away which site each child object came from. A normalizer receives
+ * the source item alongside its results and can emit one row per source item
+ * instead, so the check's ordinary mapping rules count SOURCE ITEMS and the
+ * full-item detail collector persists a list that can actually be read back.
+ */
+export type FanOutItemNormalizer = (
+  sourceItem: Record<string, unknown>,
+  perItemResults: unknown[],
+) => unknown[];
+
+/**
+ * The code-owned normalizer registry. `monitor_checks.fan_out_item_normalizer`
+ * stores a KEY into this table and nothing else — never a script, never an
+ * expression — the same contract `ps_cmdlet_key` follows against the ps
+ * container's own cmdlet allowlist. An unknown key is a hard error at execution
+ * time rather than a silent fall-back to raw flattening, because the two
+ * produce completely different item shapes and a silent fall-back would hand a
+ * document a bag of permission objects while every count read zero.
+ */
+export const FAN_OUT_ITEM_NORMALIZERS: Record<string, FanOutItemNormalizer> = {
+  [SHAREPOINT_SITE_SHARING_NORMALIZER]: normalizeSiteSharing,
+};
+
+function resolveFanOutItemNormalizer(key: string | null | undefined): FanOutItemNormalizer | null {
+  if (!key) return null;
+  const normalizer = FAN_OUT_ITEM_NORMALIZERS[key];
+  if (!normalizer) {
+    throw new Error(
+      `monitor check declares fan_out_item_normalizer "${key}", which is not in the code-owned registry ` +
+      `(${Object.keys(FAN_OUT_ITEM_NORMALIZERS).join(", ") || "empty"})`,
+    );
+  }
+  return normalizer;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -922,8 +966,19 @@ async function runPowerShellCheck(opts: {
 //
 //   1. Enumerate `fanOutSource` (e.g. /groups) with full @odata.nextLink paging —
 //      a large tenant's hundreds of groups are NOT assumed to fit one page.
+//   1b. OPTIONAL, opt-in via `fanOutItemFilter`: drop enumerated items that fail a
+//      condition-grammar expression BEFORE the item cap is applied, so a source
+//      that returns a superset (`/sites/getAllSites` includes every OneDrive)
+//      can't spend the budget on items the check isn't about. NULL = keep all.
 //   2. Issue the check's own `endpoint` once per item, substituting the item id
 //      into `{itemId}`, with bounded concurrency + per-request 429 backoff.
+//   2b. OPTIONAL, opt-in via `fanOutItemNormalizer`: reshape ONE source item's
+//      results before they join the union — a code-owned function keyed by name,
+//      never a stored script. This is what lets a fan-out answer a PER-SOURCE-ITEM
+//      question ("which sites are overshared, by name and URL") rather than only
+//      a cross-item rollup: the normalizer emits one row per source item, so
+//      `combinedItems` becomes the site list and the mapping counts SITES. NULL =
+//      flatten raw results, i.e. every pre-existing check, unchanged.
 //   3. Aggregate:
 //        • the check's normal `mapping`/`properties` run over the FLATTENED union
 //          of every per-item response — this yields the cross-group ROLLUP totals
@@ -951,6 +1006,9 @@ async function runFanOutCheck(opts: {
   };
   const idField = check.fanOutItemIdField ?? "id";
   const maxItems = check.fanOutMaxItems ?? FAN_OUT_MAX_ITEMS_DEFAULT;
+  // Resolved BEFORE any Graph call: a misconfigured normalizer key must fail
+  // before the run spends hundreds of per-item requests it would then discard.
+  const normalizer = resolveFanOutItemNormalizer(check.fanOutItemNormalizer);
 
   // 1. Enumerate the source list. Any throw here (consent/license/generic) is
   //    deliberately allowed to propagate to executeMonitorCheck's catch.
@@ -962,17 +1020,40 @@ async function runFanOutCheck(opts: {
     { throttleRetry },
   );
 
-  const allIds = enumResult.items
-    .map((it) => (typeof it === "object" && it !== null
-      ? (it as Record<string, unknown>)[idField]
-      : undefined))
-    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  // The whole source object is retained, not just its id: an opt-in item filter
+  // reads its fields, and a normalizer needs it to stamp real identity (a site's
+  // name and URL) onto the row it emits.
+  const allEntries = enumResult.items
+    .filter((it): it is Record<string, unknown> => typeof it === "object" && it !== null && !Array.isArray(it))
+    .map((source) => ({ source, id: source[idField] }))
+    .filter((e): e is { source: Record<string, unknown>; id: string } =>
+      typeof e.id === "string" && e.id.length > 0);
 
-  const truncated = allIds.length > maxItems;
-  const ids = truncated ? allIds.slice(0, maxItems) : allIds;
+  // 1b. Opt-in per-item filter (same condition grammar as severity_rules). This
+  //     runs BEFORE the cap on purpose: filtering after would let excluded items
+  //     consume the budget and silently truncate the ones the check is about.
+  const filterExpr = check.fanOutItemFilter?.trim();
+  let excludedByFilter = 0;
+  const eligible = filterExpr
+    ? allEntries.filter((e) => {
+        let keep: boolean;
+        try {
+          keep = evalConditionGrammar(filterExpr, e.source);
+        } catch {
+          // A malformed filter must not silently drop the tenant's entire
+          // estate — keep the item and let the run report real coverage.
+          keep = true;
+        }
+        if (!keep) excludedByFilter++;
+        return keep;
+      })
+    : allEntries;
+
+  const truncated = eligible.length > maxItems;
+  const entries = truncated ? eligible.slice(0, maxItems) : eligible;
   if (truncated) {
     log.warn(
-      { checkKey: check.key, tenantId, enumerated: allIds.length, cap: maxItems },
+      { checkKey: check.key, tenantId, enumerated: allEntries.length, eligible: eligible.length, cap: maxItems },
       "monitor-executor: fan-out item cap reached — scanning first N, coverage truncated (recorded in _fanOut.truncated)",
     );
   }
@@ -999,11 +1080,11 @@ async function runFanOutCheck(opts: {
   // every remaining group to re-learn the tenant lacks the add-on).
   for (
     let i = 0;
-    i < ids.length && !consentErr && !(licenseErr && succeeded === 0);
+    i < entries.length && !consentErr && !(licenseErr && succeeded === 0);
     i += FAN_OUT_CONCURRENCY
   ) {
-    const batch = ids.slice(i, i + FAN_OUT_CONCURRENCY);
-    const outcomes = await Promise.all(batch.map(async (id) => {
+    const batch = entries.slice(i, i + FAN_OUT_CONCURRENCY);
+    const outcomes = await Promise.all(batch.map(async ({ id, source }) => {
       try {
         // Substitute {itemId} here; graphFetchPaginated still resolves the tenant
         // identity + date placeholders and prepends the Graph base.
@@ -1019,9 +1100,9 @@ async function runFanOutCheck(opts: {
           check.requestBody as unknown,
           { throttleRetry },
         );
-        return { id, ok: true as const, items: r.items, pageCount: r.pageCount };
+        return { id, source, ok: true as const, items: r.items, pageCount: r.pageCount };
       } catch (e) {
-        return { id, ok: false as const, error: e };
+        return { id, source, ok: false as const, error: e };
       }
     }));
 
@@ -1029,8 +1110,11 @@ async function runFanOutCheck(opts: {
       if (o.ok) {
         succeeded++;
         perItemPageTotal += o.pageCount;
+        // Coverage is measured on the RAW results, before any normalizer: this
+        // metric answers "how many enumerated items returned anything at all",
+        // which must not change shape just because a check reshapes its rows.
         if (o.items.length > 0) withResults++;
-        combinedItems.push(...o.items);
+        combinedItems.push(...(normalizer ? normalizer(o.source, o.items) : o.items));
         continue;
       }
       const e = o.error;
@@ -1062,8 +1146,14 @@ async function runFanOutCheck(opts: {
   extracted._fanOut = {
     source: check.fanOutSource,
     itemIdField: idField,
-    sourceItemsTotal: allIds.length,
-    sourceItemsScanned: ids.length,
+    sourceItemsTotal: allEntries.length,
+    // Present on every fan-out result, 0/equal-to-total when no filter is
+    // configured, so a reader never has to guess whether filtering happened.
+    sourceItemsExcludedByFilter: excludedByFilter,
+    sourceItemsEligible: eligible.length,
+    itemFilter: filterExpr ?? null,
+    itemNormalizer: check.fanOutItemNormalizer ?? null,
+    sourceItemsScanned: entries.length,
     sourceItemsSucceeded: succeeded,
     sourceItemsFailed: failed,
     sourceItemsWithResults: withResults,
@@ -1078,8 +1168,8 @@ async function runFanOutCheck(opts: {
   // 4. Honest status. Never "ok" over real per-item failures; never "error" when
   //    real aggregate data WAS collected.
   let status: CheckResult["status"];
-  if (ids.length === 0) {
-    status = "ok"; // zero enumerated items — an honest empty tenant, not a fault
+  if (entries.length === 0) {
+    status = "ok"; // zero eligible items — an honest empty tenant, not a fault
   } else if (succeeded === 0) {
     status = "error"; // scanned items, none yielded data (and not the pure-SKU case)
   } else if (failed === 0 && licenseGapCount === 0) {
@@ -1122,7 +1212,7 @@ async function runFanOutCheck(opts: {
       severityMatched,
       errorMessage: status === "ok"
         ? undefined
-        : `Fan-out coverage: ${succeeded}/${ids.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
+        : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
       itemCount: combinedItems.length,
       pageCount,
     })
@@ -1139,7 +1229,7 @@ async function runFanOutCheck(opts: {
     status,
     extractedProperties: extracted,
     severityMatched,
-    errorMessage: status === "ok" ? undefined : `${succeeded}/${ids.length} items succeeded, ${failed} failed`,
+    errorMessage: status === "ok" ? undefined : `${succeeded}/${entries.length} items succeeded, ${failed} failed`,
     itemCount: combinedItems.length,
     pageCount,
     profileId: row?.profileId,

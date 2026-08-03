@@ -665,6 +665,8 @@ describe("executeMonitorCheck", () => {
     fanOutSource: null,
     fanOutItemIdField: null,
     fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
     executorType: "graph" as const,
     psCmdletKey: null,
     psParams: null,
@@ -779,8 +781,8 @@ describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
     };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, fanOutItemFilter: null, fanOutItemNormalizer: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, fanOutItemFilter: null, fanOutItemNormalizer: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -839,8 +841,8 @@ describe("executeMonitoringPackage — license gap does not block completion", (
     const mockDb = db as unknown as { select: Mock; insert: Mock };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, fanOutItemFilter: null, fanOutItemNormalizer: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, fanOutItemFilter: null, fanOutItemNormalizer: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, filterParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -928,6 +930,8 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     fanOutSource: "/groups?$select=id",
     fanOutItemIdField: null, // defaults to "id"
     fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
     executorType: "graph" as const,
     psCmdletKey: null,
     psParams: null,
@@ -1162,6 +1166,8 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     fanOutSource: null,
     fanOutItemIdField: null,
     fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
     executorType: "powershell" as const,
     psCmdletKey: "get-connection-info",
     psParams: { Organization: "{organization}" } as Record<string, unknown>,

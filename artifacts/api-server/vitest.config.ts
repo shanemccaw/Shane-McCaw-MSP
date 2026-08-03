@@ -162,6 +162,7 @@ export default defineConfig({
       "src/lib/zoho-desk.test.ts",
       "src/lib/war-room-pillar-stats.test.ts",
       "src/lib/pillar-trend.test.ts",
+      "src/lib/__tests__/sharepoint-sharing.test.ts",
     ],
     coverage: {
       provider: "v8",

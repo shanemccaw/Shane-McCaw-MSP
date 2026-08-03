@@ -192,6 +192,8 @@ const baseCheck = {
   fanOutSource: null,
   fanOutItemIdField: null,
   fanOutMaxItems: null,
+  fanOutItemFilter: null,
+  fanOutItemNormalizer: null,
   executorType: "graph" as const,
   psCmdletKey: null,
   psParams: null,
