@@ -9,7 +9,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import { DEFAULT_INDUSTRY, PILLARS, type ChapterId, type PillarId, type ProblemKey } from "./roomData";
+import {
+  CONSENT_FALLBACK,
+  CONSENT_QA,
+  DEFAULT_INDUSTRY,
+  PILLARS,
+  type BookStep,
+  type ChapterId,
+  type PillarId,
+  type ProblemKey,
+} from "./roomData";
 import { classify } from "./roomModel";
 
 export type ThreadEntry = { who: string; text: string; card?: undefined } | { card: "exposure"; who?: undefined };
@@ -36,6 +45,20 @@ export interface RoomState {
   scrolledPast: Record<string, boolean>;
   drafts: Record<string, string>;
   threads: Record<string, ThreadEntry[]>;
+
+  /* ---- booking ----
+   * Local only, and deliberately so: nothing here is transmitted. The details
+   * shape the conversation and the hand-off summary; the real terms, tenant
+   * consent and payment all happen in the existing /checkout flow, which owns
+   * the server-side session and the state-bearing consent URL. */
+  bookOpen: boolean;
+  bkStep: number;
+  bkData: Partial<Record<BookStep["key"], string>>;
+  bkAsks: { q: string; a: string }[];
+  bkTyping: boolean;
+  bkError: string;
+  bkTermsOk: boolean;
+  bkTermsDone: boolean;
 }
 
 const INITIAL: RoomState = {
@@ -60,6 +83,14 @@ const INITIAL: RoomState = {
   scrolledPast: {},
   drafts: {},
   threads: {},
+  bookOpen: false,
+  bkStep: 0,
+  bkData: {},
+  bkAsks: [],
+  bkTyping: false,
+  bkError: "",
+  bkTermsOk: false,
+  bkTermsDone: false,
 };
 
 export type MultiList = "clusters" | "people" | "useCases";
@@ -81,6 +112,14 @@ type Action =
   | { type: "skipAll" }
   | { type: "autoSkip" }
   | { type: "scrolledPast"; id: string }
+  | { type: "openBooking" }
+  | { type: "bkAccept"; key: BookStep["key"]; value: string }
+  | { type: "bkFail"; error: string }
+  | { type: "bkTyping"; on: boolean }
+  | { type: "bkAdvance" }
+  | { type: "bkAsk"; q: string; a: string }
+  | { type: "bkToggleTerms" }
+  | { type: "bkTermsDone" }
   | { type: "reset" };
 
 function reducer(s: RoomState, a: Action): RoomState {
@@ -177,6 +216,39 @@ function reducer(s: RoomState, a: Action): RoomState {
     case "scrolledPast":
       return s.scrolledPast[a.id] ? s : { ...s, scrolledPast: { ...s.scrolledPast, [a.id]: true } };
 
+    case "openBooking":
+      return s.bookOpen ? s : { ...s, bookOpen: true, autoSkipped: true };
+
+    case "bkAccept":
+      return {
+        ...s,
+        bkData: { ...s.bkData, [a.key]: a.value },
+        bkError: "",
+        drafts: { ...s.drafts, __bk: "" },
+      };
+
+    case "bkFail":
+      return { ...s, bkError: a.error };
+
+    case "bkTyping":
+      return s.bkTyping === a.on ? s : { ...s, bkTyping: a.on };
+
+    case "bkAdvance":
+      return { ...s, bkStep: s.bkStep + 1 };
+
+    case "bkAsk":
+      return {
+        ...s,
+        bkAsks: s.bkAsks.concat([{ q: a.q, a: a.a }]),
+        drafts: { ...s.drafts, __bkAsk: "" },
+      };
+
+    case "bkToggleTerms":
+      return { ...s, bkTermsOk: !s.bkTermsOk };
+
+    case "bkTermsDone":
+      return { ...s, bkTermsDone: true };
+
     case "reset":
       return { ...INITIAL, active: s.active };
 
@@ -200,6 +272,12 @@ export interface RoomActions {
   skipAll: () => void;
   autoSkip: () => void;
   markScrolledPast: (id: string) => void;
+  openBooking: () => void;
+  /** Validates against the step's own rule, then advances after a typing beat. */
+  bkSubmit: (step: BookStep, value: string) => void;
+  bkAsk: (text: string) => void;
+  bkToggleTerms: () => void;
+  bkConfirmTerms: () => void;
   reset: () => void;
 }
 
@@ -216,15 +294,27 @@ export function useRoomState(): { state: RoomState; actions: RoomActions; latche
   const opened = useRef<Record<string, boolean>>({});
   const order = useRef<string[] | null>(null);
   const discoveryTimer = useRef<number | undefined>(undefined);
+  const bookingTimer = useRef<number | undefined>(undefined);
   const pillarTimers = useRef<Record<string, number>>({});
 
   useEffect(
     () => () => {
       window.clearTimeout(discoveryTimer.current);
+      window.clearTimeout(bookingTimer.current);
       Object.values(pillarTimers.current).forEach((t) => window.clearTimeout(t));
     },
     [],
   );
+
+  /** The booking flow's own "Shane is typing" beat between answer and next question. */
+  const bookingBeat = useCallback((then: () => void) => {
+    window.clearTimeout(bookingTimer.current);
+    dispatch({ type: "bkTyping", on: true });
+    bookingTimer.current = window.setTimeout(() => {
+      dispatch({ type: "bkTyping", on: false });
+      then();
+    }, 900);
+  }, []);
 
   /** Discovery's "Shane is typing" beat between one answer and the next question. */
   const discoveryBeat = useCallback(() => {
@@ -300,13 +390,39 @@ export function useRoomState(): { state: RoomState; actions: RoomActions; latche
       autoSkip: () => dispatch({ type: "autoSkip" }),
       markScrolledPast: (id) => dispatch({ type: "scrolledPast", id }),
 
+      openBooking: () => dispatch({ type: "openBooking" }),
+
+      bkSubmit: (step, value) => {
+        const v = (value ?? "").trim();
+        if (!v) return;
+        if (!step.validate(v)) {
+          dispatch({ type: "bkFail", error: step.error });
+          return;
+        }
+        dispatch({ type: "bkAccept", key: step.key, value: v });
+        bookingBeat(() => dispatch({ type: "bkAdvance" }));
+      },
+
+      bkAsk: (text) => {
+        const t = (text ?? "").trim();
+        if (!t) return;
+        const low = t.toLowerCase();
+        const hit =
+          CONSENT_QA.find((q) => q.q.toLowerCase() === low) ?? CONSENT_QA.find((q) => q.match.test(low));
+        dispatch({ type: "bkAsk", q: t, a: hit ? hit.a : CONSENT_FALLBACK });
+      },
+
+      bkToggleTerms: () => dispatch({ type: "bkToggleTerms" }),
+
+      bkConfirmTerms: () => bookingBeat(() => dispatch({ type: "bkTermsDone" })),
+
       reset: () => {
         opened.current = {};
         order.current = null;
         dispatch({ type: "reset" });
       },
     }),
-    [discoveryBeat],
+    [discoveryBeat, bookingBeat],
   );
 
   return { state, actions, latches: { opened, order } };

@@ -163,6 +163,8 @@ export interface ChoreographyHandlers {
   onScrolledPast: (id: string) => void;
   onAutoSkip: () => void;
   focusMode?: boolean;
+  /** The booking conversation is never softened once opened — it is what the visitor just asked for. */
+  bookOpen?: boolean;
 }
 
 export function useRoomChoreography(
@@ -278,8 +280,11 @@ export function useRoomChoreography(
       if (hRef.current.focusMode !== false && !reduce) {
         const secs = Array.from(root.querySelectorAll<HTMLElement>("[data-chapter]"));
         const activeI = secs.findIndex((n) => n.dataset.chapter === id);
+        const bookOpen = hRef.current.bookOpen === true;
         secs.forEach((n, i) => {
-          const want = activeI >= 0 && i > activeI ? "1" : "0";
+          const soften =
+            activeI >= 0 && i > activeI && !(bookOpen && n.dataset.chapter === "book");
+          const want = soften ? "1" : "0";
           if (n.getAttribute("data-soft") !== want) n.setAttribute("data-soft", want);
         });
       }

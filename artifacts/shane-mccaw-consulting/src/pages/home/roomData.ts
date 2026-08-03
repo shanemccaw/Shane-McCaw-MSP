@@ -1289,19 +1289,31 @@ export const PILLARS: PillarDef[] = [
       "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
       "M19 17l.9 2.1L22 20l-2.1.9L19 23l-.9-2.1L16 20l2.1-.9z",
     ],
-    headline: "Inside the hour you know exactly what Copilot can see.",
+    headline: "Six pillars are the diagnosis. This one is the decision.",
     lead: [
       {
         who: "shane",
-        text: "Everything above is a conversation. This is where you get an answer. Read-only Graph access, nothing installed, nothing changed. The scan runs in about ten minutes. Then we spend thirty to forty-five minutes reading the output together, and you walk out with a Go or No-Go on Copilot plus a step-by-step remediation guide.",
+        text: "Copilot is not a pillar of its own — it is the sum of the six above it. Governance decides what it can reach. Security decides what that reach costs you. Compliance decides whether you can evidence it. Licensing decides whether it pays. Adoption decides whether anyone notices. Health decides whether it feels trustworthy.",
       },
       {
-        who: "beth",
-        text: "And the residency and retention statements come signed and dated. That is the part my board actually reads.",
+        who: "shane",
+        text: "Which is why nobody can answer 'are we ready for Copilot' from a single admin centre. The answer only exists when all six are measured against each other, in your tenant, on the same day.",
       },
       {
         who: "kira",
-        text: "I get the ranked list with evidence. If it says the tenant is ready, I will say so in the meeting.",
+        text: "And that is the only version I sign. A tenant can pass identity and still be reckless, because the oversharing sits in governance. Score them separately and you get six green ticks and one incident.",
+      },
+      {
+        who: "shane",
+        text: "So the assessment rolls all seven into one weighted readiness score, with the twenty-four findings ranked by what actually moves it. Not a checklist — an ordered path from where you are to Copilot go-live.",
+      },
+      {
+        who: "beth",
+        text: "With the residency and retention statements signed and dated. That is the part my board actually reads.",
+      },
+      {
+        who: "shane",
+        text: "Ten minutes to scan. Thirty to forty-five minutes to read it together. You leave with a Go or No-Go and the remediation guide already written against your own findings — not a proposal to write one.",
       },
     ],
     focusLine: null,
@@ -1309,6 +1321,14 @@ export const PILLARS: PillarDef[] = [
     prompt: "Anything you want to know before booking?",
     placeholder: "e.g. what access do you actually need?",
     chips: [
+      [
+        "How do the seven roll up?",
+        "Each pillar is scored independently, then weighted by blast radius — governance and security carry the most because they decide what a wrong answer costs. One number out of a hundred, with the six underneath it visible so nobody has to trust the average.",
+      ],
+      [
+        "What if one pillar fails?",
+        "Then you get a conditional Go: enable for the cohorts the evidence supports, hold the rest until the named fixes land. Most tenants are not a binary yes or no, and pretending otherwise is how rollouts stall.",
+      ],
       [
         "What access do you need?",
         "Read-only Graph access for the length of the session. Nothing installed, nothing changed, and you revoke it the moment we finish.",
@@ -1335,9 +1355,17 @@ export const PILLARS: PillarDef[] = [
         /(free|diagnostic|trial|sample)/,
         "The free diagnostic returns six of the twenty-four findings. Enough to know whether you have a problem, not enough to fix it.",
       ],
+      [
+        /(score|weight|roll ?up|combine|overall)/,
+        "Seven pillar scores, weighted by blast radius, into one readiness number — and the six underneath stay visible so nobody has to take the average on faith.",
+      ],
+      [
+        /(fail|blocked|no.?go|not ready)/,
+        "A No-Go is still a result: it names which pillar caused it, what the fix costs, and which cohorts you could safely enable in the meantime.",
+      ],
     ],
     fallback:
-      "Short version: one session, priced at __FEE__, nine documents from your live telemetry, read-only access, credited against remediation.",
+      "Short version: the six pillars above are the diagnosis, this one is the decision — one session, priced at __FEE__, nine documents from your live telemetry, credited against remediation.",
   },
 ];
 
@@ -1706,7 +1734,111 @@ export const INDUSTRY_PRIORITY: Record<string, Partial<Record<PillarId, Priority
   },
 };
 
-export type ChapterId = "hero" | "intro" | "industry" | "cast" | PillarId;
+/* ============================================================
+   Booking — the conversational intake that precedes checkout.
+   ============================================================ */
+
+export interface BookStep {
+  key: "name" | "email" | "company" | "industry";
+  q: string;
+  ph: string;
+  type: "text" | "email";
+  chips?: boolean;
+  validate: (v: string) => boolean;
+  error: string;
+  reply: (v: string) => string;
+}
+
+export const BOOK_STEPS: BookStep[] = [
+  {
+    key: "name",
+    q: "Great — let's get you booked. A few pieces of information and you are on your way. What is your full name?",
+    ph: "e.g. Dana Whitfield",
+    type: "text",
+    validate: (v) => v.length > 2 && v.indexOf(" ") > 0,
+    error: "First and last name, please — it goes on the report cover.",
+    reply: (v) => `Good to meet you, ${v.split(" ")[0]}.`,
+  },
+  {
+    key: "email",
+    q: "Work email — this is where the nine documents land, so use the one you actually read.",
+    ph: "you@company.com",
+    type: "email",
+    validate: (v) => /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(v),
+    error: "That does not look like a work email.",
+    reply: () => "Noted. Nothing goes to that address except your report and the kickoff link.",
+  },
+  {
+    key: "company",
+    q: "And the company name, as it should appear on the invoice and the report.",
+    ph: "e.g. Contoso Aerospace",
+    type: "text",
+    validate: (v) => v.length > 1,
+    error: "I need something to put on the invoice.",
+    reply: () => "That is the paperwork sorted.",
+  },
+  {
+    key: "industry",
+    q: "Last one — which industry are you in? It decides which regulator the report is written for.",
+    ph: "…or type your industry",
+    type: "text",
+    chips: true,
+    validate: (v) => v.length > 1,
+    error: "Pick one or type your own.",
+    reply: (v) => `${v} it is. That sets the control framework the findings map to.`,
+  },
+];
+
+/**
+ * The read-only scopes the assessment actually asks for. Shown before the
+ * hand-off so nobody meets this list for the first time on Microsoft's consent
+ * screen — the real grant happens in the checkout flow, not here.
+ */
+export const CONSENT_SCOPES: { scope: string; why: string }[] = [
+  { scope: "Directory.Read.All", why: "identities, MFA and guest posture" },
+  { scope: "Sites.Read.All", why: "site permissions, not file contents" },
+  { scope: "Reports.Read.All", why: "licence and usage telemetry" },
+  { scope: "Policy.Read.All", why: "Conditional Access and DLP posture" },
+];
+
+/** Canned answers to the questions people actually ask before granting consent. */
+export const CONSENT_QA: { q: string; a: string; match: RegExp }[] = [
+  {
+    q: "What permissions does it need?",
+    a: "Four read-only application permissions: Directory.Read.All, Sites.Read.All, Reports.Read.All and Policy.Read.All. No mail, no file content, no write access anywhere.",
+    match: /(permission|scope|access|need)/,
+  },
+  {
+    q: "Can you read our files?",
+    a: "No. I read metadata — which sites exist, who can reach them, whether they carry a label. File contents are never retrieved and never leave your tenant.",
+    match: /(read our files|file content|documents|contents)/,
+  },
+  {
+    q: "Who approves this?",
+    a: "A Global Administrator, or anyone with Privileged Role Administrator. It is a single consent screen and it takes under a minute.",
+    match: /(who approve|admin|global admin|consent screen)/,
+  },
+  {
+    q: "Can we revoke it?",
+    a: "Any time, from Entra ID → Enterprise applications → Permissions → Revoke. Most clients revoke the day the report is delivered, which is exactly right.",
+    match: /(revoke|remove|turn off|cancel access)/,
+  },
+  {
+    q: "Is anything installed?",
+    a: "Nothing. No agent, no app in your tenant beyond the consent record itself, no change to a single setting.",
+    match: /(install|agent|deploy|software)/,
+  },
+  {
+    q: "Where does the data go?",
+    a: "Configuration metadata is processed in the assessment tenant and destroyed after delivery. Nothing is retained, nothing is sold, nothing trains a model.",
+    match: /(where.*data|store|retain|gdpr|resid)/,
+  },
+];
+
+export const CONSENT_FALLBACK =
+  "Read-only, scoped to configuration and usage metadata. Nothing is written, nothing is installed, and you can revoke it in Entra ID the moment the report lands.";
+
+export type ChapterId = "hero" | "intro" | "industry" | "cast" | PillarId | "book";
 
 export const CHAP_ORDER: ChapterId[] = [
   "hero",
@@ -1720,6 +1852,7 @@ export const CHAP_ORDER: ChapterId[] = [
   "health",
   "security",
   "copilot",
+  "book",
 ];
 
 export const SOURCES: Record<PillarId, string[]> = {
@@ -1801,6 +1934,12 @@ export const CHAP: Record<ChapterId, { label: string; color: string; who: CastId
     color: "#67E8F9",
     who: "shane",
     line: "That is the whole assessment. One session, fixed fee, every document is yours.",
+  },
+  book: {
+    label: "Checkout · booking",
+    color: "#4ADE80",
+    who: "shane",
+    line: "A few details, then the secure checkout takes consent and payment.",
   },
 };
 

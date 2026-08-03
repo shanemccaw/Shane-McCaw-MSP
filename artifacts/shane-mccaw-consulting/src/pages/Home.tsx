@@ -270,6 +270,7 @@ export default function Home() {
     onChapter: actions.setChapter,
     onScrolledPast: actions.markScrolledPast,
     onAutoSkip: actions.autoSkip,
+    bookOpen: state.bookOpen,
   });
 
   /** Any jump link into gated content builds the room first, so no anchor is ever dead. */
@@ -1202,6 +1203,7 @@ export default function Home() {
               verdict={verdict}
               bookHref={bookHref}
               closeLine={closeLine}
+              onChangeAnswers={unlockThen("health")}
             />
           ))}
         </div>

@@ -22,6 +22,7 @@ import {
 } from "./roomModel";
 import { MessageRow, TypingRow, HostHead, HOST_AVATAR, HOST_BUBBLE } from "./RoomTranscript";
 import { plainChip } from "./DiscoveryCard";
+import { BookingFlow } from "./BookingFlow";
 import type { RoomActions, RoomState } from "./useRoomState";
 
 interface PillarSectionProps {
@@ -48,6 +49,8 @@ interface PillarSectionProps {
   /** Close card (copilot pillar) */
   bookHref: string;
   closeLine: string;
+  /** "Change my answers first" — jumps back to the indicative profile. */
+  onChangeAnswers: (e: React.MouseEvent) => void;
 }
 
 export function PillarSection(props: PillarSectionProps) {
@@ -70,6 +73,7 @@ export function PillarSection(props: PillarSectionProps) {
     verdict,
     bookHref,
     closeLine,
+    onChangeAnswers,
   } = props;
 
   const isFocus = p.id === focus;
@@ -522,6 +526,10 @@ export function PillarSection(props: PillarSectionProps) {
           closeLine={closeLine}
           focus={focus}
           bookHref={bookHref}
+          state={state}
+          actions={actions}
+          roster={roster}
+          onChangeAnswers={onChangeAnswers}
         />
       ) : null}
 
@@ -800,6 +808,34 @@ export function PillarSection(props: PillarSectionProps) {
   );
 }
 
+const BOOK_BTN: CSSProperties = {
+  minHeight: 38,
+  padding: "0 15px",
+  borderRadius: 10,
+  fontFamily: "inherit",
+  fontSize: 12.5,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const YES_STYLE: CSSProperties = {
+  ...BOOK_BTN,
+  color: "#04141c",
+  background: "#67e8f9",
+  border: "1px solid rgba(103,232,249,.9)",
+};
+const MAYBE_STYLE: CSSProperties = {
+  ...BOOK_BTN,
+  color: "var(--smcr-sky)",
+  background: "rgba(103,232,249,.08)",
+  border: "1px solid rgba(103,232,249,.35)",
+};
+const QUIET_STYLE: CSSProperties = {
+  ...BOOK_BTN,
+  color: "var(--smcr-muted)",
+  background: "transparent",
+  border: "1px solid rgba(148,163,184,.24)",
+};
+
 const OPT_STYLE: CSSProperties = {
   minHeight: 36,
   padding: "0 13px",
@@ -956,12 +992,20 @@ function CloseCard({
   closeLine,
   focus,
   bookHref,
+  state,
+  actions,
+  roster,
+  onChangeAnswers,
 }: {
   feeDisplay: string;
   feeResolved: boolean;
   closeLine: string;
   focus: PillarId;
   bookHref: string;
+  state: RoomState;
+  actions: RoomActions;
+  roster: Persona[];
+  onChangeAnswers: (e: React.MouseEvent) => void;
 }) {
   return (
     <div
@@ -1066,23 +1110,46 @@ function CloseCard({
           </div>
         ))}
       </div>
+      {/* The close is a question now, not a pair of buttons. */}
       <div
         style={{
           position: "relative",
           display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-          paddingTop: 14,
+          gap: 12,
+          alignItems: "flex-start",
+          paddingTop: 16,
           borderTop: "1px solid rgba(103,232,249,.24)",
         }}
       >
-        <a href={bookHref} className="smcr-cta smcr-cta-primary" data-track="cta">
-          Book the Assessment
-        </a>
-        <a href="#industry" className="smcr-cta smcr-cta-outline">
-          Change the brief
-        </a>
+        <span style={HOST_AVATAR}>SM</span>
+        <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+          <HostHead />
+          <div style={HOST_BUBBLE}>So — are you ready to see your actual Copilot readiness score?</div>
+          {!state.bookOpen ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button type="button" onClick={actions.openBooking} style={YES_STYLE} data-track="cta">
+                Yes — let&apos;s do it
+              </button>
+              <button type="button" onClick={actions.openBooking} style={MAYBE_STYLE}>
+                What happens next?
+              </button>
+              <button type="button" onClick={onChangeAnswers} style={QUIET_STYLE}>
+                Change my answers first
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      {state.bookOpen ? (
+        <BookingFlow
+          state={state}
+          actions={actions}
+          roster={roster}
+          feeDisplay={feeDisplay}
+          bookHref={bookHref}
+        />
+      ) : null}
       <div
         style={{ position: "relative", fontSize: 10.5, lineHeight: 1.5, color: "var(--smcr-faint)", textWrap: "pretty" }}
       >
