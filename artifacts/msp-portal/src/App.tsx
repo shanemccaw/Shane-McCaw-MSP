@@ -107,6 +107,10 @@ import WarRoomPage from "@/pages/war-room";
 import WarRoomRadarPage from "@/pages/war-room-radar";
 import WarRoomLadderPage from "@/pages/war-room-ladder";
 import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
+import CopilotReadinessPage from "@/pages/copilot-readiness";
+import CopilotReadinessDocumentsPage from "@/pages/copilot-readiness-documents";
+import CopilotReadinessProposalPage from "@/pages/copilot-readiness-proposal";
+import CopilotReadinessCheckoutPage from "@/pages/copilot-readiness-checkout";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
@@ -473,6 +477,35 @@ function SlugInnerSwitch() {
           stat callout named. Same real payload the room's pillar cards use. */}
       <Route path="/war-room-ladder">
         <ProtectedRoute component={WarRoomLadderPage} />
+      </Route>
+      {/* Copilot Readiness journey — the post-scan customer arc, in four screens:
+          the Reveal (a linear scroll narrative that opens on the live tenant scan
+          and pays it off with the verdict and six pillar findings), the Document
+          Viewer, the SOW Proposal, and Checkout. Ported from the Claude Design
+          handoff in Design/.
+
+          Each screen owns the whole viewport and renders outside AppShell, for
+          the same reason the War Room does — the shell would be covered either
+          way. They are ordinary Routes rather than one `:screen?` pattern because
+          they are genuinely four destinations with different chrome, not four
+          positions in one experience; only the viewer needs to keep a param, so
+          a ready report is deep-linkable and survives a refresh.
+
+          The more specific documents route is declared first: wouter's Switch
+          takes the first match, and while `/copilot-readiness` cannot match
+          `/copilot-readiness/documents` today, ordering it this way means adding
+          a wildcard later cannot silently swallow the children. */}
+      <Route path="/copilot-readiness/documents/:docId?">
+        <ProtectedRoute component={CopilotReadinessDocumentsPage} />
+      </Route>
+      <Route path="/copilot-readiness/proposal">
+        <ProtectedRoute component={CopilotReadinessProposalPage} />
+      </Route>
+      <Route path="/copilot-readiness/checkout">
+        <ProtectedRoute component={CopilotReadinessCheckoutPage} />
+      </Route>
+      <Route path="/copilot-readiness">
+        <ProtectedRoute component={CopilotReadinessPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other

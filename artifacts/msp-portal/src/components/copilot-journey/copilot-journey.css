@@ -1,0 +1,132 @@
+/* ============================================================================
+ * Copilot Readiness journey — keyframes and scoped base styles.
+ *
+ * Ported from the four Claude Design sources (`Copilot Readiness Reveal`,
+ * `Document Viewer`, `SOW Proposal`, `Checkout`). The keyframe bodies are the
+ * designs' own; the page-level base rules were rescoped from `html`/`body` onto
+ * `.cj-dark` / `.cj-light` so these full-bleed screens cannot leak styles into
+ * the rest of the portal — the same containment the War Room port uses for
+ * `.wr-root`.
+ *
+ * Keyframes are `cj-*` prefixed, so registering them globally is safe: nothing
+ * else in the portal uses that namespace.
+ * ========================================================================== */
+
+/* --------------------------------------------------------------------------
+ * Dark surfaces — the Reveal, the SOW Proposal, the Checkout.
+ * ------------------------------------------------------------------------ */
+.cj-dark {
+  margin: 0;
+  background: #020617;
+  color: #f1f5f9;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cj-dark a { color: #60a5fa; text-decoration: none; }
+.cj-dark a:hover { color: #93c5fd; }
+
+.cj-dark input { font-family: inherit; }
+.cj-dark input::placeholder { color: #475569; }
+
+.cj-dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+.cj-dark ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 99px; }
+.cj-dark ::-webkit-scrollbar-track { background: transparent; }
+
+/* --------------------------------------------------------------------------
+ * Light surface — the Document Viewer, deliberately the one calm screen.
+ *
+ * These values are literal rather than `hsl(var(--card))` because the viewer is
+ * light against a navy sidebar whichever way the portal's own light/dark toggle
+ * is set. Reading ambient tokens would make the reading surface flip underneath
+ * a customer mid-report.
+ * ------------------------------------------------------------------------ */
+.cj-light {
+  margin: 0;
+  background: #F7F9FC;
+  color: #0A2540;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cj-light a { color: #0078D4; text-decoration: none; }
+.cj-light a:hover { color: #005A9E; }
+
+/* Report prose rendered from the platform's generated HTML. The documents are
+   authored as plain semantic markup, so the reading measure and rhythm are
+   applied here rather than trusted to the document. */
+.cj-doc-body { color: #3d5875; font-size: 15px; line-height: 1.65; }
+.cj-doc-body > * + * { margin-top: 1em; }
+.cj-doc-body h1 { font-size: clamp(26px, 3vw, 34px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.18; color: #0A2540; }
+.cj-doc-body h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; color: #0A2540; margin-top: 1.6em; }
+.cj-doc-body h3 { font-size: 16px; font-weight: 700; color: #0A2540; margin-top: 1.4em; }
+.cj-doc-body p { max-width: 66ch; }
+.cj-doc-body ul, .cj-doc-body ol { max-width: 66ch; padding-left: 1.3em; }
+.cj-doc-body li + li { margin-top: .4em; }
+.cj-doc-body table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.cj-doc-body th, .cj-doc-body td { text-align: left; padding: 12px 0; border-bottom: 1px solid #e7ebf0; }
+.cj-doc-body th { font-size: 9.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #64748b; }
+.cj-doc-body strong { font-weight: 700; color: #0A2540; }
+.cj-doc-body hr { border: 0; border-top: 1px solid #e7ebf0; }
+
+/* Focus rings. The journey's inputs are dark-on-dark, where the portal's default
+   ring is invisible, so the brand blue is used explicitly. */
+.cj-input:focus { border-color: #0078D4 !important; }
+
+/* --------------------------------------------------------------------------
+ * Keyframes
+ * ------------------------------------------------------------------------ */
+
+/* Scroll cue — a slow drop, not an arrow that jitters. */
+@keyframes cj-cue-drop {
+  0%, 100% { transform: translateY(0); opacity: .45; }
+  50% { transform: translateY(7px); opacity: 1; }
+}
+
+/* The live dot beside the streaming check name during the scan. */
+@keyframes cj-pulse-dot {
+  0%, 100% { opacity: .35; }
+  50% { opacity: 1; }
+}
+
+/* The Copilot identity orb. 26s is slow enough to read as a shimmer rather than
+   a spinner — this mark is an identity, not a progress indicator. */
+@keyframes cj-orb-spin { to { transform: rotate(360deg); } }
+
+/* Document-switcher dot for a report that is still generating. */
+@keyframes cj-gen-pulse {
+  0%, 100% { opacity: .3; }
+  50% { opacity: 1; }
+}
+
+/* Spinners — the still-generating report and the Stripe confirmation overlay. */
+@keyframes cj-spin { to { transform: rotate(360deg); } }
+
+/* Checkout kickoff. Reads as the start of something rather than a receipt. */
+@keyframes cj-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion.
+ *
+ * The handoff's rule: drop the ring rotation, the translateY parallax
+ * entrances and the sheen; KEEP the count-up numbers, which are informational
+ * rather than decorative. The count-ups are driven in JS and already branch on
+ * the media query, so this block only has to silence the decorative CSS.
+ * ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .cj-dark [style*="cj-cue-drop"],
+  .cj-light [style*="cj-cue-drop"],
+  .cj-dark [style*="cj-orb-spin"],
+  .cj-light [style*="cj-gen-pulse"],
+  .cj-dark [style*="cj-pulse-dot"] {
+    animation: none !important;
+  }
+
+  .cj-dark *,
+  .cj-light * {
+    transition-duration: 1ms !important;
+  }
+}
