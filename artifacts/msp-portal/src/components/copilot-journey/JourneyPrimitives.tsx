@@ -191,11 +191,12 @@ export function BrandMark({
  * delta beside it is, because that *is* a judgement.
  *
  * Renders `null` for an absent series. That is the whole point of the component:
- * a sparkline only appears where real time-series data exists, and today
- * `pillarTrend()` returns null for all six pillars because the platform stores
- * history per engine rather than per pillar. Building the pattern and leaving it
- * unfed is deliberate — the alternative is a fabricated statistic wearing a
- * chart's credibility.
+ * a sparkline only appears where real time-series data exists — `pillarTrend()`
+ * (journeyModel.ts) now feeds one from real `tenant_monitor_profiles` history
+ * (#356) once a pillar clears its minimum-data floor, and stays `null` below it
+ * or for a tenant with too little scan history. The alternative — drawing a
+ * shape from whatever's there — is a fabricated statistic wearing a chart's
+ * credibility.
  */
 export function PillarSparkline({
   pillar,

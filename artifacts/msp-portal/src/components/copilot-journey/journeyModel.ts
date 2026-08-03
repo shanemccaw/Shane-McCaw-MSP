@@ -51,6 +51,13 @@ export interface WirePillarCard {
   readonly stats?: readonly WirePillarStat[];
   readonly findings?: readonly WirePillarFinding[];
   readonly findingCounts?: { readonly critical: number; readonly warning: number };
+  /**
+   * Real `tenant_monitor_profiles` history, replayed through the same
+   * per-check → pillar-impact resolution the score above uses
+   * (api-server's pillar-trend.ts, #356). Absent/null below the server's own
+   * minimum-data floor — never a synthesised shape.
+   */
+  readonly trend?: { readonly series: readonly number[]; readonly window: string } | null;
 }
 
 export interface WirePillarStatsPayload {
@@ -160,30 +167,27 @@ function isPillarKey(v: string): v is PillarKey {
 }
 
 /**
- * Per-pillar score history: deliberately `null` for every pillar, and this is a
- * checked result rather than an unfinished one.
+ * Per-pillar score history, straight off the wire card's own `trend` field
+ * (api-server's `pillar-trend.ts`, #356 — real `tenant_monitor_profiles`
+ * history replayed through the same per-check → pillar-impact resolution the
+ * pillar's live `score` already uses).
  *
- * The handoff says to build the sparkline once and prune entries to `null` after
- * a codebase check, not before. The check: history is stored in
- * `tenant_engine_snapshots`, keyed by ENGINE and not by pillar, and
- * `resolveMetricHistory` hard-rejects every key outside `SNAPSHOT_ENGINE_KEYS` —
- * which contains none of governance / compliance / adoption / licensing /
- * architecture. Current pillar values come from the *latest* snapshot only
- * (`getRecentEngineSnapshots(customerId, "health", 1)`), which is one point, not
- * a series. Even mining the snapshot's `breakdown` jsonb would yield the raw
- * risk accumulation (higher = worse), not the display score, because neither
- * `impacts` nor `evaluableSignalKeys` is persisted — so historical display
- * scores are not faithfully reconstructible.
+ * This used to be a hardcoded `null` for every pillar: history was stored only
+ * in `tenant_engine_snapshots`, keyed by ENGINE (health/security/drift) rather
+ * than by any of these six pillars, and `resolveMetricHistory` hard-rejected
+ * every key outside `SNAPSHOT_ENGINE_KEYS`. That gap is now closed server-side —
+ * see pillar-trend.ts for the aggregation and its documented minimum-data floor.
  *
- * Two genuine series do exist — `engine.healthScore` and `engine.securityScore`,
- * via `GET /api/portal/engines/:key/history` — but they are engine composites,
- * not pillar scores, and they run higher = worse. Drawing either under a pillar
- * heading would put a real number under a false label, which is the same failure
- * as inventing one. If Shane wants a trend line here, those two are the honest
- * candidates and they need their own labelled treatment.
+ * Still deliberately re-checked here rather than trusted blind: `series.length`
+ * is re-verified against the floor so a malformed or truncated payload degrades
+ * to "no sparkline" rather than a two-dot line pretending to be a trend.
  */
-export function pillarTrend(_pillar: PillarKey): JourneyPillarView["trend"] {
-  return null;
+const MIN_RENDERABLE_TREND_POINTS = 5;
+
+export function pillarTrend(card: WirePillarCard | undefined): JourneyPillarView["trend"] {
+  const trend = card?.trend;
+  if (!trend || trend.series.length < MIN_RENDERABLE_TREND_POINTS) return null;
+  return trend;
 }
 
 function chipText(stat: WirePillarStat): string | null {
@@ -228,7 +232,7 @@ export function buildPillarViews(
       // stats are all unavailable still populates its wedge.
       chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
       satelliteFinding: ordered[0]?.title ?? null,
-      trend: pillarTrend(key),
+      trend: pillarTrend(card),
       criticalCount: card?.findingCounts?.critical ?? 0,
       warningCount: card?.findingCounts?.warning ?? 0,
     };

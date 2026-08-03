@@ -152,6 +152,7 @@ import { buildPillarViews } from "./telemetry-comparison.ts";
 import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
 import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
+import { getPillarScoreTrends, PILLAR_TREND_WINDOW_DAYS } from "./pillar-trend.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -512,6 +513,13 @@ export interface WarRoomPillarCard {
   /** Real findings for this pillar's checks, worst first, capped. */
   findings: WarRoomPillarFinding[];
   findingCounts: { critical: number; warning: number };
+  /**
+   * Real `tenant_monitor_profiles` history replayed through the same
+   * per-check → pillar-impact resolution the score above uses (#356,
+   * pillar-trend.ts). Null below `PILLAR_TREND_MIN_POINTS` real checkpoints —
+   * never a synthesised shape.
+   */
+  trend: { series: number[]; window: string } | null;
 }
 
 export interface WarRoomPillarStatsPayload {
@@ -637,9 +645,10 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
-  const [output, { rules, groups }] = await Promise.all([
+  const [output, { rules, groups }, pillarTrends] = await Promise.all([
     calculateArchitectureHealthScore(customerId),
     fetchSignalRulesAndGroups(),
+    getPillarScoreTrends(customerId),
   ]);
   const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
   const impacts = getSignalHealthImpacts(rules, groups);
@@ -736,6 +745,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       .map((stat) => refineStatUnavailability(stat, scanned.checkKeys));
 
     const found = findingsByPillar.get(pillar) ?? [];
+    const trendPoints = pillarTrends.get(enginePillar) ?? null;
     return {
       pillar,
       enginePillar,
@@ -747,6 +757,9 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
         critical: found.filter((f) => f.severity === "critical").length,
         warning: found.filter((f) => f.severity === "warning").length,
       },
+      trend: trendPoints
+        ? { series: trendPoints.map((p) => p.score), window: `${PILLAR_TREND_WINDOW_DAYS}d` }
+        : null,
     };
   });
 

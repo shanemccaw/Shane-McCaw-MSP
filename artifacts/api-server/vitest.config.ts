@@ -161,6 +161,7 @@ export default defineConfig({
       "src/lib/zoho-projects.test.ts",
       "src/lib/zoho-desk.test.ts",
       "src/lib/war-room-pillar-stats.test.ts",
+      "src/lib/pillar-trend.test.ts",
     ],
     coverage: {
       provider: "v8",

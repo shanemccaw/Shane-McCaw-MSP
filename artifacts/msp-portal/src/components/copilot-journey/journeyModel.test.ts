@@ -164,16 +164,43 @@ describe("pillar views", () => {
 });
 
 describe("sparkline history", () => {
-  it("is null for every pillar — the codebase check found no per-pillar series", () => {
-    // tenant_engine_snapshots is keyed by ENGINE, not pillar, and
-    // resolveMetricHistory rejects every key outside SNAPSHOT_ENGINE_KEYS.
-    // Synthesising one would be a fabricated statistic wearing a chart's
-    // credibility, so the honest render is nothing at all.
-    PILLAR_KEYS.forEach((k) => assert.equal(pillarTrend(k), null));
+  it("is null with no card at all", () => {
+    assert.equal(pillarTrend(undefined), null);
   });
 
-  it("means no pillar view ships a trend", () => {
+  it("is null when the card carries no trend (server found insufficient history)", () => {
+    assert.equal(pillarTrend({ pillar: "governance", score: 34, trend: null }), null);
+  });
+
+  it("means every pillar view is null from an empty payload", () => {
     buildPillarViews(null).forEach((v) => assert.equal(v.trend, null));
+  });
+
+  it("passes through a real series that clears the floor", () => {
+    const series = [40, 42, 41, 45, 48, 51];
+    assert.deepEqual(pillarTrend({ pillar: "licensing", score: 51, trend: { series, window: "30d" } }), {
+      series,
+      window: "30d",
+    });
+  });
+
+  it("re-floors a too-short series rather than trusting the wire blind", () => {
+    // Defense in depth: the server already applies PILLAR_TREND_MIN_POINTS, but
+    // a malformed/truncated payload must still degrade to no sparkline rather
+    // than a two-dot line pretending to be a trend.
+    assert.equal(
+      pillarTrend({ pillar: "licensing", score: 51, trend: { series: [40, 42], window: "30d" } }),
+      null,
+    );
+  });
+
+  it("flows a real trend all the way into the pillar view", () => {
+    const series = [30, 33, 35, 34, 38, 41];
+    const payload: WirePillarStatsPayload = {
+      pillars: [{ pillar: "security", score: 41, trend: { series, window: "30d" } }],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.deepEqual(view?.trend, { series, window: "30d" });
   });
 });
 
