@@ -29,6 +29,7 @@
 // already requireAdmin-gated, used as-is).
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Building2,
   UserCircle,
@@ -44,6 +45,8 @@ import {
   Check,
   RefreshCw,
   Trash2,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -158,6 +161,47 @@ function findingSeverityClass(finding: DiagnosticFinding): string {
     return "text-emerald-600 dark:text-emerald-400";
   }
   return "text-muted-foreground";
+}
+
+// #378 — search is scoped to the currently-expanded run only (client-side
+// filter over data already fetched by toggleRunExpanded, no new backend
+// route). extractedProperties is stringified rather than read field-by-field
+// so it also catches endpoint/URL text buried inside a raw Graph error,
+// which has no separate structured field of its own.
+function findingMatchesSearch(finding: DiagnosticFinding, term: string): boolean {
+  if (!term) return true;
+  const needle = term.toLowerCase();
+  const haystacks = [
+    finding.checkKey,
+    finding.title,
+    finding.description ?? "",
+    finding.extractedProperties ? JSON.stringify(finding.extractedProperties) : "",
+  ];
+  return haystacks.some((h) => h.toLowerCase().includes(needle));
+}
+
+function HighlightMatch({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>;
+  const needle = term.toLowerCase();
+  const parts: ReactNode[] = [];
+  let rest = text;
+  let offset = 0;
+  while (rest.length > 0) {
+    const idx = rest.toLowerCase().indexOf(needle);
+    if (idx === -1) {
+      parts.push(text.slice(offset));
+      break;
+    }
+    if (idx > 0) parts.push(text.slice(offset, offset + idx));
+    parts.push(
+      <mark key={offset + idx} className="rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40">
+        {text.slice(offset + idx, offset + idx + term.length)}
+      </mark>,
+    );
+    offset += idx + term.length;
+    rest = rest.slice(idx + term.length);
+  }
+  return <>{parts}</>;
 }
 
 interface CustomerDetail {
@@ -335,6 +379,9 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   // findings are fetched on-demand the first time a run is expanded, not
   // preloaded for every row up front.
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  // #378 — search is scoped to whichever run is currently expanded, so one
+  // query string covers it (only one run can be expanded at a time).
+  const [findingsSearch, setFindingsSearch] = useState("");
   const [runFindings, setRunFindings] = useState<Record<string, DiagnosticRunFindingsResponse | "loading" | "error">>({});
 
   // #371 addendum — refresh just the runs list, not the whole customer detail
@@ -443,6 +490,7 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   };
 
   const toggleRunExpanded = async (runId: string) => {
+    setFindingsSearch("");
     if (expandedRunId === runId) {
       setExpandedRunId(null);
       return;
@@ -1081,17 +1129,49 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                             <span>{state.run.checksRequiresScript} needs script</span>
                             <span>{state.run.checksLicenseGap} license gap</span>
                           </div>
+                          <div className="relative mb-2 flex items-center">
+                            <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" />
+                            <input
+                              type="text"
+                              value={findingsSearch}
+                              onChange={(e) => setFindingsSearch(e.target.value)}
+                              placeholder="Search findings…"
+                              className="w-full rounded border border-border bg-background py-1 pl-7 pr-6 text-[11px] text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+                            />
+                            {findingsSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setFindingsSearch("")}
+                                className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                title="Clear search"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                          {(() => {
+                            const visibleFindings = sortFindings(state.findings).filter((f) =>
+                              findingMatchesSearch(f, findingsSearch),
+                            );
+                            if (visibleFindings.length === 0) {
+                              return <p className="text-[11px] italic text-muted-foreground">No findings match “{findingsSearch}”.</p>;
+                            }
+                            return (
                           <ul className="divide-y divide-border/60">
-                            {sortFindings(state.findings).map((f) => (
+                            {visibleFindings.map((f) => (
                               <li key={f.findingId} className="py-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{f.title}</span>
+                                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                                    <HighlightMatch text={f.title} term={findingsSearch} />
+                                  </span>
                                   <span className={`shrink-0 text-[10px] uppercase ${findingSeverityClass(f)}`}>
                                     {f.checkStatus === "error" ? "error" : f.severity}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] text-muted-foreground">{f.checkKey}</span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    <HighlightMatch text={f.checkKey} term={findingsSearch} />
+                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => void handleRemoveClick(r.runId, r.packageKey, f.checkKey)}
@@ -1133,7 +1213,9 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                 )}
                                 {f.description && (
                                   <div className="mt-0.5 flex items-start justify-between gap-1.5">
-                                    <p className="min-w-0 flex-1 text-[11px] text-foreground/80">{f.description}</p>
+                                    <p className="min-w-0 flex-1 text-[11px] text-foreground/80">
+                                      <HighlightMatch text={f.description} term={findingsSearch} />
+                                    </p>
                                     <CopyButton text={f.description} label="Copy description" />
                                   </div>
                                 )}
@@ -1142,20 +1224,20 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                   return rawError ? (
                                     <div className="mt-1 flex items-start justify-between gap-1.5 rounded border border-red-600/30 bg-red-600/5 px-1.5 py-1">
                                       <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[10px] text-red-600 dark:text-red-400">
-                                        {rawError}
+                                        <HighlightMatch text={rawError} term={findingsSearch} />
                                       </p>
                                       <CopyButton text={rawError} label="Copy raw error" />
                                     </div>
                                   ) : null;
                                 })()}
                                 {f.extractedProperties && Object.keys(f.extractedProperties).length > 0 && (
-                                  <details className="mt-1 group">
+                                  <details className="mt-1 group" open={findingsSearch.length > 0}>
                                     <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-primary">
                                       extractedProperties
                                     </summary>
                                     <div className="mt-1 flex items-start justify-between gap-1.5">
                                       <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-background/60 px-1.5 py-1 text-[10px] text-foreground/80">
-                                        {JSON.stringify(f.extractedProperties, null, 2)}
+                                        <HighlightMatch text={JSON.stringify(f.extractedProperties, null, 2)} term={findingsSearch} />
                                       </pre>
                                       <CopyButton text={JSON.stringify(f.extractedProperties, null, 2)} label="Copy extractedProperties JSON" />
                                     </div>
@@ -1164,6 +1246,8 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                               </li>
                             ))}
                           </ul>
+                            );
+                          })()}
                         </>
                       )}
                     </div>

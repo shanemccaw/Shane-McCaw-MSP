@@ -203,6 +203,48 @@ describe("ActiveDirectoryCustomerPane — diagnostic runs", () => {
   });
 });
 
+describe("ActiveDirectoryCustomerPane — #378 search box for expanded run findings", () => {
+  it("filters to only findings matching a check_key substring", async () => {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+    expect(screen.getByText("MFA registration healthy")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Search findings…"), { target: { value: "sharepoint:" } });
+
+    expect(screen.getByText(/External sharing check failed/)).toBeTruthy();
+    expect(screen.queryByText("MFA registration healthy")).toBeNull();
+  });
+
+  it("surfaces a finding matched only inside its raw error/extractedProperties text, not its check name", async () => {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+
+    // "Insufficient privileges" appears only inside the raw Graph error, not
+    // in either finding's title, checkKey, or description.
+    fireEvent.change(screen.getByPlaceholderText("Search findings…"), { target: { value: "insufficient privileges" } });
+
+    expect(screen.getByText(/External sharing check failed/)).toBeTruthy();
+    expect(screen.queryByText("MFA registration healthy")).toBeNull();
+  });
+
+  it("clearing the search box restores the full findings list", async () => {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+
+    const input = screen.getByPlaceholderText("Search findings…");
+    fireEvent.change(input, { target: { value: "sharepoint:" } });
+    expect(screen.queryByText("MFA registration healthy")).toBeNull();
+
+    fireEvent.change(input, { target: { value: "" } });
+
+    expect(screen.getByText("MFA registration healthy")).toBeTruthy();
+    expect(screen.getByText(/External sharing check failed/)).toBeTruthy();
+  });
+});
+
 describe("ActiveDirectoryCustomerPane — #376 remove from scan package", () => {
   async function expandRun1() {
     render(<ActiveDirectoryCustomerPane customerId={10} />);
