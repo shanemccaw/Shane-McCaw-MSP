@@ -392,7 +392,20 @@ export default function CopilotReadinessPage() {
     return undefined;
   }, [scan.running]);
 
-  const overlayOpen = (scan.running || awaitingAutoScan) && !scanDismissed;
+  // Testbed-only replay of the already-dismissed Scene 0 overlay (#367 debug
+  // tooling). Does not touch `scan`/`awaitingAutoScan` and never re-POSTs
+  // debug-trigger-scan — it only forces the overlay's visibility back open so
+  // Shane can review it again, toggled off the same way it was toggled on.
+  const [replayScene0, setReplayScene0] = useState(false);
+  const toggleReplayScene0 = useCallback(() => {
+    setReplayScene0((prev) => {
+      const next = !prev;
+      setScanDismissed(!next);
+      return next;
+    });
+  }, []);
+
+  const overlayOpen = (scan.running || awaitingAutoScan || replayScene0) && !scanDismissed;
 
   // Scene 1 plays on arrival rather than on scroll, so it starts the moment the
   // overlay releases — but not before the status payload has landed, or the
@@ -499,6 +512,27 @@ export default function CopilotReadinessPage() {
       {isPreview ? <PreviewBadge /> : null}
 
       <RevealProgressRail active={metrics.active} count={SCENE_COUNT} />
+
+      {!isPreview && scanStatusData?.isTestbed ? (
+        <button
+          onClick={toggleReplayScene0}
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 9999,
+            padding: "4px 10px",
+            fontSize: 11,
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            color: "rgba(255,255,255,0.7)",
+            cursor: "pointer",
+          }}
+        >
+          {replayScene0 ? "[DEBUG] Close Scene 0 replay" : "[DEBUG] Replay Scene 0"}
+        </button>
+      ) : null}
 
       <RevealScanOverlay
         open={overlayOpen}
