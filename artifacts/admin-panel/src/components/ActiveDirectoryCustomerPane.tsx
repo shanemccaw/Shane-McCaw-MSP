@@ -84,6 +84,68 @@ interface CustomerDiagnosticRunSummary {
   completedAt: string | null;
 }
 
+// #371 — expandable diagnostic run findings. Reuses msp-diagnostics.ts's
+// existing GET /msp/customers/:customerId/diagnostics/runs/:runId route
+// as-is (requireRole("MSPOperator") + assertCustomerAccess both bypass for
+// PlatformAdmin, same reuse pattern the manual scan trigger below already
+// relies on) — no new admin route needed, since it already returns the run's
+// real check counts plus every msp_diagnostic_findings row for that run.
+interface DiagnosticRunCounts {
+  checksTotal: number;
+  checksOk: number;
+  checksError: number;
+  checksRequiresScript: number;
+  checksLicenseGap: number;
+}
+
+interface DiagnosticFinding {
+  findingId: string;
+  runId: string;
+  checkKey: string;
+  checkLabel: string;
+  severity: "ok" | "info" | "warning" | "critical";
+  title: string;
+  description: string | null;
+  extractedProperties: Record<string, unknown> | null;
+  checkStatus: string | null;
+}
+
+interface DiagnosticRunFindingsResponse {
+  run: DiagnosticRunCounts;
+  findings: DiagnosticFinding[];
+}
+
+const FINDING_SEVERITY_RANK: Record<DiagnosticFinding["severity"], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+  ok: 3,
+};
+
+// Errors surface first regardless of severity — the use case is diagnosing
+// what went wrong, not reading an alphabetical/severity-only list.
+function sortFindings(findings: DiagnosticFinding[]): DiagnosticFinding[] {
+  return [...findings].sort((a, b) => {
+    const aErr = a.checkStatus === "error" ? 0 : 1;
+    const bErr = b.checkStatus === "error" ? 0 : 1;
+    if (aErr !== bErr) return aErr - bErr;
+    return FINDING_SEVERITY_RANK[a.severity] - FINDING_SEVERITY_RANK[b.severity];
+  });
+}
+
+function findingSeverityClass(finding: DiagnosticFinding): string {
+  if (finding.checkStatus === "error" || finding.severity === "critical") {
+    return "text-red-600 dark:text-red-400";
+  }
+  if (finding.severity === "warning") {
+    return "text-amber-600 dark:text-amber-400";
+  }
+  if (finding.severity === "ok") {
+    return "text-emerald-600 dark:text-emerald-400";
+  }
+  return "text-muted-foreground";
+}
+
 interface CustomerDetail {
   customer: {
     id: number;
@@ -254,6 +316,33 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   const [triggeringDlp, setTriggeringDlp] = useState(false);
   const [dlpTriggerError, setDlpTriggerError] = useState<string | null>(null);
   const [dlpTriggerResult, setDlpTriggerResult] = useState<DlpProvisioningTriggerResult | null>(null);
+
+  // #371 — expandable diagnostic run findings. One run expanded at a time;
+  // findings are fetched on-demand the first time a run is expanded, not
+  // preloaded for every row up front.
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [runFindings, setRunFindings] = useState<Record<string, DiagnosticRunFindingsResponse | "loading" | "error">>({});
+
+  const toggleRunExpanded = async (runId: string) => {
+    if (expandedRunId === runId) {
+      setExpandedRunId(null);
+      return;
+    }
+    setExpandedRunId(runId);
+    if (runFindings[runId]) return;
+    setRunFindings((prev) => ({ ...prev, [runId]: "loading" }));
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${customerId}/diagnostics/runs/${runId}`);
+      if (!res.ok) {
+        setRunFindings((prev) => ({ ...prev, [runId]: "error" }));
+        return;
+      }
+      const body = (await res.json()) as DiagnosticRunFindingsResponse;
+      setRunFindings((prev) => ({ ...prev, [runId]: body }));
+    } catch {
+      setRunFindings((prev) => ({ ...prev, [runId]: "error" }));
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -815,23 +904,70 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
           <p className="italic text-muted-foreground">No scans yet.</p>
         ) : (
           <ul className="divide-y divide-border/60">
-            {recentDiagnosticRuns.map((r) => (
-              <li key={r.runId} className="flex items-center justify-between gap-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate">{r.packageKey}</span>
-                <span
-                  className={`shrink-0 text-[10px] ${
-                    r.status === "completed"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : r.status === "failed"
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-muted-foreground"
-                  }`}
-                >
-                  {r.status}
-                </span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{formatDate(r.completedAt ?? r.startedAt)}</span>
-              </li>
-            ))}
+            {recentDiagnosticRuns.map((r) => {
+              const expanded = expandedRunId === r.runId;
+              const state = runFindings[r.runId];
+              return (
+                <li key={r.runId}>
+                  <button
+                    type="button"
+                    onClick={() => void toggleRunExpanded(r.runId)}
+                    className="flex w-full items-center justify-between gap-2 py-1.5 text-left hover:text-primary"
+                    aria-expanded={expanded}
+                    title="View this run's findings"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{r.packageKey}</span>
+                    <span
+                      className={`shrink-0 text-[10px] ${
+                        r.status === "completed"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : r.status === "failed"
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{formatDate(r.completedAt ?? r.startedAt)}</span>
+                  </button>
+                  {expanded && (
+                    <div className="mb-2 rounded border border-border/60 bg-background/40 px-2 py-2">
+                      {state === "loading" || state === undefined ? (
+                        <p className="text-[11px] italic text-muted-foreground">Loading findings…</p>
+                      ) : state === "error" ? (
+                        <p className="text-[11px] italic text-red-600 dark:text-red-400">Failed to load findings for this run.</p>
+                      ) : state.findings.length === 0 ? (
+                        <p className="text-[11px] italic text-muted-foreground">No findings recorded for this run.</p>
+                      ) : (
+                        <>
+                          <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                            <span>{state.run.checksTotal} checks</span>
+                            <span className="text-emerald-600 dark:text-emerald-400">{state.run.checksOk} ok</span>
+                            <span className="text-red-600 dark:text-red-400">{state.run.checksError} error</span>
+                            <span>{state.run.checksRequiresScript} needs script</span>
+                            <span>{state.run.checksLicenseGap} license gap</span>
+                          </div>
+                          <ul className="divide-y divide-border/60">
+                            {sortFindings(state.findings).map((f) => (
+                              <li key={f.findingId} className="py-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{f.title}</span>
+                                  <span className={`shrink-0 text-[10px] uppercase ${findingSeverityClass(f)}`}>
+                                    {f.checkStatus === "error" ? "error" : f.severity}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground">{f.checkKey}</div>
+                                {f.description && <p className="mt-0.5 text-[11px] text-foreground/80">{f.description}</p>}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Section>
