@@ -75,7 +75,28 @@ const RUN_1_FINDINGS = {
 let runsResponse: unknown[] = CUSTOMER_DETAIL.recentDiagnosticRuns;
 const runsRefetchCalls: string[] = [];
 
-const fetchWithAuth = vi.fn(async (url: string) => {
+// #376 — "Remove from scan package" fixtures.
+let assessmentsResponse: { id: number; name: string; packageKey: string | null }[] = [];
+let packageChecksResponse: { checkKey: string; sortOrder: number }[] = [
+  { checkKey: "identity:mfa-registration", sortOrder: 0 },
+  { checkKey: "sharepoint:external-sharing", sortOrder: 1 },
+  { checkKey: "other:unrelated-check", sortOrder: 2 },
+];
+let putChecksResult: { ok: boolean; body: unknown } = { ok: true, body: { updated: true } };
+const putCalls: { url: string; body: unknown }[] = [];
+
+const fetchWithAuth = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+  const method = init?.method ?? "GET";
+  if (url.includes("/simulator/assessments")) {
+    return jsonResponse({ assessments: assessmentsResponse });
+  }
+  if (url.includes("/monitoring-packages/") && url.endsWith("/checks")) {
+    if (method === "PUT") {
+      putCalls.push({ url, body: init?.body ? JSON.parse(init.body) : null });
+      return jsonResponse(putChecksResult.body, putChecksResult.ok);
+    }
+    return jsonResponse({ checks: packageChecksResponse });
+  }
   if (url.includes("/diagnostics/runs/run-1")) {
     return jsonResponse(RUN_1_FINDINGS);
   }
@@ -93,6 +114,11 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth, accessToken: "test-token" }),
 }));
 
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+import { toast } from "sonner";
 import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
 
 function jsonResponse(body: unknown, ok = true) {
@@ -104,6 +130,16 @@ afterEach(() => {
   fetchWithAuth.mockClear();
   runsRefetchCalls.length = 0;
   runsResponse = CUSTOMER_DETAIL.recentDiagnosticRuns;
+  assessmentsResponse = [];
+  packageChecksResponse = [
+    { checkKey: "identity:mfa-registration", sortOrder: 0 },
+    { checkKey: "sharepoint:external-sharing", sortOrder: 1 },
+    { checkKey: "other:unrelated-check", sortOrder: 2 },
+  ];
+  putChecksResult = { ok: true, body: { updated: true } };
+  putCalls.length = 0;
+  vi.mocked(toast.success).mockClear();
+  vi.mocked(toast.error).mockClear();
 });
 
 describe("ActiveDirectoryCustomerPane — diagnostic runs", () => {
@@ -164,5 +200,70 @@ describe("ActiveDirectoryCustomerPane — diagnostic runs", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(rawErrorText));
     await waitFor(() => expect(within(rawErrorBlock).getByTitle("Copy raw error").querySelector("svg")?.getAttribute("class")).toContain("lucide-check"));
+  });
+});
+
+describe("ActiveDirectoryCustomerPane — #376 remove from scan package", () => {
+  async function expandRun1() {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+  }
+
+  it("shows the shared-package confirmation, and removing genuinely drops the check from the package", async () => {
+    assessmentsResponse = [
+      { id: 101, name: "Copilot Readiness Snapshot", packageKey: "core:security-baseline" },
+      { id: 102, name: "Copilot Readiness Assessment", packageKey: "core:security-baseline" },
+    ];
+    await expandRun1();
+
+    const findingRow = screen.getByText("identity:mfa-registration").closest("div")!;
+    fireEvent.click(within(findingRow).getByTitle("Remove this check from the scan package"));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/also used by 2 other assessments.*Copilot Readiness Snapshot, Copilot Readiness Assessment/),
+      ).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText("Remove from all"));
+
+    await waitFor(() => expect(putCalls.length).toBe(1));
+    // Genuinely removed from the package's check list, not just the check clicked being dropped silently —
+    // the PUT carries every OTHER check but not this one.
+    expect(putCalls[0].body).toEqual({ checkKeys: ["sharepoint:external-sharing", "other:unrelated-check"] });
+    expect(putCalls[0].url).toContain("/monitoring-packages/core%3Asecurity-baseline/checks");
+
+    await waitFor(() => expect(screen.queryByText("identity:mfa-registration")).toBeNull());
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith(expect.stringContaining("2 other assessments"));
+  });
+
+  it("removing from a non-shared package skips the confirmation and just works", async () => {
+    assessmentsResponse = []; // nothing else references this package
+    await expandRun1();
+
+    const findingRow = screen.getByText("identity:mfa-registration").closest("div")!;
+    fireEvent.click(within(findingRow).getByTitle("Remove this check from the scan package"));
+
+    // No confirmation prompt for a non-shared package.
+    await waitFor(() => expect(putCalls.length).toBe(1));
+    expect(screen.queryByText(/remove it from all of them/)).toBeNull();
+    expect(putCalls[0].body).toEqual({ checkKeys: ["sharepoint:external-sharing", "other:unrelated-check"] });
+
+    await waitFor(() => expect(screen.queryByText("identity:mfa-registration")).toBeNull());
+    expect(vi.mocked(toast.success)).toHaveBeenCalled();
+  });
+
+  it("a failed PUT surfaces a real error and leaves the finding in place", async () => {
+    assessmentsResponse = [];
+    putChecksResult = { ok: false, body: { error: "Package is locked for editing." } };
+    await expandRun1();
+
+    const findingRow = screen.getByText("identity:mfa-registration").closest("div")!;
+    fireEvent.click(within(findingRow).getByTitle("Remove this check from the scan package"));
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith("Package is locked for editing."));
+    // Not a silent no-op — the finding is still there.
+    expect(screen.getByText("identity:mfa-registration")).toBeTruthy();
   });
 });

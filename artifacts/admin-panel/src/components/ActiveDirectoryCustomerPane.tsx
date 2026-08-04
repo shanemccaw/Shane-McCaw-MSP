@@ -43,9 +43,12 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AD_SELECT_EVENT, type AdSelectedObject } from "./ActiveDirectoryTree";
+import type { AssessmentNode } from "./SimulatorLeftTree";
 
 interface CustomerDetailOwningMsp {
   id: number;
@@ -338,6 +341,88 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   // payload. Hits the dedicated runs-only endpoint added alongside this.
   const [refreshingRuns, setRefreshingRuns] = useState(false);
   const [refreshRunsError, setRefreshRunsError] = useState<string | null>(null);
+
+  // #376 — "Remove from scan package" on a finding row. Shared-package
+  // detection reuses AssessmentCreationWizard.tsx's own `attachSharedWith`
+  // concept (existingAssessments.filter(a => a.packageKey === key)) rather
+  // than reimplementing it — that wizard is fed its assessment list as a
+  // prop from SimulatorLeftTree's already-fetched state, but this pane has
+  // no such prop, so it fetches the same GET /api/admin/simulator/assessments
+  // this pane doesn't otherwise use, purely to run that filter.
+  const [removeConfirm, setRemoveConfirm] = useState<{
+    runId: string;
+    packageKey: string;
+    checkKey: string;
+    sharedNames: string[];
+  } | null>(null);
+  const [removingKey, setRemovingKey] = useState<string | null>(null);
+
+  const removeCheckFromPackage = async (runId: string, packageKey: string, checkKey: string, sharedCount: number) => {
+    const inFlightKey = `${runId}:${checkKey}`;
+    setRemovingKey(inFlightKey);
+    try {
+      const currentRes = await fetchWithAuth(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`);
+      if (!currentRes.ok) {
+        toast.error(`Failed to load "${packageKey}"'s current check list.`);
+        return;
+      }
+      const currentBody = (await currentRes.json()) as { checks: { checkKey: string }[] };
+      const remainingKeys = currentBody.checks.map((c) => c.checkKey).filter((k) => k !== checkKey);
+
+      const putRes = await fetchWithAuth(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkKeys: remainingKeys }),
+      });
+      if (!putRes.ok) {
+        const body = (await putRes.json().catch(() => null)) as { error?: string } | null;
+        toast.error(body?.error ?? `Failed to remove "${checkKey}" from "${packageKey}".`);
+        return;
+      }
+
+      setRunFindings((prev) => {
+        const existing = prev[runId];
+        if (!existing || existing === "loading" || existing === "error") return prev;
+        return {
+          ...prev,
+          [runId]: { ...existing, findings: existing.findings.filter((f) => f.checkKey !== checkKey) },
+        };
+      });
+      toast.success(
+        sharedCount > 0
+          ? `Removed "${checkKey}" from "${packageKey}" and the ${sharedCount} other assessment${sharedCount === 1 ? "" : "s"} sharing it.`
+          : `Removed "${checkKey}" from "${packageKey}".`,
+      );
+    } catch {
+      toast.error(`Failed to remove "${checkKey}" from "${packageKey}".`);
+    } finally {
+      setRemovingKey(null);
+      setRemoveConfirm(null);
+    }
+  };
+
+  const handleRemoveClick = async (runId: string, packageKey: string, checkKey: string) => {
+    try {
+      const res = await fetchWithAuth("/api/admin/simulator/assessments");
+      if (!res.ok) {
+        // Detection failing open (treat as not-shared) would risk a silent
+        // multi-assessment change; fail closed instead — surface the error
+        // and let the operator retry rather than proceeding uninformed.
+        toast.error("Failed to check whether this package is shared with other assessments. Try again.");
+        return;
+      }
+      const data = (await res.json()) as { assessments: AssessmentNode[] };
+      const sharedWith = data.assessments.filter((a) => a.packageKey === packageKey);
+      if (sharedWith.length > 0) {
+        setRemoveConfirm({ runId, packageKey, checkKey, sharedNames: sharedWith.map((a) => a.name) });
+        return;
+      }
+    } catch {
+      toast.error("Failed to check whether this package is shared with other assessments. Try again.");
+      return;
+    }
+    void removeCheckFromPackage(runId, packageKey, checkKey, 0);
+  };
 
   const refreshRuns = async () => {
     setRefreshingRuns(true);
@@ -1005,7 +1090,47 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                     {f.checkStatus === "error" ? "error" : f.severity}
                                   </span>
                                 </div>
-                                <div className="text-[10px] text-muted-foreground">{f.checkKey}</div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] text-muted-foreground">{f.checkKey}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRemoveClick(r.runId, r.packageKey, f.checkKey)}
+                                    disabled={removingKey === `${r.runId}:${f.checkKey}`}
+                                    className="flex shrink-0 items-center gap-1 rounded p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                    title="Remove this check from the scan package"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                                {removeConfirm && removeConfirm.runId === r.runId && removeConfirm.checkKey === f.checkKey && (
+                                  <div className="mt-1 rounded border border-amber-600/40 bg-amber-600/5 px-1.5 py-1.5">
+                                    <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                                      This check is also used by {removeConfirm.sharedNames.length}{" "}
+                                      other assessment{removeConfirm.sharedNames.length === 1 ? "" : "s"}
+                                      {" "}({removeConfirm.sharedNames.join(", ")}) — remove it from all of them?
+                                    </p>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void removeCheckFromPackage(r.runId, r.packageKey, f.checkKey, removeConfirm.sharedNames.length)
+                                        }
+                                        disabled={removingKey === `${r.runId}:${f.checkKey}`}
+                                        className="rounded border border-destructive/40 px-1.5 py-0.5 text-[10px] text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                                      >
+                                        {removingKey === `${r.runId}:${f.checkKey}` ? "Removing…" : "Remove from all"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setRemoveConfirm(null)}
+                                        disabled={removingKey === `${r.runId}:${f.checkKey}`}
+                                        className="rounded border border-border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-accent disabled:opacity-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                                 {f.description && (
                                   <div className="mt-0.5 flex items-start justify-between gap-1.5">
                                     <p className="min-w-0 flex-1 text-[11px] text-foreground/80">{f.description}</p>
