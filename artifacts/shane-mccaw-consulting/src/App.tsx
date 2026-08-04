@@ -30,11 +30,12 @@ import QuickWinQuiz from "./pages/QuickWinQuiz";
 import QuickWinResultsPage from "./pages/QuickWinResultsPage";
 import QuizResultsPage from "./pages/QuizResultsPage";
 
-// Helper for Legacy Route Redirects
-function RedirectToAssessments() {
+// Helper for Legacy Route Redirects. /assessments was unregistered in #382, so legacy
+// entry points land on the home page rather than the 404 fallback.
+function RedirectToHome() {
   const [, setLocation] = useLocation();
   useEffect(() => {
-    setLocation("/assessments", { replace: true });
+    setLocation("/", { replace: true });
   }, [setLocation]);
   return null;
 }
@@ -90,8 +91,8 @@ export default function App() {
       <Route path="/privacy" component={Privacy} />
       <Route path="/dpa" component={Dpa} />
 
-      {/* Decommissioned Routes -> Redirects to /assessments */}
-      <Route path="/micro-offers" component={RedirectToAssessments} />
+      {/* Decommissioned Routes -> Redirects to / */}
+      <Route path="/micro-offers" component={RedirectToHome} />
 
       {/* Quizzes & Lead Capture */}
       <Route path="/copilot-quiz" component={CopilotQuiz} />
