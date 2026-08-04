@@ -3596,9 +3596,40 @@ export type PlatformIncident = typeof platformIncidentsTable.$inferSelect;
 // request is declined and recorded, never routed to Shane by any path.
 export const publicChatMessageRole = ["user", "assistant"] as const;
 
+// ── ShaneBot structured content blocks (#361) ─────────────────────────────────
+// The wire + storage shape shared by BOTH ShaneBot surfaces (public-chat.ts and
+// support-chat.ts). A message's content is an ARRAY of blocks rather than a
+// string, so the renderer — not the storage shape — is what changes when a new
+// block type is introduced.
+//
+//   text             — plain prose. Every reply has at least one.
+//   suggested_replies — tappable follow-up chips (#361). Emitted by the model as
+//                      a bracketed control token, parsed + stripped server-side.
+//   card             — RESERVED, UNUSED. Declared here ONLY so the persisted
+//                      shape never has to change again when the deferred Active
+//                      Cards issue lands. Nothing writes it, nothing renders it,
+//                      and no code should branch on it until that issue is built.
+export type ChatTextBlock = { type: "text"; text: string };
+export type ChatSuggestedRepliesBlock = { type: "suggested_replies"; options: string[] };
+/** RESERVED for the deferred Active Cards issue — never written or rendered today. */
+export type ChatCardBlock = { type: "card"; cardType: string; data: Record<string, unknown> };
+
+export type ChatContentBlock = ChatTextBlock | ChatSuggestedRepliesBlock | ChatCardBlock;
+
+/**
+ * What a stored/transported message's `content` may be.
+ *
+ * `string` is the LEGACY shape: every row written before #361 holds a bare
+ * string, and no backfill is performed (the column is already jsonb, so the
+ * interior shape change needs no DDL). Every read path must normalize through
+ * `toContentBlocks()` rather than assuming an array.
+ */
+export type ChatMessageContent = string | ChatContentBlock[];
+
 export interface PublicChatStoredMessage {
   role: (typeof publicChatMessageRole)[number];
-  content: string;
+  /** Blocks for rows written from #361 onward; a bare string for legacy rows. */
+  content: ChatMessageContent;
   at: string;
 }
 

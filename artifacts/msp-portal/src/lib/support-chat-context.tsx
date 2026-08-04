@@ -1,11 +1,21 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
+import {
+  buildContent,
+  contentToText,
+  type ChatMessageContent,
+} from "@/lib/chat-content-blocks";
 
 export interface SupportChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
-  content: string;
+  /**
+   * Structured content blocks (#361). Chats saved to localStorage before that
+   * hold a bare string, which is why this stays a union and every read goes
+   * through contentToText() — no migration of stored chats is needed.
+   */
+  content: ChatMessageContent;
   escalated?: boolean;
   timestamp: Date;
 }
@@ -76,7 +86,9 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
         {
           id: "init",
           role: "assistant",
-          content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+          content: buildContent(
+            `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+          ),
           timestamp: new Date(),
         },
       ]);
@@ -96,7 +108,7 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
         isNew = true;
       }
 
-      const firstUserMsg = messages.find(m => m.role === "user")?.content || "Support Query";
+      const firstUserMsg = contentToText(messages.find(m => m.role === "user")?.content) || "Support Query";
       const updatedChat: SavedChat = {
         id: nextId,
         title: firstUserMsg.substring(0, 60),
@@ -130,7 +142,7 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
       const userMsg: SupportChatMessage = {
         id: `u-${Date.now()}`,
         role: "user",
-        content: trimmed,
+        content: buildContent(trimmed),
         timestamp: new Date(),
       };
 
@@ -143,7 +155,7 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: [...apiMessages, { role: "user", content: trimmed }],
+            messages: [...apiMessages, { role: "user", content: buildContent(trimmed) }],
           }),
         });
 
@@ -152,11 +164,18 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
           throw new Error(err.error ?? `HTTP ${res.status}`);
         }
 
-        const data = (await res.json()) as { reply: string; escalated: boolean };
+        const data = (await res.json()) as {
+          reply: string;
+          content?: ChatMessageContent;
+          suggestedReplies?: string[];
+          escalated: boolean;
+        };
         const assistantMsg: SupportChatMessage = {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: data.reply,
+          // Prefer the structured content; fall back to the flat reply so the
+          // dock still works against an api-server that predates #361.
+          content: data.content ?? buildContent(data.reply, data.suggestedReplies ?? []),
           escalated: data.escalated,
           timestamp: new Date(),
         };
@@ -180,13 +199,15 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
       await fetchWithAuth("/api/msp/support/escalate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: lastUserMsg?.content ?? "(no question)" }),
+        body: JSON.stringify({
+          question: contentToText(lastUserMsg?.content) || "(no question)",
+        }),
       });
 
       const systemMsg: SupportChatMessage = {
         id: `sys-${Date.now()}`,
         role: "system",
-        content: "Your request has been escalated to human support. We will follow up shortly.",
+        content: buildContent("Your request has been escalated to human support. We will follow up shortly."),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, systemMsg]);
@@ -214,7 +235,9 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
       {
         id: "init",
         role: "assistant",
-        content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+        content: buildContent(
+          `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+        ),
         timestamp: new Date(),
       },
     ]);

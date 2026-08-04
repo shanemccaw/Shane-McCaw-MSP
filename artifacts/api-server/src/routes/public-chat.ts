@@ -9,7 +9,10 @@
  * public-chat-guardrail.ts for the deterministic backstop.
  *
  * Storage: every conversation is stored in full (publicChatConversationsTable), one
- * row per browser session, regardless of outcome.
+ * row per browser session, regardless of outcome. Since #361 each message's
+ * `content` is an array of structured blocks ({type:"text"} / {type:"suggested_replies"})
+ * rather than a bare string; rows written before that hold a string and are read
+ * through toContentBlocks(), so no backfill or DDL was required.
  *
  * Escalation is PULL-BASED ONLY. When the assistant sees genuine purchase/service
  * intent or a real business question only Shane can answer, it flags the conversation
@@ -36,6 +39,13 @@ import {
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.ts";
 import {
+  buildAssistantContent,
+  contentToText,
+  hasSuggestedRepliesToken,
+  parseSuggestedReplies,
+  toContentBlocks,
+} from "../lib/chat-content-blocks.ts";
+import {
   buildPublicChatSystemPrompt,
   detectPersonalTopic,
   parseReviewFlag,
@@ -44,6 +54,7 @@ import {
   PERSONAL_TOPIC_DECLINE,
   type ReviewReason,
 } from "../lib/public-chat-guardrail.ts";
+import { personaGreeting } from "../lib/shanebot-persona.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "growth.public_chat" });
@@ -127,20 +138,32 @@ const FALLBACK_CATALOG_SUMMARY = [
 ].join("\n");
 
 // ── Request schema ──────────────────────────────────────────────────────────
+// `content` accepts BOTH shapes: the legacy bare string (any widget build still
+// in a visitor's open tab) and the #361 content-block array. Everything
+// downstream reads it through contentToText(), so neither vintage breaks.
+const contentBlockSchema = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("suggested_replies"), options: z.array(z.string()) }),
+  // RESERVED (deferred Active Cards issue) — accepted so a stored transcript can
+  // round-trip through the client, never produced by anything today.
+  z.object({ type: z.literal("card"), cardType: z.string(), data: z.record(z.unknown()) }),
+]);
+
 const bodySchema = z.object({
   sessionId: z.string().min(8).max(128).optional(),
   messages: z
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string(),
+        content: z.union([z.string(), z.array(contentBlockSchema)]),
       }),
     )
     .default([]),
 });
 
-const GREETING =
-  "Hi! I'm Shane McCaw Consulting's assistant. I can walk you through the services, pricing, and how things work — or take your details if you'd like to get started. What can I help you with?";
+// The opener is the ShaneBot Public persona's own first sample opener — voice
+// lives in one place, including the line a visitor sees before the model runs.
+const GREETING = personaGreeting("public");
 
 // ── POST /api/public-chat ────────────────────────────────────────────────────
 router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => {
@@ -158,12 +181,20 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
   // no row written yet — a conversation is stored once a real user message arrives.
   const hasUserMessage = incoming.some((m) => m.role === "user");
   if (!hasUserMessage) {
-    res.json({ reply: GREETING, sessionId });
+    res.json({
+      reply: GREETING,
+      content: buildAssistantContent(GREETING),
+      suggestedReplies: [],
+      sessionId,
+    });
     return;
   }
 
   const lastUser = [...incoming].reverse().find((m) => m.role === "user");
-  const personal = detectPersonalTopic(lastUser?.content ?? "");
+  // The guardrail detector runs on the visitor's PLAIN TEXT — flattened from
+  // whichever content shape arrived, so a block-shaped turn is screened exactly
+  // as a legacy string one was.
+  const personal = detectPersonalTopic(contentToText(lastUser?.content));
 
   // ── Guardrail backstop (deterministic, model-independent) ───────────────────
   // If the latest user turn is about Shane personally, we NEVER call the model and
@@ -173,10 +204,13 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
   // the primary guard for phrasings the detector doesn't catch; this is the backstop
   // that makes the guarantee hold regardless of the model.
   let visibleReply: string;
+  let suggestedReplies: string[] = [];
   let turnReviewReason: ReviewReason | null = null;
   let structured = null as ReturnType<typeof parseStructuredRequest>;
 
   if (personal.matched) {
+    // Deterministic decline path — no model, and deliberately no chips: this
+    // turn must offer the visitor nothing that reads as a way to keep pushing.
     visibleReply = PERSONAL_TOPIC_DECLINE;
     log.info(
       { sessionId, category: personal.category },
@@ -191,7 +225,7 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
         model: "claude-haiku-4-5",
         max_tokens: 900,
         system: buildPublicChatSystemPrompt(catalogSummary),
-        messages: incoming.slice(-20),
+        messages: incoming.slice(-20).map((m) => ({ role: m.role, content: contentToText(m.content) })),
       });
       const block = response.content[0];
       modelReply = block && block.type === "text" ? block.text : "";
@@ -205,6 +239,15 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
 
     turnReviewReason = parseReviewFlag(modelReply);
     structured = parseStructuredRequest(modelReply);
+    suggestedReplies = parseSuggestedReplies(modelReply);
+    if (suggestedReplies.length === 0 && hasSuggestedRepliesToken(modelReply)) {
+      // Token emitted but nothing usable came out of it. The visitor still gets a
+      // clean reply — this is prompt-adherence telemetry on the existing channel.
+      log.warn(
+        { sessionId },
+        "public-chat: model emitted a SUGGESTED_REPLIES token that parsed to zero options",
+      );
+    }
     visibleReply = stripControlTokens(modelReply);
     if (!visibleReply) {
       // Model emitted only control tokens — give the visitor something human.
@@ -213,10 +256,21 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
   }
 
   // ── Persist the full transcript (every conversation, every outcome) ──────────
+  // Stored in the #361 content-block shape. No backfill is needed for rows
+  // written before this: `messages` is already jsonb (so no DDL either), and
+  // every read site goes through toContentBlocks(), which wraps a legacy bare
+  // string as a single text block.
   const stamp = new Date();
+  const replyContent = buildAssistantContent(visibleReply, suggestedReplies);
   const fullMessages: PublicChatStoredMessage[] = [
-    ...incoming.map((m) => ({ role: m.role, content: m.content, at: stamp.toISOString() })),
-    { role: "assistant" as const, content: visibleReply, at: stamp.toISOString() },
+    ...incoming.map((m) => ({
+      // Normalized on the way in, so a legacy-string turn echoed back by an old
+      // widget build is re-persisted in the new shape rather than mixed in.
+      content: toContentBlocks(m.content),
+      role: m.role,
+      at: stamp.toISOString(),
+    })),
+    { role: "assistant" as const, content: replyContent, at: stamp.toISOString() },
   ];
 
   try {
@@ -272,7 +326,7 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
     log.error({ err, sessionId }, "public-chat: failed to persist conversation");
   }
 
-  res.json({ reply: visibleReply, sessionId });
+  res.json({ reply: visibleReply, content: replyContent, suggestedReplies, sessionId });
 });
 
 export default router;

@@ -41,6 +41,16 @@ import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { listRemediableOffers, type RemediableOffer } from "./portal-mission-control.ts";
+import { getShaneBotPersona, renderPersonaPrompt } from "../lib/shanebot-persona.ts";
+import {
+  SUGGESTED_REPLIES_INSTRUCTION,
+  buildAssistantContent,
+  contentToText,
+  hasSuggestedRepliesToken,
+  parseSuggestedReplies,
+  stripSuggestedReplies,
+} from "../lib/chat-content-blocks.ts";
+import type { ChatMessageContent } from "@workspace/db";
 
 /**
  * Shane's own MSP. CustomerUser escalations from this MSP route to platform
@@ -209,7 +219,12 @@ REMEDIATION PROPOSAL RULES (follow exactly):
 - The marker does NOT run anything. It only surfaces a Confirm button the user must click themselves. NEVER say or imply that you have started, run, applied, scheduled, or completed a remediation — you cannot. Only the user's own confirmation click runs it.
 - If the user has not clearly asked to fix a specific listed item, do NOT emit the marker; just answer their question.`;
 
-  return `You are an AI support assistant for the Shane McCaw Consulting platform — a Microsoft 365 managed services platform. You are talking to a ${identity}.
+  // Voice comes from the shared ShaneBot persona (#361) and NOTHING else in this
+  // prompt does — the grounding contract, escalation marker, and remediation
+  // rules below are unchanged and are not the persona module's business.
+  return `${renderPersonaPrompt(getShaneBotPersona("portal"))}
+
+You are talking to a ${identity}.
 
 Your job is to answer questions STRICTLY from the platform data provided below. Never fabricate numbers, statuses, dates, or events. If the answer is not in the provided data, say so clearly.
 
@@ -224,7 +239,7 @@ If you cannot answer confidently from the data below, output "[ESCALATE_TO_HUMAN
 ${contextSummary}
 === END PLATFORM DATA ===${remediationBlock}
 
-Keep replies concise and professional. Use bullet points for lists.`;
+${SUGGESTED_REPLIES_INSTRUCTION}`;
 }
 
 // ── Escalation helper ─────────────────────────────────────────────────────────
@@ -383,8 +398,12 @@ router.post(
   async (req: Request, res: Response) => {
     const user = req.user!;
 
+    // `content` is either the legacy bare string or the #361 content-block array
+    // — this route is stateless (the client holds the transcript and re-sends it),
+    // so an in-flight client of either vintage has to keep working. Everything
+    // downstream reads through contentToText().
     const { messages } = req.body as {
-      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+      messages?: Array<{ role: "user" | "assistant"; content: ChatMessageContent }>;
     };
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -430,7 +449,10 @@ router.post(
     }
 
     const systemPrompt = buildSystemPrompt(groundedCtx.identity, groundedCtx.summary, remediableOffers);
-    const trimmedMessages = messages.slice(-20).filter((m) => m.role === "user" || m.role === "assistant");
+    const trimmedMessages = messages
+      .slice(-20)
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: contentToText(m.content) }));
 
     let fullReply: string;
     try {
@@ -491,13 +513,32 @@ router.post(
       }
     }
 
-    const visibleReply = fullReply
-      .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
-      .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, "")
-      .trim();
+    // Suggested-reply chips (#361). Parsed and stripped like every other control
+    // marker here — the raw token never reaches the user.
+    const suggestedReplies = parseSuggestedReplies(fullReply);
+    if (suggestedReplies.length === 0 && hasSuggestedRepliesToken(fullReply)) {
+      // The token was emitted but yielded nothing usable (empty, or every option
+      // over-long). The user still gets a clean reply — this is prompt-adherence
+      // telemetry, on this route's existing channel.
+      log.warn(
+        { userId: user.id, mspRole: user.mspRole },
+        "support-chat: model emitted a SUGGESTED_REPLIES token that parsed to zero options",
+      );
+    }
+
+    const visibleReply = stripSuggestedReplies(
+      fullReply
+        .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
+        .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, ""),
+    );
+
+    // The reply in the #361 structured shape. `reply` is still returned alongside
+    // it for any client that hasn't moved over yet.
+    const replyContent = buildAssistantContent(visibleReply, suggestedReplies);
 
     // Audit with correct AuditEvent shape
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastUserText = lastUserMsg ? contentToText(lastUserMsg.content) : "";
     void createAuditLog({
       actorUserId: user.id,
       actorName: user.name ?? user.email,
@@ -513,12 +554,13 @@ router.post(
         // The MSP actually billed — differs from mspId under impersonation.
         aiBillingMspId: billingMspId,
         proposedRemediationOfferId: proposedRemediation?.offerId ?? null,
+        suggestedReplyCount: suggestedReplies.length,
       },
     });
 
     if (shouldEscalate) {
       void escalateToAdmin({
-        question: lastUserMsg?.content ?? "(no message)",
+        question: lastUserText || "(no message)",
         aiReply: visibleReply,
         userId: user.id,
         mspId,
@@ -528,7 +570,13 @@ router.post(
       });
     }
 
-    res.json({ reply: visibleReply, escalated: shouldEscalate, proposedRemediation });
+    res.json({
+      reply: visibleReply,
+      content: replyContent,
+      suggestedReplies,
+      escalated: shouldEscalate,
+      proposedRemediation,
+    });
   },
 );
 

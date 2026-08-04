@@ -274,6 +274,84 @@ describe("POST /api/msp/support/chat", () => {
     expect(res.body.reply).not.toMatch(/PROPOSE_REMEDIATION/i);
   });
 
+  // ── #361: suggested-reply chips + content-block shape ──────────────────────
+
+  it("parses [SUGGESTED_REPLIES], strips it from the visible reply, and returns a suggested_replies block", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{
+        type: "text",
+        text: 'Your last scan finished yesterday.\n[SUGGESTED_REPLIES: "Show me the findings" | "When is the next run?"]',
+      }],
+    });
+
+    const res = await request(makeApp())
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ messages: [{ role: "user", content: "How did my last scan go?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).not.toMatch(/SUGGESTED_REPLIES/);
+    expect(res.body.reply).toContain("finished yesterday");
+    expect(res.body.suggestedReplies).toEqual(["Show me the findings", "When is the next run?"]);
+    expect(res.body.content).toEqual([
+      { type: "text", text: "Your last scan finished yesterday." },
+      { type: "suggested_replies", options: ["Show me the findings", "When is the next run?"] },
+    ]);
+  });
+
+  it("returns a text-only content block when the model offers no chips", async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: "text", text: "Active, 3 customers." }] });
+
+    const res = await request(makeApp())
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ messages: [{ role: "user", content: "status?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.suggestedReplies).toEqual([]);
+    expect(res.body.content).toEqual([{ type: "text", text: "Active, 3 customers." }]);
+  });
+
+  it("accepts BOTH content shapes on the way in — legacy string and content blocks", async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: "text", text: "Understood." }] });
+
+    const res = await request(makeApp())
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({
+        messages: [
+          { role: "user", content: "legacy string turn" },
+          { role: "assistant", content: [{ type: "text", text: "block-shaped turn" }] },
+          { role: "user", content: [{ type: "text", text: "another block turn" }] },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    // Both shapes must reach the model as plain text, in order.
+    const calledWith = mockCreate.mock.calls[0]?.[0] as { messages: { role: string; content: string }[] };
+    expect(calledWith.messages).toEqual([
+      { role: "user", content: "legacy string turn" },
+      { role: "assistant", content: "block-shaped turn" },
+      { role: "user", content: "another block turn" },
+    ]);
+  });
+
+  it("still escalates on a block-shaped user turn (the question text is flattened, not lost)", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "I don't have that.\n[ESCALATE_TO_HUMAN]" }],
+    });
+    mockDbAny["limit"].mockResolvedValue([{ id: 1 }]);
+
+    const res = await request(makeApp())
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ messages: [{ role: "user", content: [{ type: "text", text: "Who owns this invoice?" }] }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.escalated).toBe(true);
+    expect(res.body.reply).not.toMatch(/ESCALATE_TO_HUMAN/i);
+  });
+
   it("trims conversation to last 20 messages before sending to AI", async () => {
     mockCreate.mockResolvedValueOnce({
       content: [{ type: "text", text: "Understood." }],

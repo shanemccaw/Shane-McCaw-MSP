@@ -31,10 +31,40 @@ interface ConversationRow {
   updatedAt: string;
 }
 
+/**
+ * A stored transcript turn. Since #361 `content` is an array of structured blocks
+ * ({type:"text"} / {type:"suggested_replies"}, with {type:"card"} reserved but
+ * unused); rows written before that hold a bare string. No backfill was run, so
+ * this read path has to handle both — see messageText() below.
+ */
+type StoredContentBlock =
+  | { type: "text"; text: string }
+  | { type: "suggested_replies"; options: string[] }
+  | { type: "card"; cardType: string; data: Record<string, unknown> };
+
 interface StoredMessage {
   role: "user" | "assistant";
-  content: string;
+  content: string | StoredContentBlock[];
   at: string;
+}
+
+/** Flatten either content shape to the prose the reviewer reads. */
+function messageText(content: StoredMessage["content"]): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((b): b is Extract<StoredContentBlock, { type: "text" }> => b?.type === "text")
+    .map((b) => b.text)
+    .join("\n\n");
+}
+
+/** The chips the assistant offered on a turn, shown so the queue reflects what the visitor saw. */
+function messageSuggestedReplies(content: StoredMessage["content"]): string[] {
+  if (typeof content === "string" || !Array.isArray(content)) return [];
+  for (const block of content) {
+    if (block?.type === "suggested_replies" && Array.isArray(block.options)) return block.options;
+  }
+  return [];
 }
 
 interface ConversationDetail extends ConversationRow {
@@ -98,12 +128,24 @@ function Transcript({ messages }: { messages: StoredMessage[] }) {
         m.role === "assistant" ? (
           <div key={i} className="border-l-2 border-primary pl-3">
             <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-0.5">Assistant</p>
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{m.content}</p>
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{messageText(m.content)}</p>
+            {messageSuggestedReplies(m.content).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {messageSuggestedReplies(m.content).map((option) => (
+                  <span
+                    key={option}
+                    className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground"
+                  >
+                    {option}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div key={i} className="pl-4">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Visitor</p>
-            <p className="text-sm text-foreground bg-accent rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap">{m.content}</p>
+            <p className="text-sm text-foreground bg-accent rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap">{messageText(m.content)}</p>
           </div>
         )
       )}

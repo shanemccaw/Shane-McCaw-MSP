@@ -22,6 +22,7 @@ import {
 import { and, count, desc, eq, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { contentToText } from "../lib/chat-content-blocks.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "growth.public_chat" });
@@ -29,10 +30,17 @@ const log = logger.child({ channel: "growth.public_chat" });
 const REVIEW_STATUSES = ["new", "reviewed", "resolved", "archived"] as const;
 type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
+/**
+ * Preview text for the queue list. Reads through contentToText() so it works on
+ * both vintages: pre-#361 rows whose `content` is a bare string, and rows stored
+ * as structured content blocks.
+ */
 function lastVisitorMessage(messages: PublicChatStoredMessage[] | null): string | null {
   if (!messages || messages.length === 0) return null;
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  return lastUser?.content?.slice(0, 200) ?? null;
+  if (!lastUser) return null;
+  const text = contentToText(lastUser.content);
+  return text ? text.slice(0, 200) : null;
 }
 
 // ── GET /api/admin/public-chat/stats ─────────────────────────────────────────

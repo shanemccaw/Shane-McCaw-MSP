@@ -163,6 +163,8 @@ export default defineConfig({
       "src/lib/war-room-pillar-stats.test.ts",
       "src/lib/pillar-trend.test.ts",
       "src/lib/__tests__/sharepoint-sharing.test.ts",
+      "src/lib/chat-content-blocks.test.ts",
+      "src/lib/shanebot-persona.test.ts",
     ],
     coverage: {
       provider: "v8",

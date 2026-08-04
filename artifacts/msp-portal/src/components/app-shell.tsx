@@ -17,6 +17,7 @@ import { useAuth, type MspRole } from "@/lib/auth-context";
 import { ReconsentPill } from "@/components/reconsent-pill";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
+import { contentToText, suggestedRepliesFrom } from "@/lib/chat-content-blocks";
 import { useMarketplace } from "@/lib/marketplace-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -165,16 +166,49 @@ const SUPPORT_STARTER_PROMPTS = [
   "When is the next monitoring run?",
 ];
 
+/**
+ * Tappable follow-ups the assistant offered on its last turn (#361). Options
+ * arrive as a `suggested_replies` content block; tapping one sends that exact
+ * text as the next user message. Mirrors the /support page's chip row.
+ */
+function SupportSuggestedReplies({
+  options,
+  disabled,
+  onPick,
+}: {
+  options: string[];
+  disabled: boolean;
+  onPick: (text: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div className="ml-9 flex flex-wrap gap-1.5" data-testid="support-suggested-replies">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(option)}
+          className="text-[11px] px-2.5 py-1 rounded-full border border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10 hover:border-primary/50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SupportMessageBubble({ message }: { message: SupportChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const text = contentToText(message.content);
 
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[11px] text-amber-500">
           <AlertCircle className="size-3 shrink-0" />
-          <span>{message.content}</span>
+          <span>{text}</span>
         </div>
       </div>
     );
@@ -197,7 +231,7 @@ function SupportMessageBubble({ message }: { message: SupportChatMessage }) {
               : "bg-muted text-foreground rounded-tl-xs"
           }`}
         >
-          {message.content}
+          {text}
           {message.escalated && (
             <div className="mt-1.5 pt-1.5 border-t border-amber-500/30 flex items-center gap-1 text-[10px] text-amber-500">
               <AlertCircle className="size-3 shrink-0" />
@@ -376,8 +410,18 @@ function DockedSupportPanel() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-        {messages.map((msg) => (
-          <SupportMessageBubble key={msg.id} message={msg} />
+        {messages.map((msg, i) => (
+          <div key={msg.id} className="space-y-2">
+            <SupportMessageBubble message={msg} />
+            {/* Chips only on the newest turn — older ones are answered history. */}
+            {i === messages.length - 1 && msg.role === "assistant" && (
+              <SupportSuggestedReplies
+                options={suggestedRepliesFrom(msg.content)}
+                disabled={sending}
+                onPick={(text) => void sendMessage(text)}
+              />
+            )}
+          </div>
         ))}
         {sending && (
           <div className="flex gap-2.5">

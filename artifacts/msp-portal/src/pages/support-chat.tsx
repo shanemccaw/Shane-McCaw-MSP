@@ -25,6 +25,12 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  buildContent,
+  contentToText,
+  suggestedRepliesFrom,
+  type ChatMessageContent,
+} from "@/lib/chat-content-blocks";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +47,12 @@ type RemediationState = "pending" | "running" | "triggered" | "declined";
 interface ChatMessage {
   id: string;
   role: MessageRole;
-  content: string;
+  /**
+   * Structured content blocks (#361) — text, plus suggested_replies when the
+   * assistant offered chips. Typed to allow a bare string so a transcript
+   * restored from before #361 still renders (see contentToText).
+   */
+  content: ChatMessageContent;
   escalated?: boolean;
   timestamp: Date;
   /** Set on an assistant message when the AI offered an instant remediation. */
@@ -64,13 +75,14 @@ const STARTER_PROMPTS = [
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const text = contentToText(message.content);
 
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
         <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full text-xs text-amber-400">
           <AlertCircle className="size-3" />
-          {message.content}
+          {text}
         </div>
       </div>
     );
@@ -100,7 +112,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               : "bg-muted text-foreground rounded-tl-sm"
           }`}
         >
-          {message.content}
+          {text}
           {message.escalated && (
             <div className="mt-2 pt-2 border-t border-amber-500/30 flex items-center gap-1.5 text-xs text-amber-400">
               <AlertCircle className="size-3" />
@@ -112,6 +124,41 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ── Suggested-reply chips ─────────────────────────────────────────────────────
+
+/**
+ * Tappable follow-ups the assistant offered on its last turn (#361). The options
+ * arrive as a `suggested_replies` content block; tapping one sends that exact
+ * text as the next user message, so a chip is a shortcut for typing — nothing
+ * more. Only ever rendered for the newest assistant message.
+ */
+function SuggestedReplies({
+  options,
+  disabled,
+  onPick,
+}: {
+  options: string[];
+  disabled: boolean;
+  onPick: (text: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div className="ml-10 flex flex-wrap gap-2" data-testid="suggested-replies">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(option)}
+          className="text-xs px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {option}
+        </button>
+      ))}
     </div>
   );
 }
@@ -188,7 +235,9 @@ export default function SupportChatPage() {
     const greeting: ChatMessage = {
       id: "init",
       role: "assistant",
-      content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant, grounded in your real platform data. I can answer questions about your account status, signals, services, and monitoring.\n\nIf an eligible one-click remediation is available for one of your findings, I can also offer to run it — I'll always ask you to confirm first, and nothing happens until you click the button yourself.\n\nWhat can I help you with?`,
+      content: buildContent(
+        `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant, grounded in your real platform data. I can answer questions about your account status, signals, services, and monitoring.\n\nIf an eligible one-click remediation is available for one of your findings, I can also offer to run it — I'll always ask you to confirm first, and nothing happens until you click the button yourself.\n\nWhat can I help you with?`,
+      ),
       timestamp: new Date(),
     };
     setMessages([greeting]);
@@ -199,7 +248,8 @@ export default function SupportChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Build API messages array (strip system messages)
+  // Build API messages array (strip system messages). Content blocks go over the
+  // wire as-is — the route normalizes whichever shape it receives.
   const apiMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -212,7 +262,7 @@ export default function SupportChatPage() {
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
         role: "user",
-        content: trimmed,
+        content: buildContent(trimmed),
         timestamp: new Date(),
       };
 
@@ -225,7 +275,7 @@ export default function SupportChatPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: [...apiMessages, { role: "user", content: trimmed }],
+            messages: [...apiMessages, { role: "user", content: buildContent(trimmed) }],
           }),
         });
 
@@ -236,6 +286,8 @@ export default function SupportChatPage() {
 
         const data = (await res.json()) as {
           reply: string;
+          content?: ChatMessageContent;
+          suggestedReplies?: string[];
           escalated: boolean;
           proposedRemediation?: ProposedRemediation | null;
         };
@@ -243,7 +295,9 @@ export default function SupportChatPage() {
         const assistantMsg: ChatMessage = {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: data.reply,
+          // Prefer the structured content; fall back to the flat reply so the UI
+          // still works against an api-server that predates #361.
+          content: data.content ?? buildContent(data.reply, data.suggestedReplies ?? []),
           escalated: data.escalated,
           timestamp: new Date(),
           proposedRemediation: data.proposedRemediation ?? undefined,
@@ -281,13 +335,15 @@ export default function SupportChatPage() {
       await fetchWithAuth("/api/msp/support/escalate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: lastUserMsg?.content ?? "(no question)" }),
+        body: JSON.stringify({
+          question: contentToText(lastUserMsg?.content) || "(no question)",
+        }),
       });
 
       const systemMsg: ChatMessage = {
         id: `sys-${Date.now()}`,
         role: "system",
-        content: "Your question has been escalated to Shane. You'll hear back shortly.",
+        content: buildContent("Your question has been escalated to Shane. You'll hear back shortly."),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, systemMsg]);
@@ -388,9 +444,17 @@ export default function SupportChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
-          {messages.map((msg) => (
+          {messages.map((msg, i) => (
             <div key={msg.id} className="space-y-2">
               <MessageBubble message={msg} />
+              {/* Chips only on the newest turn — older ones are answered history. */}
+              {i === messages.length - 1 && msg.role === "assistant" && (
+                <SuggestedReplies
+                  options={suggestedRepliesFrom(msg.content)}
+                  disabled={sending}
+                  onPick={(text) => void sendMessage(text)}
+                />
+              )}
               {msg.proposedRemediation && msg.remediationState && (
                 <RemediationCard
                   proposal={msg.proposedRemediation}

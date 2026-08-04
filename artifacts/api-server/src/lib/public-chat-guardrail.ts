@@ -19,6 +19,9 @@
  * lead from the queue.
  */
 
+import { getShaneBotPersona, renderPersonaPrompt } from "./shanebot-persona.ts";
+import { SUGGESTED_REPLIES_INSTRUCTION, stripSuggestedReplies } from "./chat-content-blocks.ts";
+
 export type ReviewReason = "purchase_intent" | "needs_shane" | "explicit_request";
 
 export interface PersonalTopicMatch {
@@ -173,12 +176,16 @@ export function parseStructuredRequest(text: string): StructuredRequest | null {
   }
 }
 
-/** Strip every control token (flag marker + structured-request JSON) from a reply. */
+/**
+ * Strip every control token from a reply — the flag marker, the structured-request
+ * JSON, and the #361 suggested-replies token. This is the single choke point that
+ * guarantees no raw marker reaches a visitor, so a new marker must be added here
+ * at the same time it is added to the prompt.
+ */
 export function stripControlTokens(text: string): string {
-  return text
-    .replace(REVIEW_FLAG_RE, "")
-    .replace(STRUCTURED_REQUEST_RE, "")
-    .trim();
+  return stripSuggestedReplies(
+    text.replace(REVIEW_FLAG_RE, "").replace(STRUCTURED_REQUEST_RE, ""),
+  );
 }
 
 /**
@@ -187,10 +194,13 @@ export function stripControlTokens(text: string): string {
  * are grounded in real data rather than invented.
  */
 export function buildPublicChatSystemPrompt(catalogSummary: string): string {
-  return `You are the AI assistant on the public website of Shane McCaw Consulting — a Microsoft 365 consulting and managed-services practice. You are the primary way a visitor gets help here: there is no contact form, no email address, and no calendar link on this site. You are it, so be genuinely useful.
+  // Voice comes from the shared ShaneBot persona module (#361). ONLY the voice —
+  // the HARD BOUNDARY, the request-capture contract, and the review-flag marker
+  // below are this module's own and are unchanged by that swap.
+  return `${renderPersonaPrompt(getShaneBotPersona("public"))}
 
 WHO YOU HELP AND HOW
-- Answer real questions about the services, pricing, deliverables, and process, grounded ONLY in the catalog data provided below. Be warm, concrete, and plain-spoken — short, specific answers, not marketing fluff.
+- Answer real questions about the services, pricing, deliverables, and process, grounded ONLY in the catalog data provided below.
 - If a visitor shows genuine intent to buy, start a service, or get a quote, help them and offer to take their request (see "Taking a request").
 - If something isn't in the catalog data, say so plainly. Never invent prices, service names, timelines, guarantees, or availability.
 
@@ -212,7 +222,7 @@ TAKING A REQUEST (business intent only — NEVER for anything under the HARD BOU
   Then tell them their request has been saved and will be reviewed — do NOT promise a specific response time or a direct call from Shane.
 - When a conversation genuinely needs a human's review (real purchase intent, a real business question only Shane can answer, or the visitor explicitly asks for a person), add a marker on its own final line: [FLAG_FOR_REVIEW:purchase_intent] or [FLAG_FOR_REVIEW:needs_shane] or [FLAG_FOR_REVIEW:explicit_request]. This quietly adds the conversation to a review queue that is checked periodically — it does not notify anyone or reach anyone faster. Never describe the queue's internals, and NEVER add this marker for a HARD BOUNDARY request.
 
-Keep replies concise (2–4 sentences unless you're listing services). You represent a real practice — be helpful and human.
+${SUGGESTED_REPLIES_INSTRUCTION}
 
 === SERVICES CATALOG (the ONLY source for services/pricing/deliverables) ===
 ${catalogSummary}

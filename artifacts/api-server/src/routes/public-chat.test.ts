@@ -87,6 +87,15 @@ describe("guardrail: control-token parsing", () => {
     expect(stripped).not.toMatch(/"request"/);
     expect(stripped).toContain("Here you go.");
   });
+
+  it("strips the #361 suggested-replies token too — one choke point for every marker", () => {
+    const stripped = stripControlTokens(
+      'Happy to help. [SUGGESTED_REPLIES: "a" | "b"] [FLAG_FOR_REVIEW:needs_shane]',
+    );
+    expect(stripped).not.toMatch(/SUGGESTED_REPLIES/);
+    expect(stripped).not.toMatch(/FLAG_FOR_REVIEW/);
+    expect(stripped).toContain("Happy to help.");
+  });
 });
 
 // ── Route-level integration tests ───────────────────────────────────────────────
@@ -238,6 +247,82 @@ describe("POST /api/public-chat", () => {
     const payload = insertPayload();
     expect(payload?.needsReview).toBe(false);
     expect(payload?.messageCount).toBe(2); // user + assistant, stored
+  });
+
+  // ── #361: suggested-reply chips + content-block storage ────────────────────
+
+  it("parses [SUGGESTED_REPLIES], strips it, returns chips, and STORES the block shape", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{
+        type: "text",
+        text: 'The assessment reviews your tenant end to end.\n[SUGGESTED_REPLIES: "What does it cost?" | "How long does it take?"]',
+      }],
+    });
+
+    const res = await request(makeApp())
+      .post("/api/public-chat")
+      .send({ sessionId: "sess-chips-1", messages: [{ role: "user", content: "What is the assessment?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).not.toMatch(/SUGGESTED_REPLIES/);
+    expect(res.body.suggestedReplies).toEqual(["What does it cost?", "How long does it take?"]);
+    expect(res.body.content).toEqual([
+      { type: "text", text: "The assessment reviews your tenant end to end." },
+      { type: "suggested_replies", options: ["What does it cost?", "How long does it take?"] },
+    ]);
+
+    // Transcript is persisted in the new shape — both turns, blocks not strings.
+    const stored = insertPayload()?.messages as { role: string; content: unknown }[];
+    expect(stored).toEqual([
+      { role: "user", content: [{ type: "text", text: "What is the assessment?" }], at: expect.any(String) },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "The assessment reviews your tenant end to end." },
+          { type: "suggested_replies", options: ["What does it cost?", "How long does it take?"] },
+        ],
+        at: expect.any(String),
+      },
+    ]);
+  });
+
+  it("accepts a block-shaped incoming turn and normalizes it for storage and the model", async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: "text", text: "Monitoring runs continuously." }] });
+
+    const res = await request(makeApp())
+      .post("/api/public-chat")
+      .send({
+        sessionId: "sess-blocks-1",
+        messages: [{ role: "user", content: [{ type: "text", text: "Tell me about monitoring." }] }],
+      });
+
+    expect(res.status).toBe(200);
+    const calledWith = mockCreate.mock.calls[0]?.[0] as { messages: { role: string; content: string }[] };
+    expect(calledWith.messages).toEqual([{ role: "user", content: "Tell me about monitoring." }]);
+    expect(res.body.content).toEqual([{ type: "text", text: "Monitoring runs continuously." }]);
+  });
+
+  it("GUARDRAIL still fires on a block-shaped personal-topic turn, and offers NO chips", async () => {
+    const res = await request(makeApp())
+      .post("/api/public-chat")
+      .send({
+        sessionId: "sess-personal-blocks",
+        messages: [{ role: "user", content: [{ type: "text", text: "What's Shane's cell number?" }] }],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe(PERSONAL_TOPIC_DECLINE);
+    expect(res.body.suggestedReplies).toEqual([]);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(insertPayload()?.needsReview).toBe(false);
+    expect(insertPayload()?.declinedPersonalTopic).toBe(true);
+  });
+
+  it("returns the greeting as a content block on the init turn", async () => {
+    const res = await request(makeApp()).post("/api/public-chat").send({ messages: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.content).toEqual([{ type: "text", text: res.body.reply }]);
+    expect(res.body.suggestedReplies).toEqual([]);
   });
 
   it("returns 503 when the model call fails (business path)", async () => {

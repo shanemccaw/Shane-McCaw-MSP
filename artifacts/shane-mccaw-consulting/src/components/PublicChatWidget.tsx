@@ -1,6 +1,12 @@
 import { useRef, useState, useEffect, type CSSProperties, type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  buildContent,
+  contentToText,
+  suggestedRepliesFrom,
+  type ChatMessageContent,
+} from "@/lib/chat-content-blocks";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
@@ -8,7 +14,27 @@ const SESSION_KEY = "public-chat-session-id";
 
 interface ChatMessage {
   role: "user" | "assistant";
-  content: string;
+  /**
+   * Structured content blocks (#361) — text, plus suggested_replies when the
+   * assistant offered chips. The union tolerates a bare string so a reply from
+   * an api-server that predates #361 still renders.
+   */
+  content: ChatMessageContent;
+}
+
+interface ChatResponse {
+  reply: string;
+  content?: ChatMessageContent;
+  suggestedReplies?: string[];
+  sessionId?: string;
+}
+
+/**
+ * Prefer the server's structured content; fall back to the flat `reply` so the
+ * widget still works against an api-server that predates #361.
+ */
+function assistantContent(data: ChatResponse): ChatMessageContent {
+  return data.content ?? buildContent(data.reply, data.suggestedReplies ?? []);
 }
 
 function getSessionId(): string {
@@ -64,8 +90,40 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         }`}
         style={isAI ? undefined : GRADIENT_BG}
       >
-        {message.content}
+        {contentToText(message.content)}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Tappable follow-ups the assistant offered on its last turn (#361). Options
+ * arrive as a `suggested_replies` content block; tapping one sends that exact
+ * text as the next visitor message, so a chip is a shortcut for typing.
+ */
+function SuggestedReplies({
+  options,
+  disabled,
+  onPick,
+}: {
+  options: string[];
+  disabled: boolean;
+  onPick: (text: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mb-4 ml-9" data-testid="chat-suggested-replies">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(option)}
+          className="text-xs px-3 py-1.5 rounded-full border border-white/[0.14] bg-white/[0.04] text-text-primary hover:bg-white/[0.09] hover:border-accent-blue/50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {option}
+        </button>
+      ))}
     </div>
   );
 }
@@ -126,10 +184,10 @@ export function PublicChatWidget({
           body: JSON.stringify({ sessionId: sessionIdRef.current, messages: [] }),
         });
         if (!res.ok) throw new Error("init failed");
-        const data = (await res.json()) as { reply: string; sessionId?: string };
+        const data = (await res.json()) as ChatResponse;
         if (data.sessionId) sessionIdRef.current = data.sessionId;
         if (!cancelled) {
-          setMessages([{ role: "assistant", content: data.reply }]);
+          setMessages([{ role: "assistant", content: assistantContent(data) }]);
         }
       } catch {
         if (!cancelled) setInitError(true);
@@ -141,11 +199,11 @@ export function PublicChatWidget({
     return () => { cancelled = true; };
   }, []);
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || isLoading) return;
 
-    const newMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const newMessages: ChatMessage[] = [...messages, { role: "user", content: buildContent(text) }];
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
@@ -157,15 +215,15 @@ export function PublicChatWidget({
         body: JSON.stringify({ sessionId: sessionIdRef.current, messages: newMessages }),
       });
       if (!res.ok) throw new Error("chat failed");
-      const data = (await res.json()) as { reply: string; sessionId?: string };
+      const data = (await res.json()) as ChatResponse;
       if (data.sessionId) sessionIdRef.current = data.sessionId;
-      setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+      setMessages([...newMessages, { role: "assistant", content: assistantContent(data) }]);
     } catch {
       setMessages([
         ...newMessages,
         {
           role: "assistant",
-          content: "Sorry, something went wrong on my end. Please try again in a moment.",
+          content: buildContent("Sorry, something went wrong on my end. Please try again in a moment."),
         },
       ]);
     } finally {
@@ -202,7 +260,17 @@ export function PublicChatWidget({
           </div>
         )}
         {messages.map((msg, i) => (
-          <ChatBubble key={i} message={msg} />
+          <div key={i}>
+            <ChatBubble message={msg} />
+            {/* Chips only on the newest turn — older ones are answered history. */}
+            {i === messages.length - 1 && msg.role === "assistant" && (
+              <SuggestedReplies
+                options={suggestedRepliesFrom(msg.content)}
+                disabled={isLoading}
+                onPick={(text) => void sendMessage(text)}
+              />
+            )}
+          </div>
         ))}
         {isLoading && <TypingIndicator />}
       </div>
