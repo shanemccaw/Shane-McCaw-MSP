@@ -630,7 +630,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         title,
         description,
         recommendation: recommendation as Record<string, unknown> | null | undefined,
-        extractedProperties: checkResult.extractedProperties as Record<string, unknown>,
+        extractedProperties: {
+          ...(checkResult.extractedProperties as Record<string, unknown>),
+          ...(checkResult.errorMessage ? { _rawGraphError: checkResult.errorMessage } : {}),
+        },
         checkStatus: checkResult.status,
       });
     }

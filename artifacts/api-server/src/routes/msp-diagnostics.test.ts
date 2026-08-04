@@ -310,3 +310,50 @@ describe("diagnostics-runner severity classification", () => {
     }
   });
 });
+
+// ── extractedProperties._rawGraphError merge (diagnostics-runner.ts findingRows) ──
+
+describe("diagnostics-runner findingRows extractedProperties merge", () => {
+  // Mirrors the merge implemented inline in diagnostics-runner.ts around the
+  // findingRows.push({ ... extractedProperties: { ... } }) call — not exported,
+  // so reimplemented here the same way the severity-classification tests above do.
+  function mergeExtractedProperties(checkResult: { extractedProperties?: unknown; errorMessage?: string }) {
+    return {
+      ...(checkResult.extractedProperties as Record<string, unknown>),
+      ...(checkResult.errorMessage ? { _rawGraphError: checkResult.errorMessage } : {}),
+    };
+  }
+
+  it("adds _rawGraphError when an errorMessage is present", () => {
+    const checkResult = {
+      status: "error" as const,
+      extractedProperties: { foo: "bar" },
+      errorMessage: "Graph 403: Forbidden",
+    };
+    const merged = mergeExtractedProperties(checkResult);
+    expect(merged._rawGraphError).toBe("Graph 403: Forbidden");
+    expect(merged.foo).toBe("bar");
+  });
+
+  it("omits _rawGraphError for an ok result with no errorMessage", () => {
+    const checkResult = {
+      status: "ok" as const,
+      extractedProperties: { userCount: 42 },
+    };
+    const merged = mergeExtractedProperties(checkResult);
+    expect("_rawGraphError" in merged).toBe(false);
+    expect(merged.userCount).toBe(42);
+  });
+
+  it("omits _rawGraphError when extractedProperties is undefined and no errorMessage", () => {
+    const checkResult = { status: "ok" as const };
+    const merged = mergeExtractedProperties(checkResult);
+    expect(merged).toEqual({});
+  });
+
+  it("still adds _rawGraphError when extractedProperties is undefined but errorMessage is set", () => {
+    const checkResult = { status: "error" as const, errorMessage: "timeout" };
+    const merged = mergeExtractedProperties(checkResult);
+    expect(merged).toEqual({ _rawGraphError: "timeout" });
+  });
+});
