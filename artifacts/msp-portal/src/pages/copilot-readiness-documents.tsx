@@ -44,6 +44,7 @@ import { useAuth } from "@/lib/auth-context";
 import { AskShaneAffordance } from "@/components/copilot-journey/AskShaneAffordance";
 import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
 import { DocumentExportMenu } from "@/components/copilot-journey/DocumentExportMenu";
+import { DocumentPager } from "@/components/copilot-journey/DocumentPager";
 import {
   DocumentSheet,
   DocumentSidebar,
@@ -819,6 +820,18 @@ export default function CopilotReadinessDocumentsPage() {
             onAsk={handleAsk}
             onOpenSow={handleOpenSow}
             onSigned={handleSigned}
+          />
+
+          <DocumentPager
+            prevTitle={activeIndex > 0 ? (documents[activeIndex - 1]?.title ?? null) : null}
+            nextTitle={documents[activeIndex + 1]?.title ?? null}
+            onPrev={() => handleSelect(activeIndex - 1)}
+            onNext={() => handleSelect(activeIndex + 1)}
+            onOpenSow={handleOpenSow}
+            // "At end" means the reader has run out of documents, which is the
+            // moment the offer belongs — but not on the contract itself, where
+            // the offer is the page they are already looking at.
+            atEnd={activeIndex === documents.length - 1 && activeDoc?.title !== JOURNEY_SOW_DOCUMENT}
           />
         </div>
       </div>
