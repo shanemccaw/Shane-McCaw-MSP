@@ -201,6 +201,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 38,
     scoreTo: 72,
     addresses: "Cannot be removed — Copilot inherits identity on day one.",
+    findingCount: 8,
     locked: true,
   },
   {
@@ -214,6 +215,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 34,
     scoreTo: 61,
     addresses: "Addresses: 212 sites shared org-wide, 2,940 non-expiring links.",
+    findingCount: 9,
     locked: false,
   },
   {
@@ -227,6 +229,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 29,
     scoreTo: 58,
     addresses: "Addresses: no DLP on Teams chat, 61% of files unlabelled.",
+    findingCount: 7,
     locked: false,
   },
   {
@@ -240,6 +243,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 57,
     scoreTo: 79,
     addresses: "Recovers $18,400 a year — this phase pays for itself in month one.",
+    findingCount: 5,
     locked: false,
   },
   {
@@ -253,6 +257,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 46,
     scoreTo: 68,
     addresses: "Addresses: 412 users dormant 30+ days, OneDrive at 31%.",
+    findingCount: 6,
     locked: false,
   },
   {
@@ -266,6 +271,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     scoreFrom: 44,
     scoreTo: 70,
     addresses: "Addresses: 37 configuration changes in 90 days, no baseline.",
+    findingCount: 6,
     locked: false,
   },
 ];

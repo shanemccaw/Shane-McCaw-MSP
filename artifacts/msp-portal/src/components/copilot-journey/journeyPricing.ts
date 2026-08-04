@@ -44,6 +44,18 @@ export interface JourneyPhase {
   /** The findings line — "Addresses: 212 sites shared org-wide". */
   readonly addresses: string;
   /**
+   * How many assessment findings this phase closes. The SOW's telemetry section
+   * counts them across the phases actually in scope, so the number moves when
+   * the customer removes one — which is the whole point of stating it on a
+   * contract they are about to sign.
+   *
+   * OPTIONAL because the platform's own SOW wire format does not carry it:
+   * `journeyScopeFromSow.ts` builds phases from quoted workstream lines, which
+   * have a price and a scope but no finding tally. A consumer must render the
+   * absence rather than treat it as zero.
+   */
+  readonly findingCount?: number;
+  /**
    * Phase 1 is required: it is the identity work that lands before Copilot is
    * enabled for anyone. A locked phase must be genuinely inert, not a working
    * toggle wearing a "Required" badge, so this flag drives both the disabled

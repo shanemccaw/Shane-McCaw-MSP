@@ -75,6 +75,7 @@ import "@/components/copilot-journey/copilot-journey.css";
 
 const DOCUMENTS_PATH = "/copilot-readiness/documents";
 const PROPOSAL_PATH = "/copilot-readiness/proposal";
+const CHECKOUT_PATH = "/copilot-readiness/checkout";
 const REVEAL_PATH = "/copilot-readiness";
 
 /**
@@ -313,7 +314,9 @@ export default function CopilotReadinessDocumentsPage() {
     // A document is readable in the preview if something can draw it: one of the
     // seven report bodies, or one of the two that render themselves.
     const drawable = (title: string) =>
-      Boolean(PREVIEW_DOCUMENT_BODIES[title]) || title === JOURNEY_REMEDIATION_DOCUMENT;
+      Boolean(PREVIEW_DOCUMENT_BODIES[title]) ||
+      title === JOURNEY_REMEDIATION_DOCUMENT ||
+      title === JOURNEY_SOW_DOCUMENT;
     const documents = base.generation.documents.map((d, i) =>
       // Spread rather than rebuilt, so the fixture's `docType` — the key the
       // live path joins on — survives into the preview instead of being
@@ -450,6 +453,20 @@ export default function CopilotReadinessDocumentsPage() {
     }
     navigate(withPreview(PROPOSAL_PATH));
   }, [documents, handleSelect, navigate, withPreview]);
+
+  /**
+   * Signing hands the agreed scope to the checkout screen, which is where the
+   * platform's real Stripe path lives. The viewer takes no payment and writes no
+   * agreement — the same handoff the standalone proposal screen makes, so the
+   * signed block at checkout is this contract rather than a re-quote.
+   */
+  const handleSigned = useCallback(
+    (query: string) => {
+      const base = isPreview ? `${CHECKOUT_PATH}?preview=design&${query}` : `${CHECKOUT_PATH}?${query}`;
+      navigate(base);
+    },
+    [isPreview, navigate],
+  );
 
   /* ---------------------------------------------------------------- *
    * PDF
@@ -697,10 +714,14 @@ export default function CopilotReadinessDocumentsPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 1 auto", minWidth: 0, overflow: "visible" }}>
             {showStrip ? <PillarStrip view={view} active={activePillar} /> : null}
 
-            {/* Persistent, on every report — the SOW is the point of the set. */}
+            {/* Persistent, on every report — the SOW is the point of the set.
+                It opens document 9 where that exists, and only falls back to the
+                standalone proposal screen while the document is still
+                generating; the design has the in-viewer contract superseding
+                that screen. */}
             <button
               type="button"
-              onClick={() => navigate(withPreview(PROPOSAL_PATH))}
+              onClick={handleOpenSow}
               {...cta.handlers}
               style={{
                 display: "flex",
@@ -797,6 +818,7 @@ export default function CopilotReadinessDocumentsPage() {
             onRetry={live.refresh}
             onAsk={handleAsk}
             onOpenSow={handleOpenSow}
+            onSigned={handleSigned}
           />
         </div>
       </div>

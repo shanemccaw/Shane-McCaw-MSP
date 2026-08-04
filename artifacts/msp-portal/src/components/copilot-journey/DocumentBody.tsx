@@ -34,11 +34,13 @@ import {
   BRAND,
   INK,
   JOURNEY_REMEDIATION_DOCUMENT,
+  JOURNEY_SOW_DOCUMENT,
   RADIUS,
   reportAccent,
   type PillarKey,
 } from "./journeyTokens.ts";
 import { RemediationGuideBody } from "./RemediationGuideBody";
+import { StatementOfWorkBody } from "./StatementOfWorkBody";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant } from "./journeyModel.ts";
 import { documentPillar } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
@@ -389,6 +391,7 @@ export function DocumentBody({
   onRetry,
   onAsk,
   onOpenSow,
+  onSigned,
 }: {
   readonly doc: JourneyDocumentView | null;
   readonly generation: JourneyGeneration;
@@ -402,6 +405,8 @@ export function DocumentBody({
   readonly onRetry?: () => void;
   /** Hands a quote to ShaneBot — wired to the preview reports' inline ask icons. */
   readonly onAsk?: (context: string) => void;
+  /** Fired when the SOW is signed, carrying the agreed scope as a query string. */
+  readonly onSigned?: (query: string) => void;
   /** Opens the statement of work — the remediation guide's closing handoff. */
   readonly onOpenSow?: () => void;
 }) {
@@ -474,6 +479,13 @@ export function DocumentBody({
       return (
         <Card pillar={pillar}>
           <RemediationGuideBody onOpenSow={onOpenSow} />
+        </Card>
+      );
+    }
+    if (doc.title === JOURNEY_SOW_DOCUMENT) {
+      return (
+        <Card pillar={pillar}>
+          <StatementOfWorkBody onSigned={onSigned} />
         </Card>
       );
     }
