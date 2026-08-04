@@ -513,7 +513,7 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
       const res = await fetchWithAuth(`/api/msp/customers/${customerId}/diagnostics/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ packageKey: "assess:copilot-readiness" }),
       });
       const body = (await res.json().catch(() => null)) as { runId?: string; error?: string } | null;
       if (!res.ok) {
