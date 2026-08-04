@@ -39,7 +39,7 @@
 // which PATCHes the existing /api/admin/monitor-checks/:key CRUD route.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Play, Save, Archive, RotateCcw, Lightbulb } from "lucide-react";
+import { Loader2, Play, Save, Archive, RotateCcw, Lightbulb, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -53,8 +53,17 @@ import {
 } from "./SimulatorFailureClassification";
 import { stripSelectParam, stripFilterParam } from "./simulatorFullResponse";
 import { resolveResponseValue, resolveResponseEmptyLabel, isGenuineEmptyRawCapture } from "./simulatorResponseView";
+import type { AssessmentNode } from "./SimulatorLeftTree";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+
+// #390 — the real, confirmed-live packageKey behind both the free
+// "Copilot Readiness Snapshot" and paid "Copilot Readiness Assessment"
+// services (services.type_attributes->>'packageKey', see portal-assessment.ts
+// and ActiveDirectoryCustomerPane.tsx's debug-trigger-scan call). Hardcoded
+// here for the same reason the debug-trigger-scan call hardcodes it: this
+// button targets that one specific package, not an arbitrary one.
+const COPILOT_PACKAGE_KEY = "assess:copilot-readiness";
 
 // Matches the run-status model in admin-monitor-check-runs.ts, itself adapted
 // from msp-diagnostics' real pending → running → completed/failed lifecycle.
@@ -156,6 +165,14 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const filterParamsRef = useRef<HTMLInputElement | null>(null);
   const requestBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // #390 — "Remove from Copilot Package". Whether THIS check currently sits
+  // in COPILOT_PACKAGE_KEY's check list — null while unknown/loading, so the
+  // button never flashes on then off. Re-checked whenever a different
+  // endpoint is selected.
+  const [inCopilotPackage, setInCopilotPackage] = useState<boolean | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ sharedNames: string[] } | null>(null);
+  const [removingFromPackage, setRemovingFromPackage] = useState(false);
+
   // Re-seed every field when a different endpoint is selected in the tree.
   useEffect(() => {
     setEndpoint(check.endpoint);
@@ -170,7 +187,36 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setRawItemsError(null);
     setRawItemsLoaded(false);
     setViewingRaw(false);
+    setRemoveConfirm(null);
   }, [check.key]);
+
+  // #390 — is this check currently in the Copilot package? Re-checked on
+  // every endpoint switch rather than derived from a prop, since this canvas
+  // is only ever handed the bare monitor_checks row, not its package
+  // membership.
+  useEffect(() => {
+    let cancelled = false;
+    setInCopilotPackage(null);
+    (async () => {
+      try {
+        const res = await fetchWithAuth(
+          `/api/admin/monitoring-packages/${encodeURIComponent(COPILOT_PACKAGE_KEY)}/checks`,
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          setInCopilotPackage(false);
+          return;
+        }
+        const data = (await res.json()) as { checks: { checkKey: string }[] };
+        setInCopilotPackage(data.checks.some((c) => c.checkKey === check.key));
+      } catch {
+        if (!cancelled) setInCopilotPackage(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [check.key, fetchWithAuth]);
 
   /** Opens the edit form on the field the classification points at. Never saves. */
   const focusRequestField = (field: "endpoint" | "selectParams" | "filterParams" | "requestBody") => {
@@ -483,6 +529,73 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     }
   };
 
+  // #390 — "Remove from Copilot Package". Shared-package detection reuses
+  // #376's already-built concept (itself reusing AssessmentCreationWizard.tsx's
+  // attachSharedWith filter: existingAssessments.filter(a => a.packageKey ===
+  // key)) rather than a third reimplementation.
+  const removeCheckFromCopilotPackage = async (sharedCount: number) => {
+    setRemovingFromPackage(true);
+    try {
+      const currentRes = await fetchWithAuth(
+        `/api/admin/monitoring-packages/${encodeURIComponent(COPILOT_PACKAGE_KEY)}/checks`,
+      );
+      if (!currentRes.ok) {
+        toast.error(`Failed to load "${COPILOT_PACKAGE_KEY}"'s current check list.`);
+        return;
+      }
+      const currentBody = (await currentRes.json()) as { checks: { checkKey: string }[] };
+      const remainingKeys = currentBody.checks.map((c) => c.checkKey).filter((k) => k !== check.key);
+
+      const putRes = await fetchWithAuth(
+        `/api/admin/monitoring-packages/${encodeURIComponent(COPILOT_PACKAGE_KEY)}/checks`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checkKeys: remainingKeys }),
+        },
+      );
+      if (!putRes.ok) {
+        const body = (await putRes.json().catch(() => null)) as { error?: string } | null;
+        toast.error(body?.error ?? `Failed to remove "${check.key}" from the Copilot package.`);
+        return;
+      }
+
+      setInCopilotPackage(false);
+      toast.success(
+        sharedCount > 0
+          ? `Removed "${check.key}" from the Copilot package and the ${sharedCount} other assessment${sharedCount === 1 ? "" : "s"} sharing it.`
+          : `Removed "${check.key}" from the Copilot package.`,
+      );
+    } catch {
+      toast.error(`Failed to remove "${check.key}" from the Copilot package.`);
+    } finally {
+      setRemovingFromPackage(false);
+      setRemoveConfirm(null);
+    }
+  };
+
+  const handleRemoveFromCopilotPackageClick = async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/simulator/assessments");
+      if (!res.ok) {
+        // Fail closed rather than proceeding as if unshared: a silent
+        // multi-assessment change is worse than an operator retry.
+        toast.error("Failed to check whether the Copilot package is shared with other assessments. Try again.");
+        return;
+      }
+      const data = (await res.json()) as { assessments: AssessmentNode[] };
+      const sharedWith = data.assessments.filter((a) => a.packageKey === COPILOT_PACKAGE_KEY);
+      if (sharedWith.length > 0) {
+        setRemoveConfirm({ sharedNames: sharedWith.map((a) => a.name) });
+        return;
+      }
+    } catch {
+      toast.error("Failed to check whether the Copilot package is shared with other assessments. Try again.");
+      return;
+    }
+    void removeCheckFromCopilotPackage(0);
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background p-4">
       {/* Header */}
@@ -514,6 +627,17 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
           </button>
+          {inCopilotPackage && (
+            <button
+              onClick={() => void handleRemoveFromCopilotPackageClick()}
+              disabled={removingFromPackage}
+              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50"
+              title="Remove this check from the Copilot Readiness monitoring package"
+            >
+              {removingFromPackage ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+              Remove from Copilot Package
+            </button>
+          )}
           {check.status === "active" ? (
             <button
               onClick={handleRetire}
@@ -558,6 +682,32 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           </button>
         </div>
       </div>
+
+      {removeConfirm && (
+        <div className="mb-3 rounded border border-amber-600/40 bg-amber-600/5 px-3 py-2">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            This check is also used by {removeConfirm.sharedNames.length}{" "}
+            other assessment{removeConfirm.sharedNames.length === 1 ? "" : "s"}
+            {" "}({removeConfirm.sharedNames.join(", ")}) — remove it from all of them?
+          </p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              onClick={() => void removeCheckFromCopilotPackage(removeConfirm.sharedNames.length)}
+              disabled={removingFromPackage}
+              className="rounded border border-destructive/40 px-2 py-1 text-[11px] text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {removingFromPackage ? "Removing…" : "Remove from all"}
+            </button>
+            <button
+              onClick={() => setRemoveConfirm(null)}
+              disabled={removingFromPackage}
+              className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-accent disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {fullResponse && (
         <div className="mb-3 rounded border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-primary">
