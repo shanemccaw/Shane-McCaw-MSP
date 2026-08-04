@@ -149,7 +149,7 @@ export default function CopilotReadinessProposalPage() {
   const search = useSearch();
   const isPreview = new URLSearchParams(search).get("preview") === "design";
   const [, navigate] = useLocation();
-  const { fetchWithAuth, accessToken } = useAuth();
+  const { fetchWithAuth, accessToken, logout } = useAuth();
 
   /* -------------------------------------------------- tenant identity */
 
@@ -458,6 +458,22 @@ export default function CopilotReadinessProposalPage() {
           <Link href={documentsHref} style={{ fontSize: 12.5, fontWeight: 600 }}>
             Back to findings
           </Link>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: INK.micro,
+              background: "none",
+              border: 0,
+              padding: 0,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Sign out
+          </button>
           {totals ? (
             // Both halves, both labelled. `upfrontUsd` already includes any
             // optional service's one-off setup fee and any mandatory adjustment,

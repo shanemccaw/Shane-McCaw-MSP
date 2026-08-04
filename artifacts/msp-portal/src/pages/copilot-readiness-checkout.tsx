@@ -574,7 +574,7 @@ export default function CopilotReadinessCheckoutPage() {
   const returnedPaid = params.get("checkout_status") === "success";
 
   const [, navigate] = useLocation();
-  const { fetchWithAuth, accessToken } = useAuth();
+  const { fetchWithAuth, accessToken, logout } = useAuth();
 
   // Carry `?preview=design` across every link out of this screen, so a design
   // review does not silently drop back onto live data one navigation later.
@@ -1227,14 +1227,32 @@ export default function CopilotReadinessCheckoutPage() {
           </span>
         </div>
       </div>
-      {signedDate && signerLine ? (
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
-          <Check size={13} strokeWidth={2.4} color={SEVERITY_ON_DARK.healthy} aria-hidden="true" />
-          <span style={{ fontSize: 12, fontWeight: 600, color: INK.bodyDark }}>
-            {`SOW signed ${signedDate} by ${signerLine}`}
+      <span style={{ display: "flex", alignItems: "center", gap: 18, flex: "none" }}>
+        {signedDate && signerLine ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Check size={13} strokeWidth={2.4} color={SEVERITY_ON_DARK.healthy} aria-hidden="true" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: INK.bodyDark }}>
+              {`SOW signed ${signedDate} by ${signerLine}`}
+            </span>
           </span>
-        </span>
-      ) : null}
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void logout()}
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: INK.micro,
+            background: "none",
+            border: 0,
+            padding: 0,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Sign out
+        </button>
+      </span>
     </div>
   );
 

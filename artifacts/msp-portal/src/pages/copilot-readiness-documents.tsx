@@ -271,7 +271,7 @@ export default function CopilotReadinessDocumentsPage() {
   const [, navigate] = useLocation();
   const { docId } = useParams<{ docId?: string }>();
   const search = useSearch();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, logout } = useAuth();
 
   const isPreview = new URLSearchParams(search).get("preview") === "design";
 
@@ -538,6 +538,7 @@ export default function CopilotReadinessDocumentsPage() {
   const cta = useHover();
   const closeBtn = useHover();
   const sheetBtn = useHover();
+  const logoutBtn = useHover();
 
   const switcherProps = {
     documents,
@@ -749,6 +750,27 @@ export default function CopilotReadinessDocumentsPage() {
               onDownloadCurrent={() => void handleDownload()}
               onDownloadAll={() => void handleDownloadAll()}
             />
+
+            <button
+              type="button"
+              onClick={() => void logout()}
+              {...logoutBtn.handlers}
+              style={{
+                padding: "0 10px",
+                height: 34,
+                border: `1px solid ${INK.hairlineDark}`,
+                borderRadius: RADIUS.control,
+                background: logoutBtn.hovered ? "rgba(255,255,255,.06)" : "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 12,
+                color: INK.micro,
+                whiteSpace: "nowrap",
+                flex: "none",
+              }}
+            >
+              Sign out
+            </button>
 
             <button
               type="button"
