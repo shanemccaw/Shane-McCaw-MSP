@@ -259,7 +259,7 @@ export default function AccountSetupPage() {
         const slug = json.user?.mspSlug ?? null;
         const landing =
           json.user?.mspRole === "Assessment"
-            ? "war-room"
+            ? "copilot-readiness"
             : json.user?.mspRole === "CustomerUser"
               ? "m365-health"
               : "dashboard";

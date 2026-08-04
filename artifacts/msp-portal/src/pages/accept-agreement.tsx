@@ -38,7 +38,7 @@ export default function AcceptAgreementPage() {
   // Inside slug scope → /portal/{slug}/dashboard or /portal/{slug}/m365-health.
   const defaultLanding =
     user?.mspRole === "Assessment"
-      ? "/war-room"
+      ? "/copilot-readiness"
       : user?.mspRole === "CustomerUser"
         ? "/m365-health"
         : "/dashboard";
