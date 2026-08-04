@@ -35,6 +35,7 @@ export default defineConfig({
       "src/lib/priority-engine.test.ts",
       "src/lib/health-engine.test.ts",
       "src/lib/telemetry-comparison.test.ts",
+      "src/lib/copilot-gate.test.ts",
       "src/lib/pillar-coverage.test.ts",
       "src/lib/pillar-matrix.test.ts",
       "src/lib/crm-engine.test.ts",

@@ -31,6 +31,7 @@ import { Check, Lock } from "lucide-react";
 
 import {
   BRAND,
+  COPILOT_GATE_TARGET,
   INK,
   PILLARS,
   SEVERITY_ON_DARK,
@@ -71,8 +72,15 @@ const BODY: React.CSSProperties = {
   textWrap: "pretty",
 };
 
-/** The gate the design's contract is written against. */
-const SOW_GATE_TARGET = 82;
+/**
+ * The gate this contract is written against — the journey's one Gate constant,
+ * not a second copy. This file used to declare its own `= 82` while
+ * `COPILOT_GATE_TARGET` was 60, so the SOW and the Document Viewer stated
+ * different thresholds for the same tenant. #359 resolved that by moving the
+ * shared constant to 82; the local alias is kept only so the surrounding copy
+ * reads naturally.
+ */
+const SOW_GATE_TARGET = COPILOT_GATE_TARGET;
 
 function Row({ label, tone, value }: { label: string; tone: keyof typeof SEVERITY_ON_DARK; value: string }) {
   return (

@@ -25,7 +25,13 @@ import {
   type WireAssessmentStatus,
   type WirePillarStatsPayload,
 } from "./journeyModel.ts";
-import { PILLAR_KEYS, severityForScore, severityColor } from "./journeyTokens.ts";
+import {
+  COPILOT_GATE_TARGET,
+  PILLAR_KEYS,
+  gateLabel,
+  severityForScore,
+  severityColor,
+} from "./journeyTokens.ts";
 
 const TENANT = { name: "Halden Materials", seatCount: 1240, scannedOn: "3 August 2026" };
 
@@ -349,7 +355,7 @@ describe("journey view", () => {
     const view = buildJourneyView({
       tenant: TENANT,
       pillarStats: { pillars: [{ pillar: "governance", score: 34 }] },
-      status: { copilotReadiness: { overall: { score: 41 } } },
+      status: { copilotGate: { score: 41, threshold: 82, status: "no_go" } },
       projectedByPillar: { governance: 61 },
     });
     assert.equal(view.readinessScore, 41);
@@ -357,11 +363,37 @@ describe("journey view", () => {
     assert.equal(view.isPreview, false);
   });
 
-  it("leaves the headline null when no indicator is covered", () => {
+  it("reads the engine's Copilot pillar, never the superseded 3-indicator rollup", () => {
+    // #358: the Reveal's headline used to come from copilot-readiness.ts's
+    // narrow 50/30/20 formula while the six pillar scenes beside it came from
+    // the unified engine — two unrelated calculations sharing one screen. The
+    // narrow number still rides along as `indicatorScore`; if it is ever read as
+    // the headline again, this goes red.
     const view = buildJourneyView({
       tenant: TENANT,
       pillarStats: null,
-      status: { copilotReadiness: { overall: { score: null } } },
+      status: {
+        copilotGate: { score: 70, threshold: 82, status: "no_go" },
+        copilotReadiness: { overall: { score: 70, indicatorScore: 41 } },
+      },
+    });
+    assert.equal(view.readinessScore, 70);
+  });
+
+  it("falls back to copilotReadiness.overall only when no gate block is present", () => {
+    const view = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: null,
+      status: { copilotReadiness: { overall: { score: 55 } } },
+    });
+    assert.equal(view.readinessScore, 55);
+  });
+
+  it("leaves the headline null when the engine has no Copilot score", () => {
+    const view = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: null,
+      status: { copilotGate: { score: null, threshold: 82, status: null } },
     });
     assert.equal(view.readinessScore, null);
   });
@@ -375,10 +407,35 @@ describe("journey view", () => {
 });
 
 describe("copy that depends on the numbers", () => {
-  it("switches the verdict at the healthy threshold", () => {
+  it("switches the verdict at the real 82 Copilot Gate, and 82 itself is a Go", () => {
+    // #359's own verify bar: a tenant scoring exactly 82 shows Go, 81 shows
+    // No-Go. The boundary case was raised explicitly on #358 and answered
+    // explicitly, so it is asserted rather than left to the reader.
+    assert.equal(COPILOT_GATE_TARGET, 82);
     assert.equal(verdictLabel(41), "Not flight-ready");
-    assert.equal(verdictLabel(59), "Not flight-ready");
-    assert.equal(verdictLabel(60), "Cleared for rollout");
+    assert.equal(verdictLabel(81), "Not flight-ready");
+    assert.equal(verdictLabel(82), "Cleared for rollout");
+    assert.equal(verdictLabel(100), "Cleared for rollout");
+  });
+
+  it("says the same thing as the Document Viewer's gate chip for every score", () => {
+    // The bug #359 closes was two thresholds on one number — `gateLabel` at 60
+    // in the viewer's chrome while `verdictLabel` said something else on the
+    // Reveal. Swept rather than spot-checked: no score may disagree.
+    for (let score = 0; score <= 100; score += 1) {
+      const cleared = verdictLabel(score) === "Cleared for rollout";
+      const safe = gateLabel(score) === "Safe to deploy";
+      assert.equal(cleared, safe, `verdict and gate disagree at ${score}`);
+      assert.equal(cleared, score >= COPILOT_GATE_TARGET, `wrong side of the gate at ${score}`);
+    }
+  });
+
+  it("keeps severity colour banding separate from the Gate, deliberately", () => {
+    // A 70 is a green number that has not cleared the Gate. These are two
+    // different statements about one score and both are true; conflating them
+    // is what produced the old 60 threshold.
+    assert.equal(severityForScore(70), "healthy");
+    assert.equal(verdictLabel(70), "Not flight-ready");
   });
 
   it("writes the verdict sentence in Shane's voice", () => {
@@ -388,8 +445,27 @@ describe("copy that depends on the numbers", () => {
     );
   });
 
-  it("states the gap in points", () => {
-    assert.match(gapSentence("Halden Materials", 41, 68, 6) ?? "", /27 points from flight-ready/);
+  it("measures the gap to the 82 Gate, not to the scope's projection", () => {
+    // A tenant at 41 whose scope projects 68 is 41 points from flight-ready and
+    // the scope closes 27 of them. Quoting 27 as the distance to flight-ready —
+    // which is what this did while the gate sat at 60 — would tell the customer
+    // the work on offer finishes the job when it does not.
+    const s = gapSentence("Halden Materials", 41, 68, 6) ?? "";
+    assert.match(s, /41 points from flight-ready/);
+    assert.match(s, /This scope closes 27 of them\./);
+    assert.doesNotMatch(s, /27 points from flight-ready/);
+  });
+
+  it("keeps the original claim when the scope genuinely clears the Gate", () => {
+    const s = gapSentence("Halden Materials", 41, 84, 6) ?? "";
+    assert.match(s, /41 points from flight-ready — and every point is a known, fixable gap\./);
+    assert.doesNotMatch(s, /closes/);
+  });
+
+  it("still states the distance when the scope buys nothing", () => {
+    const s = gapSentence("X", 41, 41, 6) ?? "";
+    assert.match(s, /41 points from flight-ready/);
+    assert.doesNotMatch(s, /closes/);
   });
 
   it("counts the findings it actually has, not the design's six", () => {
@@ -401,7 +477,7 @@ describe("copy that depends on the numbers", () => {
   });
 
   it("drops the findings clause entirely when nothing was scored", () => {
-    assert.match(gapSentence("X", 41, 68, 0) ?? "", /^X is 27 points/);
+    assert.match(gapSentence("X", 41, 68, 0) ?? "", /^X is 41 points/);
   });
 
   it("does not invent a gap when either end is unknown", () => {
@@ -409,8 +485,10 @@ describe("copy that depends on the numbers", () => {
     assert.equal(gapSentence("X", 41, null, 6), null);
   });
 
-  it("does not claim a gap when there is none", () => {
-    assert.match(gapSentence("X", 72, 72, 6) ?? "", /already at 72/);
+  it("does not claim a gap when the tenant is already through the Gate", () => {
+    assert.match(gapSentence("X", 82, 82, 6) ?? "", /already cleared for Copilot at 82/);
+    // 72 is a green number that has NOT cleared the Gate, so it still has a gap.
+    assert.match(gapSentence("X", 72, 72, 6) ?? "", /10 points from flight-ready/);
   });
 
   it("scoredPillarCount counts only pillars with a real score", () => {

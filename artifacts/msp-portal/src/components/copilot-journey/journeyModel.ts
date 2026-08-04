@@ -22,7 +22,7 @@
  *     and its pricing.
  */
 
-import { PILLAR_KEYS, PILLARS, type PillarKey } from "./journeyTokens.ts";
+import { COPILOT_GATE_TARGET, PILLAR_KEYS, PILLARS, type PillarKey } from "./journeyTokens.ts";
 
 /* ------------------------------------------------------------------ *
  * Wire shapes — the subset of each payload this journey reads.
@@ -83,8 +83,33 @@ export interface WireAssessmentStatus {
     readonly failed?: number;
     readonly allReady?: boolean;
   };
+  /**
+   * The real Copilot Gate (#358/#359) — the unified health engine's own
+   * `copilot` pillar display score, plus its Go/No-Go verdict at 82. This is the
+   * SAME number `war-room-pillars` serves for its copilot card, computed by the
+   * same `computePillarDisplayScore` call, which is the whole point: the
+   * headline verdict and the six pillar scenes beside it now come from one
+   * engine instead of two unreconciled ones.
+   */
+  readonly copilotGate?: {
+    readonly score: number | null;
+    readonly threshold: number;
+    readonly status: "go" | "no_go" | null;
+  } | null;
   readonly copilotReadiness?: {
-    readonly overall?: { readonly score: number | null };
+    readonly overall?: {
+      /** Mirrors `copilotGate.score` — the engine's Copilot pillar. */
+      readonly score: number | null;
+      /**
+       * The superseded narrow rollup: a 50/30/20 weighted mean of three
+       * Compliance-adjacent sub-indicators, with no Security, Licensing,
+       * Adoption, Health or Governance-ownership signal in it. Kept on the wire
+       * as real detail about a real narrower thing, and deliberately NOT read
+       * here — it is what the Reveal's headline used to show while its pillar
+       * scenes showed the engine, which is the bug #358 exists to close.
+       */
+      readonly indicatorScore?: number | null;
+    };
   } | null;
   readonly radar?: {
     readonly pillars?: readonly { readonly pillar: string; readonly score: number }[];
@@ -313,7 +338,14 @@ export function buildJourneyView(input: {
   readonly isPreview?: boolean;
 }): JourneyView {
   const pillars = buildPillarViews(input.pillarStats);
-  const overall = input.status?.copilotReadiness?.overall?.score;
+  // `copilotGate.score` is the canonical headline: the engine's Copilot pillar.
+  // `copilotReadiness.overall.score` now carries the identical number, but it is
+  // null whenever the last completed run has no tenantId (the sub-indicators
+  // need one; the engine, keyed by customerId, does not), so reading the gate
+  // first is what keeps a real score from being dropped on the floor.
+  const gateScore = input.status?.copilotGate?.score;
+  const overall =
+    typeof gateScore === "number" ? gateScore : input.status?.copilotReadiness?.overall?.score;
 
   return {
     tenant: input.tenant,
@@ -329,19 +361,26 @@ export function buildJourneyView(input: {
  * Copy that depends on the numbers
  * ------------------------------------------------------------------ */
 
-/** "NOT FLIGHT-READY" / "CLEARED FOR ROLLOUT" — never shown when score is null. */
+/**
+ * "NOT FLIGHT-READY" / "CLEARED FOR ROLLOUT" — never shown when score is null.
+ *
+ * Keyed off `COPILOT_GATE_TARGET`, the real 82 Gate (#359), NOT a separately
+ * invented cutoff. The Reveal's verdict, the Document Viewer's gate chip and the
+ * SOW's projected-score line are the same verdict about the same tenant, so they
+ * read the same constant.
+ */
 export function verdictLabel(score: number): string {
-  return score >= 60 ? "Cleared for rollout" : "Not flight-ready";
+  return score >= COPILOT_GATE_TARGET ? "Cleared for rollout" : "Not flight-ready";
 }
 
 export function verdictSentence(tenantName: string, score: number): string {
-  return score >= 60
+  return score >= COPILOT_GATE_TARGET
     ? `${tenantName} is cleared for Copilot rollout. Here is what still needs watching — and what keeps the score there.`
     : `${tenantName} is not flight-ready for Copilot. Here is exactly why — and what it takes to get there.`;
 }
 
 /**
- * Scene 9's closing headline — "N findings, one number. {tenant} is 27 points
+ * Scene 9's closing headline — "N findings, one number. {tenant} is 41 points
  * from flight-ready".
  *
  * `scoredPillars` is what makes the first half true. The design's copy reads
@@ -351,8 +390,19 @@ export function verdictSentence(tenantName: string, score: number): string {
  * added up, so quoting six when four contributed breaks the one claim the scene
  * exists to make.
  *
- * Null when either end of the gap is unknown, so nothing is asserted about a
- * tenant we have not finished measuring.
+ * "POINTS FROM FLIGHT-READY" MEANS THE DISTANCE TO THE GATE, NOT TO THE
+ * PROJECTION. This used to quote `remediated − score` — the improvement the
+ * remediation scope buys — and call that the distance to flight-ready. That was
+ * defensible only while the gate sat at 60, close to where a typical projection
+ * lands. At the real 82 (#359) it is plainly false: a tenant at 41 whose scope
+ * projects 68 is 41 points from flight-ready and the scope closes 27 of them.
+ * Quoting 27 on the screen that hands the customer into a $36k proposal would
+ * tell them the work on offer finishes the job when it does not. So the gap is
+ * measured to `COPILOT_GATE_TARGET`, and whether the scope actually clears it is
+ * stated rather than implied.
+ *
+ * Null when either end is unknown, so nothing is asserted about a tenant we have
+ * not finished measuring.
  */
 export function gapSentence(
   tenantName: string,
@@ -362,9 +412,21 @@ export function gapSentence(
 ): string | null {
   if (score === null || remediated === null) return null;
   const lead = scoredPillars > 0 ? `${numberWord(scoredPillars)} findings, one number. ` : "";
-  const gap = remediated - score;
-  if (gap <= 0) return `${lead}${tenantName} is already at ${score}.`;
-  return `${lead}${tenantName} is ${gap} points from flight-ready — and every point is a known, fixable gap.`;
+  const toGate = COPILOT_GATE_TARGET - score;
+  if (toGate <= 0) return `${lead}${tenantName} is already cleared for Copilot at ${score}.`;
+  // The remediation reaches the gate: the whole gap is on the table, which is
+  // the claim the original sentence wanted to make and can now make truthfully.
+  if (remediated >= COPILOT_GATE_TARGET) {
+    return `${lead}${tenantName} is ${toGate} points from flight-ready — and every point is a known, fixable gap.`;
+  }
+  const closes = remediated - score;
+  // The remediation does not reach the gate. Say both numbers rather than the
+  // flattering one; the shortfall is a real scope conversation, not a rounding
+  // error to bury.
+  if (closes <= 0) {
+    return `${lead}${tenantName} is ${toGate} points from flight-ready — every point a known, fixable gap.`;
+  }
+  return `${lead}${tenantName} is ${toGate} points from flight-ready. This scope closes ${closes} of them.`;
 }
 
 /** Small counts read better as words in a headline; anything larger stays numeric. */

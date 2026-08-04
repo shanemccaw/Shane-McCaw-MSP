@@ -242,18 +242,31 @@ export function severityColor(score: number, surface: "dark" | "light" = "dark")
  * ------------------------------------------------------------------ */
 
 /**
- * The score a tenant has to reach before Copilot is safe to turn on — the
- * number the Document Viewer's gate chip and rail both count towards.
+ * The score a tenant has to reach before Copilot is safe to turn on — the real
+ * Copilot Gate, confirmed by Shane (#359). At or above 82 = Go. Below 82 =
+ * No-Go. The boundary case was raised explicitly and answered explicitly: 82
+ * itself is a Go.
  *
- * This is `severityForScore`'s own `healthy` threshold and NOT the 82 the design
- * writes in its prose. That matters: the Reveal, the SOW and this screen all
- * describe the same tenant, and a gate the chrome computed at 82 while the
- * Reveal called the same score "cleared for rollout" at 60 would be two
- * different verdicts on one number. The design's 82 survives verbatim inside the
- * preview report copy, where it is a sentence in a worked example rather than a
- * threshold the platform applies to a real customer.
+ * THIS IS THE ONLY GATE NUMBER IN THE JOURNEY. It was 60 until #359, for a
+ * reason that has now been resolved rather than abandoned: the chrome could not
+ * be allowed to compute a gate at 82 while `verdictLabel()` called the same
+ * score "cleared for rollout" at 60 — two verdicts on one number. The fix is
+ * that both now read this constant, so the Reveal's verdict, the Document
+ * Viewer's gate chip and rail, and the SOW's projected-score line state one
+ * thing about one tenant. `StatementOfWorkBody`'s own `SOW_GATE_TARGET` — the
+ * one place already carrying 82 — was folded into this too.
+ *
+ * Distinct from `severityForScore` on purpose, and the two are NOT in conflict:
+ * severity is the design's colour banding for any score (green >= 60, amber
+ * >= 50, red below), applied to pillar scores and projections alike; the Gate is
+ * a single Go/No-Go on the Copilot pillar. A tenant at 70 is legitimately a
+ * green number that has not cleared the Gate, and the copy says exactly that.
+ *
+ * Server-side mirror: `copilot-gate.ts`'s `COPILOT_GATE_THRESHOLD`. The two apps
+ * cannot import across each other, so each side asserts the value in its own
+ * test.
  */
-export const COPILOT_GATE_TARGET = 60;
+export const COPILOT_GATE_TARGET = 82;
 
 /** "Not safe yet" / "Safe to deploy" — the revised design's wording for the gate. */
 export function gateLabel(score: number): string {

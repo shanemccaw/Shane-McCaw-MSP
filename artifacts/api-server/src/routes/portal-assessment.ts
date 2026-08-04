@@ -88,6 +88,7 @@ import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
+import { computeCopilotGate, copilotGate, type CopilotGateResult } from "../lib/copilot-gate";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
@@ -302,7 +303,17 @@ router.get(
       } | null = null;
       // Real Copilot-readiness sub-indicators (see copilot-readiness.ts for the
       // backing checks, band-scoring rationale, and the 50/30/20 weighting).
+      // These are DETAIL only — the overall figure below no longer comes from
+      // their weighted mean; see the copilotGate note.
       let copilotReadiness: CopilotReadinessResult | null = null;
+      // The real Copilot Gate (#358/#359): the unified health engine's own
+      // `copilot` pillar display score, gated at 82. This is the SAME number
+      // /portal/assessment/war-room-pillars serves for its copilot card — one
+      // engine, one computation, so the Reveal's headline verdict and its six
+      // pillar scenes can no longer disagree about the tenant in front of them.
+      // Keyed by customerId (the engine's own id space), not tenantId, and so
+      // it is available even for a customer whose last run carries no tenantId.
+      let copilotGateResult: CopilotGateResult = copilotGate(null);
 
       if (lastCompleted) {
         const runSummary = (lastCompleted.summary as Record<string, unknown> | null | undefined) ?? null;
@@ -367,6 +378,12 @@ router.get(
             return null;
           });
         }
+
+        // Deliberately OUTSIDE the `coverageRun?.tenantId` guard above: the
+        // engine is keyed by customerId (its own id space), so a completed run
+        // that carries no tenantId still has a real Copilot pillar score. It
+        // never throws — see computeCopilotGate.
+        copilotGateResult = await computeCopilotGate(customerId);
       }
 
       res.json({
@@ -461,10 +478,35 @@ router.get(
           licenseWasteMonthlyCents,
           licenseWaste,
         },
-        // Real Copilot-readiness sub-indicators + weighted overall — every
-        // score traces to genuinely-collected checks (or is null); see
-        // copilot-readiness.ts. Null until a completed scan with a tenant.
-        copilotReadiness,
+        // Real Copilot-readiness sub-indicators — every sub-score traces to
+        // genuinely-collected checks (or is null); see copilot-readiness.ts.
+        // Null until a completed scan with a tenant.
+        //
+        // `overall.score` is the UNIFIED ENGINE's Copilot pillar score (#358),
+        // NOT the 50/30/20 weighted mean of the three sub-indicators. That mean
+        // is still returned, as `overall.indicatorScore`, because it is a real
+        // figure about a real, narrower thing — but it is no longer the number
+        // anything calls "Copilot readiness", because it never covered Security,
+        // Licensing, Adoption, Health or Governance ownership, and the Reveal
+        // was presenting it as the roll-up of six pillar scores it shared no
+        // arithmetic with. `weights` and `coveredIndicators` continue to
+        // describe `indicatorScore`, which is the only thing they ever described.
+        copilotReadiness: copilotReadiness
+          ? {
+              ...copilotReadiness,
+              overall: {
+                ...copilotReadiness.overall,
+                score: copilotGateResult.score,
+                source: copilotGateResult.source,
+                indicatorScore: copilotReadiness.overall.score,
+              },
+            }
+          : null,
+        // The real Copilot Gate. `status` is "go" at or above `threshold` (82,
+        // confirmed by Shane — 82 itself is a Go), "no_go" below it, and null
+        // when there is no score to gate on. Every Gate display across the
+        // funnel reads this one verdict rather than re-deriving its own.
+        copilotGate: copilotGateResult,
         // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see note above)
         isTestbed: customerRow?.isTestbed === true,
       });
