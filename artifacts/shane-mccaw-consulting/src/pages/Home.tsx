@@ -1,1247 +1,655 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Sparkles } from "lucide-react";
-import { SEOMeta } from "@/components/SEOMeta";
+import { useMemo, useRef, useState } from "react";
 import { Footer } from "@/components/Footer";
+import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
-import "@/styles/home-room.css";
-
-import {
-  CAST,
-  CHAP,
-  CHAP_ORDER,
-  DEFAULT_VOICE,
-  FIVE_W,
-  FOCUS_LABEL,
-  FEE_UNRESOLVED,
-  HERO_LINE,
-  HERO_STATS,
-  INTRO_MESSAGES,
-  INDUSTRY_PRIORITY,
-  PILLARS,
-  READINESS,
-  VOICE,
-  fillTokens,
-  type ChapterId,
-  type Persona,
-  type PillarId,
-} from "./home/roomData";
-import {
-  TOTAL_CHECKS,
-  buildMessage,
-  computeScore,
-  formatCents,
-  getIndustry,
-  getProblem,
-} from "./home/roomModel";
-import { RoomStage } from "./home/RoomStage";
-import { SeatRail, type SeatView } from "./home/SeatRail";
-import { Dossier, type FactPill, type LadderRow, type RosterRow } from "./home/Dossier";
-import { DiscoveryCard } from "./home/DiscoveryCard";
-import { PillarSection } from "./home/PillarSection";
-import { MessageRow } from "./home/RoomTranscript";
-import { useRoomState } from "./home/useRoomState";
-import { useRoomChoreography, scrollToChapter, prefersReducedMotion } from "./home/useRoomChoreography";
+import { Button, Eyebrow, Logo } from "./home/dsComponents";
+import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/quizData";
+import { CHAPTERS } from "./home/chapterData";
+import { REPORT_CARDS } from "./home/reportCardData";
+import { RadarChart, RadarBackdrop, OrbitRing } from "./home/RadarChart";
+import { PillarChapter } from "./home/PillarChapter";
+import { ReportCard } from "./home/ReportCard";
+import { AssessmentFlow } from "./home/AssessmentFlow";
+import { useReveal, useParallax } from "./home/useScrollFx";
 
 /**
- * The catalog row this page sells. Matched by exact service name, the same
- * convention lib/assessmentZones.ts uses — the slug and the price both come from
- * `/api/services`, never from a literal in this file.
+ * The catalog row this page's assessment CTA references. Matched by exact
+ * service name, the same convention the previous Home.tsx used — the price
+ * comes from `/api/services`, never a literal in this file.
  */
 const COPILOT_ASSESSMENT_NAME = "Copilot Readiness Assessment";
+const FEE_UNRESOLVED = "a fixed fee";
 
-/** Types HERO_LINE out once, at the export's default 22ms/2chars. */
-function useTypedHeroLine(): string {
-  const [n, setN] = useState(() => (prefersReducedMotion() ? HERO_LINE.length : 0));
-
-  useEffect(() => {
-    if (prefersReducedMotion()) return;
-    const t0 = Date.now();
-    const id = window.setInterval(() => {
-      const want = Math.floor((Date.now() - t0) / 22) * 2;
-      if (want >= HERO_LINE.length) {
-        setN(HERO_LINE.length);
-        window.clearInterval(id);
-        return;
-      }
-      setN(Math.max(2, want));
-    }, 22);
-    return () => window.clearInterval(id);
-  }, []);
-
-  return HERO_LINE.slice(0, n);
+function formatCents(cents: number): string {
+  return "$" + Math.round(cents / 100).toLocaleString("en-US");
 }
+
+const KEYFRAMES = `
+@keyframes smcSpin{to{transform:rotate(360deg)}}
+@keyframes smcOrb{to{transform:rotate(-360deg)}}
+@keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
+@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}}
+`;
+
+type Answers = (number | null)[];
+
+const RADAR_SIDE_LABELS: { pillar: string; blurb: string; color: string; left: string; top: string; align: "left" | "right" }[] = [
+  { pillar: "Governance", blurb: "1 in 3 lack a named owner", color: "#60a5fa", left: "62%", top: "16.5%", align: "left" },
+  { pillar: "Security", blurb: "41% have a CA bypass path", color: "#a78bfa", left: "74%", top: "50%", align: "left" },
+  { pillar: "Compliance", blurb: "Over-sharing: 6-month lag", color: "#D1D5DB", left: "62%", top: "83.5%", align: "left" },
+  { pillar: "Licensing", blurb: "22% of seats sit unused", color: "#2dd4bf", left: "38%", top: "83.5%", align: "right" },
+  { pillar: "Adoption", blurb: "3 apps carry all usage", color: "#fb923c", left: "26%", top: "50%", align: "right" },
+  { pillar: "Health", blurb: "Config changes hourly", color: "#4ADE80", left: "38%", top: "16.5%", align: "right" },
+];
 
 export default function Home() {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const { state, actions, latches } = useRoomState();
   const { services } = useServices();
-  const typed = useTypedHeroLine();
-
-  /* ------------------------------------------------------------------ *
-   * Catalog wiring — price and destination for the close card + header CTA
-   * ------------------------------------------------------------------ */
-  const service = useMemo(
-    () => services.find((s) => s.name.trim() === COPILOT_ASSESSMENT_NAME) ?? null,
-    [services],
-  );
+  const service = useMemo(() => services.find((s) => s.name.trim() === COPILOT_ASSESSMENT_NAME) ?? null, [services]);
   const feeCents = service ? resolvePublicServicePriceCents(service) : null;
   const feePrice = feeCents != null && feeCents > 0 ? formatCents(feeCents) : null;
-  /** Inline, mid-sentence form. */
   const fee = feePrice ?? FEE_UNRESOLVED;
-  /** The close card's headline number. */
-  const feeDisplay = feePrice ?? "Fixed fee";
-  const bookHref = service?.slug ? `/checkout/${service.slug}` : "/assessments";
 
-  /* ------------------------------------------------------------------ *
-   * Derived room — port of the export's renderVals()
-   * ------------------------------------------------------------------ */
-  const ind = getIndustry(state.industry);
-  const problem = getProblem(state.problem);
-  const voice = VOICE[state.persona] ?? DEFAULT_VOICE;
-  const focus = problem.focus;
-  const chap = CHAP[state.active] ?? CHAP.hero;
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Answers>([null, null, null, null, null, null, null]);
+  const [done, setDone] = useState(false);
 
-  const sel = useMemo(
-    () => ({
-      clusters: state.clusters.length ? state.clusters : ind.clusters,
-      people: state.people.length ? state.people : ind.personas.map((p) => p.name),
-      useCases: state.useCases.length ? state.useCases : ind.useCases,
-    }),
-    [state.clusters, state.people, state.useCases, ind],
-  );
+  const wedges = useMemo(() => PILLARS.map((_, i) => (answers[i + 1] == null ? 0.1 : VALUES[answers[i + 1] as number])), [answers]);
+  const score = Math.round((wedges.reduce((s, v) => s + v, 0) / wedges.length) * 100);
+  const answered = answers.slice(1).some((a) => a !== null);
+  const band = score >= 80 ? "Advanced" : score >= 60 ? "Established" : score >= 40 ? "Developing" : "Early";
+  const seat = answers[0] == null ? null : SEATS[answers[0] as number];
+  const cohortPhrase = seat ? `with ${seat}` : "of comparable size";
+  const blurb =
+    score >= 70
+      ? "Strong for an estimate, which usually means the gaps are narrow and specific. Those are the ones a scan finds and a questionnaire never will."
+      : score >= 45
+        ? "A middling estimate almost always hides one pillar dragging the rest down. Which one it is, is the whole question."
+        : "An estimate this low is common and fixable. The order you fix things in matters more than the score itself.";
 
-  const roster: Persona[] = useMemo(() => {
-    const chosen = ind.personas.filter((p) => sel.people.includes(p.name));
-    const extras: Persona[] = sel.people
-      .filter((n) => !ind.personas.some((p) => p.name === n))
-      .map((n, i) => ({
-        id: `x${i}`,
-        name: n,
-        short: n.split(" ")[0],
-        role: "Added by you",
-        initials: n.slice(0, 2).toUpperCase(),
-        color: "#67E8F9",
-        tile: "linear-gradient(135deg,#0078D4,#67E8F9)",
-        bd: "rgba(103,232,249,.45)",
-        day: "You named this one, so you know the day better than I do.",
-        win: "We test Copilot against their real workload during the assessment.",
-        risk: "And we check what their permissions actually reach before anyone gets a licence.",
-      }));
-    return chosen.concat(extras).slice(0, 3);
-  }, [ind, sel.people]);
+  const bonusText = useMemo(() => {
+    const [, gov, sec, , lic] = answers;
+    if (gov === null || sec === null || lic === null) return "";
+    const govWeak = gov <= 1;
+    const govStrong = gov >= 2;
+    const secWeak = sec <= 1;
+    const secStrong = sec >= 2;
+    const licNone = lic === 0;
+    const licCommitted = lic >= 2;
+    if (govWeak && secWeak && licCommitted)
+      return "All three foundational pillars — security, governance and licensing — have real gaps, and seats are already committed. Close those and the work left is getting your people using it well. That is exactly what White-Glove Adoption is built for.";
+    if (govWeak && licNone)
+      return "Nobody owns governance and no licences are bought yet. That is the cleanest possible starting position: settle ownership before the licensing decision, not after it.";
+    if (secStrong && govWeak)
+      return "Your security answers look solid today. With nobody owning governance, that is a snapshot rather than a guarantee — policies drift when no one is watching them.";
+    if (secWeak && licNone)
+      return "You have not spent anything on Copilot licensing yet, so nothing is on a deadline. Worth closing the security gaps now, before a purchase adds one.";
+    if (govStrong && secStrong && licCommitted)
+      return "Security, governance and licensing all hold up. At that point the constraint is not the tenant, it is whether your people are being shown how to use it — which is where White-Glove Adoption picks up.";
+    return "";
+  }, [answers]);
 
-  const answeredCount = Object.keys(state.checks).length;
-  const score = computeScore(state.checks);
+  const q = QUESTIONS[step];
 
-  // How far the visitor has read. `at()` returns true for anything not in
-  // CHAP_ORDER (indexOf -1), which is how the export's first dossier pills
-  // ("clusters"/"people"/"usecases") show as soon as the room exists.
-  const seen = CHAP_ORDER.indexOf(state.active as ChapterId);
-  const at = useCallback(
-    (id: string) => seen >= CHAP_ORDER.indexOf(id as ChapterId),
-    [seen],
-  );
+  const pick = (i: number) => {
+    const next = answers.slice();
+    next[step] = i;
+    const last = step >= QUESTIONS.length - 1;
+    setAnswers(next);
+    setDone(last);
+    if (!last) setStep(step + 1);
+  };
+  const back = () => {
+    if (step > 0) {
+      setStep(step - 1);
+      setDone(false);
+    }
+  };
+  const restart = () => {
+    setStep(0);
+    setAnswers([null, null, null, null, null, null, null]);
+    setDone(false);
+  };
+  const goEditorial = () => {
+    const el = document.getElementById("chapters");
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: "smooth" });
+  };
 
-  /** Pillar order is fixed once the page is laid out — re-sorting mid-scroll teleports the reader. */
-  if (!latches.order.current) {
-    latches.order.current = PILLARS.slice()
-      .sort((a, b) => {
-        if (a.id === "copilot") return 1;
-        if (b.id === "copilot") return -1;
-        return (a.id === focus ? -1 : 0) - (b.id === focus ? -1 : 0);
-      })
-      .map((p) => p.id);
-  }
-  const ordered = useMemo(
-    () => (latches.order.current ?? []).map((id) => PILLARS.find((p) => p.id === id)!).filter(Boolean),
-    // Recomputed when the latch is cleared by Reset, which also bumps state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.industryPicked, state.problem, latches.order.current],
-  );
+  const hubSize = done ? "56%" : "54%";
+  const hubGlow = done ? "46%" : "40%";
+  const hubGlowOpacity = done ? 0.6 : 0.32;
+  const hubFont = done ? 38 : 24;
+  const hubNum = answered ? String(score) : "—";
+  const hubLabel = done ? "Estimated" : "Live estimate";
 
-  /* ---- seats ---- */
-  const seats: SeatView[] = useMemo(() => {
-    const keys = ["shane"]
-      .concat(at("cast") ? roster.map((c) => c.id) : [])
-      .concat(at("cast") ? ["kira"] : [])
-      .concat(at("industry") ? ["you"] : []);
-    return keys.flatMap((k) => {
-      const c = (CAST as Record<string, (typeof CAST)["shane"]>)[k] ?? roster.find((x) => x.id === k);
-      if (!c) return [];
-      const live = k === chap.who;
-      const isYou = k === "you";
-      return [
-        {
-          key: k,
-          initials: c.initials,
-          short: isYou ? "You" : c.short || c.name.split(" ")[0],
-          title: c.name + (c.role ? ` — ${c.role}` : ""),
-          state: live ? "Speaking" : isYou ? "Seated" : c.role,
-          live,
-          color: c.color,
-          tile: c.tile,
-          bd: c.bd,
-          isYou,
-        },
-      ];
-    });
-  }, [at, roster, chap.who]);
-
-  /* ---- dossier ---- */
-  const roomVisible =
-    (state.industryPicked || state.autoSkipped) &&
-    CHAP_ORDER.indexOf(state.active as ChapterId) >= CHAP_ORDER.indexOf("industry");
-  const roomSeated = state.confirmed.people || state.autoSkipped;
-
-  const dossierRoster: RosterRow[] = useMemo(() => {
-    if (!(roomVisible && roomSeated)) return [];
-    const rows = [...roster, ...(at("cast") ? [CAST.kira] : [])];
-    return rows.map((r, i) => ({
-      key: r.id,
-      initials: r.initials,
-      name: r.name,
-      role: r.role,
-      color: r.color,
-      tile: r.tile,
-      isKira: r.id === "kira",
-      index: i,
-    }));
-  }, [roomVisible, roomSeated, roster, at]);
-
-  const facts: FactPill[] = useMemo(() => {
-    const out: FactPill[] = [];
-    const pill = (t: string, full?: string, hot = false) => out.push({ key: t, t, full: full ?? t, hot });
-    if (at("clusters")) pill(state.industry, state.industry, state.industryPicked);
-    if (at("people")) pill(`${sel.clusters.length} clusters`, sel.clusters.join(", "));
-    if (at("usecases")) roster.forEach((r) => pill(r.short, `${r.name} — ${r.role}`));
-    if (at("cast")) pill(`${sel.useCases.length} use cases`, sel.useCases.join(", "));
-    if (at("governance")) pill(ind.reg.length > 22 ? `${ind.reg.slice(0, 21)}…` : ind.reg, ind.reg);
-    if (at("governance")) pill(`Opens on ${FOCUS_LABEL[focus]}`);
-    return out.slice(0, 6);
-  }, [at, state.industry, state.industryPicked, sel, roster, ind.reg, focus]);
-
-  const ladder: LadderRow[] = useMemo(
-    () =>
-      ordered.map((p) => {
-        const qs = READINESS[p.id] ?? [];
-        return {
-          key: p.id,
-          name: p.title,
-          primary: p.primary,
-          accent: p.accent,
-          now: state.active === p.id,
-          past: CHAP_ORDER.indexOf(state.active as ChapterId) > CHAP_ORDER.indexOf(p.id),
-          done: qs.filter((q) => state.checks[q.id] !== undefined).length,
-          total: qs.length,
-          flag: state.industryPicked ? ((INDUSTRY_PRIORITY[state.industry] ?? {})[p.id] ?? null) : null,
-        };
-      }),
-    [ordered, state.active, state.checks, state.industryPicked, state.industry],
-  );
-
-  const verdict =
-    answeredCount === 0
-      ? "Answer the readiness checks and this builds as you go"
-      : answeredCount < TOTAL_CHECKS
-        ? `Building — ${TOTAL_CHECKS - answeredCount} check${TOTAL_CHECKS - answeredCount === 1 ? "" : "s"} still to answer`
-        : score < 55
-          ? "Indicative: significant gaps before enablement"
-          : score < 75
-            ? "Indicative: promising, with known gaps"
-            : "Indicative: strong footing, worth confirming";
-
-  const dossierVerdict =
-    answeredCount === 0
-      ? "Not enough signal yet"
-      : answeredCount < TOTAL_CHECKS
-        ? `${answeredCount} of ${TOTAL_CHECKS} answered`
-        : score < 55
-          ? "Significant gaps"
-          : score < 75
-            ? "Promising, with gaps"
-            : "Strong footing";
-
-  const closeLine = `${fillTokens(problem.close, ind, fee)} Nine documents in total, and ${ind.reg} gets the version written for them.`;
-
-  /* ------------------------------------------------------------------ *
-   * Choreography
-   * ------------------------------------------------------------------ */
-  useRoomChoreography(rootRef, {
-    onChapter: actions.setChapter,
-    onScrolledPast: actions.markScrolledPast,
-    onAutoSkip: actions.autoSkip,
-    bookOpen: state.bookOpen,
-  });
-
-  /** Any jump link into gated content builds the room first, so no anchor is ever dead. */
-  const unlockThen = useCallback(
-    (id: PillarId | string) => (e: React.MouseEvent) => {
-      e.preventDefault();
-      actions.autoSkip();
-      window.setTimeout(() => scrollToChapter(id), 90);
-    },
-    [actions],
-  );
-
-  const castMessages = useMemo(() => {
-    const first = roster[0];
-    return [
-      buildMessage(
-        "shane",
-        "One more person before we start, and she is not optional. Kira Vance is an independent security assessor — she is the one who signs off, or does not, and I would rather she asked her questions here than in your steering committee three months from now.",
-        roster,
-      ),
-      buildMessage(
-        "kira",
-        "Kira Vance. I assess security for a living, which makes me the least popular person in most of these meetings. I have no stake in you buying anything — I only care whether the tenant can survive the retrieval.",
-        roster,
-      ),
-      buildMessage(
-        "shane",
-        `Now the people who actually do the work. In ${state.industry.toLowerCase()} the room usually looks like this. Copilot has built three personas from your sector — these are the people whose day actually changes, and the people the seven pillars are really about.`,
-        roster,
-      ),
-      ...(first ? [buildMessage(first.id, `${first.win} ${first.risk}`, roster)] : []),
-      buildMessage(
-        "shane",
-        "Three people, three Copilot wins, three readiness conditions sitting in front of them. The pillars below are just those conditions, one at a time.",
-        roster,
-      ),
-    ];
-  }, [roster, state.industry]);
-
-  const introMessages = useMemo(
-    () => INTRO_MESSAGES.map((m) => buildMessage(m.who, m.text, roster)),
-    [roster],
-  );
-
-  const assembleChips = useMemo(
-    () =>
-      [state.industry, ...sel.clusters.slice(0, 2), ...roster.map((r) => r.short), `${sel.useCases.length} use cases`],
-    [state.industry, sel, roster],
-  );
+  const chaptersReveal = useReveal<HTMLDivElement>();
+  const deliverablesReveal = useReveal<HTMLDivElement>();
+  const adoptionReveal1 = useReveal<HTMLDivElement>();
+  const adoptionReveal2 = useReveal<HTMLDivElement>();
+  const adoptionReveal3 = useReveal<HTMLDivElement>();
+  const assessmentReveal = useReveal<HTMLDivElement>();
+  const closingLine = done ? `Your estimate of ${score} came from seven answers about how things are meant to work.` : "An estimate comes from how things are meant to work.";
 
   return (
-    <div className="smcr-root" ref={rootRef}>
+    <>
       <SEOMeta
-        title="Shane McCaw Consulting | Is your tenant ready for Microsoft 365 Copilot?"
-        description="Walk the seven Copilot readiness pillars with a security assessor and the people who would actually use it — then find out whether you need the paid assessment. Built on the governance framework Shane McCaw wrote for NASA."
+        title="Copilot Readiness — Free Estimate | Shane McCaw Consulting"
+        description="Seven questions. No sign-in, no scan, no sales call. Find out whether your Microsoft 365 tenant is actually ready for Copilot."
       />
+      <div className="dark" style={{ background: "#020617", color: "#cbd5e1", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh", overflowX: "hidden" }}>
+        <style>{KEYFRAMES}</style>
 
-      <RoomStage />
-
-      {/* ---------------------------------------------------------------- */}
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 70,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 14,
-          padding: "11px clamp(14px,3vw,32px)",
-          background: "rgba(16,11,38,.74)",
-          backdropFilter: "blur(22px)",
-          borderBottom: "1px solid var(--smcr-rule)",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <a href="/" className="smcr-logo" aria-label="Shane McCaw Consulting — home">
-            <span className="smcr-logo-mark" aria-hidden="true">
-              SM
-            </span>
-            <span className="smcr-logo-txt">
-              <span className="smcr-logo-name">Shane McCaw</span>
-              <span className="smcr-logo-tag">Copilot Readiness</span>
-            </span>
-          </a>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, paddingLeft: 44 }}
-            aria-live="polite"
-          >
-            <span
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: 99,
-                flex: "0 0 5px",
-                background: chap.color,
-                boxShadow: `0 0 10px ${chap.color}`,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: ".14em",
-                textTransform: "uppercase",
-                color: "var(--smcr-muted)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {chap.label}
-            </span>
-          </span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div className="smcr-navlinks" style={{ alignItems: "center", gap: 16 }}>
-            <a href="#industry" className="smcr-navlink" onClick={unlockThen("industry")}>
-              Discovery
-            </a>
-            <a href="#health" className="smcr-navlink" onClick={unlockThen("health")}>
-              Your profile
-            </a>
-            <a href="/assessments" className="smcr-navlink">
-              Assessments
-            </a>
+        <header style={{ position: "sticky", top: 0, zIndex: 50, height: 80, background: "rgba(2,6,23,.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
+          <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <Logo tagline="M365 Architect" onDark />
+            <Button as="a" href="#assessment">
+              Get Your Real Score
+            </Button>
           </div>
-          <a href={bookHref} className="smcr-cta smcr-cta-primary smcr-cta-nav" data-track="cta">
-            Book the Assessment
-          </a>
-        </div>
-      </header>
+        </header>
 
-      <SeatRail seats={seats} />
-
-      {/* ---------------------------------------------------------------- */}
-      {/* display / justify / padding live in home-room.css so the breakpoints can reach them */}
-      <div className="smcr-convo" style={{ position: "relative", zIndex: 1 }}>
-        <div
+        {/* ------------------------------------------------------------ Quiz + radar hero */}
+        <section
+          id="quiz"
           style={{
-            width: "min(760px,100%)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "clamp(26px,4vh,44px)",
+            maxWidth: 1280,
+            margin: "0 auto",
+            padding: "clamp(40px,8vw,72px) clamp(16px,4vw,32px) clamp(56px,9vw,96px)",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,400px),1fr))",
+            gap: "clamp(40px,6vw,72px)",
+            alignItems: "center",
           }}
         >
-          {/* ---------------- 01 · the room ---------------- */}
-          <section
-            id="hero"
-            data-chapter="hero"
-            data-reveal
-            className="smcr-chapter smcr-reveal smcr-hero"
-            style={{
-              minHeight: "calc(100vh - var(--smcr-header-h))",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              gap: "clamp(14px,2.2vh,26px)",
-              padding: "clamp(24px,5vh,64px) 0",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 99,
-                  background: "#67e8f9",
-                  boxShadow: "0 0 12px #67e8f9",
-                  animation: "smcr-pulse 2.6s ease-in-out infinite",
-                }}
-              />
-              <span className="smcr-eyebrow">Persona workshop · room is live</span>
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontWeight: 800,
-                letterSpacing: "-.03em",
-                color: "var(--smcr-text)",
-                textWrap: "pretty",
-              }}
-            >
-              Meet your personas. See how Copilot changes their day.
+          <div>
+            <Eyebrow>Copilot Readiness — Free Estimate</Eyebrow>
+            <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", maxWidth: 520 }}>
+              Most Tenants Aren't Ready for Copilot. Find Out If Yours Is.
             </h1>
-
-            <p
-              style={{ margin: 0, color: "var(--smcr-text-3)", textWrap: "pretty" }}>
-              <span>{typed}</span>
-              <span
-                aria-hidden="true"
-                style={{
-                  display: "inline-block",
-                  width: 2,
-                  height: "1.05em",
-                  marginLeft: 2,
-                  verticalAlign: -2,
-                  background: "#67e8f9",
-                  animation: "smcr-caret 1s step-end infinite",
-                }}
-              />
+            <p style={{ fontSize: "clamp(15px,2.3vw,17px)", lineHeight: 1.6, color: "#94a3b8", margin: "0 0 32px", maxWidth: 440 }}>
+              Seven questions. No sign-in, no scan, no sales call. The radar fills in as you answer, one pillar at a time.
             </p>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <a
-                href="#industry"
-                onClick={unlockThen("industry")}
-                style={{
-                  minHeight: 50,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 9,
-                  padding: "0 22px",
-                  borderRadius: 13,
-                  fontSize: 13.5,
-                  fontWeight: 700,
-                  color: "#fff",
-                  background: "#0078D4",
-                  border: "1px solid rgba(103,232,249,.4)",
-                  boxShadow: "0 14px 40px rgba(0,120,212,.38)",
-                }}
-              >
-                Meet the room
-                <ArrowDown width={15} height={15} />
-              </a>
-              <a
-                href="#copilot"
-                onClick={unlockThen("copilot")}
-                style={{
-                  minHeight: 50,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "0 20px",
-                  borderRadius: 13,
-                  fontSize: 13.5,
-                  fontWeight: 700,
-                  color: "var(--smcr-sky)",
-                  background: "rgba(103,232,249,.08)",
-                  border: "1px solid rgba(103,232,249,.35)",
-                }}
-              >
-                Skip to the price
-              </a>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "clamp(14px,3vw,32px)",
-                paddingTop: "clamp(8px,1.6vh,18px)",
-                borderTop: "1px solid var(--smcr-rule)",
-              }}
-            >
-              {HERO_STATS.map((s) => (
-                <div key={s.k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span
-                    style={{
-                      fontFamily: "var(--smcr-mono)",
-                      fontSize: 20,
-                      fontWeight: 800,
-                      color: "var(--smcr-text)",
-                    }}
-                  >
-                    {s.v}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      letterSpacing: ".16em",
-                      textTransform: "uppercase",
-                      color: "var(--smcr-muted)",
-                    }}
-                  >
-                    {s.k}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ---------------- 02 · who is running this ---------------- */}
-          <section
-            id="intro"
-            data-chapter="intro"
-            data-reveal
-            className="smcr-chapter smcr-reveal"
-            style={{
-              minHeight: "92vh",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              gap: 14,
-              padding: "clamp(20px,6vh,60px) 0",
-            }}
-          >
-            {introMessages.map((m, i) => (
-              <MessageRow key={`${m.key}|${i}`} m={m} gen />
-            ))}
-
-            <div
-              data-reveal
-              className="smcr-reveal-r smcr-indent"
-              style={{
-                padding: 16,
-                borderRadius: 18,
-                background: "linear-gradient(160deg,rgba(122,86,240,.14),rgba(16,11,38,.74))",
-                backdropFilter: "blur(18px)",
-                border: "1px solid rgba(122,86,240,.34)",
-                boxShadow: "var(--smcr-shadow-card)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 9,
-                  flexWrap: "wrap",
-                  paddingBottom: 12,
-                  borderBottom: "1px solid var(--smcr-rule)",
-                }}
-              >
-                <span
-                  style={{
-                    width: 22,
-                    height: 22,
-                    flex: "0 0 22px",
-                    borderRadius: 7,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#A78BFA",
-                    background: "rgba(122,86,240,.2)",
-                    border: "1px solid rgba(122,86,240,.4)",
-                  }}
-                >
-                  <Sparkles width={11} height={11} />
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: "var(--smcr-text-2)",
-                  }}
-                >
-                  Active card · Meeting summary
-                </span>
-                <span
-                  style={{
-                    padding: "3px 9px",
-                    borderRadius: 99,
-                    fontSize: 8.5,
-                    fontWeight: 800,
-                    letterSpacing: ".12em",
-                    textTransform: "uppercase",
-                    color: "#A78BFA",
-                    background: "rgba(122,86,240,.16)",
-                    border: "1px solid rgba(122,86,240,.4)",
-                  }}
-                >
-                  Generated
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit,minmax(min(210px,100%),1fr))",
-                  gap: 9,
-                  padding: "13px 0",
-                }}
-              >
-                {FIVE_W.map((w) => (
-                  <div
-                    key={w.k}
-                    style={{
-                      padding: "13px 14px",
-                      borderRadius: 13,
-                      background: "var(--smcr-ink-solid)",
-                      border: "1px solid var(--smcr-rule-2)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 800,
-                        letterSpacing: ".16em",
-                        textTransform: "uppercase",
-                        color: "var(--smcr-sky)",
-                      }}
-                    >
-                      {w.k}
-                    </span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--smcr-text)" }}>{w.v}</span>
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        lineHeight: 1.5,
-                        color: "var(--smcr-muted)",
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {w.d}
-                    </span>
+            {!done && (
+              <div style={{ background: "#0f172a", border: "1px solid rgba(30,41,59,.9)", borderRadius: 16, padding: "clamp(18px,4vw,26px) clamp(18px,4vw,26px) 22px", maxWidth: 520 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".12em", color: "#f1f5f9" }}>{String(step + 1).padStart(2, "0")}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".12em", color: "#475569" }}>/ {String(QUESTIONS.length).padStart(2, "0")}</span>
+                    <span style={{ width: 1, height: 12, background: "#334155" }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: q.color }}>{q.tag}</span>
                   </div>
-                ))}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  paddingTop: 11,
-                  borderTop: "1px solid var(--smcr-rule)",
-                }}
-              >
-                <span style={{ fontSize: 9.5, fontWeight: 700, color: "var(--smcr-muted)" }}>Grounded in</span>
-                {["NASA M365 governance framework", "150+ tenant checks"].map((t) => (
-                  <span
-                    key={t}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 99,
-                      fontSize: 9.5,
-                      fontWeight: 700,
-                      color: "var(--smcr-text-3)",
-                      background: "rgba(148,163,184,.1)",
-                      border: "1px solid rgba(148,163,184,.18)",
-                    }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* ---------------- 03 · discovery ---------------- */}
-          <section
-            id="industry"
-            data-chapter="industry"
-            data-reveal
-            className="smcr-chapter smcr-reveal"
-            style={{
-              minHeight: "92vh",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              gap: 14,
-              padding: "clamp(20px,6vh,60px) 0",
-              scrollMarginTop: 80,
-            }}
-          >
-            <DiscoveryCard state={state} actions={actions} ind={ind} roster={roster} sel={sel} />
-          </section>
-
-          {/* ---------------- assembling ---------------- */}
-          <div
-            data-assemble
-            style={{
-              position: "relative",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 18,
-              padding: "clamp(56px,14vh,120px) 0 clamp(30px,7vh,60px)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: 0,
-                width: 2,
-                height: "46%",
-                transform: "translateX(-50%)",
-                background: "linear-gradient(180deg,transparent,rgba(103,232,249,.55))",
-                animation: "smcr-drop 900ms cubic-bezier(.22,1,.36,1) both",
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "46%",
-                width: "min(560px,80%)",
-                height: "min(560px,80%)",
-                transform: "translate(-50%,-8%)",
-                pointerEvents: "none",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  inset: "18%",
-                  borderRadius: 99,
-                  border: "1px solid rgba(103,232,249,.22)",
-                  animation: "smcr-ring 2.6s cubic-bezier(.22,1,.36,1) .25s both",
-                }}
-              />
-              <span
-                style={{
-                  position: "absolute",
-                  inset: "18%",
-                  borderRadius: 99,
-                  border: "1px solid rgba(139,92,246,.2)",
-                  animation: "smcr-ring 2.6s cubic-bezier(.22,1,.36,1) .6s both",
-                }}
-              />
-              <span
-                style={{
-                  position: "absolute",
-                  inset: "18%",
-                  borderRadius: 99,
-                  border: "1px dashed rgba(148,163,184,.16)",
-                  animation: "smcr-spin 44s linear infinite",
-                }}
-              />
-            </div>
-
-            <div
-              style={{
-                position: "relative",
-                width: 52,
-                height: 52,
-                borderRadius: 16,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "linear-gradient(135deg,#7A56F0,#26C1C9)",
-                boxShadow: "0 0 40px rgba(103,232,249,.4)",
-                animation: "smcr-pop 700ms cubic-bezier(.34,1.56,.64,1) .2s both",
-              }}
-            >
-              <Sparkles width={24} height={24} style={{ color: "#fff" }} />
-            </div>
-
-            <div
-              style={{
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 7,
-                textAlign: "center",
-                animation: "smcr-rise 700ms cubic-bezier(.22,1,.36,1) .42s both",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 800,
-                  letterSpacing: ".2em",
-                  textTransform: "uppercase",
-                  color: "#67E8F9",
-                }}
-              >
-                Assembling your room
-              </span>
-              <span
-                style={{
-                  fontSize: "clamp(19px,2.6vw,28px)",
-                  fontWeight: 800,
-                  letterSpacing: "-.02em",
-                  color: "var(--smcr-text)",
-                  textWrap: "pretty",
-                }}
-              >
-                {`Your ${state.industry.toLowerCase()} room is ready`}
-              </span>
-              <span
-                style={{
-                  maxWidth: "46ch",
-                  fontSize: 12.5,
-                  lineHeight: 1.6,
-                  color: "var(--smcr-muted)",
-                  textWrap: "pretty",
-                }}
-              >
-                Three people, one assessor, and seven pillars — every finding below is now measured against
-                their permissions and their workload, not a generic tenant.
-              </span>
-            </div>
-
-            <div
-              style={{
-                position: "relative",
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "center",
-                gap: 7,
-              }}
-            >
-              {assembleChips.map((label, i) => (
-                <span
-                  key={`${label}-${i}`}
-                  style={{
-                    padding: "5px 11px",
-                    borderRadius: 99,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: ".02em",
-                    color: "var(--smcr-text-3)",
-                    background: "rgba(148,163,184,.09)",
-                    border: "1px solid rgba(148,163,184,.2)",
-                    animation: `smcr-rise 600ms cubic-bezier(.22,1,.36,1) ${(0.55 + i * 0.08).toFixed(2)}s both`,
-                  }}
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-
-            <div
-              aria-hidden="true"
-              style={{
-                position: "relative",
-                width: 2,
-                height: "clamp(40px,7vh,70px)",
-                background: "linear-gradient(180deg,rgba(103,232,249,.55),transparent)",
-                animation: "smcr-drop 900ms cubic-bezier(.22,1,.36,1) .9s both",
-              }}
-            />
-          </div>
-
-          {/* ---------------- 04 · your personas ---------------- */}
-          <section
-            id="cast"
-            data-chapter="cast"
-            data-reveal
-            className="smcr-chapter smcr-reveal"
-            style={{
-              minHeight: "92vh",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              gap: 14,
-              padding: "clamp(20px,6vh,60px) 0",
-            }}
-          >
-            {castMessages.map((m, i) => (
-              <MessageRow key={`${m.key}|${i}`} m={m} gen />
-            ))}
-
-            {/* Kira — the assessor who is not on the payroll */}
-            <div
-              data-reveal
-              className="smcr-reveal-r smcr-indent"
-              style={{
-                padding: "16px 17px",
-                borderRadius: 18,
-                background: "linear-gradient(160deg,rgba(139,92,246,.16),rgba(16,11,38,.74))",
-                backdropFilter: "blur(18px)",
-                border: "1px solid rgba(167,139,250,.4)",
-                boxShadow: "0 24px 60px rgba(10,6,24,.6)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 13,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    position: "relative",
-                    width: 42,
-                    height: 42,
-                    flex: "0 0 42px",
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#f8fafc",
-                    background: "linear-gradient(135deg,#5b21b6,#A78BFA)",
-                    border: "1px solid rgba(167,139,250,.5)",
-                  }}
-                >
-                  <span
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background:
-                        "repeating-linear-gradient(0deg,rgba(103,232,249,.16) 0 1px,transparent 1px 3px)",
-                    }}
-                  />
-                  <span style={{ position: "relative" }}>KV</span>
-                </span>
-                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span
-                    style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.01em", color: "var(--smcr-text)" }}
-                  >
-                    Kira Vance
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 9.5,
-                      fontWeight: 800,
-                      letterSpacing: ".12em",
-                      textTransform: "uppercase",
-                      color: "#A78BFA",
-                    }}
-                  >
-                    Independent Security Assessor
-                  </span>
-                </div>
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    padding: "4px 10px",
-                    borderRadius: 99,
-                    fontSize: 8.5,
-                    fontWeight: 800,
-                    letterSpacing: ".12em",
-                    textTransform: "uppercase",
-                    color: "#A78BFA",
-                    background: "rgba(167,139,250,.14)",
-                    border: "1px solid rgba(167,139,250,.36)",
-                  }}
-                >
-                  Not on my payroll
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))",
-                  gap: 9,
-                }}
-              >
-                {[
-                  [
-                    "Why she is here",
-                    "To ask the questions your own security team will ask later, when the answer is more expensive.",
-                  ],
-                  [
-                    "What she blocks on",
-                    "Blast radius, MFA exceptions, report-only Conditional Access, and DLP that never sees the Copilot path.",
-                  ],
-                  [
-                    "What wins her over",
-                    "A finite, ordered, evidenced list she can watch shrink. Never an assurance.",
-                  ],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <span
-                      style={{
-                        fontSize: 8.5,
-                        fontWeight: 800,
-                        letterSpacing: ".14em",
-                        textTransform: "uppercase",
-                        color: "var(--smcr-muted)",
-                      }}
-                    >
-                      {k}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11.5,
-                        lineHeight: 1.5,
-                        color: "var(--smcr-text-3)",
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {v}
-                    </span>
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {QUESTIONS.map((_, i) => (
+                      <span key={i} style={{ width: 16, height: 3, borderRadius: 2, background: i < step || done ? "#3b82f6" : i === step ? "#60a5fa" : "rgba(51,65,85,.9)", transition: "background .3s" }} />
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            {/* the three personas */}
-            <div
-              className="smcr-castgrid smcr-indent"
-              style={{ gap: 10 }}
-            >
-              {roster.map((c) => (
-                <div
-                  key={c.id}
-                  data-reveal
-                  className="smcr-reveal-r"
-                  style={{
-                    padding: "15px 16px",
-                    borderRadius: 18,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                    background: `linear-gradient(160deg,${c.color}12, rgba(16,11,38,.7))`,
-                    backdropFilter: "blur(18px)",
-                    border: `1px solid ${c.color}3d`,
-                    boxShadow: "0 22px 60px rgba(10,6,24,.55)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
+                <p style={{ fontSize: "clamp(19px,3.4vw,22px)", lineHeight: 1.3, fontWeight: 600, color: "#f8fafc", margin: "0 0 20px", letterSpacing: "-.01em", minHeight: 58 }}>{q.q}</p>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  {q.opts.map((label, i) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => pick(i)}
                       style={{
-                        position: "relative",
-                        width: 38,
-                        height: 38,
-                        flex: "0 0 38px",
-                        borderRadius: 13,
-                        overflow: "hidden",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#f8fafc",
-                        background: c.tile,
-                        border: `1px solid ${c.bd}`,
+                        gap: 14,
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "14px 16px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(51,65,85,.8)",
+                        background: "rgba(2,6,23,.5)",
+                        color: "#e2e8f0",
+                        fontFamily: "inherit",
+                        fontSize: 15,
+                        cursor: "pointer",
+                        transition: "border-color .18s,background .18s",
                       }}
                     >
-                      <span
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          background:
-                            "repeating-linear-gradient(0deg,rgba(103,232,249,.16) 0 1px,transparent 1px 3px)",
-                        }}
-                      />
-                      <span style={{ position: "relative" }}>{c.initials}</span>
-                    </span>
-                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 800,
-                          letterSpacing: "-.01em",
-                          color: "var(--smcr-text)",
-                        }}
-                      >
-                        {c.name}
+                      <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: "1px solid rgba(71,85,105,.9)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                        {LETTERS[i]}
                       </span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          letterSpacing: ".12em",
-                          textTransform: "uppercase",
-                          color: c.color,
-                        }}
-                      >
-                        {c.role}
-                      </span>
-                    </div>
-                  </div>
-                  {(
-                    [
-                      ["Their day", c.day, "var(--smcr-muted)", true],
-                      ["What Copilot gives them", c.win, "#4ADE80", false],
-                      ["What has to be true first", c.risk, "#F87171", false],
-                    ] as const
-                  ).map(([k, v, color, ruled]) => (
-                    <div
-                      key={k}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 7,
-                        ...(ruled ? { paddingTop: 12, borderTop: "1px solid var(--smcr-rule)" } : null),
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 8.5,
-                          fontWeight: 800,
-                          letterSpacing: ".14em",
-                          textTransform: "uppercase",
-                          color,
-                        }}
-                      >
-                        {k}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 11.5,
-                          lineHeight: 1.5,
-                          color: "var(--smcr-text-3)",
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {v}
-                      </span>
-                    </div>
+                      <span>{label}</span>
+                    </button>
                   ))}
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, minHeight: 20 }}>
+                  <button type="button" onClick={back} style={{ background: "none", border: "none", padding: 0, fontFamily: "inherit", fontSize: 13, color: "#475569", cursor: "pointer", visibility: step > 0 ? "visible" : "hidden" }}>
+                    ← Previous question
+                  </button>
+                  <span style={{ fontSize: 12, color: "#334155" }}>Illustrative estimate only</span>
+                </div>
+              </div>
+            )}
+
+            {done && (
+              <div style={{ background: "linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%)", border: "1px solid rgba(37,99,235,.28)", borderRadius: 16, padding: "clamp(20px,4vw,28px)", maxWidth: 520 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#60a5fa" }}>Estimated Copilot Readiness</span>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "12px 0 6px" }}>
+                  <span style={{ fontSize: "clamp(54px,13vw,82px)", fontWeight: 800, letterSpacing: "-.04em", lineHeight: 0.9, color: "#f8fafc" }}>{score}</span>
+                  <span style={{ fontSize: 22, fontWeight: 600, color: "#475569" }}>/ 100</span>
+                  <span style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, letterSpacing: ".06em", background: "rgba(37,99,235,.12)", border: "1px solid rgba(37,99,235,.3)", color: "#93c5fd" }}>
+                    {band}
+                  </span>
+                </div>
+                <p style={{ fontSize: 15, lineHeight: 1.6, color: "#94a3b8", margin: "14px 0 22px", maxWidth: 400 }}>{blurb}</p>
+                {bonusText && (
+                  <div style={{ borderTop: "1px solid rgba(37,99,235,.22)", paddingTop: 18, margin: "0 0 22px" }}>
+                    <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#60A5FA" }}>One thing we noticed</span>
+                    <p style={{ fontSize: 15.5, lineHeight: 1.6, color: "#e2e8f0", margin: "10px 0 0", maxWidth: 440 }}>{bonusText}</p>
+                  </div>
+                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <Button size="lg" onClick={goEditorial}>
+                    Read What the Data Says
+                  </Button>
+                  <Button size="lg" variant="ghost" onClick={restart}>
+                    Start over
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative", width: "100%", maxWidth: 720, margin: "0 auto", aspectRatio: "1/0.62" }}>
+            <div style={{ position: "absolute", left: "27%", top: "12.9%", width: "46%", height: "74.2%" }}>
+              <svg viewBox="0 0 480 480" style={{ position: "relative", width: "100%", height: "100%", display: "block", overflow: "visible" }}>
+                <defs>
+                  <radialGradient id="hubGlow" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="122">
+                    <stop offset="0" stopColor="#ffffff" stopOpacity="0.30" />
+                    <stop offset="0.34" stopColor="#22D3EE" stopOpacity="0.26" />
+                    <stop offset="0.72" stopColor="#3B82F6" stopOpacity="0.16" />
+                    <stop offset="1" stopColor="#020617" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="sheen" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214">
+                    <stop offset="0.5" stopColor="#ffffff" stopOpacity="0.22" />
+                    <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+
+                <circle cx="240" cy="240" r="214" fill="none" stroke="rgba(148,163,184,.16)" strokeWidth="1" />
+                <circle cx="240" cy="240" r="143" fill="none" stroke="rgba(148,163,184,.10)" strokeWidth="1" />
+                <circle cx="240" cy="240" r="71" fill="none" stroke="rgba(148,163,184,.08)" strokeWidth="1" />
+                <g stroke="rgba(148,163,184,.10)" strokeWidth="1">
+                  <line x1="240" y1="240" x2="240" y2="26" />
+                  <line x1="240" y1="240" x2="425.33" y2="133" />
+                  <line x1="240" y1="240" x2="425.33" y2="347" />
+                  <line x1="240" y1="240" x2="240" y2="454" />
+                  <line x1="240" y1="240" x2="54.67" y2="347" />
+                  <line x1="240" y1="240" x2="54.67" y2="133" />
+                </g>
+
+                <circle cx="240" cy="240" r="100" fill="#050d1f" />
+                <circle cx="240" cy="240" r="100" fill="url(#hubGlow)" />
+
+                <RadarBackdrop />
+              </svg>
+
+              <div style={{ position: "absolute", inset: 0 }}>
+                <RadarChart idPrefix="wg" values={wedges} />
+              </div>
+
+              <div className="smc-sheen" style={{ position: "absolute", inset: 0, mixBlendMode: "screen", pointerEvents: "none" }}>
+                <svg viewBox="0 0 480 480" style={{ width: "100%", height: "100%" }}>
+                  <path d="M240,240 L247.47,26.13 A214,214 0 0 1 421.48,126.60 Z" fill="url(#sheen)" opacity=".55">
+                    <animateTransform attributeName="transform" type="rotate" from="0 240 240" to="360 240 240" dur="9s" repeatCount="indefinite" />
+                  </path>
+                </svg>
+              </div>
+
+              <OrbitRing size={hubGlow} opacity={hubGlowOpacity} spin={false} />
+              <OrbitRing size={hubSize} opacity={0.5} />
+
+              <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                <span style={{ fontSize: hubFont, fontWeight: 800, letterSpacing: "-.03em", color: "#f8fafc", lineHeight: 1, transition: "font-size .8s ease" }}>{hubNum}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#bcccdc", textShadow: "0 1px 6px rgba(2,6,23,.9)" }}>{hubLabel}</span>
+              </div>
+            </div>
+
+            {RADAR_SIDE_LABELS.map((l) => (
+              <div
+                key={l.pillar}
+                style={{
+                  position: "absolute",
+                  left: l.left,
+                  top: l.top,
+                  transform: l.align === "left" ? "translate(0,-50%)" : "translate(-100%,-50%)",
+                  width: "clamp(84px,23vw,148px)",
+                  textAlign: l.align,
+                  pointerEvents: "none",
+                }}
+              >
+                <div style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: l.color }}>{l.pillar}</div>
+                <div style={{ fontSize: "clamp(10px,2.1vw,11px)", lineHeight: 1.35, color: "#64748b", marginTop: 5 }}>{l.blurb}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ Aggregate picture / pillar chapters */}
+        <div id="chapters" style={{ borderTop: "1px solid rgba(30,41,59,.8)", background: "linear-gradient(180deg,#020617,#040b1e 40%,#020617)" }}>
+          <div style={{ maxWidth: 1160, margin: "0 auto", padding: "clamp(56px,9vw,96px) clamp(16px,4vw,32px) 40px" }}>
+            <div ref={chaptersReveal} style={{ maxWidth: 720 }}>
+              <Eyebrow pill={false}>The Aggregate Picture</Eyebrow>
+              <h2 style={{ fontSize: "clamp(28px,5.6vw,42px)", lineHeight: 1.12, letterSpacing: "-.025em", fontWeight: 800, color: "#f8fafc", margin: "16px 0 18px" }}>
+                What organizations {cohortPhrase} typically show.
+              </h2>
+              <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: 0 }}>
+                Six pillars decide whether Copilot returns anything. The figures below are aggregate and illustrative — drawn from patterns across tenants of comparable size, not from a scan of yours. Narration
+                throughout is Shane McCaw, Lead Microsoft 365 Architect at NASA.
+              </p>
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: "#7dd3c8", margin: "20px 0 0", maxWidth: 640 }}>
+                Worth reading as far as Licensing: the unused Copilot seats we typically find are often worth more than the assessment itself.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 1160, margin: "0 auto", padding: "0 clamp(16px,4vw,32px) 40px" }}>
+            {CHAPTERS.map((chapter) => {
+              const answer = answers[chapter.index + 1];
+              const [headline, body] = answer == null ? VARIANTS[chapter.index].none : VARIANTS[chapter.index].a[answer];
+              return <PillarChapter key={chapter.index} chapter={chapter} headline={headline} body={body} showBenchmarks showCaption />;
+            })}
+          </div>
+        </div>
+
+        {/* ------------------------------------------------------------ What You Receive (report cards) */}
+        <section id="deliverables" style={{ maxWidth: 1160, margin: "0 auto", padding: "16px clamp(16px,4vw,32px) 0" }}>
+          <div ref={deliverablesReveal} style={{ maxWidth: 760 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#60A5FA" }}>What You Receive</span>
+            <h2 style={{ fontSize: "clamp(28px,5.6vw,42px)", lineHeight: 1.12, letterSpacing: "-.025em", fontWeight: 800, color: "#f8fafc", margin: "16px 0 18px" }}>Eight reports, in under thirty minutes.</h2>
+            <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: 0 }}>
+              The scan takes a minute or two. The reports generate straight after it, sized to your tenant. Every finding carries the evidence behind it and traces to a specific step in the Copilot Gate Clearance
+              Plan.
+            </p>
+          </div>
+        </section>
+
+        <section style={{ maxWidth: 1160, margin: "0 auto", padding: "44px clamp(16px,4vw,32px) 24px" }}>
+          <div style={{ display: "grid", gap: 56 }}>
+            {[0, 2, 4, 6].map((startIdx) => (
+              <div key={startIdx} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,300px),1fr))", gap: "clamp(26px,4vw,34px) 30px", alignItems: "start" }}>
+                <ReportCard card={REPORT_CARDS[startIdx]} offsetTop={0} />
+                <ReportCard card={REPORT_CARDS[startIdx + 1]} offsetTop={44} />
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 13, color: "#475569", margin: "44px 0 0", maxWidth: 760 }}>
+            The Statement of Work is generated separately, at the proposal step — it is a contract artifact, not one of the eight reports.
+          </p>
+        </section>
+
+        {/* ------------------------------------------------------------ White-Glove Copilot Adoption */}
+        <section id="adoption" style={{ maxWidth: 1160, margin: "0 auto", padding: "clamp(48px,8vw,72px) clamp(16px,4vw,32px) 24px" }}>
+          <div ref={adoptionReveal1} style={{ maxWidth: 760, marginBottom: 36 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#fb923c" }}>White-Glove Copilot Adoption</span>
+            <h2 style={{ fontSize: "clamp(28px,5.6vw,42px)", lineHeight: 1.12, letterSpacing: "-.025em", fontWeight: 800, color: "#f8fafc", margin: "16px 0 18px" }}>
+              Remediation fixes the tenant. Adoption is how your people actually use it.
+            </h2>
+            <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: 0 }}>
+              The assessment and the remediation work that follows put the tenant in a state where Copilot can return something. Getting employees to the second prompt is a separate discipline, and it is the one
+              that decides whether the licences renew. The programme is drawn from the enablement work Shane ran at NASA. Anything quoted for it comes from comparable pilot deployments, not a guaranteed outcome
+              for your tenant.
+            </p>
+          </div>
+
+          <div ref={adoptionReveal2} style={{ position: "relative", marginBottom: 52 }}>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#64748b" }}>The programme</span>
+              <span style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(249,115,22,.35),rgba(30,41,59,.2))" }} />
+            </div>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,230px),1fr))", gap: 18, alignItems: "start" }}>
+              {ADOPTION_STEPS.map((s, i) => (
+                <div key={s.title} style={{ position: "relative", paddingTop: i % 2 === 1 ? 26 : 0 }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      border: "1px solid rgba(30,41,59,.9)",
+                      borderRadius: 16,
+                      background: "linear-gradient(165deg,rgba(30,20,10,.5),rgba(9,14,28,.92) 62%)",
+                      padding: "22px 22px 24px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <span style={{ position: "absolute", right: -14, bottom: -26, fontSize: 96, fontWeight: 800, letterSpacing: "-.05em", lineHeight: 1, color: "rgba(251,146,60,.06)", pointerEvents: "none" }}>{i + 1}</span>
+                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+                      <span style={{ width: 34, height: 34, borderRadius: 11, background: "rgba(249,115,22,.11)", border: "1px solid rgba(249,115,22,.24)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {s.icon}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "#FB923C", background: "rgba(249,115,22,.09)", border: "1px solid rgba(249,115,22,.2)", borderRadius: 999, padding: "4px 10px" }}>
+                        {s.cadence}
+                      </span>
+                    </div>
+                    <h4 style={{ position: "relative", fontSize: 16, fontWeight: 700, letterSpacing: "-.01em", color: "#f1f5f9", margin: "0 0 8px", lineHeight: 1.3 }}>{s.title}</h4>
+                    <p style={{ position: "relative", fontSize: 13.5, lineHeight: 1.6, color: "#94a3b8", margin: 0 }}>{s.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </section>
+          </div>
 
-          {/* ---------------- the seven pillars ---------------- */}
-          {ordered.map((p, i) => (
-            <PillarSection
-              key={p.id}
-              p={p}
-              index={i}
-              state={state}
-              actions={actions}
-              ind={ind}
-              roster={roster}
-              problem={problem}
-              focus={focus}
-              voiceAlly={voice.ally}
-              voiceLine={voice.line}
-              fee={fee}
-              feeDisplay={feeDisplay}
-              feeResolved={feePrice !== null}
-              opened={latches.opened}
-              score={score}
-              verdict={verdict}
-              bookHref={bookHref}
-              closeLine={closeLine}
-              onChangeAnswers={unlockThen("health")}
-            />
-          ))}
-        </div>
+          <div ref={adoptionReveal3}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#64748b" }}>Three tiers</span>
+              <span style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(249,115,22,.35),rgba(30,41,59,.2))" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,258px),1fr))", gap: 18, alignItems: "stretch" }}>
+              {ADOPTION_TIERS.map((tier) => (
+                <div
+                  key={tier.name}
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    flexDirection: "column",
+                    border: tier.featured ? "1px solid rgba(249,115,22,.4)" : "1px solid rgba(30,41,59,.92)",
+                    borderRadius: 18,
+                    background: tier.featured ? "linear-gradient(168deg,rgba(60,28,10,.5),rgba(9,14,28,.95) 64%)" : "linear-gradient(168deg,rgba(17,25,45,.85),rgba(7,12,26,.95) 70%)",
+                    padding: "26px 24px 24px",
+                  }}
+                >
+                  {tier.featured && (
+                    <span style={{ position: "absolute", top: -9, left: 24, fontSize: 9.5, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "#0b1220", background: "#FB923C", borderRadius: 999, padding: "4px 10px" }}>
+                      Most chosen
+                    </span>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 18 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: tier.featured ? "#FB923C" : "#94a3b8" }}>{tier.name}</span>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      {[0, 1, 2].map((i) => (
+                        <span key={i} style={{ width: 18, height: 4, borderRadius: 2, background: i < tier.dots ? "#F97316" : "rgba(51,65,85,.9)" }} />
+                      ))}
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gap: 10, flex: 1 }}>
+                    {tier.features.map((feat) => (
+                      <span key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13.5, lineHeight: 1.5, color: "#cbd5e1" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 3 }}>
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        <span>{feat}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: "#475569", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(30,41,59,.9)" }}>Priced in your proposal</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p style={{ fontSize: 13, color: "#475569", margin: "22px 0 0", maxWidth: 720 }}>
+            Offered alongside the assessment in your proposal, not a separate decision to make cold. Tier pricing is confirmed in the proposal.
+          </p>
+        </section>
+
+        {/* ------------------------------------------------------------ The Real Number / assessment CTA */}
+        <section id="assessment" style={{ maxWidth: 1160, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 110px" }}>
+          <div
+            ref={assessmentReveal}
+            style={{
+              position: "relative",
+              border: "1px solid rgba(37,99,235,.26)",
+              borderRadius: 26,
+              background: "radial-gradient(1100px 420px at 6% -14%,rgba(37,99,235,.17),transparent 62%),linear-gradient(168deg,rgba(20,32,72,.5),#070d1e 64%)",
+              padding: "clamp(32px,6vw,76px) clamp(20px,5vw,64px)",
+              overflow: "hidden",
+              boxShadow: "0 40px 90px -50px rgba(2,6,23,.95)",
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,300px),1fr))",
+                gap: "clamp(30px,4vw,56px)",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ maxWidth: 600 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+                  <span style={{ width: 26, height: 1, background: "linear-gradient(90deg,#60a5fa,rgba(96,165,250,.15))" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#60a5fa" }}>The Real Number</span>
+                </div>
+                <h2 style={{ fontSize: "clamp(30px,5.8vw,46px)", lineHeight: 1.08, letterSpacing: "-.03em", fontWeight: 800, color: "#f8fafc", margin: "0 0 18px" }}>
+                  Want your actual number,{" "}
+                  <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>not an estimate?</span>
+                </h2>
+                <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: "0 0 32px" }}>
+                  {closingLine} The Copilot Readiness Assessment connects to your tenant through the Microsoft Graph API and scores all six pillars on what is actually there — every site, every policy, every
+                  dormant seat. You get your Copilot Gate status, your blast radius, the evidence behind every finding, and the order to fix them in.
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#60a5fa", boxShadow: "0 0 10px #60a5fa", flexShrink: 0 }} />
+                    NASA's M365 Copilot Architect
+                  </span>
+                  <span style={{ fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>Scan: a minute or two</span>
+                  <span style={{ fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>Reports: under thirty</span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  position: "relative",
+                  justifySelf: "end",
+                  width: "100%",
+                  maxWidth: 340,
+                  border: "1px solid rgba(37,99,235,.3)",
+                  borderRadius: 20,
+                  background: "linear-gradient(168deg,rgba(23,37,84,.55),rgba(4,9,22,.9) 68%)",
+                  padding: 24,
+                  boxShadow: "0 30px 70px -40px rgba(2,6,23,.95)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, paddingBottom: 18, borderBottom: "1px solid rgba(30,41,59,.85)" }}>
+                  <div>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "#64748b" }}>Your estimate</span>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
+                      <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-.04em", lineHeight: 1, color: "#93c5fd" }}>{hubNum}</span>
+                      <span style={{ fontSize: 13, color: "#475569" }}>/ 100</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#475569" }}>From seven questions</span>
+                  </div>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "#60a5fa", border: "1px solid rgba(37,99,235,.34)", background: "rgba(37,99,235,.12)", borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap" }}>
+                    Illustrative
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, paddingTop: 18 }}>
+                  <div>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "#93c5fd" }}>Your actual number</span>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
+                      <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-.04em", lineHeight: 1, background: "linear-gradient(120deg,#93c5fd,#c4b5fd 50%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>••</span>
+                      <span style={{ fontSize: 13, color: "#475569" }}>/ 100</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#64748b" }}>From your tenant, all six pillars</span>
+                  </div>
+                  <span style={{ width: 26, height: 26, borderRadius: 8, border: "1px solid rgba(51,65,85,.9)", background: "rgba(2,6,23,.6)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 5, marginTop: 20 }}>
+                  {["#3B82F6", "#8B5CF6", "#D1D5DB", "#14B8A6", "#F97316", "#22C55E"].map((c) => (
+                    <span key={c} style={{ flex: 1, height: 4, borderRadius: 2, background: c }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <AssessmentFlow fee={fee} />
+          </div>
+        </section>
+
+        <footer style={{ borderTop: "1px solid rgba(30,41,59,.8)" }}>
+          <div style={{ maxWidth: 1160, margin: "0 auto", padding: "40px clamp(16px,4vw,32px)", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center", justifyContent: "space-between" }}>
+            <Logo size="sm" tagline="M365 Architect" onDark />
+            <p style={{ fontSize: 12, color: "#475569", margin: 0, maxWidth: 520 }}>
+              Figures shown on this page are aggregate and illustrative. They describe patterns across comparable tenants and are not a measurement of your environment.
+            </p>
+          </div>
+        </footer>
       </div>
-
-      <Dossier
-        chapterColor={chap.color}
-        captured={state.industryPicked}
-        canReset={
-          state.industryPicked ||
-          state.clusters.length > 0 ||
-          state.people.length > 0 ||
-          state.useCases.length > 0 ||
-          answeredCount > 0
-        }
-        onReset={actions.reset}
-        roomVisible={roomVisible}
-        roomCount={!roomVisible ? "empty" : roomSeated ? `${roster.length} seated` : "building"}
-        industry={state.industry}
-        roster={dossierRoster}
-        hasFacts={roomVisible && !!(state.confirmed.useCases || state.autoSkipped)}
-        facts={facts}
-        score={score}
-        verdict={dossierVerdict}
-        checksLine={`${answeredCount} / ${TOTAL_CHECKS} checks answered`}
-        ladder={ladder}
-      />
-
-      {/*
-        The design is a self-contained scroll narrative with its own header, so it
-        does not use the site <Layout>. The real Footer still ships here: it is the
-        page's only route to /services, /pricing, /resources and the legal pages,
-        and the home page must not be a navigation dead end. The fixed rails fade
-        out over it — see the `data-chrome` rule in home-room.css.
-      */}
-      <div data-room-footer style={{ position: "relative", zIndex: 2 }}>
-        <Footer />
-      </div>
-    </div>
+      <Footer />
+    </>
   );
 }
+
+const ADOPTION_STEPS = [
+  {
+    title: "Pilot cohort setup",
+    cadence: "Week 1",
+    desc: "A representative group chosen with you, instrumented so usage is measurable from day one.",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    title: "Change communications",
+    cadence: "Week 2",
+    desc: "Plain-language messages for the people who will use it, not a policy memo.",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Daily prompt drip",
+    cadence: "Daily",
+    desc: "One short, role-relevant prompt a day, delivered where people already work.",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2 3 14h9l-1 8 10-12h-9z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Live enablement sessions",
+    cadence: "Ongoing",
+    desc: "Working sessions against your own content, not a generic demo tenant.",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 3h20v12H2z" />
+        <path d="M12 15v6" />
+        <path d="M8 21h8" />
+        <path d="m7 11 3-3 2 2 4-4" />
+      </svg>
+    ),
+  },
+];
+
+const ADOPTION_TIERS = [
+  { name: "Essential", featured: false, dots: 1, features: ["Pilot cohort setup", "Change communication templates", "30-day prompt drip"] },
+  { name: "Growth", featured: true, dots: 2, features: ["Everything in Essential", "Two live enablement sessions", "Role-specific prompt packs"] },
+  { name: "Enterprise", featured: false, dots: 3, features: ["Everything in Growth", "Department-by-department rollout", "Manager briefings", "Quarterly reviews"] },
+];
