@@ -19,6 +19,15 @@
  * Renders outside AppShell, full-bleed, the same as `war-room.tsx` — the shell
  * would be covered either way.
  *
+ * THE CHROME IS ORIENTATION, NOT DECORATION
+ * -----------------------------------------
+ * Four things in the frame exist to keep a reader located inside a set of eight
+ * long documents: the rail's Copilot Gate block (where the tenant stands), the
+ * header's pillar strip (which subject this report belongs to and how the other
+ * five score), the hairline read-progress bar (how far through this one they
+ * are) and the ambient glow behind the pane (the open report's accent). Each is
+ * derived — none of them is a second copy of a number stated elsewhere.
+ *
  * DATA: `useCopilotJourney()` → `view.generation.documents`, and the body's own
  * `GET /api/portal/assessment/documents/:id`. Nothing on this screen is a
  * template value. `?preview=design` renders the design's worked example instead,
@@ -27,14 +36,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useSearch } from "wouter";
-import { ArrowRight, Download, Loader2, Menu, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 
 import { AskShaneAffordance } from "@/components/copilot-journey/AskShaneAffordance";
 import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
+import { DocumentExportMenu } from "@/components/copilot-journey/DocumentExportMenu";
 import {
   DocumentSheet,
   DocumentSidebar,
@@ -44,8 +53,20 @@ import {
 import { PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { ShaneBotDock } from "@/components/copilot-journey/ShaneBotDock";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
-import { tenantStrip, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
-import { BRAND, INK, RADIUS } from "@/components/copilot-journey/journeyTokens.ts";
+import { documentPillar, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
+import {
+  BRAND,
+  COPILOT_GATE_TARGET,
+  DELTA_GRADIENT,
+  INK,
+  PILLAR_ICON_PATHS,
+  PILLAR_ORDER,
+  RADIUS,
+  gateLabel,
+  hexAlpha,
+  reportAccent,
+  severityColor,
+} from "@/components/copilot-journey/journeyTokens.ts";
 import { previewJourneyView } from "@/components/copilot-journey/journeyPreviewFixture.ts";
 import { PREVIEW_DOCUMENT_BODIES } from "@/components/copilot-journey/previewDocumentBodies.ts";
 import "@/components/copilot-journey/copilot-journey.css";
@@ -61,8 +82,17 @@ const REVEAL_PATH = "/copilot-readiness";
  */
 const PDF_URL = "/api/portal/insights-documents";
 
+/** Below this the header's pillar strip is dropped before the title truncates. */
+const STRIP_COLLAPSE_PX = 1320;
+/**
+ * The gate chip stands in for the rail once the rail is gone, so it appears
+ * exactly where the rail does not — and disappears again on a phone, where the
+ * report title is the only thing the header has room to say.
+ */
+const GATE_MIN_PX = 620;
+
 /* ------------------------------------------------------------------ *
- * Small header controls. Inline styles cannot express `:hover`, so the two
+ * Small header controls. Inline styles cannot express `:hover`, so the
  * bespoke controls carry their own hover state rather than losing the
  * affordance entirely.
  * ------------------------------------------------------------------ */
@@ -76,6 +106,148 @@ function useHover() {
       onMouseLeave: () => setHovered(false),
     },
   };
+}
+
+/** Viewport width, sampled once and on resize. One listener for three breakpoints. */
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
+}
+
+/* ------------------------------------------------------------------ *
+ * The header's pillar strip
+ * ------------------------------------------------------------------ */
+
+/**
+ * Six mini badges — icon and score — with the open report's own pillar lifted
+ * out of the row.
+ *
+ * A pillar the scan could not evaluate shows an em dash rather than a 0: the
+ * strip is a summary of what was measured, and printing 0 for "nothing fed this"
+ * is the one reading that turns an absence into a verdict.
+ */
+function PillarStrip({ view, active }: { view: JourneyView; active: string | null }) {
+  const byKey = new Map(view.pillars.map((p) => [p.key, p]));
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexShrink: 1,
+        minWidth: 0,
+        overflow: "hidden",
+        alignItems: "center",
+        gap: 3,
+        padding: "4px 6px",
+        border: `1px solid ${INK.hairlineDark}`,
+        borderRadius: 8,
+        marginRight: 4,
+      }}
+    >
+      {PILLAR_ORDER.map((p) => {
+        const score = byKey.get(p.key)?.score ?? null;
+        const on = active === p.key;
+        return (
+          <span
+            key={p.key}
+            title={`${p.label}${score === null ? "" : ` · ${score}`}`}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              padding: "3px 7px",
+              borderRadius: 6,
+              transition: "opacity 260ms ease, background 260ms ease, transform 260ms ease",
+              opacity: on ? 1 : 0.5,
+              background: on ? hexAlpha(p.primary, 0.12) : "transparent",
+              transform: `scale(${on ? 1.06 : 1})`,
+            }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={p.primary}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ flex: "none" }}
+              aria-hidden="true"
+            >
+              <path d={PILLAR_ICON_PATHS[p.key]} />
+            </svg>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                lineHeight: 1,
+                color: score === null ? INK.micro : severityColor(score),
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {score ?? "—"}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The header's compact restatement of the rail's gate block. */
+function GateChip({ score, tenantName }: { score: number; tenantName: string }) {
+  const colour = severityColor(score);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "5px 10px 5px 8px",
+        border: `1px solid ${hexAlpha(colour, 0.32)}`,
+        borderRadius: 8,
+        background: hexAlpha(colour, 0.08),
+        flex: "none",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 20,
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          lineHeight: 1,
+          color: colour,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {score}
+      </span>
+      <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: ".14em",
+            textTransform: "uppercase",
+            color: colour,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {gateLabel(score)}
+        </span>
+        <span style={{ fontSize: 9, fontWeight: 600, color: INK.micro, whiteSpace: "nowrap" }}>
+          {`of ${COPILOT_GATE_TARGET} · ${tenantName}`}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 export default function CopilotReadinessDocumentsPage() {
@@ -124,9 +296,9 @@ export default function CopilotReadinessDocumentsPage() {
   const live = useCopilotJourney({ tenantName: customerName });
 
   /**
-   * The design's own worked example. Exactly the three reports the design writes
-   * out are marked ready — which is what makes its "3 of 8 ready" counter and
-   * its still-generating state both visible in one pass.
+   * The design's own worked example. Exactly the reports the design writes out
+   * are marked ready — which is what makes its "N of 8 ready" counter and its
+   * still-generating state both visible in one pass.
    */
   const previewView = useMemo<JourneyView>(() => {
     const base = previewJourneyView();
@@ -169,6 +341,8 @@ export default function CopilotReadinessDocumentsPage() {
   }, [docId, manualIndex, documents]);
 
   const activeDoc = documents[activeIndex] ?? null;
+  const activePillar = documentPillar(activeDoc);
+  const accent = reportAccent(activePillar);
 
   const withPreview = useCallback(
     (path: string) => (isPreview ? `${path}?preview=design` : path),
@@ -197,15 +371,45 @@ export default function CopilotReadinessDocumentsPage() {
    * moves into a bottom sheet behind the header's "Documents" button.
    * ---------------------------------------------------------------- */
 
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < NAV_COLLAPSE_PX,
-  );
+  const viewport = useViewportWidth();
+  const narrow = viewport < NAV_COLLAPSE_PX;
+  const showStrip = viewport >= STRIP_COLLAPSE_PX;
+  const showGate = narrow && viewport >= GATE_MIN_PX;
+
+  /* ---------------------------------------------------------------- *
+   * Reading position
+   *
+   * Kept in memory for the session only — nothing about how far somebody read
+   * their own assessment is worth persisting to a server, and a value restored
+   * from `localStorage` would survive a report being regenerated underneath it.
+   * The value only ever climbs: skimming back up a report does not un-read it.
+   * ---------------------------------------------------------------- */
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [readProgress, setReadProgress] = useState<Readonly<Record<string, number>>>({});
+  const activeProgress = activeDoc ? (readProgress[activeDoc.title] ?? 0) : 0;
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !activeDoc) return;
+    const travel = el.scrollHeight - el.clientHeight;
+    // A report shorter than the pane is read the moment it is opened; treating
+    // it as 0% for ever would leave a permanently unfinished row in the rail.
+    const pct = travel <= 4 ? 1 : Math.min(1, Math.max(0, el.scrollTop / travel));
+    setReadProgress((prev) => (pct <= (prev[activeDoc.title] ?? 0) ? prev : { ...prev, [activeDoc.title]: pct }));
+  }, [activeDoc]);
+
+  // Switching reports starts the new one at the top rather than halfway down
+  // wherever the last one happened to be, and re-samples progress for a report
+  // that turns out to be shorter than the pane.
+  const activeTitle = activeDoc?.title ?? null;
   useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < NAV_COLLAPSE_PX);
-    window.addEventListener("resize", onResize);
-    onResize();
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    el.scrollTop = 0;
+    const id = window.requestAnimationFrame(handleScroll);
+    return () => window.cancelAnimationFrame(id);
+  }, [activeTitle, handleScroll]);
 
   /* ---------------------------------------------------------------- *
    * ShaneBot + the Ask Shane affordance. Both are UI only in this scope;
@@ -214,7 +418,6 @@ export default function CopilotReadinessDocumentsPage() {
 
   const [botOpen, setBotOpen] = useState(false);
   const [botContext, setBotContext] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const handleAsk = useCallback((context: string) => {
     setBotContext(context);
@@ -227,35 +430,71 @@ export default function CopilotReadinessDocumentsPage() {
 
   const [downloading, setDownloading] = useState(false);
   const canDownload = !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null;
+  const downloadable = useMemo(
+    () => (isPreview ? [] : documents.filter((d) => d.status === "ready" && d.id !== null)),
+    [documents, isPreview],
+  );
+
+  const downloadOne = useCallback(
+    async (id: number, title: string) => {
+      // `silent`: the failure is reported once, by the caller, in words that say
+      // the report is still readable here. The global toast would put the raw
+      // server error ("Forbidden") beside it and make one failure look like two.
+      const res = await fetchWithAuth(`${PDF_URL}/${id}/pdf`, undefined, { silent: true });
+      if (!res.ok) throw new Error(`pdf ${id} → ${res.status}`);
+      const blobUrl = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    },
+    [fetchWithAuth],
+  );
 
   const handleDownload = useCallback(async () => {
     if (!activeDoc || activeDoc.id === null) return;
     setDownloading(true);
     try {
-      // `silent`: the failure is reported once, below, in words that say the
-      // report is still readable here. The global toast would put the raw
-      // server error ("Forbidden") beside it and make one failure look like two.
-      const res = await fetchWithAuth(`${PDF_URL}/${activeDoc.id}/pdf`, undefined, {
-        silent: true,
-      });
-      if (!res.ok) {
-        toast.error("We could not build that PDF just now. The report is still open here.");
-        return;
-      }
-      const blobUrl = URL.createObjectURL(await res.blob());
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `${activeDoc.title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
+      await downloadOne(activeDoc.id, activeDoc.title);
     } catch {
       toast.error("We could not build that PDF just now. The report is still open here.");
     } finally {
       setDownloading(false);
     }
-  }, [activeDoc, fetchWithAuth]);
+  }, [activeDoc, downloadOne]);
+
+  /**
+   * Every ready report, one after another. Sequential rather than parallel: each
+   * PDF is a Chromium render server-side, and firing eight at once is the one
+   * request pattern that turns a download into a timeout.
+   *
+   * A failure part-way through is reported with the count that did land, because
+   * "some of your reports downloaded" is the truth and a bare error is not.
+   */
+  const handleDownloadAll = useCallback(async () => {
+    if (downloadable.length === 0) return;
+    setDownloading(true);
+    let done = 0;
+    try {
+      for (const doc of downloadable) {
+        if (doc.id === null) continue;
+        await downloadOne(doc.id, doc.title);
+        done += 1;
+      }
+      toast.success(`${done} ${done === 1 ? "report" : "reports"} downloaded.`);
+    } catch {
+      toast.error(
+        done === 0
+          ? "We could not build those PDFs just now. Every report is still readable here."
+          : `${done} of ${downloadable.length} downloaded before that failed. The rest are still readable here.`,
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloadable, downloadOne]);
 
   const cta = useHover();
   const closeBtn = useHover();
@@ -269,6 +508,7 @@ export default function CopilotReadinessDocumentsPage() {
     activeIndex,
     onSelect: handleSelect,
     reduceMotion,
+    readProgress,
   };
 
   return (
@@ -290,14 +530,51 @@ export default function CopilotReadinessDocumentsPage() {
       {narrow ? null : (
         <DocumentSidebar
           width={NAV_WIDTH_DEFAULT}
-          tenantLine={tenantStrip(view.tenant)}
+          tenant={view.tenant}
+          score={view.readinessScore}
           {...switcherProps}
         />
       )}
 
-      <div style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {/* Ambient light behind the reading pane, tinted by the open report.
+            Pointer-events off and below everything — it is the only thing on
+            this screen that moves at all, and only when the report changes. */}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "-6%",
+              width: "min(1240px,150%)",
+              height: "74%",
+              transform: "translateX(-50%)",
+              filter: "blur(70px)",
+              opacity: 0.85,
+              transition: "background 400ms ease",
+              background: accent.glow,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: "-14%",
+              width: "min(980px,130%)",
+              height: "46%",
+              transform: "translateX(-50%)",
+              filter: "blur(80px)",
+              opacity: 0.55,
+              transition: "background 400ms ease",
+              background: accent.glow,
+            }}
+          />
+        </div>
+
         <header
           style={{
+            position: "relative",
+            zIndex: 60,
             flex: "none",
             background: "rgba(9,14,28,.92)",
             borderBottom: `1px solid ${INK.hairlineDark}`,
@@ -306,9 +583,10 @@ export default function CopilotReadinessDocumentsPage() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 18,
+            overflow: "visible",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flex: "1 1 auto", minWidth: 200 }}>
             {narrow ? (
               <button
                 type="button"
@@ -334,16 +612,43 @@ export default function CopilotReadinessDocumentsPage() {
                 </span>
               </button>
             ) : null}
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+
+            {/* The rail already carries the gate block, so the chip is the first
+                thing dropped when the header runs out of room — not the title. */}
+            {showGate && view.readinessScore !== null ? (
+              <GateChip score={view.readinessScore} tenantName={view.tenant.name} />
+            ) : null}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}>
               <span
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
                   fontSize: 9.5,
                   fontWeight: 600,
                   letterSpacing: ".2em",
                   textTransform: "uppercase",
-                  color: INK.micro,
+                  color: INK.bodyDark,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={accent.colour}
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ flex: "none" }}
+                  aria-hidden="true"
+                >
+                  <path d={accent.icon} />
+                </svg>
                 Copilot readiness assessment
               </span>
               <span
@@ -362,7 +667,9 @@ export default function CopilotReadinessDocumentsPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 1 auto", minWidth: 0, overflow: "visible" }}>
+            {showStrip ? <PillarStrip view={view} active={activePillar} /> : null}
+
             {/* Persistent, on every report — the SOW is the point of the set. */}
             <button
               type="button"
@@ -381,6 +688,7 @@ export default function CopilotReadinessDocumentsPage() {
                 whiteSpace: "nowrap",
                 transition: "background 160ms",
                 fontFamily: "inherit",
+                flex: "none",
               }}
             >
               <span style={{ fontSize: 12.5, fontWeight: 600, color: BRAND.white }}>
@@ -389,28 +697,15 @@ export default function CopilotReadinessDocumentsPage() {
               <ArrowRight size={14} strokeWidth={1.7} color={BRAND.white} aria-hidden="true" />
             </button>
 
-            {/* Subordinate to reading in-app, deliberately: outline + sm. The
-                inline colours pin it to this screen's own dark surface, since
-                it does not follow the portal's theme. */}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!canDownload || downloading}
-              onClick={() => void handleDownload()}
-              style={{
-                height: 34,
-                background: "rgba(2,6,23,.7)",
-                borderColor: INK.hairlineDark,
-                color: INK.headingDark,
-              }}
-            >
-              {downloading ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Download className="size-3" />
-              )}
-              Download as PDF
-            </Button>
+            <DocumentExportMenu
+              currentTitle={activeDoc?.title ?? "Your reports"}
+              readyCount={isPreview ? view.generation.ready : downloadable.length}
+              canDownloadCurrent={Boolean(canDownload)}
+              disabledReason={isPreview ? "Not available in the design preview" : null}
+              downloading={downloading}
+              onDownloadCurrent={() => void handleDownload()}
+              onDownloadAll={() => void handleDownloadAll()}
+            />
 
             <button
               type="button"
@@ -426,6 +721,7 @@ export default function CopilotReadinessDocumentsPage() {
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
+                flex: "none",
                 background: closeBtn.hovered ? "rgba(255,255,255,.06)" : "transparent",
               }}
             >
@@ -434,7 +730,35 @@ export default function CopilotReadinessDocumentsPage() {
           </div>
         </header>
 
-        <div ref={scrollRef} style={{ flex: "1 1 auto", overflowY: "auto", padding: "34px 26px 90px" }}>
+        {/* How far through this report they are. A hairline, under the header,
+            reading left to right — the one piece of chrome that is allowed to
+            move while somebody is reading. */}
+        <div
+          aria-hidden="true"
+          style={{ position: "relative", zIndex: 3, flex: "none", height: 2, background: INK.hairlineDark }}
+        >
+          <div
+            style={{
+              height: "100%",
+              background: DELTA_GRADIENT,
+              transition: "width 90ms linear",
+              width: `${Math.round(activeProgress * 100)}%`,
+            }}
+          />
+        </div>
+
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="cj-doc-scroll"
+          style={{
+            position: "relative",
+            zIndex: 2,
+            flex: "1 1 auto",
+            overflowY: "auto",
+            padding: narrow ? "22px 16px 80px" : "34px 26px 90px",
+          }}
+        >
           <DocumentBody
             doc={activeDoc}
             generation={view.generation}
@@ -444,6 +768,7 @@ export default function CopilotReadinessDocumentsPage() {
             reduceMotion={reduceMotion}
             error={isPreview ? null : live.error}
             onRetry={live.refresh}
+            onAsk={handleAsk}
           />
         </div>
       </div>

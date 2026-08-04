@@ -90,6 +90,69 @@ export const PILLARS: Readonly<Record<PillarKey, PillarIdentity>> = {
 export const PILLAR_ORDER: readonly PillarIdentity[] = PILLAR_KEYS.map((k) => PILLARS[k]);
 
 /**
+ * Single-path glyphs for each pillar, plus the Copilot sparkle that stands for
+ * the roll-up report. Verbatim from the design project's own `scraps/
+ * pillar-icons.json`, which is where the prototype keeps them — so the header
+ * strip, the switcher rows and the report eyebrows all draw the same mark.
+ *
+ * One `<path d>` each, sized for a 24×24 viewBox with round caps and joins.
+ */
+export const PILLAR_ICON_PATHS: Readonly<Record<PillarKey | "copilot", string>> = {
+  governance:
+    "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1zM9 12l2 2 4-4",
+  security:
+    "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z",
+  compliance:
+    "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2",
+  licensing:
+    "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6",
+  adoption: "M18 21a8 8 0 0 0-16 0M10 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3",
+  health:
+    "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+  copilot:
+    "M12 3l1.7 4.4L18 9l-4.3 1.6L12 15l-1.7-4.4L6 9l4.3-1.6zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z",
+};
+
+/**
+ * The per-report accent: what tints the reading pane's ambient glow, the 3px
+ * band across the top of the reading card, and the eyebrow's icon.
+ *
+ * `null` is the roll-up Copilot Readiness report — it belongs to no single
+ * pillar, so it takes the journey's own blue→teal rather than borrowing one
+ * pillar's identity and implying the report is about that pillar.
+ */
+export interface ReportAccent {
+  readonly colour: string;
+  readonly band: string;
+  readonly glow: string;
+  readonly icon: string;
+}
+
+export function reportAccent(pillar: PillarKey | null): ReportAccent {
+  if (pillar === null) {
+    return {
+      colour: BRAND.teal,
+      band: DELTA_GRADIENT,
+      glow: `radial-gradient(closest-side,rgba(0,180,216,.16),rgba(2,6,23,0))`,
+      icon: PILLAR_ICON_PATHS.copilot,
+    };
+  }
+  const identity = PILLARS[pillar];
+  return {
+    colour: identity.primary,
+    band: `linear-gradient(90deg,${identity.primary},${identity.accent})`,
+    glow: `radial-gradient(closest-side,${hexAlpha(identity.primary, 0.16)},rgba(2,6,23,0))`,
+    icon: PILLAR_ICON_PATHS[pillar],
+  };
+}
+
+/** `#RRGGBB` + alpha → `rgba(...)`. The identity colours are all six-digit hex. */
+export function hexAlpha(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/**
  * The Copilot identity mark at the centre. A constant blue → violet → cyan →
  * white spectrum: it never changes with the score, because identity is constant
  * and severity is what tells the truth.
@@ -139,6 +202,29 @@ export function severityForScore(score: number): Severity {
 export function severityColor(score: number, surface: "dark" | "light" = "dark"): string {
   const band = severityForScore(score);
   return surface === "dark" ? SEVERITY_ON_DARK[band] : SEVERITY_ON_LIGHT[band];
+}
+
+/* ------------------------------------------------------------------ *
+ * The Copilot Gate
+ * ------------------------------------------------------------------ */
+
+/**
+ * The score a tenant has to reach before Copilot is safe to turn on — the
+ * number the Document Viewer's gate chip and rail both count towards.
+ *
+ * This is `severityForScore`'s own `healthy` threshold and NOT the 82 the design
+ * writes in its prose. That matters: the Reveal, the SOW and this screen all
+ * describe the same tenant, and a gate the chrome computed at 82 while the
+ * Reveal called the same score "cleared for rollout" at 60 would be two
+ * different verdicts on one number. The design's 82 survives verbatim inside the
+ * preview report copy, where it is a sentence in a worked example rather than a
+ * threshold the platform applies to a real customer.
+ */
+export const COPILOT_GATE_TARGET = 60;
+
+/** "Not safe yet" / "Safe to deploy" — the revised design's wording for the gate. */
+export function gateLabel(score: number): string {
+  return score >= COPILOT_GATE_TARGET ? "Safe to deploy" : "Not safe yet";
 }
 
 /* ------------------------------------------------------------------ *

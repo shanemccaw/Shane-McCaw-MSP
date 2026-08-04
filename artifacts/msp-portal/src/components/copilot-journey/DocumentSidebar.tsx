@@ -22,13 +22,19 @@ import { useState } from "react";
 
 import {
   BRAND,
+  COPILOT_GATE_TARGET,
   INK,
   INK_ON_NAVY,
   MOTION,
   SEVERITY_ON_DARK,
   TABULAR,
+  gateLabel,
+  hexAlpha,
+  reportAccent,
+  severityColor,
 } from "./journeyTokens.ts";
-import type { JourneyDocumentView } from "./journeyModel.ts";
+import type { JourneyDocumentView, JourneyTenant } from "./journeyModel.ts";
+import { documentPillar } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
 import { BrandMark } from "./JourneyPrimitives";
 
@@ -107,12 +113,65 @@ function rowStatus(status: JourneyDocumentView["status"]): RowStatus {
  * One switcher row
  * ------------------------------------------------------------------ */
 
+/**
+ * How far through this report the customer has read, as the design's own
+ * two-part strip: a filled bar and a label.
+ *
+ * Only drawn once they have actually moved — a bar sitting at 0% on every
+ * unopened report is noise, and a "0% read" label states something the row's
+ * own status already says better.
+ */
+function ReadProgress({ progress, accent }: { progress: number; accent: string }) {
+  if (progress <= 0.01) return null;
+  const done = progress >= 0.98;
+  const colour = done ? BRAND.teal : accent;
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 3 }}>
+      <span
+        aria-hidden="true"
+        style={{
+          flex: "1 1 auto",
+          height: 2,
+          borderRadius: 2,
+          background: "rgba(255,255,255,.12)",
+          overflow: "hidden",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            height: "100%",
+            borderRadius: 2,
+            background: colour,
+            transition: "width 300ms ease",
+            width: `${Math.round(progress * 100)}%`,
+          }}
+        />
+      </span>
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: ".1em",
+          textTransform: "uppercase",
+          color: colour,
+          whiteSpace: "nowrap",
+          flex: "none",
+        }}
+      >
+        {done ? "Read" : `${Math.round(progress * 100)}%`}
+      </span>
+    </span>
+  );
+}
+
 function SwitcherRow({
   doc,
   index,
   active,
   surface,
   reduceMotion,
+  progress,
   onSelect,
 }: {
   doc: JourneyDocumentView;
@@ -120,11 +179,14 @@ function SwitcherRow({
   active: boolean;
   surface: "navy" | "light";
   reduceMotion: boolean;
+  /** 0–1 of this report scrolled, or 0 for one never opened. */
+  progress: number;
   onSelect: (index: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const status = rowStatus(doc.status);
   const navy = surface === "navy";
+  const accent = reportAccent(documentPillar(doc));
 
   // The sheet's own active fill reads one shade lighter than the rail's
   // (`.07` vs `.11`) — the design's own two constants, not a derived value.
@@ -149,7 +211,7 @@ function SwitcherRow({
         gap: 10,
         width: "100%",
         textAlign: "left",
-        padding: navy ? "10px 11px" : "12px 10px",
+        padding: navy ? "10px 11px 10px 9px" : "12px 10px",
         border: 0,
         borderRadius: 7,
         cursor: "pointer",
@@ -158,22 +220,35 @@ function SwitcherRow({
         fontFamily: "inherit",
       }}
     >
+      {/* The report's own pillar colour, full-height — it is what makes the rail
+          readable as six subjects rather than eight similar titles, and it is
+          the same accent the reading card's top band carries. */}
       <span
         aria-hidden="true"
         style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          marginTop: navy ? 6 : 7,
+          width: 2,
+          alignSelf: "stretch",
+          borderRadius: 2,
           flex: "none",
-          background: status.dot,
-          animation:
-            status.pulse && !reduceMotion
-              ? `cj-gen-pulse ${MOTION.genPulseMs}ms ease-in-out infinite`
-              : "none",
+          background: accent.colour,
+          opacity: active ? 1 : 0.42,
         }}
       />
-      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span aria-hidden="true" style={{ marginTop: 2, opacity: active ? 1 : 0.62, flex: "none" }}>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={active ? accent.colour : INK_ON_NAVY.strong}
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d={accent.icon} />
+        </svg>
+      </span>
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 auto" }}>
         <span
           style={{
             fontSize: navy ? 12.5 : 13.5,
@@ -189,15 +264,113 @@ function SwitcherRow({
         </span>
         <span
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
             fontSize: navy ? 10 : 10.5,
             fontWeight: 500,
             color: navy ? INK_ON_NAVY.muted : INK.bodyDark,
           }}
         >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              flex: "none",
+              background: status.dot,
+              animation:
+                status.pulse && !reduceMotion
+                  ? `cj-gen-pulse ${MOTION.genPulseMs}ms ease-in-out infinite`
+                  : "none",
+            }}
+          />
           {status.meta}
         </span>
+        <ReadProgress progress={progress} accent={accent.colour} />
       </span>
     </button>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * The Copilot Gate block
+ * ------------------------------------------------------------------ */
+
+/**
+ * The rail's headline: the tenant's score against the gate it has to clear.
+ *
+ * Drawn only when there IS a score. A tenant whose scan produced no covered
+ * indicator gets the identity line alone rather than a red 0 out of 100, which
+ * would be a verdict nothing measured.
+ */
+function GateBlock({ tenant, score }: { tenant: JourneyTenant; score: number | null }) {
+  const identity =
+    tenant.scannedOn === null ? tenant.name : `${tenant.name} · assessed ${tenant.scannedOn}`;
+
+  if (score === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <span style={EYEBROW}>Assessed tenant</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: BRAND.white }}>{identity}</span>
+      </div>
+    );
+  }
+
+  const colour = severityColor(score);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={EYEBROW}>Copilot Gate</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+        <span
+          style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1, color: colour, ...TABULAR }}
+        >
+          {score}
+        </span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: INK_ON_NAVY.faint }}>/ 100</span>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              color: colour,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {`${COPILOT_GATE_TARGET} is safe to deploy`}
+          </span>
+        </span>
+      </div>
+      <span
+        style={{
+          display: "inline-flex",
+          alignSelf: "flex-start",
+          alignItems: "center",
+          gap: 6,
+          padding: "3px 9px",
+          borderRadius: 999,
+          border: `1px solid ${hexAlpha(colour, 0.35)}`,
+          background: hexAlpha(colour, 0.1),
+        }}
+      >
+        <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: "50%", background: colour, flex: "none" }} />
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: ".14em",
+            textTransform: "uppercase",
+            color: colour,
+          }}
+        >
+          {gateLabel(score)}
+        </span>
+      </span>
+      <span style={{ fontSize: 11.5, fontWeight: 500, color: INK_ON_NAVY.muted, paddingTop: 2 }}>{identity}</span>
+    </div>
   );
 }
 
@@ -287,11 +460,14 @@ export interface DocumentSwitcherProps {
   readonly activeIndex: number;
   readonly onSelect: (index: number) => void;
   readonly reduceMotion: boolean;
+  /** 0–1 of each report scrolled, keyed by title. Absent means never opened. */
+  readonly readProgress: Readonly<Record<string, number>>;
 }
 
 export function DocumentSidebar({
   width = NAV_WIDTH_DEFAULT,
-  tenantLine,
+  tenant,
+  score,
   documents,
   ready,
   total,
@@ -299,11 +475,13 @@ export function DocumentSidebar({
   activeIndex,
   onSelect,
   reduceMotion,
+  readProgress,
 }: DocumentSwitcherProps & {
   /** The design's `navWidth` prop — 268 by default, clamped to 230–340. */
   readonly width?: number;
-  /** "Halden Materials · 1,240 seats", already formatted by `tenantStrip()`. */
-  readonly tenantLine: string;
+  readonly tenant: JourneyTenant;
+  /** The readiness score behind the gate block, or null if nothing scored it. */
+  readonly score: number | null;
 }) {
   return (
     <nav
@@ -327,10 +505,7 @@ export function DocumentSidebar({
         }}
       >
         <BrandMark wordmark="Shane McCaw Consulting" />
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={EYEBROW}>Assessed tenant</span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: BRAND.white }}>{tenantLine}</span>
-        </div>
+        <GateBlock tenant={tenant} score={score} />
       </div>
 
       {showReadyCounter(loaded, total) ? (
@@ -365,6 +540,7 @@ export function DocumentSidebar({
             active={i === activeIndex}
             surface="navy"
             reduceMotion={reduceMotion}
+            progress={readProgress[doc.title] ?? 0}
             onSelect={onSelect}
           />
         ))}
@@ -393,6 +569,7 @@ export function DocumentSheet({
   onSelect,
   onDismiss,
   reduceMotion,
+  readProgress,
 }: DocumentSwitcherProps & { readonly onDismiss: () => void }) {
   return (
     <div
@@ -444,6 +621,7 @@ export function DocumentSheet({
               active={i === activeIndex}
               surface="light"
               reduceMotion={reduceMotion}
+              progress={readProgress[doc.title] ?? 0}
               onSelect={onSelect}
             />
           ))}

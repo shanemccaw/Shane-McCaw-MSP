@@ -386,6 +386,28 @@ export function formatJourneyDate(iso: string | null | undefined): string | null
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
+/**
+ * Which pillar a report belongs to, read off its own name.
+ *
+ * PRESENTATION ONLY. It picks the accent colour for the reading card's top band,
+ * the ambient glow behind the pane and the highlighted badge in the header's
+ * pillar strip — nothing it returns is ever stated as fact to the customer, and
+ * `null` (the roll-up report, the remediation guide, or simply a title this
+ * cannot read) falls back to the journey's own blue→teal rather than guessing.
+ *
+ * A name match rather than a catalogue lookup because there is no catalogue
+ * column that carries a pillar: `document_types` keys the report, not the pillar
+ * behind it. If one is ever added, this should read it instead.
+ *
+ * First match in `PILLAR_KEYS` order wins, so a title naming two pillars takes
+ * the earlier one. That is arbitrary, and deliberately so — it is a colour.
+ */
+export function documentPillar(doc: { readonly title: string; readonly docType: string } | null): PillarKey | null {
+  if (!doc) return null;
+  const haystack = `${doc.title} ${doc.docType}`.toLowerCase();
+  return PILLAR_KEYS.find((key) => haystack.includes(key)) ?? null;
+}
+
 /** "Halden Materials · 1,240 seats", degrading cleanly when seats are unknown. */
 export function tenantStrip(tenant: JourneyTenant): string {
   if (tenant.seatCount === null) return tenant.name;

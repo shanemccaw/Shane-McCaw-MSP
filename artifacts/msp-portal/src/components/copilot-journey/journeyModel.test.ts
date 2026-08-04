@@ -13,6 +13,7 @@ import {
   buildGeneration,
   buildJourneyView,
   buildPillarViews,
+  documentPillar,
   formatJourneyDate,
   gapSentence,
   pillarTrend,
@@ -449,5 +450,36 @@ describe("severity is universal, never pillar-driven", () => {
     assert.equal(severityColor(29, "light"), "#dc2626");
     assert.equal(severityColor(90, "dark"), "#34d399");
     assert.equal(severityColor(90, "light"), "#15803d");
+  });
+});
+
+describe("a report's accent pillar", () => {
+  const doc = (title: string, docType = "") => ({ title, docType });
+
+  it("reads the pillar out of each of the design's seven report names", () => {
+    assert.equal(documentPillar(doc("Microsoft 365 Governance Posture Report")), "governance");
+    assert.equal(documentPillar(doc("Microsoft 365 Security Posture & Blast Radius Report")), "security");
+    assert.equal(
+      documentPillar(doc("Microsoft 365 Compliance & Regulatory Alignment Report")),
+      "compliance",
+    );
+    assert.equal(documentPillar(doc("Copilot Licensing Alignment Report")), "licensing");
+    assert.equal(documentPillar(doc("Copilot Adoption & Workflow Readiness Report")), "adoption");
+    assert.equal(
+      documentPillar(doc("Microsoft 365 Operational Health & Service Integrity Report")),
+      "health",
+    );
+  });
+
+  it("returns null for the reports that belong to no single pillar", () => {
+    // The roll-up and the remediation guide cover all six, so neither may take
+    // one pillar's colour — they fall back to the journey's own accent.
+    assert.equal(documentPillar(doc("Copilot Readiness, Safety & Enablement Report")), null);
+    assert.equal(documentPillar(doc("Full Remediation Guide — Copilot Gate Clearance Plan")), null);
+    assert.equal(documentPillar(null), null);
+  });
+
+  it("falls back to the catalogue key when the title says nothing", () => {
+    assert.equal(documentPillar(doc("Quarterly Review", "m365_security_posture")), "security");
   });
 });

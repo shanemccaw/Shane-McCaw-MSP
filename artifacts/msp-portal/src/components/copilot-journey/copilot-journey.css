@@ -56,6 +56,31 @@
    ring is invisible, so the brand blue is used explicitly. */
 .cj-input:focus { border-color: #0078D4 !important; }
 
+/* The block ShaneBot was last asked about, in either affordance — the inline
+   sparkle or the floating pill. Held as a class rather than React state because
+   it belongs to whichever block was asked about last across the whole reading
+   pane, and the block loop otherwise has no identity to key it on. */
+.cj-ask-active {
+  background: rgba(0, 180, 216, .09);
+  box-shadow: 0 0 0 5px rgba(0, 180, 216, .09);
+  border-radius: 3px;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+
+/* The inline "Ask Shane about this" sparkle. Half-lit until reached for, so a
+   report reads as prose rather than as a page of buttons. */
+.cj-ask-icon { opacity: .5; transition: opacity 160ms, background 160ms; }
+.cj-ask-icon:hover,
+.cj-ask-icon:focus-visible { opacity: 1; background: rgba(0, 180, 216, .12); }
+
+/* The reading pane's own scrollbar — thinner than the journey default, because
+   it sits beside a document rather than beside chrome. */
+.cj-doc-scroll { scrollbar-width: thin; scrollbar-color: rgba(51, 65, 85, .6) transparent; }
+.cj-doc-scroll::-webkit-scrollbar { width: 9px; }
+.cj-doc-scroll::-webkit-scrollbar-track { background: transparent; }
+.cj-doc-scroll::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, .6); border-radius: 999px; }
+.cj-doc-scroll::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, .85); }
+
 /* --------------------------------------------------------------------------
  * Keyframes
  * ------------------------------------------------------------------------ */

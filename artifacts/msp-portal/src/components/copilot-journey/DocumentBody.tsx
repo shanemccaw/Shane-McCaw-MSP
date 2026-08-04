@@ -30,35 +30,13 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { reportClientEvent } from "@/lib/report-client-event";
 
-import {
-  BRAND,
-  INK,
-  PILLARS,
-  RADIUS,
-  SEVERITY_LABEL,
-  SEVERITY_ON_DARK,
-  TABULAR,
-  severityColor,
-  severityForScore,
-} from "./journeyTokens.ts";
+import { BRAND, INK, RADIUS, reportAccent, type PillarKey } from "./journeyTokens.ts";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant } from "./journeyModel.ts";
-import { verdictLabel } from "./journeyModel.ts";
+import { documentPillar } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
-import { JourneyUnavailable, PillarSwatch } from "./JourneyPrimitives";
-import {
-  PREVIEW_DOCUMENT_BODIES,
-  PREVIEW_MATERIAL_FINDINGS,
-  type PreviewExecutiveReport,
-  type PreviewPillarReport,
-  type ReportSection,
-} from "./previewDocumentBodies.ts";
-import {
-  PREVIEW_PILLARS,
-  PREVIEW_READINESS_SCORE,
-  PREVIEW_REMEDIATED_SCORE,
-  PREVIEW_SIGNAL_COUNT,
-  PREVIEW_TENANT,
-} from "./journeyPreviewFixture.ts";
+import { JourneyUnavailable } from "./JourneyPrimitives";
+import { PREVIEW_DOCUMENT_BODIES } from "./previewDocumentBodies.ts";
+import { PreviewReportBody } from "./PreviewReportBody";
 
 const DOCUMENT_URL = "/api/portal/assessment/documents";
 const JOURNEY_CHANNEL = "engine.dashboard";
@@ -67,31 +45,6 @@ const JOURNEY_CHANNEL = "engine.dashboard";
  * Shared dark-surface type
  * ------------------------------------------------------------------ */
 
-const H2 = {
-  margin: 0,
-  fontSize: 19,
-  fontWeight: 700,
-  letterSpacing: "-0.015em",
-  color: INK.headingDark,
-} as const;
-
-const BODY = {
-  margin: 0,
-  fontSize: 15,
-  fontWeight: 500,
-  lineHeight: 1.65,
-  color: INK.bodyDark,
-  maxWidth: "66ch",
-  textWrap: "pretty",
-} as const;
-
-const EYEBROW = {
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: ".22em",
-  textTransform: "uppercase",
-} as const;
-
 /** Outline buttons on this dark card — the input-field dark this journey already uses (SOW Proposal's own fields). */
 const DARK_OUTLINE_BUTTON = {
   background: "rgba(2,6,23,.7)",
@@ -99,20 +52,30 @@ const DARK_OUTLINE_BUTTON = {
   color: INK.headingDark,
 } as const;
 
-/** The reading card. Every state renders inside it, so the page never reflows. */
-function Card({ children }: { children: React.ReactNode }) {
+/**
+ * The reading card. Every state renders inside it, so the page never reflows.
+ *
+ * The 3px band across the top is the report's accent — the pillar's identity
+ * colour, or the journey's own blue→teal for the roll-up report that belongs to
+ * no single pillar. It is the only place the card carries colour, and it is what
+ * ties the open report to the pillar strip in the header and the accent bar on
+ * its switcher row.
+ */
+function Card({ pillar, children }: { pillar: PillarKey | null; children: React.ReactNode }) {
   return (
     <div
       style={{
-        maxWidth: 820,
+        maxWidth: 748,
         margin: "0 auto",
-        background: "rgba(15,23,42,.55)",
-        border: `1px solid ${INK.hairlineDark}`,
+        background: "rgba(11,18,32,.94)",
+        border: "1px solid rgba(30,41,59,.95)",
         borderRadius: RADIUS.card,
-        padding: "clamp(28px,4vw,58px)",
+        overflow: "hidden",
+        boxShadow: "0 20px 60px rgba(2,6,23,.55)",
       }}
     >
-      {children}
+      <div aria-hidden="true" style={{ height: 3, background: reportAccent(pillar).band }} />
+      <div style={{ padding: "clamp(18px,4vw,58px)" }}>{children}</div>
     </div>
   );
 }
@@ -207,413 +170,6 @@ function CentredState({
           {footnote}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Preview bodies — reachable only behind `?preview=design`
- * ------------------------------------------------------------------ */
-
-/**
- * The colour language, in one place: the pillar's identity colour says *what a
- * finding is* (swatch, eyebrow); the severity colour says *how bad it is*
- * (score numbers, the verdict tag, a finding's tag AND its left border). A
- * Compliance score of 29 is red and a Compliance score of 90 is green —
- * Compliance's own `#F3F4F6` plays no part in that. The finding border used to
- * carry the pillar's identity colour instead; the design's own rewrite moved it
- * to severity (matching the tag directly above it), so a critical row reads red
- * top to bottom rather than pillar-tinted.
- */
-function SeverityTag({ severity, style }: { severity: keyof typeof SEVERITY_ON_DARK; style?: React.CSSProperties }) {
-  return (
-    <span
-      style={{
-        fontSize: 9.5,
-        fontWeight: 700,
-        letterSpacing: ".16em",
-        textTransform: "uppercase",
-        color: SEVERITY_ON_DARK[severity],
-        ...style,
-      }}
-    >
-      {SEVERITY_LABEL[severity]}
-    </span>
-  );
-}
-
-/** One `heading` + body, in whichever shape the section's own `kind` calls for. */
-function ReportSectionBlock({ section }: { section: ReportSection }) {
-  const heading = (
-    <h2 style={{ ...H2, fontSize: 18, letterSpacing: "normal" }}>{section.heading}</h2>
-  );
-
-  if (section.kind === "prose") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        {heading}
-        {section.paragraphs.map((p) => (
-          <p key={p.slice(0, 32)} data-ask style={BODY}>
-            {p}
-          </p>
-        ))}
-      </div>
-    );
-  }
-
-  if (section.kind === "findings") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {heading}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {section.rows.map((f) => (
-            <div
-              key={f.lead}
-              data-ask
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 3,
-                borderLeft: `2px solid ${SEVERITY_ON_DARK[f.severity]}`,
-                padding: "2px 0 2px 14px",
-              }}
-            >
-              <SeverityTag severity={f.severity} />
-              <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6 }}>
-                <span style={{ fontWeight: 700, color: INK.headingDark }}>{f.lead}</span> {f.rest}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (section.kind === "sequence") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {heading}
-        {section.intro ? (
-          <p data-ask style={BODY}>
-            {section.intro}
-          </p>
-        ) : null}
-        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          {section.steps.map((step) => (
-            <div key={step.when} style={{ display: "flex", gap: 14, alignItems: "baseline" }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: ".1em",
-                  textTransform: "uppercase",
-                  color: BRAND.blue,
-                  flex: "none",
-                  width: 56,
-                }}
-              >
-                {step.when}
-              </span>
-              <p data-ask style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6 }}>
-                {step.text}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // "bullets"
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-      {heading}
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        {section.items.map((item) => (
-          <div key={item.slice(0, 32)} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: BRAND.blue,
-                flex: "none",
-                marginTop: 7,
-              }}
-            />
-            <p data-ask style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6 }}>
-              {item}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReportSections({ sections }: { sections: readonly ReportSection[] }) {
-  return (
-    <>
-      {sections.map((s) => (
-        <ReportSectionBlock key={s.heading} section={s} />
-      ))}
-    </>
-  );
-}
-
-const EXEC_GRID: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(140px,1.1fr) 62px minmax(200px,2.2fr) 78px",
-  gap: 16,
-};
-
-/** The big before/after numerals. Severity-coloured, with the verdict beneath. */
-function ScorePair({ label, score }: { label: string; score: number }) {
-  const colour = severityColor(score);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ ...EYEBROW, letterSpacing: ".2em", color: INK.micro }}>{label}</span>
-      <span
-        style={{
-          fontSize: 58,
-          fontWeight: 800,
-          letterSpacing: "-0.04em",
-          lineHeight: 1,
-          color: colour,
-          ...TABULAR,
-        }}
-      >
-        {score}
-      </span>
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: ".14em",
-          textTransform: "uppercase",
-          color: colour,
-        }}
-      >
-        {verdictLabel(score)}
-      </span>
-    </div>
-  );
-}
-
-function ExecutiveBody({ report }: { report: PreviewExecutiveReport }) {
-  const gain = PREVIEW_REMEDIATED_SCORE - PREVIEW_READINESS_SCORE;
-  const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          borderBottom: `1px solid ${INK.hairlineDark}`,
-          paddingBottom: 26,
-        }}
-      >
-        <span style={{ ...EYEBROW, color: INK.link }}>{`Copilot Readiness, Safety & Enablement · ${scannedOn}`}</span>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(26px,3vw,34px)",
-            fontWeight: 800,
-            letterSpacing: "-0.025em",
-            lineHeight: 1.18,
-            color: INK.headingDark,
-            textWrap: "pretty",
-          }}
-        >
-          {report.headline}
-        </h1>
-        <p style={{ ...BODY, fontSize: 16, lineHeight: 1.6, maxWidth: "62ch" }}>{report.standfirst}</p>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <h2 style={H2}>Copilot Readiness Summary</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "28px 44px", alignItems: "flex-end" }}>
-          <ScorePair label="Readiness today" score={PREVIEW_READINESS_SCORE} />
-          <ScorePair label="After remediation" score={PREVIEW_REMEDIATED_SCORE} />
-          <p
-            style={{
-              margin: 0,
-              flex: "1 1 260px",
-              fontSize: 13.5,
-              fontWeight: 500,
-              lineHeight: 1.6,
-              color: INK.micro,
-              maxWidth: "38ch",
-            }}
-          >
-            {report.gapNote(gain, scannedOn)}
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
-          <div style={{ ...EXEC_GRID, padding: "12px 0", borderBottom: `1px solid ${INK.hairlineDark}` }}>
-            {["Pillar", "Score", "Material finding", "Fixed"].map((h, i) => (
-              <span
-                key={h}
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 600,
-                  letterSpacing: ".16em",
-                  textTransform: "uppercase",
-                  color: INK.micro,
-                  textAlign: i === 3 ? "right" : "left",
-                }}
-              >
-                {h}
-              </span>
-            ))}
-          </div>
-          {PREVIEW_PILLARS.map((p) => (
-            <div
-              key={p.key}
-              data-ask
-              style={{
-                ...EXEC_GRID,
-                padding: "14px 0",
-                borderBottom: `1px solid ${INK.hairlineDark}`,
-                alignItems: "baseline",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: INK.headingDark,
-                }}
-              >
-                <PillarSwatch pillar={p.key} />
-                {PILLARS[p.key].label}
-              </span>
-              <span style={{ fontSize: 19, fontWeight: 800, color: severityColor(p.score), ...TABULAR }}>
-                {p.score}
-              </span>
-              <span style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>
-                {PREVIEW_MATERIAL_FINDINGS[p.key]}
-              </span>
-              <span
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: 700,
-                  color: severityColor(p.projected),
-                  textAlign: "right",
-                  ...TABULAR,
-                }}
-              >
-                {p.projected}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <ReportSections sections={report.sections} />
-
-      <p
-        style={{
-          margin: 0,
-          paddingTop: 22,
-          borderTop: `1px solid ${INK.hairlineDark}`,
-          fontSize: 12.5,
-          fontWeight: 500,
-          lineHeight: 1.6,
-          color: INK.micro,
-          maxWidth: "70ch",
-        }}
-      >
-        {report.provenance(scannedOn, PREVIEW_SIGNAL_COUNT)}
-      </p>
-    </div>
-  );
-}
-
-function PillarBody({ report }: { report: PreviewPillarReport }) {
-  const identity = PILLARS[report.pillar];
-  const fixture = PREVIEW_PILLARS.find((p) => p.key === report.pillar);
-  const score = fixture?.score ?? null;
-  const projected = fixture?.projected ?? null;
-  const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 13,
-          borderBottom: `1px solid ${INK.hairlineDark}`,
-          paddingBottom: 24,
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          {/* Identity colour names the pillar; the tag beside it is severity. */}
-          <span style={{ ...EYEBROW, color: identity.primary, display: "flex", alignItems: "center", gap: 8 }}>
-            <PillarSwatch pillar={report.pillar} />
-            {score === null ? report.kicker : `${report.kicker} · pillar score ${score}`}
-          </span>
-          {score === null ? null : <SeverityTag severity={severityForScore(score)} />}
-        </span>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(24px,2.8vw,31px)",
-            fontWeight: 800,
-            letterSpacing: "-0.025em",
-            lineHeight: 1.2,
-            color: INK.headingDark,
-          }}
-        >
-          {report.headline}
-        </h1>
-      </div>
-
-      <ReportSections sections={report.sections} />
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        <h2 style={{ ...H2, fontSize: 18, letterSpacing: "normal" }}>Executive Summary</h2>
-        <p data-ask style={BODY}>
-          {report.closingNote}
-        </p>
-        {score === null || projected === null ? null : (
-          <p
-            style={{
-              margin: 0,
-              fontSize: 14,
-              fontWeight: 600,
-              lineHeight: 1.6,
-              color: severityColor(projected),
-              ...TABULAR,
-            }}
-          >
-            {`Projected pillar score after remediation: ${projected} (+${projected - score}).`}
-          </p>
-        )}
-      </div>
-
-      <p
-        style={{
-          margin: 0,
-          paddingTop: 22,
-          borderTop: `1px solid ${INK.hairlineDark}`,
-          fontSize: 12.5,
-          fontWeight: 500,
-          lineHeight: 1.6,
-          color: INK.micro,
-          maxWidth: "70ch",
-        }}
-      >
-        {report.provenance(scannedOn, PREVIEW_SIGNAL_COUNT)}
-      </p>
     </div>
   );
 }
@@ -823,6 +379,7 @@ export function DocumentBody({
   reduceMotion,
   error,
   onRetry,
+  onAsk,
 }: {
   readonly doc: JourneyDocumentView | null;
   readonly generation: JourneyGeneration;
@@ -834,8 +391,13 @@ export function DocumentBody({
   /** Set when the status fetch failed outright. */
   readonly error?: string | null;
   readonly onRetry?: () => void;
+  /** Hands a quote to ShaneBot — wired to the preview reports' inline ask icons. */
+  readonly onAsk?: (context: string) => void;
 }) {
   const gen = generationView(generation.ready, generation.total);
+  // Colour only: it tints the card's band and nothing else, so a document whose
+  // pillar cannot be read from its name simply gets the journey's own accent.
+  const pillar = documentPillar(doc);
 
   const retryAction = onRetry ? (
     <div>
@@ -852,7 +414,7 @@ export function DocumentBody({
   const unreadable = Boolean(error) && generation.documents.every((d) => d.id === null);
   if (unreadable) {
     return (
-      <Card>
+      <Card pillar={pillar}>
         <JourneyUnavailable
           eyebrow="Not available right now"
           title="We could not read the state of your reports"
@@ -865,7 +427,7 @@ export function DocumentBody({
 
   if (!loaded) {
     return (
-      <Card>
+      <Card pillar={pillar}>
         <CentredState
           reduceMotion={reduceMotion}
           title="Opening your reports"
@@ -883,7 +445,7 @@ export function DocumentBody({
   // screen says only what it knows.
   if (!doc || !gen.known) {
     return (
-      <Card>
+      <Card pillar={pillar}>
         <JourneyUnavailable
           eyebrow="Not available yet"
           title="No reports are listed for your assessment yet"
@@ -897,13 +459,17 @@ export function DocumentBody({
   if (isPreview) {
     const preview = PREVIEW_DOCUMENT_BODIES[doc.title];
     if (preview) {
-      return <Card>{preview.kind === "executive" ? <ExecutiveBody report={preview} /> : <PillarBody report={preview} />}</Card>;
+      return (
+        <Card pillar={pillar}>
+          <PreviewReportBody report={preview} onAsk={onAsk} />
+        </Card>
+      );
     }
   }
 
   if (!isPreview && doc.status === "ready" && doc.id !== null) {
     return (
-      <Card>
+      <Card pillar={pillar}>
         {/* Keyed on the document id: switching reports remounts the reader with
             empty state rather than reconciling one report's body into another's
             card. Belt and braces with `LiveBody`'s own stale-response guard —
@@ -922,7 +488,7 @@ export function DocumentBody({
       : `a ${tenant.seatCount.toLocaleString("en-US")}-seat tenant`;
 
   return (
-    <Card>
+    <Card pillar={pillar}>
       <CentredState
         reduceMotion={reduceMotion}
         title={
