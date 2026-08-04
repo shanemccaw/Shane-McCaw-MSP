@@ -227,8 +227,8 @@ import {
 
 describe("graph.ts — multi-tenant helpers", () => {
   describe("REQUIRED_MT_SCOPES", () => {
-    it("contains exactly 26 scopes", () => {
-      expect(REQUIRED_MT_SCOPES).toHaveLength(26);
+    it("contains exactly 28 scopes", () => {
+      expect(REQUIRED_MT_SCOPES).toHaveLength(28);
     });
 
     it("includes all required scopes", () => {
@@ -255,6 +255,7 @@ describe("graph.ts — multi-tenant helpers", () => {
         "DelegatedPermissionGrant.Read.All",
         "IdentityRiskyServicePrincipal.Read.All",
         "InformationProtectionPolicy.Read.All",
+        "SensitivityLabels.Read.All",
         "RealTimeActivityFeed.Read.All",
         "RecordsManagement.Read.All",
         "SharePointTenantSettings.Read.All",

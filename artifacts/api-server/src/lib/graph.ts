@@ -76,6 +76,7 @@ export const REQUIRED_MT_SCOPES = [
   "DelegatedPermissionGrant.Read.All",
   "IdentityRiskyServicePrincipal.Read.All",
   "InformationProtectionPolicy.Read.All",
+  "SensitivityLabels.Read.All",
   "RealTimeActivityFeed.Read.All",
   "RecordsManagement.Read.All",
   "SharePointTenantSettings.Read.All",
