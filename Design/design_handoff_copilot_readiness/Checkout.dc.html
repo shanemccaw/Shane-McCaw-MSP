@@ -29,7 +29,7 @@
 
 <div style="min-height:100vh;background:#020617;padding-bottom:76px">
 
-  <div style="border-bottom:1px solid rgba(30,41,59,.9);padding:13px clamp(12px,3.4vw,24px);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+  <div style="border-bottom:1px solid rgba(30,41,59,.9);padding:15px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:12px;min-width:0">
       <span style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand-blue),var(--brand-teal));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--brand-white);flex:none">SM</span>
       <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
@@ -79,32 +79,14 @@
   </sc-if>
 
   <sc-if value="{{ open }}" hint-placeholder-val="{{ true }}">
-    <div style="max-width:1140px;margin:0 auto;padding:38px clamp(12px,3.4vw,24px) 0;display:flex;flex-wrap:wrap;gap:30px 36px;align-items:flex-start">
+    <div style="max-width:1140px;margin:0 auto;padding:38px 24px 0;display:flex;flex-wrap:wrap;gap:30px 36px;align-items:flex-start">
 
       <div style="flex:1 1 480px;min-width:0;display:flex;flex-direction:column;gap:28px">
-
-        <div style="display:{{ sow.show }};flex-direction:column;gap:14px;padding:18px 20px;border:1px solid rgba(52,211,153,.34);border-left:3px solid #34d399;border-radius:12px;background:linear-gradient(150deg,rgba(52,211,153,.09),rgba(15,23,42,.55))">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-            <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-              <span style="display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#34d399"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.6" stroke-linecap="round"><path d="M5 13l4 4L19 7"></path></svg>Statement of work executed</span>
-              <span style="font-size:17px;font-weight:700;letter-spacing:-0.015em;color:var(--brand-offwhite)">Copilot Gate clearance · Halden Materials</span>
-              <span style="font-size:12px;font-weight:500;color:#94a3b8">SMC-HM-2026-0803 · signed by J. Okonkwo, IT Director · 3 August 2026 · countersigned by Shane McCaw</span>
-            </div>
-            <a href="Document Viewer.dc.html#sow" style="font-size:12px;font-weight:600;white-space:nowrap;flex:none">Review the signed document</a>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;padding-top:13px;border-top:1px solid rgba(52,211,153,.2)">
-            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">Agreed scope</span><span style="font-size:13.5px;font-weight:700;color:var(--brand-offwhite)">{{ sow.scope }}</span></span>
-            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">Professional services</span><span style="font-size:13.5px;font-weight:700;color:var(--brand-offwhite);font-variant-numeric:tabular-nums">{{ sow.total }}</span></span>
-            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">Recurring</span><span style="font-size:13.5px;font-weight:700;color:var(--brand-offwhite);font-variant-numeric:tabular-nums">{{ sow.monthly }}</span></span>
-            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">Readiness on completion</span><span style="font-size:13.5px;font-weight:700;color:#34d399;font-variant-numeric:tabular-nums">41 → {{ sow.projected }}</span></span>
-          </div>
-          <span style="display:{{ sow.creditShow }};align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#34d399">−$5,000 assessment fee credited in full</span>
-        </div>
 
         <div style="display:flex;flex-direction:column;gap:12px">
           <span style="font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:#60a5fa">Confirm and pay</span>
           <h1 style="margin:0;font-size:clamp(25px,2.9vw,34px);font-weight:800;letter-spacing:-0.03em;line-height:1.16;color:var(--brand-offwhite);text-wrap:pretty">Everything below is exactly what you signed.</h1>
-          <p style="margin:0;max-width:60ch;font-size:15px;font-weight:500;line-height:1.6;color:var(--slate-400);text-wrap:pretty">Scope is locked by the signed statement of work above. If something needs changing, go back to the proposal — nothing on this screen adjusts what you are buying.</p>
+          <p style="margin:0;max-width:60ch;font-size:15px;font-weight:500;line-height:1.6;color:var(--slate-400);text-wrap:pretty">Scope is locked here. If something needs changing, go back to the proposal — nothing on this screen adjusts what you are buying.</p>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:12px">
@@ -252,7 +234,7 @@
           </div>
         </div>
 
-        <a href="Document Viewer.dc.html#sow" style="font-size:12.5px;font-weight:600;padding:0 4px">Back to the signed statement of work</a>
+        <a href="SOW Proposal.dc.html" style="font-size:12.5px;font-weight:600;padding:0 4px">Back to the signed proposal</a>
       </div>
     </div>
   </sc-if>
@@ -321,46 +303,9 @@ class Component extends DCLogic {
     clearTimeout(this.timer);
   }
 
-  // The signed scope arrives from the SOW's signature handoff; without it we show the
-  // full-scope contract rather than an empty block, since checkout is only ever reached
-  // from an executed statement of work.
-  signedScope() {
-    const q = new URLSearchParams(location.search);
-    const bits = (q.get("phases") || "111111").split("");
-    const on = [0,1,2,3,4,5].map(i => bits[i] !== "0");
-    const addons = (q.get("addons") || "monitor:G").split(",").filter(Boolean)
-      .map(x => x.split(":"));
-    const FEE = [6400, 9800, 8600, 3200, 5400, 2800];
-    const TGT = [72, 61, 58, 79, 68, 70];
-    const BASE = [38, 34, 29, 57, 46, 44];
-    const UP = { adopt: { E: 2400, G: 6800, X: 14500 }, monitor: { E: 0, G: 0, X: 0 }, retain: { E: 0, G: 0, X: 0 } };
-    const MO = { adopt: { E: 0, G: 400, X: 900 }, monitor: { E: 890, G: 1480, X: 2350 }, retain: { E: 2200, G: 3900, X: 6400 } };
-    let fee = 0, monthly = 0;
-    on.forEach((v, i) => { if (v) fee += FEE[i]; });
-    const all = on.every(Boolean);
-    if (all) fee -= 5000;
-    addons.forEach(([k, t]) => {
-      if (!UP[k]) return;
-      fee += UP[k][t || "G"];
-      monthly += MO[k][t || "G"];
-    });
-    const proj = Math.round(on.map((v, i) => v ? TGT[i] : BASE[i]).reduce((a, b) => a + b, 0) / 6);
-    const money = n => "$" + Math.round(n).toLocaleString("en-US");
-    const count = on.filter(Boolean).length;
-    return {
-      show: "flex",
-      scope: count + " of 6 phases" + (addons.length ? " + " + addons.length + " add-on" + (addons.length === 1 ? "" : "s") : ""),
-      total: money(fee),
-      monthly: monthly ? money(monthly) + "/mo" : "None",
-      projected: proj,
-      creditShow: all ? "flex" : "none"
-    };
-  }
-
   renderVals() {
     const s = this.state;
     const p = this.pay();
-    const sow = this.signedScope();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const pct = this.pct();
     const dep = 36200 * pct / 100;
@@ -374,7 +319,6 @@ class Component extends DCLogic {
     ];
 
     return {
-      sow: sow,
       schedule: schedule,
       dep: { amount: this.money(dep), pct: pct + "%" },
       open: s.stage === "open",
