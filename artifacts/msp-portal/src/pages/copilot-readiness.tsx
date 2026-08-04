@@ -43,6 +43,7 @@ import {
   RevealPillarScene,
 } from "@/components/copilot-journey/RevealPillarScene";
 import { RevealProgressRail } from "@/components/copilot-journey/RevealProgressRail";
+import { RevealReconsentGate } from "@/components/copilot-journey/RevealReconsentGate";
 import { RevealScanOverlay } from "@/components/copilot-journey/RevealScanOverlay";
 import { RevealVerdict } from "@/components/copilot-journey/RevealVerdict";
 import { tenantStrip } from "@/components/copilot-journey/journeyModel.ts";
@@ -66,6 +67,7 @@ import {
   type JourneyScanState,
 } from "@/components/copilot-journey/useCopilotJourney.ts";
 import "@/components/copilot-journey/copilot-journey.css";
+import { useReconsentKind } from "@/components/reconsent-pill.tsx";
 
 /** Nine `[data-cj-scene]` sections — Scenes 1 through 9. Scene 0 is the overlay. */
 const SCENE_COUNT = 9;
@@ -191,6 +193,19 @@ export default function CopilotReadinessPage() {
   const view = isPreview ? previewJourneyView() : live.view;
 
   /* ---------------------------------------------------------------- *
+   * Broken/stale consent (#370). Same detection `<ReconsentPill />` already
+   * uses on /dashboard — never rebuilt here, just surfaced differently: a
+   * full-screen gate instead of a nav nudge, because this page has no nav for
+   * the pill to live in and nothing genuine to reveal underneath it. A design
+   * preview is never a real tenant, so it can never be gated by this.
+   * Checked ahead of #367's auto-trigger effect below — a tenant whose
+   * consent is broken is a different real state than one that has never been
+   * scanned, and there is no point auto-triggering a scan for the former.
+   * ---------------------------------------------------------------- */
+  const liveReconsentKind = useReconsentKind();
+  const reconsentKind = isPreview ? null : liveReconsentKind;
+
+  /* ---------------------------------------------------------------- *
    * Auto-start a scan for a tenant that has genuinely never had one, rather
    * than falling through to a verdict scene with nothing to show (#367).
    *
@@ -211,6 +226,11 @@ export default function CopilotReadinessPage() {
 
   useEffect(() => {
     if (isPreview) return;
+    // A broken-consent tenant takes priority over the never-scanned case —
+    // see the #370 block above. Don't hold `autoTriggerRef` open here: once
+    // reconsent completes and `reconsentKind` clears, this effect should still
+    // get its normal shot at deciding whether a scan needs triggering.
+    if (reconsentKind !== null) return;
     if (autoTriggerRef.current) return;
     const decision = decideAutoScan(scanStatusData);
     if (decision.kind === "skip") return;
@@ -256,7 +276,7 @@ export default function CopilotReadinessPage() {
         setAwaitingAutoScan(false);
       }
     })();
-  }, [isPreview, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
+  }, [isPreview, reconsentKind, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
 
   // Lets the retry button re-run the gating decision above instead of just
   // refetching pillars/status, which would leave a tenant with a failed
@@ -456,6 +476,15 @@ export default function CopilotReadinessPage() {
   );
 
   const pillarWide = metrics.vw >= PILLAR_WIDE_MIN_PX;
+
+  // #370: a tenant whose Graph/SharePoint access is broken has nothing real
+  // for the scroll experience to reveal, so it is replaced outright rather
+  // than rendered underneath a small nav-style nudge this no-nav page has
+  // nowhere to put. All hooks above still run every render regardless — this
+  // only decides what to paint.
+  if (reconsentKind !== null) {
+    return <RevealReconsentGate kind={reconsentKind} />;
+  }
 
   return (
     <div
