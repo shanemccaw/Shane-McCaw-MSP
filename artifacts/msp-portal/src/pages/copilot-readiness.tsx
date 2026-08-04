@@ -33,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 
 import { useAuth } from "@/lib/auth-context";
+import { useScanStatus } from "@/lib/scan-status-context";
 
 import { JourneySvgDefs, PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { RevealAdoptionScene } from "@/components/copilot-journey/RevealAdoptionScene";
@@ -58,6 +59,7 @@ import {
   PREVIEW_SIGNAL_COUNT,
   previewJourneyView,
 } from "@/components/copilot-journey/journeyPreviewFixture.ts";
+import { decideAutoScan } from "@/components/copilot-journey/revealAutoScan.ts";
 import { activeSceneIndex, sceneProgress } from "@/components/copilot-journey/revealMath.ts";
 import {
   useCopilotJourney,
@@ -189,6 +191,84 @@ export default function CopilotReadinessPage() {
   const view = isPreview ? previewJourneyView() : live.view;
 
   /* ---------------------------------------------------------------- *
+   * Auto-start a scan for a tenant that has genuinely never had one, rather
+   * than falling through to a verdict scene with nothing to show (#367).
+   *
+   * `debug-trigger-scan` is the platform's ONLY scan trigger and it is
+   * hard-gated server-side to testbed tenants (see portal-assessment.ts) —
+   * real customers never get a self-serve trigger, to stop AI-credit spam.
+   * A real customer's scan already fired at consent time (consent.ts's
+   * runDiagnostics), so reaching this state for one means that scan
+   * genuinely hasn't landed yet, not that none exists to find. Inventing a
+   * second, self-serve trigger pathway for real tenants here is exactly what
+   * this fix must not do — so this mirrors war-room.tsx's own
+   * `handleTriggerScan` guard rather than calling the endpoint blind.
+   * ---------------------------------------------------------------- */
+  const { data: scanStatusData, reportTriggerStarted, reportTriggerError } = useScanStatus();
+  const autoTriggerRef = useRef(false);
+  const [awaitingAutoScan, setAwaitingAutoScan] = useState(false);
+  const [autoTriggerError, setAutoTriggerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isPreview) return;
+    if (autoTriggerRef.current) return;
+    const decision = decideAutoScan(scanStatusData);
+    if (decision.kind === "skip") return;
+
+    autoTriggerRef.current = true;
+
+    if (decision.kind === "unavailable") {
+      setAutoTriggerError(decision.message);
+      return;
+    }
+
+    setAwaitingAutoScan(true);
+    void (async () => {
+      try {
+        const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", {
+          method: "POST",
+        });
+        if (!res.ok) {
+          let message = `Trigger request failed (${res.status})`;
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body?.error) message = body.error;
+          } catch {
+            // non-JSON error body — keep the status-code message
+          }
+          reportTriggerError(message);
+          setAutoTriggerError(message);
+          setAwaitingAutoScan(false);
+          return;
+        }
+        let startedRunId: string | null = null;
+        try {
+          const body = (await res.json()) as { runId?: unknown };
+          if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+        } catch {
+          // No/unreadable body — fall back to poll discovery, as before.
+        }
+        reportTriggerStarted(startedRunId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Network error triggering scan";
+        reportTriggerError(message);
+        setAutoTriggerError(message);
+        setAwaitingAutoScan(false);
+      }
+    })();
+  }, [isPreview, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
+
+  // Lets the retry button re-run the gating decision above instead of just
+  // refetching pillars/status, which would leave a tenant with a failed
+  // trigger permanently stuck.
+  const retryAutoTrigger = useCallback(() => {
+    autoTriggerRef.current = false;
+    setAutoTriggerError(null);
+  }, []);
+
+  const scanUnavailable = autoTriggerError !== null;
+
+  /* ---------------------------------------------------------------- *
    * Payload readiness.
    *
    * `live.error` is set when EITHER fetch fails, so neither state is derived
@@ -208,25 +288,32 @@ export default function CopilotReadinessPage() {
 
   const pillarState: PayloadState = isPreview
     ? "ready"
-    : !live.pillarsLoaded
-      ? "loading"
-      : live.error && !pillarsHaveData
-        ? "error"
-        : "ready";
+    : scanUnavailable && !pillarsHaveData
+      ? "error"
+      : !live.pillarsLoaded
+        ? "loading"
+        : live.error && !pillarsHaveData
+          ? "error"
+          : "ready";
 
   // One state for both consumers of the status payload — Scene 1's headline
   // figure and Scene 9's document set — because they fail and arrive together.
   const statusHasData = view.readinessScore !== null || view.generation.total > 0;
   const statusState: PayloadState = isPreview
     ? "ready"
-    : !live.statusLoaded
-      ? "loading"
-      : live.error && !statusHasData
-        ? "error"
-        : "ready";
+    : scanUnavailable && !statusHasData
+      ? "error"
+      : !live.statusLoaded
+        ? "loading"
+        : live.error && !statusHasData
+          ? "error"
+          : "ready";
 
   const { refresh } = live;
-  const retryAction = useMemo(() => <RefreshAction onRefresh={refresh} />, [refresh]);
+  const retryAction = useMemo(
+    () => <RefreshAction onRefresh={scanUnavailable ? retryAutoTrigger : refresh} />,
+    [scanUnavailable, retryAutoTrigger, refresh],
+  );
 
   /* ---------------------------------------------------------------- *
    * Scene 0 — the scan.
@@ -267,9 +354,13 @@ export default function CopilotReadinessPage() {
 
   // Latched so a second run cannot re-open the overlay over a customer who is
   // already halfway down the narrative. A tenant with results and nothing
-  // running (`everScanned && !running`) never sees Scene 0 at all — and neither
-  // does one that has never been scanned, because locking the scroll behind a
-  // radar that will never fill is a trap, not a wait.
+  // running (`everScanned && !running`) never sees Scene 0 at all. A tenant
+  // who has genuinely never been scanned DOES see it (#367): the auto-trigger
+  // effect above either starts a real run (testbed) or reports why none can
+  // start (a real tenant, see `autoTriggerError`) — `awaitingAutoScan` holds
+  // the overlay open for the stretch between the trigger POST returning and
+  // the poll observing the new run as `active`, so the verdict scene never
+  // flashes in behind it for that gap.
   const [scanDismissed, setScanDismissed] = useState(false);
   const sawScanRunning = useRef(false);
   useEffect(() => {
@@ -281,7 +372,7 @@ export default function CopilotReadinessPage() {
     return undefined;
   }, [scan.running]);
 
-  const overlayOpen = scan.running && !scanDismissed;
+  const overlayOpen = (scan.running || awaitingAutoScan) && !scanDismissed;
 
   // Scene 1 plays on arrival rather than on scroll, so it starts the moment the
   // overlay releases — but not before the status payload has landed, or the
