@@ -82,6 +82,7 @@ export default defineConfig({
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
+      "src/lib/__tests__/graph-request-capture.test.ts",
       "src/lib/msp-mailer.test.ts",
       "src/routes/msp-custom-domain.test.ts",
       "src/routes/msp-sales-bundles.test.ts",

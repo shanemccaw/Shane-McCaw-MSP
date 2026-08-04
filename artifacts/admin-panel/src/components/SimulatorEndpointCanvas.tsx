@@ -47,6 +47,7 @@ import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
 import { SimulatorEngineTrace, type SimulatorEngineTraceHandle } from "./SimulatorEngineTrace";
 import { SimulatorRunHistory } from "./SimulatorRunHistory";
+import { SimulatorRequestPanel, type CapturedGraphRequest } from "./SimulatorRequestPanel";
 import {
   SimulatorFailureClassification,
   type FailureClassification,
@@ -85,7 +86,16 @@ interface CheckRun {
     pageCount: number;
   };
   error?: string;
-  request: { endpoint: string; method: string; requestBody: unknown };
+  request: {
+    endpoint: string;
+    method: string;
+    requestBody: unknown;
+    // #393 — the literal outgoing requests this run made, written when the run
+    // reaches a terminal state. Absent on an in-flight run and on any run
+    // recorded before the capture existed; the panel says which.
+    capturedRequests?: CapturedGraphRequest[];
+    capturedRequestsNote?: string;
+  };
 }
 
 export interface MonitorCheckSummary {
@@ -866,8 +876,19 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         />
       )}
 
+      {/* The real outgoing request this run made — method, resolved URL and the
+          complete header set as actually sent, captured server-side at the last
+          point before fetch (#393). Sits above the response because when a check
+          fails for a reason the stored config can't explain, the request is what
+          has to be read first. */}
+      <SimulatorRequestPanel
+        requests={run?.request?.capturedRequests}
+        note={run?.request?.capturedRequestsNote}
+        runStatus={run?.status ?? null}
+      />
+
       {/* Response */}
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 mt-3 flex items-center justify-between">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Response
         </label>

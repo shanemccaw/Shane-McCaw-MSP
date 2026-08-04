@@ -39,6 +39,7 @@ import { db, simulatorCheckRunsTable, type SimulatorCheckRunStatus } from "@work
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import type { CheckResult, MappingRule } from "./monitor-executor";
+import type { CapturedGraphRequest, GraphRequestCapture } from "./graph-request-capture";
 
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -94,8 +95,22 @@ export interface MonitorCheckRun {
   /** The real CheckResult returned by monitor-executor.executeMonitorCheck(). */
   result?: CheckResult;
   error?: string;
-  /** The real resolved request the executor was asked to run — shown in the UI. */
-  request: { endpoint: string; method: string; requestBody: unknown };
+  /**
+   * The real resolved request the executor was asked to run — shown in the UI.
+   *
+   * `capturedRequests` (#393) is the other half and is written only when the run
+   * reaches a terminal state: the literal outgoing HTTP requests, captured at the
+   * last point before `fetch` inside graphFetchForTenant. `endpoint`/`method` are
+   * what the simulator ASKED for; `capturedRequests` is what actually went out,
+   * including headers this codebase never set.
+   */
+  request: {
+    endpoint: string;
+    method: string;
+    requestBody: unknown;
+    capturedRequests?: CapturedGraphRequest[];
+    capturedRequestsNote?: string;
+  };
   /** The full captured response items, or undefined when omitted (see itemsOmitted). */
   items?: unknown[];
   itemsOmitted: boolean;
@@ -317,8 +332,18 @@ export async function completeRun(opts: {
   statusText: string;
   result?: CheckResult;
   errorMessage?: string;
+  /**
+   * #393 — the real outgoing requests this run made, and the request record they
+   * are merged into. Both are passed together because the `request` jsonb is
+   * rewritten wholesale here: the caller owns the original record, so merging it
+   * in memory keeps this a plain column write rather than a jsonb-concat
+   * expression. Absent for any caller that didn't capture (nothing is lost — the
+   * column keeps the record createRun already wrote).
+   */
+  requestRecord?: MonitorCheckRun["request"];
+  capture?: GraphRequestCapture;
 }): Promise<void> {
-  const { runId, status, statusText, result, errorMessage } = opts;
+  const { runId, status, statusText, result, errorMessage, requestRecord, capture } = opts;
 
   const items = result?.items;
   const { items: _omit, ...resultWithoutItems } = (result ?? {}) as CheckResult & Record<string, unknown>;
@@ -345,6 +370,17 @@ export async function completeRun(opts: {
     }
   }
 
+  // Only rewritten when the caller actually captured; otherwise the column keeps
+  // exactly what createRun wrote, so this stays additive for every other caller.
+  const request =
+    requestRecord && capture
+      ? {
+          ...requestRecord,
+          capturedRequests: capture.requests,
+          ...(capture.truncatedNote ? { capturedRequestsNote: capture.truncatedNote } : {}),
+        }
+      : null;
+
   await db
     .update(simulatorCheckRunsTable)
     .set({
@@ -352,6 +388,7 @@ export async function completeRun(opts: {
       statusText,
       progress: 100,
       completedAt: new Date(),
+      ...(request ? { request } : {}),
       result: result ? (resultWithoutItems as Record<string, unknown>) : null,
       resultStatus: result?.status ?? null,
       itemCount: result?.itemCount ?? null,

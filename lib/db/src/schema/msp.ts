@@ -1887,8 +1887,22 @@ export const simulatorCheckRunsTable = pgTable("simulator_check_runs", {
   severityMatched: text("severity_matched"),
   licenseFeature: text("license_feature"),
   errorMessage: text("error_message"),
-  /** The real resolved request the executor was asked to run (endpoint/method/body). */
-  request: jsonb("request").$type<{ endpoint: string; method: string; requestBody: unknown }>().notNull(),
+  /**
+   * The real resolved request the executor was asked to run (endpoint/method/body),
+   * plus — once the run finishes — `capturedRequests`: what ACTUALLY went out on
+   * the wire (#393), one entry per real fetch including nextLink pages and the
+   * fresh-token retry. The two are deliberately in one column: the asked-for
+   * request and the sent request are the same subject, and reading them apart is
+   * the whole diagnostic. Untyped here (`unknown[]`) so the capture's shape stays
+   * owned by api-server's graph-request-capture.ts rather than the schema.
+   */
+  request: jsonb("request").$type<{
+    endpoint: string;
+    method: string;
+    requestBody: unknown;
+    capturedRequests?: unknown[];
+    capturedRequestsNote?: string;
+  }>().notNull(),
   /** The real CheckResult from monitor-executor, minus `items` (which has its own column). */
   result: jsonb("result").$type<Record<string, unknown>>(),
   /**

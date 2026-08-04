@@ -72,6 +72,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor";
 import { traceCheckResponse } from "../lib/monitor-check-trace";
+import { createGraphRequestCapture } from "../lib/graph-request-capture";
 import { diffCheckRuns, type DiffSide } from "../lib/simulator-run-diff";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import {
@@ -168,11 +169,19 @@ async function startCheckRun(opts: {
   });
 
   const done = (async () => {
+    // #393 — THE ONLY PLACE outgoing-request capture is switched on. It is scoped
+    // to this async context, so a scheduled production package run executing the
+    // same checks through the same executor captures nothing and carries no
+    // listener. `capture.run()` rethrows whatever executeMonitorCheck throws, so
+    // the existing failure handling below is untouched; `capture.snapshot()` is
+    // read on BOTH the success and failure paths, because the failing run is the
+    // one whose real request needs reading.
+    const capture = createGraphRequestCapture();
     try {
       await markRunning(runId, `Requesting ${run.request.method} ${run.request.endpoint}`);
 
       // ── The reuse point. All request execution belongs to monitor-executor. ──
-      const result = await executeMonitorCheck({
+      const result = await capture.run(() => executeMonitorCheck({
         check: effectiveCheck,
         tenantId,
         triggerId: runId,
@@ -180,7 +189,7 @@ async function startCheckRun(opts: {
         // Keep the untruncated item list so the engine trace (and later a diff)
         // can re-apply the real mapping to the real response without re-fetching.
         includeItems: true,
-      });
+      }));
 
       // executeMonitorCheck never throws for a failed check — it returns a
       // status. Map its real statuses onto the run's terminal state so the UI
@@ -203,6 +212,8 @@ async function startCheckRun(opts: {
           status: "completed",
           statusText: coverageNote,
           result,
+          requestRecord: run.request,
+          capture: capture.snapshot(),
         });
       } else {
         await completeRun({
@@ -212,18 +223,29 @@ async function startCheckRun(opts: {
             ? `${result.status}: ${result.errorMessage}`
             : `Finished with status ${result.status}`,
           result,
+          requestRecord: run.request,
+          capture: capture.snapshot(),
         });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err, runId, checkKey: check.key }, "admin-monitor-check-runs: run failed");
       try {
-        await completeRun({ runId, status: "failed", statusText: message, errorMessage: message });
+        await completeRun({
+          runId,
+          status: "failed",
+          statusText: message,
+          errorMessage: message,
+          requestRecord: run.request,
+          capture: capture.snapshot(),
+        });
       } catch (persistErr) {
         // Losing the failure record must not escalate into an unhandled rejection
         // that could take a whole bulk batch with it.
         log.error({ err: persistErr, runId }, "admin-monitor-check-runs: failed to persist run failure");
       }
+    } finally {
+      capture.close();
     }
   })();
 

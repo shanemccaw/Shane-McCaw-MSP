@@ -4,6 +4,7 @@ import { db, tenantsTable, tenantMonitorProfilesTable, tenantEngineOverridesTabl
 import { eq, ne, and, or, gt, isNull, sql } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
 import { createAuditLog } from "./audit";
+import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-request-capture";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -677,14 +678,23 @@ export async function graphFetchForTenant(
   _isRetryWithFreshToken = false,
 ): Promise<Response> {
   const token = await getAccessTokenForTenant(tenantId);
-  const res = await fetch(`${GRAPH_BASE}${path}`, {
+  const url = `${GRAPH_BASE}${path}`;
+  const init: RequestInit = {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
     },
-  });
+  };
+  // #393 — read-only capture of the FINAL request, at the last point before it is
+  // sent: after auth and after every header this codebase adds. A no-op unless the
+  // caller is inside createGraphRequestCapture() (Simulator Studio runs only), and it
+  // neither consumes nor mutates `init`, so what goes out is byte-for-byte what
+  // went out before this line existed.
+  const captureSeq = recordOutgoingGraphRequest(url, init);
+  const res = await fetch(url, init);
+  annotateCapturedResponse(captureSeq, res.status);
 
   // 401/400/403 all need the body inspected before we decide what happened.
   // Order of precedence, most-specific first:
