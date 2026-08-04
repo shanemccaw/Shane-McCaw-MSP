@@ -89,10 +89,12 @@ import {
   isPhaseIncluded,
   money,
   monthlyLabel,
+  payInFullOfferFromWire,
   phasedSchedule,
   type JourneyPhase,
   type JourneyScopeInput,
   type JourneySelection,
+  type PayInFullOffer,
   type ScheduleRow,
 } from "@/components/copilot-journey/journeyPricing.ts";
 import {
@@ -297,6 +299,20 @@ interface WirePaymentOptions {
   readonly adjustmentsTotal?: number;
   readonly selectedWorkstreamTitles?: readonly string[];
   readonly pricing?: { readonly validUntil?: string };
+  /**
+   * The live pay-in-full discount. Real money: the server builds a genuine
+   * Stripe coupon from it, but only when the checkout request opts in with
+   * `applyPayInFull`. Every field is the server's own — nothing here is
+   * recomputed client-side, because a second arithmetic path on a discount is a
+   * second chance to quote a figure Stripe will not honour.
+   */
+  readonly payInFull?: {
+    readonly active?: boolean;
+    readonly discountedTotal?: number | null;
+    readonly savings?: number | null;
+    readonly variant?: "percentage_off" | "adjustments_waived" | null;
+    readonly discountPct?: number | null;
+  };
   readonly phased?: {
     /** Always false today: milestone billing is provider-arranged. */
     readonly selfServe?: boolean;
@@ -813,6 +829,23 @@ export default function CopilotReadinessCheckoutPage() {
       : totals?.upfrontUsd ?? 0;
 
   /**
+   * The live pay-in-full discount, or null.
+   *
+   * Never constructed under `?preview=design`: the offer depends on a real
+   * `coupons` row and the SOW's real discount window, neither of which a design
+   * fixture has, and inventing a saving on the preview would put a number in
+   * front of a reviewer that no customer will ever be charged.
+   *
+   * Built only from fields the server actually sent, and only when it says
+   * `active`. `savings > 0` is re-checked because a zero-saving "active" offer
+   * would otherwise print a struck-through price identical to the one beside it.
+   */
+  const payInFullOffer = useMemo<PayInFullOffer | null>(
+    () => payInFullOfferFromWire(payOptions?.payInFull, orderTotalUsd, isPreview),
+    [isPreview, payOptions, orderTotalUsd],
+  );
+
+  /**
    * The phased terms.
    *
    * PREVIEW ONLY gets the deposit variant, and every figure in it comes from
@@ -1064,6 +1097,12 @@ export default function CopilotReadinessCheckoutPage() {
         body: JSON.stringify({
           captchaToken,
           paymentPlan: plan,
+          // Opt in to the discount the screen just showed. The server re-runs
+          // `computePayInFullOffer` and ignores this unless the offer is
+          // genuinely live for this scope right now, so the flag can only ever
+          // ask — it cannot assert. Sent only when there IS an offer, so a
+          // request that would produce no coupon does not claim to want one.
+          ...(payInFullOffer && plan === "full" ? { applyPayInFull: true } : {}),
           signatureData: signed.signatureData,
           signerName: signed.signerName,
           // WORKSTREAMS ONLY. The server's integrity check is exact set equality
@@ -1138,6 +1177,7 @@ export default function CopilotReadinessCheckoutPage() {
     captchaToken,
     plan,
     scopeDiverged,
+    payInFullOffer,
     serverWorkstreamTitles,
     signedWorkstreamTitles,
     fetchWithAuth,
@@ -1362,6 +1402,7 @@ export default function CopilotReadinessCheckoutPage() {
             plan={plan}
             onPlan={setPlan}
             payInFullUsd={orderTotalUsd}
+            payInFullOffer={payInFullOffer}
             phased={phasedTerms}
             hasRecurring={monthlyUsd > 0}
           />

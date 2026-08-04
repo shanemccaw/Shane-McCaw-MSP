@@ -348,3 +348,84 @@ export function phaseCountLabel(included: number, total: number): string {
 export function weeksLabel(weeks: number): string {
   return `approx. ${weeks} weeks`;
 }
+
+/* ------------------------------------------------------------------ *
+ * The live pay-in-full discount
+ * ------------------------------------------------------------------ */
+
+/**
+ * The platform's pay-in-full discount, exactly as
+ * `GET /portal/assessment/sow/payment-options` reports it.
+ *
+ * REAL MONEY, AND IT WAS BEING DROPPED. The server computes this from a real
+ * `coupons` row inside the SOW's own discount window, and
+ * `POST .../sow/checkout` turns it into a genuine Stripe coupon — but ONLY when
+ * the request carries `applyPayInFull: true`. The Copilot Readiness checkout
+ * sent no such flag and showed no such offer, so a customer paying in full
+ * through this journey was charged the undiscounted total while the same
+ * customer on the older `AssessmentPaymentPlan` screen was not.
+ */
+export interface PayInFullOffer {
+  /** What the scope costs without the discount. */
+  readonly originalUsd: number;
+  readonly discountedUsd: number;
+  readonly savingsUsd: number;
+  /**
+   * `percentage_off` — a straight percentage off the total.
+   * `adjustments_waived` — the platform's mandatory adjustment lines are
+   * dropped instead. A different promise, so it gets different words.
+   */
+  readonly variant: "percentage_off" | "adjustments_waived";
+  readonly discountPct: number | null;
+}
+
+/** The `payInFull` block as it arrives on the wire. Every field optional. */
+export interface WirePayInFull {
+  readonly active?: boolean;
+  readonly discountedTotal?: number | null;
+  readonly savings?: number | null;
+  readonly variant?: string | null;
+  readonly discountPct?: number | null;
+}
+
+/**
+ * Read the wire's offer, or `null`.
+ *
+ * Nothing here recomputes a discount — a second arithmetic path on money is a
+ * second chance to quote a figure Stripe will not honour, so every number is the
+ * server's own and this function only decides whether there is an offer to show
+ * at all. The server independently re-runs `computePayInFullOffer` before it
+ * creates the coupon, so opting in can only ever ask, never assert.
+ *
+ * Refuses, in order:
+ *   • the design preview — the offer needs a real coupon row and a real SOW
+ *     window, and inventing a saving there would put a number in front of a
+ *     reviewer that no customer will ever be charged;
+ *   • anything the server did not mark `active`;
+ *   • a missing, non-numeric or non-finite total or saving;
+ *   • a saving of zero or less, which would otherwise print a struck-through
+ *     price identical to the one beside it;
+ *   • an unrecognised `variant`, because the two variants promise different
+ *     things and defaulting would describe a waiver as a percentage.
+ */
+export function payInFullOfferFromWire(
+  wire: WirePayInFull | null | undefined,
+  originalUsd: number,
+  isPreview: boolean,
+): PayInFullOffer | null {
+  if (isPreview) return null;
+  if (!wire?.active) return null;
+  const discountedUsd = wire.discountedTotal;
+  const savingsUsd = wire.savings;
+  if (typeof discountedUsd !== "number" || typeof savingsUsd !== "number") return null;
+  if (!Number.isFinite(discountedUsd) || !Number.isFinite(savingsUsd)) return null;
+  if (savingsUsd <= 0) return null;
+  if (wire.variant !== "percentage_off" && wire.variant !== "adjustments_waived") return null;
+  return {
+    originalUsd,
+    discountedUsd,
+    savingsUsd,
+    variant: wire.variant,
+    discountPct: typeof wire.discountPct === "number" ? wire.discountPct : null,
+  };
+}

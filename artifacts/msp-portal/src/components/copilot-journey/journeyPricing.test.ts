@@ -17,6 +17,7 @@ import {
   isPhaseIncluded,
   money,
   monthlyLabel,
+  payInFullOfferFromWire,
   phaseCountLabel,
   phasedSchedule,
   pickTier,
@@ -248,5 +249,66 @@ describe("formatting", () => {
   it("labels the scope count and duration", () => {
     assert.equal(phaseCountLabel(4, 6), "4 of 6 phases");
     assert.equal(weeksLabel(12), "approx. 12 weeks");
+  });
+});
+
+describe("the live pay-in-full discount", () => {
+  const ACTIVE = {
+    active: true,
+    discountedTotal: 34390,
+    savings: 1810,
+    variant: "percentage_off",
+    discountPct: 5,
+  } as const;
+
+  it("reads a live offer straight off the wire, recomputing nothing", () => {
+    // Every figure is the server's. If this function ever derives one instead of
+    // reading it, the screen can quote a total Stripe will not charge.
+    const offer = payInFullOfferFromWire(ACTIVE, 36200, false);
+    assert.deepEqual(offer, {
+      originalUsd: 36200,
+      discountedUsd: 34390,
+      savingsUsd: 1810,
+      variant: "percentage_off",
+      discountPct: 5,
+    });
+  });
+
+  it("carries the waiver variant through as itself, never as a percentage", () => {
+    const offer = payInFullOfferFromWire(
+      { active: true, discountedTotal: 34000, savings: 2200, variant: "adjustments_waived", discountPct: null },
+      36200,
+      false,
+    );
+    assert.equal(offer?.variant, "adjustments_waived");
+    assert.equal(offer?.discountPct, null);
+  });
+
+  it("never offers a discount on the design preview", () => {
+    // The preview has no coupon row and no SOW window behind it — a saving shown
+    // there is a number no customer will ever be charged.
+    assert.equal(payInFullOfferFromWire(ACTIVE, 36200, true), null);
+  });
+
+  it("refuses anything the server did not mark active", () => {
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, active: false }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, active: undefined }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire(null, 36200, false), null);
+    assert.equal(payInFullOfferFromWire(undefined, 36200, false), null);
+  });
+
+  it("refuses a malformed or zero saving rather than printing a fake one", () => {
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, savings: 0 }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, savings: -50 }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, savings: null }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, discountedTotal: null }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, savings: Number.NaN }, 36200, false), null);
+  });
+
+  it("refuses an unrecognised variant instead of defaulting to the percentage copy", () => {
+    // Defaulting here would describe an adjustments waiver — or some future
+    // third kind — as a straight percentage off, which is a different promise.
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, variant: "something_new" }, 36200, false), null);
+    assert.equal(payInFullOfferFromWire({ ...ACTIVE, variant: null }, 36200, false), null);
   });
 });

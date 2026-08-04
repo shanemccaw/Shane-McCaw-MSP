@@ -31,7 +31,7 @@
  * the other's copy, because neither carries the other's fields.
  */
 
-import { money, type ScheduleRow } from "./journeyPricing.ts";
+import { money, type PayInFullOffer, type ScheduleRow } from "./journeyPricing.ts";
 import { BRAND, INK, RADIUS, TABULAR } from "./journeyTokens.ts";
 
 export type PaymentPlan = "full" | "phased";
@@ -63,6 +63,7 @@ export type PhasedTerms =
       readonly schedule: readonly ScheduleRow[];
     };
 
+
 const CARD_BORDER_OFF = "rgba(30,41,59,.95)";
 const CARD_BORDER_ON = "rgba(0,120,212,.55)";
 const CARD_BG_OFF = "rgba(15,23,42,.45)";
@@ -76,6 +77,7 @@ function ChoiceCard({
   onSelect,
   amount,
   amountSuffix,
+  strikethrough,
   body,
 }: {
   readonly title: string;
@@ -84,6 +86,8 @@ function ChoiceCard({
   readonly onSelect: () => void;
   readonly amount: string;
   readonly amountSuffix?: string;
+  /** The pre-discount figure, struck through beside a discounted `amount`. */
+  readonly strikethrough?: string;
   readonly body: string;
 }) {
   return (
@@ -158,7 +162,7 @@ function ChoiceCard({
         </span>
       </span>
 
-      <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
         <span
           style={{
             fontSize: 26,
@@ -170,6 +174,19 @@ function ChoiceCard({
         >
           {amount}
         </span>
+        {strikethrough ? (
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: INK.deemphasised,
+              textDecoration: "line-through",
+              ...TABULAR,
+            }}
+          >
+            {strikethrough}
+          </span>
+        ) : null}
         {amountSuffix ? (
           <span style={{ fontSize: 12.5, fontWeight: 600, color: INK.micro }}>{amountSuffix}</span>
         ) : null}
@@ -186,6 +203,7 @@ export function CheckoutPaymentChoice({
   plan,
   onPlan,
   payInFullUsd,
+  payInFullOffer,
   phased,
   hasRecurring,
 }: {
@@ -193,6 +211,8 @@ export function CheckoutPaymentChoice({
   readonly onPlan: (plan: PaymentPlan) => void;
   /** What a pay-in-full checkout actually charges — the server's own total. */
   readonly payInFullUsd: number;
+  /** The live discount, or null when the server says there isn't one. */
+  readonly payInFullOffer?: PayInFullOffer | null;
   readonly phased: PhasedTerms;
   /**
    * Drives one clause only. "Monitoring bills separately from month one" is a
@@ -203,6 +223,9 @@ export function CheckoutPaymentChoice({
   readonly hasRecurring: boolean;
 }) {
   const isDeposit = phased.kind === "deposit";
+  // Only ever shown against the pay-in-full option, and only when the server
+  // says it is live. A saving worth $0 is not a saving worth printing.
+  const offer = payInFullOffer && payInFullOffer.savingsUsd > 0 ? payInFullOffer : null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <span
@@ -231,7 +254,12 @@ export function CheckoutPaymentChoice({
           subtitle="One charge today"
           selected={plan === "full"}
           onSelect={() => onPlan("full")}
-          amount={money(payInFullUsd)}
+          // The headline figure is what the card will actually be charged. With
+          // a live offer that is the DISCOUNTED total, because showing the
+          // undiscounted one beside a saving the customer is about to receive
+          // means the number they read is not the number they pay.
+          amount={money(offer ? offer.discountedUsd : payInFullUsd)}
+          strikethrough={offer ? money(offer.originalUsd) : undefined}
           body={
             hasRecurring
               ? "The whole remediation programme settled now. Monitoring bills separately from month one."
@@ -254,6 +282,22 @@ export function CheckoutPaymentChoice({
           }
         />
       </div>
+
+      {/* The saving, stated once, with the reason it exists. Deliberately NOT a
+          countdown or a "hurry" — the SOW's own quoted-pricing window is stated
+          elsewhere on this screen as a date, and the handoff bans fabricated
+          scarcity outright. This line only says what is true and what it is
+          worth; it appears only when the customer is actually choosing the
+          option it applies to. */}
+      {offer && plan === "full" ? (
+        <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
+          {offer.variant === "adjustments_waived"
+            ? `Paying in full waives ${money(offer.savingsUsd)} of adjustment lines from your scope. Applied by Stripe as a visible discount on your receipt.`
+            : `Paying in full saves ${money(offer.savingsUsd)}${
+                offer.discountPct !== null ? ` (${offer.discountPct}%)` : ""
+              }. Applied by Stripe as a visible discount on your receipt.`}
+        </span>
+      ) : null}
 
       {plan === "phased" ? (
         <div
