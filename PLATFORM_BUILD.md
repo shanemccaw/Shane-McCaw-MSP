@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-04 | ⏳ IN FLIGHT | Git #371 - Admin Panel: expandable diagnostic run findings + refresh/copy | |
 | 2026-08-04 | ✅ DONE | Git #367 - Add testbed-only Replay Scan button | `21bb2351` |
 | 2026-08-04 | ✅ DONE | Git #372 - Hardcode Active Directory manual trigger to Copilot Assessment | `484d5fd2` |
 | 2026-08-04 | ✅ DONE | Git #374 - Persist raw Graph error alongside friendly message | `7e97d935` |
