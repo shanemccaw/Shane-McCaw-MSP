@@ -439,9 +439,10 @@ export function JourneyUnavailable({
   detail: string;
   action?: React.ReactNode;
   /**
-   * The Document Viewer is the one light screen in the journey, and the dark
-   * heading colour is invisible on its white reading card — so the surface has
-   * to be a prop rather than an assumption.
+   * All four journey screens are dark now, so `"dark"` is the only surface any
+   * current call site needs — kept as a prop rather than hardcoded in case a
+   * future light surface joins the journey, so a dark heading colour is never
+   * silently invisible on it.
    */
   surface?: "dark" | "light";
   eyebrow?: string;

@@ -27,12 +27,13 @@ const NUMBER_WORDS = [
 ] as const;
 
 /**
- * The design's sentence says "your nine reports", and nine is the length of
- * `JOURNEY_DESIGN_DOCUMENTS` — the DESIGN's list, which a check of
- * `document_types` found no seeded type behind for three of its entries. So the
- * number is never taken from that constant here. It arrives as the tenant's real
- * `view.generation.total`, and the clause is dropped when that is unknown rather
- * than promising a report count this account does not produce.
+ * The design's sentence says "your N reports", where N is the length of
+ * `JOURNEY_DESIGN_DOCUMENTS` — the DESIGN's list, which an earlier check of
+ * `document_types` found no seeded type behind for several of its entries. So
+ * the number is never taken from that constant here. It arrives as the
+ * tenant's real `view.generation.total`, and the clause is dropped when that
+ * is unknown rather than promising a report count this account does not
+ * produce.
  */
 function documentCountWord(count: number): string {
   return NUMBER_WORDS[count] ?? String(count);

@@ -965,8 +965,8 @@ export default function CopilotReadinessCheckoutPage() {
   /**
    * How many reports this tenant's assessment actually produces. `null` when the
    * platform has not said — `JOURNEY_DESIGN_DOCUMENT_COUNT` is the DESIGN's list
-   * and three of its titles have no seeded `document_types` row behind them, so
-   * it never reaches a live confirmation.
+   * and an earlier revision had titles with no seeded `document_types` row
+   * behind them, so it never reaches a live confirmation.
    */
   const documentCount = isPreview
     ? JOURNEY_DESIGN_DOCUMENT_COUNT

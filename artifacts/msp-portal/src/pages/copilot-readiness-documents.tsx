@@ -10,10 +10,11 @@
  *
  * This is where the engagement fee gets justified with real depth, so it is
  * calm, legible and premium — and it deliberately carries NONE of the Reveal's
- * motion language. No parallax, no scroll-pinning, no count-ups. Light theme on
- * `#F7F9FC` against a navy sidebar, fixed that way whichever direction the
- * portal's own light/dark toggle is set (see `journeyTokens.ts` for why these
- * four screens are theme-fixed rather than token-driven).
+ * motion language. No parallax, no scroll-pinning, no count-ups. Dark theme on
+ * `#020617` against a navy sidebar, matching the other three journey screens,
+ * fixed that way whichever direction the portal's own light/dark toggle is set
+ * (see `journeyTokens.ts` for why these four screens are theme-fixed rather
+ * than token-driven).
  *
  * Renders outside AppShell, full-bleed, the same as `war-room.tsx` — the shell
  * would be covered either way.
@@ -124,7 +125,7 @@ export default function CopilotReadinessDocumentsPage() {
 
   /**
    * The design's own worked example. Exactly the three reports the design writes
-   * out are marked ready — which is what makes its "3 of 9 ready" counter and
+   * out are marked ready — which is what makes its "3 of 8 ready" counter and
    * its still-generating state both visible in one pass.
    */
   const previewView = useMemo<JourneyView>(() => {
@@ -272,13 +273,13 @@ export default function CopilotReadinessDocumentsPage() {
 
   return (
     <div
-      className="cj-light"
+      className="cj-dark"
       style={{
         position: "fixed",
         inset: 0,
         display: "flex",
         overflow: "hidden",
-        background: BRAND.offWhite,
+        background: BRAND.canvas,
       }}
     >
       {isPreview ? <PreviewBadge /> : null}
@@ -298,8 +299,8 @@ export default function CopilotReadinessDocumentsPage() {
         <header
           style={{
             flex: "none",
-            background: BRAND.white,
-            borderBottom: `1px solid ${INK.borderLight}`,
+            background: "rgba(9,14,28,.92)",
+            borderBottom: `1px solid ${INK.hairlineDark}`,
             padding: "14px 26px",
             display: "flex",
             alignItems: "center",
@@ -319,16 +320,16 @@ export default function CopilotReadinessDocumentsPage() {
                   alignItems: "center",
                   gap: 8,
                   padding: "8px 12px",
-                  border: `1px solid ${INK.borderLight}`,
+                  border: `1px solid ${INK.hairlineDark}`,
                   borderRadius: RADIUS.control,
                   cursor: "pointer",
                   flex: "none",
-                  background: sheetBtn.hovered ? BRAND.offWhite : BRAND.white,
+                  background: sheetBtn.hovered ? "rgba(255,255,255,.06)" : "transparent",
                   fontFamily: "inherit",
                 }}
               >
-                <Menu size={15} strokeWidth={1.8} color={BRAND.navy} aria-hidden="true" />
-                <span style={{ fontSize: 12, fontWeight: 600, color: BRAND.navy, whiteSpace: "nowrap" }}>
+                <Menu size={15} strokeWidth={1.8} color={INK.headingDark} aria-hidden="true" />
+                <span style={{ fontSize: 12, fontWeight: 600, color: INK.headingDark, whiteSpace: "nowrap" }}>
                   Documents
                 </span>
               </button>
@@ -350,7 +351,7 @@ export default function CopilotReadinessDocumentsPage() {
                   fontSize: 15,
                   fontWeight: 700,
                   letterSpacing: "-0.01em",
-                  color: BRAND.navy,
+                  color: INK.headingDark,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -389,8 +390,8 @@ export default function CopilotReadinessDocumentsPage() {
             </button>
 
             {/* Subordinate to reading in-app, deliberately: outline + sm. The
-                inline colours pin it to the light surface, since this screen
-                does not follow the portal's theme. */}
+                inline colours pin it to this screen's own dark surface, since
+                it does not follow the portal's theme. */}
             <Button
               variant="outline"
               size="sm"
@@ -398,9 +399,9 @@ export default function CopilotReadinessDocumentsPage() {
               onClick={() => void handleDownload()}
               style={{
                 height: 34,
-                background: BRAND.white,
-                borderColor: INK.borderLight,
-                color: BRAND.navy,
+                background: "rgba(2,6,23,.7)",
+                borderColor: INK.hairlineDark,
+                color: INK.headingDark,
               }}
             >
               {downloading ? (
@@ -419,13 +420,13 @@ export default function CopilotReadinessDocumentsPage() {
               style={{
                 width: 34,
                 height: 34,
-                border: `1px solid ${INK.borderLight}`,
+                border: `1px solid ${INK.hairlineDark}`,
                 borderRadius: RADIUS.control,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
-                background: closeBtn.hovered ? BRAND.offWhite : BRAND.white,
+                background: closeBtn.hovered ? "rgba(255,255,255,.06)" : "transparent",
               }}
             >
               <X size={15} strokeWidth={1.8} color={INK.micro} aria-hidden="true" />

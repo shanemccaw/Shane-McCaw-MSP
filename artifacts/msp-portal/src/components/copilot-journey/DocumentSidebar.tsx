@@ -3,9 +3,13 @@
  * becomes on a narrow viewport.
  *
  * Both surfaces render the same switcher, so a document row cannot look or
- * behave differently depending on which one the customer is looking at. The rail
- * is navy (`#0A2540`) against the light reading canvas; the sheet is white,
- * because it sits over the reading surface rather than beside it.
+ * behave differently depending on which one the customer is looking at. Both
+ * are dark now that the reading pane is too: the rail is navy (`#0A2540`), the
+ * sheet a slightly lighter near-black (`#0f172a`), because it floats over the
+ * reading surface rather than sitting beside it — the `"navy" | "light"`
+ * surface prop names below is a holdover from when the sheet sat over a light
+ * reading pane; it now means "the rail's navy" vs. "the sheet's own dark
+ * shade", not literally light.
  *
  * The status dot is Scene 9's pattern verbatim: teal for a report that is ready
  * to read, muted and pulsing on `cj-gen-pulse` for one still generating. No row
@@ -18,10 +22,10 @@ import { useState } from "react";
 
 import {
   BRAND,
+  INK,
   INK_ON_NAVY,
   MOTION,
   SEVERITY_ON_DARK,
-  SEVERITY_ON_LIGHT,
   TABULAR,
 } from "./journeyTokens.ts";
 import type { JourneyDocumentView } from "./journeyModel.ts";
@@ -81,16 +85,17 @@ interface RowStatus {
   readonly meta: string;
 }
 
-function rowStatus(status: JourneyDocumentView["status"], surface: "navy" | "light"): RowStatus {
-  const severity = surface === "navy" ? SEVERITY_ON_DARK : SEVERITY_ON_LIGHT;
-  const idle = surface === "navy" ? "rgba(255,255,255,.34)" : "#c7d0da";
+// Both surfaces are dark now, so the status dot and severity colour are the
+// same regardless of which one a row renders in — no surface param needed.
+function rowStatus(status: JourneyDocumentView["status"]): RowStatus {
+  const idle = "rgba(255,255,255,.34)";
   switch (status) {
     case "ready":
       return { dot: BRAND.teal, pulse: false, meta: "Ready to read" };
     case "failed":
       // The design has no failed state — the platform does, and silently showing
       // it as "generating" forever is the one thing worse than saying so.
-      return { dot: severity.critical, pulse: false, meta: "Generation failed" };
+      return { dot: SEVERITY_ON_DARK.critical, pulse: false, meta: "Generation failed" };
     case "pending":
       return { dot: idle, pulse: true, meta: "Queued" };
     default:
@@ -118,13 +123,15 @@ function SwitcherRow({
   onSelect: (index: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const status = rowStatus(doc.status, surface);
+  const status = rowStatus(doc.status);
   const navy = surface === "navy";
 
+  // The sheet's own active fill reads one shade lighter than the rail's
+  // (`.07` vs `.11`) — the design's own two constants, not a derived value.
   const background = active
     ? navy
       ? NAVY_SURFACE.activeFill
-      : BRAND.offWhite
+      : "rgba(255,255,255,.07)"
     : hovered && navy
       ? NAVY_SURFACE.hoverFill
       : "transparent";
@@ -172,7 +179,10 @@ function SwitcherRow({
             fontSize: navy ? 12.5 : 13.5,
             fontWeight: active ? 700 : 500,
             lineHeight: 1.35,
-            color: navy ? (active ? BRAND.white : INK_ON_NAVY.strong) : BRAND.navy,
+            // The rail varies title colour by active state (white vs. muted);
+            // the sheet's own row template does not — every title in it is the
+            // same heading colour regardless of which one is selected.
+            color: navy ? (active ? BRAND.white : INK_ON_NAVY.strong) : INK.headingDark,
           }}
         >
           {doc.title}
@@ -181,7 +191,7 @@ function SwitcherRow({
           style={{
             fontSize: navy ? 10 : 10.5,
             fontWeight: 500,
-            color: navy ? INK_ON_NAVY.muted : "#64748b",
+            color: navy ? INK_ON_NAVY.muted : INK.bodyDark,
           }}
         >
           {status.meta}
@@ -226,12 +236,14 @@ function ReadyCounter({
   return (
     <>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <span style={navy ? EYEBROW : { ...EYEBROW, color: "#64748b" }}>Your findings</span>
+        <span style={navy ? EYEBROW : { ...EYEBROW, color: INK.micro }}>Your findings</span>
         <span
           style={{
             fontSize: 11.5,
             fontWeight: 700,
-            color: navy ? BRAND.teal : BRAND.blue,
+            // Teal on both surfaces now — the sheet's own counter matches the
+            // rail's, not the old light theme's blue.
+            color: BRAND.teal,
             ...TABULAR,
           }}
         >
@@ -243,7 +255,7 @@ function ReadyCounter({
       <div
         style={{
           height: 3,
-          background: navy ? "rgba(255,255,255,.12)" : "#e7ebf0",
+          background: "rgba(255,255,255,.12)",
           borderRadius: 999,
           overflow: "hidden",
         }}
@@ -405,7 +417,7 @@ export function DocumentSheet({
           width: "100%",
           maxHeight: "76vh",
           overflowY: "auto",
-          background: BRAND.white,
+          background: "#0f172a",
           borderRadius: "14px 14px 0 0",
           padding: "18px 16px 26px",
         }}
@@ -417,7 +429,7 @@ export function DocumentSheet({
               flexDirection: "column",
               gap: 9,
               padding: "0 6px 14px",
-              borderBottom: "1px solid #e7ebf0",
+              borderBottom: `1px solid ${INK.hairlineDark}`,
             }}
           >
             <ReadyCounter ready={ready} total={total} loaded={loaded} surface="light" />

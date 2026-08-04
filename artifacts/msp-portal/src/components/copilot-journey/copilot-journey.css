@@ -2,18 +2,19 @@
  * Copilot Readiness journey — keyframes and scoped base styles.
  *
  * Ported from the four Claude Design sources (`Copilot Readiness Reveal`,
- * `Document Viewer`, `SOW Proposal`, `Checkout`). The keyframe bodies are the
- * designs' own; the page-level base rules were rescoped from `html`/`body` onto
- * `.cj-dark` / `.cj-light` so these full-bleed screens cannot leak styles into
- * the rest of the portal — the same containment the War Room port uses for
- * `.wr-root`.
+ * `Document Viewer`, `SOW Proposal`, `Checkout`) — all four are dark now that
+ * the Document Viewer's own revision moved off its original light theme. The
+ * keyframe bodies are the designs' own; the page-level base rules were
+ * rescoped from `html`/`body` onto `.cj-dark` so these full-bleed screens
+ * cannot leak styles into the rest of the portal — the same containment the
+ * War Room port uses for `.wr-root`.
  *
  * Keyframes are `cj-*` prefixed, so registering them globally is safe: nothing
  * else in the portal uses that namespace.
  * ========================================================================== */
 
 /* --------------------------------------------------------------------------
- * Dark surfaces — the Reveal, the SOW Proposal, the Checkout.
+ * Dark surfaces — all four journey screens.
  * ------------------------------------------------------------------------ */
 .cj-dark {
   margin: 0;
@@ -33,41 +34,23 @@
 .cj-dark ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 99px; }
 .cj-dark ::-webkit-scrollbar-track { background: transparent; }
 
-/* --------------------------------------------------------------------------
- * Light surface — the Document Viewer, deliberately the one calm screen.
- *
- * These values are literal rather than `hsl(var(--card))` because the viewer is
- * light against a navy sidebar whichever way the portal's own light/dark toggle
- * is set. Reading ambient tokens would make the reading surface flip underneath
- * a customer mid-report.
- * ------------------------------------------------------------------------ */
-.cj-light {
-  margin: 0;
-  background: #F7F9FC;
-  color: #0A2540;
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-.cj-light a { color: #0078D4; text-decoration: none; }
-.cj-light a:hover { color: #005A9E; }
-
-/* Report prose rendered from the platform's generated HTML. The documents are
-   authored as plain semantic markup, so the reading measure and rhythm are
-   applied here rather than trusted to the document. */
-.cj-doc-body { color: #3d5875; font-size: 15px; line-height: 1.65; }
+/* Report prose rendered from the platform's generated HTML, inside the
+   Document Viewer's dark reading card. The documents are authored as plain
+   semantic markup, so the reading measure, rhythm AND colour are applied here
+   rather than trusted to the document. */
+.cj-doc-body { color: #94a3b8; font-size: 15px; line-height: 1.65; }
 .cj-doc-body > * + * { margin-top: 1em; }
-.cj-doc-body h1 { font-size: clamp(26px, 3vw, 34px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.18; color: #0A2540; }
-.cj-doc-body h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; color: #0A2540; margin-top: 1.6em; }
-.cj-doc-body h3 { font-size: 16px; font-weight: 700; color: #0A2540; margin-top: 1.4em; }
+.cj-doc-body h1 { font-size: clamp(26px, 3vw, 34px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.18; color: #f8fafc; }
+.cj-doc-body h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; color: #f8fafc; margin-top: 1.6em; }
+.cj-doc-body h3 { font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 1.4em; }
 .cj-doc-body p { max-width: 66ch; }
 .cj-doc-body ul, .cj-doc-body ol { max-width: 66ch; padding-left: 1.3em; }
 .cj-doc-body li + li { margin-top: .4em; }
 .cj-doc-body table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.cj-doc-body th, .cj-doc-body td { text-align: left; padding: 12px 0; border-bottom: 1px solid #e7ebf0; }
+.cj-doc-body th, .cj-doc-body td { text-align: left; padding: 12px 0; border-bottom: 1px solid rgba(30,41,59,.9); }
 .cj-doc-body th { font-size: 9.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #64748b; }
-.cj-doc-body strong { font-weight: 700; color: #0A2540; }
-.cj-doc-body hr { border: 0; border-top: 1px solid #e7ebf0; }
+.cj-doc-body strong { font-weight: 700; color: #f8fafc; }
+.cj-doc-body hr { border: 0; border-top: 1px solid rgba(30,41,59,.9); }
 
 /* Focus rings. The journey's inputs are dark-on-dark, where the portal's default
    ring is invisible, so the brand blue is used explicitly. */
@@ -118,15 +101,13 @@
  * ------------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   .cj-dark [style*="cj-cue-drop"],
-  .cj-light [style*="cj-cue-drop"],
   .cj-dark [style*="cj-orb-spin"],
-  .cj-light [style*="cj-gen-pulse"],
+  .cj-dark [style*="cj-gen-pulse"],
   .cj-dark [style*="cj-pulse-dot"] {
     animation: none !important;
   }
 
-  .cj-dark *,
-  .cj-light * {
+  .cj-dark * {
     transition-duration: 1ms !important;
   }
 }

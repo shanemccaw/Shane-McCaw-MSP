@@ -13,9 +13,11 @@
  * over 260ms on `cubic-bezier(.2,.8,.2,1)`. Not a centred modal, not a separate
  * page; the customer never leaves the report they are asking about.
  *
- * The panel is a dark surface sitting inside the viewer's light one, so it wears
- * `.cj-dark` — that is what supplies the dark `::placeholder` colour for the
- * disabled input, which inline styles cannot set.
+ * The panel wears `.cj-dark` for its `::placeholder` colour on the disabled
+ * input, which inline styles cannot set — the same class the whole Document
+ * Viewer now carries, so this is no longer compensating for a lighter
+ * neighbour the way it once was, just supplying the one thing inline styles
+ * can't.
  */
 
 import { ChevronUp, MessageCircle, X } from "lucide-react";

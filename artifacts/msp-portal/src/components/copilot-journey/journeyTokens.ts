@@ -232,30 +232,30 @@ export const MOTION = {
 export const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 /**
- * The nine reports **as the design names them**, in generation order.
+ * The eight reports **as the design names them**, in generation order.
  *
- * This is the prototype's own list, NOT the platform's document catalogue — a
- * check of `document_types` found 15 seeded keys and no type producing
- * "Compliance Framework Mapping Report", "Drift & Change History Report" or
- * "Cyber Insurance Readiness Report". So this is reference copy for the design
- * preview only.
+ * This is the prototype's own list, NOT the platform's document catalogue —
+ * the design's earlier 9-title revision was checked against `document_types`
+ * and found 3 titles with no seeded type behind them; this revised 8-title
+ * list has not been re-checked against the live catalogue (no DB access in
+ * this environment), so the same caveat applies until it is. So this is
+ * reference copy for the design preview only.
  *
  * It is deliberately NOT used as a live fallback. `buildGeneration()` reads the
  * tenant's real `documents.expected` set and renders an unavailable state when
- * there isn't one — printing three deliverable names the platform cannot produce
+ * there isn't one — printing a deliverable name the platform cannot produce
  * would be exactly the fabricated-fact failure the data contract forbids, and a
  * fetch failure is the case where a fallback list would fire.
  */
 export const JOURNEY_DESIGN_DOCUMENTS = [
-  "Executive Summary",
-  "Full Readiness Report",
-  "Security Posture Report",
-  "Governance Maturity Report",
-  "Data Exposure Risk Report",
-  "License Optimization Report",
-  "Compliance Framework Mapping Report",
-  "Drift & Change History Report",
-  "Cyber Insurance Readiness Report",
+  "Copilot Readiness, Safety & Enablement Report",
+  "Microsoft 365 Security Posture & Blast Radius Report",
+  "Microsoft 365 Governance Posture Report",
+  "Microsoft 365 Compliance & Regulatory Alignment Report",
+  "Copilot Licensing Alignment Report",
+  "Copilot Adoption & Workflow Readiness Report",
+  "Microsoft 365 Operational Health & Service Integrity Report",
+  "Full Remediation Guide — Copilot Gate Clearance Plan",
 ] as const;
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;
