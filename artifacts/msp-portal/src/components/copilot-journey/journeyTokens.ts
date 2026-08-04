@@ -128,12 +128,45 @@ export interface ReportAccent {
   readonly icon: string;
 }
 
+/**
+ * The full-spectrum treatment the three multi-pillar documents share — the
+ * roll-up report, the remediation guide and the statement of work. The design is
+ * explicit about why: they span all six pillars, so they take the Copilot
+ * identity "rather than a seventh invented colour".
+ */
+const SPECTRUM_BAND = "linear-gradient(90deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6)";
+
+/**
+ * Per-document ambient glow, verbatim from the design's own `GLOWS` table rather
+ * than computed from the pillar colour at a fixed alpha.
+ *
+ * They are hand-tuned and not interchangeable: Compliance's near-white gets a
+ * cooler, lower-opacity two-stop mix so it reads as light rather than as a
+ * washed-out grey, and Adoption's orange is pulled down to .26 where the others
+ * sit at .28–.30. A derived `colour @ 16%` looked plausible and was wrong on
+ * every one of them.
+ */
+const PILLAR_GLOWS: Readonly<Record<PillarKey, string>> = {
+  governance: "radial-gradient(closest-side, rgba(59,130,246,.30), rgba(2,6,23,0) 100%)",
+  security: "radial-gradient(closest-side, rgba(139,92,246,.30), rgba(2,6,23,0) 100%)",
+  compliance:
+    "radial-gradient(closest-side, rgba(226,232,240,.22), rgba(148,163,184,.12) 58%, rgba(2,6,23,0) 100%)",
+  licensing: "radial-gradient(closest-side, rgba(20,184,166,.30), rgba(2,6,23,0) 100%)",
+  adoption: "radial-gradient(closest-side, rgba(249,115,22,.26), rgba(2,6,23,0) 100%)",
+  health: "radial-gradient(closest-side, rgba(34,197,94,.28), rgba(2,6,23,0) 100%)",
+};
+
+const SPECTRUM_GLOW =
+  "radial-gradient(closest-side, rgba(59,130,246,.30), rgba(139,92,246,.20) 46%, rgba(34,211,238,.14) 70%, rgba(2,6,23,0) 100%)";
+
 export function reportAccent(pillar: PillarKey | null): ReportAccent {
   if (pillar === null) {
     return {
+      // Teal for the icon stroke, because a gradient cannot stroke an SVG path —
+      // the design's own `ICON_COLORS` makes the same substitution.
       colour: BRAND.teal,
-      band: DELTA_GRADIENT,
-      glow: `radial-gradient(closest-side,rgba(0,180,216,.16),rgba(2,6,23,0))`,
+      band: SPECTRUM_BAND,
+      glow: SPECTRUM_GLOW,
       icon: PILLAR_ICON_PATHS.copilot,
     };
   }
@@ -141,7 +174,7 @@ export function reportAccent(pillar: PillarKey | null): ReportAccent {
   return {
     colour: identity.primary,
     band: `linear-gradient(90deg,${identity.primary},${identity.accent})`,
-    glow: `radial-gradient(closest-side,${hexAlpha(identity.primary, 0.16)},rgba(2,6,23,0))`,
+    glow: PILLAR_GLOWS[pillar],
     icon: PILLAR_ICON_PATHS[pillar],
   };
 }
@@ -318,7 +351,7 @@ export const MOTION = {
 export const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 /**
- * The eight reports **as the design names them**, in generation order.
+ * The nine documents **as the design names them**, in generation order.
  *
  * This is the prototype's own list, NOT the platform's document catalogue —
  * the design's earlier 9-title revision was checked against `document_types`
@@ -342,6 +375,15 @@ export const JOURNEY_DESIGN_DOCUMENTS = [
   "Copilot Adoption & Workflow Readiness Report",
   "Microsoft 365 Operational Health & Service Integrity Report",
   "Full Remediation Guide — Copilot Gate Clearance Plan",
+  "Statement of Work — Copilot Gate Clearance",
 ] as const;
+
+/**
+ * The two documents that are not reports. They render their own bodies rather
+ * than a `ReportSection[]`, and the customer acts on both: the guide's steps get
+ * ticked off, the SOW's phases get switched in and out of scope before signing.
+ */
+export const JOURNEY_REMEDIATION_DOCUMENT = "Full Remediation Guide — Copilot Gate Clearance Plan";
+export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearance";
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;

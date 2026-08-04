@@ -30,7 +30,15 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { reportClientEvent } from "@/lib/report-client-event";
 
-import { BRAND, INK, RADIUS, reportAccent, type PillarKey } from "./journeyTokens.ts";
+import {
+  BRAND,
+  INK,
+  JOURNEY_REMEDIATION_DOCUMENT,
+  RADIUS,
+  reportAccent,
+  type PillarKey,
+} from "./journeyTokens.ts";
+import { RemediationGuideBody } from "./RemediationGuideBody";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant } from "./journeyModel.ts";
 import { documentPillar } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
@@ -380,6 +388,7 @@ export function DocumentBody({
   error,
   onRetry,
   onAsk,
+  onOpenSow,
 }: {
   readonly doc: JourneyDocumentView | null;
   readonly generation: JourneyGeneration;
@@ -393,6 +402,8 @@ export function DocumentBody({
   readonly onRetry?: () => void;
   /** Hands a quote to ShaneBot — wired to the preview reports' inline ask icons. */
   readonly onAsk?: (context: string) => void;
+  /** Opens the statement of work — the remediation guide's closing handoff. */
+  readonly onOpenSow?: () => void;
 }) {
   const gen = generationView(generation.ready, generation.total);
   // Colour only: it tints the card's band and nothing else, so a document whose
@@ -457,6 +468,15 @@ export function DocumentBody({
   }
 
   if (isPreview) {
+    // The two non-report documents render their own bodies — the guide is a
+    // runbook with tickable steps, the SOW a contract with switchable scope.
+    if (doc.title === JOURNEY_REMEDIATION_DOCUMENT) {
+      return (
+        <Card pillar={pillar}>
+          <RemediationGuideBody onOpenSow={onOpenSow} />
+        </Card>
+      );
+    }
     const preview = PREVIEW_DOCUMENT_BODIES[doc.title];
     if (preview) {
       return (

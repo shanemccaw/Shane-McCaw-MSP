@@ -1204,9 +1204,25 @@ const OPERATIONAL_HEALTH: PreviewPillarReport = {
         },
       ],
     },
-    // Self-Resolution Actions — copy not recoverable, see file header.
+    {
+      heading: "Self-Resolution Actions",
+      blocks: [
+        {
+          kind: "bullets",
+          items: [
+            "Correct workload misconfigurations safely: fix the five SharePoint sharing-scope errors alongside the Governance sharing work so the same sites are only touched once.",
+            "Restore baseline settings: capture the current configuration as a signed baseline first, so every later change is measurable rather than guessed at.",
+            "Eliminate hygiene issues: run owner attestation on the 148 inactive sites and 19 orphaned channels before disposing of anything.",
+            "Reduce instability: resolve the 214 OneDrive sync errors and bring the 34 out-of-date clients current — most are a single client update.",
+            "Run monthly health posture reviews: 37 unreviewed changes in 90 days is what no review cadence looks like.",
+          ],
+        },
+      ],
+    },
   ],
   closing: [
+    "Operational health determines whether Copilot can function reliably. Stable workloads, correct configurations and clean tenant hygiene are prerequisites for Copilot readiness.",
+    "Health scores 44. The services are stable — the deficit is entirely configuration and hygiene, which is the good news, because it means nothing here requires Microsoft. Put drift telemetry on the tenant and the remediation you are about to pay for stays remediated.",
   ],
   provenance: PROVENANCE,
 };

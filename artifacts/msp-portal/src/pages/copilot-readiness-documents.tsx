@@ -59,6 +59,8 @@ import {
   COPILOT_GATE_TARGET,
   DELTA_GRADIENT,
   INK,
+  JOURNEY_REMEDIATION_DOCUMENT,
+  JOURNEY_SOW_DOCUMENT,
   PILLAR_ICON_PATHS,
   PILLAR_ORDER,
   RADIUS,
@@ -134,6 +136,10 @@ function useViewportWidth(): number {
  */
 function PillarStrip({ view, active }: { view: JourneyView; active: string | null }) {
   const byKey = new Map(view.pillars.map((p) => [p.key, p]));
+  // On the three documents that span every pillar — the roll-up report, the
+  // remediation guide, the SOW — none of the six is "the" subject, so all six
+  // stay equally lit rather than every one of them reading as dimmed-out.
+  const multiPillar = active === null;
   return (
     <div
       style={{
@@ -151,7 +157,7 @@ function PillarStrip({ view, active }: { view: JourneyView; active: string | nul
     >
       {PILLAR_ORDER.map((p) => {
         const score = byKey.get(p.key)?.score ?? null;
-        const on = active === p.key;
+        const on = multiPillar || active === p.key;
         return (
           <span
             key={p.key}
@@ -165,8 +171,10 @@ function PillarStrip({ view, active }: { view: JourneyView; active: string | nul
               borderRadius: 6,
               transition: "opacity 260ms ease, background 260ms ease, transform 260ms ease",
               opacity: on ? 1 : 0.5,
-              background: on ? hexAlpha(p.primary, 0.12) : "transparent",
-              transform: `scale(${on ? 1.06 : 1})`,
+              // The lift is the "this one" signal, so it is withheld when all
+              // six are lit — six raised badges says nothing.
+              background: on && !multiPillar ? hexAlpha(p.primary, 0.12) : "transparent",
+              transform: `scale(${on && !multiPillar ? 1.06 : 1})`,
             }}
           >
             <svg
@@ -302,11 +310,15 @@ export default function CopilotReadinessDocumentsPage() {
    */
   const previewView = useMemo<JourneyView>(() => {
     const base = previewJourneyView();
+    // A document is readable in the preview if something can draw it: one of the
+    // seven report bodies, or one of the two that render themselves.
+    const drawable = (title: string) =>
+      Boolean(PREVIEW_DOCUMENT_BODIES[title]) || title === JOURNEY_REMEDIATION_DOCUMENT;
     const documents = base.generation.documents.map((d, i) =>
       // Spread rather than rebuilt, so the fixture's `docType` — the key the
       // live path joins on — survives into the preview instead of being
       // silently dropped here.
-      PREVIEW_DOCUMENT_BODIES[d.title]
+      drawable(d.title)
         ? { ...d, id: i + 1, status: "ready" as const }
         : { ...d, id: null, status: "generating" as const },
     );
@@ -423,6 +435,21 @@ export default function CopilotReadinessDocumentsPage() {
     setBotContext(context);
     setBotOpen(true);
   }, []);
+
+  /**
+   * Open the statement of work — the remediation guide's closing handoff, and
+   * where "Ready to fix this?" will land once the SOW document ships. Falls back
+   * to the standalone proposal screen while that document is still generating,
+   * so the button is never a dead end.
+   */
+  const handleOpenSow = useCallback(() => {
+    const index = documents.findIndex((d) => d.title === JOURNEY_SOW_DOCUMENT);
+    if (index >= 0) {
+      handleSelect(index);
+      return;
+    }
+    navigate(withPreview(PROPOSAL_PATH));
+  }, [documents, handleSelect, navigate, withPreview]);
 
   /* ---------------------------------------------------------------- *
    * PDF
@@ -769,6 +796,7 @@ export default function CopilotReadinessDocumentsPage() {
             error={isPreview ? null : live.error}
             onRetry={live.refresh}
             onAsk={handleAsk}
+            onOpenSow={handleOpenSow}
           />
         </div>
       </div>
