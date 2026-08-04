@@ -65,6 +65,7 @@ export const REQUIRED_MT_SCOPES = [
   "AuditLog.Read.All",
   "ActivityFeed.Read",
   "IdentityRiskyUser.Read.All",
+  "RoleEligibilitySchedule.Read.Directory",
   "AccessReview.Read.All",
   "TeamSettings.Read.All",
   "ServiceMessage.Read.All",
