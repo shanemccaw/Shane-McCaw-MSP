@@ -15,8 +15,7 @@
  * has a share-link mechanism (`quick_win_result_shares`, used by the dashboard
  * export) but nothing that bundles an assessment's reports behind one token, and
  * no notion of a pricing-free variant. So those two are drawn and labelled
- * "Soon" rather than wired to a URL this screen would have to invent — the same
- * honesty the ShaneBot dock's disabled input already uses on this journey.
+ * "Soon" rather than wired to a URL this screen would have to invent.
  *
  * The design's own sublabel for the bulk download is "A single PDF set, in
  * reading order". There is no bundling endpoint, so the label here says what the

@@ -449,7 +449,6 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
           {REMEDIATION_GUIDE.scope.eyebrow}
         </span>
         <span
-          data-ask
           style={{
             fontSize: "clamp(22px,2.8vw,32px)",
             fontWeight: 800,
@@ -469,14 +468,13 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
       {/* Overview */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{REMEDIATION_GUIDE.overview.heading}</h2>
-        <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+        <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
           {REMEDIATION_GUIDE.overview.blurb}
         </p>
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
           {REMEDIATION_GUIDE.overview.rows.map((row) => (
             <div
               key={row.label}
-              data-ask
               style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(150px,1.15fr) minmax(0,1.85fr)",
@@ -500,7 +498,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
       {/* Connect once */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{REMEDIATION_PRELUDE.heading}</h2>
-        <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+        <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
           {REMEDIATION_PRELUDE.blurb}
         </p>
         <CodeBlock code={REMEDIATION_PRELUDE.code} />
@@ -532,7 +530,6 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
           {REMEDIATION_GUIDE.sequence.phases.map((phase) => (
             <div
               key={phase.label}
-              data-ask
               style={{
                 display: "grid",
                 gridTemplateColumns: "72px 108px minmax(0,1fr) minmax(0,1.1fr)",
@@ -551,7 +548,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
             </div>
           ))}
         </div>
-        <p data-ask style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDark }}>
+        <p style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDark }}>
           {REMEDIATION_GUIDE.sequence.note}
         </p>
       </div>
@@ -563,7 +560,6 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
           {REMEDIATION_GUIDE.checklist.rows.map((row) => (
             <div
               key={row}
-              data-ask
               style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 10px" }}
             >
               <span
@@ -583,7 +579,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
             </div>
           ))}
         </div>
-        <p data-ask style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDark }}>
+        <p style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDark }}>
           {REMEDIATION_GUIDE.checklist.note}
         </p>
       </div>
@@ -592,7 +588,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>Executive Summary</h2>
         {REMEDIATION_GUIDE.closing.map((p) => (
-          <p key={p.slice(0, 40)} data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+          <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
             {p}
           </p>
         ))}

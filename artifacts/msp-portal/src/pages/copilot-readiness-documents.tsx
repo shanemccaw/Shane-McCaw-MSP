@@ -32,6 +32,15 @@
  * `GET /api/portal/assessment/documents/:id`. Nothing on this screen is a
  * template value. `?preview=design` renders the design's worked example instead,
  * badged, and is unreachable on a live journey.
+ *
+ * NO SHANEBOT. The handoff specifies a docked ShaneBot pill and a hover "Ask
+ * Shane" affordance, both explicitly UI-only — no chat logic, no grounding, no
+ * backend. They were built to that spec and are removed for this release, not
+ * hidden behind a flag: an entry point that opens a panel with a disabled input
+ * marked SOON is a promise the platform cannot keep on the screen where the
+ * customer is deciding whether the engagement fee was worth it. The components
+ * are deleted rather than orphaned; the design and their implementation are both
+ * in git history if the grounding architecture lands later.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -41,7 +50,6 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth-context";
 
-import { AskShaneAffordance } from "@/components/copilot-journey/AskShaneAffordance";
 import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
 import { DocumentExportMenu } from "@/components/copilot-journey/DocumentExportMenu";
 import { DocumentPager } from "@/components/copilot-journey/DocumentPager";
@@ -52,7 +60,6 @@ import {
   NAV_WIDTH_DEFAULT,
 } from "@/components/copilot-journey/DocumentSidebar";
 import { PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
-import { ShaneBotDock } from "@/components/copilot-journey/ShaneBotDock";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
 import { documentPillar, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
 import {
@@ -269,8 +276,8 @@ export default function CopilotReadinessDocumentsPage() {
   const isPreview = new URLSearchParams(search).get("preview") === "design";
 
   // Read once. This screen has no motion worth subscribing to — the only
-  // animations are the generation spinner, the switcher's pulse and the
-  // ShaneBot expand, none of which need to respond to a mid-session change.
+  // animations are the generation spinner and the switcher's pulse, neither of
+  // which needs to respond to a mid-session change.
   const [reduceMotion] = useState(
     () =>
       typeof window === "undefined" ||
@@ -426,19 +433,6 @@ export default function CopilotReadinessDocumentsPage() {
     const id = window.requestAnimationFrame(handleScroll);
     return () => window.cancelAnimationFrame(id);
   }, [activeTitle, handleScroll]);
-
-  /* ---------------------------------------------------------------- *
-   * ShaneBot + the Ask Shane affordance. Both are UI only in this scope;
-   * the affordance's only job is to hand a quote to the panel.
-   * ---------------------------------------------------------------- */
-
-  const [botOpen, setBotOpen] = useState(false);
-  const [botContext, setBotContext] = useState<string | null>(null);
-
-  const handleAsk = useCallback((context: string) => {
-    setBotContext(context);
-    setBotOpen(true);
-  }, []);
 
   /**
    * Open the statement of work — the remediation guide's closing handoff, and
@@ -817,7 +811,6 @@ export default function CopilotReadinessDocumentsPage() {
             reduceMotion={reduceMotion}
             error={isPreview ? null : live.error}
             onRetry={live.refresh}
-            onAsk={handleAsk}
             onOpenSow={handleOpenSow}
             onSigned={handleSigned}
           />
@@ -835,16 +828,6 @@ export default function CopilotReadinessDocumentsPage() {
           />
         </div>
       </div>
-
-      <ShaneBotDock
-        open={botOpen}
-        context={botContext}
-        onToggle={() => setBotOpen((v) => !v)}
-        onClose={() => setBotOpen(false)}
-        reduceMotion={reduceMotion}
-      />
-
-      <AskShaneAffordance containerRef={scrollRef} onAsk={handleAsk} />
 
       {narrow && sheetOpen ? (
         <DocumentSheet {...switcherProps} onDismiss={() => setSheetOpen(false)} />

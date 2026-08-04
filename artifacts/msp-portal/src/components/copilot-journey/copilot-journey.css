@@ -56,22 +56,10 @@
    ring is invisible, so the brand blue is used explicitly. */
 .cj-input:focus { border-color: #0078D4 !important; }
 
-/* The block ShaneBot was last asked about, in either affordance — the inline
-   sparkle or the floating pill. Held as a class rather than React state because
-   it belongs to whichever block was asked about last across the whole reading
-   pane, and the block loop otherwise has no identity to key it on. */
-.cj-ask-active {
-  background: rgba(0, 180, 216, .09);
-  box-shadow: 0 0 0 5px rgba(0, 180, 216, .09);
-  border-radius: 3px;
-  transition: background 140ms ease, box-shadow 140ms ease;
-}
-
-/* The inline "Ask Shane about this" sparkle. Half-lit until reached for, so a
-   report reads as prose rather than as a page of buttons. */
-.cj-ask-icon { opacity: .5; transition: opacity 160ms, background 160ms; }
-.cj-ask-icon:hover,
-.cj-ask-icon:focus-visible { opacity: 1; background: rgba(0, 180, 216, .12); }
+/* `.cj-ask-active` and `.cj-ask-icon` lived here for ShaneBot's two affordances.
+   Both are removed for this release along with the panel they fed — see
+   copilot-readiness-documents.tsx's header for why the entry points went rather
+   than being disabled in place. */
 
 /* The reading pane's own scrollbar — thinner than the journey default, because
    it sits beside a document rather than beside chrome. */

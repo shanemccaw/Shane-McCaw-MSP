@@ -304,20 +304,6 @@ function LiveBody({ documentId, title }: { documentId: number; title: string }) 
     return undefined;
   }, [empty, documentId]);
 
-  // The generated documents are plain semantic markup with no hover targets of
-  // their own, so the "Ask Shane" affordance is attached here: every paragraph,
-  // list item and table row in the rendered report becomes askable. Done against
-  // the live DOM rather than by rewriting the HTML string, so nothing about the
-  // platform's output is altered on its way to the page.
-  useEffect(() => {
-    const el = proseRef.current;
-    if (!el || state !== "ready") return undefined;
-    el.querySelectorAll("p, li, tr, blockquote, h2, h3").forEach((node) => {
-      node.setAttribute("data-ask", "");
-    });
-    return undefined;
-  }, [state, html]);
-
   if (state === "loading") {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "40px 0", color: INK.micro }}>
@@ -389,7 +375,6 @@ export function DocumentBody({
   reduceMotion,
   error,
   onRetry,
-  onAsk,
   onOpenSow,
   onSigned,
 }: {
@@ -403,8 +388,6 @@ export function DocumentBody({
   /** Set when the status fetch failed outright. */
   readonly error?: string | null;
   readonly onRetry?: () => void;
-  /** Hands a quote to ShaneBot — wired to the preview reports' inline ask icons. */
-  readonly onAsk?: (context: string) => void;
   /** Fired when the SOW is signed, carrying the agreed scope as a query string. */
   readonly onSigned?: (query: string) => void;
   /** Opens the statement of work — the remediation guide's closing handoff. */
@@ -493,7 +476,7 @@ export function DocumentBody({
     if (preview) {
       return (
         <Card pillar={pillar}>
-          <PreviewReportBody report={preview} onAsk={onAsk} />
+          <PreviewReportBody report={preview} />
         </Card>
       );
     }

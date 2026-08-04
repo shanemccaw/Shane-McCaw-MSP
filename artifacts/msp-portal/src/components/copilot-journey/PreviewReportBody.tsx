@@ -33,6 +33,7 @@ import {
   PILLAR_ICON_PATHS,
   SEVERITY_ON_DARK,
   TABULAR,
+  gateLabel,
   hexAlpha,
   reportAccent,
   severityColor,
@@ -93,68 +94,6 @@ const EYEBROW: React.CSSProperties = {
 const BULLET_DOT = "#3B82F6";
 
 /* ------------------------------------------------------------------ *
- * The inline "Ask Shane" affordance
- * ------------------------------------------------------------------ */
-
-/**
- * The sparkle the design docks at the end of every askable paragraph.
- *
- * It exists because hover-to-reveal cannot be the only way in: `AskShaneAffordance`
- * still floats its pill over any `[data-ask]` block, and that covers the tables
- * and finding rows, but a paragraph someone is reading deserves a target that is
- * visible before they go looking for it. Both routes hand ShaneBot the same
- * quote.
- *
- * `.cj-ask-active` is moved onto the asked paragraph rather than tracked in
- * React state: the highlight belongs to whichever block was asked about last,
- * across every report and both affordances, and threading that through the block
- * loop would mean giving every block an identity it does not otherwise need.
- */
-function AskIcon({ onAsk }: { readonly onAsk?: (context: string) => void }) {
-  if (!onAsk) return null;
-  return (
-    <button
-      type="button"
-      data-ask-icon
-      title="Ask Shane about this"
-      aria-label="Ask Shane about this"
-      onClick={(e) => {
-        const block = e.currentTarget.closest("[data-ask]");
-        if (!block) return;
-        document
-          .querySelectorAll(".cj-ask-active")
-          .forEach((el) => el.classList.remove("cj-ask-active"));
-        block.classList.add("cj-ask-active");
-        onAsk((block instanceof HTMLElement ? block.innerText : block.textContent ?? "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 190));
-      }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 26,
-        height: 26,
-        margin: "-6px -6px -6px 4px",
-        verticalAlign: "middle",
-        border: 0,
-        background: "transparent",
-        borderRadius: 7,
-        cursor: "pointer",
-        flex: "none",
-      }}
-      className="cj-ask-icon"
-    >
-      {/* The Copilot sparkle, reused as the "ask" mark exactly as the design does. */}
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={BRAND.teal} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }}>
-        <path d={PILLAR_ICON_PATHS.copilot} />
-      </svg>
-    </button>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * The before/after numerals and the pillar table — the executive report's
  * two derived figures. Both read the fixture rather than restating it.
  * ------------------------------------------------------------------ */
@@ -180,15 +119,21 @@ function ScoreNumeral({ label, score, verdict }: { label: string; score: number;
   );
 }
 
-function ScoreSummary({ onAsk }: { readonly onAsk?: (context: string) => void }) {
+function ScoreSummary() {
   const gain = PREVIEW_REMEDIATED_SCORE - PREVIEW_READINESS_SCORE;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "28px 44px", alignItems: "flex-end" }}>
-      <ScoreNumeral label="Readiness today" score={PREVIEW_READINESS_SCORE} verdict="Not safe to deploy yet" />
-      <ScoreNumeral label="After remediation" score={PREVIEW_REMEDIATED_SCORE} verdict="Safe to deploy" />
-      <p data-ask style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark, flex: "1 1 240px" }}>
+      {/* Both verdicts are DERIVED from the Gate rather than written out. The
+          design hardcodes "Safe to deploy" under the after-remediation figure,
+          which was true against its own 60-era assumption and is not true of the
+          fixture's 68 against the real 82 Gate (#359) — the guide alongside it
+          says so in as many words ("the remaining 14 points ... come from
+          adoption enablement"). A worked example that contradicts its own
+          remediation plan is worse than one that reads a little less triumphant. */}
+      <ScoreNumeral label="Readiness today" score={PREVIEW_READINESS_SCORE} verdict={gateLabel(PREVIEW_READINESS_SCORE)} />
+      <ScoreNumeral label="After remediation" score={PREVIEW_REMEDIATED_SCORE} verdict={gateLabel(PREVIEW_REMEDIATED_SCORE)} />
+      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark, flex: "1 1 240px" }}>
         {`Every point of that ${gain}-point gain maps to a specific, named finding in the reports alongside this one. No estimates, no benchmarks — your tenant, read directly through the Graph API.`}
-        <AskIcon onAsk={onAsk} />
       </p>
     </div>
   );
@@ -217,7 +162,6 @@ function PillarTable() {
       {PREVIEW_PILLARS.map((p) => (
         <div
           key={p.key}
-          data-ask
           style={{
             ...EXEC_GRID,
             padding: "14px 10px",
@@ -248,7 +192,6 @@ function PillarTable() {
 
 interface BlockContext {
   readonly pillar: PillarKey | null;
-  readonly onAsk?: (context: string) => void;
 }
 
 function FigureBlock({ figure, ctx }: { readonly figure: ReportFigure; readonly ctx: BlockContext }) {
@@ -262,7 +205,7 @@ function FigureBlock({ figure, ctx }: { readonly figure: ReportFigure; readonly 
         />
       );
     case "scoreSummary":
-      return <ScoreSummary onAsk={ctx.onAsk} />;
+      return <ScoreSummary />;
     case "pillarTable":
       return <PillarTable />;
     case "secureScoreTrend":
@@ -289,9 +232,8 @@ function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: Bloc
 
   if (block.kind === "prose") {
     return (
-      <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+      <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
         {block.text}
-        <AskIcon onAsk={ctx.onAsk} />
       </p>
     );
   }
@@ -302,7 +244,6 @@ function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: Bloc
         {block.rows.map((row) => (
           <div
             key={row.label}
-            data-ask
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(150px,1.15fr) minmax(0,1.85fr)",
@@ -328,7 +269,6 @@ function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: Bloc
         {block.rows.map((f) => (
           <div
             key={f.lead}
-            data-ask
             style={{
               display: "flex",
               gap: 12,
@@ -368,9 +308,8 @@ function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: Bloc
             >
               {step.when}
             </span>
-            <p data-ask style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
+            <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
               {step.text}
-              <AskIcon onAsk={ctx.onAsk} />
             </p>
           </div>
         ))}
@@ -387,9 +326,8 @@ function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: Bloc
             aria-hidden="true"
             style={{ width: 5, height: 5, borderRadius: "50%", background: BULLET_DOT, flex: "none", marginTop: 7 }}
           />
-          <p data-ask style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
+          <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
             {item}
-            <AskIcon onAsk={ctx.onAsk} />
           </p>
         </div>
       ))}
@@ -454,7 +392,6 @@ function VerdictCard({
         {report.verdict.eyebrow}
       </span>
       <span
-        data-ask
         style={{
           position: "relative",
           fontSize: "clamp(26px,3.4vw,40px)",
@@ -478,20 +415,14 @@ function VerdictCard({
  * The report
  * ------------------------------------------------------------------ */
 
-export function PreviewReportBody({
-  report,
-  onAsk,
-}: {
-  readonly report: PreviewDocumentBody;
-  readonly onAsk?: (context: string) => void;
-}) {
+export function PreviewReportBody({ report }: { readonly report: PreviewDocumentBody }) {
   const pillar = report.kind === "pillar" ? report.pillar : null;
   const accent = reportAccent(pillar);
   const fixture = pillar ? PREVIEW_PILLARS.find((p) => p.key === pillar) : undefined;
   const score = fixture?.score ?? null;
   const projected = fixture?.projected ?? null;
   const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
-  const ctx: BlockContext = { pillar, onAsk };
+  const ctx: BlockContext = { pillar };
 
   const eyebrow =
     report.kind === "executive"
@@ -547,9 +478,8 @@ export function PreviewReportBody({
             projected-score line alone rather than a heading over nothing. */}
         {report.closing.length > 0 ? <h2 style={H2}>Executive Summary</h2> : null}
         {report.closing.map((p) => (
-          <p key={p.slice(0, 40)} data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+          <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
             {p}
-            <AskIcon onAsk={onAsk} />
           </p>
         ))}
         {score === null || projected === null ? null : (

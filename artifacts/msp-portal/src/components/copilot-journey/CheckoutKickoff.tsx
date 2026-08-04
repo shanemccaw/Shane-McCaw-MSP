@@ -203,15 +203,18 @@ export function CheckoutKickoff({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          {/* The remediation tracker this button names does not exist yet — there
-              is no route, no component and no per-phase progress store behind it.
-              A button that quietly re-routed to some other page would be a lie
-              told at the single moment the customer is most trusting, so it is
-              rendered inert with the reason stated underneath instead. */}
+          {/* The design's primary action here opens the remediation tracker. That
+              tracker is deferred to the next iteration — no route, no component,
+              no per-phase progress store. It was previously drawn as a disabled
+              button with the reason underneath; a disabled primary CTA is still a
+              visible entry point that does nothing, at the single moment the
+              customer is most trusting, so the button is gone and the tracking
+              promise survives as the copy above ("every phase is tracked against
+              the findings that generated it") plus the note below. The real,
+              working action is promoted in its place. */}
           <Button
+            asChild
             size="lg"
-            disabled
-            aria-describedby="cj-tracker-note"
             style={{
               minWidth: 200,
               height: 44,
@@ -223,17 +226,11 @@ export function CheckoutKickoff({
               fontWeight: 700,
             }}
           >
-            Open remediation tracker
+            <Link href={documentsHref}>Back to your findings</Link>
           </Button>
-          <Link href={documentsHref} style={{ fontSize: 13, fontWeight: 600 }}>
-            Back to your findings
-          </Link>
         </div>
-        <span
-          id="cj-tracker-note"
-          style={{ fontSize: 11.5, fontWeight: 500, lineHeight: 1.55, color: INK.micro }}
-        >
-          The tracker opens once Shane confirms your Phase 1 window — it is not live on your
+        <span style={{ fontSize: 11.5, fontWeight: 500, lineHeight: 1.55, color: INK.micro }}>
+          Phase tracking opens once Shane confirms your Phase 1 window — it is not live on your
           account yet. Your reports and signed scope are available now.
         </span>
       </div>

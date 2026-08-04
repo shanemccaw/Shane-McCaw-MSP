@@ -61,9 +61,7 @@ export function clampNavWidth(px: number): number {
  * which resolves the design's five `color-mix(in oklab, hsl(var(--sidebar-
  * foreground)) N%, var(--brand-navy))` percentages once for the whole journey.
  * What is left here is surface, not text, and it stays local because only this
- * rail and the ShaneBot panel paint it.
- *
- * Shared with `ShaneBotDock`, whose panel and pill are the same navy surface.
+ * rail paints it.
  */
 export const NAVY_SURFACE = {
   /** The hairline the design draws between navy sections. */

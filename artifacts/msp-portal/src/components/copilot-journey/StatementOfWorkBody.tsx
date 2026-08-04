@@ -85,7 +85,6 @@ const SOW_GATE_TARGET = COPILOT_GATE_TARGET;
 function Row({ label, tone, value }: { label: string; tone: keyof typeof SEVERITY_ON_DARK; value: string }) {
   return (
     <div
-      data-ask
       style={{
         display: "grid",
         gridTemplateColumns: "minmax(160px,1.1fr) minmax(0,1.9fr)",
@@ -283,7 +282,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
         <div key={section.heading} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           <h2 style={H2}>{section.heading}</h2>
           {section.intro ? (
-            <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+            <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
               {section.intro}
             </p>
           ) : null}
@@ -300,7 +299,6 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
             ? STATEMENT_OF_WORK.blockers.map((b) => (
                 <div
                   key={b.text}
-                  data-ask
                   style={{
                     display: "flex",
                     gap: 12,
@@ -334,7 +332,6 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
                   {STATEMENT_OF_WORK.carry.map((c) => (
                     <div
                       key={c.pillar}
-                      data-ask
                       style={{
                         display: "grid",
                         gridTemplateColumns: "minmax(120px,.7fr) 92px minmax(0,2.2fr)",
@@ -387,7 +384,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
       {/* Delivery timeline */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{STATEMENT_OF_WORK.timeline.heading}</h2>
-        <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+        <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
           {STATEMENT_OF_WORK.timeline.intro}
         </p>
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
@@ -396,7 +393,6 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
             return (
               <div
                 key={p.id}
-                data-ask
                 style={{
                   display: "grid",
                   gridTemplateColumns: "minmax(150px,1fr) minmax(0,1.8fr) 96px",
@@ -431,7 +427,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
       {/* Section 8 — the scope decision */}
       <div data-sow-scope style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{STATEMENT_OF_WORK.phases.heading}</h2>
-        <p data-ask style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+        <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
           {STATEMENT_OF_WORK.phases.intro}
         </p>
 

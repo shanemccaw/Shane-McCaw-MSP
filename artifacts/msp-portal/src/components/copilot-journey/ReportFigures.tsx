@@ -199,7 +199,6 @@ export function ReadinessRadar({
         })}
       </svg>
       <p
-        data-ask
         style={{ ...FIGURE_NOTE, fontSize: 13, lineHeight: 1.6, flex: "1 1 190px", minWidth: 170 }}
       >
         {PREVIEW_FIGURES.readinessRadarNote.replace("{date}", scannedOn)}
@@ -279,7 +278,7 @@ export function TrendSparkline({
         </span>
         <span style={{ ...FIGURE_CAPTION, letterSpacing: ".14em" }}>{figure.caption}</span>
       </span>
-      <span data-ask style={{ ...FIGURE_NOTE, flex: "1 1 220px", minWidth: 200 }}>
+      <span style={{ ...FIGURE_NOTE, flex: "1 1 220px", minWidth: 200 }}>
         {figure.note}
       </span>
     </div>
@@ -387,7 +386,7 @@ export function BlastRadius() {
         </svg>
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 2 }}>
-        <span data-ask style={{ ...FIGURE_NOTE, flex: "1 1 220px", minWidth: 200 }}>
+        <span style={{ ...FIGURE_NOTE, flex: "1 1 220px", minWidth: 200 }}>
           {note}
         </span>
         <span style={{ display: "flex", flexDirection: "column", gap: 4, flex: "none" }}>
@@ -480,7 +479,7 @@ export function ExposureHeatmap({ figure }: { readonly figure: PreviewHeatmapFig
           }}
         />
         <span style={{ ...FIGURE_CAPTION, letterSpacing: ".14em", fontSize: 10 }}>{figure.highLabel}</span>
-        <span data-ask style={{ ...FIGURE_NOTE, fontSize: 12, flex: "1 1 210px", minWidth: 190 }}>
+        <span style={{ ...FIGURE_NOTE, fontSize: 12, flex: "1 1 210px", minWidth: 190 }}>
           {figure.note}
         </span>
       </div>
@@ -503,7 +502,6 @@ export function BarList({ figure, wide }: { readonly figure: PreviewBarFigure; r
         {figure.rows.map((row) => (
           <div
             key={row.label}
-            data-ask
             style={{
               display: "grid",
               gridTemplateColumns: columns,
@@ -585,7 +583,6 @@ export function SplitBar({ figure }: { readonly figure: PreviewSplitFigure }) {
         {figure.segments.map((s) => (
           <span
             key={s.label}
-            data-ask
             style={{
               display: "flex",
               alignItems: "center",

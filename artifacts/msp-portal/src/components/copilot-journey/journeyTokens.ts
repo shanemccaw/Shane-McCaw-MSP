@@ -299,8 +299,7 @@ export const INK = {
 } as const;
 
 /**
- * Text on the navy chrome — the Document Viewer's sidebar and the ShaneBot
- * panel.
+ * Text on the navy chrome — the Document Viewer's sidebar.
  *
  * The design writes these as `color-mix(in oklab, hsl(var(--sidebar-foreground))
  * N%, var(--brand-navy))` at five percentages. Those are resolved to sRGB
@@ -310,7 +309,7 @@ export const INK = {
  * mix toward the wrong colour entirely.
  */
 export const INK_ON_NAVY = {
-  /** 48% — placeholder text in the disabled ShaneBot input. */
+  /** 48% — the de-emphasised "/ 100" beside the rail's gate score. */
   faint: "#5b7186",
   /** 58% — eyebrows, metadata, the credibility line. */
   muted: "#6b8096",
@@ -344,10 +343,9 @@ export const MOTION = {
   radarSheenMs: 9000,
   /** Scene-1 verdict count-up + ring settle. */
   verdictMs: 2600,
-  /** ShaneBot expand. */
-  botOpacityMs: 220,
-  botTransformMs: 260,
-  botEase: "cubic-bezier(.2,.8,.2,1)",
+  /* The design's ShaneBot expand timings (220ms opacity / 260ms transform on
+     `cubic-bezier(.2,.8,.2,1)`) lived here. ShaneBot is removed for this
+     release and they had no other consumer. */
   /** Generic state transition band. */
   stateMinMs: 150,
   stateMaxMs: 260,
