@@ -41,6 +41,8 @@ import {
   ScanLine,
   Link2,
   Copy,
+  Check,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AD_SELECT_EVENT, type AdSelectedObject } from "./ActiveDirectoryTree";
@@ -131,6 +133,15 @@ function sortFindings(findings: DiagnosticFinding[]): DiagnosticFinding[] {
     if (aErr !== bErr) return aErr - bErr;
     return FINDING_SEVERITY_RANK[a.severity] - FINDING_SEVERITY_RANK[b.severity];
   });
+}
+
+// #374 persists the raw Graph error under extractedProperties._rawGraphError
+// alongside the friendly, humanized `description`. Older findings written
+// before #374 landed won't carry this key — that's fine, the raw-error block
+// simply doesn't render for them.
+function extractRawGraphError(extractedProperties: Record<string, unknown> | null): string | null {
+  const raw = extractedProperties?.["_rawGraphError"];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 function findingSeverityClass(finding: DiagnosticFinding): string {
@@ -322,6 +333,29 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   // preloaded for every row up front.
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [runFindings, setRunFindings] = useState<Record<string, DiagnosticRunFindingsResponse | "loading" | "error">>({});
+
+  // #371 addendum — refresh just the runs list, not the whole customer detail
+  // payload. Hits the dedicated runs-only endpoint added alongside this.
+  const [refreshingRuns, setRefreshingRuns] = useState(false);
+  const [refreshRunsError, setRefreshRunsError] = useState<string | null>(null);
+
+  const refreshRuns = async () => {
+    setRefreshingRuns(true);
+    setRefreshRunsError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/active-directory/customer/${customerId}/diagnostics/runs`);
+      if (!res.ok) {
+        setRefreshRunsError("Failed to refresh diagnostic runs.");
+        return;
+      }
+      const body = (await res.json()) as { recentDiagnosticRuns: CustomerDiagnosticRunSummary[] };
+      setDetail((prev) => (prev ? { ...prev, recentDiagnosticRuns: body.recentDiagnosticRuns } : prev));
+    } catch {
+      setRefreshRunsError("Failed to refresh diagnostic runs.");
+    } finally {
+      setRefreshingRuns(false);
+    }
+  };
 
   const toggleRunExpanded = async (runId: string) => {
     if (expandedRunId === runId) {
@@ -899,7 +933,22 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
       </Section>
 
       {/* Recent diagnostic runs */}
-      <Section title="Recent Diagnostic Runs" icon={<ActivitySquare className="h-4 w-4 text-muted-foreground" />}>
+      <Section
+        title="Recent Diagnostic Runs"
+        icon={<ActivitySquare className="h-4 w-4 text-muted-foreground" />}
+        action={
+          <button
+            type="button"
+            onClick={() => void refreshRuns()}
+            disabled={refreshingRuns}
+            className="flex shrink-0 items-center gap-1 rounded p-0.5 text-muted-foreground hover:text-primary disabled:opacity-50"
+            title="Refresh recent diagnostic runs"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshingRuns ? "animate-spin" : ""}`} />
+          </button>
+        }
+      >
+        {refreshRunsError && <p className="mb-1.5 text-[11px] italic text-red-600 dark:text-red-400">{refreshRunsError}</p>}
         {recentDiagnosticRuns.length === 0 ? (
           <p className="italic text-muted-foreground">No scans yet.</p>
         ) : (
@@ -957,7 +1006,36 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                   </span>
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">{f.checkKey}</div>
-                                {f.description && <p className="mt-0.5 text-[11px] text-foreground/80">{f.description}</p>}
+                                {f.description && (
+                                  <div className="mt-0.5 flex items-start justify-between gap-1.5">
+                                    <p className="min-w-0 flex-1 text-[11px] text-foreground/80">{f.description}</p>
+                                    <CopyButton text={f.description} label="Copy description" />
+                                  </div>
+                                )}
+                                {(() => {
+                                  const rawError = extractRawGraphError(f.extractedProperties);
+                                  return rawError ? (
+                                    <div className="mt-1 flex items-start justify-between gap-1.5 rounded border border-red-600/30 bg-red-600/5 px-1.5 py-1">
+                                      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[10px] text-red-600 dark:text-red-400">
+                                        {rawError}
+                                      </p>
+                                      <CopyButton text={rawError} label="Copy raw error" />
+                                    </div>
+                                  ) : null;
+                                })()}
+                                {f.extractedProperties && Object.keys(f.extractedProperties).length > 0 && (
+                                  <details className="mt-1 group">
+                                    <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-primary">
+                                      extractedProperties
+                                    </summary>
+                                    <div className="mt-1 flex items-start justify-between gap-1.5">
+                                      <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-background/60 px-1.5 py-1 text-[10px] text-foreground/80">
+                                        {JSON.stringify(f.extractedProperties, null, 2)}
+                                      </pre>
+                                      <CopyButton text={JSON.stringify(f.extractedProperties, null, 2)} label="Copy extractedProperties JSON" />
+                                    </div>
+                                  </details>
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -975,15 +1053,48 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  icon,
+  action,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="mb-4">
       <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
         {icon}
-        {title}
+        <span className="flex-1">{title}</span>
+        {action}
       </div>
       <div className="rounded border border-border bg-card/50 px-3 py-2">{children}</div>
     </div>
+  );
+}
+
+// #371 addendum — copy-to-clipboard affordance for raw JSON/error detail in
+// the expanded findings view. Native Clipboard API, no new dependency. Swaps
+// to a checkmark for ~1.2s as visual confirmation the copy actually happened.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-primary"
+      title={label}
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="h-3 w-3" />}
+    </button>
   );
 }
 

@@ -584,6 +584,39 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
   }
 });
 
+// ─── GET /admin/active-directory/customer/:id/diagnostics/runs ───────────────
+// #371 addendum — refresh button on the Customer Object pane's "Recent
+// Diagnostic Runs" section. Same query as the runs slice of the full detail
+// payload above, split out so the panel can re-fetch just this list without
+// re-pulling the whole customer detail (profile, users, consent, services).
+router.get("/admin/active-directory/customer/:id/diagnostics/runs", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = Number(req.params.id);
+  if (!Number.isInteger(customerId)) {
+    res.status(400).json({ error: "Invalid customer id" });
+    return;
+  }
+
+  try {
+    const diagnosticRunRows = await db
+      .select({
+        runId: mspDiagnosticRunsTable.runId,
+        packageKey: mspDiagnosticRunsTable.packageKey,
+        status: mspDiagnosticRunsTable.status,
+        startedAt: mspDiagnosticRunsTable.startedAt,
+        completedAt: mspDiagnosticRunsTable.completedAt,
+      })
+      .from(mspDiagnosticRunsTable)
+      .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+      .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+      .limit(RECENT_DIAGNOSTIC_RUN_LIMIT);
+
+    res.json({ recentDiagnosticRuns: diagnosticRunRows });
+  } catch (err) {
+    log.error({ err, customerId }, "Failed to refresh recent diagnostic runs");
+    res.status(500).json({ error: "Failed to load recent diagnostic runs" });
+  }
+});
+
 // ─── GET /admin/active-directory/user/:id ────────────────────────────────────
 // User Object detail pane (Phase 6): full profile (users), current role +
 // MSP/customer linkage (users.mspRole — the real role source of truth,
