@@ -11,7 +11,8 @@
  *     — List runs for a customer (most recent first).
  *
  *   GET  /api/msp/customers/:customerId/diagnostics/runs/:runId
- *     — Get run details + structured findings.
+ *     — Get run details + structured findings, each with its #379 failure
+ *       `classification` (null unless that finding is a real failure).
  *
  *   GET  /api/msp/customers/:customerId/diagnostics/runs/:runId/sse
  *     — SSE stream: per-check progress → complete/error events.
@@ -41,7 +42,7 @@ import {
   monitorChecksTable,
   scriptModulesTable,
 } from "@workspace/db";
-import { eq, and, desc, count, or, sql } from "drizzle-orm";
+import { eq, and, desc, count, or, sql, inArray } from "drizzle-orm";
 import { requireRole, requireAuth, assertCustomerAccess, isCustomerBlockedByStaffScope, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
@@ -53,10 +54,113 @@ import { computeDisplayHealth } from "../lib/health-display";
 import { fetchEvaluableSignalKeys } from "../lib/pillar-coverage";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
+import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import { classifyMonitorFailure, type FailureClassification } from "../lib/monitor-failure-classifier";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
+
+// ── #379: failure classification on each finding ──────────────────────────────
+//
+// COMPUTED ON READ, exactly as admin-monitor-check-runs.ts already does for
+// Simulator Studio runs — no schema change for a value that is a pure function
+// of text already persisted, and sharpening a signature retro-applies to every
+// historical finding instead of freezing each one at whatever the rules knew on
+// the day its scan ran.
+//
+// The classifier itself is used UNMODIFIED. It is a pure function that never
+// guesses and never mutates anything, and its own header comment specifies that
+// `declaredScopes` is passed IN by the caller rather than imported — so
+// REQUIRED_MT_SCOPES is handed to it READ-ONLY here, purely so it can say "that
+// permission is already declared, so this is a re-consent problem". Nothing on
+// this path writes to it or to any permission state.
+
+/** The subset of a msp_diagnostic_findings row this triage actually reads. */
+export interface ClassifiableFinding {
+  checkKey?: string | null;
+  checkStatus?: string | null;
+  extractedProperties?: unknown;
+}
+
+/**
+ * #374 persists the real, untruncated Graph error under
+ * `extractedProperties._rawGraphError`, alongside the humanized `description`.
+ * Findings written before #374 landed simply don't carry it.
+ */
+export function rawGraphErrorOf(finding: ClassifiableFinding): string | null {
+  const props = finding.extractedProperties as Record<string, unknown> | null | undefined;
+  const raw = props?.["_rawGraphError"];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+/**
+ * Whether a finding is a real failure worth triaging.
+ *
+ * The false case matters as much as the true one: it is what stops a triage
+ * verdict from ever rendering over a check that passed — the same discipline
+ * classifyRunFailure() applies by returning null for a non-failed run. A finding
+ * qualifies only if it carries a real raw Graph error, or if its status is one
+ * of the two the executor has ALREADY classified upstream (license_gap /
+ * consent_revoked); the classifier deliberately short-circuits on those rather
+ * than re-deriving them from text, and both are explicitly "not a fault".
+ */
+export function isClassifiableFinding(finding: ClassifiableFinding): boolean {
+  return (
+    rawGraphErrorOf(finding) != null ||
+    finding.checkStatus === "license_gap" ||
+    finding.checkStatus === "consent_revoked"
+  );
+}
+
+/**
+ * Attaches `classification` to each finding — null for any that isn't a real
+ * failure. Pure: the monitor_checks endpoint join is done by the caller and
+ * handed in, so this stays directly testable and does no I/O of its own.
+ */
+export function classifyDiagnosticFindings<T extends ClassifiableFinding>(
+  findings: T[],
+  endpointByCheckKey: Map<string, string | null>,
+): Array<T & { classification: FailureClassification | null }> {
+  return findings.map((f) => ({
+    ...f,
+    classification: isClassifiableFinding(f)
+      ? classifyMonitorFailure({
+          errorMessage: rawGraphErrorOf(f),
+          resultStatus: f.checkStatus ?? null,
+          endpoint: f.checkKey ? endpointByCheckKey.get(f.checkKey) ?? null : null,
+          declaredScopes: REQUIRED_MT_SCOPES,
+        })
+      : null,
+  }));
+}
+
+/** Route-side wrapper: resolves the endpoints, then classifies. */
+async function withFindingClassifications<T extends ClassifiableFinding>(
+  findings: T[],
+): Promise<Array<T & { classification: FailureClassification | null }>> {
+  // msp_diagnostic_findings has no endpoint column, so the endpoint the
+  // classifier corroborates against (a literal non-HTTP scheme, the /beta
+  // surface) is joined from monitor_checks by check_key — one query for the
+  // whole run, and only for the findings that will actually be classified.
+  const keys = [
+    ...new Set(
+      findings
+        .filter(isClassifiableFinding)
+        .map((f) => f.checkKey)
+        .filter((k): k is string => Boolean(k)),
+    ),
+  ];
+  const endpointByKey = new Map<string, string | null>();
+  if (keys.length > 0) {
+    const checkRows = await db
+      .select({ key: monitorChecksTable.key, endpoint: monitorChecksTable.endpoint })
+      .from(monitorChecksTable)
+      .where(inArray(monitorChecksTable.key, keys));
+    for (const row of checkRows) endpointByKey.set(row.key, row.endpoint);
+  }
+  return classifyDiagnosticFindings(findings, endpointByKey);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -401,7 +505,10 @@ router.get(
         .where(eq(mspDiagnosticFindingsTable.runId, runId))
         .orderBy(mspDiagnosticFindingsTable.severity);
 
-      res.json({ run, findings });
+      // #379 — each failing finding carries its own triage verdict, computed on
+      // read from that finding's own real error text. Additive: every existing
+      // field on `findings` is unchanged.
+      res.json({ run, findings: await withFindingClassifications(findings) });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
       log.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId error");

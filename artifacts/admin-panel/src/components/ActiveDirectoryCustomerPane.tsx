@@ -27,6 +27,15 @@
 // would reject a PlatformAdmin caller outright), and a re-consent invite
 // link generator (consent.ts's existing POST /consent/invite-link route,
 // already requireAdmin-gated, used as-is).
+//
+// #379 bridges this pane to Simulator Studio: every finding inside #371's
+// expand-in-place view now carries the server's real failure `classification`
+// (api-server's monitor-failure-classifier, run over #374's
+// `extractedProperties._rawGraphError`) rendered by Simulator Studio's OWN
+// SimulatorFailureClassification component, plus a deep link into that check's
+// endpoint canvas. Both directions reuse what already exists — the classifier is
+// an unmodified pure function, and the link is the same selection path a manual
+// search-and-click takes.
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -47,11 +56,19 @@ import {
   Trash2,
   Search,
   X,
+  ExternalLink,
 } from "lucide-react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AD_SELECT_EVENT, type AdSelectedObject } from "./ActiveDirectoryTree";
 import type { AssessmentNode } from "./SimulatorLeftTree";
+import {
+  FailureCategoryChip,
+  SimulatorFailureClassification,
+  type FailureClassification,
+} from "./SimulatorFailureClassification";
+import { simulatorStudioCheckPath } from "./simulatorDeepLink";
 
 interface CustomerDetailOwningMsp {
   id: number;
@@ -116,6 +133,12 @@ interface DiagnosticFinding {
   description: string | null;
   extractedProperties: Record<string, unknown> | null;
   checkStatus: string | null;
+  // #379 — the server's triage verdict for THIS finding, computed on read by
+  // api-server's monitor-failure-classifier from this finding's own real error
+  // text. Null whenever the finding isn't a real failure, which is what keeps a
+  // verdict from ever rendering over a check that passed. Absent entirely on
+  // responses from before #379 landed — hence optional.
+  classification?: FailureClassification | null;
 }
 
 interface DiagnosticRunFindingsResponse {
@@ -1164,6 +1187,11 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                   <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                                     <HighlightMatch text={f.title} term={findingsSearch} />
                                   </span>
+                                  {/* #379 — the compact chip SimulatorFailureClassification
+                                      exports for exactly this case ("dense lists"), so a
+                                      category is readable while scanning the list, not only
+                                      after reading the banner below. */}
+                                  {f.classification && <FailureCategoryChip classification={f.classification} />}
                                   <span className={`shrink-0 text-[10px] uppercase ${findingSeverityClass(f)}`}>
                                     {f.checkStatus === "error" ? "error" : f.severity}
                                   </span>
@@ -1230,6 +1258,39 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
                                     </div>
                                   ) : null;
                                 })()}
+                                {/* #379 — the real category, its literal evidence, the named
+                                    permission and the guidance, rendered by the SAME component
+                                    Simulator Studio's endpoint canvas uses, rather than a second
+                                    UI for the same output. No action handlers are passed, and
+                                    that is deliberate: this pane has neither an endpoint edit
+                                    form nor an archive action, and the classifier's contract is
+                                    that an action opens a reviewable form or a confirmed,
+                                    reversible change — never applies one. Both of those really
+                                    exist in Simulator Studio, so the link below is the honest
+                                    path to acting on the verdict. */}
+                                {f.classification && (
+                                  <div className="mt-1">
+                                    <SimulatorFailureClassification classification={f.classification} />
+                                  </div>
+                                )}
+                                {/* Every finding row is one click from the check's real endpoint
+                                    canvas — Part 1's deep link, no manual search. */}
+                                <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                                  <Link
+                                    href={simulatorStudioCheckPath(f.checkKey)}
+                                    className="flex items-center gap-1 text-[10px] text-primary hover:underline"
+                                    title={`Open "${f.checkKey}" in Simulator Studio's endpoint canvas`}
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Test in Simulator Studio →
+                                  </Link>
+                                  {(f.classification?.action.kind === "edit_endpoint" ||
+                                    f.classification?.action.kind === "retire_check") && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Suggested: {f.classification.action.label} — in Simulator Studio
+                                    </span>
+                                  )}
+                                </div>
                                 {f.extractedProperties && Object.keys(f.extractedProperties).length > 0 && (
                                   <details className="mt-1 group" open={findingsSearch.length > 0}>
                                     <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-primary">

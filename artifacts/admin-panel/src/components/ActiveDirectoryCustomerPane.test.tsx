@@ -44,6 +44,46 @@ const CUSTOMER_DETAIL = {
   ],
 };
 
+// #379 — `classification` is computed SERVER-SIDE by api-server's
+// monitor-failure-classifier and arrives on each finding. The two objects below
+// are the classifier's REAL output, captured verbatim from it for the two real
+// error texts here — not hand-invented shapes — so this file asserts against
+// what the server genuinely sends. (Their derivation is covered by
+// api-server's own msp-diagnostics-finding-classification.test.ts; the
+// classifier itself is unmodified by #379.)
+const MISSING_SCOPE_CLASSIFICATION = {
+  category: "missing_scope",
+  title: "Missing permission",
+  summary: "The app's token is missing a required permission: Sites.Read.All.",
+  guidance:
+    "The permission above is the one Microsoft named in the real response. Sites.Read.All is ALREADY declared on the multi-tenant app — so this is a re-consent problem for this tenant, not a missing declaration. Permissions are declared in REQUIRED_MT_SCOPES (artifacts/api-server/src/lib/graph.ts) and on the Azure App Registration manifest. Nothing here adds one: every added permission forces re-consent on every connected tenant, so that stays a deliberate human decision.",
+  evidence: [
+    "HTTP 403",
+    'message contains "insufficient privileges to complete the operation"',
+    'error code contains "authorization_requestdenied"',
+  ],
+  statusCode: 403,
+  permissions: ["Sites.Read.All"],
+  alreadyDeclaredPermissions: ["Sites.Read.All"],
+  action: { kind: "show_permission", label: "Where this permission is declared" },
+} as const;
+
+const PARAMETER_SLOT_CLASSIFICATION = {
+  category: "parameter_slot",
+  title: "Parameter in the wrong slot",
+  summary: "A value landed in a parameter slot that expects something else (a locale/culture identifier).",
+  guidance:
+    "The request reached the API, but one argument is in the wrong position — a value meant for another parameter is being read as a culture identifier. Check the select params and the request body against the endpoint's real signature.",
+  evidence: ["HTTP 400", 'message contains "culturenotfoundexception"'],
+  statusCode: 400,
+  permissions: [],
+  alreadyDeclaredPermissions: [],
+  action: { kind: "edit_endpoint", label: "Edit request parameters", focusField: "selectParams" },
+} as const;
+
+const PIM_RAW_ERROR =
+  "Graph API error 400: {\"error\":{\"code\":\"UnknownError\",\"message\":\"System.Globalization.CultureNotFoundException: '*' is an invalid culture identifier.\"}}";
+
 const RUN_1_FINDINGS = {
   run: { checksTotal: 3, checksOk: 1, checksError: 1, checksRequiresScript: 1, checksLicenseGap: 0 },
   findings: [
@@ -57,6 +97,8 @@ const RUN_1_FINDINGS = {
       description: "All users have MFA registered.",
       extractedProperties: null,
       checkStatus: "ok",
+      // A check that passed gets no verdict at all — see #379.
+      classification: null,
     },
     {
       findingId: "f-error",
@@ -68,6 +110,19 @@ const RUN_1_FINDINGS = {
       description: "This check couldn't complete — the request format needs adjustment.",
       extractedProperties: { _rawGraphError: "Graph 403: Forbidden — Insufficient privileges to complete the operation." },
       checkStatus: "error",
+      classification: MISSING_SCOPE_CLASSIFICATION,
+    },
+    {
+      findingId: "f-pim",
+      runId: "run-1",
+      checkKey: "identity:pim-eligible-roles",
+      checkLabel: "PIM Eligible Roles",
+      severity: "critical",
+      title: "PIM eligible roles check failed",
+      description: "This check couldn't complete.",
+      extractedProperties: { _rawGraphError: PIM_RAW_ERROR },
+      checkStatus: "error",
+      classification: PARAMETER_SLOT_CLASSIFICATION,
     },
   ],
 };
@@ -119,6 +174,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { toast } from "sonner";
+import { simulatorStudioCheckPath } from "./simulatorDeepLink";
 import { ActiveDirectoryCustomerPane } from "./ActiveDirectoryCustomerPane";
 
 function jsonResponse(body: unknown, ok = true) {
@@ -242,6 +298,107 @@ describe("ActiveDirectoryCustomerPane — #378 search box for expanded run findi
 
     expect(screen.getByText("MFA registration healthy")).toBeTruthy();
     expect(screen.getByText(/External sharing check failed/)).toBeTruthy();
+  });
+});
+
+describe("ActiveDirectoryCustomerPane — #379 inline failure classification", () => {
+  async function expandRun1() {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+  }
+
+  /** The <li> for one finding, so assertions can't leak across rows. */
+  function findingRow(title: string): HTMLElement {
+    return screen.getByText(title).closest("li")!;
+  }
+
+  it("shows the real category, its evidence and the named permission on a failing finding", async () => {
+    await expandRun1();
+    const row = within(findingRow("External sharing check failed"));
+
+    // Real category, from the server's classifier — rendered by Simulator
+    // Studio's own component, so the chip and the banner both carry it.
+    expect(row.getAllByText("Missing permission").length).toBeGreaterThan(0);
+    expect(row.getByText("HTTP 403")).toBeTruthy();
+
+    // The literal evidence — the proof, not a paraphrase.
+    expect(row.getByText(/message contains "insufficient privileges to complete the operation"/)).toBeTruthy();
+    expect(row.getByText(/error code contains "authorization_requestdenied"/)).toBeTruthy();
+
+    // The named permission, flagged as already declared — the whole difference
+    // between "add a permission" and "this tenant must re-consent".
+    expect(row.getByText("Sites.Read.All")).toBeTruthy();
+    expect(row.getByText("declared")).toBeTruthy();
+  });
+
+  it("names the suggested action for a fixable finding, and points it at Simulator Studio", async () => {
+    await expandRun1();
+    const row = within(findingRow("PIM eligible roles check failed"));
+
+    expect(row.getAllByText("Parameter in the wrong slot").length).toBeGreaterThan(0);
+    expect(row.getByText("Suggested: Edit request parameters — in Simulator Studio")).toBeTruthy();
+  });
+
+  it("never renders a verdict over a check that passed", async () => {
+    await expandRun1();
+    const row = within(findingRow("MFA registration healthy"));
+
+    expect(row.queryByText("Missing permission")).toBeNull();
+    expect(row.queryByText("Unclassified failure")).toBeNull();
+    // No suggested action either — there is nothing to act on.
+    expect(row.queryByText(/^Suggested:/)).toBeNull();
+  });
+
+  it("offers no button that would apply a fix — missing permission stays display-only", async () => {
+    await expandRun1();
+    const row = within(findingRow("External sharing check failed"));
+
+    // The classifier's safety boundary, asserted rather than assumed: nothing
+    // here grants a permission, and nothing here archives a check.
+    expect(
+      row.getByText(/Display only — no button here grants a permission/),
+    ).toBeTruthy();
+    expect(row.queryByText("Edit endpoint")).toBeNull();
+    expect(row.queryByText("Retire this check")).toBeNull();
+  });
+});
+
+describe("ActiveDirectoryCustomerPane — #379 Test in Simulator Studio deep link", () => {
+  async function expandRun1() {
+    render(<ActiveDirectoryCustomerPane customerId={10} />);
+    fireEvent.click(await screen.findByText("core:security-baseline"));
+    await screen.findByText("External sharing check failed");
+  }
+
+  it("links each finding to that exact check in Simulator Studio, URL-encoded", async () => {
+    await expandRun1();
+
+    const link = within(screen.getByText("PIM eligible roles check failed").closest("li")!).getByText(
+      /Test in Simulator Studio/,
+    );
+    // The Part 1 deep-link shape, against admin-panel's real /system/simulator
+    // route. Asserted as a literal AND against the shared builder, so this
+    // can't quietly agree with a builder that has itself drifted.
+    expect(link.closest("a")!.getAttribute("href")).toBe(
+      "/system/simulator?checkKey=identity%3Apim-eligible-roles",
+    );
+    expect(link.closest("a")!.getAttribute("href")).toBe(
+      simulatorStudioCheckPath("identity:pim-eligible-roles"),
+    );
+  });
+
+  it("is present on every finding, not only the failing ones", async () => {
+    await expandRun1();
+
+    for (const [title, key] of [
+      ["MFA registration healthy", "identity%3Amfa-registration"],
+      ["External sharing check failed", "sharepoint%3Aexternal-sharing"],
+      ["PIM eligible roles check failed", "identity%3Apim-eligible-roles"],
+    ] as const) {
+      const link = within(screen.getByText(title).closest("li")!).getByText(/Test in Simulator Studio/);
+      expect(link.closest("a")!.getAttribute("href")).toBe(`/system/simulator?checkKey=${key}`);
+    }
   });
 });
 

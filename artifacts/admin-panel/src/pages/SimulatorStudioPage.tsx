@@ -9,8 +9,13 @@
 //   bottom  — tabbed: Log Stream (multi-channel split panes) / Query Output
 //             (results from the center canvas's SQL editor)
 //   footer  — status bar
+//
+// #379 — deep-linkable: /system/simulator?checkKey=identity:pim-eligible-roles
+// opens straight onto that check. See useCheckKeyDeepLink below.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearch } from "wouter";
+import { toast } from "sonner";
 import {
   Play,
   Pause,
@@ -37,9 +42,63 @@ import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
 import { TestbedProvider, useTestbedContext } from "../contexts/TestbedContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { SIMULATOR_CHECK_PARAM } from "../components/simulatorDeepLink";
 
 const RIGHT_PANEL_KEY = "simulator-right-panel-open";
 const LOG_CHANNELS_KEY = "simulator-log-channels";
+
+// ── #379: deep link to one check ──────────────────────────────────────────────
+//
+// The URL shape itself — path and param name — lives in
+// components/simulatorDeepLink.ts, shared with whoever builds the link, so the
+// producer and this reader cannot drift apart. See that file for the route
+// confirmation and the base-path note.
+//
+// WHY IT DISPATCHES AN EVENT RATHER THAN SETTING STATE: SimulatorEndpointCanvas
+// takes a FULL `check: MonitorCheckSummary` — the whole monitor_checks row — not
+// a checkKey string, and the selection itself lives in SimulatorCenterCanvas,
+// not on this page. SimulatorLeftTree drives it by dispatching
+// `simulator-select-endpoint` with the real row on click. So this resolves the
+// key to that same real row and dispatches that same event: one selection path,
+// and an end state genuinely identical to a manual search-and-click — the
+// Endpoint tab is selected AND its document tab is opened and persisted.
+
+function useCheckKeyDeepLink() {
+  const { fetchWithAuth } = useAuth();
+  const search = useSearch();
+  const checkKey = new URLSearchParams(search).get(SIMULATOR_CHECK_PARAM);
+  // Applied at most once per key. StrictMode double-invokes effects, and a
+  // re-dispatch would reopen a document tab the operator may have just closed.
+  // The URL is deliberately NOT rewritten afterwards, so the link stays
+  // bookmarkable and a refresh lands on the same check.
+  const appliedKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!checkKey || appliedKeyRef.current === checkKey) return;
+    appliedKeyRef.current = checkKey;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(checkKey)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data?.check) {
+          toast.error(data?.error || `No monitor check named "${checkKey}"`);
+          return;
+        }
+        window.dispatchEvent(new CustomEvent("simulator-select-endpoint", { detail: data.check }));
+      } catch (err: any) {
+        if (!cancelled) toast.error(err?.message || `Failed to open "${checkKey}"`);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkKey, fetchWithAuth]);
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -120,6 +179,11 @@ function TestbedHeaderPicker() {
 
 function StudioShell() {
   const { selectedCustomerId } = useTestbedContext();
+  // Safe here rather than in SimulatorStudioPage: the dispatch is async (it
+  // waits on the check fetch), so SimulatorCenterCanvas's own mount effect has
+  // long since registered the `simulator-select-endpoint` listener, and the
+  // deep link therefore wins over its restore-last-open-document effect.
+  useCheckKeyDeepLink();
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [timeMultiplier, setTimeMultiplier] = useState<number>(1);

@@ -86,6 +86,7 @@ export default defineConfig({
       "src/routes/msp-custom-domain.test.ts",
       "src/routes/msp-sales-bundles.test.ts",
       "src/routes/msp-diagnostics.test.ts",
+      "src/routes/msp-diagnostics-finding-classification.test.ts",
       "src/routes/portal-delivery-kanban.test.ts",
       "src/lib/__tests__/live-monitor-nodes.test.ts",
       "src/routes/msp-sow.test.ts",
