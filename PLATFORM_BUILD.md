@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-04 | ⏳ IN FLIGHT | Marketing Site: rebuild home page from Copilot Readiness Marketing Site design | |
 | 2026-08-04 | ⏳ IN FLIGHT | Git #371 - Admin Panel: expandable diagnostic run findings + refresh/copy | |
 | 2026-08-04 | ✅ DONE | Git #367 - Add testbed-only Replay Scan button | `21bb2351` |
 | 2026-08-04 | ✅ DONE | Git #372 - Hardcode Active Directory manual trigger to Copilot Assessment | `484d5fd2` |
