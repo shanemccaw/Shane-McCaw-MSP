@@ -135,9 +135,20 @@ describe("finding → pillar grouping by real check-key domain", () => {
 
   it("leaves an unclaimed domain unattached rather than forcing it onto a card", () => {
     expect(warRoomPillarForCheckKey("audit:signins")).toBeNull();
-    expect(warRoomPillarForCheckKey("platform:queue-depth")).toBeNull();
     expect(warRoomPillarForCheckKey(null)).toBeNull();
     expect(warRoomPillarForCheckKey("")).toBeNull();
+  });
+
+  it("leaves `exchange` unclaimed — deliberately (#389: removed from the Copilot Assessment package, any exchange:* findings are stale/historical only)", () => {
+    expect(warRoomPillarForCheckKey("exchange:dkim-spf-dmarc-status")).toBeNull();
+  });
+
+  it("routes #397's five previously-unmapped-but-real domains to their pillars", () => {
+    expect(warRoomPillarForCheckKey("appgov:risky-permission-grants")).toBe("security");
+    expect(warRoomPillarForCheckKey("m365:service-health")).toBe("health");
+    expect(warRoomPillarForCheckKey("license:copilot-assignment")).toBe("licensing");
+    expect(warRoomPillarForCheckKey("onedrive:external-sharing-settings")).toBe("governance");
+    expect(warRoomPillarForCheckKey("platform:queue-depth")).toBe("governance");
   });
 
   it("claims no domain for two different pillars", () => {

@@ -199,23 +199,41 @@ export const WAR_ROOM_ENGINE_PILLAR: Record<WarRoomPillarKey, RadarPillar> = {
 /**
  * Real `monitor_checks.key` domains behind each pillar, for grouping real
  * findings. Mirrors `WAR_ROOM_PILLAR_DOMAINS` in msp-portal's warRoomScan.ts
- * (#305) and extends it with three domains that genuinely exist in the catalog
- * but which that map left unclaimed, so their findings had nowhere to land:
- *   `intune`        → health   (device compliance/encryption/OS currency IS the
- *                               tenant-health surface the Health card lists)
- *   `cost`          → licensing (the real /subscribedSkus seat + waste checks)
- *   `collaboration` → adoption  (mailbox/channel inventory feeding usage)
+ * (#305) and extends it with domains that genuinely exist in the catalog but
+ * which that map left unclaimed, so their findings had nowhere to land:
+ *   `intune`        → health     (device compliance/encryption/OS currency IS
+ *                                 the tenant-health surface the Health card lists)
+ *   `cost`          → licensing  (the real /subscribedSkus seat + waste checks)
+ *   `collaboration` → adoption   (mailbox/channel inventory feeding usage)
+ *   `appgov`        → security   (app governance / consent posture)
+ *   `m365`          → health     (Microsoft 365 service health)
+ *   `onedrive`      → governance (OneDrive sharing/inventory posture)
+ *   `platform`      → governance (tenant-wide platform hygiene)
+ *
+ * `license` (#397) is deliberately kept as a SECOND accepted string alongside
+ * `licensing`, not merged into it — `license:*` is the real, separately-named
+ * check-key prefix for the `assess:license-cost-optimization` package (see
+ * `AssessmentCreationWizard.tsx`'s own comment: that package "backs two more
+ * [real] assessments"), not a stray typo. Renaming it to `licensing:` would
+ * touch real stored check keys across two live assessments and their
+ * historical findings, which is a data migration Shane needs to approve, not
+ * a mapping-file fix — so both prefixes are accepted here instead.
+ *
+ * `exchange` is deliberately NOT mapped — that check was intentionally
+ * removed from the Copilot Assessment package (#389); any exchange:* findings
+ * still in the data are stale/historical only, not an ongoing gap.
+ *
  * A check key whose domain no pillar claims still counts toward overall
  * progress; its findings simply attach to no card rather than being forced onto
  * the nearest one.
  */
 export const WAR_ROOM_PILLAR_CHECK_DOMAINS: Record<WarRoomPillarKey, readonly string[]> = {
-  governance: ["governance", "sharepoint", "teams"],
-  licensing: ["licensing", "cost"],
+  governance: ["governance", "sharepoint", "teams", "onedrive", "platform"],
+  licensing: ["licensing", "cost", "license"],
   adoption: ["adoption", "usage", "collaboration"],
   compliance: ["compliance"],
-  health: ["health", "device", "devices", "intune"],
-  security: ["security", "identity"],
+  health: ["health", "device", "devices", "intune", "m365"],
+  security: ["security", "identity", "appgov"],
   copilot: ["copilot"],
 };
 
