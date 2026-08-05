@@ -144,11 +144,12 @@ export interface MappingRule {
   sourceField: string;
   targetField: string;
   /**
-   * "count" | "exists" | "first" | "join" | "none" | "countTruthy" | "countFalse"
-   * | "countEmptyArray" | "groupByCount" | "countDuplicates"
+   * "count" | "exists" | "first" | "join" | "none" | "raw" | "countTruthy"
+   * | "countFalse" | "countEmptyArray" | "groupByCount" | "countDuplicates"
    * | "countEquals('value')" | "countIfLastSignInOlderThan(N)"
    * | "valueWhere('matchField','matchValue'[,'extractField'])"
-   * | "flattenValues('field')" | "countDuplicatesBy('field')" — the
+   * | "flattenValues('field')" | "countDuplicatesBy('field')"
+   * | "countWhere('<condition expression>')" — the
    * parameterised forms carry their argument inline in the string since
    * MappingRule is stored as jsonb; parsed at runtime.
    *
@@ -174,12 +175,37 @@ export interface MappingRule {
  * without changing any currently-working check's behaviour.
  */
 const KNOWN_TRANSFORMS = new Set([
-  "none", "count", "exists", "first", "join",
+  "none", "count", "exists", "first", "join", "raw",
   "countTruthy", "countFalse", "countEmptyArray",
   "countEquals", "countIfLastSignInOlderThan",
   "groupByCount", "countDuplicates",
   "valueWhere", "flattenValues", "countDuplicatesBy",
+  "countWhere",
 ]);
+
+/**
+ * sourceField spellings that mean "the fetched item itself, whole" rather than
+ * a property to read off it.
+ *
+ * `raw` and `countWhere` are the only transforms that can operate on the WHOLE
+ * item, and a jsonb mapping rule has nowhere to say so except in sourceField.
+ * These are the spellings real stored rules use for that: an empty/absent
+ * sourceField, the OData envelope key the items were already unwrapped out of
+ * ("value"), or an explicit self-reference.
+ */
+const WHOLE_ITEM_SOURCE_FIELDS = new Set(["", ".", "*", "item", "items", "value", "value[]"]);
+
+/**
+ * Item count above which a whole-item `raw` pass-through warns.
+ *
+ * Nothing is truncated — `raw` exists to carry the real objects, and silently
+ * dropping some of them would be exactly the plausible-but-wrong result this
+ * platform keeps rediscovering. But `extractedProperties` is persisted as jsonb
+ * per tenant per run, so a `raw` over every user in a large tenant writes a very
+ * large row on every scan. That is worth saying out loud once per run rather
+ * than discovering from a table size.
+ */
+const RAW_WHOLE_ITEM_WARN_THRESHOLD = 500;
 
 /**
  * Internal sentinel for "a parameterised transform this file implements, named
@@ -723,6 +749,27 @@ function flattenNestedField(vals: unknown[], field: string): FlattenResult {
   return { values, sawArray, sawEntry, sawField };
 }
 
+/**
+ * The distinct top-level field names a stored condition expression reads.
+ *
+ * Used ONLY as a diagnostic by `countWhere`: a predicate whose fields exist on
+ * nothing it was evaluated against counts 0 for a reason that has nothing to do
+ * with the tenant, and 0 is the most believable wrong answer there is. Quoted
+ * literals are stripped first so `{{dept}} == 'Sales Team'` contributes `dept`
+ * and not `Sales`/`Team`, and the grammar's own operator words are excluded.
+ */
+const GRAMMAR_WORDS = new Set(["true", "false", "null", "contains", "olderThanDays", "newerThanDays", "length"]);
+
+function expressionTopLevelPaths(expression: string): string[] {
+  const withoutLiterals = expression.replace(/'[^']*'/g, " ").replace(/"[^"]*"/g, " ");
+  const out = new Set<string>();
+  for (const m of withoutLiterals.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z0-9_$]+)*/g)) {
+    const head = m[0].split(".")[0];
+    if (!GRAMMAR_WORDS.has(head)) out.add(head);
+  }
+  return [...out];
+}
+
 // ── Property extraction from Graph response items ─────────────────────────────
 
 export function applyMapping(
@@ -756,6 +803,19 @@ export function applyMapping(
       /^valueWhere\(\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*(?:,\s*['"]([^'"]*)['"]\s*)?\)$/.exec(rawTransform);
     const flattenValuesMatch = /^flattenValues\(\s*['"]([^'"]*)['"]\s*\)$/.exec(rawTransform);
     const countDuplicatesByMatch = /^countDuplicatesBy\(\s*['"]([^'"]*)['"]\s*\)$/.exec(rawTransform);
+    // countWhere('<expression>') — the argument is a CONDITION EXPRESSION, not a
+    // field name, so it routinely contains the other quote character
+    // ({{department}} == 'Sales'). Each quote style is therefore matched
+    // separately with its own character excluded, rather than with the
+    // ['"]([^'"]*)['"] form the field-name transforms use: that form would
+    // reject every predicate carrying a string literal.
+    const countWhereMatch =
+      /^countWhere\(\s*'([^']*)'\s*\)$/.exec(rawTransform)
+      ?? /^countWhere\(\s*"([^"]*)"\s*\)$/.exec(rawTransform);
+    // An EMPTY predicate is treated as malformed, not as a predicate: the
+    // grammar reads "" as false, so countWhere('') would report a confident 0
+    // for every tenant forever.
+    const countWhereExpr = countWhereMatch?.[1].trim() || undefined;
     // A parameterised name written without parsable arguments — "valueWhere",
     // or "flattenValues(skuId)" with the quotes dropped — must NOT reach its
     // case, which assumes its regex matched. Route it to the default branch so
@@ -764,14 +824,22 @@ export function applyMapping(
     // here: the two older parameterised transforms have always had their own
     // (garbage-but-non-throwing) behaviour for a bare name, and changing it is
     // not this change's business.
-    const malformedParams = !valueWhereMatch && !flattenValuesMatch && !countDuplicatesByMatch
-      && ["valueWhere", "flattenValues", "countDuplicatesBy"]
-        .some(p => rawTransform === p || rawTransform.startsWith(`${p}(`));
+    //
+    // `raw` is parameterless, so only its ARGUMENT-BEARING misspellings
+    // ("raw('value')") are malformed — a bare "raw" is the real transform.
+    // "countWhere" with no parsable expression joins the same branch: an empty
+    // or unquoted predicate must warn, never silently count 0 (or, worse, count
+    // every item, since an empty expression is falsy to the grammar).
+    const malformedParams = !valueWhereMatch && !flattenValuesMatch && !countDuplicatesByMatch && !countWhereExpr
+      && (["valueWhere", "flattenValues", "countDuplicatesBy", "countWhere"]
+        .some(p => rawTransform === p || rawTransform.startsWith(`${p}(`))
+        || rawTransform.startsWith("raw("));
     const transform = countEqualsMatch ? "countEquals"
       : staleSignInMatch ? "countIfLastSignInOlderThan"
       : valueWhereMatch ? "valueWhere"
       : flattenValuesMatch ? "flattenValues"
       : countDuplicatesByMatch ? "countDuplicatesBy"
+      : countWhereExpr ? "countWhere"
       : malformedParams ? MALFORMED_PARAMS
       : rawTransform;
     const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
@@ -969,6 +1037,101 @@ export function applyMapping(
         }
         break;
       }
+      case "raw": {
+        // Pass-through: the REAL objects, unmodified, for the checks that need
+        // the whole thing rather than a number derived from it (a SKU list with
+        // its consumed/prepaid units, a usage report's rows). No count/first/
+        // exists combination can produce that, which is why the transform was
+        // authored before it existed.
+        //
+        // Two readings of one transform, decided by sourceField, because that is
+        // the only place a jsonb mapping rule can say which it meant:
+        //   • sourceField names the item itself (absent, ".", "*", "item",
+        //     "items", "value", "value[]") -> the FULL fetched item array.
+        //   • sourceField names a property -> that property off every item, in
+        //     document order, nulls dropped (the same shape `join` counts and
+        //     `flattenValues` emits, just unaggregated).
+        //
+        // The fallback in between is the one that matters in practice: a
+        // sourceField that resolves on NO item is what every currently-broken
+        // stored `raw` rule looks like (it produced [] via the default branch,
+        // which is how #402 was found). Emitting [] again would be a faithful
+        // reproduction of the bug, so it falls back to the whole item array —
+        // the reading the issue names — and says so, loudly, because "I guessed
+        // which of two things you meant" is not something to do silently.
+        const isWholeItem = WHOLE_ITEM_SOURCE_FIELDS.has(sourceField?.trim() ?? "");
+        const resolved = vals.filter(v => v !== undefined && v !== null);
+        const usedFallback = !isWholeItem && resolved.length === 0 && items.length > 0;
+        result[targetField] = isWholeItem || usedFallback ? [...items] : resolved;
+
+        if (usedFallback) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: raw found nothing at "${sourceField}" on any of the ${items.length} fetched items, so it passed through the WHOLE items instead. If that is what the check wants, set sourceField to "value" (or "*") to say so; if it wants one property, "${sourceField}" is the wrong path for this Graph shape.`,
+          );
+        }
+        if ((isWholeItem || usedFallback) && items.length > RAW_WHOLE_ITEM_WARN_THRESHOLD) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform, itemCount: items.length },
+            `monitor-executor: raw is passing ${items.length} whole items through to "${targetField}", which is persisted verbatim into tenant_monitor_profiles.extracted_properties on every run. Nothing was dropped — but a derived transform is almost certainly what this check wants at this volume.`,
+          );
+        }
+        break;
+      }
+      case "countWhere": {
+        // Counts the things a real predicate matches. The predicate is the
+        // EXISTING condition grammar — the same evalConditionGrammar that
+        // severity_rules and the workflow engine already run — so `contains`,
+        // `length>`, `olderThanDays`, `&&`/`||` and `{{path.to.field}}` mean here
+        // exactly what they mean everywhere else in the platform. A second
+        // expression language would be a second set of edge cases to get wrong.
+        //
+        // What is counted, decided by sourceField (as with `raw`):
+        //   • sourceField resolves to an ARRAY on at least one item -> the
+        //     matching ENTRIES inside those arrays, across all items.
+        //   • otherwise -> the matching ITEMS, with the item itself as the data
+        //     the expression reads.
+        const isWholeItem = WHOLE_ITEM_SOURCE_FIELDS.has(sourceField?.trim() ?? "");
+        const arrays: unknown[][] = isWholeItem ? [] : vals.filter((v): v is unknown[] => Array.isArray(v));
+        const overEntries = arrays.length > 0;
+
+        const scopes: Record<string, unknown>[] = [];
+        let skippedNonObjects = 0;
+        const candidates: unknown[] = overEntries
+          ? arrays.flat()
+          : items;
+        for (const scope of candidates) {
+          if (typeof scope !== "object" || scope === null || Array.isArray(scope)) { skippedNonObjects++; continue; }
+          scopes.push(scope as Record<string, unknown>);
+        }
+
+        result[targetField] = scopes.filter(s => evalConditionGrammar(countWhereExpr!, s)).length;
+
+        // Diagnostics. Each of these describes a way the count is 0 (or wrong)
+        // for a reason that is about the stored rule, not about the tenant.
+        const fields = expressionTopLevelPaths(countWhereExpr!);
+        const anyFieldPresent = fields.length === 0
+          || scopes.some(s => fields.some(f => Object.prototype.hasOwnProperty.call(s, f)));
+        if (!isWholeItem && !overEntries && items.length > 0 && vals.every(v => v == null)) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: countWhere found nothing at "${sourceField}" on any item, so the predicate was evaluated against the WHOLE items. Set sourceField to "value" (or "*") if that is the intent; if the check meant to count entries inside an array, "${sourceField}" is the wrong path for this Graph shape.`,
+          );
+        }
+        if (scopes.length > 0 && !anyFieldPresent) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform, fields },
+            `monitor-executor: countWhere's predicate reads ${fields.map(f => `"${f}"`).join(", ")}, which ${fields.length === 1 ? "is" : "are"} present on none of the ${scopes.length} ${overEntries ? "array entries" : "items"} it was evaluated against — the count is ${String(result[targetField])} because the field name is wrong or the endpoint is missing a $select, not because the tenant is clean.`,
+          );
+        }
+        if (skippedNonObjects > 0 && scopes.length === 0) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform, skipped: skippedNonObjects },
+            `monitor-executor: countWhere had nothing object-shaped to evaluate — all ${skippedNonObjects} ${overEntries ? "array entries" : "items"} were scalars, which the condition grammar cannot read fields off. The count is 0.`,
+          );
+        }
+        break;
+      }
       case "countDuplicatesBy": {
         // countDuplicates, but over a field flattened out of each item's nested
         // array rather than over the array entries themselves. Duplicate
@@ -994,7 +1157,7 @@ export function applyMapping(
         if (transform === MALFORMED_PARAMS) {
           log.warn(
             { targetField, sourceField, transform: rawTransform },
-            `monitor-executor: mapping rule names transform "${rawTransform}", which is implemented but was written with unparsable arguments — every argument must be a quoted string, e.g. valueWhere('name', 'AllowToAddGuests'), flattenValues('skuId'), countDuplicatesBy('skuId'). Falling through to a raw array of values, which no numeric signal rule can read.`,
+            `monitor-executor: mapping rule names transform "${rawTransform}", which is implemented but was written with unparsable arguments — every argument must be a quoted string, e.g. valueWhere('name', 'AllowToAddGuests'), flattenValues('skuId'), countDuplicatesBy('skuId'), countWhere('{{accountEnabled}} == false') — and "raw" takes no arguments at all (it reads sourceField). Falling through to a raw array of values, which no numeric signal rule can read.`,
           );
         } else if (!KNOWN_TRANSFORMS.has(transform)) {
           log.warn(

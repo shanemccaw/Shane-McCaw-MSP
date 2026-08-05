@@ -386,3 +386,87 @@ describe("traceCheckResponse — suggestions", () => {
     expect(pillarImpacts["governanceImpact"]).toBe(5);
   });
 });
+
+// ── #402: raw / countWhere through the Simulator Studio's OWN trace path ──────
+//
+// traceCheckResponse is the function behind the Studio's engine trace, and it
+// runs the real applyMapping. Asserting here — rather than only against
+// applyMapping directly — is what makes this the same derivation an operator
+// reads on screen: response -> mapping -> profile keys -> rules.
+//
+// This is NOT a substitute for the live run against a real tenant (no database
+// or Graph credentials exist in a Claude Code session). It is the same code
+// path over the real captured response shape.
+
+/** GET /v1.0/subscribedSkus, the endpoint behind license:sku-utilization. */
+const SUBSCRIBED_SKUS_RESPONSE = [
+  { skuPartNumber: "ENTERPRISEPREMIUM", skuId: "c7df2760-2c81-4ef7-b578-5b5392b571df", consumedUnits: 14, capabilityStatus: "Enabled", prepaidUnits: { enabled: 25, suspended: 0, warning: 0 } },
+  { skuPartNumber: "SPE_E3", skuId: "05e9a617-0261-4cee-bb44-138d3ef5d965", consumedUnits: 9, capabilityStatus: "Enabled", prepaidUnits: { enabled: 10, suspended: 0, warning: 0 } },
+  { skuPartNumber: "Microsoft_365_Copilot", skuId: "639dec6b-bb19-468b-871c-c5c441c4b0cb", consumedUnits: 0, capabilityStatus: "Enabled", prepaidUnits: { enabled: 5, suspended: 0, warning: 0 } },
+  { skuPartNumber: "VISIOCLIENT", skuId: "c5928f49-12ba-48f7-ada3-0d743a3601d5", consumedUnits: 2, capabilityStatus: "Suspended", prepaidUnits: { enabled: 2, suspended: 3, warning: 0 } },
+];
+
+describe("traceCheckResponse — raw / countWhere (#402)", () => {
+  it("license:sku-utilization: skuData now carries the real SKU list the run fetched", () => {
+    const trace = traceCheckResponse({
+      checkKey: "license:sku-utilization",
+      items: SUBSCRIBED_SKUS_RESPONSE,
+      mapping: [{ sourceField: "value", targetField: "skuData", transform: "raw" }],
+      properties: ["skuPartNumber"],
+      rules: [],
+    });
+
+    const skuData = trace.keys.find(k => k.key === "skuData")!;
+    expect(skuData.origin).toBe("mapping");
+    expect(skuData.transform).toBe("raw");
+    expect(skuData.value).toEqual(SUBSCRIBED_SKUS_RESPONSE);
+
+    // The contradiction #402 reports, now resolved: the mapped target and the
+    // automatic property extraction beside it agree on the same four SKUs.
+    const partNumbers = trace.keys.find(k => k.key === "skuPartNumber_values")!;
+    expect((partNumbers.value as string[])).toHaveLength(4);
+    expect((skuData.value as Array<{ skuPartNumber: string }>).map(s => s.skuPartNumber))
+      .toEqual(partNumbers.value);
+  });
+
+  it("shows what the same check produced while the transform was missing", () => {
+    // Same response, same mapping shape, an unimplemented transform name: the
+    // target is present and empty next to four real SKUs. That is exactly the
+    // screen #402 was filed from.
+    const trace = traceCheckResponse({
+      checkKey: "license:sku-utilization",
+      items: SUBSCRIBED_SKUS_RESPONSE,
+      mapping: [{ sourceField: "value", targetField: "skuData", transform: "neverImplemented" }],
+      properties: ["skuPartNumber"],
+      rules: [],
+    });
+    expect(trace.keys.find(k => k.key === "skuData")!.value).toEqual([]);
+    expect(trace.keys.find(k => k.key === "skuPartNumber_values")!.value).toHaveLength(4);
+  });
+
+  it("license:unused-assigned: countWhere feeds a real rule with a real number", () => {
+    const users = [
+      { id: "u1", assignedLicenses: [{ skuId: "e3" }], signInActivity: { lastSignInDateTime: "2020-01-01T00:00:00Z" } },
+      { id: "u2", assignedLicenses: [{ skuId: "e5" }], signInActivity: { lastSignInDateTime: "2020-06-01T00:00:00Z" } },
+      { id: "u3", assignedLicenses: [{ skuId: "e3" }], signInActivity: { lastSignInDateTime: new Date().toISOString() } },
+      { id: "u4", assignedLicenses: [], signInActivity: { lastSignInDateTime: "2019-01-01T00:00:00Z" } },
+    ];
+    const trace = traceCheckResponse({
+      checkKey: "license:unused-assigned",
+      items: users,
+      mapping: [{
+        sourceField: "value",
+        targetField: "unusedAssignedCount",
+        transform: "countWhere('assignedLicenses length> 0 && {{signInActivity.lastSignInDateTime}} olderThanDays 90')",
+      }],
+      properties: [],
+      rules: [makeRule({ id: 402, ruleType: "profile_key_gt", sourceKey: "unusedAssignedCount", compareValue: "1" })],
+    });
+
+    const key = trace.keys.find(k => k.key === "unusedAssignedCount")!;
+    expect(key.value).toBe(2);          // u1 and u2: licensed and dormant; u3 recent, u4 unlicensed
+    expect(key.uncovered).toBe(false);
+    expect(key.rules[0]!.result).toBe(true);
+    expect(key.rules[0]!.reason).toBe("requires profile[unusedAssignedCount] > 1 to fire; actual value = 2");
+  });
+});

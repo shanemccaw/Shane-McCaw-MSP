@@ -2190,3 +2190,383 @@ describe("appendQueryParams", () => {
     expect(res).toBe("/beta/users?$select=id,mail&$filter=accountEnabled%20eq%20true");
   });
 });
+
+// ── #402: raw / countWhere — the two transform names stored checks referenced
+// before either existed. Both silently produced the default branch's raw array,
+// which no numeric signal rule can read.
+
+/**
+ * Verbatim shape of GET /v1.0/subscribedSkus (four SKUs), the endpoint behind
+ * license:sku-utilization — the check #402 was found on. The point of the
+ * fixture is the nesting: consumedUnits sits on the item, prepaidUnits.enabled
+ * one level down, and servicePlans is an array. A count/first/exists transform
+ * can carry ONE of those numbers; only a pass-through carries the SKU list.
+ */
+const SUBSCRIBED_SKUS = [
+  {
+    capabilityStatus: "Enabled",
+    consumedUnits: 14,
+    id: "48a80680-7326-48cd-9935-b556b81d3a4e_c7df2760-2c81-4ef7-b578-5b5392b571df",
+    skuId: "c7df2760-2c81-4ef7-b578-5b5392b571df",
+    skuPartNumber: "ENTERPRISEPREMIUM",
+    appliesTo: "User",
+    prepaidUnits: { enabled: 25, suspended: 0, warning: 0 },
+    servicePlans: [{ servicePlanId: "41781fb2-bc02-4b7c-bd55-b576c07bb09d", servicePlanName: "AAD_PREMIUM", provisioningStatus: "Success", appliesTo: "User" }],
+  },
+  {
+    capabilityStatus: "Enabled",
+    consumedUnits: 9,
+    id: "48a80680-7326-48cd-9935-b556b81d3a4e_05e9a617-0261-4cee-bb44-138d3ef5d965",
+    skuId: "05e9a617-0261-4cee-bb44-138d3ef5d965",
+    skuPartNumber: "SPE_E3",
+    appliesTo: "User",
+    prepaidUnits: { enabled: 10, suspended: 0, warning: 0 },
+    servicePlans: [],
+  },
+  {
+    capabilityStatus: "Enabled",
+    consumedUnits: 0,
+    id: "48a80680-7326-48cd-9935-b556b81d3a4e_639dec6b-bb19-468b-871c-c5c441c4b0cb",
+    skuId: "639dec6b-bb19-468b-871c-c5c441c4b0cb",
+    skuPartNumber: "Microsoft_365_Copilot",
+    appliesTo: "User",
+    prepaidUnits: { enabled: 5, suspended: 0, warning: 0 },
+    servicePlans: [],
+  },
+  {
+    capabilityStatus: "Suspended",
+    consumedUnits: 2,
+    id: "48a80680-7326-48cd-9935-b556b81d3a4e_c5928f49-12ba-48f7-ada3-0d743a3601d5",
+    skuId: "c5928f49-12ba-48f7-ada3-0d743a3601d5",
+    skuPartNumber: "VISIOCLIENT",
+    appliesTo: "User",
+    prepaidUnits: { enabled: 2, suspended: 3, warning: 0 },
+    servicePlans: [],
+  },
+];
+
+describe("applyMapping — raw (#402)", () => {
+  beforeEach(() => vi.mocked(logger.warn).mockClear());
+
+  it("pins the bug: an unimplemented transform produced an empty result beside four real SKUs", () => {
+    // The exact contradiction #402 reports from a live Simulator Studio run —
+    // skuPartNumber_values showed all four SKUs while the check's own skuData
+    // mapping produced nothing. Not an assertion about the new code: an
+    // assertion about what happens to a sourceField naming the OData envelope
+    // the items were already unwrapped out of.
+    const before = applyMapping(SUBSCRIBED_SKUS, [
+      { sourceField: "value", targetField: "skuData", transform: "notImplementedYet" },
+    ], ["skuPartNumber"]);
+    expect(before.skuData).toEqual([]);
+    expect(before.skuPartNumber_values).toHaveLength(4);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "skuData" }),
+      expect.stringContaining("not implemented"),
+    );
+  });
+
+  it("passes the FULL item array through when sourceField names the item itself", () => {
+    for (const sourceField of ["value", "*", ".", "item", "items", ""]) {
+      const result = applyMapping(SUBSCRIBED_SKUS, [
+        { sourceField, targetField: "skuData", transform: "raw" },
+      ], []);
+      expect(result.skuData, `sourceField "${sourceField}"`).toEqual(SUBSCRIBED_SKUS);
+      expect((result.skuData as Array<{ skuPartNumber: string }>).map(s => s.skuPartNumber))
+        .toEqual(["ENTERPRISEPREMIUM", "SPE_E3", "Microsoft_365_Copilot", "VISIOCLIENT"]);
+    }
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("carries the nested numbers no derived transform can: consumed vs prepaid, per SKU", () => {
+    const result = applyMapping(SUBSCRIBED_SKUS, [
+      { sourceField: "value", targetField: "skuData", transform: "raw" },
+    ], []);
+    const rows = (result.skuData as Array<{ skuPartNumber: string; consumedUnits: number; prepaidUnits: { enabled: number } }>)
+      .map(s => ({ sku: s.skuPartNumber, used: s.consumedUnits, owned: s.prepaidUnits.enabled }));
+    expect(rows).toEqual([
+      { sku: "ENTERPRISEPREMIUM", used: 14, owned: 25 },
+      { sku: "SPE_E3", used: 9, owned: 10 },
+      { sku: "Microsoft_365_Copilot", used: 0, owned: 5 },
+      { sku: "VISIOCLIENT", used: 2, owned: 2 },
+    ]);
+  });
+
+  it("passes one property off every item through when sourceField names a property", () => {
+    const result = applyMapping(SUBSCRIBED_SKUS, [
+      { sourceField: "skuPartNumber", targetField: "skus", transform: "raw" },
+      { sourceField: "prepaidUnits", targetField: "units", transform: "raw" },
+      { sourceField: "prepaidUnits.enabled", targetField: "owned", transform: "raw" },
+    ], []);
+    expect(result.skus).toEqual(["ENTERPRISEPREMIUM", "SPE_E3", "Microsoft_365_Copilot", "VISIOCLIENT"]);
+    expect(result.owned).toEqual([25, 10, 5, 2]);
+    expect((result.units as unknown[])[0]).toEqual({ enabled: 25, suspended: 0, warning: 0 });
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("keeps duplicates and document order, dropping only null/absent values", () => {
+    // "Unmodified" has to mean unmodified: de-duplicating or re-ordering here
+    // would make the pass-through a derived transform wearing a raw label.
+    const result = applyMapping([
+      { dept: "Sales" }, { dept: "Sales" }, { dept: null }, {}, { dept: "Ops" },
+    ], [{ sourceField: "dept", targetField: "depts", transform: "raw" }], []);
+    expect(result.depts).toEqual(["Sales", "Sales", "Ops"]);
+  });
+
+  it("falls back to the whole items — loudly — when sourceField resolves on nothing", () => {
+    // The shape every currently-broken stored rule is in. Emitting [] again
+    // would reproduce the bug faithfully; guessing silently would be worse.
+    const result = applyMapping(SUBSCRIBED_SKUS, [
+      { sourceField: "skuData", targetField: "skuData", transform: "raw" },
+    ], []);
+    expect(result.skuData).toEqual(SUBSCRIBED_SKUS);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "skuData", transform: "raw" }),
+      expect.stringContaining("passed through the WHOLE items instead"),
+    );
+  });
+
+  it("takes the same loud fallback when the property exists but is null on every item", () => {
+    // Deliberate: "present and null everywhere" and "wrong path" are the same
+    // observation from here — both yield nothing — so both get the same
+    // fallback and the same warning naming both readings, rather than one of
+    // them silently returning an empty list.
+    const result = applyMapping([{ a: null }, { a: null }], [
+      { sourceField: "a", targetField: "out", transform: "raw" },
+    ], []);
+    expect(result.out).toEqual([{ a: null }, { a: null }]);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "out" }),
+      expect.stringContaining("passed through the WHOLE items instead"),
+    );
+  });
+
+  it("returns an empty array on an empty item list, without warning", () => {
+    // A tenant with no SKUs is a real answer, not a misconfigured check.
+    const result = applyMapping([], [
+      { sourceField: "value", targetField: "skuData", transform: "raw" },
+      { sourceField: "skuPartNumber", targetField: "skus", transform: "raw" },
+    ], []);
+    expect(result.skuData).toEqual([]);
+    expect(result.skus).toEqual([]);
+    expect(result._itemCount).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("copies the item array rather than aliasing the caller's", () => {
+    const items = [...SUBSCRIBED_SKUS];
+    const result = applyMapping(items, [
+      { sourceField: "value", targetField: "skuData", transform: "raw" },
+    ], []);
+    items.pop();
+    expect(result.skuData).toHaveLength(4);
+  });
+
+  it("warns above the whole-item volume threshold without dropping anything", () => {
+    const many = Array.from({ length: 501 }, (_, i) => ({ id: `u${i}` }));
+    const result = applyMapping(many, [
+      { sourceField: "value", targetField: "users", transform: "raw" },
+    ], []);
+    expect(result.users).toHaveLength(501);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ itemCount: 501 }),
+      expect.stringContaining("Nothing was dropped"),
+    );
+  });
+
+  it("treats bare 'raw' as implemented and an argument-bearing 'raw(...)' as malformed", () => {
+    applyMapping(SUBSCRIBED_SKUS, [{ sourceField: "value", targetField: "a", transform: "raw" }], []);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    vi.mocked(logger.warn).mockClear();
+    const out = applyMapping([{ a: 1 }], [{ sourceField: "a", targetField: "x", transform: "raw('value')" }], []);
+    expect(out.x).toEqual([1]);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ transform: "raw('value')" }),
+      expect.stringContaining("unparsable arguments"),
+    );
+  });
+});
+
+describe("applyMapping — countWhere (#402)", () => {
+  beforeEach(() => vi.mocked(logger.warn).mockClear());
+
+  const USERS = [
+    { id: "u1", displayName: "Ada", accountEnabled: true, department: "Sales", assignedLicenses: [{ skuId: "e3" }], signInActivity: { lastSignInDateTime: "2020-01-01T00:00:00Z" } },
+    { id: "u2", displayName: "Bo", accountEnabled: false, department: "Sales", assignedLicenses: [{ skuId: "e3" }, { skuId: "e5" }], signInActivity: { lastSignInDateTime: "2020-02-01T00:00:00Z" } },
+    { id: "u3", displayName: "Cy", accountEnabled: false, department: "Ops", assignedLicenses: [], signInActivity: { lastSignInDateTime: new Date().toISOString() } },
+    { id: "u4", displayName: "Di", accountEnabled: true, department: "Ops", assignedLicenses: [{ skuId: "visio" }] },
+  ];
+
+  it("counts ITEMS matching the predicate", () => {
+    const result = applyMapping(USERS, [
+      { sourceField: "value", targetField: "disabledCount", transform: "countWhere('{{accountEnabled}} == false')" },
+      { sourceField: "*", targetField: "salesCount", transform: `countWhere('{{department}} == "Sales"')` },
+    ], []);
+    expect(result.disabledCount).toBe(2);
+    expect(result.salesCount).toBe(2);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("is the SAME grammar severity rules use, not a second expression language", () => {
+    // Every predicate is evaluated twice — once through the transform, once
+    // through evalConditionGrammar directly. A reimplemented grammar would
+    // drift from one of these; a shared one cannot.
+    const predicates = [
+      "{{accountEnabled}} == false",
+      `{{accountEnabled}} == false && {{department}} == "Ops"`,
+      `{{department}} == "Sales" || {{department}} == "Ops"`,
+      "assignedLicenses length> 1",
+      "{{signInActivity.lastSignInDateTime}} olderThanDays 365",
+      "{{displayName}} contains A",
+      "accountEnabled",
+    ];
+    for (const expr of predicates) {
+      const viaTransform = applyMapping(USERS, [
+        { sourceField: "value", targetField: "n", transform: `countWhere('${expr}')` },
+      ], []).n;
+      const direct = USERS.filter(u => evalConditionGrammar(expr, u as unknown as Record<string, unknown>)).length;
+      expect(viaTransform, `predicate: ${expr}`).toBe(direct);
+    }
+  });
+
+  it("counts ENTRIES inside the array when sourceField names an array field", () => {
+    const result = applyMapping(USERS, [
+      { sourceField: "assignedLicenses", targetField: "e3Count", transform: `countWhere('{{skuId}} == "e3"')` },
+      { sourceField: "assignedLicenses", targetField: "allLicences", transform: "countWhere('skuId')" },
+    ], []);
+    expect(result.e3Count).toBe(2);      // u1 and u2 each hold one E3
+    expect(result.allLicences).toBe(4);  // 1 + 2 + 0 + 1 licences across the tenant
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("accepts either outer quote style, so a predicate can carry string literals", () => {
+    const single = applyMapping(USERS, [
+      { sourceField: "value", targetField: "n", transform: `countWhere('{{department}} == "Sales"')` },
+    ], []).n;
+    const double = applyMapping(USERS, [
+      { sourceField: "value", targetField: "n", transform: `countWhere("{{department}} == 'Sales'")` },
+    ], []).n;
+    expect(single).toBe(2);
+    expect(double).toBe(2);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("expresses the real license:unused-assigned question: licensed but long dormant", () => {
+    const result = applyMapping(USERS, [
+      {
+        sourceField: "value",
+        targetField: "unusedAssigned",
+        transform: "countWhere('assignedLicenses length> 0 && {{signInActivity.lastSignInDateTime}} olderThanDays 90')",
+      },
+    ], []);
+    // u1 and u2 are licensed and last signed in in 2020; u3 signed in today;
+    // u4 carries no signInActivity at all, and a missing timestamp fails CLOSED
+    // by design (see parseTimestampMs) rather than counting as dormant.
+    expect(result.unusedAssigned).toBe(2);
+  });
+
+  it("counts 0 — not everything — when the predicate genuinely matches nothing", () => {
+    const result = applyMapping(USERS, [
+      { sourceField: "value", targetField: "n", transform: `countWhere('{{department}} == "Legal"')` },
+    ], []);
+    expect(result.n).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns when the predicate's fields exist on nothing it was evaluated against", () => {
+    // The 0 that is about the stored rule, not about the tenant. This is the
+    // single most believable wrong answer a counting transform can give.
+    const result = applyMapping(USERS, [
+      { sourceField: "value", targetField: "n", transform: "countWhere('{{accountEnbaled}} == false')" },
+    ], []);
+    expect(result.n).toBe(0);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "n", fields: ["accountEnbaled"] }),
+      expect.stringContaining("present on none of the 4 items"),
+    );
+  });
+
+  it("does not raise that warning over words inside a string literal", () => {
+    const result = applyMapping(USERS, [
+      { sourceField: "value", targetField: "n", transform: `countWhere('{{department}} == "Legal Department"')` },
+    ], []);
+    expect(result.n).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns and evaluates over whole items when sourceField resolves on nothing", () => {
+    const result = applyMapping(USERS, [
+      { sourceField: "licenceDetails", targetField: "n", transform: "countWhere('{{accountEnabled}} == false')" },
+    ], []);
+    expect(result.n).toBe(2);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "n" }),
+      expect.stringContaining("evaluated against the WHOLE items"),
+    );
+  });
+
+  it("warns when there is nothing object-shaped to evaluate", () => {
+    const result = applyMapping([{ tags: ["a", "b"] }, { tags: ["c"] }], [
+      { sourceField: "tags", targetField: "n", transform: `countWhere('{{name}} == "a"')` },
+    ], []);
+    expect(result.n).toBe(0);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ skipped: 3 }),
+      expect.stringContaining("nothing object-shaped"),
+    );
+  });
+
+  it("survives malformed items and mixed array contents", () => {
+    const result = applyMapping([
+      null,
+      "a string",
+      { assignedLicenses: null },
+      { assignedLicenses: [null, "scalar", { skuId: "e3" }, { skuId: "e3" }] },
+    ], [
+      { sourceField: "assignedLicenses", targetField: "n", transform: `countWhere('{{skuId}} == "e3"')` },
+    ], []);
+    expect(result.n).toBe(2);
+  });
+
+  it("returns 0 on an empty item list, without warning", () => {
+    const result = applyMapping([], [
+      { sourceField: "value", targetField: "n", transform: "countWhere('{{accountEnabled}} == false')" },
+    ], []);
+    expect(result.n).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("treats an empty or unquoted predicate as malformed, never as a confident 0", () => {
+    for (const bad of [
+      "countWhere()",
+      "countWhere('')",
+      "countWhere",
+      "countWhere({{accountEnabled}} == false)",
+      `countWhere('{{a}} == 'b'')`,
+    ]) {
+      vi.mocked(logger.warn).mockClear();
+      const out = applyMapping([{ a: 1 }], [{ sourceField: "a", targetField: "x", transform: bad }], []);
+      expect(out.x, `expected "${bad}" to degrade to the default raw array`).toEqual([1]);
+      expect(vi.mocked(logger.warn), `expected "${bad}" to warn`).toHaveBeenCalledWith(
+        expect.objectContaining({ transform: bad }),
+        expect.stringContaining("unparsable arguments"),
+      );
+    }
+  });
+
+  it("produces a number the existing severity grammar can read", () => {
+    const extracted = applyMapping(USERS, [
+      { sourceField: "value", targetField: "disabledCount", transform: "countWhere('{{accountEnabled}} == false')" },
+    ], []);
+    expect(evalConditionGrammar("disabledCount > 1", extracted)).toBe(true);
+    expect(evalConditionGrammar("disabledCount > 5", extracted)).toBe(false);
+  });
+
+  it("treats both new names as implemented, so neither trips the unknown-transform warning", () => {
+    applyMapping(SUBSCRIBED_SKUS, [
+      { sourceField: "value", targetField: "skuData", transform: "raw" },
+      { sourceField: "value", targetField: "suspended", transform: `countWhere('{{capabilityStatus}} == "Suspended"')` },
+    ], []);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+});

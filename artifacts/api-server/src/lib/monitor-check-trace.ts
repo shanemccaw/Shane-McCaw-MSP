@@ -15,10 +15,11 @@
  *
  * REUSE, NOT REIMPLEMENTATION — the central constraint of this phase:
  *   • `applyMapping` (monitor-executor.ts) performs the mapping. Every
- *     transform — count / exists / first / join / countTruthy / countFalse /
- *     countEmptyArray / countEquals / countIfLastSignInOlderThan /
- *     groupByCount / countDuplicates — is the real one. None of that logic is
- *     restated here.
+ *     transform — count / exists / first / join / raw / countTruthy /
+ *     countFalse / countEmptyArray / countEquals / countIfLastSignInOlderThan /
+ *     groupByCount / countDuplicates / countWhere / valueWhere /
+ *     flattenValues / countDuplicatesBy — is the real one. None of that logic
+ *     is restated here.
  *   • `evaluateRule` (tenant-signals.ts) decides each rule's true/false AND
  *     produces the human-readable reason string. Both are surfaced verbatim;
  *     this module never authors a second explanation of a rule's outcome.

@@ -526,6 +526,14 @@ export default function MonitorChecksPage() {
                   {"{"}name, value{"}"} list. valueWhere returns <code>null</code> when the name is
                   absent and <code>""</code> when it is present but unset, so rules must test both.
                 </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Whole objects: <code>raw</code> passes items through unmodified — sourceField{" "}
+                  <code>value</code> (or <code>*</code>) means the full item array, any other
+                  sourceField means that property off every item.{" "}
+                  <code>countWhere('{"{{"}accountEnabled{"}}"} == false')</code> counts matches using
+                  the same condition grammar as severity rules (sourceField = an array field counts
+                  entries inside it; otherwise it counts items).
+                </p>
               </div>
 
               <div>
