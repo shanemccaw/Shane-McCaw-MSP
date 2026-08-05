@@ -8,25 +8,35 @@
  * CRITICAL GEOMETRY — the zero-size arm
  * ------------------------------------
  * Each satellite hangs off a `width:0; height:0` div with `transform-origin:0 0`
- * and `rotate(Ndeg) translate(0,-290px)`. Sizing the arm to its label instead
- * makes `rotate()` pivot on the label's own centre, which silently pushes every
- * satellite to a different radius and tilts the ring. The label is a fixed
- * 380px-WIDE box pulled back by half that width (`margin-left:-190px`) and
- * counter-rotated so it stays upright. Only the width is load-bearing for the
- * ring geometry — the arm's rotation math never reads the label's height, so
- * the height is free to grow with wrapped content (see LONG FINDING TEXT below).
+ * and `rotate(Ndeg) translate(0,-satelliteRadius(N)px)`. Sizing the arm to its
+ * label instead makes `rotate()` pivot on the label's own centre, which silently
+ * pushes every satellite to a different radius and tilts the ring. The label is
+ * a fixed 380px-WIDE box centred on the end of that arm and counter-rotated so
+ * it stays upright.
  *
- * LONG FINDING TEXT (#412)
- * -------------------------
+ * The label centres itself with `translate(-50%,-50%)`, NOT with a negative
+ * margin of half `LABEL_H` (#422). Percentage translates resolve against the
+ * element's own rendered box, so the label stays centred on its anchor at any
+ * height; a fixed `margin-top:-26px` silently assumed every label was exactly
+ * one `LABEL_H` tall and let anything taller grow inward, toward the orb. That
+ * is the same thing Scene 0's chip clusters have always done
+ * (`RevealScanOverlay.tsx`, `translate(-50%,-50%)` on a content-sized cluster) —
+ * this scene was the one doing it differently.
+ *
+ * LONG FINDING TEXT (#412, #422)
+ * ------------------------------
  * `satelliteFinding` is a real `severity_rules[].label` (#408) — a full
  * researched sentence, not the short placeholder this scene was built against.
- * The label box's WIDTH stays the fixed 380px above (that is what keeps every
- * satellite clear of the orb and of the frame edge regardless of content), but
- * the finding line itself wraps within it instead of running past it on
- * `white-space:nowrap` — only the short pillar eyebrow (SECURITY, HEALTH, …)
- * stays single-line. The box's height is a `min-height` pulled back by half of
- * itself, not a fixed height: short findings still centre correctly, and long
- * ones grow downward rather than clipping or forcing the box wider.
+ * The finding wraps within the fixed-width box instead of running past it on
+ * `white-space:nowrap`; only the short pillar eyebrow (SECURITY, HEALTH, …)
+ * stays single-line.
+ *
+ * That fixed WIDTH does NOT, on its own, keep a satellite clear of the orb —
+ * the header used to claim it did, and #422 is what that claim cost. A real
+ * finding renders a chip wide enough to fill the box, and at 60°/120°/240°/300°
+ * the box's inner end reached 39px inside the orb. The clearance comes from the
+ * ring's geometry instead: see `satelliteRadius` in `revealMath.ts`, which
+ * pushes exactly those four side satellites outward.
  *
  * The ring rotates -26° → 0° once during the reveal and then settles. It never
  * spins continuously — this is a readout, not an ornament.
@@ -47,18 +57,24 @@ import {
   clampWindow,
   ringCounterRotation,
   ringRotation,
+  satelliteRadius,
   verdictCount,
   verdictStageScale,
 } from "./revealMath.ts";
 import { FindingChip, JourneyUnavailable, PillarGlyph, ScrollCue } from "./JourneyPrimitives";
 
-const STAGE_W = 940;
+/**
+ * The stage. Wider than it is tall on purpose: the ellipse's horizontal radius
+ * (`SATELLITE_RX`) needs the room, and `verdictStageScale` is height-bound on an
+ * ordinary laptop, so width is the cheap axis to spend. `STAGE_H` is unchanged
+ * from the circular ring — the ellipse keeps the vertical radius it had.
+ */
+const STAGE_W = 1040;
 const STAGE_H = 790;
-/** The ring's centre inside the stage. */
-const CENTRE_X = 470;
+/** The ring's centre inside the stage. `STAGE_W / 2` — the `left:50%` blocks below assume it. */
+const CENTRE_X = 520;
 const CENTRE_Y = 330;
-/** Satellite radius. Labels are fixed-size and pulled back by half their box. */
-const SATELLITE_R = 290;
+/** The label box. Fixed width; height is a floor, not a cap — see the header. */
 const LABEL_W = 380;
 const LABEL_H = 52;
 /** The Copilot identity mark. Constant — it never changes with the score. */
@@ -67,7 +83,7 @@ const ORB_PX = 346;
 /** The count-up ticks at 40ms, matching the design's own reveal interval. */
 const TICK_MS = 40;
 
-/** Below this the ring cannot hold 380px labels at radius 290 — stack instead. */
+/** Below this the ring cannot hold its 380px labels at any honest scale — stack instead. */
 const WIDE_MIN_PX = 820;
 
 /**
@@ -191,21 +207,23 @@ function Satellite({
         width: 0,
         height: 0,
         transformOrigin: "0 0",
-        transform: `rotate(${angle}deg) translate(0,-${SATELLITE_R}px)`,
+        transform: `rotate(${angle}deg) translate(0,-${satelliteRadius(angle)}px)`,
       }}
     >
       <div
         style={{
           width: LABEL_W,
-          marginLeft: -LABEL_W / 2,
           minHeight: LABEL_H,
-          marginTop: -LABEL_H / 2,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
-          transform: `rotate(${-angle}deg) rotate(${counterRotation}deg)`,
+          // `translate(-50%,-50%)` is outermost, so it lands the box's real
+          // centre — at whatever height the content gives it — on the arm's end,
+          // and the rotations still pivot about that same centre. See the
+          // header: a fixed negative margin here was half of #422.
+          transform: `translate(-50%,-50%) rotate(${-angle}deg) rotate(${counterRotation}deg)`,
         }}
       >
         <div

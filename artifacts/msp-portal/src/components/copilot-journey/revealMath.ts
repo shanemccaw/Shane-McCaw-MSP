@@ -164,9 +164,49 @@ export function radarStageScale(vw: number, vh: number): number {
  * Scene 1 — the verdict
  * ------------------------------------------------------------------ */
 
-/** Fit-to-viewport scale for the 940×790 verdict stage. */
+/** Fit-to-viewport scale for the 1040×790 verdict stage. */
 export function verdictStageScale(vw: number, vh: number): number {
-  return Math.min(1, vw / 1020, vh / 860);
+  return Math.min(1, vw / 1120, vh / 860);
+}
+
+/**
+ * The satellite ring's two radii — an ELLIPSE, not the circle Scene 1 shipped
+ * with (#422).
+ *
+ * The scene was built on a circular ring of radius 290 around a 346px orb, on
+ * the documented assumption that the fixed 380px-wide label box "keeps every
+ * satellite clear of the orb regardless of content". Measured against the real
+ * long findings `severity_rules` labels now produce (#408, #412), that
+ * assumption is false and always was: at 60°/120°/240°/300° a label box reached
+ * to within 134px of the stage centre, well inside the orb's 173px radius. The
+ * short placeholder findings the scene was designed against only ever painted
+ * the middle of that box, so nothing showed. A full-sentence finding fills it,
+ * and its inner end runs under the orb.
+ *
+ * Only the four side satellites have the problem — the 12 and 6 o'clock ones
+ * clear the orb by 90px. And the stage has room sideways but none vertically:
+ * `verdictStageScale` is height-bound on every ordinary laptop (`vh/860`
+ * saturates long before `vw/1120`), so widening the stage is nearly free while
+ * making it taller would shrink the whole scene. Hence the ellipse — the
+ * vertical radius stays at the original 290 and the horizontal radius grows,
+ * pushing the four side satellites out into room that costs nothing.
+ */
+export const SATELLITE_RX = 410;
+export const SATELLITE_RY = 290;
+
+/**
+ * The ring's radius at `angleDeg`, measured clockwise from 12 o'clock — the
+ * standard polar radius of the `SATELLITE_RX`×`SATELLITE_RY` ellipse.
+ *
+ * Returns exactly `SATELLITE_RY` at 0°/180°, so the top and bottom satellites
+ * keep the radius — and the stage keeps the height — Scene 1 has always had.
+ */
+export function satelliteRadius(angleDeg: number): number {
+  const a = (angleDeg * Math.PI) / 180;
+  return (
+    (SATELLITE_RX * SATELLITE_RY) /
+    Math.hypot(SATELLITE_RY * Math.sin(a), SATELLITE_RX * Math.cos(a))
+  );
 }
 
 /** Fit-to-viewport scale for Scene 9's 1300×660 stage. */

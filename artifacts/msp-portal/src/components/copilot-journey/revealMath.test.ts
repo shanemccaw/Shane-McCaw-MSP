@@ -23,14 +23,18 @@ import {
   railTicks,
   ringCounterRotation,
   ringRotation,
+  satelliteRadius,
   sceneProgress,
   sparkDelta,
   sparkGeometry,
   sparkPath,
   sparkTip,
   verdictCount,
+  verdictStageScale,
   RADAR_INNER_R,
   RADAR_OUTER_R,
+  SATELLITE_RX,
+  SATELLITE_RY,
   SPARK_H,
   SPARK_W,
 } from "./revealMath.ts";
@@ -216,6 +220,82 @@ describe("ring settle", () => {
     for (const t of [0.42, 0.6, 0.8, 1]) {
       assert.ok(Math.abs(ringRotation(t, false) + ringCounterRotation(t, false)) < 1e-9);
     }
+  });
+});
+
+describe("satellite ring (#422)", () => {
+  // The real constants RevealVerdict.tsx lays the ring out with.
+  const LABEL_W = 380;
+  const ORB_R = 346 / 2;
+  const ANGLES = [0, 60, 120, 180, 240, 300];
+
+  /**
+   * Distance from the stage centre to the nearest point of a satellite's label
+   * box — the exact quantity #422 is about. The box is an upright
+   * `LABEL_W` × `boxH` rectangle centred on the arm's end, which is what
+   * `translate(-50%,-50%)` on a counter-rotated label produces.
+   */
+  function clearance(angleDeg: number, boxH: number): number {
+    const a = (angleDeg * Math.PI) / 180;
+    const r = satelliteRadius(angleDeg);
+    const cx = Math.abs(r * Math.sin(a));
+    const cy = Math.abs(r * Math.cos(a));
+    return Math.hypot(Math.max(0, cx - LABEL_W / 2), Math.max(0, cy - boxH / 2));
+  }
+
+  it("keeps the top and bottom satellites at the original circular radius", () => {
+    assert.ok(Math.abs(satelliteRadius(0) - SATELLITE_RY) < 1e-9);
+    assert.ok(Math.abs(satelliteRadius(180) - SATELLITE_RY) < 1e-9);
+    // Which is what keeps the stage exactly as tall as it was.
+    assert.equal(SATELLITE_RY, 290);
+  });
+
+  it("reaches the horizontal radius at 90deg and never exceeds it", () => {
+    assert.ok(Math.abs(satelliteRadius(90) - SATELLITE_RX) < 1e-9);
+    for (let d = 0; d < 360; d += 1) {
+      assert.ok(satelliteRadius(d) <= SATELLITE_RX + 1e-9);
+      assert.ok(satelliteRadius(d) >= SATELLITE_RY - 1e-9);
+    }
+  });
+
+  it("clears the orb at every satellite, single-line and wrapped alike", () => {
+    // 52 is the single-line `LABEL_H` floor; 78 is a three-line finding, which
+    // is taller than anything the real severity_rules labels currently produce.
+    for (const boxH of [52, 62, 78]) {
+      for (const angle of ANGLES) {
+        assert.ok(
+          clearance(angle, boxH) > ORB_R,
+          `satellite ${angle}deg at box height ${boxH} overlaps the orb: ` +
+            `${clearance(angle, boxH).toFixed(1)} <= ${ORB_R}`,
+        );
+      }
+    }
+  });
+
+  it("is the regression it says it is — the old circle did NOT clear the orb", () => {
+    // The shipped geometry: a circle of radius 290, same box. Recomputing it
+    // here is what stops this fix being quietly reverted to "290 was fine".
+    const oldClearance = Math.hypot(
+      Math.max(0, 290 * Math.sin(Math.PI / 3) - LABEL_W / 2),
+      Math.max(0, 290 * Math.cos(Math.PI / 3) - 52 / 2),
+    );
+    assert.ok(oldClearance < ORB_R, "expected the old radius to overlap");
+    assert.ok(clearance(60, 52) > oldClearance);
+  });
+
+  it("still fits the stage it is drawn on", () => {
+    const STAGE_W = 1040;
+    const CENTRE_X = STAGE_W / 2;
+    for (const angle of ANGLES) {
+      const half = Math.abs(satelliteRadius(angle) * Math.sin((angle * Math.PI) / 180));
+      assert.ok(
+        half + LABEL_W / 2 <= CENTRE_X,
+        `satellite ${angle}deg runs off the stage edge`,
+      );
+    }
+    // And the fit-to-viewport scale still reserves real margin around it.
+    assert.ok(verdictStageScale(1120, 2000) === 1);
+    assert.ok(verdictStageScale(1000, 2000) < 1);
   });
 });
 
