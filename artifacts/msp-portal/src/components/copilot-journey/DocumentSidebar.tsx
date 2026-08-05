@@ -20,6 +20,7 @@
 import type { CSSProperties } from "react";
 import { useState } from "react";
 
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 import {
   BRAND,
   COPILOT_GATE_TARGET,
@@ -487,6 +488,7 @@ export function DocumentSidebar({
   /** The readiness score behind the gate block, or null if nothing scored it. */
   readonly score: number | null;
 }) {
+  const versionInfo = useVersionInfo();
   return (
     <nav
       aria-label="Your assessment reports"
@@ -554,6 +556,9 @@ export function DocumentSidebar({
         <p style={{ margin: 0, fontSize: 10.5, fontWeight: 500, lineHeight: 1.55, color: INK_ON_NAVY.muted }}>
           Assessed against the M365 governance framework Shane McCaw wrote at NASA and distributed
           agency-wide.
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 9.5, fontWeight: 500, color: INK_ON_NAVY.faint }}>
+          v{versionInfo.display}
         </p>
       </div>
     </nav>

@@ -62,6 +62,7 @@ import { Check, Clock, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { reportClientEvent } from "@/lib/report-client-event";
 
 import {
@@ -575,6 +576,7 @@ export default function CopilotReadinessCheckoutPage() {
 
   const [, navigate] = useLocation();
   const { fetchWithAuth, accessToken, logout } = useAuth();
+  const versionInfo = useVersionInfo();
 
   // Carry `?preview=design` across every link out of this screen, so a design
   // review does not silently drop back onto live data one navigation later.
@@ -1264,6 +1266,11 @@ export default function CopilotReadinessCheckoutPage() {
       {isPreview ? <PreviewBadge /> : null}
       {header}
       {children}
+      <div style={{ textAlign: "center", padding: "24px 0 8px" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.deemphasised }}>
+          v{versionInfo.display}
+        </span>
+      </div>
     </div>
   );
 

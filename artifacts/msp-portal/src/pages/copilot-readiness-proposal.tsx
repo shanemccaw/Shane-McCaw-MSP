@@ -85,6 +85,7 @@ import {
   type SignedScopeHandoff,
 } from "@/pages/copilot-readiness-checkout";
 import { useAuth } from "@/lib/auth-context";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { reportClientEvent } from "@/lib/report-client-event";
 import "@/components/copilot-journey/copilot-journey.css";
 
@@ -150,6 +151,7 @@ export default function CopilotReadinessProposalPage() {
   const isPreview = new URLSearchParams(search).get("preview") === "design";
   const [, navigate] = useLocation();
   const { fetchWithAuth, accessToken, logout } = useAuth();
+  const versionInfo = useVersionInfo();
 
   /* -------------------------------------------------- tenant identity */
 
@@ -712,6 +714,12 @@ export default function CopilotReadinessProposalPage() {
         ) : (
           <ScopeUnavailable load={load} isPreview={isPreview} documentsHref={documentsHref} />
         )}
+      </div>
+
+      <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.deemphasised }}>
+          v{versionInfo.display}
+        </span>
       </div>
     </div>
   );

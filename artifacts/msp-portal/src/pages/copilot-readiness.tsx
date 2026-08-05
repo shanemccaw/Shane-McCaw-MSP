@@ -34,6 +34,7 @@ import { useLocation, useSearch } from "wouter";
 
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 
 import { JourneySvgDefs, PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { RevealAdoptionScene } from "@/components/copilot-journey/RevealAdoptionScene";
@@ -144,6 +145,7 @@ export default function CopilotReadinessPage() {
   const [, navigate] = useLocation();
   const search = useSearch();
   const { fetchWithAuth, logout } = useAuth();
+  const versionInfo = useVersionInfo();
 
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const isPreview = params.get("preview") === "design";
@@ -611,6 +613,12 @@ export default function CopilotReadinessPage() {
         payloadState={statusState}
         retryAction={retryAction}
       />
+
+      <div style={{ textAlign: "center", padding: "0 0 32px" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.deemphasised }}>
+          v{versionInfo.display}
+        </span>
+      </div>
     </div>
   );
 }

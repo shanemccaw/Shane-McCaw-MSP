@@ -49,6 +49,7 @@ import { ArrowRight, Menu, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth-context";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 
 import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
 import { DocumentExportMenu } from "@/components/copilot-journey/DocumentExportMenu";
@@ -272,6 +273,7 @@ export default function CopilotReadinessDocumentsPage() {
   const { docId } = useParams<{ docId?: string }>();
   const search = useSearch();
   const { fetchWithAuth, logout } = useAuth();
+  const versionInfo = useVersionInfo();
 
   const isPreview = new URLSearchParams(search).get("preview") === "design";
 
@@ -855,6 +857,12 @@ export default function CopilotReadinessDocumentsPage() {
             // the offer is the page they are already looking at.
             atEnd={activeIndex === documents.length - 1 && activeDoc?.title !== JOURNEY_SOW_DOCUMENT}
           />
+
+          <div style={{ textAlign: "center", padding: "18px 0 4px" }}>
+            <span style={{ fontSize: 10, fontWeight: 500, color: INK.micro }}>
+              v{versionInfo.display}
+            </span>
+          </div>
         </div>
       </div>
 
