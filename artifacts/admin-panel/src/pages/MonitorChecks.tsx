@@ -533,6 +533,12 @@ export default function MonitorChecksPage() {
                 <p className="text-xs text-gray-500 mt-1">
                   Grammar: path op literal, &&/||, contains, length&gt;/&lt;/==/&gt;=/{`<=`} — no eval
                 </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Dates: <code>field olderThanDays 30</code> / <code>newerThanDays 30</code> — the day
+                  count must be a literal integer here, never a path. ISO 8601 values only; null or
+                  malformed dates never match, so pair with <code>field == null ||</code> when
+                  "never happened" is also the alarm.
+                </p>
               </div>
 
               <div>

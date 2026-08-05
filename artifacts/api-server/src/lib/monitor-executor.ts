@@ -145,11 +145,38 @@ export interface MappingRule {
   targetField: string;
   /**
    * "count" | "exists" | "first" | "join" | "none" | "countTruthy" | "countFalse"
-   * | "countEquals('value')" — the countEquals form carries its comparison value
-   * inline in the string since MappingRule is stored as jsonb; parsed at runtime.
+   * | "countEmptyArray" | "groupByCount" | "countDuplicates"
+   * | "countEquals('value')" | "countIfLastSignInOlderThan(N)" — the
+   * parameterised forms carry their argument inline in the string since
+   * MappingRule is stored as jsonb; parsed at runtime.
+   *
+   * Anything NOT in this list falls through to the default branch and produces a
+   * raw array of values, which no numeric signal rule can read. That failure is
+   * silent by construction (the vocabulary is data, not a TS union), so the
+   * default branch warns — see KNOWN_TRANSFORMS.
    */
   transform?: string;
 }
+
+/**
+ * The real transform vocabulary `applyMapping` implements, used ONLY to warn
+ * when a stored check names something outside it.
+ *
+ * This exists because `monitor_checks.mapping` is authored as jsonb data: a typo
+ * or an aspirational transform name ("countEmpty" when the implemented name is
+ * "countEmptyArray") does not fail — it lands in the default branch, emits a raw
+ * array, and the downstream resolver quietly drops to `_itemCount`. That is the
+ * exact silent-and-plausible failure this platform's audits keep rediscovering
+ * by hand. The set is deliberately not enforced (no throw): an unknown transform
+ * still produces the same value it produces today, so this adds a diagnostic
+ * without changing any currently-working check's behaviour.
+ */
+const KNOWN_TRANSFORMS = new Set([
+  "none", "count", "exists", "first", "join",
+  "countTruthy", "countFalse", "countEmptyArray",
+  "countEquals", "countIfLastSignInOlderThan",
+  "groupByCount", "countDuplicates",
+]);
 
 export interface CheckResult {
   checkKey: string;
@@ -427,11 +454,55 @@ function parseExprValue(s: string, data: Record<string, unknown>): unknown {
   return resolvePathInData(t, data);
 }
 
+/**
+ * The ONE place a monitor expression is allowed to touch the clock.
+ *
+ * Parses a value that is supposed to be a real Graph timestamp into epoch ms,
+ * returning null for anything it cannot vouch for. The ISO-prefix guard is not
+ * decoration: `new Date("5")` is a VALID date in V8 (2001-05-01), so a bare
+ * `new Date(x)` on a malformed or wrong-typed nested field would silently
+ * manufacture a timestamp and fire — or fail to fire — a severity rule against
+ * a date the tenant never reported. Every date Graph emits is ISO 8601, so
+ * requiring that shape costs nothing real and makes garbage fail closed.
+ *
+ * Bare numbers are deliberately rejected rather than treated as epoch values:
+ * a number in a date field is ambiguous (epoch ms? epoch s? a year?) and
+ * guessing is exactly the plausible-but-wrong behaviour this rejects.
+ */
+const ISO_DATE_PREFIX_RE = /^\d{4}-\d{2}-\d{2}([T ]|$)/;
+
+function parseTimestampMs(value: unknown): number | null {
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  if (typeof value !== "string") return null;
+  const s = value.trim();
+  if (!ISO_DATE_PREFIX_RE.test(s)) return null;
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Upper bound on the `N` in `olderThanDays N` / `newerThanDays N`, in days
+ * (~274 years). Not a business rule — a sanity bound so a fat-fingered window
+ * in a stored rule reads as malformed (rule fails closed) rather than as a
+ * cutoff so far in the past or future that the clause is a constant.
+ */
+const MAX_RELATIVE_DAYS = 100000;
+
 function evalClause(clause: string, data: Record<string, unknown>): boolean {
   const c = clause.trim();
   // Order matters: multi-char/word operators must precede their single-char prefixes
   // e.g. " length>=" before " length>" before ">="  before ">"
-  const OPS = [" length>=", " length<=", " length==", " length>", " length<", " contains ", ">=", "<=", "!=", "==", ">", "<"];
+  // The word operators (contains / olderThanDays / newerThanDays) contain none of
+  // the symbol operators as substrings, so their position among themselves is
+  // free — but they must stay AHEAD of the symbols for the same reason.
+  const OPS = [
+    " length>=", " length<=", " length==", " length>", " length<",
+    " contains ", " olderThanDays ", " newerThanDays ",
+    ">=", "<=", "!=", "==", ">", "<",
+  ];
   for (const op of OPS) {
     const idx = c.indexOf(op);
     if (idx === -1) continue;
@@ -456,6 +527,27 @@ function evalClause(clause: string, data: Record<string, unknown>): boolean {
       return Array.isArray(haystack)
         ? haystack.includes(needle)
         : String(haystack).includes(String(needle ?? ""));
+    }
+    if (op2 === "olderThanDays" || op2 === "newerThanDays") {
+      // The window is read from the RAW clause text, never from `right`/the
+      // data, so the number of days is always authored in the platform-owned
+      // rule string itself. A stored expression can compare a tenant's real
+      // timestamp against a fixed window; it can never let fetched (or
+      // request-influenced) data decide how far back the window reaches.
+      const rawDays = rhs.trim();
+      if (!/^\d+$/.test(rawDays)) return false;
+      const days = Number(rawDays);
+      if (!Number.isFinite(days) || days > MAX_RELATIVE_DAYS) return false;
+      const ts = parseTimestampMs(left);
+      // Null/absent/malformed timestamps fail closed. A missing date is
+      // indistinguishable from a field the check forgot to $select, and firing
+      // a finding on that would report a fabricated one. Where "never happened"
+      // is itself the alarm, the stored rule says so explicitly and composes
+      // with the existing grammar:
+      //   {{lastSync}} == null || {{lastSync}} olderThanDays 30
+      if (ts === null) return false;
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      return op2 === "olderThanDays" ? ts < cutoff : ts >= cutoff;
     }
     if (op2 === "==") return left == right; // eslint-disable-line eqeqeq
     if (op2 === "!=") return left != right; // eslint-disable-line eqeqeq
@@ -602,6 +694,34 @@ export function applyMapping(
       case "countEquals":
         result[targetField] = vals.filter(v => String(v) === compareValue).length;
         break;
+      case "countEmptyArray": {
+        // Counts items whose nested array field is present but EMPTY — the real
+        // shape of "this group has no owners" from
+        // GET /groups?$expand=owners($select=id), where an ownerless group comes
+        // back with `owners: []` rather than with the key absent.
+        //
+        // A missing/null/non-array value is NOT counted, on purpose. If the
+        // check's endpoint forgets the $expand, every item lacks the key, and
+        // counting absence as emptiness would report the tenant's ENTIRE group
+        // estate as ownerless — a maximally alarming number that is pure
+        // artefact. Under-reporting to 0 and warning loudly is the honest
+        // failure; the warning names the fix.
+        let sawArray = false;
+        let empty = 0;
+        for (const v of vals) {
+          if (!Array.isArray(v)) continue;
+          sawArray = true;
+          if (v.length === 0) empty++;
+        }
+        result[targetField] = empty;
+        if (!sawArray && items.length > 0) {
+          log.warn(
+            { targetField, sourceField },
+            `monitor-executor: countEmptyArray found no array at "${sourceField}" on any item — check may be missing $expand=${sourceField} on its Graph endpoint, so the count is 0 rather than the real number`,
+          );
+        }
+        break;
+      }
       case "countIfLastSignInOlderThan": {
         const cutoff = Date.now() - (staleDays! * 24 * 60 * 60 * 1000);
         let sawSignInActivity = false;
@@ -649,6 +769,12 @@ export function applyMapping(
         break;
       }
       default:
+        if (!KNOWN_TRANSFORMS.has(transform)) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: mapping rule names transform "${rawTransform}", which is not implemented — falling through to a raw array of values. A numeric signal rule cannot read that, so this check's real signal is silently lost. Implemented: ${[...KNOWN_TRANSFORMS].join(", ")}`,
+          );
+        }
         result[targetField] = vals.filter(v => v != null);
     }
   }

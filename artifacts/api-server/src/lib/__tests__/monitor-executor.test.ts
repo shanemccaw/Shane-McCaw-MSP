@@ -174,6 +174,83 @@ describe("evalConditionGrammar", () => {
   });
 });
 
+// ── evalConditionGrammar — relative date operators (#401) ─────────────────────
+
+describe("evalConditionGrammar — olderThanDays / newerThanDays", () => {
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const daysAgo = (n: number) => new Date(Date.now() - n * oneDayMs).toISOString();
+  const daysAhead = (n: number) => new Date(Date.now() + n * oneDayMs).toISOString();
+
+  it("compares a real ISO timestamp against a fixed day window", () => {
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: daysAgo(40) })).toBe(true);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: daysAgo(10) })).toBe(false);
+    expect(evalConditionGrammar("lastSync newerThanDays 30", { lastSync: daysAgo(10) })).toBe(true);
+    expect(evalConditionGrammar("lastSync newerThanDays 30", { lastSync: daysAgo(40) })).toBe(false);
+  });
+
+  it("treats olderThanDays 0 as 'has already passed' (the overdue-access-review shape)", () => {
+    expect(evalConditionGrammar("endDateTime olderThanDays 0", { endDateTime: daysAgo(1) })).toBe(true);
+    expect(evalConditionGrammar("endDateTime olderThanDays 0", { endDateTime: daysAhead(1) })).toBe(false);
+  });
+
+  it("resolves {{...}} paths and nested dot-paths on the left-hand side", () => {
+    expect(evalConditionGrammar("{{lastSync}} olderThanDays 30", { lastSync: daysAgo(40) })).toBe(true);
+    expect(
+      evalConditionGrammar("onPrem.lastSyncDateTime olderThanDays 7", { onPrem: { lastSyncDateTime: daysAgo(9) } }),
+    ).toBe(true);
+  });
+
+  it("composes with && and || like every other clause", () => {
+    const data = { status: "InProgress", endDateTime: daysAgo(3) };
+    expect(evalConditionGrammar('status == "InProgress" && endDateTime olderThanDays 0', data)).toBe(true);
+    expect(evalConditionGrammar('status == "Completed" && endDateTime olderThanDays 0', data)).toBe(false);
+    // The documented way to say "never happened is ALSO the alarm" without any
+    // new grammar — a null date fails closed on its own, so the rule states it.
+    expect(evalConditionGrammar("lastSync == null || lastSync olderThanDays 30", { lastSync: null })).toBe(true);
+    expect(evalConditionGrammar("lastSync == null || lastSync olderThanDays 30", { lastSync: daysAgo(2) })).toBe(false);
+  });
+
+  it("fails closed on null, missing, and malformed dates rather than firing", () => {
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: null })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", {})).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: "" })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: "not-a-date" })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: "2026-13-45T00:00:00Z" })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: { nested: daysAgo(90) } })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: [daysAgo(90)] })).toBe(false);
+    // "5" IS a valid Date to V8 (2001-05-01) — the ISO guard is what stops a
+    // wrong-typed field from manufacturing a decades-old timestamp.
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: "5" })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: 5 })).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: Date.now() - 90 * oneDayMs })).toBe(false);
+  });
+
+  it("accepts a date-only ISO value and a real Date object", () => {
+    const isoDay = new Date(Date.now() - 40 * oneDayMs).toISOString().slice(0, 10);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: isoDay })).toBe(true);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: new Date(Date.now() - 40 * oneDayMs) })).toBe(true);
+    expect(evalConditionGrammar("lastSync olderThanDays 30", { lastSync: new Date("nonsense") })).toBe(false);
+  });
+
+  it("rejects a data-driven or non-integer window — the day count must be a literal in the rule", () => {
+    const data = { lastSync: daysAgo(400), window: 30 };
+    expect(evalConditionGrammar("lastSync olderThanDays {{window}}", data)).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays window", data)).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 30.5", data)).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays -30", data)).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays", data)).toBe(false);
+    expect(evalConditionGrammar("lastSync olderThanDays 999999999", data)).toBe(false);
+  });
+
+  it("does not disturb the existing operators it sits beside in OPS", () => {
+    expect(evalConditionGrammar("items length> 0", { items: [1] })).toBe(true);
+    expect(evalConditionGrammar("tags contains admin", { tags: ["admin"] })).toBe(true);
+    expect(evalConditionGrammar("score >= 75", { score: 75 })).toBe(true);
+    // A field whose NAME contains the operator word is still read as a path.
+    expect(evalConditionGrammar("olderThanDaysCount > 2", { olderThanDaysCount: 5 })).toBe(true);
+  });
+});
+
 // ── validateOutputShape ──────────────────────────────────────────────────────
 
 describe("validateOutputShape", () => {
@@ -411,6 +488,128 @@ describe("applyMapping", () => {
     ];
     const result = applyMapping(itemsWithDupes, mapping, []);
     expect(result.duplicateCount).toBe(5);
+  });
+
+  it("applies countEmptyArray transform (the ownerless-groups shape)", () => {
+    // Exactly what GET /groups?$expand=owners($select=id) returns.
+    const groups = [
+      { id: "g1", displayName: "Finance", owners: [{ id: "u1" }] },
+      { id: "g2", displayName: "Orphan A", owners: [] },
+      { id: "g3", displayName: "Orphan B", owners: [] },
+      { id: "g4", displayName: "Marketing", owners: [{ id: "u2" }, { id: "u3" }] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "owners", targetField: "ownerlessGroupCount", transform: "countEmptyArray" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(groups, mapping, []);
+    expect(result.ownerlessGroupCount).toBe(2);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("countEmptyArray does not count missing, null, or non-array values as empty", () => {
+    const messyGroups = [
+      { id: "g1", owners: [] },
+      { id: "g2", owners: null },
+      { id: "g3" },
+      { id: "g4", owners: "not-an-array" },
+      { id: "g5", owners: {} },
+      { id: "g6", owners: [{ id: "u1" }] },
+      "not-an-object",
+      null,
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "owners", targetField: "ownerlessGroupCount", transform: "countEmptyArray" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(messyGroups, mapping, []);
+    // Only g1 is a genuinely empty array. g2/g3 are absence, not emptiness.
+    expect(result.ownerlessGroupCount).toBe(1);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("countEmptyArray warns (and stays 0) when no item has an array at the path at all", () => {
+    // The real footgun: the check's endpoint forgot $expand=owners, so every
+    // group looks ownerless. 0 + a warning beats reporting the whole estate.
+    const unexpandedGroups = [{ id: "g1", displayName: "Finance" }, { id: "g2", displayName: "Ops" }];
+    const mapping: MappingRule[] = [
+      { sourceField: "owners", targetField: "ownerlessGroupCount", transform: "countEmptyArray" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(unexpandedGroups, mapping, []);
+    expect(result.ownerlessGroupCount).toBe(0);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      { targetField: "ownerlessGroupCount", sourceField: "owners" },
+      expect.stringContaining("countEmptyArray found no array at \"owners\" on any item"),
+    );
+  });
+
+  it("countEmptyArray resolves a nested dot-path and is silent on an empty items array", () => {
+    const nested = [
+      { id: "g1", membershipRule: { values: [] } },
+      { id: "g2", membershipRule: { values: ["a"] } },
+      { id: "g3", membershipRule: null },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "membershipRule.values", targetField: "emptyValueCount", transform: "countEmptyArray" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    expect(applyMapping(nested, mapping, []).emptyValueCount).toBe(1);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    // No items at all is not evidence of a missing $expand — no warning.
+    expect(applyMapping([], mapping, []).emptyValueCount).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns when a mapping rule names a transform that is not implemented", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "owners", targetField: "ownerlessGroupCount", transform: "countEmpty" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping([{ id: "g1", owners: [] }], mapping, []);
+    // Unchanged behaviour — still the raw array the default branch always emitted.
+    expect(result.ownerlessGroupCount).toEqual([[]]);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      { targetField: "ownerlessGroupCount", sourceField: "owners", transform: "countEmpty" },
+      expect.stringContaining('names transform "countEmpty", which is not implemented'),
+    );
+  });
+
+  it("does not warn for the implemented transforms, including the parameterised and default ones", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "a", targetField: "t1", transform: "none" },
+      { sourceField: "a", targetField: "t2" },
+      { sourceField: "a", targetField: "t3", transform: "countEquals('x')" },
+      { sourceField: "b", targetField: "t4", transform: "countIfLastSignInOlderThan(90)" },
+    ];
+    vi.mocked(logger.warn).mockClear();
+    applyMapping([{ a: "x", b: ["E3"], signInActivity: { lastSignInDateTime: new Date().toISOString() } }], mapping, []);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("exposes a nested scope query for the existing contains operator (guest-access-reviews)", () => {
+    // Case 3 of #401: no new grammar needed. `join` over a nested dot-path
+    // exposes the review scope's REAL OData query text, and the existing
+    // `contains` operator reads it — the difference between "a scope object
+    // exists" and "a scope that actually targets guests exists".
+    const reviewDefinitions = [
+      { id: "r1", displayName: "All members", scope: { query: "/groups/abc/transitiveMembers", queryType: "MicrosoftGraph" } },
+      { id: "r2", displayName: "Guests", scope: { query: "/groups/abc/transitiveMembers/microsoft.graph.user/?$count=true&$filter=(userType eq 'Guest')", queryType: "MicrosoftGraph" } },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "scope.query", targetField: "reviewScopeQueries", transform: "join" },
+      { sourceField: "scope", targetField: "anyScopeExists", transform: "exists" },
+    ];
+    const extracted = applyMapping(reviewDefinitions, mapping, []);
+    expect(evalConditionGrammar("reviewScopeQueries contains Guest", extracted)).toBe(true);
+    expect(evalConditionGrammar("reviewScopeQueries contains userType", extracted)).toBe(true);
+
+    // Same mapping, a tenant with only non-guest reviews: `exists` still says
+    // true (a scope object is there), `contains` correctly says no.
+    const membersOnly = applyMapping([reviewDefinitions[0]], mapping, []);
+    expect(membersOnly.anyScopeExists).toBe(true);
+    expect(evalConditionGrammar("reviewScopeQueries contains Guest", membersOnly)).toBe(false);
   });
 
   it("handles groupByCount and countDuplicates with an empty items array", () => {
