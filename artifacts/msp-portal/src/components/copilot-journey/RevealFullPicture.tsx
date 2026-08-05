@@ -25,7 +25,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 import type { JourneyView } from "./journeyModel.ts";
-import { gapSentence, scoredPillarCount } from "./journeyModel.ts";
+import { gapSentence, isGenerationUnknown, scoredPillarCount } from "./journeyModel.ts";
 import {
   BRAND,
   COPILOT_ORB_CONIC,
@@ -630,8 +630,13 @@ export function RevealFullPicture({
                     render until the platform has told us this tenant's set —
                     `gen.known` is false on a failed status fetch and on any
                     tenant with no assessment service, and "0 of 0 ready" under a
-                    progress bar asserts a run that is not happening. */}
-                {gen.known && lead ? (
+                    progress bar asserts a run that is not happening.
+                    Exception: the roll-up readiness report (#409, #416, #419).
+                    It renders live from the tenant's own scan data, not the old
+                    generation pipeline, so a resolved `lead` on that pattern is
+                    real regardless of what `gen.known` says — see
+                    `isGenerationUnknown`. */}
+                {!isGenerationUnknown(lead, gen) && lead ? (
                   <>
                     <span
                       style={{
@@ -813,8 +818,10 @@ export function RevealFullPicture({
                 </div>
 
                 {/* "We will notify you the moment the set is ready" is a promise
-                    about a run that only exists once `known` is true. */}
-                {gen.known ? (
+                    about a run that only exists once `known` is true. Same
+                    readiness-report exception as the gate above — see
+                    `isGenerationUnknown`. */}
+                {!isGenerationUnknown(lead, gen) ? (
                   <p
                     style={{
                       margin: 0,
