@@ -433,20 +433,31 @@ export default function CopilotReadinessDocumentsPage() {
   const [readProgress, setReadProgress] = useState<Readonly<Record<string, number>>>({});
   const activeProgress = activeDoc ? (readProgress[activeDoc.title] ?? 0) : 0;
 
+  // The identity that actually means "a different report is open" — a plain
+  // string, unlike `activeDoc` itself. `documents` (and therefore `activeDoc`)
+  // is rebuilt with brand-new object references on every generation-status
+  // poll (#409's async prose pipeline polls every 4s while anything in the set
+  // is still generating) even when the open report hasn't changed at all, so
+  // anything keyed on `activeDoc` churns identity on a timer, not just on a
+  // real switch (#441).
+  const activeTitle = activeDoc?.title ?? null;
+
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !activeDoc) return;
+    if (!el || !activeTitle) return;
     const travel = el.scrollHeight - el.clientHeight;
     // A report shorter than the pane is read the moment it is opened; treating
     // it as 0% for ever would leave a permanently unfinished row in the rail.
     const pct = travel <= 4 ? 1 : Math.min(1, Math.max(0, el.scrollTop / travel));
-    setReadProgress((prev) => (pct <= (prev[activeDoc.title] ?? 0) ? prev : { ...prev, [activeDoc.title]: pct }));
-  }, [activeDoc]);
+    setReadProgress((prev) => (pct <= (prev[activeTitle] ?? 0) ? prev : { ...prev, [activeTitle]: pct }));
+  }, [activeTitle]);
 
   // Switching reports starts the new one at the top rather than halfway down
   // wherever the last one happened to be, and re-samples progress for a report
-  // that turns out to be shorter than the pane.
-  const activeTitle = activeDoc?.title ?? null;
+  // that turns out to be shorter than the pane. Depends only on the stable
+  // `activeTitle` (and the now-equally-stable `handleScroll`), so a poll that
+  // rebuilds `documents` without changing which report is open cannot re-fire
+  // this and yank the reader back to the top mid-read (#441).
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return undefined;
