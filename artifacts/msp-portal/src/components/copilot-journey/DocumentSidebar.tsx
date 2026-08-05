@@ -385,6 +385,12 @@ function GateBlock({ tenant, score }: { tenant: JourneyTenant; score: number | n
  * generation run is under way, so in that case the whole block is omitted
  * rather than rendered at "0 of 0". Before the payload lands the block still
  * shows, holding an em dash, because "we are still asking" is true.
+ *
+ * Unlike `DocumentBody`'s per-document gate (#409, #416), this needs no
+ * new-pattern exemption: `total` is `documents.length` — the size of the whole
+ * expected/generated set — so it is only ever 0 when NO document, old-pattern
+ * or new, is known at all. A resolvable readiness report already makes
+ * `total >= 1` and this counter true, on its own, with no special-casing.
  */
 export function showReadyCounter(loaded: boolean, total: number): boolean {
   return !loaded || generationView(0, total).known;

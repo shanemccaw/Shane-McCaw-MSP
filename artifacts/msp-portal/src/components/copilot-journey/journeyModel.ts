@@ -22,7 +22,13 @@
  *     and its pricing.
  */
 
-import { COPILOT_GATE_TARGET, PILLAR_KEYS, PILLARS, type PillarKey } from "./journeyTokens.ts";
+import {
+  COPILOT_GATE_TARGET,
+  PILLAR_KEYS,
+  PILLARS,
+  isCopilotReadinessReport,
+  type PillarKey,
+} from "./journeyTokens.ts";
 
 /* ------------------------------------------------------------------ *
  * Wire shapes — the subset of each payload this journey reads.
@@ -517,6 +523,27 @@ export function documentPillar(doc: { readonly title: string; readonly docType: 
   if (!doc) return null;
   const haystack = `${doc.title} ${doc.docType}`.toLowerCase();
   return PILLAR_KEYS.find((key) => haystack.includes(key)) ?? null;
+}
+
+/**
+ * Whether `DocumentBody`'s "nothing to show" unavailable state should win over
+ * rendering `doc` (#409, #416).
+ *
+ * `gen.known` tracks the OLD async document-generation pipeline's
+ * expected/generated-row count. For a document ported to the new
+ * prose-generation pattern that concept genuinely does not exist — structure
+ * and prose render straight from the tenant's own scan data, with no run to
+ * wait for — so a resolved `doc` on that pattern is real regardless of what
+ * `gen.known` says. Every document still on the old pattern keeps the gate
+ * exactly as it works today.
+ */
+export function isGenerationUnknown(
+  doc: JourneyDocumentView | null,
+  gen: { readonly known: boolean },
+): boolean {
+  if (!doc) return true;
+  if (gen.known) return false;
+  return !isCopilotReadinessReport(doc);
 }
 
 /** "Halden Materials · 1,240 seats", degrading cleanly when seats are unknown. */

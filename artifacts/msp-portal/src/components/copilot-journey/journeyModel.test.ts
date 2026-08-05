@@ -17,17 +17,21 @@ import {
   documentPillar,
   formatJourneyDate,
   gapSentence,
+  isGenerationUnknown,
   pillarTrend,
   remediatedScore,
   scoredPillarCount,
   tenantStrip,
   verdictLabel,
   verdictSentence,
+  type JourneyDocumentView,
   type WireAssessmentStatus,
   type WirePillarStatsPayload,
 } from "./journeyModel.ts";
 import {
   COPILOT_GATE_TARGET,
+  JOURNEY_READINESS_DOC_TYPE,
+  JOURNEY_READINESS_DOCUMENT,
   PILLAR_KEYS,
   gateLabel,
   severityForScore,
@@ -364,6 +368,44 @@ describe("document generation", () => {
       },
     };
     assert.equal(buildGeneration(all).allReady, true);
+  });
+});
+
+describe("isGenerationUnknown (#409, #416 — DocumentBody's 'nothing to show' gate)", () => {
+  const READINESS_DOC: JourneyDocumentView = {
+    title: JOURNEY_READINESS_DOCUMENT,
+    docType: JOURNEY_READINESS_DOC_TYPE,
+    id: null,
+    status: "pending",
+  };
+  const OLD_PATTERN_DOC: JourneyDocumentView = {
+    title: "Full Remediation Guide — Copilot Gate Clearance Plan",
+    docType: "remediation_guide",
+    id: null,
+    status: "pending",
+  };
+
+  it("is unavailable when there is no document at all, regardless of gen.known", () => {
+    assert.equal(isGenerationUnknown(null, { known: false }), true);
+    assert.equal(isGenerationUnknown(null, { known: true }), true);
+  });
+
+  it("keeps the old-pattern document's honest gate untouched", () => {
+    assert.equal(isGenerationUnknown(OLD_PATTERN_DOC, { known: false }), true);
+    assert.equal(isGenerationUnknown(OLD_PATTERN_DOC, { known: true }), false);
+  });
+
+  it("renders the readiness report even when the old pipeline's counter is unknown", () => {
+    assert.equal(isGenerationUnknown(READINESS_DOC, { known: false }), false);
+  });
+
+  it("readiness report stays renderable when gen.known happens to be true too", () => {
+    assert.equal(isGenerationUnknown(READINESS_DOC, { known: true }), false);
+  });
+
+  it("matches on title as well as docType, same as isCopilotReadinessReport", () => {
+    const titleOnly: JourneyDocumentView = { ...READINESS_DOC, docType: "some_other_key" };
+    assert.equal(isGenerationUnknown(titleOnly, { known: false }), false);
   });
 });
 

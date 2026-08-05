@@ -45,7 +45,7 @@ import { StatementOfWorkBody } from "./StatementOfWorkBody";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
 import { useCopilotReadinessNarrative } from "./useCopilotReadinessNarrative.ts";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant, JourneyView } from "./journeyModel.ts";
-import { documentPillar } from "./journeyModel.ts";
+import { documentPillar, isGenerationUnknown } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
 import { PREVIEW_DOCUMENT_BODIES } from "./previewDocumentBodies.ts";
@@ -479,7 +479,15 @@ export function DocumentBody({
   // is false and there is nothing to count. A spinner and a "we will notify
   // you" note here would promise a generation run that is not under way, so the
   // screen says only what it knows.
-  if (!doc || !gen.known) {
+  //
+  // Exception: the roll-up readiness report (#409, #416). `gen.known` tracks
+  // the OLD async document-generation pipeline's expected/generated-row count —
+  // a concept that genuinely does not exist for a document rendered live from
+  // the tenant's own scan data. A resolved `doc` that is the readiness report
+  // is real regardless of what the old pipeline's counter says, so it alone is
+  // exempted from this check; every document still on the old pattern keeps the
+  // gate exactly as it works today.
+  if (!doc || isGenerationUnknown(doc, gen)) {
     return (
       <Card pillar={pillar}>
         <JourneyUnavailable
