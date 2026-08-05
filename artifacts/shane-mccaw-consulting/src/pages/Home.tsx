@@ -40,7 +40,7 @@ const KEYFRAMES = `
 function TypewriterHeadline() {
   const { leadDisplayed, gradientDisplayed } = useTypewriterHeadline();
   return (
-    <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", maxWidth: 520, minHeight: "2.2em" }}>
+    <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", width: 520, maxWidth: "100%", height: "3.18em", overflow: "hidden" }}>
       {leadDisplayed}
       <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{gradientDisplayed}</span>
       <span aria-hidden style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
