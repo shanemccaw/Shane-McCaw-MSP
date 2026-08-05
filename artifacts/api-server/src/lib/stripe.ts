@@ -41,6 +41,37 @@ export function getStripeKey(): string {
 }
 
 /**
+ * Returns the Stripe PUBLISHABLE key for the current environment, or null when
+ * it is not configured.
+ *
+ * Needed by the embedded Payment Element (#435): stripe.js is initialised in
+ * the browser with the publishable key, and the marketing site is a plain Vite
+ * SPA with no server-rendered config, so the key is served from the API
+ * alongside the PaymentIntent client secret rather than baked in at build time
+ * as a VITE_* variable. That also keeps dev/prod key selection in ONE place —
+ * this module — instead of splitting it across each frontend's build env.
+ *
+ * Environment detection is identical to {@link getStripeKey} (REPLIT_DOMAINS),
+ * so the publishable key can never come from a different environment than the
+ * secret key that created the PaymentIntent.
+ *
+ * Deliberately returns null instead of throwing: a publishable key is public
+ * by definition and a missing one is a configuration gap the UI should degrade
+ * on ("payment is temporarily unavailable"), not a 500.
+ */
+export function getStripePublishableKey(): string | null {
+  const domains = process.env.REPLIT_DOMAINS ?? "";
+  const isProd = domains.length > 0 &&
+    domains.split(",").some(d => !d.trim().endsWith(".replit.dev"));
+
+  const key = isProd
+    ? process.env.STRIPE_PUBLISHABLE_KEY_PROD
+    : process.env.STRIPE_PUBLISHABLE_KEY;
+
+  return key && key.trim().length > 0 ? key.trim() : null;
+}
+
+/**
  * Validates that the configured Stripe key prefix matches the current
  * environment. Call once at server startup, before any Stripe SDK usage.
  *

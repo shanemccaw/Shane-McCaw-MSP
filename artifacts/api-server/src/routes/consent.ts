@@ -54,8 +54,9 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
-import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord } from "@workspace/db";
+import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
+import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
@@ -1535,6 +1536,292 @@ router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, asyn
     permissionsStale,
     requiredPermissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS,
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Public assessment-flow consent routes (#434, #432)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The marketing site's Home-page assessment flow is unauthenticated: the buyer
+// has no account and no JWT until the consent callback provisions a Prospect for
+// them. Its identity for the whole flow is the checkout-session UUID — an
+// unguessable, server-issued, 24h-expiring secret that already carries their
+// name/email/company and, after the read-consent callback, their tenant GUID.
+//
+// These four routes are the public, session-keyed twins of the admin/portal
+// routes above. They reuse the SAME HMAC state signers, the SAME single-use
+// token table and the SAME fixed callbacks — no second consent mechanism, and
+// nothing here can name a tenant the session did not already consent for.
+//
+// Authorisation model, stated explicitly because these are unauthenticated:
+//   - The sessionId must resolve to an UNEXPIRED checkout_sessions row.
+//   - Every route that mints a consent URL additionally requires that the
+//     session has already completed READ consent (status "consented" + a
+//     tenant_id stamped by the callback). So a stolen/guessed session cannot be
+//     used to aim a write- or SharePoint-consent link at an arbitrary tenant:
+//     the tenant is whichever one that session's own Global Admin already
+//     approved, resolved server-side, never supplied by the caller.
+//   - No PII is returned by any of them.
+
+/** The checkout session a public flow route is acting for, once validated. */
+type FlowSession = {
+  id: string;
+  status: string;
+  tenantId: string | null;
+};
+
+/**
+ * Resolve `?sessionId=` (or a body sessionId) to a live checkout session.
+ * Responds and returns null on every failure so callers can `if (!s) return;`.
+ */
+async function resolveFlowSession(
+  rawSessionId: unknown,
+  res: Response,
+): Promise<FlowSession | null> {
+  const sessionId = typeof rawSessionId === "string" ? rawSessionId : "";
+  if (!UUID_RE.test(sessionId)) {
+    res.status(400).json({ error: "session_invalid" });
+    return null;
+  }
+  const [row] = await db
+    .select({
+      id: checkoutSessionsTable.id,
+      status: checkoutSessionsTable.status,
+      tenantId: checkoutSessionsTable.tenantId,
+    })
+    .from(checkoutSessionsTable)
+    .where(
+      and(
+        eq(checkoutSessionsTable.id, sessionId),
+        gte(checkoutSessionsTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "session_expired" });
+    return null;
+  }
+  return row;
+}
+
+/**
+ * The tenants row a post-read-consent flow route may act on: the one the
+ * session's own admin already granted READ consent for. Fails closed — a
+ * session that has not completed read consent has no tenant to aim anything at.
+ */
+async function resolveConsentedTenant(
+  session: FlowSession,
+  res: Response,
+): Promise<{ id: number; tenantId: string } | null> {
+  const tenantGuid = session.tenantId?.trim();
+  if (!tenantGuid) {
+    res.status(409).json({ error: "read_consent_required" });
+    return null;
+  }
+  const [row] = await db
+    .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantGuid))
+    .limit(1);
+
+  if (!row) {
+    log.warn({ sessionId: session.id, tenantGuid }, "public consent flow: session names a tenant with no tenants row");
+    res.status(409).json({ error: "read_consent_required" });
+    return null;
+  }
+  if (row.consent?.graph?.status !== "granted") {
+    res.status(409).json({ error: "read_consent_required" });
+    return null;
+  }
+  return { id: row.id, tenantId: row.tenantId };
+}
+
+// ── GET /api/public/flow/consent-status ────────────────────────────────────────
+// The single polling endpoint the Home flow uses to auto-advance (#434). The
+// buyer grants each consent in a popup on Microsoft's own domain; the page they
+// started from never navigates away, so it polls this to learn when each grant
+// has landed and moves itself to the next step.
+//
+// Returns statuses only — no scopes, no admin identity, no PII.
+
+router.get("/public/flow/consent-status", async (req: Request, res: Response) => {
+  const session = await resolveFlowSession(req.query.sessionId, res);
+  if (!session) return;
+
+  const tenantGuid = session.tenantId?.trim();
+  let consent: TenantConsentMap = {};
+  if (tenantGuid) {
+    const [row] = await db
+      .select({ consent: tenantsTable.consent })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantGuid))
+      .limit(1);
+    consent = row?.consent ?? {};
+  }
+
+  res.json({
+    sessionStatus: session.status,
+    tenantConnected: !!tenantGuid,
+    graph: consent.graph?.status ?? null,
+    sharepoint: consent.sharepoint?.status ?? null,
+    writeBack: consent.writeBack?.status ?? null,
+    complianceGroup: consent.complianceGroup
+      ? { path: consent.complianceGroup.path, confirmed: !!consent.complianceGroup.confirmedAt }
+      : null,
+  });
+});
+
+// ── GET /api/public/flow/sharepoint-consent-url ────────────────────────────────
+// Step 2b of #434: the SharePoint read consent, granted immediately after — and
+// only after — the read Graph consent. Byte-for-byte the same mechanism as
+// /portal/consent/sharepoint-link, with the checkout session standing in for
+// the JWT that a Home-page visitor does not have yet.
+
+router.get("/public/flow/sharepoint-consent-url", async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+    return;
+  }
+  const session = await resolveFlowSession(req.query.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: tenant.tenantId,
+    customerId: tenant.id,
+    clientUserId: null,
+    expiresAt,
+  });
+
+  const consentUrl = buildAdminConsentUrl(
+    tenant.tenantId,
+    signSharePointConsentState(tenant.id, token),
+    `${getHostBase(req)}/api/admin/sharepoint-consent/callback`,
+    process.env.MT_APP_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "public:assessment-flow",
+    actorRole: "client",
+    actionType: "sharepoint_consent_invite_created",
+    entityType: "tenant_sharepoint_consent",
+    metadata: { tenantHint: tenant.tenantId, customerId: tenant.id, expiresAt, checkoutSessionId: session.id },
+  });
+
+  res.json({ consentUrl, expiresAt, permissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
+});
+
+// ── GET /api/public/flow/write-consent-url ─────────────────────────────────────
+// Path 2 of the #432 Compliance decision: the customer lets us add the app
+// registration to the Compliance Center group on their behalf, which needs the
+// separate write-scoped App Registration (MT_APP_WRITE_CLIENT_ID). Same
+// mechanism as /admin/customers/:id/write-consent/start.
+
+router.get("/public/flow/write-consent-url", async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_WRITE_CLIENT_ID) {
+    res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
+    return;
+  }
+  const session = await resolveFlowSession(req.query.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: tenant.tenantId,
+    customerId: tenant.id,
+    clientUserId: null,
+    expiresAt,
+  });
+
+  const consentUrl = buildAdminConsentUrl(
+    tenant.tenantId,
+    signWriteConsentState(tenant.id, token),
+    `${getHostBase(req)}/api/admin/write-consent/callback`,
+    process.env.MT_APP_WRITE_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "public:assessment-flow",
+    actorRole: "client",
+    actionType: "write_consent_invite_created",
+    entityType: "tenant_write_consent",
+    metadata: { tenantHint: tenant.tenantId, customerId: tenant.id, expiresAt, checkoutSessionId: session.id },
+  });
+
+  res.json({ consentUrl, expiresAt });
+});
+
+// ── POST /api/public/flow/compliance-decision ──────────────────────────────────
+// Records the #432 three-path Compliance Center decision on the tenant. The
+// `delegate_write` path's real grant is the independent `writeBack` consent
+// record written by the write callback — this only records which path the
+// customer chose, and for `self_add` whether they have told us it is done.
+
+const complianceDecisionSchema = z.object({
+  sessionId: z.string(),
+  path: z.enum(["self_add", "delegate_write", "declined"]),
+  /** Only meaningful for `self_add`: "I have added it, go ahead". */
+  confirmed: z.boolean().optional(),
+});
+
+router.post("/public/flow/compliance-decision", async (req: Request, res: Response) => {
+  const parsed = complianceDecisionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const { path, confirmed } = parsed.data;
+
+  const session = await resolveFlowSession(parsed.data.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  const now = new Date().toISOString();
+  // Field-level merge, exactly like every other consent write in this file: a
+  // later "confirmed" must not blank the original decidedAt, and none of the
+  // three real consent grants may be touched.
+  await db
+    .update(tenantsTable)
+    .set({
+      consent: mergeConsentKey("complianceGroup", {
+        path,
+        decidedAt: now,
+        ...(path === "self_add" ? { confirmedAt: confirmed ? now : null } : {}),
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantsTable.id, tenant.id));
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "public:assessment-flow",
+    actorRole: "client",
+    actionType: "compliance_group_decision_recorded",
+    entityType: "tenant_compliance_group",
+    entityId: tenant.tenantId,
+    metadata: { customerId: tenant.id, path, confirmed: confirmed === true, checkoutSessionId: session.id },
+  });
+
+  log.info(
+    { customerId: tenant.id, tenantId: tenant.tenantId, path, confirmed: confirmed === true },
+    "public assessment flow: Compliance Center group decision recorded",
+  );
+
+  res.json({ ok: true, path, confirmed: confirmed === true });
 });
 
 export default router;

@@ -82,7 +82,40 @@ export type TenantConsentRecord = {
   grants?: string[];
 };
 
-export type TenantConsentMap = Partial<Record<"graph" | "writeBack" | "sharepoint", TenantConsentRecord>>;
+/**
+ * The customer's answer to the Compliance Center group-membership question
+ * (#432). Read-only Graph consent alone does NOT deliver the full Compliance
+ * picture — the consented app registration must additionally be a member of a
+ * Compliance Center role group, which is not a read-only action. The buyer
+ * picks one of three paths at consent time and that choice is recorded here.
+ *
+ * Deliberately NOT a TenantConsentRecord: this is not a Microsoft consent grant
+ * (no OAuth round-trip of its own, no scope list, no revocation semantics). The
+ * `delegate_write` path's actual grant is the independent `writeBack` record;
+ * this only records which path the customer chose and, for `self_add`, whether
+ * they have told us they finished it.
+ */
+export type TenantComplianceGroupRecord = {
+  /**
+   * self_add       — customer adds the app registration to the Compliance
+   *                  Center group themselves and confirms back to us.
+   * delegate_write — customer consents to the separate write-scoped App
+   *                  Registration so we perform the group addition for them.
+   * declined       — customer declined both and accepts that the Compliance
+   *                  pillar is excluded from (and may skew) their score.
+   */
+  path: "self_add" | "delegate_write" | "declined";
+  /** ISO timestamp of the choice itself. */
+  decidedAt: string;
+  /** ISO timestamp the customer confirmed they completed the `self_add` work. */
+  confirmedAt?: string | null;
+};
+
+export type TenantConsentMap = Partial<
+  Record<"graph" | "writeBack" | "sharepoint", TenantConsentRecord>
+> & {
+  complianceGroup?: TenantComplianceGroupRecord;
+};
 
 // ── Copilot Assessment per-tenant state (epic #183 / #237) ────────────────────
 // Structural mirror of msp-portal's frozen QuizProfile shape (see its types.ts,

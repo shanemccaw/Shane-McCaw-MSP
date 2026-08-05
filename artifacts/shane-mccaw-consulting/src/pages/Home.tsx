@@ -65,6 +65,12 @@ export default function Home() {
   const feeCents = service ? resolvePublicServicePriceCents(service) : null;
   const feePrice = feeCents != null && feeCents > 0 ? formatCents(feeCents) : null;
   const fee = feePrice ?? FEE_UNRESOLVED;
+  /** Real "what's included" copy off the catalog row, for the checkout's value
+   *  column (#430). The flow falls back to its own list when all three are empty. */
+  const assessmentIncludes = useMemo(
+    () => service?.inclusions ?? service?.features ?? service?.deliverables ?? null,
+    [service],
+  );
 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>([null, null, null, null, null, null, null]);
@@ -596,7 +602,7 @@ export default function Home() {
               </div>
             </div>
 
-            <AssessmentFlow fee={fee} />
+            <AssessmentFlow fee={fee} productSlug={service?.slug ?? null} includes={assessmentIncludes} />
           </div>
         </section>
 
