@@ -36,12 +36,15 @@ import {
   JOURNEY_REMEDIATION_DOCUMENT,
   JOURNEY_SOW_DOCUMENT,
   RADIUS,
+  isCopilotReadinessReport,
   reportAccent,
   type PillarKey,
 } from "./journeyTokens.ts";
 import { RemediationGuideBody } from "./RemediationGuideBody";
 import { StatementOfWorkBody } from "./StatementOfWorkBody";
-import type { JourneyDocumentView, JourneyGeneration, JourneyTenant } from "./journeyModel.ts";
+import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
+import { useCopilotReadinessNarrative } from "./useCopilotReadinessNarrative.ts";
+import type { JourneyDocumentView, JourneyGeneration, JourneyTenant, JourneyView } from "./journeyModel.ts";
 import { documentPillar } from "./journeyModel.ts";
 import { generationView } from "./revealMath.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
@@ -363,6 +366,32 @@ function LiveBody({ documentId, title }: { documentId: number; title: string }) 
 }
 
 /* ------------------------------------------------------------------ *
+ * The roll-up readiness report, on real data (#409)
+ * ------------------------------------------------------------------ */
+
+/**
+ * A thin wrapper so the narrative hook — which makes up to three real,
+ * metered Anthropic calls server-side — is only ever mounted when the Copilot
+ * Readiness report is genuinely the open document. Calling it from
+ * `DocumentBody` itself would fire it on every report in the set.
+ */
+function RealReadinessReport({ view }: { readonly view: JourneyView }) {
+  const { narrative, settled } = useCopilotReadinessNarrative({ enabled: true });
+  return (
+    <CopilotReadinessReportBody
+      view={view}
+      narrative={narrative}
+      narrativeSettled={settled}
+      // The real curated check count behind the provenance line, from the same
+      // payload the prose was grounded in. 0 until it lands, which
+      // `buildProvenance` renders by omitting that clause rather than by
+      // printing a zero.
+      scannedCheckCount={narrative?.scannedCheckCount ?? 0}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * The body
  * ------------------------------------------------------------------ */
 
@@ -370,6 +399,7 @@ export function DocumentBody({
   doc,
   generation,
   tenant,
+  view,
   loaded,
   isPreview,
   reduceMotion,
@@ -381,6 +411,13 @@ export function DocumentBody({
   readonly doc: JourneyDocumentView | null;
   readonly generation: JourneyGeneration;
   readonly tenant: JourneyTenant;
+  /**
+   * The whole journey view. Needed only by the roll-up readiness report, which
+   * renders from the tenant's own pillar scores and stats rather than from
+   * generated HTML (#409) — `generation` and `tenant` alone cannot answer it.
+   * Optional so nothing else that renders a document body has to supply it.
+   */
+  readonly view?: JourneyView;
   /** False until the generation payload has landed. */
   readonly loaded: boolean;
   readonly isPreview: boolean;
@@ -480,6 +517,25 @@ export function DocumentBody({
         </Card>
       );
     }
+  }
+
+  // The roll-up readiness report, on this tenant's own live data (#409).
+  //
+  // Ahead of the `LiveBody` branch below, and deliberately NOT gated on
+  // `doc.status === "ready"`: every number in it comes from the scan
+  // (`war-room-pillars` + the narrative route), not from the document
+  // generation pipeline, so it is readable the moment the scan is — minutes
+  // before its generated HTML exists. Gating it on the pipeline would show a
+  // spinner over a report that is already complete.
+  //
+  // `view` guards it rather than being assumed: a caller that does not pass one
+  // falls through to the generated HTML, which is the honest degradation.
+  if (!isPreview && view && isCopilotReadinessReport(doc)) {
+    return (
+      <Card pillar={pillar}>
+        <RealReadinessReport view={view} />
+      </Card>
+    );
   }
 
   if (!isPreview && doc.status === "ready" && doc.id !== null) {

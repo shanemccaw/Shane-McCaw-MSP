@@ -397,4 +397,32 @@ export const JOURNEY_DESIGN_DOCUMENTS = [
 export const JOURNEY_REMEDIATION_DOCUMENT = "Full Remediation Guide — Copilot Gate Clearance Plan";
 export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearance";
 
+/**
+ * The roll-up readiness report — the one document the viewer renders from the
+ * tenant's own live data rather than from the platform's generated HTML (#409).
+ *
+ * MATCHED ON `docType`, NOT TITLE. `document_types` is the real catalogue and
+ * `copilot_readiness` is its real key (seeded by
+ * `lib/db/migrations/manual/2026-07-20-document-types.sql`, label "Copilot
+ * Readiness Assessment"). The title is admin-editable free text on the
+ * service's `associated_documents`, so matching on it would silently stop
+ * working the first time somebody renames a deliverable — the same reason
+ * `buildGeneration` joins its expected set to its rows on `docType` and not on
+ * title.
+ *
+ * The design's own title is accepted as a SECOND key purely so a document set
+ * that names the report the design's way still resolves. It is deliberately an
+ * exact match, not a substring one: a loose match here would hijack the live
+ * HTML rendering of some other report that happens to mention Copilot.
+ */
+export const JOURNEY_READINESS_DOC_TYPE = "copilot_readiness";
+export const JOURNEY_READINESS_DOCUMENT = "Copilot Readiness, Safety & Enablement Report";
+
+export function isCopilotReadinessReport(
+  doc: { readonly title: string; readonly docType: string } | null | undefined,
+): boolean {
+  if (!doc) return false;
+  return doc.docType === JOURNEY_READINESS_DOC_TYPE || doc.title === JOURNEY_READINESS_DOCUMENT;
+}
+
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;

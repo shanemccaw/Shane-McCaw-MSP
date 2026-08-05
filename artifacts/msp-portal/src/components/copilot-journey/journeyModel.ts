@@ -147,6 +147,20 @@ export interface JourneyPillarView {
   /** Short findings used as radar chips — every one reappears in the pillar scene. */
   readonly chips: readonly string[];
   /**
+   * This pillar's real stat callouts, verbatim off the wire (#409).
+   *
+   * `chips` above is a *presentation* projection of these — the top three that
+   * happen to have a value, formatted for a radar wedge — so it deliberately
+   * drops both the ones with no value and the machine reason WHY. The Copilot
+   * Readiness report needs all of it: which figure is real, which check is
+   * behind it, and which kind of nothing an absent one is (`no_data` vs
+   * `not_in_scan_package` vs `license_gap`, the distinction #341 exists to
+   * draw). So the raw rows are carried through rather than re-fetched.
+   *
+   * Empty for a pillar the payload has no card for — never a synthesised row.
+   */
+  readonly stats: readonly WirePillarStat[];
+  /**
    * The satellite line on Scene 1: a specific finding, or `CLEAN_PILLAR_HEADLINE`
    * when the pillar was evaluated and came back clean. Same `null`-means-no-data
    * rule as `headline`.
@@ -290,6 +304,7 @@ export function buildPillarViews(
       // scene will show again. Fall back to finding titles so a pillar whose
       // stats are all unavailable still populates its wedge.
       chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
+      stats: card?.stats ?? [],
       satelliteFinding: leadTitle,
       trend: pillarTrend(card),
       criticalCount: card?.findingCounts?.critical ?? 0,

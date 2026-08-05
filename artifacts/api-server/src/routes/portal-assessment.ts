@@ -89,6 +89,9 @@ import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engi
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
 import { computeCopilotGate, copilotGate, type CopilotGateResult } from "../lib/copilot-gate";
+import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
+import { resolveMspId } from "../lib/resolve-msp-id";
+import { resolveBillingMspId } from "../lib/ai-billing";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
@@ -583,6 +586,68 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/assessment/war-room-pillars failed");
       res.status(500).json({ error: "Failed to compute War Room pillar stats" });
+    }
+  },
+);
+
+// ── Copilot Readiness report — the three AI-written prose sections (#409) ─────
+//
+//   GET /api/portal/assessment/copilot-readiness-narrative
+//
+// The Copilot Readiness, Safety & Enablement Report's three prose sections —
+// Copilot Safety & Exposure, Workflow Enablement & Value, Gate Blockers &
+// Remediation Path. The report's OTHER sections (the readiness summary, the
+// pillar table, the technical prerequisites and the blast-radius row) are pure
+// data and are rendered client-side straight from `war-room-pillars`; nothing
+// about them needs, or goes anywhere near, an AI call.
+//
+// Deliberately its OWN route rather than a field on /status: it makes up to
+// three real Anthropic calls, and /status is polled every 4s while documents
+// generate. Fetched once by the viewer when the report is opened.
+//
+// GET rather than POST despite the side effect (metered AI usage): the caller
+// supplies nothing. Every number the prose is grounded in is recomputed
+// server-side from this customer's own real data — see the generator's header
+// for why a narrative grounded in request-supplied figures is a narrative
+// anyone can dictate.
+router.get(
+  "/portal/assessment/copilot-readiness-narrative",
+  // Same floor as the pillar stats it is grounded in.
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      // The customer's real company name, from the same column the dashboard
+      // and the War Room read. Falls back to the generic label the journey
+      // already uses rather than inventing an organisation.
+      const [tenantRow] = await db
+        .select({ customerName: tenantsTable.customerName })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      const user = req.user!;
+      const result = await generateCopilotReadinessNarrative({
+        customerId,
+        tenantName: tenantRow?.customerName?.trim() || "this tenant",
+        attribution: {
+          mspId: resolveBillingMspId(user) ?? (await resolveMspId(req)),
+          customerId,
+          triggerSource: "copilot-readiness-report",
+        },
+      });
+      res.json(result);
+    } catch (err) {
+      // Only reached when the REAL data behind the prose could not be read at
+      // all. A thin or empty tenant is not an error — the generator returns
+      // omitted sections with a machine reason and the viewer says so.
+      log.error({ err, customerId }, "GET /portal/assessment/copilot-readiness-narrative failed");
+      res.status(500).json({ error: "Failed to generate the Copilot readiness narrative" });
     }
   },
 );

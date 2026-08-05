@@ -12,6 +12,12 @@
 import { db, aiPromptsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.ts";
+// #409 — the three Copilot Readiness report section prompts. Held in a leaf
+// module rather than inlined below because their call site
+// (copilot-readiness-narrative-generator.ts) needs the SAME strings as its
+// `getPrompt` fallbacks, and it already imports this file — so inlining them
+// here would mean two copies free to drift (#270).
+import { COPILOT_READINESS_PROMPT_SEEDS } from "./copilot-readiness-prompts.ts";
 const log = logger.child({ channel: "admin.content" });
 
 /**
@@ -1593,6 +1599,9 @@ INSTRUCTIONS:
 - If REAL GENERATED USE CASES says none were generated, do not describe any specific use case — speak to the personas and their opportunity in general terms instead.
 - CRITICAL: output the HTML fragment and then STOP. No commentary before or after.`,
   },
+  // #409 — Copilot Readiness report sections. Spread rather than inlined; see
+  // the import comment at the top of this file for why.
+  ...COPILOT_READINESS_PROMPT_SEEDS,
 ];
 
 

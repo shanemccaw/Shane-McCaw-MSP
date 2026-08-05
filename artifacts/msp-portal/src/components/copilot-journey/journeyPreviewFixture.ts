@@ -379,6 +379,12 @@ export function previewJourneyView(readyDocuments = 3): JourneyView {
       score: p.score,
       headline: p.headline,
       chips: [...p.chips],
+      // The fixture writes its chips out by hand rather than deriving them from
+      // stat rows, so there are no stat rows to carry — and the preview must
+      // stay a fixture, not gain a second synthesised data surface. Every
+      // consumer of `stats` treats empty as "nothing measured", which for a
+      // worked example is exactly right.
+      stats: [],
       satelliteFinding: p.satelliteFinding,
       trend: null,
       criticalCount: p.score < 40 ? 2 : 0,

@@ -24,13 +24,10 @@
  * Compliance's own `#F3F4F6` plays no part in that.
  */
 
-import { Fragment } from "react";
-
 import {
   BRAND,
   INK,
   PILLARS,
-  PILLAR_ICON_PATHS,
   SEVERITY_ON_DARK,
   TABULAR,
   gateLabel,
@@ -40,13 +37,12 @@ import {
   type PillarKey,
 } from "./journeyTokens.ts";
 import { PillarSwatch } from "./JourneyPrimitives";
+import { BODY, EYEBROW, H2, Section, type FigureRenderer } from "./ReportBlocks";
 import {
   PREVIEW_FIGURES,
   PREVIEW_MATERIAL_FINDINGS,
   type PreviewDocumentBody,
-  type ReportBlock,
   type ReportFigure,
-  type ReportSection,
 } from "./previewDocumentBodies.ts";
 import {
   PREVIEW_PILLARS,
@@ -58,40 +54,11 @@ import {
 import { BarList, BlastRadius, ExposureHeatmap, ReadinessRadar, SplitBar, TrendSparkline } from "./ReportFigures";
 
 /* ------------------------------------------------------------------ *
- * Shared dark-surface type
+ * Shared dark-surface type, the block loop and the bullet dot all moved to
+ * `ReportBlocks.tsx` when the real Copilot Readiness report started rendering
+ * the same shapes from real data (#409). Identical JSX, one copy — see that
+ * file's header. Nothing about this file's output changed.
  * ------------------------------------------------------------------ */
-
-const H2: React.CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 700,
-  letterSpacing: "-0.015em",
-  color: INK.headingDark,
-};
-
-const BODY: React.CSSProperties = {
-  margin: 0,
-  fontSize: 15,
-  fontWeight: 500,
-  lineHeight: 1.65,
-  color: INK.bodyDarkStrong,
-  textWrap: "pretty",
-};
-
-const EYEBROW: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: ".22em",
-  textTransform: "uppercase",
-};
-
-/**
- * The bullet dot on a self-resolution list. Deliberately one fixed blue across
- * all seven reports rather than the report's own accent — these are actions the
- * customer can take today, and colouring them per pillar would read as another
- * severity axis.
- */
-const BULLET_DOT = "#3B82F6";
 
 /* ------------------------------------------------------------------ *
  * The before/after numerals and the pillar table — the executive report's
@@ -227,125 +194,14 @@ function FigureBlock({ figure, ctx }: { readonly figure: ReportFigure; readonly 
   }
 }
 
-function Block({ block, ctx }: { readonly block: ReportBlock; readonly ctx: BlockContext }) {
-  if (block.kind === "figure") return <FigureBlock figure={block.figure} ctx={ctx} />;
-
-  if (block.kind === "prose") {
-    return (
-      <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
-        {block.text}
-      </p>
-    );
-  }
-
-  if (block.kind === "keyValues") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
-        {block.rows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(150px,1.15fr) minmax(0,1.85fr)",
-              gap: 14,
-              padding: "11px 10px",
-              borderBottom: `1px solid ${INK.hairlineDark}`,
-              alignItems: "baseline",
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 600, color: INK.headingDark }}>{row.label}</span>
-            <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, color: SEVERITY_ON_DARK[row.tone] }}>
-              {row.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (block.kind === "findings") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {block.rows.map((f) => (
-          <div
-            key={f.lead}
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "baseline",
-              // Severity, not pillar identity — the revised design colours this
-              // border by how bad the finding is, not by which report it is in.
-              borderLeft: `2px solid ${SEVERITY_ON_DARK[f.severity]}`,
-              padding: "8px 10px 8px 14px",
-            }}
-          >
-            <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6 }}>
-              <span style={{ fontWeight: 700, color: INK.headingDark }}>{f.lead}</span> {f.rest}
-            </p>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (block.kind === "steps") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 11, paddingTop: 6 }}>
-        {block.steps.map((step) => (
-          <div key={step.when} style={{ display: "flex", gap: 14, alignItems: "baseline" }}>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: ".1em",
-                textTransform: "uppercase",
-                // The gate step closes the sequence, so it takes the journey's
-                // teal rather than the blue the dated steps share.
-                color: step.when.toLowerCase() === "gate" ? BRAND.teal : INK.link,
-                flex: "none",
-                width: 60,
-              }}
-            >
-              {step.when}
-            </span>
-            <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
-              {step.text}
-            </p>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // "bullets"
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      {block.items.map((item) => (
-        <div key={item.slice(0, 40)} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-          <span
-            aria-hidden="true"
-            style={{ width: 5, height: 5, borderRadius: "50%", background: BULLET_DOT, flex: "none", marginTop: 7 }}
-          />
-          <p style={{ ...BODY, fontSize: 14.5, lineHeight: 1.6, margin: "-6px 0", padding: "6px 0" }}>
-            {item}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Section({ section, ctx }: { readonly section: ReportSection; readonly ctx: BlockContext }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-      <h2 style={H2}>{section.heading}</h2>
-      {section.blocks.map((b, i) => (
-        <Fragment key={`${section.heading}-${i}`}>
-          <Block block={b} ctx={ctx} />
-        </Fragment>
-      ))}
-    </div>
-  );
+/**
+ * The preview's figure resolver: every figure name maps to the design's own
+ * fixture. The real Copilot Readiness report supplies a different one and
+ * shares everything else - see ReportBlocks.tsx for why that boundary is the
+ * only difference between the two paths.
+ */
+function previewFigureRenderer(pillar: PillarKey | null): FigureRenderer {
+  return (figure) => <FigureBlock figure={figure} ctx={{ pillar }} />;
 }
 
 /* ------------------------------------------------------------------ *
@@ -422,7 +278,7 @@ export function PreviewReportBody({ report }: { readonly report: PreviewDocument
   const score = fixture?.score ?? null;
   const projected = fixture?.projected ?? null;
   const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
-  const ctx: BlockContext = { pillar };
+  const renderFigure = previewFigureRenderer(pillar);
 
   const eyebrow =
     report.kind === "executive"
@@ -469,7 +325,7 @@ export function PreviewReportBody({ report }: { readonly report: PreviewDocument
       <VerdictCard report={report} pillar={pillar} />
 
       {report.sections.map((s) => (
-        <Section key={s.heading} section={s} ctx={ctx} />
+        <Section key={s.heading} section={s} renderFigure={renderFigure} />
       ))}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>

@@ -92,10 +92,20 @@ function radarPolygon(radius: number, scores?: readonly (number | null)[]): stri
 export function ReadinessRadar({
   scores,
   scannedOn,
+  note,
 }: {
   /** One score per pillar, in `PILLAR_ORDER`. A null pillar plots at the centre. */
   readonly scores: readonly (number | null)[];
   readonly scannedOn: string;
+  /**
+   * The sentence beside the plot. Omitted on the design preview, which keeps
+   * `PREVIEW_FIGURES.readinessRadarNote` — a sentence that names which pillars
+   * are highest and lowest for the design's own stand-in tenant, and which is
+   * therefore a claim about Halden Materials specifically. A real tenant's
+   * report passes its own note derived from its own scores (#409); it must
+   * never inherit that one.
+   */
+  readonly note?: string;
 }) {
   return (
     <div
@@ -201,7 +211,7 @@ export function ReadinessRadar({
       <p
         style={{ ...FIGURE_NOTE, fontSize: 13, lineHeight: 1.6, flex: "1 1 190px", minWidth: 170 }}
       >
-        {PREVIEW_FIGURES.readinessRadarNote.replace("{date}", scannedOn)}
+        {note ?? PREVIEW_FIGURES.readinessRadarNote.replace("{date}", scannedOn)}
       </p>
     </div>
   );

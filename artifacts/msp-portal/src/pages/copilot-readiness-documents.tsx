@@ -828,6 +828,13 @@ export default function CopilotReadinessDocumentsPage() {
             doc={activeDoc}
             generation={view.generation}
             tenant={view.tenant}
+            // #409 — the roll-up readiness report renders from the tenant's own
+            // pillar scores and stats rather than from generated HTML, so it
+            // needs the whole view. Passed on both paths; `DocumentBody` reads
+            // it only when `isPreview` is false, so `?preview=design` still
+            // renders the design's fixed example from `PREVIEW_DOCUMENT_BODIES`
+            // exactly as before.
+            view={view}
             loaded={loaded}
             isPreview={isPreview}
             reduceMotion={reduceMotion}
