@@ -19,10 +19,15 @@ import {
   buildProvenance,
   buildRadarNote,
   formatStat,
+  isLicenceGap,
   isRealStat,
   isWiringFault,
+  licenceGapDisclosure,
   narrativeUnavailableDetail,
   unavailableReasonText,
+  upgradeOpportunities,
+  UPGRADE_OPPORTUNITY_DETAIL,
+  UPGRADE_OPPORTUNITY_HEADING,
   __testables,
   type ReadinessBlock,
   type WireNarrativePayload,
@@ -517,5 +522,215 @@ describe("real numbers, rendered as the platform reports them", () => {
     assert.equal(isRealStat(stat({ id: "a", value: Number.NaN })), false);
     assert.equal(isRealStat(stat({ id: "a", value: Number.POSITIVE_INFINITY })), false);
     assert.equal(isRealStat(stat({ id: "a", value: 0 })), true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #451 — a licence gap is a third category: not a finding, not our bug
+ * ------------------------------------------------------------------ */
+
+/** A view whose Security pillar carries one licence-gapped stat. */
+function gappedView(overrides: Partial<WirePillarStat> = {}) {
+  return view({
+    pillars: PILLAR_KEYS.map((k) =>
+      k === "security"
+        ? pillar(k, {
+            score: 34,
+            stats: [
+              stat({
+                id: "security.mfaRegistered",
+                checkKey: "identity:mfa-registration",
+                unavailableReason: "license_gap",
+                ...overrides,
+              }),
+            ],
+          })
+        : pillar(k),
+    ),
+  });
+}
+
+function upgradeItems(report: ReturnType<typeof build>) {
+  return report.sections
+    .flatMap((s) => s.blocks)
+    .flatMap((b) => (b.kind === "upgradeOpportunity" ? b.items : []));
+}
+
+function unavailableChecks(report: ReturnType<typeof build>) {
+  return report.sections
+    .flatMap((s) => s.blocks)
+    .flatMap((b) => (b.kind === "unavailable" ? b.checks : []));
+}
+
+describe("#451 — licence gaps are their own category", () => {
+  it("is neither one of our wiring faults nor a severity", () => {
+    assert.equal(isLicenceGap("license_gap"), true);
+    assert.equal(isWiringFault("license_gap"), false, "a licence gap is not OUR bug");
+    for (const reason of ["no_data", "not_in_scan_package", "not_collected", undefined]) {
+      assert.equal(isLicenceGap(reason), false, String(reason));
+    }
+  });
+
+  it("adds the section only when this tenant really has one", () => {
+    const headings = (r: ReturnType<typeof build>) => r.sections.map((s) => s.heading);
+    assert.ok(!headings(build(view())).includes(UPGRADE_OPPORTUNITY_HEADING), "no gaps, no section");
+    assert.ok(headings(build(gappedView())).includes(UPGRADE_OPPORTUNITY_HEADING));
+  });
+
+  it("states the fact ONCE — moved out of the honest-unavailable block, not copied", () => {
+    const report = build(gappedView());
+    assert.deepEqual(
+      unavailableChecks(report).map((c) => c.checkKey),
+      [],
+      "a licence gap must not also be filed as a gap in what was collected",
+    );
+    assert.deepEqual(upgradeItems(report).map((i) => i.checkKey), ["identity:mfa-registration"]);
+  });
+
+  it("leaves a genuine coverage gap where it was, and out of the category", () => {
+    const v = view({
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "security"
+          ? pillar(k, {
+              stats: [
+                stat({
+                  id: "security.legacyAuth",
+                  checkKey: "identity:legacy-auth-usage",
+                  unavailableReason: "not_in_scan_package",
+                }),
+              ],
+            })
+          : pillar(k),
+      ),
+    });
+    const report = build(v);
+    assert.deepEqual(unavailableChecks(report).map((c) => c.checkKey), ["identity:legacy-auth-usage"]);
+    assert.deepEqual(upgradeItems(report), []);
+  });
+
+  it("never promotes one of OUR wiring faults into it (#441)", () => {
+    const report = build(gappedView({ unavailableReason: "unknown_check_key" }));
+    assert.deepEqual(upgradeItems(report), []);
+    assert.deepEqual(unavailableChecks(report), [], "dropped, not reclassified");
+  });
+
+  it("reproduces Shane's two approved lines verbatim", () => {
+    assert.equal(
+      licenceGapDisclosure({ checkKey: "identity:mfa-registration", reason: "license_gap" }),
+      "Requires Microsoft Entra ID P1 or P2. Upgrading unlocks per-user MFA registration status across your org — right now this is a real blind spot in the Security pillar, not a confirmed pass.",
+    );
+    assert.equal(
+      licenceGapDisclosure({ checkKey: "identity:legacy-auth-usage", reason: "license_gap" }),
+      "Requires Microsoft Entra ID P1 or P2. Upgrading unlocks visibility into legacy authentication sign-ins — one of the most common real attack vectors, and currently invisible to this scan.",
+    );
+  });
+
+  it("names a tier only where one was confirmed or the tenant's own scan reported one", () => {
+    // Nothing confirmed in-repo, nothing observed → names no tier at all.
+    const silent = licenceGapDisclosure({ checkKey: "intune:outdated-devices", reason: "license_gap" });
+    assert.ok(!/Requires/.test(silent), silent);
+    assert.match(silent, /did not name the tier, so none is named here/);
+
+    // Nothing confirmed, but the scan named one → that one, never an invented one.
+    const observed = licenceGapDisclosure({
+      checkKey: "intune:outdated-devices",
+      reason: "license_gap",
+      licenseFeature: "Microsoft Intune Plan 2",
+    });
+    assert.match(observed, /^Requires Microsoft Intune Plan 2\. Upgrading unlocks/);
+
+    // The resolver's placeholder is not a SKU and must never print as one.
+    const placeholder = licenceGapDisclosure({
+      checkKey: "intune:outdated-devices",
+      reason: "license_gap",
+      licenseFeature: "a required Microsoft 365 add-on",
+    });
+    assert.equal(placeholder, silent);
+  });
+
+  it("refuses to call an ambiguous Purview gap a licensing gap", () => {
+    // monitor-executor's own comment: a `cmdlet_unavailable` is EITHER a Purview
+    // licence gap OR this platform missing from the Purview role group, and the
+    // two are indistinguishable from the error text. So neither is asserted.
+    const text = licenceGapDisclosure({
+      checkKey: "compliance:weak-dlp-policies",
+      reason: "license_gap",
+      licenseFeature: "Microsoft Purview Data Loss Prevention (DLP)",
+    });
+    assert.ok(!/^Requires/.test(text), text);
+    assert.match(text, /role group/);
+    assert.match(text, /neither is asserted here/);
+  });
+
+  it("says one licence fact once, however many stats share the check", () => {
+    // `copilot:overshare-exposure` backs a stat on three separate pillars.
+    const shared = { checkKey: "copilot:overshare-exposure", reason: "license_gap" };
+    assert.deepEqual(
+      upgradeOpportunities([shared, shared, { ...shared }]).map((i) => i.checkKey),
+      ["copilot:overshare-exposure"],
+    );
+    assert.deepEqual(upgradeOpportunities([{ checkKey: "x:y", reason: "no_data" }]), []);
+  });
+
+  it("collects a gap the narrative route reports even when that prose rendered", () => {
+    const narrative: WireNarrativePayload = {
+      sections: [
+        {
+          key: "safety",
+          heading: "Copilot Safety & Exposure",
+          html: "<p>Real prose.</p>",
+          omittedReason: null,
+          factCount: 4,
+          missingChecks: [{ checkKey: "identity:risky-users", reason: "license_gap" }],
+        },
+      ],
+    };
+    assert.deepEqual(
+      upgradeItems(build(view(), narrative)).map((i) => i.checkKey),
+      ["identity:risky-users"],
+    );
+  });
+
+  it("covers every real check key behind the 28 stats, and only real keys", () => {
+    const keys = Object.keys(__testables.LICENCE_GAP_DISCLOSURES);
+    for (const key of keys) {
+      assert.match(key, /^[a-z]+:[a-z0-9-]+$/, `${key} must look like a real monitor_checks key`);
+    }
+    // The 18 distinct checks behind WAR_ROOM_PILLAR_STAT_SPECS' 28 stats — the
+    // complete set that can reach this report as a licence gap. A new stat spec
+    // without a disclosure here falls back to the generic line, which is honest
+    // but unspecific; this count is what makes that a deliberate choice.
+    assert.equal(keys.length, 18);
+    assert.ok(keys.includes("identity:mfa-registration"));
+    assert.ok(keys.includes("identity:legacy-auth-usage"));
+  });
+
+  it("reads as a factual disclosure and never as a pitch", () => {
+    const lines = Object.keys(__testables.LICENCE_GAP_DISCLOSURES).map((k) =>
+      licenceGapDisclosure({ checkKey: k, reason: "license_gap", licenseFeature: "Microsoft Entra ID P1 or P2" }),
+    );
+    lines.push(UPGRADE_OPPORTUNITY_DETAIL);
+    lines.push(licenceGapDisclosure({ checkKey: "some:unwritten-check", reason: "license_gap" }));
+    for (const line of lines) {
+      // No call to action, no price, no urgency.
+      assert.ok(
+        // NB "quote" is deliberately only matched as a sales quote — the
+        // disclosures use it in its other sense ("all three quote this figure").
+        !/\bbuy\b|\bpurchase\b|contact us|talk to us|get in touch|reach out|act now|today only|upgrade now|don't wait|\$\d|\bper seat\b|\bper user\b|\bpricing\b|\ba quote\b|request a quote/i.test(line),
+        `promotional language: ${line}`,
+      );
+      // Never implies money moves the score.
+      assert.ok(
+        !/improve your score|boost your|raise your readiness|increase your score|better score/i.test(line),
+        `implies a score gain: ${line}`,
+      );
+      // Always says, in some form, that the empty result is not a pass.
+      assert.ok(
+        /not a (confirmed )?pass|blind spot|absence of data|unknown|invisible|silent|unmeasured|not confirmed|rather than|was read|nothing here says|neither confirms|no measurement|empty for that reason|should be inferred|not licensed|not an enforced one|either way/i.test(
+          line,
+        ),
+        `says nothing about what the gap does NOT mean: ${line}`,
+      );
+    }
   });
 });

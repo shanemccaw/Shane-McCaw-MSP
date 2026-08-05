@@ -239,6 +239,35 @@ describe("statFromMetricResult never fabricates", () => {
     ).toBe("unknown_check_key");
   });
 
+  it("carries the real missing add-on name through, and only on a licence gap (#451)", () => {
+    // The Copilot Readiness Report names the tier from THIS value rather than
+    // hardcoding one per check, so dropping it would force it to guess.
+    expect(
+      statFromMetricResult(spec, "identity:mfa-registration", {
+        metricKey: "x",
+        status: "not_available",
+        reason: "license_gap",
+        licenseFeature: "Microsoft Entra ID Premium (P1/P2)",
+      }).licenseFeature,
+    ).toBe("Microsoft Entra ID Premium (P1/P2)");
+
+    // Absent — not empty-string, not a placeholder — when the resolver sent none.
+    expect(
+      statFromMetricResult(spec, "identity:mfa-registration", {
+        metricKey: "x",
+        status: "not_available",
+        reason: "license_gap",
+      }).licenseFeature,
+    ).toBeUndefined();
+    expect(
+      statFromMetricResult(spec, "compliance:sharepoint-sites", {
+        metricKey: "x",
+        status: "not_available",
+        reason: "not_in_scan_package",
+      }).licenseFeature,
+    ).toBeUndefined();
+  });
+
   it("reports a missing registry metric as a wiring bug, not as an empty tenant", () => {
     const stat = statFromMetricResult(spec, "compliance.sharePointSiteCount", null);
     expect(stat.value).toBeNull();

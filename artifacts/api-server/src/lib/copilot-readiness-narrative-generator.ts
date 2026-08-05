@@ -86,6 +86,23 @@ export type ReadinessNarrativeOmission =
   | "generation_failed"
   | "empty_response";
 
+/**
+ * One check this section wanted and did not get, with the resolver's own
+ * machine reason.
+ *
+ * `licenseFeature` rides along ONLY when the reason is `license_gap`, carrying
+ * the real add-on name the tenant's own scan reported (`WarRoomStat
+ * .licenseFeature`). #451 renders those under their own category in the
+ * Copilot Readiness Report rather than in the generic "could not measure"
+ * list, and naming the tier from the tenant's response is what keeps that copy
+ * factual instead of a per-check guess.
+ */
+export interface MissingCheck {
+  readonly checkKey: string;
+  readonly reason: string;
+  readonly licenseFeature?: string;
+}
+
 export interface ReadinessNarrativeSection {
   readonly key: ReadinessNarrativeSectionKey;
   readonly heading: string;
@@ -99,7 +116,7 @@ export interface ReadinessNarrativeSection {
    * the resolver's own reason. Surfaced so a thin section can say what is
    * missing instead of reading as a thin tenant.
    */
-  readonly missingChecks: readonly { readonly checkKey: string; readonly reason: string }[];
+  readonly missingChecks: readonly MissingCheck[];
 }
 
 export interface ReadinessNarrativeResult {
@@ -169,7 +186,7 @@ interface SectionFacts {
   readonly statBlock: string;
   readonly findingBlock: string;
   readonly missingBlock: string;
-  readonly missingChecks: readonly { readonly checkKey: string; readonly reason: string }[];
+  readonly missingChecks: readonly MissingCheck[];
 }
 
 /**
@@ -192,7 +209,7 @@ function collectSectionFacts(
   const pillarLines: string[] = [];
   const statLines: string[] = [];
   const findingLines: string[] = [];
-  const missing: { checkKey: string; reason: string }[] = [];
+  const missing: MissingCheck[] = [];
   let factCount = 0;
 
   for (const card of relevant) {
@@ -212,7 +229,12 @@ function collectSectionFacts(
         statLines.push(`- ${card.pillar} · ${stat.label}: ${formatStatValue(stat)}`);
         factCount += 1;
       } else if (stat.checkKey) {
-        missing.push({ checkKey: stat.checkKey, reason: stat.unavailableReason ?? "no_data" });
+        missing.push({
+          checkKey: stat.checkKey,
+          reason: stat.unavailableReason ?? "no_data",
+          // Only ever the stat's own value — never inferred from the check key.
+          ...(stat.licenseFeature ? { licenseFeature: stat.licenseFeature } : {}),
+        });
       }
     }
 

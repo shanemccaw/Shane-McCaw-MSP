@@ -62,6 +62,7 @@ import {
   unavailableReasonText,
   type ReadinessBlock,
   type ReadinessSection,
+  type UpgradeOpportunity,
   type WireNarrativePayload,
 } from "./copilotReadinessReport.ts";
 
@@ -260,6 +261,69 @@ function UnavailableBlock({
 }
 
 /**
+ * The Upgrade Opportunity category (#451).
+ *
+ * ── WHY IT LOOKS LIKE THIS AND NOT LIKE ANYTHING ELSE IN THE REPORT ──────────
+ * It has to be unmistakably not a finding. Three things separate it:
+ *
+ *   • Colour. The Licensing pillar's own teal (`PILLARS.licensing.primary`),
+ *     because that is what this is — a licensing fact. Never `severityColor()`:
+ *     red or amber here would read as risk, and "you are not licensed to
+ *     measure X" is not a risk finding, it is an unmeasured quantity. The
+ *     pillar identity colours exist precisely to say *what a thing is* while
+ *     severity says *how bad it is*, and this row asserts the first only.
+ *   • Shape. A solid 3px left rule and a filled tint, against the
+ *     `UnavailableBlock`'s dashed hairline and the `keyValues` rows' plain
+ *     table. A reader scanning the page can tell the three apart without
+ *     reading a word of any of them.
+ *   • A named eyebrow, so the category announces itself rather than relying on
+ *     the section heading two lines up.
+ */
+function UpgradeOpportunityBlock({
+  detail,
+  items,
+}: {
+  readonly detail: string;
+  readonly items: readonly UpgradeOpportunity[];
+}) {
+  const teal = PILLARS.licensing.primary;
+  return (
+    <div
+      style={{
+        borderLeft: `3px solid ${teal}`,
+        borderTop: `1px solid ${hexAlpha(teal, 0.22)}`,
+        borderRight: `1px solid ${hexAlpha(teal, 0.22)}`,
+        borderBottom: `1px solid ${hexAlpha(teal, 0.22)}`,
+        borderRadius: 10,
+        background: hexAlpha(teal, 0.06),
+        padding: "15px 17px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <span style={{ ...EYEBROW, color: teal }}>Upgrade opportunity</span>
+      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDarkStrong }}>{detail}</p>
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
+        {items.map((item) => (
+          <li
+            key={item.checkKey}
+            style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 11, borderTop: `1px solid ${hexAlpha(teal, 0.16)}` }}
+          >
+            <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: teal }}>
+              {item.checkKey}
+            </code>
+            <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
+              {item.disclosure}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * A prose section whose fetch has not settled. A spinner, not a blank: the two
  * pure-data sections around it are already on screen, so an unexplained gap
  * between them would read as a section that has nothing to say.
@@ -322,6 +386,9 @@ export function CopilotReadinessReportBody({
     if (block.kind === "narrative") return <NarrativeBlock key={key} html={block.html} />;
     if (block.kind === "unavailable") {
       return <UnavailableBlock key={key} detail={block.detail} checks={block.checks} />;
+    }
+    if (block.kind === "upgradeOpportunity") {
+      return <UpgradeOpportunityBlock key={key} detail={block.detail} items={block.items} />;
     }
     // Everything else is the shared vocabulary — one renderer, one appearance.
     // `Block` directly rather than `Section`, because the heading is drawn by

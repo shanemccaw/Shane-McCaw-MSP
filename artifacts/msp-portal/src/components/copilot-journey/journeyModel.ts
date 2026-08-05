@@ -50,6 +50,16 @@ export interface WirePillarStat {
   readonly unit: "count" | "percent" | "currency";
   readonly value: number | null;
   readonly unavailableReason?: string;
+  /**
+   * Present ONLY alongside `unavailableReason === "license_gap"`: the real
+   * Microsoft 365 add-on name the tenant's own scan reported as missing, as
+   * `war-room-pillar-stats.ts` passes it through from the resolver (#451).
+   *
+   * The Copilot Readiness Report's Upgrade Opportunity category reads this
+   * rather than mapping a check key to a tier of its own, so no line of that
+   * copy can name a SKU the platform did not actually observe.
+   */
+  readonly licenseFeature?: string;
   readonly checkKey: string | null;
 }
 

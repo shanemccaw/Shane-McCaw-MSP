@@ -487,6 +487,19 @@ export interface WarRoomStat {
    */
   unavailableReason?: string;
   /**
+   * Set ONLY when `unavailableReason === "license_gap"`: the customer-safe name
+   * of the Microsoft 365 add-on the tenant's own scan reported as missing
+   * (`MetricResultNotAvailable.licenseFeature`, ultimately monitor-executor's
+   * `_licenseGapFeature`).
+   *
+   * #451. A licence gap is neither a fault of ours nor a finding about their
+   * configuration — it is a measurement that could not be taken, and the only
+   * honest way to say WHICH tier would take it is to repeat what Microsoft told
+   * the scan. Passed through rather than re-derived so no consumer has to
+   * hardcode a tier per check.
+   */
+  licenseFeature?: string;
+  /**
    * The real `monitor_checks.key` this stat needs, so a consumer can name the
    * missing check instead of guessing at it (#341). Null for the two stats that
    * aren't check-backed: the Copilot readiness score (the pillar's own score)
@@ -649,7 +662,15 @@ export function statFromMetricResult(
     return { ...base, value: null, unavailableReason: "resolver_error", source };
   }
   if (result.status === "not_available") {
-    return { ...base, value: null, unavailableReason: result.reason, source };
+    return {
+      ...base,
+      value: null,
+      unavailableReason: result.reason,
+      // Only present on a licence gap, and only ever the resolver's own value —
+      // never synthesised here, so a stat with no named SKU stays un-named.
+      ...(result.licenseFeature ? { licenseFeature: result.licenseFeature } : {}),
+      source,
+    };
   }
 
   // A real zero is a real answer and must survive as 0, not become "no data".

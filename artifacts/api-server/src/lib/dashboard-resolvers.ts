@@ -140,6 +140,20 @@ export interface MetricResultNotAvailable extends MetricResultBase {
   /** Machine-stable reason code + human note. */
   reason: string;
   detail?: string;
+  /**
+   * Set ONLY when `reason === "license_gap"`: the customer-safe name of the
+   * Microsoft 365 add-on the tenant's own scan reported as missing, straight
+   * off `_licenseGapFeature` (monitor-executor stamps it from the real
+   * `LicenseGapError.feature`, or from `purviewFeatureForCmdletKey` on the
+   * PowerShell path).
+   *
+   * Carried as its own field rather than left buried in `detail`'s prose so a
+   * consumer can NAME the real missing SKU without parsing a sentence or —
+   * worse — hardcoding a tier per check and guessing. #451 needs exactly this:
+   * a licence gap is a distinct, factual disclosure category, and the only
+   * non-invented source for "which tier" is the tenant's own response.
+   */
+  licenseFeature?: string;
 }
 
 export interface MetricResultError extends MetricResultBase {
@@ -599,7 +613,7 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
   if (resolved.value == null) {
     if (resolved.status === "license_gap") {
       const feature = resolved.licenseGapFeature ?? "a required Microsoft 365 add-on";
-      return notAvailable(def, "license_gap", licenseGapMessage(feature));
+      return { ...notAvailable(def, "license_gap", licenseGapMessage(feature)), licenseFeature: feature };
     }
     return resolved.checkExists
       ? notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`)
