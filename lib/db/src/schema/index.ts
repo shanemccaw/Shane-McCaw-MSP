@@ -3133,6 +3133,41 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
 export type InsertCheckoutSession = typeof checkoutSessionsTable.$inferInsert;
 export type CheckoutSession = typeof checkoutSessionsTable.$inferSelect;
 
+// ── Checkout email verification codes (#437) ───────────────────────────────────
+// The six-digit code the Home-page assessment flow emails the buyer after
+// payment, so the inline account-creation steps (verify → set password) can
+// prove the buyer controls the address the order was placed under before a
+// password is ever attached to it.
+//
+// Its OWN table rather than columns on checkout_sessions, matching the shape
+// every other consumable secret in this schema already uses
+// (password_reset_tokens, account_setup_tokens, mfa_challenges): short-lived,
+// single-use, hashed, and re-issuable — a resend must be able to supersede the
+// previous code without destroying the order row it belongs to.
+//
+// Only the bcrypt hash of the code is stored — never the six digits themselves.
+// `attempts` is the brute-force budget: six digits is a 1-in-a-million guess,
+// which is only safe with a hard cap on tries per issued code.
+export const checkoutEmailVerificationsTable = pgTable("checkout_email_verifications", {
+  id: serial("id").primaryKey(),
+  sessionId: uuid("session_id").notNull().references(() => checkoutSessionsTable.id, { onDelete: "cascade" }),
+  // Captured at issue time. The code is only ever accepted for the address it
+  // was sent to, so a later edit of the session's email cannot be verified by
+  // a code that was mailed somewhere else.
+  email: text("email").notNull(),
+  codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("checkout_email_verifications_session_id_idx").on(t.sessionId),
+  index("checkout_email_verifications_expires_at_idx").on(t.expiresAt),
+]);
+
+export type InsertCheckoutEmailVerification = typeof checkoutEmailVerificationsTable.$inferInsert;
+export type CheckoutEmailVerification = typeof checkoutEmailVerificationsTable.$inferSelect;
+
 // ── Failed Notifications ───────────────────────────────────────────────────────
 // Records email send failures after the retry exhausts, so admins can identify
 // customers who never received their account-setup (or other transactional) email.

@@ -22,12 +22,22 @@ import { useConsentScopes } from "@/hooks/useConsentScopes";
  * lands — at which point the flow advances itself. Same reason the payment step
  * is in-page (#435): the buyer never leaves the site.
  *
- * ── Where the flow deliberately stops ─────────────────────────────────────────
- * It ends at a real payment confirmation. The account-creation steps that used
- * to follow (six-digit email code, password, MFA) were placeholder UI with no
- * backend, and are tracked as #437/#438/#439; the scan-telemetry panel is #436.
- * They are not rendered here, because sitting them immediately after a real
- * card charge would show a paying customer fabricated progress.
+ * ── Account creation happens HERE, inline (#436/#437/#438) ────────────────────
+ * Phase 2 ended this flow at payment and deferred account setup to an email
+ * ("we'll email you with your account details and a link to them"). That
+ * deferral is gone. The buyer now finishes their account before leaving the
+ * page: Verify (six-digit code to the address the order was placed under, shown
+ * alongside their REAL scan telemetry) then Password, then Done.
+ *
+ * These steps are no longer placeholder UI — every one of them talks to a real
+ * endpoint in public-assessment-account.ts. The scan panel shows the actual
+ * msp_diagnostic_runs row the consent callback started minutes earlier, the code
+ * is really generated and really mailed through Exchange Online, and the
+ * password is really bcrypt-hashed onto the account that consent time created.
+ *
+ * MFA (#439) is deliberately NOT in this pass. It is held back for a separate,
+ * final pre-deployment build so that development test runs are not gated behind
+ * an MFA enrolment on every refresh.
  */
 
 /** Steps that always run, in order, with the #432 branch spliced in at index 3. */
@@ -38,6 +48,8 @@ type StepKey =
   | "self-add"
   | "write-consent"
   | "payment"
+  | "verify"
+  | "password"
   | "done";
 
 type CompliancePath = "self_add" | "delegate_write" | "declined";
@@ -49,14 +61,22 @@ const STEP_LABEL: Record<StepKey, string> = {
   "self-add": "Group",
   "write-consent": "Write access",
   payment: "Payment",
+  verify: "Verify",
+  password: "Password",
   done: "Confirmed",
 };
 
-/** The flow's step list, which #432's decision reshapes mid-flow. */
+/**
+ * The flow's step list, which #432's decision reshapes mid-flow.
+ *
+ * `verify` and `password` (#436/#437/#438) sit AFTER payment: the account is
+ * completed inline rather than deferred to an email. No `mfa` step — #439 is
+ * held for a separate final pre-deployment build.
+ */
 function stepsFor(path: CompliancePath | null): StepKey[] {
   const branch: StepKey[] =
     path === "self_add" ? ["self-add"] : path === "delegate_write" ? ["write-consent"] : [];
-  return ["details", "consent", "compliance", ...branch, "payment", "done"];
+  return ["details", "consent", "compliance", ...branch, "payment", "verify", "password", "done"];
 }
 
 /**
@@ -308,6 +328,8 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compliancePath, setCompliancePath] = useState<CompliancePath | null>(null);
+  /** Reported by /set-password — the real portal base, never a literal here. */
+  const [portalUrl, setPortalUrl] = useState<string | null>(null);
 
   // Which consent the Consent step is currently on (#434: Graph, then SharePoint).
   const [consentStage, setConsentStage] = useState<"graph" | "sharepoint">("graph");
@@ -359,8 +381,13 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       .then((r) => (r.ok ? (r.json() as Promise<FlowStatus>) : Promise.reject(new Error("gone"))))
       .then((s) => {
         if (cancelled) return;
+        // Paid, but the account may not be finished — a reload here resumes at
+        // Verify rather than jumping to Done, because Done now means "account
+        // complete", not merely "payment taken". Verify is safe to re-enter: a
+        // code already proven returns `alreadyVerified`, and an account that
+        // already has a password is reported as such by /set-password.
         if (s.sessionStatus === "paid") {
-          setStep("done");
+          setStep("verify");
           return;
         }
         if (s.complianceGroup) {
@@ -583,8 +610,14 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
 
   // Stable — PaymentStep's setup effect depends on it, and an inline closure
   // here would give that effect a new identity on every render, re-creating the
-  // PaymentIntent in a loop.
-  const goDone = useCallback(() => setStep("done"), []);
+  // PaymentIntent in a loop. It advances to Verify, not Done: account creation
+  // now happens inline (#437/#438) instead of being deferred to an email.
+  const goVerify = useCallback(() => setStep("verify"), []);
+  const goPassword = useCallback(() => setStep("password"), []);
+  const goDone = useCallback((url: string | null) => {
+    setPortalUrl(url);
+    setStep("done");
+  }, []);
 
   const restartFlow = useCallback(() => {
     clearSessionId();
@@ -595,6 +628,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setConsentUrl(null);
     setError(null);
     setForm({});
+    setPortalUrl(null);
     graphStatusAtSharepointEntryRef.current = null;
   }, []);
 
@@ -919,8 +953,18 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           company={f.company}
           includes={includeList}
           compliancePath={compliancePath}
-          onPaid={goDone}
+          onPaid={goVerify}
         />
+      )}
+
+      {/* ── Verify — real scan telemetry (#436) + six-digit email code (#437) ── */}
+      {step === "verify" && sessionId && (
+        <VerifyStep sessionId={sessionId} email={f.email} onVerified={goPassword} />
+      )}
+
+      {/* ── Password — completes the account inline (#438) ──────────────────── */}
+      {step === "password" && sessionId && (
+        <PasswordStep sessionId={sessionId} email={f.email} onComplete={goDone} />
       )}
 
       {/* ── Confirmed ───────────────────────────────────────────────────────── */}
@@ -929,13 +973,27 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           <StepIcon />
           <div>
             <h3 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.018em", color: "#f8fafc", margin: "0 0 10px" }}>
-              Payment received{f.first ? `, ${f.first}` : ""}. Your scan is already running.
+              You're all set{f.first ? `, ${f.first}` : ""}. Your scan is already running.
             </h3>
+            {/* No emailed setup link is promised here any more (#436/#437/#438):
+                the account was created on this page, so there is nothing left to
+                send and saying otherwise would be a promise nothing keeps. */}
             <p style={{ fontSize: 15, lineHeight: 1.65, color: "#94a3b8", margin: "0 0 20px" }}>
               Consent is live against {f.company || "your tenant"} and the read-only scan started the moment it was granted — before you
-              paid, not after. Your reports are generated from that scan and land in the portal; we'll email {f.email || "you"} with your
-              account details and a link to them.
+              paid, not after. Your account is ready: sign in at the portal with {f.email || "your work email"} and the password you just
+              set, and your reports appear there as the scan finishes.
             </p>
+            {/* The portal base URL is whatever /set-password reported, not a
+                literal baked in here. When the server could not supply one the
+                button is simply absent — the sign-in instruction above still
+                stands, and inventing a URL would be worse than omitting it. */}
+            {portalUrl && (
+              <div style={{ marginBottom: 20 }}>
+                <Button size="lg" onClick={() => window.open(portalUrl, "_blank", "noopener")}>
+                  Go to your portal
+                </Button>
+              </div>
+            )}
             <p style={{ fontSize: 13, lineHeight: 1.6, color: "#64748b", margin: 0 }}>
               Consent stays revocable from Entra ID → Enterprise applications at any time.
             </p>
@@ -1176,6 +1234,442 @@ function PaymentStep({
         heading="What you're paying for"
         note="One scan of your whole tenant, and the reports that come out of it. No subscription, no hourly billing afterwards, no per-seat maths."
       />
+    </div>
+  );
+}
+
+// ── Verify step (#436 scan telemetry + #437 six-digit code) ───────────────────
+
+interface ScanTelemetry {
+  everScanned: boolean;
+  tenantConnected: boolean;
+  run: {
+    status: string;
+    active: boolean;
+    packageKey: string;
+    checksTotal: number;
+    checksOk: number;
+    checksError: number;
+    checksLicenseGap: number;
+    startedAt: string | null;
+    completedAt: string | null;
+  } | null;
+  severityCounts: { critical: number; warning: number; info: number; ok: number } | null;
+  topFindings: Array<{ checkLabel: string; severity: string; title: string }>;
+}
+
+/**
+ * The buyer proves the email address their order was placed under, while their
+ * OWN scan reports itself alongside (#436).
+ *
+ * The scan panel is not decoration and not a progress animation: it renders the
+ * real `msp_diagnostic_runs` row that the consent callback started minutes ago,
+ * with the real check counts and the real finding titles. It polls while the run
+ * is still active and stops the moment it is not. Every state it can be in —
+ * including "no run has been recorded yet" — is stated plainly rather than
+ * papered over, because a fabricated scan on the screen immediately after a real
+ * card charge is precisely what #436 exists to prevent.
+ */
+function VerifyStep({
+  sessionId,
+  email,
+  onVerified,
+}: {
+  sessionId: string;
+  email?: string;
+  onVerified: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [sending, setSending] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [telemetry, setTelemetry] = useState<ScanTelemetry | null>(null);
+
+  const sendCode = useCallback(
+    async (isResend: boolean) => {
+      setSending(true);
+      setErr(null);
+      setNotice(null);
+      try {
+        const res = await fetch("/api/public/flow/send-verification-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { email?: string; error?: string };
+        if (!res.ok) {
+          setErr(
+            data.error === "email_send_failed"
+              ? "We could not send the code to your email just now. Try again in a moment — your payment and your scan are unaffected."
+              : data.error === "session_expired"
+                ? "This session has expired. Your payment and scan are safe; contact us and we'll finish your account setup."
+                : "We could not send your code. Please try again shortly.",
+          );
+          return;
+        }
+        setSent(true);
+        setMaskedEmail(data.email ?? null);
+        if (isResend) setNotice("A new code is on its way. The previous one no longer works.");
+      } catch {
+        setErr("Network error. Check your connection and try again.");
+      } finally {
+        setSending(false);
+      }
+    },
+    [sessionId],
+  );
+
+  // One automatic send on arrival — the buyer should find the mail already
+  // waiting rather than have to ask for it. The ref keeps React 18's double
+  // effect invocation in dev from mailing two codes (the second would silently
+  // supersede the first, so the one in the inbox would be the dead one).
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    autoSentRef.current = true;
+    void sendCode(false);
+  }, [sendCode]);
+
+  // Poll the real scan while it is genuinely still running; one read otherwise.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/public/flow/scan-telemetry?sessionId=${encodeURIComponent(sessionId)}`);
+        if (res.ok && !cancelled) {
+          const data = (await res.json()) as ScanTelemetry;
+          setTelemetry(data);
+          // Stop polling once the run is finished — but keep polling while no
+          // run row exists yet, since the consent-time run may still be starting.
+          if (data.run && !data.run.active) return;
+        }
+      } catch {
+        /* transient — the next tick retries */
+      }
+      if (!cancelled) timer = setTimeout(tick, 5000);
+    };
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [sessionId]);
+
+  async function submitCode() {
+    if (!/^\d{6}$/.test(code)) return;
+    setChecking(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/public/flow/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, code }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; attemptsRemaining?: number };
+      if (!res.ok) {
+        setErr(
+          data.error === "code_incorrect"
+            ? `That code is not right.${
+                typeof data.attemptsRemaining === "number"
+                  ? ` ${data.attemptsRemaining} attempt${data.attemptsRemaining === 1 ? "" : "s"} left before you need a new one.`
+                  : ""
+              }`
+            : data.error === "code_expired"
+              ? "That code has expired. Send yourself a new one below."
+              : data.error === "too_many_attempts"
+                ? "Too many incorrect attempts on that code. Send yourself a new one below."
+                : data.error === "no_code_issued"
+                  ? "No code has been sent yet. Use the resend link below."
+                  : "We could not check that code. Please try again.",
+        );
+        return;
+      }
+      onVerified();
+    } catch {
+      setErr("Network error. Check your connection and try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div style={TWO_COL}>
+      <div>
+        <span style={EYEBROW}>Verify your email</span>
+        <h3 style={H3}>Confirm it's you, then set a password.</h3>
+        <p style={{ ...BODY, maxWidth: 480 }}>
+          We've sent a six-digit code to <strong style={{ color: "#cbd5e1" }}>{maskedEmail || email || "your work email"}</strong>. Entering
+          it proves the address is yours before we attach a password to your account. Your scan is running regardless — it started when you
+          granted consent.
+        </p>
+
+        <label style={{ display: "block", maxWidth: 320 }}>
+          <span style={labelStyle()}>Six-digit code</span>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && /^\d{6}$/.test(code) && !checking) void submitCode();
+            }}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="000000"
+            style={{ ...fieldStyle(), fontFamily: "Menlo,ui-monospace,monospace", fontSize: 22, letterSpacing: ".38em", textAlign: "center" }}
+          />
+        </label>
+
+        {err && <p style={{ fontSize: 13.5, lineHeight: 1.5, color: "#fca5a5", margin: "14px 0 0", maxWidth: 480 }}>{err}</p>}
+        {notice && !err && <p style={{ fontSize: 13.5, lineHeight: 1.5, color: "#93c5fd", margin: "14px 0 0", maxWidth: 480 }}>{notice}</p>}
+
+        <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
+          <Button size="lg" onClick={submitCode} disabled={!/^\d{6}$/.test(code) || checking}>
+            {checking ? "Checking…" : "Verify and continue"}
+          </Button>
+          <LinkButton onClick={() => void sendCode(true)}>
+            {sending ? "Sending…" : sent ? "Send a new code" : "Send my code"}
+          </LinkButton>
+        </div>
+
+        <p style={FOOTNOTE}>
+          The code expires in 15 minutes. Nothing else is charged at this step — your payment is already complete.
+        </p>
+      </div>
+
+      <ScanTelemetryCard telemetry={telemetry} />
+    </div>
+  );
+}
+
+/**
+ * #436's honest panel. Renders exactly one of four real states, and never
+ * invents a score, a percentage or a pillar the payload did not carry.
+ */
+function ScanTelemetryCard({ telemetry }: { telemetry: ScanTelemetry | null }) {
+  const heading = (
+    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#64748b" }}>
+      Your scan, right now
+    </span>
+  );
+
+  if (!telemetry) {
+    return (
+      <div style={CARD}>
+        {heading}
+        <p style={{ fontSize: 13, color: "#64748b", margin: "14px 0 0", lineHeight: 1.55 }}>Reading your scan…</p>
+      </div>
+    );
+  }
+
+  // No run row yet. The consent-time scan is fire-and-forget, so a buyer who
+  // moved fast can genuinely arrive here before it has registered. Say that.
+  if (!telemetry.everScanned || !telemetry.run) {
+    return (
+      <div style={CARD}>
+        {heading}
+        <p style={{ fontSize: 13.5, color: "#94a3b8", margin: "14px 0 0", lineHeight: 1.6 }}>
+          {telemetry.tenantConnected
+            ? "Your tenant is connected and the scan has been requested, but it hasn't reported its first check yet. This page keeps watching — nothing here is waiting on you."
+            : "Your tenant connection isn't recorded against this order yet. Your payment is safe; we'll pick this up with you directly if it doesn't resolve."}
+        </p>
+      </div>
+    );
+  }
+
+  const run = telemetry.run;
+  const counted = run.checksOk + run.checksError + run.checksLicenseGap;
+  const sev = telemetry.severityCounts;
+
+  return (
+    <div style={CARD}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        {heading}
+        <span style={{ fontSize: 11.5, color: run.active ? "#60a5fa" : "#34d399" }}>
+          {run.active ? "Running" : run.status === "completed" ? "Complete" : run.status}
+        </span>
+      </div>
+
+      <p style={{ fontSize: 13, color: "#64748b", margin: "14px 0 18px", lineHeight: 1.55 }}>
+        {run.active
+          ? "Live from the read-only scan that started when you granted consent."
+          : "The read-only scan that started when you granted consent has finished."}
+      </p>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        <TelemetryRow label="Checks run" value={`${counted}${run.checksTotal > 0 ? ` of ${run.checksTotal}` : ""}`} />
+        <TelemetryRow label="Passed" value={String(run.checksOk)} color="#34d399" />
+        {run.checksError > 0 && <TelemetryRow label="Errors" value={String(run.checksError)} color="#f87171" />}
+        {run.checksLicenseGap > 0 && <TelemetryRow label="Blocked by licensing" value={String(run.checksLicenseGap)} color="#fbbf24" />}
+        {sev && sev.critical > 0 && <TelemetryRow label="Critical findings" value={String(sev.critical)} color="#f87171" />}
+        {sev && sev.warning > 0 && <TelemetryRow label="Warnings" value={String(sev.warning)} color="#fbbf24" />}
+      </div>
+
+      {telemetry.topFindings.length > 0 && (
+        <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid rgba(30,41,59,.9)" }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
+            Already found
+          </span>
+          <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+            {telemetry.topFindings.map((finding, i) => (
+              <span
+                key={`${finding.checkLabel}-${i}`}
+                style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13, lineHeight: 1.45, color: "#cbd5e1" }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: finding.severity === "critical" ? "#f87171" : "#fbbf24",
+                    flexShrink: 0,
+                    marginTop: 6,
+                  }}
+                />
+                {finding.title}
+              </span>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: "#475569", margin: "14px 0 0", lineHeight: 1.5 }}>
+            A sample, not the report. The full set — with the evidence behind each one — is what lands in your portal.
+          </p>
+        </div>
+      )}
+
+      {run.checksTotal === 0 && counted === 0 && (
+        <p style={{ fontSize: 12.5, color: "#475569", margin: "16px 0 0", lineHeight: 1.5 }}>
+          The run is registered but has not reported any checks yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TelemetryRow({ label, value, color = "#e2e8f0" }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+      <span style={{ fontSize: 13, color: "#94a3b8" }}>{label}</span>
+      <span style={{ fontSize: 15, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Password step (#438) ──────────────────────────────────────────────────────
+
+/**
+ * Completes the account inline. The users row already exists — it was created at
+ * consent time — so this attaches the credential and nothing more. The server
+ * hashes with bcrypt; the password never leaves this component in any other
+ * form and is never stored client-side.
+ */
+function PasswordStep({
+  sessionId,
+  email,
+  onComplete,
+}: {
+  sessionId: string;
+  email?: string;
+  onComplete: (portalUrl: string | null) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const tooShort = password.length > 0 && password.length < 8;
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const invalid = password.length < 8 || confirm !== password;
+
+  async function save() {
+    if (invalid) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/public/flow/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, password }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; portalUrl?: string };
+      if (!res.ok) {
+        if (data.error === "already_set") {
+          // A returning buyer whose account predates this order. Not a failure —
+          // their order is complete and their existing password still works.
+          onComplete(data.portalUrl ?? null);
+          return;
+        }
+        setErr(
+          data.error === "email_not_verified"
+            ? "We couldn't confirm your email was verified. Go back a step and request a new code."
+            : data.error === "account_missing"
+              ? "Your account record isn't ready yet. Your payment and scan are safe — contact us and we'll finish this off directly."
+              : "We could not set your password. Please try again.",
+        );
+        return;
+      }
+      onComplete(data.portalUrl ?? null);
+    } catch {
+      setErr("Network error. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 620 }}>
+      <span style={EYEBROW}>Set your password</span>
+      <h3 style={H3}>One last thing — secure your account.</h3>
+      <p style={BODY}>
+        Your account was created against {email ? <strong style={{ color: "#cbd5e1" }}>{email}</strong> : "your work email"} when you
+        granted consent. Set a password now and it's ready to sign into — no setup link to wait for, no email to go hunting through.
+      </p>
+
+      <div style={{ display: "grid", gap: 14, maxWidth: 420 }}>
+        <label>
+          <span style={labelStyle()}>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+            style={fieldStyle()}
+          />
+        </label>
+        <label>
+          <span style={labelStyle()}>Confirm password</span>
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !invalid && !busy) void save();
+            }}
+            autoComplete="new-password"
+            placeholder="Type it again"
+            style={fieldStyle()}
+          />
+        </label>
+      </div>
+
+      {tooShort && <p style={{ fontSize: 13, color: "#fbbf24", margin: "12px 0 0" }}>Passwords must be at least 8 characters.</p>}
+      {mismatch && <p style={{ fontSize: 13, color: "#fbbf24", margin: "12px 0 0" }}>Those two don't match yet.</p>}
+      {err && <p style={{ fontSize: 13.5, lineHeight: 1.5, color: "#fca5a5", margin: "14px 0 0", maxWidth: 480 }}>{err}</p>}
+
+      <div style={{ marginTop: 22 }}>
+        <Button size="lg" onClick={save} disabled={invalid || busy}>
+          {busy ? "Saving…" : "Finish setup"}
+        </Button>
+      </div>
+
+      <p style={FOOTNOTE}>
+        Stored as a salted bcrypt hash — we never keep the password itself, and nobody here can read it back.
+      </p>
     </div>
   );
 }
