@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Footer } from "@/components/Footer";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
+import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 import { Button, Eyebrow, Logo } from "./home/dsComponents";
 import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/quizData";
 import { CHAPTERS } from "./home/chapterData";
@@ -28,8 +29,24 @@ const KEYFRAMES = `
 @keyframes smcSpin{to{transform:rotate(360deg)}}
 @keyframes smcOrb{to{transform:rotate(-360deg)}}
 @keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
+@keyframes smcBlink{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.smc-sheen{display:none}}
 `;
+
+/** Types out admin-authored headline variants (admin-panel/content/hero-headlines)
+ * one character at a time, cycling through the set — replaces the old static
+ * hardcoded h1 (#429). Falls back to a single static headline via the hook
+ * itself if the API returns nothing. */
+function TypewriterHeadline() {
+  const { leadDisplayed, gradientDisplayed } = useTypewriterHeadline();
+  return (
+    <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", maxWidth: 520, minHeight: "2.2em" }}>
+      {leadDisplayed}
+      <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{gradientDisplayed}</span>
+      <span aria-hidden style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
+    </h1>
+  );
+}
 
 type Answers = (number | null)[];
 
@@ -161,10 +178,8 @@ export default function Home() {
           }}
         >
           <div>
-            <Eyebrow>Copilot Readiness — Free Estimate</Eyebrow>
-            <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", maxWidth: 520 }}>
-              Most Tenants Aren't Ready for Copilot. Find Out If Yours Is.
-            </h1>
+            <Eyebrow>Your Estimated Readiness Score</Eyebrow>
+            <TypewriterHeadline />
             <p style={{ fontSize: "clamp(15px,2.3vw,17px)", lineHeight: 1.6, color: "#94a3b8", margin: "0 0 32px", maxWidth: 440 }}>
               Seven questions. No sign-in, no scan, no sales call. The radar fills in as you answer, one pillar at a time.
             </p>
@@ -585,14 +600,9 @@ export default function Home() {
           </div>
         </section>
 
-        <footer style={{ borderTop: "1px solid rgba(30,41,59,.8)" }}>
-          <div style={{ maxWidth: 1160, margin: "0 auto", padding: "40px clamp(16px,4vw,32px)", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center", justifyContent: "space-between" }}>
-            <Logo size="sm" tagline="M365 Architect" onDark />
-            <p style={{ fontSize: 12, color: "#475569", margin: 0, maxWidth: 520 }}>
-              Figures shown on this page are aggregate and illustrative. They describe patterns across comparable tenants and are not a measurement of your environment.
-            </p>
-          </div>
-        </footer>
+        <p style={{ maxWidth: 1160, margin: "0 auto", padding: "0 clamp(16px,4vw,32px) 40px", fontSize: 12, color: "#475569" }}>
+          Figures shown on this page are aggregate and illustrative. They describe patterns across comparable tenants and are not a measurement of your environment.
+        </p>
       </div>
       <Footer />
     </>

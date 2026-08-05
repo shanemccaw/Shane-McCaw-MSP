@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./dsComponents";
 import { PILLARS } from "./quizData";
 import { RadarChart } from "./RadarChart";
+import { useConsentScopes } from "@/hooks/useConsentScopes";
 
 /**
  * Illustrative walkthrough of what starting the Copilot Readiness Assessment
@@ -16,8 +17,6 @@ import { RadarChart } from "./RadarChart";
  */
 
 const STEP_LABELS = ["Details", "Consent", "Payment", "Verify", "Password", "MFA"];
-
-const SCOPES = ["Sites.Read.All", "Directory.Read.All", "Policy.Read.All", "Reports.Read.All", "AuditLog.Read.All"];
 
 const INCLUDES = [
   "Read-only Graph scan of all six pillars",
@@ -75,6 +74,7 @@ export function AssessmentFlow({ fee }: { fee: string }) {
   const [flowStep, setFlowStep] = useState(0);
   const [form, setForm] = useState<FlowForm>({});
   const [scanIdx, setScanIdx] = useState<number | undefined>(undefined);
+  const { scopes, loading: scopesLoading } = useConsentScopes();
 
   const setField = (key: keyof FlowForm, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -164,19 +164,19 @@ export function AssessmentFlow({ fee }: { fee: string }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,170px),1fr))", gap: 14, maxWidth: 520 }}>
               <label>
                 <span style={labelStyle()}>First name</span>
-                <input value={f.first || ""} onChange={(e) => setField("first", e.target.value)} placeholder="Dana" style={fieldStyle()} />
+                <input value={f.first || ""} onChange={(e) => setField("first", e.target.value)} placeholder="First name" style={fieldStyle()} />
               </label>
               <label>
                 <span style={labelStyle()}>Last name</span>
-                <input value={f.last || ""} onChange={(e) => setField("last", e.target.value)} placeholder="Okafor" style={fieldStyle()} />
+                <input value={f.last || ""} onChange={(e) => setField("last", e.target.value)} placeholder="Last name" style={fieldStyle()} />
               </label>
               <label style={{ gridColumn: "1/-1" }}>
                 <span style={labelStyle()}>Company</span>
-                <input value={f.company || ""} onChange={(e) => setField("company", e.target.value)} placeholder="Northwind Logistics" style={fieldStyle()} />
+                <input value={f.company || ""} onChange={(e) => setField("company", e.target.value)} placeholder="Company name" style={fieldStyle()} />
               </label>
               <label style={{ gridColumn: "1/-1" }}>
                 <span style={labelStyle()}>Work email</span>
-                <input type="email" value={f.email || ""} onChange={(e) => setField("email", e.target.value)} placeholder="dana@northwind.com" style={fieldStyle()} />
+                <input type="email" value={f.email || ""} onChange={(e) => setField("email", e.target.value)} placeholder="you@yourcompany.com" style={fieldStyle()} />
               </label>
             </div>
             <div style={{ marginTop: 22 }}>
@@ -217,14 +217,20 @@ export function AssessmentFlow({ fee }: { fee: string }) {
           </p>
           <div style={{ border: "1px solid rgba(30,41,59,.9)", borderRadius: 14, background: "rgba(2,6,23,.5)", padding: "20px 22px", marginBottom: 26 }}>
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Scopes requested</span>
-            <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
-              {SCOPES.map((scope) => (
-                <span key={scope} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "Menlo,ui-monospace,monospace", fontSize: 12.5, color: "#cbd5e1" }}>
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#60a5fa", flexShrink: 0 }} />
-                  {scope}
-                </span>
-              ))}
-            </div>
+            {scopes.length > 0 ? (
+              <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
+                {scopes.map((scope) => (
+                  <span key={scope} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "Menlo,ui-monospace,monospace", fontSize: 12.5, color: "#cbd5e1" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#60a5fa", flexShrink: 0 }} />
+                    {scope}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "#475569", margin: "14px 0 0" }}>
+                {scopesLoading ? "Loading requested scopes…" : "Scope list is temporarily unavailable."}
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
             <Button size="lg" onClick={next}>
