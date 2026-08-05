@@ -1588,7 +1588,16 @@ export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
 // discriminates which transport a check uses; everything downstream of fetch
 // (mapping/severityRules/outputSchema/engines/frequency/scriptPackageId) is
 // already transport-agnostic and stays completely shared between both paths.
-export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell"] as const;
+//
+// 'sharepoint-admin' (#394) is the third transport, added for exactly the same
+// reason: SharePoint Online TENANT administration (tenant-wide sharing
+// capability, per-site storage quota) has no Microsoft Graph equivalent at all —
+// it lives on the SharePoint Online resource
+// (00000003-0000-0ff1-ce00-000000000000) behind certificate-based app-only auth,
+// which api-server's sharepoint-admin.ts already implements. Checks on this
+// transport carry `spOperation` and nothing else; endpoint/method/fanOut*/ps*
+// are unused, the same way they are for 'powershell'.
+export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin"] as const;
 export type MonitorCheckExecutorType = typeof MONITOR_CHECK_EXECUTOR_TYPES[number];
 
 export const monitorChecksTable = pgTable("monitor_checks", {
@@ -1656,6 +1665,17 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   psCmdletKey: text("ps_cmdlet_key"),
   /** Static params merged with resolved tenant-identity context ({organization}/{tenantId} placeholders) at dispatch time — fill values only, never control flow. NULL unless executorType = 'powershell'. */
   psParams: jsonb("ps_params").$type<Record<string, unknown>>(),
+  // ── SharePoint-admin-backed execution (additive, NULL for every other check) ──
+  /**
+   * Identifier resolved server-side against a code-owned operation registry
+   * (SHAREPOINT_ADMIN_OPERATIONS in monitor-executor.ts) — an identifier only,
+   * never a URL and never a script, the same contract ps_cmdlet_key and
+   * fan_out_item_normalizer already follow. The operation decides which
+   * sharepoint-admin.ts function runs; the tenant it runs against is resolved
+   * from the tenant's own identity at dispatch time, never stored here.
+   * NULL unless executorType = 'sharepoint-admin'.
+   */
+  spOperation: text("sp_operation"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),

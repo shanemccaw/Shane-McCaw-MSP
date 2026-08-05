@@ -18,6 +18,7 @@ import {
   parseCsvReport,
   isCsvReportResponse,
   appendQueryParams,
+  sharePointPrefixFromDomain,
 } from "../monitor-executor";
 import type { SeverityRule, MappingRule } from "../monitor-executor";
 import { logger } from "../logger";
@@ -73,6 +74,25 @@ vi.mock("../graph", () => ({
     }
   },
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
+  // Best-effort initial-domain lookup the sharepoint-admin executor falls back to
+  // when tenants.domain is absent (the db mock returns no rows). Defaults to null
+  // — "no initial domain on file" — so tests must opt in to a resolvable prefix.
+  getInitialDomainForTenant: vi.fn().mockResolvedValue(null),
+}));
+
+// The real sharepoint-admin.ts makes live certificate-authenticated CSOM calls;
+// only its shape matters here. SharingCapability is re-declared with the real
+// enum's values (0..3, per Microsoft's SharingCapability enum) because
+// monitor-executor derives externalSharing/anonymousSharing booleans from it.
+vi.mock("../sharepoint-admin", () => ({
+  getTenantSharingCapability: vi.fn(),
+  sharePointAdminCredentialsPresent: vi.fn().mockReturnValue(true),
+  SharingCapability: {
+    Disabled: 0,
+    ExternalUserSharingOnly: 1,
+    ExternalUserAndGuestSharing: 2,
+    ExistingExternalUserSharingOnly: 3,
+  },
 }));
 
 vi.mock("../ps-execution-client", () => ({
@@ -96,9 +116,10 @@ vi.mock("../logger", () => {
   return { logger: base };
 });
 
-import { graphFetchForTenant } from "../graph";
+import { graphFetchForTenant, getInitialDomainForTenant } from "../graph";
 import { ConsentRevokedError, LicenseGapError } from "../graph";
 import { callPsExecution, PsExecutionError } from "../ps-execution-client";
+import { getTenantSharingCapability, sharePointAdminCredentialsPresent } from "../sharepoint-admin";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
 
@@ -670,6 +691,7 @@ describe("executeMonitorCheck", () => {
     executorType: "graph" as const,
     psCmdletKey: null,
     psParams: null,
+    spOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -935,6 +957,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     executorType: "graph" as const,
     psCmdletKey: null,
     psParams: null,
+    spOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1171,6 +1194,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     executorType: "powershell" as const,
     psCmdletKey: "get-connection-info",
     psParams: { Organization: "{organization}" } as Record<string, unknown>,
+    spOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1297,6 +1321,201 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
 
     expect(result.status).toBe("license_gap");
     expect(result.licenseFeature).toBe("Microsoft Purview sensitivity labels");
+  });
+});
+
+describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepoint-admin', #394)", () => {
+  const mockSharingCapability = getTenantSharingCapability as Mock;
+  const mockCredsPresent = sharePointAdminCredentialsPresent as Mock;
+  const mockInitialDomain = getInitialDomainForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCredsPresent.mockReturnValue(true);
+    // The @workspace/db mock returns no tenants row, so the executor falls back
+    // to the Graph /organization initial-domain lookup for the prefix.
+    mockInitialDomain.mockResolvedValue("contoso.onmicrosoft.com");
+  });
+
+  const spCheck = {
+    id: 21,
+    checkId: "uuid-sp",
+    key: "sharepoint:tenant-sharing-capability",
+    label: "SharePoint Tenant Sharing Capability",
+    description: null,
+    endpoint: "(unused — executorType=sharepoint-admin drives dispatch, not endpoint)",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: [] as string[],
+    mapping: [
+      { sourceField: "sharingCapabilityName", targetField: "sharingCapabilityName", transform: "first" },
+      { sourceField: "sharingCapability", targetField: "sharingCapability", transform: "first" },
+      { sourceField: "externalSharingEnabled", targetField: "externalSharingEnabled", transform: "first" },
+      { sourceField: "anonymousSharingEnabled", targetField: "anonymousSharingEnabled", transform: "first" },
+    ] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [
+      { expression: "anonymousSharingEnabled == true", severity: "warning", label: "Anyone links are enabled tenant-wide" },
+    ] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "sharepoint-admin" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: "tenant-sharing-capability",
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it("dispatches to sharepoint-admin.ts (never Graph, never the PS container) with a real tenant ref", async () => {
+    mockSharingCapability.mockResolvedValueOnce(2); // ExternalUserAndGuestSharing
+
+    const result = await executeMonitorCheck({
+      check: spCheck,
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(mockSharingCapability).toHaveBeenCalledWith({
+      aadTenantId: "tenant-guid-sp",
+      sharePointTenantPrefix: "contoso",
+    });
+    expect(graphFetchForTenant).not.toHaveBeenCalled();
+    expect(callPsExecution).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.pageCount).toBe(1);
+    expect(result.extractedProperties.sharingCapability).toBe(2);
+    expect(result.extractedProperties.sharingCapabilityName).toBe("ExternalUserAndGuestSharing");
+    expect(result.extractedProperties.externalSharingEnabled).toBe(true);
+    expect(result.extractedProperties.anonymousSharingEnabled).toBe(true);
+    expect(result.severityMatched).toBe("warning");
+  });
+
+  it("Disabled sharing reads as no external and no anonymous sharing, and matches no severity rule", async () => {
+    mockSharingCapability.mockResolvedValueOnce(0); // Disabled
+
+    const result = await executeMonitorCheck({
+      check: spCheck,
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-2",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.extractedProperties.sharingCapabilityName).toBe("Disabled");
+    expect(result.extractedProperties.externalSharingEnabled).toBe(false);
+    expect(result.extractedProperties.anonymousSharingEnabled).toBe(false);
+    expect(result.severityMatched).toBeNull();
+  });
+
+  it("a check whose executorType is still 'graph' never reaches this path (existing checks unaffected)", async () => {
+    (graphFetchForTenant as Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
+      headers: { get: (h: string) => (h === "content-type" ? "application/json" : null) },
+    });
+
+    const result = await executeMonitorCheck({
+      check: { ...spCheck, executorType: "graph" as const, endpoint: "/sites/root" },
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-3",
+      skipIdempotency: true,
+    });
+
+    expect(graphFetchForTenant).toHaveBeenCalled();
+    expect(mockSharingCapability).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+  });
+
+  it("an sp_operation outside the code-owned registry is a hard error, not a silent no-op", async () => {
+    const result = await executeMonitorCheck({
+      check: { ...spCheck, spOperation: "delete-everything" },
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-4",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("delete-everything");
+    expect(mockSharingCapability).not.toHaveBeenCalled();
+  });
+
+  it("missing SharePoint certificate credentials fail before any tenant work, naming the real env vars", async () => {
+    mockCredsPresent.mockReturnValue(false);
+
+    const result = await executeMonitorCheck({
+      check: spCheck,
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-5",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("MT_APP_CERT_PRIVATE_KEY");
+    expect(mockSharingCapability).not.toHaveBeenCalled();
+  });
+
+  it("refuses to guess a SharePoint host when no initial .onmicrosoft.com domain is known", async () => {
+    mockInitialDomain.mockResolvedValue("contoso.com"); // vanity domain, not the SharePoint prefix
+
+    const result = await executeMonitorCheck({
+      check: spCheck,
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-6",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("SharePoint tenant prefix");
+    expect(mockSharingCapability).not.toHaveBeenCalled();
+  });
+
+  it("a SharePoint auth failure never flips the tenant's Graph consent state", async () => {
+    const { markTenantConsentRevoked } = await import("../graph");
+    mockSharingCapability.mockRejectedValueOnce(
+      new Error("SharePoint app-only auth failed for tenant tenant-guid-sp (status 401): unsupported app only token"),
+    );
+
+    const result = await executeMonitorCheck({
+      check: spCheck,
+      tenantId: "tenant-guid-sp",
+      triggerId: "trigger-7",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("401");
+    expect(markTenantConsentRevoked).not.toHaveBeenCalled();
+  });
+});
+
+describe("sharePointPrefixFromDomain", () => {
+  it("takes the prefix of a real initial domain", () => {
+    expect(sharePointPrefixFromDomain("mccawsoft2.onmicrosoft.com")).toBe("mccawsoft2");
+    expect(sharePointPrefixFromDomain("  Contoso.OnMicrosoft.com ")).toBe("contoso");
+  });
+
+  it("refuses vanity, mail and missing domains rather than guessing a host", () => {
+    expect(sharePointPrefixFromDomain("contoso.com")).toBeNull();
+    expect(sharePointPrefixFromDomain("contoso.mail.onmicrosoft.com")).toBeNull();
+    expect(sharePointPrefixFromDomain(null)).toBeNull();
+    expect(sharePointPrefixFromDomain("")).toBeNull();
   });
 });
 

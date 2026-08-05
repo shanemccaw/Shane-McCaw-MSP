@@ -197,6 +197,7 @@ const baseCheck = {
   executorType: "graph" as const,
   psCmdletKey: null,
   psParams: null,
+  spOperation: null,
   schemaVersion: 1,
   status: "active" as const,
   createdByAdminId: null,

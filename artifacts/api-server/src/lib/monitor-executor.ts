@@ -23,8 +23,14 @@ import {
   type MonitoringPackage,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked } from "./graph";
+import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
+import {
+  getTenantSharingCapability,
+  sharePointAdminCredentialsPresent,
+  SharingCapability,
+  type SharePointTenantRef,
+} from "./sharepoint-admin";
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
@@ -957,6 +963,223 @@ async function runPowerShellCheck(opts: {
   };
 }
 
+// ── SharePoint-admin-backed check executor (#394) ─────────────────────────────
+//
+// Runs a check whose data lives on the SharePoint Online TENANT administration
+// surface, which Microsoft Graph does not expose at all — tenant-wide external
+// sharing capability is read via CSOM ProcessQuery against
+// `{prefix}-admin.sharepoint.com` with a certificate-based app-only token, all
+// of which sharepoint-admin.ts already implements and this branch only calls.
+//
+// Modeled on runPowerShellCheck exactly: a distinct execution path that shares
+// everything downstream of `items` (mapping -> schema -> severity ->
+// persistence) and deliberately never touches graphFetchForTenant, so it is
+// structurally unable to throw ConsentRevokedError. That matters more here than
+// it does for PowerShell: SharePoint consent (Sites.FullControl.All on the
+// "Office 365 SharePoint Online" resource) is granted and tracked SEPARATELY
+// from Graph consent, so a SharePoint 401 must never be allowed to flip a
+// tenant's Graph consent state — sharepoint-admin.ts's SharePointAuthError is
+// non-DB-mutating by design and reaches the generic "error" branch below.
+
+/**
+ * A code-owned SharePoint-admin operation: receives the resolved tenant ref and
+ * returns items in the same shape the Graph path produces, so applyMapping and
+ * everything after it runs unmodified.
+ */
+export type SharePointAdminOperation = (ref: SharePointTenantRef) => Promise<Record<string, unknown>[]>;
+
+/** Human-readable names for the SharingCapability enum, kept explicit rather than relying on TS reverse-mapping so an unrecognised value degrades to its number instead of `undefined`. */
+const SHARING_CAPABILITY_NAMES: Record<number, string> = {
+  [SharingCapability.Disabled]: "Disabled",
+  [SharingCapability.ExternalUserSharingOnly]: "ExternalUserSharingOnly",
+  [SharingCapability.ExternalUserAndGuestSharing]: "ExternalUserAndGuestSharing",
+  [SharingCapability.ExistingExternalUserSharingOnly]: "ExistingExternalUserSharingOnly",
+};
+
+/**
+ * The code-owned operation registry. `monitor_checks.sp_operation` stores a KEY
+ * into this table and nothing else — never a URL, never a script — the same
+ * contract `ps_cmdlet_key` and `fan_out_item_normalizer` follow. An unknown key
+ * is a hard error at execution time, not a silent no-op.
+ *
+ * Each operation returns a ONE-item array rather than a bare value, because a
+ * tenant-wide setting IS a single fact and applyMapping/properties are written
+ * against an item list. The derived booleans are computed here, next to the
+ * enum they come from, rather than left to condition-grammar arithmetic over a
+ * bare number in a stored severity rule.
+ */
+export const SHAREPOINT_ADMIN_OPERATIONS: Record<string, SharePointAdminOperation> = {
+  "tenant-sharing-capability": async (ref) => {
+    const capability = await getTenantSharingCapability(ref);
+    return [{
+      sharingCapability: capability,
+      sharingCapabilityName: SHARING_CAPABILITY_NAMES[capability] ?? String(capability),
+      // Anything other than Disabled permits sharing with people outside the tenant.
+      externalSharingEnabled: capability !== SharingCapability.Disabled,
+      // Only ExternalUserAndGuestSharing ("Anyone") permits sign-in-free anonymous links.
+      anonymousSharingEnabled: capability === SharingCapability.ExternalUserAndGuestSharing,
+    }];
+  },
+};
+
+function resolveSharePointAdminOperation(key: string | null | undefined): SharePointAdminOperation {
+  const operation = key ? SHAREPOINT_ADMIN_OPERATIONS[key] : undefined;
+  if (!operation) {
+    throw new Error(
+      `monitor check declares sp_operation "${key ?? "(null)"}", which is not in the code-owned registry ` +
+      `(${Object.keys(SHAREPOINT_ADMIN_OPERATIONS).join(", ") || "empty"})`,
+    );
+  }
+  return operation;
+}
+
+/**
+ * The tenant's SharePoint name prefix (the `contoso` in contoso.sharepoint.com),
+ * derived from its INITIAL `.onmicrosoft.com` domain — which is exactly what
+ * `tenants.domain` holds: consent.ts stamps it from Graph's
+ * `/organization` verifiedDomains entry with `isInitial: true` (#238), and
+ * scripts/backfill-tenant-domain.ts backfills the same value. Microsoft derives
+ * `{prefix}.sharepoint.com` from that same initial prefix when a tenant is
+ * created, so the two agree.
+ *
+ * A custom/vanity domain (contoso.com) is deliberately NOT accepted: its prefix
+ * is not the SharePoint hostname, and guessing would build a plausible-looking
+ * host for a tenant that never had one — the same fail-loud-not-silent rule the
+ * endpoint placeholders follow.
+ */
+const INITIAL_DOMAIN_RE = /^([a-z0-9][a-z0-9-]*)\.onmicrosoft\.com$/i;
+
+export function sharePointPrefixFromDomain(domain: string | null | undefined): string | null {
+  if (!domain) return null;
+  const match = INITIAL_DOMAIN_RE.exec(domain.trim());
+  return match ? match[1]!.toLowerCase() : null;
+}
+
+/**
+ * Builds the SharePointTenantRef sharepoint-admin.ts needs from the tenant's own
+ * stored identity. `tenants.domain` is the primary source; when it is missing or
+ * is a vanity domain, one best-effort Graph `/organization` lookup fills it in
+ * (getInitialDomainForTenant swallows every failure and returns null, so this
+ * cannot throw ConsentRevokedError into the SharePoint path). When neither
+ * source yields a real initial domain this fails explicitly, naming what it
+ * found, rather than fabricating a host.
+ */
+async function resolveSharePointTenantRef(tenantId: string): Promise<SharePointTenantRef> {
+  const [tenantRow] = await db
+    .select({ domain: tenantsTable.domain })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+
+  let prefix = sharePointPrefixFromDomain(tenantRow?.domain);
+  if (!prefix) {
+    prefix = sharePointPrefixFromDomain(await getInitialDomainForTenant(tenantId));
+  }
+  if (!prefix) {
+    throw new Error(
+      `cannot resolve a SharePoint tenant prefix for tenant ${tenantId}: ` +
+      `tenants.domain is ${tenantRow?.domain ? `"${tenantRow.domain}" (not an .onmicrosoft.com initial domain)` : "not set"} ` +
+      `and the Graph /organization lookup returned no initial domain`,
+    );
+  }
+  return { aadTenantId: tenantId, sharePointTenantPrefix: prefix };
+}
+
+async function runSharePointAdminCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+
+  const operation = resolveSharePointAdminOperation(check.spOperation);
+
+  // Platform-wide credential guard, checked before any tenant work: the
+  // SharePoint resource requires a CERTIFICATE on the MT app registration (a
+  // client secret is rejected outright), so a missing cert is a platform
+  // configuration fault, not a customer's tenant being misconfigured. Named
+  // explicitly so the persisted errorMessage says which env vars are absent
+  // instead of surfacing an opaque 401 later.
+  if (!sharePointAdminCredentialsPresent()) {
+    throw new Error(
+      `monitor check ${check.key} needs SharePoint app-only credentials — set MT_APP_CLIENT_ID, ` +
+      `MT_APP_CERT_PRIVATE_KEY and MT_APP_CERT_THUMBPRINT (a certificate on the multi-tenant app registration)`,
+    );
+  }
+
+  const ref = await resolveSharePointTenantRef(tenantId);
+  const items = await operation(ref);
+
+  // Same downstream contract as the Graph path: mapping/properties -> schema
+  // validation -> severity classification -> persistence, all unmodified.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(items, mapping, properties);
+
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: SharePoint-admin check output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatched = classifySeverity(severityRules, extracted);
+
+  // One CSOM round trip, one answer — there is no paging concept here, so
+  // pageCount is always 1 (same reasoning as the PowerShell path).
+  const pageCount = 1;
+
+  // rawResponse is the operation's own returned items, NOT the CSOM envelope:
+  // sharepoint-admin.ts parses ProcessQuery's array internally and returns the
+  // typed value, so the items ARE the rawest thing this layer legitimately has.
+  // Recording the operation and host alongside them keeps the profile row
+  // self-describing rather than implying a wire capture it doesn't hold.
+  const rawResponse: Record<string, unknown> = {
+    spOperation: check.spOperation,
+    sharePointTenantPrefix: ref.sharePointTenantPrefix,
+    items,
+  };
+
+  const [row] = await db
+    .insert(tenantMonitorProfilesTable)
+    .values({
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "ok",
+      rawResponse,
+      extractedProperties: extracted,
+      severityMatched,
+      itemCount: items.length,
+      pageCount,
+    })
+    .onConflictDoNothing()
+    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+  log.info(
+    { checkKey: check.key, tenantId, spOperation: check.spOperation, itemCount: items.length },
+    "monitor-executor: SharePoint-admin-backed check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status: "ok",
+    extractedProperties: extracted,
+    severityMatched,
+    itemCount: items.length,
+    pageCount,
+    profileId: row?.profileId,
+    ...(opts.includeItems ? { items } : {}),
+  };
+}
+
 // ── Fan-out (group-scoped) check executor ─────────────────────────────────────
 //
 // Runs a check whose target endpoint has no tenant-wide form and must instead be
@@ -1323,6 +1546,16 @@ export async function executeMonitorCheck(opts: {
     // construction (executorType defaults to 'graph' for every existing check).
     if (check.executorType === "powershell") {
       return await runPowerShellCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+    }
+
+    // SharePoint-admin-backed checks (executorType = 'sharepoint-admin', #394)
+    // take the same kind of separate, Graph-free path, for the same reason: the
+    // SharePoint Online tenant-administration surface has no Graph equivalent.
+    // Only a check whose row explicitly carries this executorType can reach it —
+    // every 'graph' (the column default, i.e. every pre-existing check) and
+    // 'powershell' check falls through exactly as before.
+    if (check.executorType === "sharepoint-admin") {
+      return await runSharePointAdminCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
     }
 
     // Fan-out (group-scoped) checks take an entirely separate, additive path.
