@@ -11,8 +11,22 @@
  * and `rotate(Ndeg) translate(0,-290px)`. Sizing the arm to its label instead
  * makes `rotate()` pivot on the label's own centre, which silently pushes every
  * satellite to a different radius and tilts the ring. The label is a fixed
- * 380×52 pulled back by half its own box (`margin-left:-190px`,
- * `margin-top:-26px`) and counter-rotated so it stays upright.
+ * 380px-WIDE box pulled back by half that width (`margin-left:-190px`) and
+ * counter-rotated so it stays upright. Only the width is load-bearing for the
+ * ring geometry — the arm's rotation math never reads the label's height, so
+ * the height is free to grow with wrapped content (see LONG FINDING TEXT below).
+ *
+ * LONG FINDING TEXT (#412)
+ * -------------------------
+ * `satelliteFinding` is a real `severity_rules[].label` (#408) — a full
+ * researched sentence, not the short placeholder this scene was built against.
+ * The label box's WIDTH stays the fixed 380px above (that is what keeps every
+ * satellite clear of the orb and of the frame edge regardless of content), but
+ * the finding line itself wraps within it instead of running past it on
+ * `white-space:nowrap` — only the short pillar eyebrow (SECURITY, HEALTH, …)
+ * stays single-line. The box's height is a `min-height` pulled back by half of
+ * itself, not a fixed height: short findings still centre correctly, and long
+ * ones grow downward rather than clipping or forcing the box wider.
  *
  * The ring rotates -26° → 0° once during the reveal and then settles. It never
  * spins continuously — this is a readout, not an ornament.
@@ -184,12 +198,11 @@ function Satellite({
         style={{
           width: LABEL_W,
           marginLeft: -LABEL_W / 2,
-          height: LABEL_H,
+          minHeight: LABEL_H,
           marginTop: -LABEL_H / 2,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          whiteSpace: "nowrap",
           textAlign: "center",
           transform: `rotate(${-angle}deg) rotate(${counterRotation}deg)`,
         }}
@@ -206,6 +219,7 @@ function Satellite({
             alignItems: "center",
             justifyContent: "center",
             gap: 5,
+            whiteSpace: "nowrap",
           }}
         >
           <PillarGlyph pillar={pillar.key} size={13} color="currentColor" />
@@ -218,10 +232,15 @@ function Satellite({
             letterSpacing: "-0.01em",
             color: pillar.satelliteFinding ? INK.headingDark : INK.deemphasised,
             lineHeight: 1.3,
+            whiteSpace: "normal",
+            overflowWrap: "break-word",
+            wordBreak: "break-word",
           }}
         >
           {/* An em dash rather than an invented finding: the scan genuinely
-              returned nothing quotable for this pillar. */}
+              returned nothing quotable for this pillar. A real finding wraps
+              within the fixed-width box above instead of running past it — see
+              LONG FINDING TEXT in the file header. */}
           {pillar.satelliteFinding ?? "—"}
         </div>
       </div>
