@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "diagnose-sharepoint-cert": "tsx ./src/diagnose-sharepoint-cert.ts",
     "generate:og": "node ../scripts/generate-og-image.mjs",
     "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
     "migrate-prod": "tsx ./src/migrate-prod.ts",
