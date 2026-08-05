@@ -50,7 +50,7 @@ import {
   verdictCount,
   verdictStageScale,
 } from "./revealMath.ts";
-import { JourneyUnavailable, PillarGlyph, ScrollCue } from "./JourneyPrimitives";
+import { FindingChip, JourneyUnavailable, PillarGlyph, ScrollCue } from "./JourneyPrimitives";
 
 const STAGE_W = 940;
 const STAGE_H = 790;
@@ -202,6 +202,7 @@ function Satellite({
           marginTop: -LABEL_H / 2,
           display: "flex",
           flexDirection: "column",
+          alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
           transform: `rotate(${-angle}deg) rotate(${counterRotation}deg)`,
@@ -225,24 +226,12 @@ function Satellite({
           <PillarGlyph pillar={pillar.key} size={13} color="currentColor" />
           <span>{pillar.label}</span>
         </div>
-        <div
-          style={{
-            fontSize: 19,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-            color: pillar.satelliteFinding ? INK.headingDark : INK.deemphasised,
-            lineHeight: 1.3,
-            whiteSpace: "normal",
-            overflowWrap: "break-word",
-            wordBreak: "break-word",
-          }}
-        >
-          {/* An em dash rather than an invented finding: the scan genuinely
-              returned nothing quotable for this pillar. A real finding wraps
-              within the fixed-width box above instead of running past it — see
-              LONG FINDING TEXT in the file header. */}
-          {pillar.satelliteFinding ?? "—"}
-        </div>
+        {/* Same chip Scene 0's scan overlay uses for this exact finding (#412,
+            ported #417) — dark rounded-rect pill, bullet marker, real wrapping
+            bounded to the fixed LABEL_W box above. An em dash rather than an
+            invented finding: the scan genuinely returned nothing quotable for
+            this pillar. */}
+        <FindingChip color={pillar.primary} text={pillar.satelliteFinding ?? "—"} />
       </div>
     </div>
   );

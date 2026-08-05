@@ -345,6 +345,58 @@ export function ScoreDelta({
   );
 }
 
+/**
+ * The dark rounded-rect finding chip — a bullet marker beside real wrapping
+ * text, bounded to its container's width rather than `white-space:nowrap`
+ * (which lets a long finding grow past its anchor). Built for Scene 0's
+ * scan-overlay clusters (#412) and reused verbatim by Scene 1's satellites
+ * (#417) so both screens present the same finding the same way.
+ */
+export function FindingChip({
+  color,
+  text,
+  opacity = 1,
+}: {
+  color: string;
+  text: string;
+  opacity?: number;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        background: "rgba(15,23,42,.92)",
+        // 0x59 ≈ 35% — the border tints toward the pillar without becoming an outline.
+        border: `1px solid ${color}59`,
+        borderRadius: RADIUS.pill,
+        padding: "4px 10px",
+        transition: "opacity 500ms",
+        opacity,
+      }}
+    >
+      <span
+        style={{ width: 4, height: 4, borderRadius: "50%", background: color, flex: "none", marginTop: 1 }}
+      />
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: "#e2e8f0",
+          whiteSpace: "normal",
+          overflowWrap: "break-word",
+          wordBreak: "break-word",
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
 /** The scroll cue. Animation name is `cj-cue-drop`, silenced by reduced motion. */
 export function ScrollCue({ label, align = "center" }: { label: string; align?: "center" | "start" }) {
   return (

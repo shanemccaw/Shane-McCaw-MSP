@@ -29,7 +29,7 @@
 import { useEffect, useState } from "react";
 
 import type { JourneyPillarView } from "./journeyModel.ts";
-import { BRAND, INK, PILLARS, PILLAR_KEYS, RADIUS, TABULAR } from "./journeyTokens.ts";
+import { BRAND, INK, PILLARS, PILLAR_KEYS, TABULAR } from "./journeyTokens.ts";
 import {
   RADAR_INNER_R,
   RADAR_OUTER_R,
@@ -41,7 +41,7 @@ import {
   radarWedgeOpacity,
   radarWedgePath,
 } from "./revealMath.ts";
-import { PillarGlyph } from "./JourneyPrimitives";
+import { FindingChip, PillarGlyph } from "./JourneyPrimitives";
 
 /** The design's 1000×700 stage. Everything below is positioned inside it. */
 const STAGE_W = 1000;
@@ -98,52 +98,6 @@ function WedgeGradient({ index, color }: { index: number; color: string }) {
       <stop offset="0.78" stopColor={color} stopOpacity="0.42" />
       <stop offset="1" stopColor={color} stopOpacity="0.06" />
     </radialGradient>
-  );
-}
-
-/**
- * A chip's text is a real finding/check name (#412) — some of them, since
- * severity_rules labels became finding titles (#408), are full sentences. The
- * chip stays bounded to the cluster's own CHIP_WIDTH (below) with real
- * wrapping rather than `white-space:nowrap`, which let a long chip grow past
- * its anchor and reach into the centre orb or off the stage edge. A short
- * chip (e.g. "No critical or warning findings.") still renders as a single
- * centred line inside the same box.
- */
-function ScanChip({ color, text, opacity }: { color: string; text: string; opacity: number }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        maxWidth: "100%",
-        boxSizing: "border-box",
-        background: "rgba(15,23,42,.92)",
-        // 0x59 ≈ 35% — the border tints toward the pillar without becoming an outline.
-        border: `1px solid ${color}59`,
-        borderRadius: RADIUS.pill,
-        padding: "4px 10px",
-        transition: "opacity 500ms",
-        opacity,
-      }}
-    >
-      <span
-        style={{ width: 4, height: 4, borderRadius: "50%", background: color, flex: "none", marginTop: 1 }}
-      />
-      <span
-        style={{
-          fontSize: 10.5,
-          fontWeight: 600,
-          color: "#e2e8f0",
-          whiteSpace: "normal",
-          overflowWrap: "break-word",
-          wordBreak: "break-word",
-        }}
-      >
-        {text}
-      </span>
-    </div>
   );
 }
 
@@ -557,7 +511,7 @@ export function RevealScanOverlay({
                   </span>
                 </div>
                 {chips.map((chip, chipIndex) => (
-                  <ScanChip
+                  <FindingChip
                     key={chip}
                     color={identity.primary}
                     text={chip}
