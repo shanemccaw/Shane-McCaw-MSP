@@ -170,6 +170,7 @@ export default defineConfig({
       "src/lib/__tests__/sharepoint-sharing.test.ts",
       "src/lib/chat-content-blocks.test.ts",
       "src/lib/shanebot-persona.test.ts",
+      "src/lib/health-display-denominator-413.test.ts",
     ],
     coverage: {
       provider: "v8",
