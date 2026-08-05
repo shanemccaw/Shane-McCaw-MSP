@@ -72,11 +72,25 @@ function licenseGapFeatureOf(result: CheckResult): string {
   return typeof f === "string" && f.trim() ? f : "a required Microsoft 365 add-on";
 }
 
-function buildFindingTitle(result: CheckResult): string {
+/**
+ * The finding's headline — what the customer actually reads on the Reveal's
+ * pillar satellites, the report, and every findings list.
+ *
+ * Exported for its own test: this function is the entire visible payoff of the
+ * severity_rules work, and #408 went unnoticed by a green suite because nothing
+ * exercised the real one — the pre-existing coverage reimplements its branches
+ * inline and asserts against that copy.
+ */
+export function buildFindingTitle(result: CheckResult): string {
   if (result.status === "consent_revoked") return "Consent Revoked — Check could not run";
   if (result.status === "error") return `Check error: ${result.checkKey}`;
   if (result.status === "requires_script") return "Requires customer-side script";
   if (result.status === "license_gap") return `Not checked — requires ${licenseGapFeatureOf(result)}`;
+  // The matched rule's OWN sentence, whenever it has one (#408). Everything
+  // below it is a fallback for a rule that genuinely carries no label — the
+  // generic band text is the last resort, not the normal case it used to be.
+  const label = result.severityLabel?.trim();
+  if (label) return label;
   if (result.severityMatched) return `${result.severityMatched} finding detected`;
   if (result.status === "partial") return "Partial coverage — some items could not be scanned";
   return "Check passed";

@@ -292,7 +292,8 @@ router.post("/admin/monitor-checks/:key/ingest-script-output", requireAdmin, asy
     extracted._schemaValid = valid;
     if (!valid) extracted._schemaErrors = errors;
 
-    const severityMatched = classifySeverity((check.severityRules ?? []) as SeverityRule[], extracted);
+    const severityMatch = classifySeverity((check.severityRules ?? []) as SeverityRule[], extracted);
+    const severityMatched = severityMatch?.severity ?? null;
     const idempotencyKey = `${tenantId}:${key}:${triggerId}`;
 
     await db
@@ -313,7 +314,10 @@ router.post("/admin/monitor-checks/:key/ingest-script-output", requireAdmin, asy
       })
       .onConflictDoNothing();
 
-    res.json({ ingested: true, valid, errors, severityMatched });
+    // severityLabel is what the matched rule actually says (#408) — the same
+    // text the finding will be titled with, surfaced here so an operator
+    // testing a script's output sees the real sentence, not just the band.
+    res.json({ ingested: true, valid, errors, severityMatched, severityLabel: severityMatch?.label ?? null });
   } catch (err) {
     log.error({ err }, "admin-monitor-checks: ingest-script-output failed");
     res.status(500).json({ error: "Failed to ingest script output" });

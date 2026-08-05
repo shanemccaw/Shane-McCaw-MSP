@@ -219,6 +219,17 @@ export interface CheckResult {
   status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
+  /**
+   * The matched severity rule's own label — the specific sentence that rule was
+   * written to say — or null when the rule carries none (or nothing matched).
+   *
+   * Carried alongside `severityMatched` rather than replacing it because they
+   * answer different questions: the band drives scoring/colour, the label is
+   * the customer-facing text. Before #408 only the band survived
+   * `classifySeverity`, so every finding this check produced was titled
+   * "{severity} finding detected" no matter how specific its rule was.
+   */
+  severityLabel?: string | null;
   errorMessage?: string;
   itemCount: number;
   pageCount: number;
@@ -656,18 +667,66 @@ export function validateOutputShape(
 
 // ── Severity classifier ───────────────────────────────────────────────────────
 
+/**
+ * What a matched severity rule actually says: its band AND its own label.
+ *
+ * This is an object rather than the bare severity string it used to be (#408).
+ * `severity_rules[].label` is where every specific, researched sentence about
+ * what a match MEANS is authored ("No sensitivity labels configured — Copilot
+ * responses can surface unclassified content"), and returning only
+ * `rule.severity` discarded all of it at the one point where the matching rule
+ * is still known. Downstream had nothing left to say but a generic
+ * "{severity} finding detected", which is what every customer saw.
+ *
+ * `label` is `null` when the matched rule genuinely has none — `label` is
+ * optional in the stored jsonb, so "matched, but says nothing beyond its band"
+ * is a real state and callers must still be able to fall back honestly.
+ */
+export interface SeverityMatch {
+  severity: string;
+  label: string | null;
+}
+
 export function classifySeverity(
   severityRules: SeverityRule[],
   data: Record<string, unknown>,
-): string | null {
+): SeverityMatch | null {
   for (const rule of severityRules) {
     try {
-      if (evalConditionGrammar(rule.expression, data)) return rule.severity;
+      if (evalConditionGrammar(rule.expression, data)) {
+        return { severity: rule.severity, label: rule.label?.trim() || null };
+      }
     } catch {
       // skip malformed rules
     }
   }
   return null;
+}
+
+/**
+ * Recovers the label behind an ALREADY-PERSISTED severity band.
+ *
+ * `tenant_monitor_profiles` stores the band a check matched and the extracted
+ * properties it was matched against, but not the label. A result served from
+ * the idempotency cache (a re-run under the same triggerId — #339 showed that
+ * really happens) would therefore lose the label the fresh path now carries and
+ * silently fall back to the generic finding title #408 exists to kill.
+ *
+ * Re-running the check's own rules over the row's own extracted properties is
+ * deterministic, so this needs no new column. The band guard is what keeps it
+ * honest: if the stored band and the re-derived one disagree, the rules have
+ * been edited since the row was written, and the label in front of us is NOT
+ * the one that actually matched — so say nothing rather than re-title a
+ * historical result with newer text.
+ */
+function labelForStoredSeverity(
+  severityRules: SeverityRule[],
+  extracted: Record<string, unknown>,
+  storedSeverity: string | null,
+): string | null {
+  if (!storedSeverity) return null;
+  const match = classifySeverity(severityRules, extracted);
+  return match && match.severity === storedSeverity ? match.label : null;
 }
 
 // ── Nested-array helpers (shared by the array-shaped transforms) ──────────────
@@ -1438,7 +1497,7 @@ async function runPowerShellCheck(opts: {
   }
 
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
-  const severityMatched = classifySeverity(severityRules, extracted);
+  const severityMatch = classifySeverity(severityRules, extracted);
 
   // The container's contract (#210) is one synchronous request/response — no
   // @odata.nextLink, no CSV — so pageCount is always 1.
@@ -1455,7 +1514,7 @@ async function runPowerShellCheck(opts: {
       status: "ok",
       rawResponse: rawResponse as Record<string, unknown>,
       extractedProperties: extracted,
-      severityMatched,
+      severityMatched: severityMatch?.severity ?? null,
       itemCount: items.length,
       pageCount,
     })
@@ -1471,7 +1530,8 @@ async function runPowerShellCheck(opts: {
     checkKey: check.key,
     status: "ok",
     extractedProperties: extracted,
-    severityMatched,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
     profileId: row?.profileId,
@@ -1644,7 +1704,7 @@ async function runSharePointAdminCheck(opts: {
   }
 
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
-  const severityMatched = classifySeverity(severityRules, extracted);
+  const severityMatch = classifySeverity(severityRules, extracted);
 
   // One CSOM round trip, one answer — there is no paging concept here, so
   // pageCount is always 1 (same reasoning as the PowerShell path).
@@ -1672,7 +1732,7 @@ async function runSharePointAdminCheck(opts: {
       status: "ok",
       rawResponse,
       extractedProperties: extracted,
-      severityMatched,
+      severityMatched: severityMatch?.severity ?? null,
       itemCount: items.length,
       pageCount,
     })
@@ -1688,7 +1748,8 @@ async function runSharePointAdminCheck(opts: {
     checkKey: check.key,
     status: "ok",
     extractedProperties: extracted,
-    severityMatched,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
     profileId: row?.profileId,
@@ -1928,7 +1989,7 @@ async function runFanOutCheck(opts: {
   }
 
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
-  const severityMatched = classifySeverity(severityRules, extracted);
+  const severityMatch = classifySeverity(severityRules, extracted);
 
   const pageCount = enumResult.pageCount + perItemPageTotal;
   const rawResponse = {
@@ -1948,7 +2009,7 @@ async function runFanOutCheck(opts: {
       status,
       rawResponse: rawResponse as Record<string, unknown>,
       extractedProperties: extracted,
-      severityMatched,
+      severityMatched: severityMatch?.severity ?? null,
       errorMessage: status === "ok"
         ? undefined
         : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
@@ -1967,7 +2028,8 @@ async function runFanOutCheck(opts: {
     checkKey: check.key,
     status,
     extractedProperties: extracted,
-    severityMatched,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     errorMessage: status === "ok" ? undefined : `${succeeded}/${entries.length} items succeeded, ${failed} failed`,
     itemCount: combinedItems.length,
     pageCount,
@@ -2011,11 +2073,17 @@ export async function executeMonitorCheck(opts: {
       .limit(1);
 
     if (existing) {
+      const cachedExtracted = (existing.extractedProperties ?? {}) as Record<string, unknown>;
       return {
         checkKey: check.key,
         status: existing.status as CheckResult["status"],
-        extractedProperties: (existing.extractedProperties ?? {}) as Record<string, unknown>,
+        extractedProperties: cachedExtracted,
         severityMatched: existing.severityMatched ?? null,
+        severityLabel: labelForStoredSeverity(
+          (check.severityRules ?? []) as SeverityRule[],
+          cachedExtracted,
+          existing.severityMatched ?? null,
+        ),
         errorMessage: existing.errorMessage ?? undefined,
         itemCount: existing.itemCount ?? 0,
         pageCount: existing.pageCount ?? 0,
@@ -2112,7 +2180,7 @@ export async function executeMonitorCheck(opts: {
 
     // 4. Severity classification
     const severityRules = (check.severityRules ?? []) as SeverityRule[];
-    const severityMatched = classifySeverity(severityRules, extracted);
+    const severityMatch = classifySeverity(severityRules, extracted);
 
     // 5. Persist result
     const [row] = await db
@@ -2126,7 +2194,7 @@ export async function executeMonitorCheck(opts: {
         status: "ok",
         rawResponse: rawResponse as Record<string, unknown>,
         extractedProperties: extracted,
-        severityMatched,
+        severityMatched: severityMatch?.severity ?? null,
         itemCount: items.length,
         pageCount,
       })
@@ -2137,7 +2205,8 @@ export async function executeMonitorCheck(opts: {
       checkKey: check.key,
       status: "ok",
       extractedProperties: extracted,
-      severityMatched,
+      severityMatched: severityMatch?.severity ?? null,
+      severityLabel: severityMatch?.label ?? null,
       itemCount: items.length,
       pageCount,
       profileId: row?.profileId,

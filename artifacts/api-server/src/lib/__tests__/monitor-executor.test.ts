@@ -298,9 +298,9 @@ describe("classifySeverity", () => {
   ];
 
   it("matches first rule that evaluates true", () => {
-    expect(classifySeverity(rules, { mfa_count: 0 })).toBe("critical");
-    expect(classifySeverity(rules, { mfa_count: 5 })).toBe("warning");
-    expect(classifySeverity(rules, { mfa_count: 15 })).toBe("ok");
+    expect(classifySeverity(rules, { mfa_count: 0 })?.severity).toBe("critical");
+    expect(classifySeverity(rules, { mfa_count: 5 })?.severity).toBe("warning");
+    expect(classifySeverity(rules, { mfa_count: 15 })?.severity).toBe("ok");
   });
 
   it("returns null when no rule matches", () => {
@@ -316,7 +316,53 @@ describe("classifySeverity", () => {
       { expression: "INVALID !!@@ syntax", severity: "critical" },
       { expression: "score > 0", severity: "warning" },
     ];
-    expect(classifySeverity(badRules, { score: 5 })).toBe("warning");
+    expect(classifySeverity(badRules, { score: 5 })?.severity).toBe("warning");
+  });
+
+  // ── #408: the matched rule's own label comes back with its band ─────────────
+  // Returning only the band is what forced every finding built from a matched
+  // rule to be titled "{severity} finding detected" — dozens of specific,
+  // researched sentences authored into severity_rules never reached a customer.
+
+  it("returns the matched rule's label alongside its severity", () => {
+    const labelled: SeverityRule[] = [
+      {
+        expression: "labelCount == 0",
+        severity: "warning",
+        label: "No sensitivity labels configured — Copilot can surface unclassified content",
+      },
+      { expression: "labelCount > 0", severity: "ok", label: "Sensitivity labels are in place" },
+    ];
+    expect(classifySeverity(labelled, { labelCount: 0 })).toEqual({
+      severity: "warning",
+      label: "No sensitivity labels configured — Copilot can surface unclassified content",
+    });
+    expect(classifySeverity(labelled, { labelCount: 3 })).toEqual({
+      severity: "ok",
+      label: "Sensitivity labels are in place",
+    });
+  });
+
+  it("reports label null — not undefined, not empty — when the matched rule has none", () => {
+    // `label` is optional in the stored jsonb, so this is a real state, and the
+    // caller's fallback to generic text depends on it being unambiguous.
+    expect(classifySeverity(rules, { mfa_count: 0 })).toEqual({ severity: "critical", label: null });
+  });
+
+  it("treats a whitespace-only label as no label at all", () => {
+    const blank: SeverityRule[] = [{ expression: "n > 0", severity: "warning", label: "   " }];
+    expect(classifySeverity(blank, { n: 1 })).toEqual({ severity: "warning", label: null });
+  });
+
+  it("carries the label of the rule that actually matched, not the first labelled one", () => {
+    const ordered: SeverityRule[] = [
+      { expression: "n == 0", severity: "critical", label: "Nobody is covered" },
+      { expression: "n < 10", severity: "warning", label: "Coverage is partial" },
+    ];
+    expect(classifySeverity(ordered, { n: 4 })).toEqual({
+      severity: "warning",
+      label: "Coverage is partial",
+    });
   });
 });
 
@@ -1424,6 +1470,167 @@ describe("executeMonitorCheck", () => {
 
     const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
     expect(result.severityMatched).toBe("critical");
+  });
+
+  // ── #408 ───────────────────────────────────────────────────────────────────
+  it("carries the matched rule's label onto the CheckResult, not just its band", async () => {
+    const labelledCheck = {
+      ...baseCheck,
+      severityRules: [
+        {
+          expression: "mfaRegistered_count == 0",
+          severity: "critical",
+          label: "No users have MFA registered — every account is a single password away",
+        },
+      ] as Array<{ expression: string; severity: string; label?: string }>,
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
+      json: async () => ({ value: [] }),
+      headers: { get: () => "application/json" },
+    });
+
+    const result = await executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
+    expect(result.severityMatched).toBe("critical");
+    expect(result.severityLabel).toBe("No users have MFA registered — every account is a single password away");
+  });
+
+  it("reports no label when the matched rule genuinely has none", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
+      json: async () => ({ value: [] }),
+      headers: { get: () => "application/json" },
+    });
+
+    const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
+    expect(result.severityMatched).toBe("critical");
+    expect(result.severityLabel).toBeNull();
+  });
+});
+
+// ── #408: the idempotency cache must not lose the label ───────────────────────
+//
+// tenant_monitor_profiles stores the band but not the label, so a check served
+// from the cache (a re-run under the same triggerId — a real occurrence, see
+// #339) would drop straight back to the generic title unless the label is
+// re-derived from the check's own rules over the row's own stored properties.
+
+describe("executeMonitorCheck — cached result label recovery", () => {
+  const LABEL = "No users have MFA registered — every account is a single password away";
+  const labelledCheck = {
+    id: 1,
+    checkId: "uuid-1",
+    key: "entra:mfa",
+    label: "MFA Enforcement Check",
+    description: null,
+    endpoint: "/users",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: ["mfaRegistered"] as string[],
+    mapping: [] as MappingRule[],
+    severityRules: [
+      { expression: "mfaRegistered_count == 0", severity: "critical", label: LABEL },
+    ] as SeverityRule[],
+    outputSchema: null,
+    engines: ["health"] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "graph" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: null,
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  /** Point the db mock's single-row lookup at a persisted profile row. */
+  async function withCachedRow<T>(row: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
+    const { db } = await import("@workspace/db");
+    const original = (db as unknown as { select: Mock }).select;
+    (db as unknown as { select: Mock }).select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([row]) }),
+      }),
+    }) as unknown as Mock;
+    try {
+      return await fn();
+    } finally {
+      (db as unknown as { select: Mock }).select = original;
+    }
+  }
+
+  it("re-derives the label for a cached row whose stored band still matches", async () => {
+    const result = await withCachedRow(
+      {
+        profileId: "p-1",
+        status: "ok",
+        extractedProperties: { mfaRegistered_count: 0 },
+        severityMatched: "critical",
+        errorMessage: null,
+        itemCount: 0,
+        pageCount: 1,
+      },
+      () => executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1" }),
+    );
+
+    expect(result.profileId).toBe("p-1");
+    expect(result.severityMatched).toBe("critical");
+    expect(result.severityLabel).toBe(LABEL);
+  });
+
+  it("says nothing when the rules have been edited since the row was written", async () => {
+    // Stored band "warning", but today's rules say "critical" on this same
+    // data — the label in front of us is not the one that actually matched, so
+    // re-titling a historical result with it would be a fabrication.
+    const result = await withCachedRow(
+      {
+        profileId: "p-2",
+        status: "ok",
+        extractedProperties: { mfaRegistered_count: 0 },
+        severityMatched: "warning",
+        errorMessage: null,
+        itemCount: 0,
+        pageCount: 1,
+      },
+      () => executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1" }),
+    );
+
+    expect(result.severityMatched).toBe("warning");
+    expect(result.severityLabel).toBeNull();
+  });
+
+  it("says nothing for a cached row that matched no rule at all", async () => {
+    const result = await withCachedRow(
+      {
+        profileId: "p-3",
+        status: "ok",
+        extractedProperties: { mfaRegistered_count: 12 },
+        severityMatched: null,
+        errorMessage: null,
+        itemCount: 12,
+        pageCount: 1,
+      },
+      () => executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1" }),
+    );
+
+    expect(result.severityMatched).toBeNull();
+    expect(result.severityLabel).toBeNull();
   });
 });
 
