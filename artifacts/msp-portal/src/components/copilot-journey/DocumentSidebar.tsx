@@ -392,6 +392,12 @@ function GateBlock({ tenant, score }: { tenant: JourneyTenant; score: number | n
  * expected/generated set — so it is only ever 0 when NO document, old-pattern
  * or new, is known at all. A resolvable readiness report already makes
  * `total >= 1` and this counter true, on its own, with no special-casing.
+ *
+ * Since #424 that is not a hypothetical: the viewer builds its list through
+ * `withReadinessDocument`, so the readiness report is always one of the rows
+ * this rail draws and `total` is never 0 on a landed payload. The counter and
+ * the rows therefore agree by construction — which is also why the page passes
+ * that list's own `ready`/`total` here rather than the status payload's.
  */
 export function showReadyCounter(loaded: boolean, total: number): boolean {
   return !loaded || generationView(0, total).known;

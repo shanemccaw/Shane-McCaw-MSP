@@ -14,6 +14,12 @@
  * state, not "0 of 0 ready" under a progress bar — that would assert a
  * generation run nobody has started.
  *
+ * ONE DOCUMENT SITS OUTSIDE ALL FOUR STATES. The Copilot Readiness Report is
+ * rendered here, live, from the tenant's own scan data (#409) — there is no row
+ * to fetch, so none of loading/ready/generating/error is a question about it.
+ * It is therefore resolved FIRST, ahead of every gate below, and depends on no
+ * generation record of any kind (#424).
+ *
  * Under `?preview=design` the three report bodies the design writes out in full
  * render instead, from `previewDocumentBodies.ts`. That path is unreachable on a
  * live journey — the flag also paints a persistent `<PreviewBadge />`.
@@ -435,6 +441,30 @@ export function DocumentBody({
   // pillar cannot be read from its name simply gets the journey's own accent.
   const pillar = documentPillar(doc);
 
+  // The roll-up readiness report, on this tenant's own live data (#409, #424).
+  //
+  // FIRST, ahead of every gate below — the loading gate, the unreadable gate,
+  // the "nothing is listed" gate and the `doc.status === "ready"` one. Every
+  // number and sentence in this report comes from the scan (`war-room-pillars`
+  // plus the narrative route), never from the document-generation pipeline, so
+  // none of those gates is asking a question about it: whether the status
+  // payload has landed, whether it failed, and whether a row exists say nothing
+  // about whether this document can be rendered. It can, always. Gating it on
+  // any of them would show a spinner, an error or a "not available yet" over a
+  // report that is complete.
+  //
+  // `view` guards it rather than being assumed: a caller that does not pass one
+  // falls through to the generated HTML, which is the honest degradation.
+  // `isPreview` too — `?preview=design` keeps rendering the design's own worked
+  // example from `PREVIEW_DOCUMENT_BODIES` rather than this tenant's data.
+  if (!isPreview && view && isCopilotReadinessReport(doc)) {
+    return (
+      <Card pillar={pillar}>
+        <RealReadinessReport view={view} />
+      </Card>
+    );
+  }
+
   const retryAction = onRetry ? (
     <div>
       <Button variant="outline" size="sm" onClick={onRetry} style={DARK_OUTLINE_BUTTON}>
@@ -480,13 +510,11 @@ export function DocumentBody({
   // you" note here would promise a generation run that is not under way, so the
   // screen says only what it knows.
   //
-  // Exception: the roll-up readiness report (#409, #416). `gen.known` tracks
-  // the OLD async document-generation pipeline's expected/generated-row count —
-  // a concept that genuinely does not exist for a document rendered live from
-  // the tenant's own scan data. A resolved `doc` that is the readiness report
-  // is real regardless of what the old pipeline's counter says, so it alone is
-  // exempted from this check; every document still on the old pattern keeps the
-  // gate exactly as it works today.
+  // The roll-up readiness report never reaches this line — it returned at the
+  // top of this function (#424). `isGenerationUnknown` keeps its own exemption
+  // for it anyway (#409, #416) so the two can never disagree if the order here
+  // is ever rearranged; every document still on the old pattern keeps the gate
+  // exactly as it works today.
   if (!doc || isGenerationUnknown(doc, gen)) {
     return (
       <Card pillar={pillar}>
@@ -525,25 +553,6 @@ export function DocumentBody({
         </Card>
       );
     }
-  }
-
-  // The roll-up readiness report, on this tenant's own live data (#409).
-  //
-  // Ahead of the `LiveBody` branch below, and deliberately NOT gated on
-  // `doc.status === "ready"`: every number in it comes from the scan
-  // (`war-room-pillars` + the narrative route), not from the document
-  // generation pipeline, so it is readable the moment the scan is — minutes
-  // before its generated HTML exists. Gating it on the pipeline would show a
-  // spinner over a report that is already complete.
-  //
-  // `view` guards it rather than being assumed: a caller that does not pass one
-  // falls through to the generated HTML, which is the honest degradation.
-  if (!isPreview && view && isCopilotReadinessReport(doc)) {
-    return (
-      <Card pillar={pillar}>
-        <RealReadinessReport view={view} />
-      </Card>
-    );
   }
 
   if (!isPreview && doc.status === "ready" && doc.id !== null) {

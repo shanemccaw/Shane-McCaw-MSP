@@ -62,7 +62,11 @@ import {
 } from "@/components/copilot-journey/DocumentSidebar";
 import { PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
-import { documentPillar, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
+import {
+  documentPillar,
+  withReadinessDocument,
+  type JourneyView,
+} from "@/components/copilot-journey/journeyModel.ts";
 import {
   BRAND,
   COPILOT_GATE_TARGET,
@@ -344,7 +348,22 @@ export default function CopilotReadinessDocumentsPage() {
 
   const view = isPreview ? previewView : live.view;
   const loaded = isPreview ? true : live.statusLoaded;
-  const documents = view.generation.documents;
+
+  /**
+   * The set this screen switches between, with the Copilot Readiness Report
+   * guaranteed to be in it (#424).
+   *
+   * It is constructed rather than looked up because it is the one document that
+   * does not come from the generation pipeline: it renders live from this
+   * tenant's own scan data, so it exists whether or not `documents.expected`
+   * names it and whether or not a row has ever been written. Everything else in
+   * the list is exactly what the platform reported, untouched — see
+   * `withReadinessDocument`, which no-ops entirely on a readiness row the
+   * pipeline has actually generated (which is the design preview's case too, so
+   * `?preview=design` is byte-for-byte unchanged).
+   */
+  const generation = useMemo(() => withReadinessDocument(view.generation), [view.generation]);
+  const documents = generation.documents;
 
   /* ---------------------------------------------------------------- *
    * Which document is open
@@ -544,8 +563,11 @@ export default function CopilotReadinessDocumentsPage() {
 
   const switcherProps = {
     documents,
-    ready: view.generation.ready,
-    total: view.generation.total,
+    // Counted off the list the rail actually draws, not the payload's own
+    // figures — with the readiness report in the set those two differ, and a
+    // counter that disagrees with the rows beneath it is the worse of the two.
+    ready: generation.ready,
+    total: generation.total,
     loaded,
     activeIndex,
     onSelect: handleSelect,
@@ -828,7 +850,7 @@ export default function CopilotReadinessDocumentsPage() {
         >
           <DocumentBody
             doc={activeDoc}
-            generation={view.generation}
+            generation={generation}
             tenant={view.tenant}
             // #409 — the roll-up readiness report renders from the tenant's own
             // pillar scores and stats rather than from generated HTML, so it

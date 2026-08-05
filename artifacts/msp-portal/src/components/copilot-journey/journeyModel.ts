@@ -24,6 +24,8 @@
 
 import {
   COPILOT_GATE_TARGET,
+  JOURNEY_READINESS_DOCUMENT,
+  JOURNEY_READINESS_DOC_TYPE,
   PILLAR_KEYS,
   PILLARS,
   isCopilotReadinessReport,
@@ -365,6 +367,64 @@ export function buildGeneration(status: WireAssessmentStatus | null | undefined)
     allReady: documents.length > 0 && ready === documents.length,
     documents,
   };
+}
+
+/**
+ * The Copilot Readiness Report, guaranteed present in a document set (#424).
+ *
+ * WHY THIS EXISTS. Every other document in the set is a row the old async
+ * generation pipeline writes: it is listed because `GET
+ * /api/portal/assessment/status` said so, and it is readable because that
+ * pipeline finished writing its HTML. The readiness report is not one of those.
+ * It is rendered live, in the browser, from the tenant's own scan data — the
+ * pillar payload plus the narrative route (#409) — so its content exists the
+ * moment the scan does, with nothing to generate, no row to wait for and no
+ * assessment service scope to be listed by.
+ *
+ * `buildGeneration`'s spine is `documents.expected` (falling back to the
+ * generated rows), which is exactly the wrong shape for that: a tenant with no
+ * assessment service row, or one whose service does not name this deliverable,
+ * gets an empty set, so the one document the platform can always render was the
+ * one document that could never be resolved to render it. This closes that: the
+ * report is constructed here rather than looked up.
+ *
+ * WHAT IT DOES NOT DO. It never touches the other documents, and it never
+ * invents one — a set with no rows still gets exactly one entry, this one. A
+ * readiness row the pipeline HAS generated (`id !== null`) is left completely
+ * alone, so the generated HTML and its PDF export keep behaving as they do
+ * today; only the "listed but never generated" and "not listed at all" cases are
+ * filled in, and both get `ready` because for this document there is genuinely
+ * nothing outstanding to wait for.
+ *
+ * `ready`/`total` are recomputed from the resulting list so the counter and the
+ * rows it counts can never disagree.
+ */
+export function withReadinessDocument(generation: JourneyGeneration): JourneyGeneration {
+  const index = generation.documents.findIndex((d) => isCopilotReadinessReport(d));
+  const existing = index >= 0 ? generation.documents[index] : null;
+
+  // A real generated row owns its own state — including a `failed` one, which is
+  // a fact about the pipeline this must not paper over.
+  if (existing && existing.id !== null) return generation;
+
+  const entry: JourneyDocumentView = existing
+    ? { ...existing, status: "ready" }
+    : {
+        title: JOURNEY_READINESS_DOCUMENT,
+        docType: JOURNEY_READINESS_DOC_TYPE,
+        id: null,
+        status: "ready",
+      };
+
+  // First when it is being added: it is the roll-up the other reports expand on,
+  // and the design's own set leads with it.
+  const documents =
+    index >= 0
+      ? generation.documents.map((d, i) => (i === index ? entry : d))
+      : [entry, ...generation.documents];
+
+  const ready = documents.filter((d) => d.status === "ready").length;
+  return { ready, total: documents.length, allReady: ready === documents.length, documents };
 }
 
 /**

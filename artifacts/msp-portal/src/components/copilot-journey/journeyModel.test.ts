@@ -22,6 +22,7 @@ import {
   remediatedScore,
   scoredPillarCount,
   tenantStrip,
+  withReadinessDocument,
   verdictLabel,
   verdictSentence,
   type JourneyDocumentView,
@@ -368,6 +369,111 @@ describe("document generation", () => {
       },
     };
     assert.equal(buildGeneration(all).allReady, true);
+  });
+});
+
+describe("withReadinessDocument (#424 — the report depends on no generation row)", () => {
+  const readiness = (docs: readonly JourneyDocumentView[]) =>
+    docs.filter((d) => d.docType === JOURNEY_READINESS_DOC_TYPE || d.title === JOURNEY_READINESS_DOCUMENT);
+
+  it("constructs the report for a tenant with ZERO document rows — the real current state", () => {
+    // `buildGeneration({})` is what a tenant with no assessment service row, or
+    // a failed status fetch, genuinely produces: an empty set. Before #424 that
+    // left the one document the platform can always render unresolvable.
+    const g = withReadinessDocument(buildGeneration({}));
+    assert.equal(g.total, 1);
+    assert.equal(g.ready, 1);
+    assert.equal(g.documents[0].title, JOURNEY_READINESS_DOCUMENT);
+    assert.equal(g.documents[0].docType, JOURNEY_READINESS_DOC_TYPE);
+    assert.equal(g.documents[0].status, "ready");
+    assert.equal(g.documents[0].id, null, "no row exists, so no id may be claimed");
+  });
+
+  it("leaves every other document exactly as the platform reported it", () => {
+    const base = buildGeneration({
+      documents: {
+        expected: [
+          { docType: "exec", title: "Executive Summary" },
+          { docType: "sec", title: "Security Posture Report" },
+        ],
+        items: [{ id: 1, docType: "exec", title: "Executive Summary", status: "delivered" }],
+      },
+    });
+    const g = withReadinessDocument(base);
+    assert.equal(g.total, 3);
+    assert.deepEqual(
+      g.documents.map((d) => d.docType),
+      [JOURNEY_READINESS_DOC_TYPE, "exec", "sec"],
+      "the roll-up leads; the reported set follows in its own order",
+    );
+    // The other two are the SAME objects, not rebuilt ones.
+    assert.equal(g.documents[1], base.documents[0]);
+    assert.equal(g.documents[2], base.documents[1]);
+    assert.equal(g.documents[2].status, "pending", "the un-generated report is still pending");
+  });
+
+  it("recomputes ready/total off the list, so the counter cannot disagree with the rows", () => {
+    const base = buildGeneration({
+      documents: { expected: [{ docType: "sec", title: "Security Posture Report" }], items: [] },
+    });
+    assert.equal(base.ready, 0);
+    const g = withReadinessDocument(base);
+    assert.equal(g.ready, 1);
+    assert.equal(g.total, 2);
+    assert.equal(g.allReady, false);
+  });
+
+  it("marks a listed-but-never-generated readiness row ready — nothing is outstanding for it", () => {
+    const base = buildGeneration({
+      documents: {
+        expected: [{ docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment" }],
+        items: [],
+      },
+    });
+    assert.equal(base.documents[0].status, "pending");
+    const g = withReadinessDocument(base);
+    assert.equal(g.total, 1, "the existing entry is replaced, never duplicated");
+    assert.equal(g.documents[0].status, "ready");
+    assert.equal(
+      g.documents[0].title,
+      "Copilot Readiness Assessment",
+      "the platform's own title for it is kept",
+    );
+  });
+
+  it("leaves a genuinely generated readiness row completely alone", () => {
+    const base = buildGeneration({
+      documents: {
+        expected: [{ docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment" }],
+        items: [
+          { id: 42, docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment", status: "draft" },
+        ],
+      },
+    });
+    const g = withReadinessDocument(base);
+    assert.equal(g, base, "an existing row owns its own state, including a failed one");
+    assert.equal(g.documents[0].status, "generating");
+  });
+
+  it("never lists the report twice, whichever key it was matched on", () => {
+    // The design's own title with a different docType — the second key
+    // `isCopilotReadinessReport` accepts.
+    const base = buildGeneration({
+      documents: {
+        expected: [{ docType: "some_other_key", title: JOURNEY_READINESS_DOCUMENT }],
+        items: [],
+      },
+    });
+    const g = withReadinessDocument(base);
+    assert.equal(readiness(g.documents).length, 1);
+    assert.equal(g.documents[0].docType, "some_other_key", "the platform's own key is kept");
+    assert.equal(g.documents[0].status, "ready");
+  });
+
+  it("is idempotent — applying it twice changes nothing", () => {
+    const once = withReadinessDocument(buildGeneration({}));
+    const twice = withReadinessDocument(once);
+    assert.deepEqual(twice, once);
   });
 });
 

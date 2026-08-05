@@ -25,7 +25,12 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 import type { JourneyView } from "./journeyModel.ts";
-import { gapSentence, isGenerationUnknown, scoredPillarCount } from "./journeyModel.ts";
+import {
+  gapSentence,
+  isGenerationUnknown,
+  scoredPillarCount,
+  withReadinessDocument,
+} from "./journeyModel.ts";
 import {
   BRAND,
   COPILOT_ORB_CONIC,
@@ -225,8 +230,26 @@ export function RevealFullPicture({
   const docsOpacity = easeOutCubic(clampWindow(progress, 0.34, 0.54));
   const docsY = reduced ? 0 : (1 - docsOpacity) * 22;
 
-  const gen = generationView(view.generation.ready, view.generation.total);
-  const documents = view.generation.documents;
+  /**
+   * The set this scene lists, with the Copilot Readiness Report guaranteed to be
+   * in it (#424) — it renders live from the tenant's own scan data, so it is a
+   * real, readable document whether or not the generation pipeline ever lists a
+   * row for it, and a tenant with no document scope at all still has exactly
+   * this one to be shown.
+   *
+   * Only once the status payload has genuinely landed, though. The counter, the
+   * progress bar and the rest-of-set grid are claims about the SIZE of this
+   * tenant's set; while the payload is still in flight, or after it failed, that
+   * size is unknown and "1 of 1 ready" would assert the set is exactly this
+   * document rather than admitting we have not been told yet. Those two states
+   * keep the pending/error states they have today — and #421's unconditional
+   * "See your documents →" link below reaches the viewer from either one, where
+   * the report itself always renders regardless of any of this.
+   */
+  const generation =
+    payloadState === "ready" ? withReadinessDocument(view.generation) : view.generation;
+  const gen = generationView(generation.ready, generation.total);
+  const documents = generation.documents;
   // Lead on the Executive Summary by KEY. A tenant whose expected set does not
   // include it still gets a lead card — just a title-only one, with none of the
   // copy that describes that specific report.
