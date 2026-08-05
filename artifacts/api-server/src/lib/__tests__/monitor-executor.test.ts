@@ -364,6 +364,91 @@ describe("classifySeverity", () => {
       label: "Coverage is partial",
     });
   });
+
+  // ── #418: {{path}} interpolation in the matched rule's label ────────────────
+  // Reuses the exact {{path}} token severity_rules[].expression already uses
+  // (evalConditionGrammar / resolvePathInData), so a real extracted count can
+  // appear in the label text a customer actually sees, not just the expression.
+
+  it("interpolates a {{path}} placeholder in the label against the finding's own data", () => {
+    const templated: SeverityRule[] = [
+      {
+        expression: "{{eeeuSiteCount}} > 0",
+        severity: "warning",
+        label: "{{eeeuSiteCount}} sites shared with Everyone except external users",
+      },
+    ];
+    expect(classifySeverity(templated, { eeeuSiteCount: 1 })).toEqual({
+      severity: "warning",
+      label: "1 sites shared with Everyone except external users",
+    });
+    expect(classifySeverity(templated, { eeeuSiteCount: 7 })).toEqual({
+      severity: "warning",
+      label: "7 sites shared with Everyone except external users",
+    });
+  });
+
+  it("interpolates a nested {{a.b}} path in the label, same as expression already supports", () => {
+    const nested: SeverityRule[] = [
+      {
+        expression: "{{_fanOut.sourceItemsWithResults}} > 0",
+        severity: "warning",
+        label: "{{_fanOut.sourceItemsWithResults}} groups have standing eligible PIM assignments",
+      },
+    ];
+    expect(
+      classifySeverity(nested, { _fanOut: { sourceItemsWithResults: 3 } }),
+    ).toEqual({
+      severity: "warning",
+      label: "3 groups have standing eligible PIM assignments",
+    });
+  });
+
+  it("falls back to null (not a broken literal placeholder) when the referenced field is missing", () => {
+    // The fallback decision for #418: a customer must never see a literal
+    // "{{eeeuSiteCount}}" — the whole label is discarded so buildFindingTitle
+    // falls back to its pre-existing generic "${severity} finding detected"
+    // text, the same honest fallback #408 already uses for a rule with no
+    // label at all.
+    const templated: SeverityRule[] = [
+      {
+        expression: "hasFinding == true",
+        severity: "warning",
+        label: "{{eeeuSiteCount}} sites shared with Everyone except external users",
+      },
+    ];
+    expect(classifySeverity(templated, { hasFinding: true })).toEqual({ severity: "warning", label: null });
+  });
+
+  it("falls back to null when the referenced field is explicitly null", () => {
+    const templated: SeverityRule[] = [
+      { expression: "hasFinding == true", severity: "warning", label: "{{count}} items found" },
+    ];
+    expect(classifySeverity(templated, { hasFinding: true, count: null })).toEqual({
+      severity: "warning",
+      label: null,
+    });
+  });
+
+  it("does not require every label to use the {{path}} syntax — plain labels are unaffected", () => {
+    const plain: SeverityRule[] = [
+      { expression: "hasFinding == true", severity: "info", label: "No Conditional Access policies exist" },
+    ];
+    expect(classifySeverity(plain, { hasFinding: true })).toEqual({
+      severity: "info",
+      label: "No Conditional Access policies exist",
+    });
+  });
+
+  it("renders a {{path}} value of 0 (falsy but present) rather than treating it as missing", () => {
+    const templated: SeverityRule[] = [
+      { expression: "hasFinding == true", severity: "ok", label: "{{count}} findings" },
+    ];
+    expect(classifySeverity(templated, { hasFinding: true, count: 0 })).toEqual({
+      severity: "ok",
+      label: "0 findings",
+    });
+  });
 });
 
 // ── applyMapping ─────────────────────────────────────────────────────────────

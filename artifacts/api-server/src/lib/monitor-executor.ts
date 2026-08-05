@@ -687,6 +687,41 @@ export interface SeverityMatch {
   label: string | null;
 }
 
+/**
+ * The `{{path}}` token family severity_rules[].label interpolates against the
+ * finding's own extracted data (#418) — deliberately the SAME syntax and
+ * nested-path walk (`resolvePathInData`) severity_rules[].expression already
+ * uses (e.g. `"{{eeeuSiteCount}} > 0"`), so an author who already writes that
+ * token in `expression` can reuse it verbatim in `label` rather than learning
+ * a second templating grammar.
+ */
+const LABEL_PLACEHOLDER_RE = /\{\{([\w.]+)\}\}/g;
+
+/**
+ * Renders a label's `{{path}}` placeholders against `data`.
+ *
+ * Fallback decision (#418): a placeholder whose field is missing or null is
+ * NEVER rendered as a broken literal like "{{eeeuSiteCount}}" in front of a
+ * customer. Instead the whole label is discarded — this function returns
+ * `null` — so the caller falls back to the existing generic
+ * "${severity} finding detected" text, the same honest fallback #408 already
+ * uses for a rule authored with no label at all. A half-templated sentence
+ * with the fact missing is worse than the generic sentence, so there is no
+ * partial-render path.
+ */
+function interpolateLabel(label: string, data: Record<string, unknown>): string | null {
+  let unresolved = false;
+  const rendered = label.replace(LABEL_PLACEHOLDER_RE, (match) => {
+    const value = resolvePathInData(match, data);
+    if (value == null) {
+      unresolved = true;
+      return "";
+    }
+    return String(value);
+  });
+  return unresolved ? null : rendered;
+}
+
 export function classifySeverity(
   severityRules: SeverityRule[],
   data: Record<string, unknown>,
@@ -694,7 +729,9 @@ export function classifySeverity(
   for (const rule of severityRules) {
     try {
       if (evalConditionGrammar(rule.expression, data)) {
-        return { severity: rule.severity, label: rule.label?.trim() || null };
+        const rawLabel = rule.label?.trim() || null;
+        const label = rawLabel ? interpolateLabel(rawLabel, data) : null;
+        return { severity: rule.severity, label };
       }
     } catch {
       // skip malformed rules
