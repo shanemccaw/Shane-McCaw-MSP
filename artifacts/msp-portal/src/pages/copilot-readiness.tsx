@@ -565,6 +565,7 @@ export default function CopilotReadinessPage() {
         vw={metrics.vw}
         vh={metrics.vh}
         reduced={reduced}
+        isTestbed={!isPreview && scanStatusData?.isTestbed}
       />
 
       <RevealVerdict

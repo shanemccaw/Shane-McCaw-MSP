@@ -145,6 +145,7 @@ export function RevealScanOverlay({
   vw,
   vh,
   reduced,
+  isTestbed,
 }: {
   /** True while a scan is genuinely in flight. False releases the scroll lock. */
   open: boolean;
@@ -160,6 +161,9 @@ export function RevealScanOverlay({
   vw: number;
   vh: number;
   reduced: boolean;
+  /** Gates the debug-only Pause/Resume control below. Defaults to false so every
+   *  non-testbed caller stays unaffected. */
+  isTestbed?: boolean;
 }) {
   // Kept mounted through the fade-out so the overlay does not vanish on the
   // frame the scan completes.
@@ -185,20 +189,43 @@ export function RevealScanOverlay({
     };
   }, [open]);
 
+  // Testbed-only render freeze (#411). Purely client-side: the real scan keeps
+  // running server-side regardless of `paused` — this only decides whether the
+  // component keeps copying incoming props into what it renders. `frozen` is the
+  // last-copied snapshot; while paused the effect below skips the copy, so the
+  // snapshot — and everything derived from it — stays exactly as it was at the
+  // moment Pause was clicked. Resume flips `paused` back to false, which is
+  // itself a dependency of the effect, so the very next run catches the
+  // snapshot up to whatever the live props already are — no replay, no restart.
+  const [paused, setPaused] = useState(false);
+  const [frozen, setFrozen] = useState(() => ({
+    pillars,
+    progress,
+    checksDone,
+    checksTotal,
+    currentCheckLabel,
+  }));
+  useEffect(() => {
+    if (paused) return;
+    setFrozen({ pillars, progress, checksDone, checksTotal, currentCheckLabel });
+  }, [paused, pillars, progress, checksDone, checksTotal, currentCheckLabel]);
+
   if (!mounted) return null;
 
   const scale = radarStageScale(vw, vh);
-  const complete = progress >= 1;
+  const complete = frozen.progress >= 1;
 
   // The counter says what the run actually reported. When the total has not
   // arrived yet the phrase drops the denominator rather than asserting a
   // catalogue size the run has not confirmed.
-  const totalLabel = checksTotal > 0 ? `of ${checksTotal} signals` : "signals evaluated";
+  const totalLabel = frozen.checksTotal > 0 ? `of ${frozen.checksTotal} signals` : "signals evaluated";
   const footerCount =
-    checksTotal > 0 ? `${checksDone} of ${checksTotal} signals evaluated` : `${checksDone} signals evaluated`;
+    frozen.checksTotal > 0
+      ? `${frozen.checksDone} of ${frozen.checksTotal} signals evaluated`
+      : `${frozen.checksDone} signals evaluated`;
   const streamingLabel = complete
     ? "Acquisition complete — compiling readiness signal"
-    : currentCheckLabel ?? "Acquiring tenant telemetry";
+    : frozen.currentCheckLabel ?? "Acquiring tenant telemetry";
 
   return (
     <div
@@ -256,17 +283,37 @@ export function RevealScanOverlay({
             {tenantLabel}
           </span>
         </div>
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 500,
-            letterSpacing: ".06em",
-            color: INK.micro,
-            whiteSpace: "nowrap",
-          }}
-        >
-          Microsoft Graph API · read-only
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {isTestbed ? (
+            <button
+              type="button"
+              onClick={() => setPaused((p) => !p)}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                borderRadius: 6,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: paused ? "rgba(34,211,238,0.18)" : "rgba(0,0,0,0.6)",
+                color: paused ? "#e0f7ff" : "rgba(255,255,255,0.7)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {paused ? "[DEBUG] Resume" : "[DEBUG] Pause"}
+            </button>
+          ) : null}
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: ".06em",
+              color: INK.micro,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Microsoft Graph API · read-only
+          </span>
+        </div>
       </div>
 
       <div
@@ -345,7 +392,7 @@ export function RevealScanOverlay({
             />
 
             {PILLAR_KEYS.map((key, i) => {
-              const fill = wedgeFill(progress, i);
+              const fill = wedgeFill(frozen.progress, i);
               const path = radarWedgePath(i, fill);
               return (
                 <g key={key}>
@@ -436,7 +483,7 @@ export function RevealScanOverlay({
                 ...TABULAR,
               }}
             >
-              {checksDone}
+              {frozen.checksDone}
             </span>
             <span
               style={{
@@ -457,9 +504,9 @@ export function RevealScanOverlay({
           {PILLAR_KEYS.map((key, i) => {
             const anchor = CHIP_ANCHORS[i];
             const identity = PILLARS[key];
-            const pillar = pillars.find((p) => p.key === key);
+            const pillar = frozen.pillars.find((p) => p.key === key);
             const chips = (pillar?.chips ?? []).slice(0, 4);
-            const fill = wedgeFill(progress, i);
+            const fill = wedgeFill(frozen.progress, i);
             return (
               <div
                 key={`chips-${key}`}
