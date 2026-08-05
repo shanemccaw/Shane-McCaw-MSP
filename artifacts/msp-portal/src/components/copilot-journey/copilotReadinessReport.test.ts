@@ -20,8 +20,10 @@ import {
   buildRadarNote,
   formatStat,
   isRealStat,
+  isWiringFault,
   narrativeUnavailableDetail,
   unavailableReasonText,
+  __testables,
   type ReadinessBlock,
   type WireNarrativePayload,
 } from "./copilotReadinessReport.ts";
@@ -182,14 +184,129 @@ describe("never fabricate: a stat with no value never becomes a number", () => {
     assert.match(unavailableReasonText("license_gap"), /licence tier/);
   });
 
-  it("names the Conditional Access gap as uncollected rather than filling it from a near-miss metric", () => {
+  it("never fills the Conditional Access gap from a near-miss metric", () => {
     const prereq = sectionNamed(build(view()), "Technical Prerequisites & Platform Alignment");
-    const unavailable = prereq.blocks.find((b) => b.kind === "unavailable");
-    assert.ok(unavailable && unavailable.kind === "unavailable");
-    assert.ok(unavailable.checks.some((c) => c.checkKey === "identity:ca-policy-count"));
-    // And nothing anywhere claims a Conditional Access policy COUNT.
     const rows = prereq.blocks.flatMap((b) => (b.kind === "keyValues" ? b.rows : []));
     assert.ok(!rows.some((r) => /conditional access/i.test(r.label)));
+  });
+
+  it("keeps the Conditional Access gap on the record in code but off the customer's page", () => {
+    // It used to be listed to the reader as `identity:ca-policy-count — not
+    // wired to a check in the catalogue`. That is wrong twice over: the check IS
+    // real (sort_order 2 in core:security-baseline), and what is missing is a
+    // registry metric to consume it — our wiring, not a gap in their scan (#441).
+    assert.ok(
+      __testables.UNPRODUCIBLE_PREREQUISITES.some((c) => c.checkKey === "identity:ca-policy-count"),
+      "the decision must stay recorded in code",
+    );
+    const prereq = sectionNamed(build(view()), "Technical Prerequisites & Platform Alignment");
+    const shown = prereq.blocks.flatMap((b) => (b.kind === "unavailable" ? b.checks : []));
+    assert.ok(!shown.some((c) => c.checkKey === "identity:ca-policy-count"));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #441 — our wiring bugs are not findings about the customer's tenant
+ * ------------------------------------------------------------------ */
+
+describe("#441 — a broken registry reference never reaches the reader as their gap", () => {
+  it("classifies only OUR faults as wiring faults", () => {
+    for (const reason of ["unknown_check_key", "unknown_metric_key", "resolver_error"]) {
+      assert.equal(isWiringFault(reason), true, reason);
+    }
+    // Everything else is a real statement about this tenant's scan and stays.
+    for (const reason of [
+      "no_data",
+      "not_in_scan_package",
+      "license_gap",
+      "no_seat_data",
+      "no_sku_prices",
+      "not_collected",
+      "no_evaluable_rules",
+      undefined,
+    ]) {
+      assert.equal(isWiringFault(reason), false, String(reason));
+    }
+  });
+
+  it("drops a wiring-fault stat from the blast-radius block but keeps a real coverage gap", () => {
+    const v = view({
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "security"
+          ? pillar(k, {
+              stats: [
+                stat({
+                  id: "security.blastRadius",
+                  checkKey: "copilot:overshare-exposure",
+                  unavailableReason: "unknown_check_key",
+                }),
+              ],
+            })
+          : k === "governance"
+            ? pillar(k, {
+                stats: [
+                  stat({
+                    id: "governance.sites",
+                    checkKey: "compliance:sharepoint-sites",
+                    unavailableReason: "not_in_scan_package",
+                  }),
+                ],
+              })
+            : pillar(k),
+      ),
+    });
+    const { missing } = blastRadiusRows(v.pillars);
+    assert.deepEqual(missing, [
+      { checkKey: "compliance:sharepoint-sites", reason: "not_in_scan_package" },
+    ]);
+  });
+
+  it("no pick anywhere is grounded in the phantom `usage:` domain", () => {
+    // The four `usage:*` keys #441 found printed to a customer were reached
+    // through these stat ids. None may come back without a real producer.
+    const banned = new Set([
+      "adoption.teamsActive",
+      "adoption.sharePointActive",
+      "adoption.oneDriveActive",
+      "adoption.emailActive",
+    ]);
+    for (const pick of [...__testables.WORKLOAD_PICKS, ...__testables.PREREQUISITE_PICKS]) {
+      assert.ok(!banned.has(pick.statId), `pick ${pick.statId} has no real producer`);
+    }
+  });
+
+  it("filters the narrative route's own missingChecks the same way", () => {
+    const narrative: WireNarrativePayload = {
+      sections: [
+        {
+          key: "enablement",
+          heading: "Workflow Enablement & Value",
+          html: null,
+          omittedReason: "no_real_data",
+          factCount: 0,
+          missingChecks: [
+            { checkKey: "usage:teams-activity", reason: "unknown_check_key" },
+            { checkKey: "licensing:inactive-user-licenses", reason: "not_in_scan_package" },
+          ],
+        },
+      ],
+    };
+    const report = buildCopilotReadinessReport({
+      view: view(),
+      narrative,
+      narrativeSettled: true,
+      scannedCheckCount: 7,
+    });
+    const shown = sectionNamed(report, "Workflow Enablement & Value").blocks.flatMap((b) =>
+      b.kind === "unavailable" ? b.checks : [],
+    );
+    assert.ok(!shown.some((c) => c.checkKey.startsWith("usage:")));
+    assert.ok(shown.some((c) => c.checkKey === "licensing:inactive-user-licenses"));
+  });
+
+  it("says `not_collected` in plain words rather than falling through to the raw reason", () => {
+    assert.match(unavailableReasonText("not_collected"), /not collected by any check/);
+    assert.ok(!/not_collected/.test(unavailableReasonText("not_collected")));
   });
 });
 

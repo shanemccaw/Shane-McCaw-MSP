@@ -75,10 +75,18 @@ const SUBSCRIBED_SKU_CHECKS = [
 ];
 const collectedAt = new Date("2026-08-01T03:00:45.924Z");
 
-/** Queue the catalog + profile reads resolveLicenseWasteCounts performs. */
+/**
+ * Queue the catalog + profile reads resolveLicenseWasteCounts performs.
+ *
+ * One profile read PER CANDIDATE, in alphabetical key order: since #441 every
+ * candidate is read before one is chosen, because the winner is the most
+ * recently collected page rather than the first usable one. Only the first
+ * candidate here has a stored page, so it wins by default.
+ */
 function queueGraphPage(page: unknown) {
   mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
   mockResultQueue.push([{ rawResponse: page, collectedAt }]);
+  for (let i = 1; i < SUBSCRIBED_SKU_CHECKS.length; i++) mockResultQueue.push([]);
 }
 /** Queue one sku_price_reference lookup result (in page order, distinct SKUs). */
 function queuePrice(row: { displayName: string; monthlyPriceCents: number | null } | null) {
@@ -173,7 +181,11 @@ describe("resolvePaidSeatFigures", () => {
       "FLOW_FREE",
       "CCIBOTS_PRIVPREV_VIRAL",
     ]);
-    expect(seats.checkKey).toBe("cost:unused-unassigned-licenses");
+    // The check whose stored page this was computed from. `cost:unused-unassigned-
+    // licenses` no longer wins on its name alone (#441) — and it is no longer in
+    // the assess:copilot-readiness package, so citing it would name a check this
+    // tenant's scan does not run.
+    expect(seats.checkKey).toBe("cost:license-count-by-sku");
   });
 
   it("returns null — not 0 — when the tenant has only free SKUs", async () => {

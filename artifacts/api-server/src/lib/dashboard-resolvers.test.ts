@@ -203,7 +203,9 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
    * Query order for this metric (see license-waste-source.ts):
    *   1. resolveTenantId
    *   2. monitor_checks — active checks, filtered to /subscribedSkus endpoints
-   *   3. tenant_monitor_profiles, once per candidate key in order
+   *   3. tenant_monitor_profiles, once per candidate key, alphabetically —
+   *      EVERY candidate is read, because the winner is the most recently
+   *      collected page rather than the first usable one (#441)
    *   4. cost-engine price lookup, once per distinct SKU with unused seats
    */
   const SUBSCRIBED_SKU_CHECKS = [
@@ -223,6 +225,7 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     mockResultQueue.push([
       { rawResponse: skuPage([sku("SPE_E3", 40, 30), sku("SPE_E5", 5, 3)]), collectedAt: new Date() },
     ]);
+    mockResultQueue.push([]); // cost:unused-unassigned-licenses — no stored page
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
 
@@ -239,7 +242,9 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     expect(res.meta?.totalMonthlyDollars).toBe(474);
     expect(res.meta?.unknownSkus).toEqual([]);
     // Provenance + the arithmetic behind the figure.
-    expect(res.meta?.sourceCheckKey).toBe("cost:unused-unassigned-licenses");
+    // Provenance is the check whose stored page the figure was computed from —
+    // not the tidiest-sounding key with any page at all (#441).
+    expect(res.meta?.sourceCheckKey).toBe("cost:entra-license-tier-distribution");
     expect(res.meta?.totalEnabledSeats).toBe(45);
   });
 
@@ -272,6 +277,7 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
         collectedAt: new Date(),
       },
     ]);
+    mockResultQueue.push([]); // cost:unused-unassigned-licenses — no stored page
     mockResultQueue.push([]); // no sku_price_reference row for NOT_A_REAL_SKU
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
 

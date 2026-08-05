@@ -158,6 +158,40 @@ export function formatStat(stat: RealStat): string {
   return Math.round(value).toLocaleString("en-US");
 }
 
+/**
+ * Reasons that are OUR defect, not a fact about this tenant.
+ *
+ * Mirrors `WAR_ROOM_STAT_WIRING_FAULT_REASONS` in api-server's
+ * war-room-pillar-stats.ts. Copied rather than imported because msp-portal and
+ * api-server are separate apps with no shared module between them other than
+ * `lib/*`; the two lists are asserted equal by a test on both sides, the same
+ * way `WAR_ROOM_PILLAR_KEYS` is.
+ *
+ * `no_data`, `not_in_scan_package`, `license_gap`, `no_seat_data`,
+ * `no_sku_prices` and `not_collected` all answer "what does your scan carry",
+ * which is exactly what the unavailable block is for and stays visible. These
+ * three answer "is our registry correct", and #441 is what happens when they do
+ * not: a paying customer read `usage:teams-activity — not wired to a check in
+ * the catalogue` in their own readiness report, under a heading claiming it was
+ * a figure their scan does not carry. It was not. The key was misspelt at our
+ * end and the check it named has never existed.
+ *
+ * They are dropped from the customer's document, NOT swallowed: api-server logs
+ * every one of them at `error` on the `engine.dashboard` channel as it builds
+ * the payload, and `registry-source-key-contract.test.ts` fails the build if a
+ * document's grounding names a key the catalog does not have.
+ */
+export const WIRING_FAULT_REASONS: readonly string[] = [
+  "unknown_check_key",
+  "unknown_metric_key",
+  "resolver_error",
+];
+
+/** True when a stat's unavailability is a platform wiring bug, not tenant data. */
+export function isWiringFault(reason: string | undefined): boolean {
+  return reason != null && WIRING_FAULT_REASONS.includes(reason);
+}
+
 /** Human wording for the resolver's machine reason. Never invents a cause. */
 export function unavailableReasonText(reason: string | undefined): string {
   switch (reason) {
@@ -167,6 +201,8 @@ export function unavailableReasonText(reason: string | undefined): string {
       return "in the scan, but reported no value";
     case "license_gap":
       return "requires a licence tier this tenant does not hold";
+    case "not_collected":
+      return "not collected by any check this platform runs yet";
     case "unknown_check_key":
     case "unknown_metric_key":
       return "not wired to a check in the catalogue";
@@ -228,7 +264,10 @@ function buildRows(pillars: readonly JourneyPillarView[], picks: readonly StatPi
         tone: pillarTone(pillar),
         value: `${formatStat(stat)} ${pick.caption}`,
       });
-    } else if (stat?.checkKey) {
+    } else if (stat?.checkKey && !isWiringFault(stat.unavailableReason)) {
+      // A wiring fault is not a gap in THIS tenant's assessment and must not be
+      // reported to them as one — see WIRING_FAULT_REASONS for why that is a
+      // classification, not a suppression.
       missing.push({ checkKey: stat.checkKey, reason: stat.unavailableReason ?? "no_data" });
     }
   }
@@ -312,9 +351,10 @@ export function buildRadarNote(view: JourneyView): string {
  *     So the row is declared missing by name in the section's own unavailable
  *     block rather than silently dropped or filled from a near-miss metric.
  *   • "Workload stability — OneDrive activated for N% of the estate" needs a
- *     denominator no check provides; the real `usage:onedrive-active` count is
- *     an ADOPTION figure and appears in that section instead of being divided
- *     by a guess.
+ *     denominator no check provides. This note used to add that the numerator
+ *     lived in the adoption section as `usage:onedrive-active`; #441 found that
+ *     key names nothing in the catalog, so there is no numerator either. Both
+ *     halves are missing, not just the denominator.
  */
 const PREREQUISITE_PICKS: readonly StatPick[] = [
   { statId: "security.legacyAuth", pillar: "security", label: "Authentication & identity", caption: "legacy authentication sign-ins" },
@@ -330,23 +370,67 @@ const PREREQUISITE_PICKS: readonly StatPick[] = [
 
 /**
  * The one prerequisite the design names that this platform cannot measure at
- * all — not for this tenant, but anywhere. Stated as a coverage gap so a reader
- * comparing this report to the design's example can see it was decided rather
- * than lost.
+ * all — not for this tenant, but anywhere. Kept as the in-code record that it
+ * was decided rather than lost.
+ *
+ * NOT rendered to the customer since #441, and its own reason says why:
+ * `identity:ca-policy-count` is a real, active check (it is sort_order 2 in
+ * `core:security-baseline`) that simply has no `DASHBOARD_METRICS` entry to
+ * consume it. That is a wiring gap at our end, so it was reaching the reader as
+ * "identity:ca-policy-count — not wired to a check in the catalogue" in a
+ * section about gaps in THEIR assessment, which is both wrong on its face (it
+ * IS a check) and not their concern. `unavailableChecksForReader` below drops
+ * it on the same rule as every other wiring fault.
  */
 const UNPRODUCIBLE_PREREQUISITES: readonly { readonly checkKey: string; readonly reason: string }[] = [
   { checkKey: "identity:ca-policy-count", reason: "unknown_metric_key" },
 ];
 
+/**
+ * The final gate on everything the `unavailable` blocks show a customer: only
+ * reasons that are statements about their own scan survive.
+ *
+ * `buildRows` already applies this to stats as it collects them; this exists for
+ * the lists that do not come from `buildRows` — the hand-written prerequisite
+ * gap above, and the `missingChecks` the narrative route sends down with an
+ * omitted prose section, which are assembled server-side by the narrative
+ * generator from the same `WarRoomStat` payload and can carry the same faults.
+ */
+export function unavailableChecksForReader(
+  checks: readonly { readonly checkKey: string; readonly reason: string }[],
+): readonly { readonly checkKey: string; readonly reason: string }[] {
+  return checks.filter((c) => !isWiringFault(c.reason));
+}
+
 /* ------------------------------------------------------------------ *
  * Section 3 — Adoption & licensing, the pure-data half of enablement
  * ------------------------------------------------------------------ */
 
+/**
+ * WHY THE FOUR PER-WORKLOAD ACTIVE-USER ROWS ARE GONE (#441).
+ *
+ * They were `adoption.teamsActive` / `sharePointActive` / `oneDriveActive` /
+ * `emailActive`, and they resolved through registry metrics whose `sourceKey`s
+ * named `usage:teams-activity`, `usage:sharepoint-activity`,
+ * `usage:onedrive-activity` and `usage:email-activity`. `usage:` is not a
+ * check-key domain in this platform's catalog — the four keys name nothing, and
+ * never did. So the rows could not render for any tenant, and this section
+ * instead printed all four phantom keys to the reader as figures "this tenant's
+ * scan does not carry". That sentence was false: the scan was never asked for
+ * them.
+ *
+ * The picks are removed rather than repointed, for the same reason
+ * `war-room-pillar-stats.ts` emptied the adoption card instead of repointing it:
+ * the nearest real checks are per-user and per-site Graph usage-report detail
+ * endpoints, and a metric aimed at one of those resolves to its row count —
+ * "1,631 active Teams users" that is really "1,631 licensed users". A wrong
+ * number in a readiness report is worse than an absent one.
+ *
+ * The section keeps its AI prose (grounded in the adoption and licensing pillar
+ * scores and findings, which are real) and the one workload-adjacent figure the
+ * platform genuinely computes.
+ */
 const WORKLOAD_PICKS: readonly StatPick[] = [
-  { statId: "adoption.teamsActive", pillar: "adoption", label: "Teams", caption: "active users" },
-  { statId: "adoption.sharePointActive", pillar: "adoption", label: "SharePoint", caption: "active users" },
-  { statId: "adoption.oneDriveActive", pillar: "adoption", label: "OneDrive", caption: "active users" },
-  { statId: "adoption.emailActive", pillar: "adoption", label: "Exchange", caption: "active users" },
   { statId: "licensing.annualWaste", pillar: "licensing", label: "Recoverable licence spend", caption: "a year in paid, unassigned seats" },
 ];
 
@@ -494,7 +578,7 @@ export function buildCopilotReadinessReport(input: {
       {
         kind: "unavailable",
         detail: narrativeUnavailableDetail(section?.omittedReason ?? null),
-        checks: section?.missingChecks ?? [],
+        checks: unavailableChecksForReader(section?.missingChecks ?? []),
       },
     ];
   };
@@ -524,7 +608,7 @@ export function buildCopilotReadinessReport(input: {
       ...keyValuesBlock(prerequisites.rows),
       ...unavailableBlock(
         "Prerequisites this assessment could not measure. These are gaps in what was collected, not findings about this tenant:",
-        [...prerequisites.missing, ...UNPRODUCIBLE_PREREQUISITES],
+        unavailableChecksForReader([...prerequisites.missing, ...UNPRODUCIBLE_PREREQUISITES]),
       ),
     ],
   });

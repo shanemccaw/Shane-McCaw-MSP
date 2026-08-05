@@ -69,10 +69,24 @@ export const DEFAULT_LICENSE_WASTE_CHECK_KEY = "cost:license-waste-estimate";
 const SUBSCRIBED_SKUS_ENDPOINT = "subscribedskus";
 
 /**
- * Preferred candidate when several checks hit /subscribedSkus — the one whose
- * name is about unused licences, so the provenance we report reads sensibly.
+ * REMOVED in #441: a name-based preference for `cost:unused-unassigned-licenses`.
+ *
+ * When several active checks hit /subscribedSkus, this module used to try that
+ * one first "so the provenance we report reads sensibly". Two things were wrong
+ * with sorting provenance by how the name reads. First, this file's own header
+ * establishes that the name is a lie — its mapping is `count(consumedUnits)`,
+ * which counts SKU rows, not unused seats. Second, and what surfaced it: that
+ * check was removed from the `assess:copilot-readiness` package on 2026-08-05,
+ * so the scan no longer runs it — but `tenant_monitor_profiles` keeps the last
+ * row per check forever, so it kept winning the preference and the Copilot
+ * Readiness Report kept citing a retired check as the source of the tenant's
+ * live licence figures, over an arbitrarily old stored Graph page.
+ *
+ * Candidates are now ordered by how recently each one's page was actually
+ * collected, so the reported `checkKey` is the row the number genuinely came
+ * from. An explicit `preferredCheckKey` argument is still honoured first — that
+ * is a caller stating which check it means, not a guess from a string.
  */
-const PREFERRED_SUBSCRIBED_SKUS_CHECK = "cost:unused-unassigned-licenses";
 
 export interface LicenseWasteCounts {
   /** monitor_checks.key whose stored Graph response the counts were computed from. */
@@ -158,10 +172,9 @@ async function subscribedSkusCheckKeys(): Promise<string[]> {
     .map((r) => r.key)
     .filter((k): k is string => typeof k === "string")
     .sort();
-  // Stable, meaningful provenance: prefer the unused-licences-named check.
-  return keys.sort((a, b) =>
-    a === PREFERRED_SUBSCRIBED_SKUS_CHECK ? -1 : b === PREFERRED_SUBSCRIBED_SKUS_CHECK ? 1 : 0,
-  );
+  // Alphabetical only — a deterministic tiebreak, not a claim about which check
+  // is the better source. Recency decides that (see resolveLicenseWasteCounts).
+  return keys;
 }
 
 /** Latest stored Graph page + collectedAt for one (tenant, check). */
@@ -215,8 +228,26 @@ export async function resolveLicenseWasteCounts(
     return null;
   }
 
+  // An explicit preferredCheckKey stays first; everything else is ordered by how
+  // recently it was collected, newest first, so the reported provenance names
+  // the row the figure genuinely came from rather than the nicest-sounding key
+  // with any stored page at all (#441). Collected up front because the ordering
+  // is a property of the whole candidate set, not of the first usable one.
+  const withCollectedAt: { checkKey: string; latest: Awaited<ReturnType<typeof latestRawResponseFor>> }[] = [];
   for (const checkKey of candidates) {
-    const latest = await latestRawResponseFor(tenantId, checkKey);
+    withCollectedAt.push({ checkKey, latest: await latestRawResponseFor(tenantId, checkKey) });
+  }
+  const ordered = withCollectedAt.sort((a, b) => {
+    if (a.checkKey === preferredCheckKey) return -1;
+    if (b.checkKey === preferredCheckKey) return 1;
+    const at = a.latest?.collectedAt?.getTime() ?? -Infinity;
+    const bt = b.latest?.collectedAt?.getTime() ?? -Infinity;
+    // Equal (or both absent) timestamps fall back to the alphabetical order the
+    // candidate list already carries, so two runs can never disagree.
+    return bt - at;
+  });
+
+  for (const { checkKey, latest } of ordered) {
     if (!latest) continue;
     const computed = unusedSeatsFromSubscribedSkus(latest.rawResponse);
     if (!computed) continue;

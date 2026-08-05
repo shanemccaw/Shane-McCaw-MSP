@@ -17,6 +17,35 @@ import type { MetricDef, SmartBands } from "./types";
  * Smart eligibility: set true only for metrics with a clear "better direction"
  * and a sensible target — security/compliance coverage metrics. Raw counts,
  * revenue, and inventory are not smart-eligible.
+ *
+ * ── `sourceKey` IS A CLAIM ABOUT THE LIVE `monitor_checks` TABLE ─────────────
+ * A `monitor_profile` metric's `sourceKey` names a real row in `monitor_checks`.
+ * That table is DATA, not code (see monitor-check-endpoints-are-data), so a
+ * sourceKey written here is a hand-made assertion that rots silently: a key that
+ * names no catalog row resolves to `unknown_check_key`, which every consumer
+ * renders as an empty cell — indistinguishable from a tenant that simply has not
+ * collected the check. Two audits have now found phantom keys this way
+ * (`identity:high-risk-signins` and `cost:license-waste-estimate`, 2026-07-26),
+ * and the third (2026-08-05, #441) found an entire phantom DOMAIN: `usage:*`.
+ *
+ * `usage:` is not a real check-key domain. It never was. Fourteen entries below
+ * named twelve `usage:*` keys, and the customer-facing Copilot Readiness Report
+ * printed four of them verbatim to a paying customer as "not wired to a check in
+ * the catalogue". The real per-workload activity checks in the catalog are
+ * `adoption:teams-activity-trend`, `adoption:sharepoint-onedrive-trend`,
+ * `adoption:email-activity-trend` and `adoption:overall-active-rate` — but every
+ * one of them is a per-USER (or per-SITE) Graph usage-report detail endpoint, so
+ * re-pointing these metrics at them would take `_itemCount` and render the whole
+ * licensed-user roster under a caption that says "active users". That is the
+ * exact #333 trap, and it is why the entries below were retired to the
+ * `not_collected:` sentinel rather than repointed: the platform genuinely does
+ * not collect a per-workload active-user COUNT today, and saying so is honest
+ * where a near-miss key would not be. Producing one is a check + mapping change
+ * (DB-resident), not a registry edit.
+ *
+ * Guarded from here on by `registry-source-key-contract.test.ts` in api-server,
+ * which fails on any sourceKey outside the real domain vocabulary or on the
+ * dated list of keys a live audit has confirmed absent.
  */
 
 /** Coverage metrics we want at/above the target (e.g. 100% MFA). */
@@ -742,15 +771,20 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     status: "available",
     smartEligible: false,
   },
+  // The six entries below named `usage:*` keys that do not exist in
+  // monitor_checks (#441 — see the header). Retired to the `not_collected:`
+  // sentinel, which is the registry's own existing idiom for "no producer
+  // exists yet", rather than repointed at a near-miss `adoption:*` check whose
+  // item count means something else entirely.
   {
     key: "collaboration.fileActivity",
     label: "File Activity (day × hour)",
     valueType: "time-series",
     shape: "heatmap",
     sourceType: "monitor_profile",
-    sourceKey: "usage:onedrive-activity",
+    sourceKey: "not_collected:onedrive-file-activity",
     scope: "customer",
-    status: "needs_aggregation",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -759,9 +793,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:email-activity",
+    sourceKey: "not_collected:active-email-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -770,9 +804,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:teams-activity",
+    sourceKey: "not_collected:active-teams-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -781,9 +815,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:sharepoint-activity",
+    sourceKey: "not_collected:active-sharepoint-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -792,9 +826,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:onedrive-activity",
+    sourceKey: "not_collected:active-onedrive-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -803,9 +837,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:teams-activity",
+    sourceKey: "not_collected:meetings-organized",
     scope: "customer",
-    status: "needs_aggregation",
+    status: "not_collected",
     smartEligible: false,
   },
 
@@ -1273,15 +1307,17 @@ export const DASHBOARD_METRICS: MetricDef[] = [
   },
 
   // ---- Usage & Adoption -------------------------------------------------
+  // Same retirement as the six `collaboration.*` activity entries above (#441).
+  // All eight named `usage:*` keys; the domain does not exist in monitor_checks.
   {
     key: "usage.exchangeUsageCount",
     label: "Exchange Adoption Score",
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:exchange-adoption",
+    sourceKey: "not_collected:exchange-adoption-score",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1290,9 +1326,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:sharepoint-adoption",
+    sourceKey: "not_collected:sharepoint-adoption-score",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1301,9 +1337,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:onedrive-adoption",
+    sourceKey: "not_collected:onedrive-adoption-score",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1312,9 +1348,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:teams-adoption",
+    sourceKey: "not_collected:teams-adoption-score",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1323,9 +1359,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:exchange-active",
+    sourceKey: "not_collected:exchange-active-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1334,9 +1370,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:sharepoint-active",
+    sourceKey: "not_collected:sharepoint-active-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1345,9 +1381,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:onedrive-active",
+    sourceKey: "not_collected:onedrive-active-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1356,9 +1392,9 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "usage:teams-active",
+    sourceKey: "not_collected:teams-active-users",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
 

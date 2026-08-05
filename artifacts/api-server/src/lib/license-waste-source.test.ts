@@ -17,7 +17,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  *
  * DB is mocked with a FIFO queue. Query order per resolveLicenseWasteCounts:
  *   1. monitor_checks (active) — filtered in JS to /subscribedSkus endpoints
- *   2. tenant_monitor_profiles, once per candidate key in order
+ *   2. tenant_monitor_profiles, once per candidate key, in ALPHABETICAL key
+ *      order — every candidate is read before one is chosen, because the choice
+ *      is by `collected_at` recency across the whole set (#441). It used to be
+ *      "first candidate with a usable page wins, with cost:unused-unassigned-
+ *      licenses sorted to the front by name"; that made the reported provenance
+ *      a naming preference rather than a fact, and once that check left the
+ *      assess:copilot-readiness package it kept winning on a stale stored page.
  */
 
 let mockResultQueue: any[][] = [];
@@ -115,14 +121,14 @@ describe("resolveLicenseWasteCounts", () => {
 
   it("prices real unused seats from the live tenant's /subscribedSkus response", async () => {
     mockResultQueue.push([...OTHER_COST_CHECKS, ...SUBSCRIBED_SKU_CHECKS]);
-    // cost:unused-unassigned-licenses is tried first (name preference).
+    // Only one candidate has a stored page, so it wins on recency by default.
     mockResultQueue.push([
       { rawResponse: skuPage([sku("ENTERPRISEPACK", 25, 21), sku("SPB", 3, 3)]), collectedAt },
     ]);
 
     const res = await resolveLicenseWasteCounts("tenant-guid-1");
     expect(res).not.toBeNull();
-    expect(res!.checkKey).toBe("cost:unused-unassigned-licenses");
+    expect(res!.checkKey).toBe("cost:entra-license-tier-distribution");
     expect(res!.counts).toEqual({ ENTERPRISEPACK: 4 });
     expect(res!.totalEnabledSeats).toBe(28);
   });
@@ -157,13 +163,54 @@ describe("resolveLicenseWasteCounts", () => {
 
   it("moves to the next /subscribedSkus check when the first has no stored page", async () => {
     mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
-    mockResultQueue.push([]); // cost:unused-unassigned-licenses — never collected
+    mockResultQueue.push([]); // cost:entra-license-tier-distribution — never collected
     mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 12, 7)]), collectedAt }]);
 
     const res = await resolveLicenseWasteCounts("tenant-guid-1");
-    expect(res!.checkKey).toBe("cost:entra-license-tier-distribution");
+    expect(res!.checkKey).toBe("cost:license-count-by-sku");
     expect(res!.counts).toEqual({ SPE_E3: 5 });
     expect(res!.fallback).toBe(true);
+  });
+
+  it("#441 — provenance follows the NEWEST stored page, not the tidiest key name", async () => {
+    // The exact live shape behind #441: cost:unused-unassigned-licenses was
+    // removed from assess:copilot-readiness, so its row is now months old, while
+    // a check the scan still runs has a fresh one. tenant_monitor_profiles keeps
+    // the last row per check forever, so the retired check still HAS a page —
+    // the old name-preference sort therefore kept citing it as the source of the
+    // customer's current licence figures. Recency is what makes the reported
+    // checkKey a fact rather than a preference.
+    const stale = new Date("2026-05-01T00:00:00.000Z");
+    const fresh = new Date("2026-08-05T00:00:00.000Z");
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
+    // Alphabetical candidate order: entra, license-count, unused-unassigned, utilization.
+    mockResultQueue.push([]);                                                             // entra
+    mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 12, 7)]), collectedAt: fresh }]);  // license-count
+    mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 90, 1)]), collectedAt: stale }]);  // unused-unassigned
+    mockResultQueue.push([]);                                                             // utilization
+
+    const res = await resolveLicenseWasteCounts("tenant-guid-1");
+    expect(res!.checkKey).toBe("cost:license-count-by-sku");
+    // 5, from the fresh page — NOT 89 from the retired check's stale one.
+    expect(res!.counts).toEqual({ SPE_E3: 5 });
+  });
+
+  it("#441 — still honours an EXPLICIT preferredCheckKey over a newer page elsewhere", async () => {
+    // A caller naming a check is stating intent, not guessing from a string, so
+    // it stays ahead of recency. Only the name-based default was removed.
+    const fresh = new Date("2026-08-05T00:00:00.000Z");
+    const older = new Date("2026-08-01T00:00:00.000Z");
+    mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
+    mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 30, 22)]), collectedAt: older }]); // entra
+    mockResultQueue.push([{ rawResponse: skuPage([sku("SPE_E3", 12, 7)]), collectedAt: fresh }]);  // license-count
+    mockResultQueue.push([]);
+    mockResultQueue.push([]);
+
+    const res = await resolveLicenseWasteCounts("tenant-guid-1", "cost:entra-license-tier-distribution");
+    expect(res!.checkKey).toBe("cost:entra-license-tier-distribution");
+    // 8, from the named check's older page — not 5 from the newer one.
+    expect(res!.counts).toEqual({ SPE_E3: 8 });
+    expect(res!.fallback).toBe(false);
   });
 
   it("reports fallback=true because the registry's declared key is not a real check", async () => {

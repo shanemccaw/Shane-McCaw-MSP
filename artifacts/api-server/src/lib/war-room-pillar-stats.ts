@@ -69,8 +69,11 @@
  *       is used under its own honest label.
  *   "meetings transcribed %", "named champions", "files shared in chat %" — no
  *       check collects transcription state, champion nomination or chat-share
- *       ratio. Replaced by the four real per-workload active-user counts, which
- *       are what the adoption pillar's checks genuinely produce.
+ *       ratio. These were replaced by four per-workload active-user counts on
+ *       the stated basis that the adoption pillar's `usage:*` checks produce
+ *       them; #441 established that `usage:` is not a real check-key domain, so
+ *       the replacements were phantom too and the adoption card is now empty.
+ *       See the `adoption: []` spec below for why they are not repointed.
  *   "files evaluated", "PHI containers labelled %" — no check counts scanned
  *       files or PHI containers.
  *   "managed endpoints", "device compliance %", "tickets a week" — no total
@@ -286,11 +289,15 @@ export interface WarRoomStatSpec {
 }
 
 /**
- * The 28 real stat callouts, four per pillar, in the order the cards render.
+ * The real stat callouts, in the order the cards render — four per pillar
+ * except adoption, which is empty (see its own note).
  *
- * Every `metricKey` is a real `DASHBOARD_METRICS` entry (lib/dashboard-registry),
- * whose `sourceKey` is a real `monitor_checks` key — the registry already carries
- * the "is this check real" audit (see its inline notes on phantom sourceKeys).
+ * Every `metricKey` must be a real `DASHBOARD_METRICS` entry (lib/dashboard-
+ * registry) whose `sourceKey` is a real `monitor_checks` key. That second half
+ * was assumed rather than checked until #441 and was false for four of them;
+ * `registry-source-key-contract.test.ts` now asserts both halves on every spec
+ * here, so a rename or removal in the catalog fails a test instead of reaching
+ * a customer's report as an unresolved key.
  */
 export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRoomStatSpec[]> = {
   // Exact matches: the governance card's own four numbers all have a real check.
@@ -333,24 +340,30 @@ export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRo
       replaces: "25 / 2 Copilot owned / used" },
   ],
 
-  // Only the first had a real producer. The other three asked for transcription
-  // state, champion nominations and a chat-share ratio, none of which any check
-  // collects — replaced by the four real per-workload active-user counts, which
-  // are exactly what the adoption pillar's `usage:*` checks do produce.
-  adoption: [
-    { id: "adoption.teamsActive", label: "active Teams users", unit: "count",
-      source: { kind: "metric", metricKey: "collaboration.activeTeamsUserCount" },
-      replaces: "1,631 daily active users" },
-    { id: "adoption.sharePointActive", label: "active SharePoint users", unit: "count",
-      source: { kind: "metric", metricKey: "collaboration.activeSharePointUserCount" },
-      replaces: "22% meetings transcribed" },
-    { id: "adoption.oneDriveActive", label: "active OneDrive users", unit: "count",
-      source: { kind: "metric", metricKey: "collaboration.activeOneDriveUserCount" },
-      replaces: "0 named champions" },
-    { id: "adoption.emailActive", label: "active email users", unit: "count",
-      source: { kind: "metric", metricKey: "collaboration.activeEmailUserCount" },
-      replaces: "64% files shared in chat" },
-  ],
+  // EMPTY, and deliberately so since #441.
+  //
+  // This card used to carry four "active <workload> users" stats, on the stated
+  // basis that they "are exactly what the adoption pillar's `usage:*` checks do
+  // produce". That basis was false: `usage:` is not a check-key domain in this
+  // platform's catalog and never has been, so all four resolved to
+  // `unknown_check_key` for every tenant, forever. They were not empty-because-
+  // unscanned; they were empty-because-misspelt, and the Copilot Readiness
+  // Report printed the four phantom keys to a paying customer as "not wired to
+  // a check in the catalogue".
+  //
+  // They are NOT repointed at the real `adoption:*` activity checks. Those four
+  // (`adoption:teams-activity-trend`, `adoption:sharepoint-onedrive-trend`,
+  // `adoption:email-activity-trend`, `adoption:overall-active-rate`) are Graph
+  // usage-report DETAIL endpoints — one row per user, or per site — so a metric
+  // pointed at them falls through to `_itemCount` and renders the entire
+  // licensed roster under a caption reading "active users". That is the same
+  // trap this file already refuses for the Health card's `intune:*` stats, and
+  // it is worse here because the number would look plausible.
+  //
+  // The gap is recorded in WAR_ROOM_UNPRODUCIBLE_STATS below and needs a real
+  // check + mapping (DB-resident) to close, not a registry edit. Until then the
+  // card shows its real score, trend and findings and asserts no figure.
+  adoption: [],
 
   // "regulated, unlabelled" maps exactly onto the real missing-labels check. The
   // other three replace file-scan / PHI-container / mailbox-DLP numbers nothing
@@ -445,6 +458,13 @@ export const WAR_ROOM_UNPRODUCIBLE_STATS: readonly string[] = [
   "% device compliance (no compliant/total device ratio check)",
   "tickets a week (no ticket source on the tenant assessment path)",
   "CA policies (identity:ca-policy-count has no DASHBOARD_METRICS entry)",
+  // #441. The four the adoption card used to claim. Listed individually because
+  // each needs its own real check, and because listing them here is the only
+  // record that the card is empty by decision rather than by neglect.
+  "active Teams users (no check counts ACTIVE users; adoption:teams-activity-trend is a per-user detail report)",
+  "active SharePoint users (adoption:sharepoint-onedrive-trend is a per-SITE usage report, not a user count)",
+  "active OneDrive users (no OneDrive per-user activity check exists at all)",
+  "active email users (no check counts ACTIVE users; adoption:email-activity-trend is a per-user detail report)",
   "Copilot session policies (not collected)",
   "test prompts returning PHI (no Copilot test-prompt harness)",
   "PHI exposure priced (nothing prices PHI exposure)",
@@ -489,6 +509,36 @@ export interface WarRoomStat {
  * next to a perfectly real score.
  */
 export const WAR_ROOM_STAT_NOT_SCANNED = "not_in_scan_package";
+
+/**
+ * Reasons that are a PLATFORM WIRING FAULT rather than a fact about the tenant.
+ *
+ * Every other unavailability reason answers "what does this customer's scan
+ * carry" — the check was not in their package, it ran and found nothing, their
+ * licence tier does not include it. These three answer "is our own registry
+ * correct", and the answer is no. The distinction matters twice:
+ *
+ *   • Server-side, they are logged as errors (below), because a stat that can
+ *     never resolve for ANY tenant is a defect with no self-healing path and
+ *     needs to be loud. #441 existed because it was silent for months.
+ *   • Client-side, the Copilot Readiness Report excludes them from the
+ *     customer-facing "not available for this tenant" block. Printing
+ *     `usage:teams-activity — not wired to a check in the catalogue` in a paid
+ *     deliverable states our bug as though it were a gap in their environment.
+ *
+ * Exported so the consumers of this payload classify identically rather than
+ * each re-deciding which reasons are ours.
+ */
+export const WAR_ROOM_STAT_WIRING_FAULT_REASONS: readonly string[] = [
+  "unknown_check_key",
+  "unknown_metric_key",
+  "resolver_error",
+];
+
+/** True when a stat is unavailable because of OUR wiring, not the tenant's data. */
+export function isStatWiringFault(reason: string | undefined): boolean {
+  return reason != null && WAR_ROOM_STAT_WIRING_FAULT_REASONS.includes(reason);
+}
 
 /**
  * Pure: correct a stat's `no_data` to `not_in_scan_package` when its check is
@@ -776,6 +826,18 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       // never-scanned check can't keep an "it ran and found nothing" label
       // whichever path produced it (#341).
       .map((stat) => refineStatUnavailability(stat, scanned.checkKeys));
+
+    // A stat that can never resolve for anyone is a defect, not a thin tenant.
+    // Logged per request rather than once at boot on purpose: the catalog is
+    // DB-resident, so a key can stop existing without this process restarting.
+    for (const stat of stats) {
+      if (isStatWiringFault(stat.unavailableReason)) {
+        log.error(
+          { customerId, pillar, statId: stat.id, checkKey: stat.checkKey, reason: stat.unavailableReason },
+          "war-room-pillar-stats: stat is unresolvable for every tenant — registry sourceKey does not match the live monitor_checks catalog",
+        );
+      }
+    }
 
     const found = findingsByPillar.get(pillar) ?? [];
     const trendPoints = pillarTrends.get(enginePillar) ?? null;

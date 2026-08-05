@@ -734,6 +734,15 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
     case "identity.signinActivity":
       return aggregateSigninHeatmap(def, props);
 
+    // The two cases below are UNREACHABLE as of #441 and deliberately kept.
+    // Both metrics used to declare a `usage:*` sourceKey, which names no check
+    // in the catalog, so `latestCheckProps` never returned anything and neither
+    // transform ever ran. Their metrics now carry the `not_collected:` sentinel,
+    // which short-circuits above with an honest reason before reaching here. The
+    // transforms stay because they encode what the shape WOULD be if a real
+    // check ever produced it — deleting them would lose that, and re-deriving
+    // "which fields mean meetings organised" is the expensive part.
+
     // Meetings organized: needs a teams-activity sub-field; not schema-stable.
     case "collaboration.meetingsOrganized": {
       const v = firstNumber(props, ["meetingsOrganized", "meetingCount", "_itemCount"]);

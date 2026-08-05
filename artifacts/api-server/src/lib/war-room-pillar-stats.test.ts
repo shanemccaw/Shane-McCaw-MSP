@@ -59,13 +59,22 @@ import type { MetricResult } from "./dashboard-resolvers.ts";
 
 const ALL_SPECS: WarRoomStatSpec[] = WAR_ROOM_PILLAR_KEYS.flatMap((p) => [...WAR_ROOM_PILLAR_STAT_SPECS[p]]);
 
-describe("stat specs cover exactly the 28 callouts", () => {
-  it("has four stats for each of the seven pillars", () => {
+describe("stat specs cover exactly the 24 producible callouts", () => {
+  it("has four stats for every pillar except adoption, which has none", () => {
     expect(WAR_ROOM_PILLAR_KEYS).toHaveLength(7);
     for (const pillar of WAR_ROOM_PILLAR_KEYS) {
-      expect(WAR_ROOM_PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(4);
+      // adoption is deliberately empty since #441: its four stats resolved
+      // through `usage:*` registry sourceKeys, and `usage:` is not a check-key
+      // domain that exists in this platform's catalog, so all four were
+      // permanently unresolvable for every tenant and were being printed to
+      // customers verbatim. Repointing them at the real `adoption:*` usage
+      // reports would render row counts under "active users" captions, so the
+      // gap is recorded in WAR_ROOM_UNPRODUCIBLE_STATS instead.
+      expect(WAR_ROOM_PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(
+        pillar === "adoption" ? 0 : 4,
+      );
     }
-    expect(ALL_SPECS).toHaveLength(28);
+    expect(ALL_SPECS).toHaveLength(24);
   });
 
   it("gives every stat a unique id", () => {
@@ -77,8 +86,11 @@ describe("stat specs cover exactly the 28 callouts", () => {
     for (const spec of ALL_SPECS) {
       expect(spec.replaces.length, `spec ${spec.id}`).toBeGreaterThan(0);
     }
-    // All 28 originals are accounted for exactly once.
-    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(28);
+    // The 24 surviving originals are accounted for exactly once. The other four
+    // ("1,631 daily active users", "22% meetings transcribed", "0 named
+    // champions", "64% files shared in chat") moved to
+    // WAR_ROOM_UNPRODUCIBLE_STATS when the adoption card emptied (#441).
+    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(24);
   });
 });
 
@@ -124,6 +136,11 @@ describe("finding → pillar grouping by real check-key domain", () => {
   it("routes real check keys to the pillar that owns their domain", () => {
     expect(warRoomPillarForCheckKey("sharepoint:anonymous-links")).toBe("governance");
     expect(warRoomPillarForCheckKey("identity:mfa-registration")).toBe("security");
+    expect(warRoomPillarForCheckKey("adoption:teams-activity-trend")).toBe("adoption");
+    // `usage` stays in the domain map as an accepted alias even though #441
+    // found no `usage:*` row in the catalog — the map routes real FINDINGS by
+    // their stored check key, and dropping a domain is a claim about live data
+    // that belongs in SQL, not here. No finding can match it today.
     expect(warRoomPillarForCheckKey("usage:teams-activity")).toBe("adoption");
     expect(warRoomPillarForCheckKey("compliance:missing-labels")).toBe("compliance");
     expect(warRoomPillarForCheckKey("copilot:overshare-exposure")).toBe("copilot");
@@ -411,7 +428,11 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // Exactly what the five cards resolve to for a tenant whose scans only ever
     // ran core:security-baseline: no rows at all, so every metric comes back
     // no_data. Before this, all 20 said "ran, found nothing".
-    for (const pillar of ["governance", "licensing", "adoption", "compliance", "health"] as const) {
+    //
+    // `adoption` dropped out of this list in #441 — it now has no metric-backed
+    // spec left to go dark, so `new Set([])` would assert nothing at all rather
+    // than the intended behaviour.
+    for (const pillar of ["governance", "licensing", "compliance", "health"] as const) {
       const reasons = WAR_ROOM_PILLAR_STAT_SPECS[pillar]
         .filter((s) => s.source.kind === "metric")
         .map((spec) =>

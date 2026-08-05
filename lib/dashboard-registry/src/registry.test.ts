@@ -4,6 +4,36 @@ import assert from "node:assert/strict";
 import { DASHBOARD_METRICS } from "./metrics";
 import { DASHBOARD_RENDERERS } from "./renderers";
 import { getValidRenderersForMetric } from "./registry";
+import { classifySourceKey, sourceKeyIsCatalogClaim, NOT_COLLECTED_PREFIX } from "./sourceKeyContract";
+
+test("no monitor_profile metric names a sourceKey a live audit has ruled out", () => {
+  // #441. A phantom sourceKey is invisible at runtime — it resolves exactly like
+  // a tenant that has not collected the check — so it can only be caught here.
+  // See sourceKeyContract.ts for why this is a deny list rather than an
+  // allow-list of "real" domains.
+  const bad: string[] = [];
+  for (const m of DASHBOARD_METRICS) {
+    if (m.sourceType !== "monitor_profile") continue;
+    if (!sourceKeyIsCatalogClaim(m.key)) continue;
+    const verdict = classifySourceKey(m.sourceKey);
+    if (!verdict.ok) bad.push(`${m.key}: ${verdict.reason}`);
+  }
+  assert.deepEqual(bad, [], `phantom sourceKeys:\n  ${bad.join("\n  ")}`);
+});
+
+test("a not_collected sourceKey and a not_collected status always travel together", () => {
+  // Either half alone is a lie: the sentinel prefix with an "available" status
+  // makes the metric look resolvable, and the status without the prefix leaves a
+  // real-looking catalog key pointing at nothing.
+  for (const m of DASHBOARD_METRICS) {
+    const sentinel = m.sourceKey.startsWith(NOT_COLLECTED_PREFIX);
+    assert.equal(
+      sentinel,
+      m.status === "not_collected",
+      `${m.key}: sourceKey "${m.sourceKey}" and status "${m.status}" disagree about whether it is collected`,
+    );
+  }
+});
 
 test("every MetricDef.key is unique", () => {
   const seen = new Set<string>();
