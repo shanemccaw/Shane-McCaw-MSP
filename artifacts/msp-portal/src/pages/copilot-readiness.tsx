@@ -609,6 +609,7 @@ export default function CopilotReadinessPage() {
         vh={metrics.vh}
         reduced={reduced}
         discussHref={DISCUSS_HREF}
+        documentsHref={DOCUMENTS_HREF}
         onOpenDocuments={() => navigate(DOCUMENTS_HREF)}
         payloadState={statusState}
         retryAction={retryAction}

@@ -150,6 +150,7 @@ export function RevealFullPicture({
   vh,
   reduced,
   discussHref,
+  documentsHref,
   onOpenDocuments,
   payloadState,
   retryAction,
@@ -162,6 +163,10 @@ export function RevealFullPicture({
   /** Where "Discuss my results with Shane McCaw" goes. Bare path — the tenant
    *  slug is applied by the router's base. */
   discussHref: string;
+  /** Where the unconditional "See your documents" link goes (#421) — always
+   *  rendered regardless of `payloadState`/`gen.known`/document scope, unlike
+   *  the gated `onOpenDocuments` button above. */
+  documentsHref: string;
   /** Opens the Document Viewer. Named for what it does — the lead document is
    *  whatever this tenant's set actually leads with, not always the summary. */
   onOpenDocuments: () => void;
@@ -815,6 +820,18 @@ export function RevealFullPicture({
                   <span style={{ fontSize: 12, fontWeight: 500, color: INK.deemphasised }}>
                     30 minutes, direct with the architect.
                   </span>
+                </div>
+
+                {/* #421: unconditional navigation to the Document Viewer,
+                    independent of the gate above — payloadState/gen.known/
+                    document scope must never block simply getting there. */}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+                  <Link
+                    href={documentsHref}
+                    style={{ fontSize: 13, fontWeight: 600, color: INK.link }}
+                  >
+                    See your documents →
+                  </Link>
                 </div>
 
                 {/* "We will notify you the moment the set is ready" is a promise
