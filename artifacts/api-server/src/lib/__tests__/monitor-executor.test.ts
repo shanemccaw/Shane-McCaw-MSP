@@ -623,6 +623,459 @@ describe("applyMapping", () => {
   });
 });
 
+// ── #403: valueWhere — named-key lookup in a {name, value} array ───────────────
+//
+// Every fixture below is the REAL v1.0 payload from Microsoft's own reference
+// for GET /groupSettings: a groupSetting carries `values`, a settingValue
+// collection of literal {"name": String, "value": String} pairs. Every value is
+// a STRING — booleans arrive as "true"/"false" and an unconfigured setting
+// arrives as "" rather than being absent.
+
+const GROUP_UNIFIED_SETTINGS = [
+  {
+    id: "f0b2d6f5-097d-4177-91af-a24e530b53cc",
+    displayName: "Group.Unified",
+    templateId: "62375ab9-6b52-47ed-826b-58e47e0e304b",
+    values: [
+      { name: "EnableMIPLabels", value: "true" },
+      { name: "CustomBlockedWordsList", value: "" },
+      { name: "PrefixSuffixNamingRequirement", value: "[Contoso-][GroupName]" },
+      { name: "AllowGuestsToBeGroupOwner", value: "false" },
+      { name: "AllowToAddGuests", value: "true" },
+      { name: "EnableGroupCreation", value: "true" },
+    ],
+  },
+];
+
+describe("applyMapping — valueWhere (#403)", () => {
+  beforeEach(() => vi.mocked(logger.warn).mockClear());
+
+  it("reads a named setting's real value out of the settingValue array", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+      { sourceField: "values", targetField: "naming", transform: "valueWhere('name', 'PrefixSuffixNamingRequirement')" },
+    ];
+    const result = applyMapping(GROUP_UNIFIED_SETTINGS, mapping, []);
+    expect(result.guestsAllowed).toBe("true");
+    expect(result.naming).toBe("[Contoso-][GroupName]");
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes ABSENT (null) from PRESENT-BUT-UNSET (empty string), and both are expressible", () => {
+    // The whole reason this transform exists. Graph returns the full template
+    // for any settings object the tenant has created, so `exists` on the array
+    // is true either way. Only the value tells you whether it is configured.
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "blockedWords", transform: "valueWhere('name', 'CustomBlockedWordsList')" },
+      { sourceField: "values", targetField: "usageUrl", transform: "valueWhere('name', 'UsageGuidelinesUrl')" },
+    ];
+    const result = applyMapping(GROUP_UNIFIED_SETTINGS, mapping, []);
+    expect(result.blockedWords).toBe("");   // present, never configured
+    expect(result.usageUrl).toBeNull();     // not in this tenant's payload at all
+
+    // A stored severity rule can name either state, or both.
+    expect(evalConditionGrammar("blockedWords == ''", result)).toBe(true);
+    expect(evalConditionGrammar("blockedWords == null", result)).toBe(false);
+    expect(evalConditionGrammar("usageUrl == null", result)).toBe(true);
+    expect(evalConditionGrammar("usageUrl == null || usageUrl == ''", result)).toBe(true);
+    expect(evalConditionGrammar("blockedWords == null || blockedWords == ''", result)).toBe(true);
+    expect(evalConditionGrammar("guestsAllowed == null || guestsAllowed == ''",
+      applyMapping(GROUP_UNIFIED_SETTINGS, [{ sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" }], []),
+    )).toBe(false);
+  });
+
+  it("supports an explicit third argument for the extracted field", () => {
+    const templateRows = [
+      { values: [{ settingName: "EnableGroupCreation", currentValue: "false", defaultValue: "true" }] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "current", transform: "valueWhere('settingName', 'EnableGroupCreation', 'currentValue')" },
+      { sourceField: "values", targetField: "fallback", transform: "valueWhere('settingName', 'EnableGroupCreation', 'defaultValue')" },
+    ];
+    const result = applyMapping(templateRows, mapping, []);
+    expect(result.current).toBe("false");
+    expect(result.fallback).toBe("true");
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns loudly on a case-only spelling drift instead of silently reading 'absent'", () => {
+    // The exact trap #403 was written into: `groupLifetimeInDays` is the real
+    // spelling on groupLifecyclePolicy, not on a groupSettings name/value pair.
+    // A near-miss must not be indistinguishable from a genuinely absent setting.
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'allowtoaddguests')" },
+    ];
+    const result = applyMapping(GROUP_UNIFIED_SETTINGS, mapping, []);
+    expect(result.guestsAllowed).toBeNull();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "guestsAllowed", nearMisses: ["AllowToAddGuests"] }),
+      expect.stringContaining("differing only in case"),
+    );
+  });
+
+  it("returns null and warns when sourceField is not an array on any item", () => {
+    const mapping: MappingRule[] = [
+      // Points at the settings OBJECT rather than at its `values` array.
+      { sourceField: "displayName", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping(GROUP_UNIFIED_SETTINGS, mapping, []);
+    expect(result.guestsAllowed).toBeNull();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "guestsAllowed", sourceField: "displayName" }),
+      expect.stringContaining("must point at the ARRAY of name/value pairs"),
+    );
+  });
+
+  it("survives malformed nested data without throwing or inventing a match", () => {
+    const malformed = [
+      { values: null },
+      { values: "not-an-array" },
+      { values: [null, "scalar", 42, ["nested"], { name: null, value: "x" }, {}] },
+      { values: [{ name: "AllowToAddGuests", value: "true" }] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping(malformed, mapping, []);
+    expect(result.guestsAllowed).toBe("true");
+  });
+
+  it("takes the first match in document order but warns when tenants disagree across objects", () => {
+    // AllowToAddGuests really does live in BOTH Group.Unified and
+    // Group.Unified.Guest, and the two can hold different values.
+    const both = [
+      { displayName: "Group.Unified", values: [{ name: "AllowToAddGuests", value: "true" }] },
+      { displayName: "Group.Unified.Guest", values: [{ name: "AllowToAddGuests", value: "false" }] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping(both, mapping, []);
+    expect(result.guestsAllowed).toBe("true");
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "guestsAllowed", matchCount: 2 }),
+      expect.stringContaining("one of several real answers"),
+    );
+
+    // Same setting, same value in both places: no ambiguity, no warning.
+    vi.mocked(logger.warn).mockClear();
+    const agreeing = applyMapping(
+      [{ values: [{ name: "AllowToAddGuests", value: "true" }] }, { values: [{ name: "AllowToAddGuests", value: "true" }] }],
+      mapping, [],
+    );
+    expect(agreeing.guestsAllowed).toBe("true");
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns when the named entry exists but carries no extractable value", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping([{ values: [{ name: "AllowToAddGuests" }] }], mapping, []);
+    expect(result.guestsAllowed).toBeNull();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "guestsAllowed" }),
+      expect.stringContaining("carries no usable"),
+    );
+  });
+
+  it("returns null on an empty items array without warning about a missing $select", () => {
+    // A tenant that has never created a settings object returns value: [].
+    // That is a real answer ("no policy"), not a misconfigured check.
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping([], mapping, []);
+    expect(result.guestsAllowed).toBeNull();
+    expect(result._itemCount).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+});
+
+// ── #403: flattenValues / countDuplicatesBy — nested-array field extraction ────
+//
+// Real v1.0 shape: user.assignedLicenses is an assignedLicense collection of
+// {skuId: Guid, disabledPlans: [Guid]} — the skuId is one level down inside an
+// array, which a named-property dot-path cannot reach.
+
+const SKU_E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
+const SKU_E5 = "06ebc4ee-1bb5-47dd-8120-11324bc54e06";
+const SKU_VISIO = "c5928f49-12ba-48f7-ada3-0d743a3601d5";
+
+const USERS_WITH_LICENSES = [
+  { id: "u1", assignedLicenses: [{ disabledPlans: [], skuId: SKU_E3 }, { disabledPlans: [], skuId: SKU_E5 }] },
+  { id: "u2", assignedLicenses: [{ disabledPlans: [], skuId: SKU_E3 }] },
+  { id: "u3", assignedLicenses: [{ disabledPlans: [], skuId: SKU_VISIO }] },
+  { id: "u4", assignedLicenses: [] },
+];
+
+describe("applyMapping — flattenValues / countDuplicatesBy (#403)", () => {
+  beforeEach(() => vi.mocked(logger.warn).mockClear());
+
+  it("documents why the transform is needed: a dot-path cannot step through an array", () => {
+    // Not an assertion about the new code — an assertion about the gap. This is
+    // what every stored check pointing at "assignedLicenses.skuId" gets today.
+    const dotPath = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses.skuId", targetField: "skus", transform: "join" },
+    ], []);
+    expect(dotPath.skus).toBe("");
+  });
+
+  it("flattens a nested field across every item, in document order", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuId')" },
+    ];
+    const result = applyMapping(USERS_WITH_LICENSES, mapping, []);
+    expect(result.skuIds).toEqual([SKU_E3, SKU_E5, SKU_E3, SKU_VISIO]);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("produces a list the existing grammar can read", () => {
+    const result = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuId')" },
+    ], []);
+    expect(evalConditionGrammar(`skuIds contains '${SKU_E5}'`, result)).toBe(true);
+    expect(evalConditionGrammar("skuIds contains 'not-a-sku'", result)).toBe(false);
+    expect(evalConditionGrammar("skuIds length> 3", result)).toBe(true);
+    expect(evalConditionGrammar("skuIds length> 4", result)).toBe(false);
+  });
+
+  it("counts duplicated OCCURRENCES with the same logic countDuplicates uses", () => {
+    const result = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" },
+    ], []);
+    // E3 appears twice -> both occurrences count; E5 and Visio are unique.
+    expect(result.dupes).toBe(2);
+
+    // The two transforms must agree: feeding countDuplicates the ALREADY-flat
+    // list gives the identical number, which is the point of sharing the helper.
+    const flat = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuId')" },
+    ], []).skuIds as string[];
+    const viaCountDuplicates = applyMapping([{ skus: flat }], [
+      { sourceField: "skus", targetField: "dupes", transform: "countDuplicates" },
+    ], []);
+    expect(viaCountDuplicates.dupes).toBe(result.dupes);
+
+    // Three copies contribute three, not two and not one.
+    const triple = applyMapping([
+      { assignedLicenses: [{ skuId: SKU_E3 }, { skuId: SKU_E3 }] },
+      { assignedLicenses: [{ skuId: SKU_E3 }] },
+    ], [{ sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" }], []);
+    expect(triple.dupes).toBe(3);
+  });
+
+  it("regression: countDuplicates over the licence OBJECTS reports the whole estate as duplicated", () => {
+    // String({skuId}) is "[object Object]" for EVERY licence, so an
+    // un-flattened duplicate count over assignedLicenses cannot distinguish
+    // two users holding different SKUs from two users holding the same one.
+    // countDuplicatesBy is the fix; this pins the failure it fixes.
+    const bogus = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicates" },
+    ], []);
+    expect(bogus.dupes).toBe(4);   // every licence in the tenant "duplicated"
+
+    const real = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" },
+    ], []);
+    expect(real.dupes).toBe(2);
+  });
+
+  it("returns an empty list / zero and warns when sourceField holds no array", () => {
+    const items = [{ id: "u1" }, { id: "u2" }];
+    const result = applyMapping(items, [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuId')" },
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" },
+    ], []);
+    expect(result.skuIds).toEqual([]);
+    expect(result.dupes).toBe(0);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "skuIds" }),
+      expect.stringContaining("flattenValues found no array"),
+    );
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "dupes" }),
+      expect.stringContaining("countDuplicatesBy found no array"),
+    );
+  });
+
+  it("warns when the arrays are there but the named field is wrong", () => {
+    const result = applyMapping(USERS_WITH_LICENSES, [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuID')" },
+    ], []);
+    expect(result.skuIds).toEqual([]);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ targetField: "skuIds" }),
+      expect.stringContaining('no entry inside them carries "skuID"'),
+    );
+  });
+
+  it("does not warn when every item legitimately has an EMPTY licence array", () => {
+    // An unlicensed tenant is a real answer, not a broken $select. sawArray is
+    // true, so neither warning fires — the same distinction countEmptyArray makes.
+    const result = applyMapping([{ assignedLicenses: [] }, { assignedLicenses: [] }], [
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" },
+    ], []);
+    expect(result.dupes).toBe(0);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("survives malformed nested data", () => {
+    const malformed = [
+      { assignedLicenses: null },
+      { assignedLicenses: "E3" },
+      { assignedLicenses: [null, "scalar", 7, ["nested"], { skuId: null }, { disabledPlans: [] }] },
+      { assignedLicenses: [{ skuId: SKU_E3 }] },
+      { assignedLicenses: [{ skuId: SKU_E3 }] },
+    ];
+    const result = applyMapping(malformed, [
+      { sourceField: "assignedLicenses", targetField: "skuIds", transform: "flattenValues('skuId')" },
+      { sourceField: "assignedLicenses", targetField: "dupes", transform: "countDuplicatesBy('skuId')" },
+    ], []);
+    // The explicit `skuId: null` is dropped; only the two real GUIDs survive.
+    expect(result.skuIds).toEqual([SKU_E3, SKU_E3]);
+    expect(result.dupes).toBe(2);
+  });
+
+  it("counts values named like Object.prototype members correctly", () => {
+    // A plain-object tally reads Object.prototype for these keys, so
+    // (seen[v] ?? 0) + 1 yields NaN and the count silently rots. The shared
+    // helper uses a Map, so they behave like any other value.
+    const result = applyMapping([
+      { tags: [{ v: "__proto__" }, { v: "__proto__" }] },
+      { tags: [{ v: "constructor" }, { v: "toString" }] },
+    ], [
+      { sourceField: "tags", targetField: "dupes", transform: "countDuplicatesBy('v')" },
+    ], []);
+    expect(result.dupes).toBe(2);
+  });
+
+  it("treats the new transform names as implemented, and malformed arg forms as not", () => {
+    const ok: MappingRule[] = [
+      { sourceField: "values", targetField: "a", transform: "valueWhere('name', 'AllowToAddGuests')" },
+      { sourceField: "values", targetField: "b", transform: "valueWhere('name', 'AllowToAddGuests', 'value')" },
+      { sourceField: "assignedLicenses", targetField: "c", transform: "flattenValues('skuId')" },
+      { sourceField: "assignedLicenses", targetField: "d", transform: "countDuplicatesBy('skuId')" },
+    ];
+    applyMapping([{ values: [{ name: "AllowToAddGuests", value: "true" }], assignedLicenses: [{ skuId: SKU_E3 }] }], ok, []);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    // A missing quote or a missing argument must degrade LOUDLY — not throw
+    // (which would fail the whole check for the tenant) and not bind to a field
+    // name that was never written.
+    for (const bad of ["valueWhere('name')", "flattenValues(skuId)", "countDuplicatesBy()", "valueWhere", "flattenValues"]) {
+      vi.mocked(logger.warn).mockClear();
+      const out = applyMapping([{ values: [{ name: "AllowToAddGuests", value: "true" }] }],
+        [{ sourceField: "values", targetField: "x", transform: bad }], []);
+      expect(out.x, `expected "${bad}" to degrade to the default raw array`).toEqual([[{ name: "AllowToAddGuests", value: "true" }]]);
+      expect(vi.mocked(logger.warn), `expected "${bad}" to warn`).toHaveBeenCalledWith(
+        expect.objectContaining({ transform: bad }),
+        expect.stringContaining("unparsable arguments"),
+      );
+    }
+  });
+});
+
+// ── #403: guest-access-reviews needs NO new code ──────────────────────────────
+
+describe("guest-access-reviews scope query (#403 finding)", () => {
+  // Verbatim from Microsoft's own v1.0 reference responses for
+  // GET /identityGovernance/accessReviews/definitions. The guest-scoped forms
+  // carry the OData filter text inline in scope.query; the non-guest one does
+  // not. Both `./members/...` (all-M365-groups guest reviews) and
+  // `/v1.0/groups/{id}/transitiveMembers/...` (single-group) are real.
+  const REAL_DEFINITIONS = [
+    {
+      id: "98dcebed-c7f6-46f4-bcf3-4a3fccdb3e2a",
+      displayName: "Access Review",
+      scope: { "@odata.type": "#microsoft.graph.accessReviewQueryScope", query: "/groups/119cc181-22f0-4e18-8537-264e7524ee0b/transitiveMembers", queryType: "MicrosoftGraph" },
+    },
+    {
+      id: "cc701697-762c-439a-81f5-f58d680fde76",
+      displayName: "Review guest access across Microsoft 365 groups",
+      status: "InProgress",
+      scope: { "@odata.type": "#microsoft.graph.accessReviewQueryScope", query: "./members/microsoft.graph.user/?$count=true&$filter=(userType eq 'Guest')", queryType: "MicrosoftGraph" },
+    },
+    {
+      id: "d6bf2f6c-2f6c-d6bf-6c2f-bfd66c2fbfd6",
+      displayName: "Review example",
+      status: "Applying",
+      scope: { "@odata.type": "#microsoft.graph.accessReviewQueryScope", query: "/v1.0/groups/4444d821-ca3b-45cc-98ee-54c00a04deef/transitiveMembers/microsoft.graph.user/?$count=true&$filter=(userType eq 'Guest')", queryType: "MicrosoftGraph", queryRoot: null },
+    },
+  ];
+
+  const MAPPING: MappingRule[] = [
+    { sourceField: "scope.query", targetField: "reviewScopeQueries", transform: "join" },
+  ];
+
+  it("matches the full OData filter phrase with the EXISTING contains operator, quoted or bare", () => {
+    const extracted = applyMapping(REAL_DEFINITIONS, MAPPING, []);
+    // The precise expression #403 asked to be tested before any code was written.
+    expect(evalConditionGrammar(`reviewScopeQueries contains "userType eq 'Guest'"`, extracted)).toBe(true);
+    // Unquoted is equivalent: the rhs resolves to no data value, so the raw
+    // clause text is used as the literal needle.
+    expect(evalConditionGrammar("reviewScopeQueries contains userType eq 'Guest'", extracted)).toBe(true);
+  });
+
+  it("says NO for a tenant whose reviews exist but do not target guests", () => {
+    // The distinction that matters: `exists` on scope is true either way.
+    const nonGuestOnly = applyMapping([REAL_DEFINITIONS[0]], [
+      ...MAPPING,
+      { sourceField: "scope", targetField: "anyScopeExists", transform: "exists" },
+    ], []);
+    expect(nonGuestOnly.anyScopeExists).toBe(true);
+    expect(evalConditionGrammar(`reviewScopeQueries contains "userType eq 'Guest'"`, nonGuestOnly)).toBe(false);
+  });
+
+  it("says NO for a tenant with no access reviews at all", () => {
+    const none = applyMapping([], MAPPING, []);
+    expect(evalConditionGrammar(`reviewScopeQueries contains "userType eq 'Guest'"`, none)).toBe(false);
+  });
+
+  it("degrades honestly when scope is a shape that has no query at all", () => {
+    // accessReviewInactiveUsersQueryScope / principalResourceMembershipScope
+    // are real alternatives to accessReviewQueryScope and carry no `query`.
+    // The dot-path yields undefined, join drops it — no fabricated match.
+    const inactiveUsersScope = [{ id: "x", scope: { "@odata.type": "#microsoft.graph.accessReviewInactiveUsersQueryScope", inactiveDuration: "P30D" } }];
+    const extracted = applyMapping(inactiveUsersScope, MAPPING, []);
+    expect(extracted.reviewScopeQueries).toBe("");
+    expect(evalConditionGrammar(`reviewScopeQueries contains "userType eq 'Guest'"`, extracted)).toBe(false);
+  });
+});
+
+// ── #403: access review INSTANCES are a fan-out, not a flatten ─────────────────
+
+describe("access review instance dates (#403 finding)", () => {
+  it("has no due date on the definition, and a FLAT endDateTime on the instance", () => {
+    // Verified against the v1.0 reference: accessReviewScheduleDefinition
+    // carries createdDateTime / lastModifiedDateTime / status and no end date
+    // at all, and neither list-definitions nor get-definition supports
+    // $expand=instances ("to retrieve the instances ... use the list
+    // accessReviewInstance API"). So overdue-ness is NOT reachable by flattening
+    // a nested array off the definitions payload — the check's endpoint has to
+    // enumerate instances. Once it does, endDateTime is already top-level and
+    // the olderThanDays operator added in #401 reads it with no new transform.
+    const definition = {
+      id: "cc701697-762c-439a-81f5-f58d680fde76",
+      displayName: "Review guest access across Microsoft 365 groups",
+      status: "InProgress",
+      scope: { query: "./members/microsoft.graph.user/?$count=true&$filter=(userType eq 'Guest')", queryType: "MicrosoftGraph" },
+    };
+    expect(Object.keys(definition)).not.toContain("endDateTime");
+
+    const instances = [
+      { id: "i1", startDateTime: "2021-03-09T23:10:28.83Z", endDateTime: "2021-04-09T23:10:28.83Z", status: "Applied" },
+      { id: "i2", startDateTime: new Date().toISOString(), endDateTime: new Date(Date.now() + 7 * 86400000).toISOString(), status: "InProgress" },
+    ];
+    const extracted = applyMapping(instances, [
+      { sourceField: "endDateTime", targetField: "firstEnd", transform: "first" },
+      { sourceField: "endDateTime", targetField: "ends", transform: "join" },
+    ], []);
+    expect(evalConditionGrammar("firstEnd olderThanDays 0", extracted)).toBe(true);
+    expect(extracted.ends).toContain("2021-04-09");
+  });
+});
+
 // ── graphFetchPaginated — pagination exhaustion ────────────────────────────────
 
 describe("graphFetchPaginated", () => {

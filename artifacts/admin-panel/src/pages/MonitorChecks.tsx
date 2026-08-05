@@ -517,6 +517,15 @@ export default function MonitorChecksPage() {
                   className="bg-background border-border text-white mt-1 font-mono text-xs"
                   placeholder='[{"sourceField":"mfaRegistered","targetField":"mfaEnabledCount","transform":"count"}]'
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Nested arrays: sourceField is a dot-path over NAMED properties only — it does not
+                  step through arrays. For an array field use{" "}
+                  <code>flattenValues('skuId')</code> or <code>countDuplicatesBy('skuId')</code>{" "}
+                  (sourceField = the array, e.g. <code>assignedLicenses</code>), or{" "}
+                  <code>valueWhere('name','AllowToAddGuests')</code> to read one named entry out of a{" "}
+                  {"{"}name, value{"}"} list. valueWhere returns <code>null</code> when the name is
+                  absent and <code>""</code> when it is present but unset, so rules must test both.
+                </p>
               </div>
 
               <div>

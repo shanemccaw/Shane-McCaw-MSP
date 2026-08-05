@@ -146,7 +146,9 @@ export interface MappingRule {
   /**
    * "count" | "exists" | "first" | "join" | "none" | "countTruthy" | "countFalse"
    * | "countEmptyArray" | "groupByCount" | "countDuplicates"
-   * | "countEquals('value')" | "countIfLastSignInOlderThan(N)" — the
+   * | "countEquals('value')" | "countIfLastSignInOlderThan(N)"
+   * | "valueWhere('matchField','matchValue'[,'extractField'])"
+   * | "flattenValues('field')" | "countDuplicatesBy('field')" — the
    * parameterised forms carry their argument inline in the string since
    * MappingRule is stored as jsonb; parsed at runtime.
    *
@@ -176,7 +178,15 @@ const KNOWN_TRANSFORMS = new Set([
   "countTruthy", "countFalse", "countEmptyArray",
   "countEquals", "countIfLastSignInOlderThan",
   "groupByCount", "countDuplicates",
+  "valueWhere", "flattenValues", "countDuplicatesBy",
 ]);
+
+/**
+ * Internal sentinel for "a parameterised transform this file implements, named
+ * with arguments it cannot parse". Deliberately not a shape any stored jsonb
+ * rule would ever author, so it can never collide with a real transform name.
+ */
+const MALFORMED_PARAMS = "__malformedParams__";
 
 export interface CheckResult {
   checkKey: string;
@@ -634,6 +644,85 @@ export function classifySeverity(
   return null;
 }
 
+// ── Nested-array helpers (shared by the array-shaped transforms) ──────────────
+
+/**
+ * Counts how many entries of `flatVals` are part of a duplicate group.
+ *
+ * This is `countDuplicates`' own logic, lifted verbatim in intent so that
+ * `countDuplicatesBy` composes with it rather than growing a second, subtly
+ * different notion of "duplicate". Note the semantics it preserves: THREE
+ * copies of a value contribute 3, not 2 and not 1 — it counts duplicated
+ * OCCURRENCES, not duplicated distinct values.
+ *
+ * The tally is a Map rather than a plain object on purpose. Keys here come
+ * straight from fetched Graph data, and a value spelled `__proto__` or
+ * `constructor` on a plain object reads back an inherited member instead of
+ * `undefined`, so `(seen[v] ?? 0) + 1` yields NaN and poisons the count. Real
+ * skuIds are GUIDs and never hit that, but the helper is now generic over any
+ * flattened field, so the hazard is removed rather than inherited.
+ */
+function countDuplicateValues(flatVals: string[]): number {
+  const seen = new Map<string, number>();
+  for (const v of flatVals) seen.set(v, (seen.get(v) ?? 0) + 1);
+  return flatVals.filter(v => (seen.get(v) ?? 0) > 1).length;
+}
+
+interface FlattenResult {
+  /** Every non-null `field` value found, in document order, across all items. */
+  values: unknown[];
+  /** True if at least one item really had an array at the mapping's sourceField. */
+  sawArray: boolean;
+  /**
+   * True if at least one of those arrays contained an object at all — the guard
+   * that separates "the field name is wrong" from "every array is legitimately
+   * empty". An unlicensed tenant returns `assignedLicenses: []` on every user,
+   * which is a real answer, not a misconfigured check.
+   */
+  sawEntry: boolean;
+  /** True if at least one entry inside those arrays was an object carrying `field`. */
+  sawField: boolean;
+}
+
+/**
+ * Flattens one field out of the nested arrays sitting at a mapping rule's
+ * sourceField, across every fetched item.
+ *
+ * The reason this cannot be expressed with the existing dot-path is structural:
+ * `resolvePathInData` walks named properties only. On a real user,
+ * `assignedLicenses.skuId` steps into the ARRAY (an object, so the walk
+ * continues) and then asks it for a `skuId` property it does not have —
+ * yielding `undefined`, silently, for every user in the tenant. Arrays need a
+ * flat-map step, and giving one to `resolvePathInData` itself would change the
+ * meaning of every stored check's paths at once, so this stays opt-in behind
+ * the transforms that name it.
+ *
+ * Non-array values and non-object array entries are skipped rather than
+ * coerced. `String({skuId})` is `"[object Object]"` — a value that is equal to
+ * every other object's stringification, which is exactly how a duplicate count
+ * over un-flattened licence objects reports a tenant's ENTIRE licence estate as
+ * duplicated. Skipping keeps a wrong shape at zero instead of at "alarming".
+ */
+function flattenNestedField(vals: unknown[], field: string): FlattenResult {
+  const values: unknown[] = [];
+  let sawArray = false;
+  let sawEntry = false;
+  let sawField = false;
+  for (const val of vals) {
+    if (!Array.isArray(val)) continue;
+    sawArray = true;
+    for (const entry of val) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+      sawEntry = true;
+      const v = (entry as Record<string, unknown>)[field];
+      if (v === undefined) continue;
+      sawField = true;
+      if (v !== null) values.push(v);
+    }
+  }
+  return { values, sawArray, sawEntry, sawField };
+}
+
 // ── Property extraction from Graph response items ─────────────────────────────
 
 export function applyMapping(
@@ -659,11 +748,37 @@ export function applyMapping(
     const rawTransform = rule.transform ?? "none";
     const countEqualsMatch = /^countEquals\(\s*['"](.*)['"]\s*\)$/.exec(rawTransform);
     const staleSignInMatch = /^countIfLastSignInOlderThan\(\s*(\d+)\s*\)$/.exec(rawTransform);
+    // valueWhere('matchField', 'matchValue') or valueWhere('matchField', 'matchValue', 'extractField').
+    // Args are non-greedy and quote-free so a missing quote reads as malformed
+    // (falls through to the default branch, which warns) rather than as a
+    // silently mis-parsed field name.
+    const valueWhereMatch =
+      /^valueWhere\(\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*(?:,\s*['"]([^'"]*)['"]\s*)?\)$/.exec(rawTransform);
+    const flattenValuesMatch = /^flattenValues\(\s*['"]([^'"]*)['"]\s*\)$/.exec(rawTransform);
+    const countDuplicatesByMatch = /^countDuplicatesBy\(\s*['"]([^'"]*)['"]\s*\)$/.exec(rawTransform);
+    // A parameterised name written without parsable arguments — "valueWhere",
+    // or "flattenValues(skuId)" with the quotes dropped — must NOT reach its
+    // case, which assumes its regex matched. Route it to the default branch so
+    // an authoring slip warns and degrades, rather than throwing and failing the
+    // whole check for the tenant. Deliberately scoped to the three names added
+    // here: the two older parameterised transforms have always had their own
+    // (garbage-but-non-throwing) behaviour for a bare name, and changing it is
+    // not this change's business.
+    const malformedParams = !valueWhereMatch && !flattenValuesMatch && !countDuplicatesByMatch
+      && ["valueWhere", "flattenValues", "countDuplicatesBy"]
+        .some(p => rawTransform === p || rawTransform.startsWith(`${p}(`));
     const transform = countEqualsMatch ? "countEquals"
       : staleSignInMatch ? "countIfLastSignInOlderThan"
+      : valueWhereMatch ? "valueWhere"
+      : flattenValuesMatch ? "flattenValues"
+      : countDuplicatesByMatch ? "countDuplicatesBy"
+      : malformedParams ? MALFORMED_PARAMS
       : rawTransform;
     const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
     const staleDays = staleSignInMatch ? Number(staleSignInMatch[1]) : undefined;
+    const nestedField = flattenValuesMatch ? flattenValuesMatch[1]
+      : countDuplicatesByMatch ? countDuplicatesByMatch[1]
+      : undefined;
 
     // Resolve sourceField via the existing dot-path resolver (already used by
     // the condition grammar) instead of flat bracket access, so nested Graph
@@ -763,13 +878,125 @@ export function applyMapping(
             if (v != null) flatVals.push(String(v));
           }
         }
-        const seen: Record<string, number> = {};
-        for (const v of flatVals) seen[v] = (seen[v] ?? 0) + 1;
-        result[targetField] = flatVals.filter(v => seen[v] > 1).length;
+        result[targetField] = countDuplicateValues(flatVals);
+        break;
+      }
+      case "valueWhere": {
+        // Named-key lookup inside an array of {name, value}-shaped objects — the
+        // real shape of GET /groupSettings, whose `values` is a settingValue
+        // collection of literal {"name": "...", "value": "..."} pairs (every
+        // value a STRING, including booleans and the unset "").
+        //
+        // The distinction this exists to preserve: Graph returns the FULL
+        // template for any settings object the tenant has created, so a setting
+        // being present says nothing — an unconfigured one is present with
+        // `value: ""`. `exists` on the array cannot tell those apart. Here
+        // "not present at all" comes back as null and "present but unset" comes
+        // back as "", so a stored rule can say which one it means:
+        //   {{groupNaming}} == null || {{groupNaming}} == ''
+        const matchField = valueWhereMatch![1];
+        const matchValue = valueWhereMatch![2];
+        const extractField = valueWhereMatch![3] ?? "value";
+
+        let sawArray = false;
+        let found = false;
+        let extracted: unknown = null;
+        let matchCount = 0;
+        const distinctExtracted = new Set<string>();
+        const nearMisses = new Set<string>();
+
+        for (const val of vals) {
+          if (!Array.isArray(val)) continue;
+          sawArray = true;
+          for (const entry of val) {
+            if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+            const name = (entry as Record<string, unknown>)[matchField];
+            if (name == null) continue;
+            const nameStr = String(name);
+            if (nameStr !== matchValue) {
+              if (nameStr.toLowerCase() === matchValue.toLowerCase()) nearMisses.add(nameStr);
+              continue;
+            }
+            matchCount++;
+            const v = (entry as Record<string, unknown>)[extractField] ?? null;
+            distinctExtracted.add(JSON.stringify(v ?? null));
+            // First match wins, matching `first`'s document-order semantics.
+            if (!found) { found = true; extracted = v; }
+          }
+        }
+        result[targetField] = extracted;
+
+        if (!sawArray && items.length > 0) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: valueWhere found no array at "${sourceField}" on any item — the mapping's sourceField must point at the ARRAY of name/value pairs (e.g. "values"), so the result is null rather than the real setting`,
+          );
+        } else if (!found && nearMisses.size > 0) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform, nearMisses: [...nearMisses] },
+            `monitor-executor: valueWhere found no "${matchField}" exactly equal to "${matchValue}", but did find ${[...nearMisses].map(n => `"${n}"`).join(", ")} differing only in case — the stored rule's spelling is almost certainly wrong, and it currently reads as "setting absent"`,
+          );
+        } else if (found && matchCount > 1 && distinctExtracted.size > 1) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform, matchCount },
+            `monitor-executor: valueWhere matched "${matchValue}" ${matchCount} times with DIFFERENT ${extractField}s across the fetched items (e.g. the same setting in both Group.Unified and Group.Unified.Guest) — the first in document order was used, so this check is reporting one of several real answers`,
+          );
+        } else if (found && extracted === null) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: valueWhere matched "${matchValue}" but that entry carries no usable "${extractField}" (absent or null) — the result is null, which is indistinguishable downstream from the setting being absent`,
+          );
+        }
+        break;
+      }
+      case "flattenValues": {
+        // Every `nestedField` value across every item's nested array, as one
+        // flat list — e.g. `assignedLicenses[].skuId` over all users. Readable
+        // by the existing grammar as an array (`contains`, `length>`), which
+        // neither `join` nor a dot-path can produce over nested arrays.
+        const flat = flattenNestedField(vals, nestedField!);
+        result[targetField] = flat.values;
+        if (!flat.sawArray && items.length > 0) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: flattenValues found no array at "${sourceField}" on any item — check may be missing $select=${sourceField} on its Graph endpoint, so the list is empty rather than the real values`,
+          );
+        } else if (flat.sawArray && flat.sawEntry && !flat.sawField) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: flattenValues found arrays at "${sourceField}" but no entry inside them carries "${nestedField}" — the field name is wrong for this Graph shape, so the list is empty rather than the real values`,
+          );
+        }
+        break;
+      }
+      case "countDuplicatesBy": {
+        // countDuplicates, but over a field flattened out of each item's nested
+        // array rather than over the array entries themselves. Duplicate
+        // detection is NOT reimplemented — the flattened list goes through the
+        // same countDuplicateValues() that `countDuplicates` uses, so both
+        // transforms can only ever agree on what "duplicate" means.
+        const flat = flattenNestedField(vals, nestedField!);
+        result[targetField] = countDuplicateValues(flat.values.map(v => String(v)));
+        if (!flat.sawArray && items.length > 0) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: countDuplicatesBy found no array at "${sourceField}" on any item — check may be missing $select=${sourceField} on its Graph endpoint, so the count is 0 rather than the real number`,
+          );
+        } else if (flat.sawArray && flat.sawEntry && !flat.sawField) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: countDuplicatesBy found arrays at "${sourceField}" but no entry inside them carries "${nestedField}" — the field name is wrong for this Graph shape, so the count is 0 rather than the real number`,
+          );
+        }
         break;
       }
       default:
-        if (!KNOWN_TRANSFORMS.has(transform)) {
+        if (transform === MALFORMED_PARAMS) {
+          log.warn(
+            { targetField, sourceField, transform: rawTransform },
+            `monitor-executor: mapping rule names transform "${rawTransform}", which is implemented but was written with unparsable arguments — every argument must be a quoted string, e.g. valueWhere('name', 'AllowToAddGuests'), flattenValues('skuId'), countDuplicatesBy('skuId'). Falling through to a raw array of values, which no numeric signal rule can read.`,
+          );
+        } else if (!KNOWN_TRANSFORMS.has(transform)) {
           log.warn(
             { targetField, sourceField, transform: rawTransform },
             `monitor-executor: mapping rule names transform "${rawTransform}", which is not implemented — falling through to a raw array of values. A numeric signal rule cannot read that, so this check's real signal is silently lost. Implemented: ${[...KNOWN_TRANSFORMS].join(", ")}`,
