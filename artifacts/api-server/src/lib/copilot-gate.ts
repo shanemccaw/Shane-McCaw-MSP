@@ -40,7 +40,7 @@
 
 import { calculateArchitectureHealthScore, getSignalHealthImpacts } from "./health-engine.ts";
 import { computePillarDisplayScore } from "./health-display.ts";
-import { fetchEvaluableSignalKeys } from "./pillar-coverage.ts";
+import { fetchTenantEvaluableSignalKeys } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { logger } from "./logger.ts";
 
@@ -104,7 +104,13 @@ export function copilotGate(score: number | null): CopilotGateResult {
  *
  * Identical chain to `buildWarRoomPillarStats`, deliberately:
  *   calculateArchitectureHealthScore → fetchSignalRulesAndGroups →
- *   fetchEvaluableSignalKeys → getSignalHealthImpacts → computePillarDisplayScore
+ *   fetchTenantEvaluableSignalKeys → getSignalHealthImpacts → computePillarDisplayScore
+ *
+ * The denominator is the tenant-scoped one since #413. That matters more here
+ * than anywhere else in the platform: `assess:copilot-readiness` curates SEVEN
+ * checks, so scoring it against the ~122-check catalog put a 95/100 floor under
+ * the Gate — the 82 threshold was unreachable from below and every tenant was a
+ * Go by construction.
  *
  * `null` when the engine has no evaluable rule configuring a `copilotImpact`
  * (theoreticalMax 0) or no breakdown entry for the pillar — `computePillarDisplayScore`'s
@@ -115,7 +121,9 @@ export async function computeCopilotPillarScore(customerId: number): Promise<num
     calculateArchitectureHealthScore(customerId),
     fetchSignalRulesAndGroups(),
   ]);
-  const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+  const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+    firedSignalKeys: output.rawSignals,
+  });
   const impacts = getSignalHealthImpacts(rules, groups);
   return computePillarDisplayScore("copilot", output, impacts, evaluableSignalKeys);
 }

@@ -42,9 +42,14 @@ vi.mock("./priority-engine.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./priority-engine.ts")>();
   return { ...actual, fetchSignalRulesAndGroups: vi.fn() };
 });
+// #413: the denominator this module applies to every checkpoint is now the
+// TENANT-scoped one (`fetchTenantEvaluableSignalKeys`), not the catalog-wide
+// `fetchEvaluableSignalKeys`. Same mocking boundary, same injected set — the
+// tests below are unchanged in intent: they hand the replay a fixed denominator
+// and assert the resulting series.
 vi.mock("./pillar-coverage.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./pillar-coverage.ts")>();
-  return { ...actual, fetchEvaluableSignalKeys: vi.fn() };
+  return { ...actual, fetchTenantEvaluableSignalKeys: vi.fn() };
 });
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
@@ -56,7 +61,7 @@ import {
   PILLAR_TREND_MIN_POINTS,
   PILLAR_TREND_WINDOW_DAYS,
 } from "./pillar-trend.ts";
-import { RADAR_PILLARS, fetchEvaluableSignalKeys } from "./pillar-coverage.ts";
+import { RADAR_PILLARS, fetchTenantEvaluableSignalKeys } from "./pillar-coverage.ts";
 import { getDisabledSignalKeys } from "./tenant-signals.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { db, tenantsTable, tenantMonitorProfilesTable } from "@workspace/db";
@@ -144,7 +149,7 @@ function wireDb(opts: { tenantId: string | null; seedRows?: ReturnType<typeof ro
 function wireRules(rules: SignalDerivationRule[], groups: SignalRuleGroup[], evaluableSignalKeys: Set<string>) {
   vi.mocked(fetchSignalRulesAndGroups).mockResolvedValue({ rules, groups });
   vi.mocked(getDisabledSignalKeys).mockResolvedValue(new Set());
-  vi.mocked(fetchEvaluableSignalKeys).mockResolvedValue(evaluableSignalKeys);
+  vi.mocked(fetchTenantEvaluableSignalKeys).mockResolvedValue(evaluableSignalKeys);
 }
 
 beforeEach(() => {
@@ -246,6 +251,40 @@ describe("getPillarScoreTrends", () => {
     const licensing = trends.get("licensing");
     expect(licensing).not.toBeNull();
     expect(licensing!.map((p) => p.score)).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("resolves ONE denominator for the whole window, from the union of everything that ever fired (#413)", async () => {
+    // Two checks that fire on DIFFERENT days. If the denominator were resolved
+    // per checkpoint, the two points would be scored against different
+    // theoreticalMax values and the series would not be comparable; if the
+    // fired-signal union were taken from a single checkpoint, whichever signal
+    // did not fire that day would be missing from the denominator and its day
+    // could exceed it. Both are pinned by asserting a SINGLE resolution call
+    // carrying BOTH signal keys.
+    const rules = [
+      makeRule({ id: 1, signalKey: "sig:early", ruleType: "threshold", sourceKey: "test:check-a", compareValue: "0", licensingImpact: 10 }),
+      makeRule({ id: 2, signalKey: "sig:late", ruleType: "threshold", sourceKey: "test:check-b", compareValue: "0", licensingImpact: 10 }),
+    ];
+    wireRules(rules, [], new Set(["sig:early", "sig:late"]));
+
+    const windowRows = [
+      row({ checkKey: "test:check-a", itemCount: 1, daysAgo: 25 }), // sig:early fires, sig:late has not yet
+      row({ checkKey: "test:check-b", itemCount: 0, daysAgo: 20 }),
+      row({ checkKey: "test:check-b", itemCount: 0, daysAgo: 15 }),
+      row({ checkKey: "test:check-b", itemCount: 0, daysAgo: 10 }),
+      row({ checkKey: "test:check-b", itemCount: 1, daysAgo: 5 }),  // sig:late fires only here
+    ];
+    wireDb({ tenantId: "tenant-1", windowRows });
+
+    await getPillarScoreTrends(1);
+
+    expect(vi.mocked(fetchTenantEvaluableSignalKeys)).toHaveBeenCalledTimes(1);
+    const [customerId, passedRules, opts] = vi.mocked(fetchTenantEvaluableSignalKeys).mock.calls[0]!;
+    expect(customerId).toBe(1);
+    expect(passedRules).toBe(rules);
+    const fired = new Set(opts?.firedSignalKeys ?? []);
+    expect(fired.has("sig:early")).toBe(true);
+    expect(fired.has("sig:late")).toBe(true);
   });
 
   it("labels the series with the real window length", async () => {

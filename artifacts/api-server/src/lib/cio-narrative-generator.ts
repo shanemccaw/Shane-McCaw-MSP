@@ -35,7 +35,7 @@ import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
 import { calculateArchitectureHealthScore } from "./health-engine";
 import { computeDisplayHealth } from "./health-display";
-import { fetchEvaluableSignalKeys } from "./pillar-coverage";
+import { fetchTenantEvaluableSignalKeys } from "./pillar-coverage";
 import { fetchSignalRulesAndGroups } from "./priority-engine";
 import { resolveLicenseWasteCounts } from "./license-waste-source";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine";
@@ -110,10 +110,13 @@ async function buildBenchmarkBlock(customerId: number): Promise<string> {
       fetchSignalRulesAndGroups(),
       db.select().from(industryBenchmarkReferenceTable),
     ]);
-    // theoreticalMax counts only signals a real monitor check can genuinely
-    // feed — non-producible (orphaned/miswired) rules can never fire and must
-    // not dilute the pillar's score.
-    const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+    // theoreticalMax counts only signals THIS TENANT'S OWN scanned checks can
+    // genuinely feed (#413) — scoping it catalog-wide, as this did before,
+    // measured the two sides of the fraction over different populations and put
+    // a floor under the score that no weighting could lower.
+    const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+      firedSignalKeys: output.rawSignals,
+    });
     const displayPillars = computeDisplayHealth(output, rules, groups, evaluableSignalKeys);
     const benchmarkMap = new Map(benchmarks.map((b) => [b.pillar, b]));
 

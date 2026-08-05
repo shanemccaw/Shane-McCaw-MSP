@@ -69,7 +69,12 @@
  *     coverage.)
  */
 
-import { db, monitoringPackageChecksTable, monitorChecksTable } from "@workspace/db";
+import {
+  db,
+  monitoringPackageChecksTable,
+  monitorChecksTable,
+  mspDiagnosticRunsTable,
+} from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { LICENSE_GAP_PROFILE_FLAG_KEYS } from "./monitor-executor.ts";
 import {
@@ -83,6 +88,9 @@ import {
 import { computePillarDisplayScore } from "./health-display.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import type { SignalDerivationRule } from "./tenant-signals.ts";
+import { logger } from "./logger.ts";
+
+const log = logger.child({ channel: "engine.dashboard" });
 
 /**
  * The radar's full pillar universe: the six health pillars PLUS the
@@ -274,18 +282,28 @@ export function resolveOwningCheckKey(
  * so a rule counts as evaluable iff SOME real check anywhere can produce its
  * sourceKey.
  *
- * This is precisely the set the display-normalization denominator
- * (`theoreticalMax` in `computePillarDisplayScore`) must be restricted to: a
- * rule whose sourceKey no check can ever produce can never fire, so it must not
- * inflate the max and silently dilute a pillar's live score — the real,
- * live-reproduced exploit (a test rule with an extreme weight moving a pillar
- * toward 100% the instant it was created, despite never contributing to the
- * raw score). Takes effect for live/current scoring immediately — no draft or
- * promotion gating; a newly-created rule with a real producible sourceKey is
- * evaluable at once, exactly as before.
+ * ── SCOPE WARNING (#413) — this is NOT the denominator for a tenant's score ───
+ * This set answers "can ANY check anywhere feed this rule". It blocks a rule
+ * that can never fire ANYWHERE (orphaned, miswired, reading a key no check
+ * produces) from inflating theoreticalMax — the real, live-reproduced exploit
+ * (a test rule with an extreme weight moving a pillar toward 100% the instant
+ * it was created, despite never contributing to the raw score).
  *
- * Async — reads monitor_checks. Exported for reuse by the live-scoring callers
- * of `computeDisplayHealth` (msp-diagnostics, cio-narrative-generator).
+ * It does NOT answer "can this rule fire for THIS TENANT", and using it as a
+ * tenant's scoring denominator was the confirmed root cause of #413: the
+ * numerator can only contain signals fed by the checks the tenant was actually
+ * scanned with (7 or 29 of them), while this denominator spans the whole
+ * ~122-check catalog. That asymmetry puts a hard floor under the score — a
+ * tenant on `core:security-baseline` could not score below 76/100 with EVERY
+ * check it ran broken; on `assess:copilot-readiness` the floor was 95/100.
+ * Use `fetchTenantEvaluableSignalKeys` for anything that scores a tenant.
+ *
+ * What this set is still right for: rule-authoring surfaces that reason about
+ * the catalog rather than about one tenant (the Simulator Studio Pillar Matrix),
+ * and as the documented fallback when a tenant's real scan scope cannot be
+ * resolved at all.
+ *
+ * Async — reads monitor_checks.
  */
 export async function fetchEvaluableSignalKeys(
   rules: Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
@@ -310,6 +328,178 @@ export async function fetchEvaluableSignalKeys(
 }
 
 /**
+ * The signal keys a GIVEN SET OF CHECKS genuinely feeds — the exact Stage-3
+ * resolution `getPillarCoverage` performs for one package, lifted out so the
+ * package-scoped denominator has ONE definition rather than two that can drift.
+ *
+ * Fetches only the covered checks' definitions (the same `inArray` restriction
+ * `getPillarCoverage` used inline), enumerates what they can produce via
+ * `buildProducibleProfileKeys`, then filters the rules with `ruleIsFedByPackage`.
+ * Nothing new here — this IS the pre-existing logic, now shared.
+ */
+async function resolveCoveredSignalKeys(
+  coveredCheckKeys: ReadonlySet<string>,
+  rules: Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
+): Promise<Set<string>> {
+  if (coveredCheckKeys.size === 0) return new Set();
+
+  const checkDefinitions: CheckDefinitionRow[] = await db
+    .select({
+      key: monitorChecksTable.key,
+      mapping: monitorChecksTable.mapping,
+      properties: monitorChecksTable.properties,
+      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
+    })
+    .from(monitorChecksTable)
+    .where(inArray(monitorChecksTable.key, [...coveredCheckKeys]));
+
+  const producibleProfileKeys = buildProducibleProfileKeys(coveredCheckKeys, checkDefinitions);
+
+  return new Set(
+    rules
+      .filter((r) => ruleIsFedByPackage(r, coveredCheckKeys, producibleProfileKeys))
+      .map((r) => r.signalKey),
+  );
+}
+
+/**
+ * Every monitor check a customer's own scans could genuinely have collected: the
+ * union of `monitoring_package_checks` over the distinct `package_key`s of that
+ * customer's `msp_diagnostic_runs`.
+ *
+ * The union (rather than just the newest run's package) is deliberate — a
+ * customer whose entitlement moved them from `core:security-baseline` to
+ * `assess:copilot-readiness` still legitimately holds rows from the earlier
+ * package, and calling those "not in the scan" would be a new wrong answer in
+ * place of the old one.
+ *
+ * Deliberately NOT filtered by run status: a run that is still `pending` /
+ * `running` has already named its package, and its per-check rows land as each
+ * check finishes (`executeMonitorCheck` writes before the next check starts), so
+ * a mid-scan score must be scoped to the package being scanned right now — the
+ * one case telemetry-comparison.ts's header called out as why it could not use
+ * `getPillarCoverage` (which needs a COMPLETED run's packageKey).
+ *
+ * Returns a null `checkKeys` when there is nothing to conclude from — no runs at
+ * all, or packages with no curated checks (the platform-wide state before
+ * 2026-07-21's repopulation, which would otherwise mark every stat unscanned).
+ *
+ * Lives here (rather than in war-room-pillar-stats.ts, where it was written for
+ * #341's `not_in_scan_package` honesty fix) because the scoring denominator and
+ * the stat-unavailability reason must be answering the same question about the
+ * same tenant — two copies could disagree, and a card reading "never scanned"
+ * beside a score computed as though it had been is exactly the contradiction
+ * #341 set out to remove.
+ */
+export async function fetchScannedCheckKeys(customerId: number): Promise<{
+  packageKeys: string[];
+  checkKeys: Set<string> | null;
+}> {
+  const runRows = await db
+    .selectDistinct({ packageKey: mspDiagnosticRunsTable.packageKey })
+    .from(mspDiagnosticRunsTable)
+    .where(eq(mspDiagnosticRunsTable.customerId, customerId));
+
+  const packageKeys = runRows.map((r) => r.packageKey).filter((k): k is string => !!k);
+  if (packageKeys.length === 0) return { packageKeys: [], checkKeys: null };
+
+  const checkRows = await db
+    .selectDistinct({ checkKey: monitoringPackageChecksTable.checkKey })
+    .from(monitoringPackageChecksTable)
+    .where(inArray(monitoringPackageChecksTable.packageKey, packageKeys));
+
+  const checkKeys = new Set(checkRows.map((r) => r.checkKey));
+  if (checkKeys.size === 0) {
+    log.warn(
+      { customerId, packageKeys },
+      "pillar-coverage: scanned packages curate no checks — scan scope cannot be resolved",
+    );
+    return { packageKeys, checkKeys: null };
+  }
+  return { packageKeys, checkKeys };
+}
+
+/**
+ * THE denominator restriction for scoring ONE TENANT — the fix for #413.
+ *
+ * `computePillarDisplayScore` is `100 − (rawScore / theoreticalMax) × 100`, and
+ * both sides must be measured over the SAME population or the score is clamped
+ * before any weight is applied. The numerator can only ever contain signals fed
+ * by checks the tenant was actually scanned with; this makes the denominator
+ * agree, using the same package-scoped resolution `getPillarCoverage` has always
+ * used (`fetchScannedCheckKeys` → `resolveCoveredSignalKeys`), just resolved
+ * from the tenant's real run history instead of one supplied packageKey.
+ *
+ * Two deliberate widenings, both of which can only make a score MORE favourable,
+ * never less — neither invents a signal, and neither is a new formula:
+ *
+ *  1. `firedSignalKeys` (the engine's own `output.rawSignals`) are unioned in.
+ *     A signal that FIRED is evaluable for this tenant by direct proof — the
+ *     data that fired it exists in the merged profile. Some real producers sit
+ *     outside `monitoring_package_checks` entirely (`client_m365_profiles`,
+ *     `script_run_results`, bridged legacy keys whose producer check is not in
+ *     the package), so without this a fired signal could land in the numerator
+ *     while being absent from the denominator — `rawScore > theoreticalMax`,
+ *     clamped to a spurious 0. Passing them keeps numerator ⊆ denominator, which
+ *     is a precondition of the formula, not an adjustment to it.
+ *  2. When the tenant's scan scope cannot be resolved at all (no runs, or
+ *     packages that curate no checks — `fetchScannedCheckKeys` returning null),
+ *     this falls back to the catalog-wide `fetchEvaluableSignalKeys` and says so
+ *     in the log. Silently nulling every pillar for a data-availability blip
+ *     would be a new wrong answer; the honest "this tenant has never been
+ *     scanned" surface is a separate, deliberate product decision (#413
+ *     Finding 2) and is not made here by accident.
+ *
+ * `opts.scannedCheckKeys` lets a caller that has ALREADY resolved the tenant's
+ * scan scope (war-room-pillar-stats.ts needs it for `not_in_scan_package`) pass
+ * it in rather than repeat the two queries — `undefined` means "resolve it",
+ * `null` means "already resolved, and there was nothing to conclude from".
+ */
+export async function fetchTenantEvaluableSignalKeys(
+  customerId: number,
+  rules: Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
+  opts?: {
+    firedSignalKeys?: Iterable<string>;
+    scannedCheckKeys?: ReadonlySet<string> | null;
+  },
+): Promise<Set<string>> {
+  const scannedCheckKeys =
+    opts?.scannedCheckKeys !== undefined
+      ? opts.scannedCheckKeys
+      : (await fetchScannedCheckKeys(customerId)).checkKeys;
+
+  if (scannedCheckKeys == null || scannedCheckKeys.size === 0) {
+    log.warn(
+      { customerId },
+      "pillar-coverage: no resolvable scan scope for this customer — falling back to the catalog-wide denominator",
+    );
+    return fetchEvaluableSignalKeys(rules);
+  }
+
+  const evaluable = await resolveCoveredSignalKeys(scannedCheckKeys, rules);
+
+  // Proof-of-evaluability widening (1) above.
+  let firedOutsidePackage = 0;
+  for (const signalKey of opts?.firedSignalKeys ?? []) {
+    if (evaluable.has(signalKey)) continue;
+    evaluable.add(signalKey);
+    firedOutsidePackage++;
+  }
+
+  log.debug(
+    {
+      customerId,
+      scannedCheckCount: scannedCheckKeys.size,
+      evaluableSignalCount: evaluable.size,
+      firedOutsidePackage,
+    },
+    "pillar-coverage: resolved the tenant-scoped scoring denominator",
+  );
+
+  return evaluable;
+}
+
+/**
  * Per-rule "fed / structurally inert" status across the ENTIRE monitor_checks
  * catalog, for the Simulator Studio Pillar Matrix. Reuses the EXACT producible-
  * key primitives (`buildProducibleProfileKeys` + `ruleIsFedByPackage`) that
@@ -319,9 +509,14 @@ export async function fetchEvaluableSignalKeys(
  *
  * The returned `evaluableSignalKeys` set is, by construction, IDENTICAL to what
  * `fetchEvaluableSignalKeys(rules)` returns (a signal is evaluable iff at least
- * one of its rules is fed) — so a theoreticalMax the matrix computes from this
- * set matches the live dashboard's denominator exactly (both flow through
- * `computePillarDisplayScore`'s evaluable-restricted sum).
+ * one of its rules is fed) — CATALOG-WIDE, which is the right scope for a
+ * rule-authoring matrix: it answers "does this rule reach any real check at
+ * all", a question about the corpus, not about one tenant.
+ *
+ * Since #413 that is deliberately NO LONGER the denominator a tenant's live
+ * score uses — that one is package-scoped (`fetchTenantEvaluableSignalKeys`).
+ * A theoreticalMax computed from this set is therefore an upper bound on any
+ * individual tenant's, not a match for it. Do not describe the two as equal.
  *
  * Async — reads monitor_checks once. Exported for the pillar-matrix route.
  */
@@ -372,26 +567,12 @@ export async function getPillarCoverage(
   const coveredCheckKeys = new Set(packageChecks.map((c) => c.checkKey));
   if (coveredCheckKeys.size === 0) return [];
 
-  // The checks' real definitions — needed to enumerate the profile keys they
-  // produce (mapping targetFields + raw-property extraction keys), which is
-  // what real profile_key_* rules reference as their sourceKey.
-  const checkDefinitions: CheckDefinitionRow[] = await db
-    .select({
-      key: monitorChecksTable.key,
-      mapping: monitorChecksTable.mapping,
-      properties: monitorChecksTable.properties,
-      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
-    })
-    .from(monitorChecksTable)
-    .where(inArray(monitorChecksTable.key, [...coveredCheckKeys]));
-
-  const producibleProfileKeys = buildProducibleProfileKeys(coveredCheckKeys, checkDefinitions);
-
-  const coveredSignalKeys = new Set(
-    rules
-      .filter((r) => ruleIsFedByPackage(r, coveredCheckKeys, producibleProfileKeys))
-      .map((r) => r.signalKey),
-  );
+  // The package's genuinely-fed signals — the shared resolution (fetch the
+  // covered checks' real definitions, enumerate the profile keys they produce,
+  // filter the rules by what `evaluateRule` would actually read). Shared with
+  // `fetchTenantEvaluableSignalKeys` so the radar's denominator and the
+  // customer-facing score's denominator can never drift apart (#413).
+  const coveredSignalKeys = await resolveCoveredSignalKeys(coveredCheckKeys, rules);
   if (coveredSignalKeys.size === 0) return [];
 
   const impacts = getSignalHealthImpacts(rules, groups);

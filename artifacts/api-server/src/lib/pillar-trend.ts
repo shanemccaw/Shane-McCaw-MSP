@@ -18,13 +18,19 @@
  *     -> computePillarDisplayScore                   (health-display.ts)
  *
  * evaluableSignalKeys (the denominator restriction — see health-display.ts's
- * header) is resolved ONCE against the current monitor_checks catalog via
- * `fetchEvaluableSignalKeys` (pillar-coverage.ts) and applied to every
- * checkpoint, exactly like the live path does. Only the NUMERATOR — which
- * signals are actually fired — varies by checkpoint, driven by that day's real
- * profile state. This is the same denominator every other pillar-scoring caller
- * (war-room-pillar-stats.ts, telemetry-comparison.ts) already uses; nothing here
- * invents a second one.
+ * header) is resolved ONCE via `fetchTenantEvaluableSignalKeys`
+ * (pillar-coverage.ts), scoped since #413 to the checks this tenant was actually
+ * scanned with, and applied to every checkpoint exactly like the live path does.
+ * Only the NUMERATOR — which signals are actually fired — varies by checkpoint,
+ * driven by that day's real profile state. This is the same denominator every
+ * other pillar-scoring caller (war-room-pillar-stats.ts, telemetry-comparison.ts)
+ * uses; nothing here invents a second one.
+ *
+ * The ONE thing that had to change for #413 beyond swapping the function: the
+ * replay is now two-phase (engine outputs first, denominator second) so the
+ * single fixed denominator can be resolved from the union of everything that
+ * fired anywhere in the window. A per-checkpoint denominator would make the
+ * points incomparable, which is the one thing a trend line must not be.
  *
  * ── What a "checkpoint" is ─────────────────────────────────────────────────────
  * One calendar day (UTC) in the trailing window that had at least one real
@@ -58,7 +64,7 @@ import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
 import { computeHealthEngine, getSignalHealthImpacts, type HealthEngineOutput } from "./health-engine.ts";
 import { computeSecurityEngine } from "./security-engine.ts";
 import { computePillarDisplayScore } from "./health-display.ts";
-import { fetchEvaluableSignalKeys, RADAR_PILLARS, type RadarPillar } from "./pillar-coverage.ts";
+import { fetchTenantEvaluableSignalKeys, RADAR_PILLARS, type RadarPillar } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import {
   getDisabledSignalKeys,
@@ -185,7 +191,6 @@ export async function getPillarScoreTrends(
     return empty;
   }
 
-  const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
   const impacts = getSignalHealthImpacts(rules, groups);
 
   // Running per-check state, replayed forward in time — seeded from the
@@ -203,7 +208,15 @@ export async function getPillarScoreTrends(
     else rowsByDay.set(key, [row]);
   }
 
-  const byPillar = new Map<RadarPillar, PillarTrendPoint[]>(RADAR_PILLARS.map((p) => [p, []]));
+  // ── Phase 1: replay every checkpoint's ENGINE output ────────────────────────
+  // Split out from the scoring pass below so the denominator can be resolved
+  // ONCE from the union of everything that ever fired in the window (#413). It
+  // has to be one fixed denominator or the series is not a series — two points
+  // computed against different theoreticalMax values are not comparable, and a
+  // day whose fired set reached outside the scan package would otherwise exceed
+  // its own denominator and clamp to a spurious 0.
+  const checkpoints: { day: string; output: HealthEngineOutput }[] = [];
+  const firedAcrossWindow = new Set<string>();
 
   for (const day of [...rowsByDay.keys()].sort()) {
     for (const row of rowsByDay.get(day)!) state.set(row.checkKey, row);
@@ -221,6 +234,18 @@ export async function getPillarScoreTrends(
       breakdown: [...healthResult.breakdown, securityResult.breakdown],
     };
 
+    for (const signalKey of output.rawSignals) firedAcrossWindow.add(signalKey);
+    checkpoints.push({ day, output });
+  }
+
+  // ── Phase 2: one denominator, applied to every checkpoint ───────────────────
+  const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+    firedSignalKeys: firedAcrossWindow,
+  });
+
+  const byPillar = new Map<RadarPillar, PillarTrendPoint[]>(RADAR_PILLARS.map((p) => [p, []]));
+
+  for (const { day, output } of checkpoints) {
     for (const pillar of RADAR_PILLARS) {
       const displayScore = computePillarDisplayScore(pillar, output, impacts, evaluableSignalKeys);
       if (displayScore == null) continue; // no evaluable rule feeds this pillar — never fabricate

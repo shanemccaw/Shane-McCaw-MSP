@@ -12,12 +12,9 @@
  * Algorithm (per pillar):
  *   theoreticalMax = sum over the GENUINELY EVALUABLE signals of the MAX
  *                    configured impact value for that pillar (regardless of
- *                    whether the signal actually fired). "Evaluable" means the
- *                    signal's rule reads a sourceKey that some real monitor
- *                    check can genuinely produce — the caller supplies this set
- *                    (see `fetchEvaluableSignalKeys` in pillar-coverage.ts,
- *                    which reuses the EXACT producible-profile-key logic
- *                    getPillarCoverage already uses). A rule that can never
+ *                    whether the signal actually fired). "Evaluable" is supplied
+ *                    by the caller, and WHICH SET IT SUPPLIES IS THE WHOLE
+ *                    CORRECTNESS QUESTION — see below. A rule that can never
  *                    fire — orphaned, miswired, or reading a key no check
  *                    produces — is EXCLUDED from the denominator. Otherwise its
  *                    weight silently inflates theoreticalMax the instant it is
@@ -33,6 +30,28 @@
  * only contribute there by firing, which requires its sourceKey be present in
  * the tenant's profile, which only a producing check can put there. This layer
  * brings the DENOMINATOR into the same alignment; the numerator is untouched.
+ *
+ * ── The two sides must be measured over the SAME population (#413) ────────────
+ * That alignment is not a nicety, it is the formula's precondition. The
+ * numerator can only ever contain signals fed by checks THE TENANT ACTUALLY
+ * RAN. If the caller supplies a denominator measured over a wider population,
+ * the ratio is bounded above by the population ratio and the score is clamped
+ * before any weight is considered:
+ *
+ *   catalog-wide denominator, tenant scanned with core:security-baseline
+ *     100 − 29/122 × 100 = 76  ← the BEST-CASE-FOR-THE-TENANT floor: this is
+ *                               what a tenant scores with EVERY check it ran
+ *                               broken. On assess:copilot-readiness (7 checks)
+ *                               the same floor is 95.
+ *
+ * That was the live customer-facing behaviour until #413, and it is why manual
+ * weight patching (flattening 92 rows to 1, a lone 300, a 5000 on
+ * globalAdminCount) never moved the number where it needed to go — the range
+ * had already been clamped somewhere above "bad". Callers scoring A TENANT must
+ * pass `fetchTenantEvaluableSignalKeys` (package-scoped). `fetchEvaluableSignalKeys`
+ * (catalog-wide) remains correct for rule-authoring surfaces reasoning about the
+ * corpus rather than about one tenant. Full analysis:
+ * docs/weighted-scoring-investigation-413.md.
  *
  * If theoreticalMax is 0 (no EVALUABLE rule configures any impact for a
  * pillar), displayScore is returned as null and the UI should render "Not
@@ -148,9 +167,9 @@ export function computeOverallDisplayScore(
  *
  * `evaluableSignalKeys` restricts each pillar's theoreticalMax denominator to
  * genuinely evaluable rules (see `computePillarDisplayScore` / the file
- * header). Callers build it once via `fetchEvaluableSignalKeys`
- * (pillar-coverage.ts) from the live monitor_checks catalog and pass it in,
- * keeping this function pure.
+ * header). Callers scoring a TENANT build it once via
+ * `fetchTenantEvaluableSignalKeys` (pillar-coverage.ts) — package-scoped, per
+ * #413 — and pass it in, keeping this function pure.
  */
 export function computeDisplayHealth(
   output: HealthEngineOutput,

@@ -15,10 +15,14 @@
  * are the platform's existing, already-live health scoring path, exactly as the
  * Copilot Assessment telemetry panel consumes it:
  *
- *   calculateArchitectureHealthScore(customerId)   (health-engine.ts)
- *   fetchEvaluableSignalKeys(rules)                (pillar-coverage.ts)
- *   buildPillarViews(...)                          (telemetry-comparison.ts)
- *     └─ computePillarDisplayScore                 (health-display.ts)
+ *   calculateArchitectureHealthScore(customerId)          (health-engine.ts)
+ *   fetchTenantEvaluableSignalKeys(customerId, rules, …)  (pillar-coverage.ts)
+ *   buildPillarViews(...)                                 (telemetry-comparison.ts)
+ *     └─ computePillarDisplayScore                        (health-display.ts)
+ *
+ * Since #413 the denominator that chain uses is scoped to the checks this
+ * customer was ACTUALLY scanned with, resolved from the very same
+ * `fetchScannedCheckKeys` the stat-unavailability refinement below uses.
  *
  * `buildPillarViews` is imported rather than re-derived so the War Room card and
  * the telemetry radar can never disagree about the same pillar on the same
@@ -141,12 +145,15 @@ import {
   tenantsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
-  monitoringPackageChecksTable,
 } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getMetric } from "@workspace/dashboard-registry";
 import { calculateArchitectureHealthScore, getSignalHealthImpacts } from "./health-engine.ts";
-import { fetchEvaluableSignalKeys, type RadarPillar } from "./pillar-coverage.ts";
+import {
+  fetchScannedCheckKeys,
+  fetchTenantEvaluableSignalKeys,
+  type RadarPillar,
+} from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { buildPillarViews } from "./telemetry-comparison.ts";
 import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
@@ -663,12 +670,21 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     .where(eq(tenantsTable.id, customerId))
     .limit(1);
 
-  const [output, { rules, groups }, pillarTrends] = await Promise.all([
+  const [output, { rules, groups }, pillarTrends, scanned] = await Promise.all([
     calculateArchitectureHealthScore(customerId),
     fetchSignalRulesAndGroups(),
     getPillarScoreTrends(customerId),
+    // Resolved ONCE and used for both halves of the card: the scoring
+    // denominator below and each stat's `not_in_scan_package` reason further
+    // down. Two separate resolutions could disagree, and a stat reading "never
+    // scanned" beside a score computed as though it had been is exactly the
+    // contradiction #341 removed and #413 finished removing.
+    fetchScannedCheckKeys(customerId),
   ]);
-  const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+  const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+    firedSignalKeys: output.rawSignals,
+    scannedCheckKeys: scanned.checkKeys,
+  });
   const impacts = getSignalHealthImpacts(rules, groups);
   const { pillars: enginePillars } = buildPillarViews(output, impacts, evaluableSignalKeys);
   const byEnginePillar = new Map(enginePillars.map((p) => [p.pillar, p]));
@@ -703,7 +719,6 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   );
 
   const { findingsByPillar, findingsRunId, findingsRunStatus } = await fetchPillarFindings(customerId);
-  const scanned = await fetchScannedCheckKeys(customerId);
 
   const [activeRun] = await db
     .select({ runId: mspDiagnosticRunsTable.runId })
@@ -790,49 +805,6 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     scannedCheckCount: scanned.checkKeys?.size ?? 0,
     generatedAt: new Date().toISOString(),
   };
-}
-
-/**
- * Every check key the customer's own scans could genuinely have collected: the
- * union of `monitoring_package_checks` over the distinct `package_key`s of that
- * customer's `msp_diagnostic_runs`.
- *
- * The union (rather than just the newest run's package) is deliberate — a
- * customer whose entitlement moved them from `core:security-baseline` to
- * `assess:copilot-readiness` still legitimately holds rows from the earlier
- * package, and calling those "not in the scan" would be a new wrong answer in
- * place of the old one.
- *
- * Returns a null `checkKeys` when there is nothing to conclude from — no runs at
- * all, or packages with no curated checks (the platform-wide state before
- * 2026-07-21's repopulation, which would otherwise mark every stat unscanned).
- */
-async function fetchScannedCheckKeys(customerId: number): Promise<{
-  packageKeys: string[];
-  checkKeys: Set<string> | null;
-}> {
-  const runRows = await db
-    .selectDistinct({ packageKey: mspDiagnosticRunsTable.packageKey })
-    .from(mspDiagnosticRunsTable)
-    .where(eq(mspDiagnosticRunsTable.customerId, customerId));
-
-  const packageKeys = runRows.map((r) => r.packageKey).filter((k): k is string => !!k);
-  if (packageKeys.length === 0) return { packageKeys: [], checkKeys: null };
-
-  const checkRows = await db
-    .selectDistinct({ checkKey: monitoringPackageChecksTable.checkKey })
-    .from(monitoringPackageChecksTable)
-    .where(inArray(monitoringPackageChecksTable.packageKey, packageKeys));
-
-  const checkKeys = new Set(checkRows.map((r) => r.checkKey));
-  if (checkKeys.size === 0) {
-    log.warn(
-      { customerId, packageKeys },
-      "war-room-pillar-stats: scanned packages curate no checks — stat unavailability cannot be attributed",
-    );
-    return { packageKeys, checkKeys: null };
-  }
-  return { packageKeys, checkKeys };
 }
 
 /**

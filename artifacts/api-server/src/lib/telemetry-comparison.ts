@@ -15,18 +15,27 @@
  *     → real fired signals from the tenant's real merged profile + findings,
  *       summed into the raw per-pillar breakdown and `architectureHealthScore`.
  *       Its breakdown already includes the separately-computed security pillar.
- *   fetchEvaluableSignalKeys(rules)                (pillar-coverage.ts)
- *     → the honest denominator restriction (a rule no real check can feed must
- *       not inflate theoreticalMax).
+ *   fetchTenantEvaluableSignalKeys(customerId, rules, …)  (pillar-coverage.ts)
+ *     → the honest denominator restriction, scoped to the checks this tenant was
+ *       actually scanned with.
  *   computePillarDisplayScore / computeOverallDisplayScore  (health-display.ts)
  *     → the existing 0–100 higher-is-healthier normalization, per pillar and
  *       (same expression, summed) overall.
  *
- * The evaluable-key denominator — rather than `getPillarCoverage`'s
- * package-restricted one — is deliberate here: getPillarCoverage needs a
- * COMPLETED run's packageKey, and this payload has to be computable while a
- * scan is still in flight. It is the same denominator the customer-facing
- * GET /portal/health-benchmark already uses.
+ * ── Denominator scope, corrected (#413) ──────────────────────────────────────
+ * This module used to pass the CATALOG-WIDE `fetchEvaluableSignalKeys` set, on
+ * the stated grounds that `getPillarCoverage`'s package-restricted denominator
+ * needs a COMPLETED run's packageKey while this payload must be computable
+ * mid-scan. The premise was right; the conclusion was not. The numerator can
+ * only ever hold signals fed by the checks this tenant ran, so measuring the
+ * denominator across the whole ~122-check catalog clamped every score above
+ * "bad" — a tenant on `core:security-baseline` could not go below 76/100 with
+ * every check it ran broken (#413, docs/weighted-scoring-investigation-413.md).
+ *
+ * `fetchTenantEvaluableSignalKeys` resolves the same package scope WITHOUT
+ * needing a completed run: it reads the tenant's `msp_diagnostic_runs` package
+ * keys at ANY status, so the run in flight right now is already counted. The
+ * mid-scan requirement above is therefore still met, with the correct scope.
  *
  * ── Why this is genuinely live during a scan ─────────────────────────────────
  * `executeMonitoringPackage` awaits `executeMonitorCheck` per check, and that
@@ -58,7 +67,7 @@ import {
   type SignalHealthImpactConfig,
 } from "./health-engine.ts";
 import { computePillarDisplayScore, computeOverallDisplayScore } from "./health-display.ts";
-import { fetchEvaluableSignalKeys, RADAR_PILLARS, PILLAR_LABELS, type RadarPillar } from "./pillar-coverage.ts";
+import { fetchTenantEvaluableSignalKeys, RADAR_PILLARS, PILLAR_LABELS, type RadarPillar } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 
 /** Severities the panel treats as a discrepancy worth surfacing (issue #245: "high/critical"). */
@@ -184,7 +193,9 @@ export async function buildTelemetryComparison(customerId: number): Promise<Tele
     calculateArchitectureHealthScore(customerId),
     fetchSignalRulesAndGroups(),
   ]);
-  const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+  const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+    firedSignalKeys: output.rawSignals,
+  });
   const impacts = getSignalHealthImpacts(rules, groups);
 
   const { pillars, overall } = buildPillarViews(output, impacts, evaluableSignalKeys);

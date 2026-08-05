@@ -51,7 +51,7 @@ import { runItemDetailCollection } from "../lib/item-detail-collector";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-channels";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
 import { computeDisplayHealth } from "../lib/health-display";
-import { fetchEvaluableSignalKeys } from "../lib/pillar-coverage";
+import { fetchTenantEvaluableSignalKeys } from "../lib/pillar-coverage";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
@@ -784,10 +784,14 @@ router.get(
         db.select().from(industryBenchmarkReferenceTable),
       ]);
 
-      // Restrict each pillar's theoreticalMax denominator to signals a real
-      // monitor check can genuinely feed — a rule reading a non-producible key
-      // can never fire, so it must not dilute the live score.
-      const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+      // Restrict each pillar's theoreticalMax denominator to signals THIS
+      // TENANT'S OWN scanned checks can genuinely feed. Catalog-wide scoping
+      // (what this used before #413) measured the denominator over checks the
+      // customer never ran while the numerator could only ever hold checks it
+      // did — a clamp that no weighting could overcome.
+      const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+        firedSignalKeys: output.rawSignals,
+      });
       const displayPillars = computeDisplayHealth(output, rules, groups, evaluableSignalKeys);
 
       const benchmarkMap = new Map(benchmarks.map(b => [b.pillar, b]));

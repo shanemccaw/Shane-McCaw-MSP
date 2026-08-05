@@ -25,7 +25,7 @@ import { PILLAR_FIELD, getSignalHealthImpacts, calculateArchitectureHealthScore,
 import { computePillarDisplayScore } from "../lib/health-display";
 import {
   computeRuleFedStatus,
-  fetchEvaluableSignalKeys,
+  fetchTenantEvaluableSignalKeys,
   PILLAR_LABELS,
   RADAR_PILLARS,
   type RadarPillar,
@@ -605,10 +605,16 @@ router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Reques
 // The Pillar Matrix's live summary header: this customer's actual 7 pillar
 // display scores, computed with the EXACT same real functions the customer
 // dashboard uses (`calculateArchitectureHealthScore` + `computePillarDisplayScore`,
-// restricted to `fetchEvaluableSignalKeys` — the same chain `/portal/health-benchmark`
-// and `getPillarCoverage` already call). No second scoring path — this just lets
-// Shane verify a Pillar Matrix tuning change's real effect on a testbed customer
-// without logging in as that customer separately.
+// restricted to `fetchTenantEvaluableSignalKeys` — the same chain
+// `/portal/health-benchmark` and the War Room now call). No second scoring path
+// — this just lets Shane verify a Pillar Matrix tuning change's real effect on a
+// testbed customer without logging in as that customer separately.
+//
+// Note the deliberate scope split with the matrix ABOVE (#413): the matrix's own
+// `fed` column is catalog-wide (a question about the rule corpus), while these
+// scores are scoped to the checks this customer actually ran (a question about
+// one tenant). A rule can be `fed: true` in the matrix and still contribute
+// nothing to this customer's denominator, because their package never runs it.
 router.get("/admin/signal-rules/customer-pillar-scores/:customerId", requireAdmin, async (req: Request, res: Response) => {
   try {
     const customerId = Number(req.params.customerId);
@@ -621,7 +627,9 @@ router.get("/admin/signal-rules/customer-pillar-scores/:customerId", requireAdmi
       calculateArchitectureHealthScore(customerId),
       fetchSignalRulesAndGroups(),
     ]);
-    const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+    const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
+      firedSignalKeys: output.rawSignals,
+    });
     const impacts = getSignalHealthImpacts(rules, groups);
 
     const pillars = RADAR_PILLARS.map((pillar) => ({
