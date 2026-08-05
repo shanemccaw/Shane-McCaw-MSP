@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Footer } from "@/components/Footer";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
@@ -30,21 +30,138 @@ const KEYFRAMES = `
 @keyframes smcOrb{to{transform:rotate(-360deg)}}
 @keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
 @keyframes smcBlink{50%{opacity:0}}
-@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}}
+@keyframes smcHeroShimmer{0%{background-position:0 0,0% 0}100%{background-position:0 0,220% 0}}
+@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}.smc-hero-gradient{animation:none!important}}
 `;
+
+const HEADLINE_FONT_SIZE = "clamp(30px,6.4vw,52px)";
+const HEADLINE_LINE_HEIGHT = 1.06;
+const HEADLINE_LETTER_SPACING = "-.028em";
+const HEADLINE_WIDTH = 520;
+const HEADLINE_BOX_HEIGHT_EM = 3.18;
+const HEADLINE_MIN_SCALE = 0.42;
+
+/** Blue -> Violet -> Cyan -> White primary treatment (#446), with a second
+ * comma-layered background (the same background-position-sweep technique the
+ * War Room briefing scene's "tipsheen" line already uses) blended on top for
+ * the holographic rainbow shimmer accent, so this reuses that established
+ * shimmer pattern instead of introducing a new one. */
+const HERO_GRADIENT_STYLE = {
+  backgroundImage:
+    "linear-gradient(96deg,#93c5fd 0%,#c4b5fd 33%,#a5f3fc 66%,#ffffff 100%)," +
+    "linear-gradient(96deg,transparent 0%,#67e8f9 10%,#a78bfa 20%,#f472b6 30%,#fbbf24 40%,transparent 50%)",
+  backgroundSize: "100% 100%, 220% 100%",
+  backgroundPosition: "0 0, 0% 0",
+  backgroundBlendMode: "overlay",
+  WebkitBackgroundClip: "text" as const,
+  backgroundClip: "text" as const,
+  color: "transparent",
+  animation: "smcHeroShimmer 5s linear infinite",
+};
 
 /** Types out admin-authored headline variants (admin-panel/content/hero-headlines)
  * one character at a time, cycling through the set — replaces the old static
  * hardcoded h1 (#429). Falls back to a single static headline via the hook
- * itself if the API returns nothing. */
+ * itself if the API returns nothing.
+ *
+ * The outer box keeps the fixed footprint #442 introduced (no reflow of the
+ * quiz card/radar while cycling), but instead of `overflow:hidden` clipping
+ * any variant longer than that footprint (#445), the h1 inside it is
+ * auto-shrunk to whatever font-size lets the CURRENT variant's full text wrap
+ * and fit within the box — measured once per headline (not per keystroke, so
+ * the size never changes mid-type/delete) against a hidden same-width clone. */
 function TypewriterHeadline() {
-  const { leadDisplayed, gradientDisplayed } = useTypewriterHeadline();
+  const { leadDisplayed, gradientDisplayed, current } = useTypewriterHeadline();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const measure = measureRef.current;
+    if (!box || !measure) return;
+
+    const fit = () => {
+      const availableHeight = box.clientHeight;
+      if (!availableHeight) return;
+      const fullText = current.leadText + current.gradientText;
+      measure.textContent = fullText || " ";
+
+      measure.style.fontSize = "100%";
+      if (measure.scrollHeight <= availableHeight) {
+        setScale(1);
+        return;
+      }
+
+      let lo = HEADLINE_MIN_SCALE * 100;
+      let hi = 100;
+      let best = lo;
+      for (let i = 0; i < 10; i++) {
+        const mid = (lo + hi) / 2;
+        measure.style.fontSize = `${mid}%`;
+        if (measure.scrollHeight <= availableHeight) {
+          best = mid;
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      setScale(best / 100);
+    };
+
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [current]);
+
   return (
-    <h1 style={{ fontSize: "clamp(30px,6.4vw,52px)", lineHeight: 1.06, letterSpacing: "-.028em", fontWeight: 800, color: "#f8fafc", margin: "22px 0 16px", width: 520, maxWidth: "100%", height: "3.18em", overflow: "hidden" }}>
-      {leadDisplayed}
-      <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{gradientDisplayed}</span>
-      <span aria-hidden style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
-    </h1>
+    <div
+      ref={boxRef}
+      style={{
+        fontSize: HEADLINE_FONT_SIZE,
+        width: HEADLINE_WIDTH,
+        maxWidth: "100%",
+        height: `${HEADLINE_BOX_HEIGHT_EM}em`,
+        margin: "22px 0 16px",
+        overflow: "hidden",
+      }}
+    >
+      <span
+        ref={measureRef}
+        aria-hidden
+        style={{
+          position: "absolute",
+          visibility: "hidden",
+          pointerEvents: "none",
+          left: -99999,
+          top: -99999,
+          display: "block",
+          width: HEADLINE_WIDTH,
+          maxWidth: "100%",
+          lineHeight: HEADLINE_LINE_HEIGHT,
+          letterSpacing: HEADLINE_LETTER_SPACING,
+          fontWeight: 800,
+          whiteSpace: "normal",
+          wordBreak: "break-word",
+        }}
+      />
+      <h1
+        style={{
+          fontSize: `${scale * 100}%`,
+          lineHeight: HEADLINE_LINE_HEIGHT,
+          letterSpacing: HEADLINE_LETTER_SPACING,
+          fontWeight: 800,
+          color: "#f8fafc",
+          margin: 0,
+          whiteSpace: "normal",
+          wordBreak: "break-word",
+        }}
+      >
+        {leadDisplayed}
+        <span className="smc-hero-gradient" style={HERO_GRADIENT_STYLE}>{gradientDisplayed}</span>
+        <span aria-hidden style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
+      </h1>
+    </div>
   );
 }
 

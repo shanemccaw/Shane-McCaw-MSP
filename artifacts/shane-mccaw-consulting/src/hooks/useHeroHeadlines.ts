@@ -38,6 +38,7 @@ export function useTypewriterHeadline(): {
   leadDisplayed: string;
   gradientDisplayed: string;
   headlines: HeroHeadline[];
+  current: HeroHeadline;
 } {
   const [headlines, setHeadlines] = useState<HeroHeadline[]>([FALLBACK_HEADLINE]);
   const [loaded, setLoaded] = useState(false);
@@ -104,5 +105,6 @@ export function useTypewriterHeadline(): {
     leadDisplayed: typed.slice(0, current.leadText.length),
     gradientDisplayed: typed.slice(current.leadText.length),
     headlines,
+    current,
   };
 }
