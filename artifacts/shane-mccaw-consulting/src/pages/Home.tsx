@@ -32,6 +32,10 @@ const KEYFRAMES = `
 @keyframes smcBlink{50%{opacity:0}}
 @keyframes smcHeroShimmer{0%{background-position:0 0,0% 0}100%{background-position:0 0,220% 0}}
 @media (prefers-reduced-motion:reduce){.smc-sheen{display:none}.smc-hero-gradient{animation:none!important}}
+.smc-scope-group summary{list-style:none}
+.smc-scope-group summary::-webkit-details-marker{display:none}
+.smc-scope-group summary::after{content:"";width:7px;height:7px;margin-left:auto;flex-shrink:0;border-right:1.5px solid #64748b;border-bottom:1.5px solid #64748b;transform:rotate(45deg);transition:transform .15s ease}
+.smc-scope-group[open] summary::after{transform:rotate(-135deg)}
 `;
 
 const HEADLINE_FONT_SIZE = "clamp(30px,6.4vw,52px)";

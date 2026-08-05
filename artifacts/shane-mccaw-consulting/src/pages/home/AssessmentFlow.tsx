@@ -392,14 +392,38 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
 
   // ── #434 auto-advance ───────────────────────────────────────────────────────
   // The single place the flow moves itself forward off a landed consent grant.
+  //
+  // #448 fix: `graphStatusAtSharepointEntryRef` guards against a same-tick
+  // cascade. A tenant that already has a `sharepoint` grant on file (e.g. it
+  // was consented in an earlier session against this same Microsoft tenant —
+  // consent lives on the TENANT, not the checkout session, #99) can have BOTH
+  // `status.graph` and `status.sharepoint` already "granted" the moment the
+  // very first poll after the Graph grant lands comes back. Without the guard,
+  // this effect fires twice in the same synchronous render pass off that one
+  // stale `status` object — `consentStage` flips "graph" -> "sharepoint", and
+  // the very next invocation (triggered by that state change, not a new poll)
+  // immediately satisfies the "sharepoint" branch against the SAME status —
+  // so the "Grant SharePoint Access (2 of 2)" screen is never painted at all,
+  // which is exactly #448's report. Remembering which `status` object caused
+  // the "graph" -> "sharepoint" transition, and refusing to advance past it
+  // until a genuinely NEW poll response arrives, guarantees the SharePoint
+  // step is always shown — and given at least one real round trip to confirm
+  // its state — before the flow ever moves on, even when the grant turns out
+  // to already be there.
+  const graphStatusAtSharepointEntryRef = useRef<FlowStatus | null>(null);
   useEffect(() => {
     if (!status) return;
     if (step === "consent") {
       if (consentStage === "graph" && status.graph === "granted") {
+        graphStatusAtSharepointEntryRef.current = status;
         setConsentStage("sharepoint");
         setConsentUrl(null);
         setError(null);
-      } else if (consentStage === "sharepoint" && status.sharepoint === "granted") {
+      } else if (
+        consentStage === "sharepoint" &&
+        status.sharepoint === "granted" &&
+        status !== graphStatusAtSharepointEntryRef.current
+      ) {
         setStep("compliance");
         setError(null);
       }
@@ -571,6 +595,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setConsentUrl(null);
     setError(null);
     setForm({});
+    graphStatusAtSharepointEntryRef.current = null;
   }, []);
 
   return (
@@ -746,30 +771,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
               : "SharePoint Online is a separate approval on the same app registration, so it is a second trip to the Microsoft consent screen. Same read-only footing — site inventory and sharing configuration, nothing written."}
           </p>
 
-          {consentStage === "graph" && (
-            <div style={{ ...CARD, borderRadius: 14, padding: "20px 22px", marginBottom: 26 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
-                Scopes requested
-              </span>
-              {scopes.length > 0 ? (
-                <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
-                  {scopes.map((scope) => (
-                    <span
-                      key={scope}
-                      style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "Menlo,ui-monospace,monospace", fontSize: 12.5, color: "#cbd5e1" }}
-                    >
-                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#60a5fa", flexShrink: 0 }} />
-                      {scope}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 12.5, color: "#475569", margin: "14px 0 0" }}>
-                  {scopesLoading ? "Loading requested scopes…" : "Scope list is temporarily unavailable."}
-                </p>
-              )}
-            </div>
-          )}
+          {consentStage === "graph" && <ScopesPanel scopes={scopes} loading={scopesLoading} />}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
             <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
@@ -1201,6 +1203,157 @@ function ValueCard({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Scopes panel (#447) ────────────────────────────────────────────────────────
+// The real app registration requests 25+ application permissions (#433 pulled
+// them live off REQUIRED_MT_SCOPES); a flat bulleted list of that many items ran
+// well past the viewport with no structure. Grouped into named categories behind
+// native <details> disclosures instead — no extra JS state, works with the
+// keyboard out of the box, and a stack of <details> is already a single mobile
+// column with zero extra responsive work.
+
+interface ScopeCategory {
+  label: string;
+  color: string;
+}
+
+const SCOPE_CATEGORIES = {
+  identity: { label: "Identity & Access", color: "#60a5fa" },
+  security: { label: "Security & Risk", color: "#f87171" },
+  devices: { label: "Devices & Compliance", color: "#34d399" },
+  collaboration: { label: "Collaboration & Content", color: "#fbbf24" },
+  reporting: { label: "Reporting & Service Health", color: "#a78bfa" },
+  other: { label: "Other", color: "#94a3b8" },
+} satisfies Record<string, ScopeCategory>;
+
+type ScopeCategoryKey = keyof typeof SCOPE_CATEGORIES;
+
+/**
+ * Maps each currently-known Graph application permission to a display
+ * category. A scope not listed here (one added to REQUIRED_MT_SCOPES later,
+ * before this map is updated) falls into "Other" rather than disappearing, so
+ * the grouped view can never silently drop a permission the backend is
+ * actually requesting.
+ */
+const SCOPE_CATEGORY_BY_NAME: Record<string, ScopeCategoryKey> = {
+  "Directory.Read.All": "identity",
+  "Policy.Read.All": "identity",
+  "RoleEligibilitySchedule.Read.Directory": "identity",
+  "AccessReview.Read.All": "identity",
+  "Agreement.Read.All": "identity",
+  "Application.Read.All": "identity",
+  "DelegatedPermissionGrant.Read.All": "identity",
+  "SecurityEvents.Read.All": "security",
+  "AuditLog.Read.All": "security",
+  "IdentityRiskyUser.Read.All": "security",
+  "IdentityRiskyServicePrincipal.Read.All": "security",
+  "InformationProtectionPolicy.Read.All": "security",
+  "SensitivityLabels.Read.All": "security",
+  "RecordsManagement.Read.All": "security",
+  "DeviceManagementConfiguration.Read.All": "devices",
+  "DeviceManagementManagedDevices.Read.All": "devices",
+  "BitLockerKey.Read.All": "devices",
+  "Exchange.ManageAsApp": "collaboration",
+  "Sites.Read.All": "collaboration",
+  "TeamSettings.Read.All": "collaboration",
+  "Team.ReadBasic.All": "collaboration",
+  "Community.Read.All": "collaboration",
+  "SharePointTenantSettings.Read.All": "collaboration",
+  "Reports.Read.All": "reporting",
+  "ActivityFeed.Read": "reporting",
+  "RealTimeActivityFeed.Read.All": "reporting",
+  "ServiceMessage.Read.All": "reporting",
+  "ServiceHealth.Read.All": "reporting",
+};
+
+const SCOPE_CATEGORY_ORDER: ScopeCategoryKey[] = ["identity", "security", "devices", "collaboration", "reporting", "other"];
+
+function groupScopes(scopes: string[]): Array<{ key: ScopeCategoryKey; items: string[] }> {
+  const buckets = new Map<ScopeCategoryKey, string[]>();
+  for (const scope of scopes) {
+    const key = SCOPE_CATEGORY_BY_NAME[scope] ?? "other";
+    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(scope);
+  }
+  return SCOPE_CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({ key, items: buckets.get(key)! }));
+}
+
+function ScopesPanel({ scopes, loading }: { scopes: string[]; loading: boolean }) {
+  const groups = groupScopes(scopes);
+  return (
+    <div style={{ ...CARD, borderRadius: 14, padding: "20px 22px", marginBottom: 26 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
+          Scopes requested
+        </span>
+        {scopes.length > 0 && <span style={{ fontSize: 11.5, color: "#475569" }}>{scopes.length} permissions, all read-only</span>}
+      </div>
+
+      {scopes.length > 0 ? (
+        <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+          {groups.map(({ key, items }, i) => {
+            const cat = SCOPE_CATEGORIES[key];
+            return (
+              <details
+                key={key}
+                className="smc-scope-group"
+                open={i === 0}
+                style={{ borderRadius: 10, border: "1px solid rgba(51,65,85,.55)", background: "rgba(2,6,23,.35)", overflow: "hidden" }}
+              >
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    padding: "10px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: "#e2e8f0",
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+                  <span>{cat.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}>{items.length}</span>
+                </summary>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))",
+                    gap: 7,
+                    padding: "4px 14px 14px",
+                  }}
+                >
+                  {items.map((scope) => (
+                    <span
+                      key={scope}
+                      style={{
+                        fontFamily: "Menlo,ui-monospace,monospace",
+                        fontSize: 11.5,
+                        lineHeight: 1.4,
+                        color: "#94a3b8",
+                        background: "rgba(15,23,42,.6)",
+                        border: "1px solid rgba(51,65,85,.5)",
+                        borderRadius: 6,
+                        padding: "5px 8px",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {scope}
+                    </span>
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12.5, color: "#475569", margin: "14px 0 0" }}>
+          {loading ? "Loading requested scopes…" : "Scope list is temporarily unavailable."}
+        </p>
+      )}
     </div>
   );
 }
