@@ -13,6 +13,7 @@ import {
   buildGeneration,
   buildJourneyView,
   buildPillarViews,
+  CLEAN_PILLAR_HEADLINE,
   documentPillar,
   formatJourneyDate,
   gapSentence,
@@ -77,6 +78,44 @@ describe("pillar views", () => {
     const view = buildPillarViews(payload)[1];
     assert.equal(view.headline, "14 accounts have no MFA");
     assert.equal(view.satelliteFinding, "14 accounts have no MFA");
+  });
+
+  // #399: a pillar the scan genuinely evaluated (real score) with zero
+  // critical/warning findings is a real clean result, not a data gap — it must
+  // not render the same bare "—" as a pillar nothing ever ran for.
+  it("gives a pillar with a real score and no findings an honest clean headline, not null", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [{ pillar: "security", score: 91, findings: [] }],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.equal(view?.score, 91);
+    assert.equal(view?.headline, CLEAN_PILLAR_HEADLINE);
+    assert.equal(view?.satelliteFinding, CLEAN_PILLAR_HEADLINE);
+  });
+
+  it("keeps a genuinely-unscored pillar's headline null even with no findings — not the clean message", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [{ pillar: "security", score: null, findings: [] }],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.equal(view?.score, null);
+    assert.equal(view?.headline, null);
+    assert.equal(view?.satelliteFinding, null);
+  });
+
+  it("still leads with the real finding when a scored pillar has critical/warning findings", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "security",
+          score: 38,
+          findings: [{ severity: "warning", checkKey: "identity:guests", title: "31 dormant guest accounts" }],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.equal(view?.headline, "31 dormant guest accounts");
+    assert.equal(view?.satelliteFinding, "31 dormant guest accounts");
   });
 
   it("builds radar chips from real stat readouts, formatted per unit", () => {

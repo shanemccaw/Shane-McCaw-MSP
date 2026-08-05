@@ -134,11 +134,23 @@ export interface JourneyPillarView {
   readonly accent: string;
   /** 0-100, higher = healthier. `null` means no evaluable rule fed it. */
   readonly score: number | null;
-  /** The one finding this pillar leads with, verbatim from the scan. */
+  /**
+   * The one finding this pillar leads with, verbatim from the scan.
+   *
+   * `null` means this pillar genuinely has no data — no evaluable rule fed a
+   * score for it, so nothing can be claimed either way (#399). It does NOT
+   * mean "nothing to report": a pillar the scan actually evaluated with zero
+   * critical/warning findings gets `CLEAN_PILLAR_HEADLINE` instead — a real,
+   * positive result, not the absence of one.
+   */
   readonly headline: string | null;
   /** Short findings used as radar chips — every one reappears in the pillar scene. */
   readonly chips: readonly string[];
-  /** The satellite line on Scene 1: a specific finding, never a score. */
+  /**
+   * The satellite line on Scene 1: a specific finding, or `CLEAN_PILLAR_HEADLINE`
+   * when the pillar was evaluated and came back clean. Same `null`-means-no-data
+   * rule as `headline`.
+   */
   readonly satelliteFinding: string | null;
   /**
    * Real time-series for this pillar, or `null`. Populated only where the
@@ -215,6 +227,16 @@ export function pillarTrend(card: WirePillarCard | undefined): JourneyPillarView
   return trend;
 }
 
+/**
+ * #399: the headline/satellite text for a pillar the scan genuinely evaluated
+ * (it has a real score) with zero critical/warning findings. A real, positive
+ * result — not the same as "no data collected" — so it earns its own honest
+ * copy rather than the bare `null` a pillar with no data gets. Kept as one
+ * named constant so the Reveal's several render sites and this file's tests
+ * can never drift onto slightly different wording.
+ */
+export const CLEAN_PILLAR_HEADLINE = "No critical or warning findings.";
+
 function chipText(stat: WirePillarStat): string | null {
   if (stat.value === null || stat.unavailableReason) return null;
   if (stat.unit === "percent") return `${stat.label} ${Math.round(stat.value)}%`;
@@ -245,18 +267,30 @@ export function buildPillarViews(
       .filter((t): t is string => t !== null)
       .slice(0, 3);
 
+    // #399: `ordered` only ever holds critical/warning findings — the wire
+    // never sends "ok" ones — so an empty `ordered` is ambiguous by itself: it
+    // means either "this pillar was never evaluated" or "it was evaluated and
+    // came back clean". `score` is the platform's own signal for which: it is
+    // `null` precisely when no evaluable rule fed this pillar (see the field's
+    // doc above), so a real score plus zero findings is a genuine clean
+    // result, not a gap. Only THAT combination gets the honest positive
+    // headline; a pillar with no score keeps the `null` that renders the
+    // scenes' existing "no finding was recorded" unavailable state.
+    const wasEvaluated = typeof card?.score === "number";
+    const leadTitle = ordered[0]?.title ?? (wasEvaluated ? CLEAN_PILLAR_HEADLINE : null);
+
     return {
       key,
       label: id.label,
       primary: id.primary,
       accent: id.accent,
       score: typeof card?.score === "number" ? card.score : null,
-      headline: ordered[0]?.title ?? null,
+      headline: leadTitle,
       // Prefer real stat readouts as chips — they are the numbers the pillar
       // scene will show again. Fall back to finding titles so a pillar whose
       // stats are all unavailable still populates its wedge.
       chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
-      satelliteFinding: ordered[0]?.title ?? null,
+      satelliteFinding: leadTitle,
       trend: pillarTrend(card),
       criticalCount: card?.findingCounts?.critical ?? 0,
       warningCount: card?.findingCounts?.warning ?? 0,
