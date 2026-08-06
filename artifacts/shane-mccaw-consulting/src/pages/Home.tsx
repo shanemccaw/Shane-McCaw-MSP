@@ -38,17 +38,19 @@ const KEYFRAMES = `
 .smc-scope-group[open] summary::after{transform:rotate(-135deg)}
 `;
 
-/** #466: before the visitor answers anything, `hubNum`/`closingLine` had no
- * real content to show — this site has no scan yet to report a score off
- * of, and there is no single "industry average score out of 100" that would
- * match this site's 0-100 methodology to fabricate one. These are real,
- * attributable third-party findings instead, shown as "here's what's
- * typical" rather than this visitor's own number. */
-const PRE_QUIZ_STATS = [
-  { stat: "80%", finding: "of audited enterprise Copilot tenants had material oversharing exposure", source: "EPC Group audits" },
-  { stat: "47%", finding: "of IT leaders aren't confident they can manage Copilot's security and access risks", source: "Gartner, Jan 2025" },
-  { stat: "40%", finding: "of organizations delayed their Copilot rollout three months over oversharing concerns", source: "Gartner survey of 132 IT leaders" },
-] as const;
+/** #473: supersedes #466's single pre-quiz block. Neither `hubNum` nor
+ * `closingLine` (nor this) claim to be this visitor's own data — this site
+ * has no scan yet to report a score off of. Instead, one real, attributable
+ * third-party stat per pillar, shown as a callout on that pillar's own quiz
+ * question, matched via the question's existing `tag` field. */
+const PILLAR_STATS: Record<string, { stat: string; finding: string; source: string }> = {
+  Governance: { stat: "40%", finding: "of organizations delayed their Copilot rollout three months over oversharing concerns", source: "Gartner survey of 132 IT leaders" },
+  Security: { stat: "47%", finding: "of IT leaders aren't confident they can manage Copilot's security and access risks", source: "Gartner, Jan 2025" },
+  Compliance: { stat: "80%", finding: "of audited enterprise Copilot tenants had material oversharing exposure", source: "EPC Group audits" },
+  Licensing: { stat: "49%", finding: "of organizations found at least 10% of their Copilot licenses unused during a routine audit", source: "IDC, 2026" },
+  Adoption: { stat: "35%", finding: "of employees use Copilot after rollout", source: "Avanti, 2026" },
+  Health: { stat: "180+ days", finding: "is the average detection time for a configuration/drift issue", source: "cloud misconfiguration industry data, 2025-26" },
+};
 
 const HEADLINE_FONT_SIZE = "clamp(30px,6.4vw,52px)";
 const HEADLINE_LINE_HEIGHT = 1.06;
@@ -437,21 +439,6 @@ export default function Home() {
               Seven questions. No sign-in, no scan, no sales call. The radar fills in as you answer, one pillar at a time.
             </p>
 
-            {!answered && (
-              <div style={{ display: "grid", gap: 10, marginBottom: 24, maxWidth: 460 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>What's typical, industry-wide</span>
-                {PRE_QUIZ_STATS.map((s) => (
-                  <div key={s.stat} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(51,65,85,.7)", background: "rgba(2,6,23,.4)" }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: "#93c5fd", letterSpacing: "-.02em", flexShrink: 0 }}>{s.stat}</span>
-                    <span style={{ fontSize: 13, lineHeight: 1.45, color: "#94a3b8" }}>
-                      {s.finding} <span style={{ color: "#475569" }}>— {s.source}</span>
-                    </span>
-                  </div>
-                ))}
-                <span style={{ fontSize: 11.5, color: "#475569", fontStyle: "italic" }}>Third-party findings, not this site's own data — your seven answers below build your own estimate.</span>
-              </div>
-            )}
-
             {!done && (
               <div style={{ background: "#0f172a", border: "1px solid rgba(30,41,59,.9)", borderRadius: 16, padding: "clamp(18px,4vw,26px) clamp(18px,4vw,26px) 22px", maxWidth: 520 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
@@ -507,6 +494,15 @@ export default function Home() {
                   </button>
                   <span style={{ fontSize: 12, color: "#334155" }}>Illustrative estimate only</span>
                 </div>
+
+                {PILLAR_STATS[q.tag] && (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 16, padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(51,65,85,.7)", background: "rgba(2,6,23,.4)" }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: q.color, letterSpacing: "-.02em", flexShrink: 0 }}>{PILLAR_STATS[q.tag].stat}</span>
+                    <span style={{ fontSize: 12.5, lineHeight: 1.45, color: "#94a3b8" }}>
+                      {PILLAR_STATS[q.tag].finding} <span style={{ color: "#475569" }}>— {PILLAR_STATS[q.tag].source}, not this tenant's own data</span>
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
