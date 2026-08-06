@@ -130,6 +130,17 @@ vi.mock("./omg-card-generator-v2", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
+// Git #493's remediation appendix. DOC_TYPE_ROW below leaves
+// `remediationDetailAppendix` unset, so the engine never calls this — but the
+// import is real, and the module reaches the AI generator plus two more tables.
+// Stubbed at the boundary so this file keeps measuring only what it is about:
+// the cost figure `generateDocument()` hands back for its own narrative call.
+vi.mock("./remediation-knowledge-base", () => ({
+  buildRemediationAppendix: vi.fn(),
+  REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
+  REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
+}));
+
 vi.mock("./logger", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };

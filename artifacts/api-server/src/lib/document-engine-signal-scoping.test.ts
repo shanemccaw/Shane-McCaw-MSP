@@ -49,25 +49,50 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
 vi.mock("./logger", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
+// Git #493's appendix module, which document-engine.ts now imports. Stubbed at
+// the boundary (rather than pulled in for real) because it reaches the AI
+// generator and two more tables, none of which this pure-helper test exercises.
+vi.mock("./remediation-knowledge-base", () => ({
+  buildRemediationAppendix: vi.fn(),
+  REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
+  REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
+}));
 
 import { scopeFindingsBySignalCategory } from "./document-engine.ts";
 import type { CategorizedFinding } from "./tenant-signals.ts";
 
+// checkKey/severity/itemCount are Git #493's additive annotation on the same
+// type (they let the Remediation Plan's appendix look a finding's verified
+// knowledge-base row up). `scopeFindingsBySignalCategory` never reads them —
+// they are carried here only so the fixtures remain honest `CategorizedFinding`
+// values, matching what `buildTenantProfile()` really produces.
 const MONITOR_SECURITY: CategorizedFinding = {
   text: "identity:stale-guests: high severity condition matched on latest monitoring scan (4 items)",
   categories: ["security"],
+  checkKey: "identity:stale-guests",
+  severity: "high",
+  itemCount: 4,
 };
 const MONITOR_GOVERNANCE_AND_SECURITY: CategorizedFinding = {
   text: "sharepoint:anonymous-links: warning severity condition matched on latest monitoring scan (7 items)",
   categories: ["governance", "security"],
+  checkKey: "sharepoint:anonymous-links",
+  severity: "warning",
+  itemCount: 7,
 };
 const MONITOR_ADOPTION: CategorizedFinding = {
   text: "adoption:teams-usage: medium severity condition matched on latest monitoring scan (2 items)",
   categories: ["adoption"],
+  checkKey: "adoption:teams-usage",
+  severity: "medium",
+  itemCount: 2,
 };
 const SCRIPT_UNCATEGORIZABLE: CategorizedFinding = {
   text: "Legacy script finding with no checkKey",
   categories: [],
+  checkKey: null,
+  severity: null,
+  itemCount: null,
 };
 
 const ALL: CategorizedFinding[] = [

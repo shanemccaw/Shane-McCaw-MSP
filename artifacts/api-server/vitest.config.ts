@@ -183,6 +183,7 @@ export default defineConfig({
       "src/lib/security-secure-score-464.test.ts",
       "src/lib/category-pillar-mapping.test.ts",
       "src/routes/admin-signal-rules-category-pillar-469.test.ts",
+      "src/lib/remediation-knowledge-base.test.ts",
     ],
     coverage: {
       provider: "v8",

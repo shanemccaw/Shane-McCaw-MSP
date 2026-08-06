@@ -13,6 +13,11 @@ import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
+import {
+  buildRemediationAppendix,
+  REMEDIATION_APPENDIX_MAX_FINDINGS,
+  REMEDIATION_APPENDIX_PROMPT_SUFFIX,
+} from "./remediation-knowledge-base";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 // Document Generator scoping decisions (which of the tenant's real findings a
@@ -165,6 +170,52 @@ export interface DryRunDocumentResult extends DocumentCost {
   scopedFindings: string[];
   sectionText: string;
   promptKey: string;
+  /**
+   * The Remediation Detail appendix (#493) as it would be appended, for a
+   * document type that has `remediationDetailAppendix` set. Absent for every
+   * other type.
+   *
+   * Verified knowledge-base findings render exactly as they will in the real
+   * document. Findings with NO verified entry render a neutral placeholder
+   * instead of their AI fallback — a preview makes no model call, so generating
+   * it here would both cost money and make this result's `no-ai-call` cost a
+   * lie.
+   */
+  remediationAppendixHtml?: string;
+}
+
+/**
+ * Turns the finding STRINGS the narrative prompt was given back into the
+ * annotated findings the remediation appendix needs (#493).
+ *
+ * `scopeFindingsBySignalCategory()` returns plain strings — that is its locked
+ * contract and this does not change it. The appendix needs each finding's
+ * `checkKey` (to look up its verified knowledge-base row) plus its real
+ * severity/item count/pillars, all of which `categorizedFindings` already
+ * carries 1:1 with `findings`. Matching on the text is safe precisely because
+ * of that 1:1 guarantee: both arrays are built from the same deduped list, in
+ * the same order, by `buildTenantProfile()`.
+ *
+ * A finding string with no matching annotated row (which the 1:1 contract says
+ * cannot happen, but is not worth crashing a document over) degrades to
+ * "no check key" — i.e. it goes down the labelled AI-fallback path rather than
+ * being dropped.
+ */
+function findingsToAppendixInput(
+  categorizedFindings: CategorizedFinding[],
+  findingTexts: string[],
+): Array<{ text: string; checkKey: string | null; severity: string | null; itemCount: number | null; categories: string[] }> {
+  const byText = new Map(categorizedFindings.map((f) => [f.text, f]));
+  return findingTexts.map((text) => {
+    const annotated = byText.get(text);
+    return {
+      text,
+      checkKey: annotated?.checkKey ?? null,
+      severity: annotated?.severity ?? null,
+      itemCount: annotated?.itemCount ?? null,
+      categories: annotated?.categories ?? [],
+    };
+  });
 }
 
 function matchesProfilePattern(key: string, pattern: string): boolean {
@@ -177,19 +228,22 @@ function matchesProfilePattern(key: string, pattern: string): boolean {
  * Shared by the dry-run and real branches so a preview can never be branded
  * differently from the document that gets generated.
  */
-async function resolveMspBranding(mspCustomerId: number): Promise<{ mspName: string | null; mspPrimaryColor: string | null }> {
+async function resolveMspBranding(mspCustomerId: number): Promise<{ mspId: number | null; mspName: string | null; mspPrimaryColor: string | null }> {
   const [customerRow] = await db
     .select({ mspId: tenantsTable.mspId })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, mspCustomerId))
     .limit(1);
-  if (customerRow?.mspId == null) return { mspName: null, mspPrimaryColor: null };
+  if (customerRow?.mspId == null) return { mspId: null, mspName: null, mspPrimaryColor: null };
   const [msp] = await db
     .select({ name: mspsTable.name, primaryColor: mspsTable.primaryColor })
     .from(mspsTable)
     .where(eq(mspsTable.id, customerRow.mspId))
     .limit(1);
-  return { mspName: msp?.name ?? null, mspPrimaryColor: msp?.primaryColor ?? null };
+  // `mspId` is returned alongside the branding because the remediation
+  // appendix's AI fallback bills against it, and this is the one lookup the
+  // engine already makes that knows it.
+  return { mspId: customerRow.mspId, mspName: msp?.name ?? null, mspPrimaryColor: msp?.primaryColor ?? null };
 }
 
 export async function generateDocument(params: GenerateDocumentParams & { dryRun: true }): Promise<DryRunDocumentResult>;
@@ -204,7 +258,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
   }
 
   if (params.dryRun) {
-    const { mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
+    const { mspId, mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
 
     const tenantProfile = await buildTenantProfile(mspCustomerId);
     const mergedProfile: Record<string, unknown> = tenantProfile.mergedProfile;
@@ -245,7 +299,10 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     }
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
-    const findingsBlock = scopedFindings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+    const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
+    const findingsBlock = findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+
+    const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
     const assembledPrompt = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
@@ -253,9 +310,26 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       .replace(/\{\{findings\}\}/g, findingsBlock)
       .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
       .replace(/\{\{mspName\}\}/g, mspName ?? "Shane McCaw Consulting")
-      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8");
+      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8")
+      // Same suffix, same condition as the real branch below — the preview must
+      // show the prompt that will actually be sent, not a shorter one.
+      + (wantsRemediationAppendix ? REMEDIATION_APPENDIX_PROMPT_SUFFIX : "");
 
     const stylePrefix = await getDocumentStylePrefix();
+
+    // Preview of the appendix, built with the AI fallback DISABLED: verified
+    // knowledge-base entries render exactly as they will, uncovered findings get
+    // a placeholder. Still no model call, so NO_AI_CALL_COST below stays true.
+    const remediationAppendixHtml = wantsRemediationAppendix
+      ? (await buildRemediationAppendix({
+          findings: findingsToAppendixInput(categorizedFindings, findingsForPrompt),
+          mspCustomerId,
+          mspId,
+          docTypeKey,
+          allowAiFallback: false,
+          triggerSource: "document-engine:dry-run",
+        })).html
+      : undefined;
 
     log.info({ mspCustomerId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
 
@@ -264,6 +338,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // "the AI ran and happened to be free".
     return {
       dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey,
+      ...(remediationAppendixHtml !== undefined ? { remediationAppendixHtml } : {}),
       ...NO_AI_CALL_COST,
     };
   }
@@ -331,7 +406,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
   try {
     // Resolve real MSP branding
-    const { mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
+    const { mspId, mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
 
     // Real tenant profile + scoping
     const tenantProfile = await buildTenantProfile(mspCustomerId);
@@ -385,7 +460,10 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     }
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
-    const findingsBlock = scopedFindings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+    const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
+    const findingsBlock = findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+
+    const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
     const prompt = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
@@ -393,7 +471,11 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       .replace(/\{\{findings\}\}/g, findingsBlock)
       .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
       .replace(/\{\{mspName\}\}/g, mspName ?? "Shane McCaw Consulting")
-      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8");
+      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8")
+      // Told to the model, not just to the appendix (#493): labelling the
+      // appendix's AI content is worth nothing if the narrative above it is
+      // free to invent its own unlabelled PowerShell in the same document.
+      + (wantsRemediationAppendix ? REMEDIATION_APPENDIX_PROMPT_SUFFIX : "");
 
     const stylePrefix = await getDocumentStylePrefix();
 
@@ -427,14 +509,80 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     );
 
     const capturedCostCents = totalCapturedCostCents(costs);
-    const cost: DocumentCost = capturedCostCents == null
+    let cost: DocumentCost = capturedCostCents == null
       ? { costCents: null, costStatus: "unknown" }
       : { costCents: capturedCostCents, costStatus: "recorded" };
+
+    // ── Remediation Detail appendix (#493) ────────────────────────────────────
+    // Verified `remediation_knowledge_base` content per finding where it exists
+    // (no model call at all for those); the existing AI generator, under an
+    // explicit "verify before running" banner, only where it doesn't.
+    //
+    // Built in its OWN usage-capture scope, and its cost ADDED to this
+    // document's: the fallback calls are real Anthropic spend attributed to this
+    // customer, and reporting only the narrative's cost would understate the
+    // document. `withAiUsageCapture` scopes by AsyncLocalStorage, so a second
+    // sequential (never nested) scope collects exactly its own calls.
+    let appendixHtml = "";
+    // Hoisted so the cost log below reports every call the document made, not
+    // just the narrative's — an "unknown cost" warning that names one call when
+    // sixteen were made is the same class of quietly-wrong figure this cost
+    // plumbing exists to eliminate.
+    let appendixCostStatuses: string[] = [];
+    if (wantsRemediationAppendix) {
+      const { result: appendix, costs: appendixCosts } = await withAiUsageCapture(
+        {
+          customerId: mspCustomerId,
+          generatedArtifactType: docTypeKey,
+          generatedArtifactName: docTypeRow.label,
+          generatedArtifactId: String(documentId),
+          triggerSource: "document-engine:remediation-appendix",
+        },
+        () =>
+          buildRemediationAppendix({
+            findings: findingsToAppendixInput(categorizedFindings, findingsForPrompt),
+            mspCustomerId,
+            mspId,
+            docTypeKey,
+            allowAiFallback: true,
+            triggerSource: "document-engine:remediation-appendix",
+          }),
+      );
+      appendixHtml = appendix.html;
+      appendixCostStatuses = appendixCosts.map((c) => c.status);
+
+      if (appendixCosts.length > 0) {
+        const appendixCostCents = totalCapturedCostCents(appendixCosts);
+        cost = appendixCostCents == null || cost.costCents == null
+          ? { costCents: null, costStatus: "unknown" }
+          : { costCents: cost.costCents + appendixCostCents, costStatus: "recorded" };
+      }
+
+      // Provenance is a per-document audit fact, not a debug detail: "how much of
+      // what this customer was told to run had actually been verified" has to be
+      // answerable after the fact, from the logs, for any document already sent.
+      scopeLog.info(
+        {
+          mspCustomerId, documentId, docTypeKey,
+          verifiedCount: appendix.verifiedCount,
+          aiGeneratedCount: appendix.aiGeneratedCount,
+          failedCount: appendix.failedCount,
+          truncatedCount: appendix.truncatedCount,
+          uncoveredCheckKeys: appendix.uncoveredCheckKeys,
+        },
+        "document-engine: remediation detail appendix appended (verified knowledge-base content vs labelled AI fallback)",
+      );
+    }
+
     if (cost.costStatus === "unknown") {
       // Usage recording is deliberately non-fatal, so this is a real and
       // expected state — but it is "we don't know", not "it was free".
       costLog.warn(
-        { mspCustomerId, documentId, docTypeKey, callsCaptured: costs.length, statuses: costs.map((c) => c.status) },
+        {
+          mspCustomerId, documentId, docTypeKey,
+          callsCaptured: costs.length + appendixCostStatuses.length,
+          statuses: [...costs.map((c) => c.status), ...appendixCostStatuses],
+        },
         "ai-cost-governance: document generated but its usage row could not be read back — cost reported as unknown, not zero",
       );
     } else {
@@ -444,7 +592,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       );
     }
 
-    const htmlContent = extractAiHtml(aiResponse);
+    // The appendix is appended, never interleaved: the narrative is one AI
+    // artifact with one provenance, and each appendix block states its own.
+    const htmlContent = extractAiHtml(aiResponse) + appendixHtml;
 
     await db.update(insightsGeneratedDocumentsTable)
       .set({

@@ -52,6 +52,11 @@ const createSchema = z.object({
   includedProfileKeyPatterns: z.array(z.string()).default([]),
   includedSignalCategories: z.array(z.string()).default([]),
   pipelineCategory: z.enum(["standalone", "pipeline_output"]).default("standalone"),
+  // #493 — whether this type gets the per-finding Remediation Detail appendix
+  // (verified knowledge-base content where it exists, labelled AI fallback
+  // where it doesn't). Settable here so enabling it for another type is a row
+  // edit rather than a deploy.
+  remediationDetailAppendix: z.boolean().default(false),
   sections: z.array(z.object({ id: z.string(), heading: z.string(), guidance: z.string() })).default([]),
 });
 
@@ -231,13 +236,13 @@ router.post("/admin/document-types", requireAdmin, async (req: Request, res: Res
     res.status(400).json({ error: "Validation error", details: parsed.error.flatten() });
     return;
   }
-  const { key, label, category, sectionHints, requiresSowHtml, sortOrder, isActive, serviceId, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory, sections } = parsed.data;
+  const { key, label, category, sectionHints, requiresSowHtml, sortOrder, isActive, serviceId, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory, remediationDetailAppendix, sections } = parsed.data;
 
   try {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(documentTypesTable)
-        .values({ key, label, category, sectionHints: sectionHints ?? null, requiresSowHtml, sortOrder, isActive, serviceId: serviceId ?? null, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory, sections })
+        .values({ key, label, category, sectionHints: sectionHints ?? null, requiresSowHtml, sortOrder, isActive, serviceId: serviceId ?? null, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory, remediationDetailAppendix, sections })
         .returning();
 
       const promptKey = `insights-${category}-${key}`;

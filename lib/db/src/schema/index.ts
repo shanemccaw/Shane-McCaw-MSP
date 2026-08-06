@@ -333,6 +333,21 @@ export const documentTypesTable = pgTable("document_types", {
   // with Shane), so there was nothing live to migrate.
   includedSignalCategories: jsonb("included_signal_categories").$type<string[]>().notNull().default([]),
   pipelineCategory: text("pipeline_category", { enum: ["standalone", "pipeline_output"] }).notNull().default("standalone"),
+  /**
+   * Whether this document type gets the per-finding Remediation Detail appendix
+   * (#493): for each finding in the document's scope, either the human-verified
+   * `remediation_knowledge_base` row for its check (rendered directly, no AI
+   * call) or, when there is none, the AI fallback under an unmissable
+   * "AI-GENERATED GUIDANCE — VERIFY BEFORE RUNNING" banner.
+   *
+   * A column rather than a `docTypeKey === "remediation_plan"` literal in
+   * document-engine.ts because everything else that engine branches on
+   * (sections, prompt, finding scoping, pipeline category) already comes from
+   * this registry — and because the appendix is just as correct for
+   * security_hardening_plan or a future type, which should be a row edit, not a
+   * deploy. Seeded true for `remediation_plan` only.
+   */
+  remediationDetailAppendix: boolean("remediation_detail_appendix").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   // Soft-toggle without deleting the record (and its generated documents).
   isActive: boolean("is_active").notNull().default(true),

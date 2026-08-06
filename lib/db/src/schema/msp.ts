@@ -3290,3 +3290,92 @@ export const aiDevResponseCacheTable = pgTable("ai_dev_response_cache", {
 
 export type AiDevResponseCacheRow = typeof aiDevResponseCacheTable.$inferSelect;
 export type InsertAiDevResponseCacheRow = typeof aiDevResponseCacheTable.$inferInsert;
+
+// ── Remediation Knowledge Base (#493) ─────────────────────────────────────────
+//
+// One row per `monitor_checks.key`: HUMAN-VERIFIED remediation content for a
+// finding that check produces, researched against real, current Microsoft
+// documentation and signed off by a named person on a named date.
+//
+// WHY IT EXISTS: the Remediation Plan deliverable is a document paying
+// customers run PowerShell out of. Until this table, every command in it came
+// from an LLM (`remediation-detail-generator.ts`) with no verification step
+// against real cmdlet syntax. This table is the DEFAULT source of truth for
+// that document; the AI generator remains as an explicitly-labelled fallback
+// for checks not yet covered here. The two are never blended — a customer can
+// always tell which they are reading (see `remediation-knowledge-base.ts`'s
+// renderers).
+//
+// NEVER AI-POPULATED. Rows are written by hand (or by Claude in chat, having
+// actually read current Microsoft documentation) — auto-generating them would
+// defeat the entire point of the table. Nothing in the codebase writes to it.
+//
+// SHAPE NOTE — why commands live on `remediation_steps[].code` rather than in
+// their own "verified cmdlets" column: the AI fallback's validated output shape
+// is `{ detail, steps: [{ text, code? }] }` (RemediationResultSchema in
+// remediation-detail-generator.ts), and BOTH branches render through one
+// renderer. Giving the KB a second, differently-shaped home for commands would
+// mean two renderers that can drift on layout — and the whole credibility
+// argument rests on the verified branch and the AI branch being visually
+// comparable, differing only in their provenance banner. `summary` is the
+// verified counterpart of the AI shape's `detail`, for the same reason.
+export const REMEDIATION_KB_STATUS = ["draft", "published"] as const;
+export type RemediationKbStatus = typeof REMEDIATION_KB_STATUS[number];
+
+/** One ordered remediation step. Shape-identical to `RemediationStep` in remediation-detail-generator.ts, deliberately — see the table comment. */
+export interface RemediationKbStep {
+  text: string;
+  /** A real, verified PowerShell/Graph command. Tenant-specific values use angle-bracket placeholders (`<SiteUrl>`), never a fabricated real value. */
+  code?: string;
+  /** Fenced-block language hint for the renderer, e.g. "powershell", "http", "kusto". Defaults to "powershell" when absent. */
+  codeLanguage?: string;
+}
+
+export const remediationKnowledgeBaseTable = pgTable("remediation_knowledge_base", {
+  id: serial("id").primaryKey(),
+  // One row per check. `restrict` (not cascade) matches monitoring_package_checks'
+  // existing FK to the same column, and is the right direction here for a second
+  // reason: verified, hand-written content must never disappear silently because
+  // someone deleted a check row.
+  checkKey: text("check_key").notNull().unique().references(() => monitorChecksTable.key, { onDelete: "restrict" }),
+  /** Section heading override. NULL = the renderer uses `monitor_checks.label`. */
+  title: text("title"),
+  /** Plain-English "what this finding means and why it matters" — the verified counterpart of the AI shape's `detail`. */
+  summary: text("summary").notNull(),
+  /** What must already be true/installed before step 1: roles, licences, PowerShell modules. */
+  prerequisites: jsonb("prerequisites").$type<string[]>().notNull().default([]),
+  /** Admin Center UI navigation path, e.g. "Microsoft 365 admin center → Settings → Org settings → Security & privacy". */
+  adminCenterPath: text("admin_center_path"),
+  /** Deep link for the path above, when a stable one exists. */
+  adminCenterUrl: text("admin_center_url"),
+  remediationSteps: jsonb("remediation_steps").$type<RemediationKbStep[]>().notNull().default([]),
+  /** What the tenant looks like once the steps are done. */
+  expectedOutcome: text("expected_outcome").notNull(),
+  /** How to prove it worked — the check to run after, in words. */
+  validationStep: text("validation_step").notNull(),
+  /** The command form of `validationStep`, when one exists. */
+  validationCommand: text("validation_command"),
+  /** Microsoft documentation URLs this row was verified against. These are what makes "verified" a checkable claim rather than an assertion. */
+  sourceUrls: jsonb("source_urls").$type<string[]>().notNull().default([]),
+  /** Free text naming what it was verified against, e.g. "Exchange Online PowerShell V3 3.4.0, Microsoft Learn 2026-08". */
+  verifiedAgainst: text("verified_against"),
+  /** When a human last confirmed this row against current Microsoft documentation. Rendered to the customer. */
+  lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }).notNull(),
+  /** Who did that. Rendered to the customer — the row is only as good as the name on it. */
+  verifiedBy: text("verified_by").notNull(),
+  /**
+   * ONLY `published` rows are treated as verified content. A half-written
+   * `draft` row falls through to the AI fallback (labelled as such) rather than
+   * being rendered under a green "verified" banner it hasn't earned.
+   */
+  status: text("status", { enum: REMEDIATION_KB_STATUS }).notNull().default("draft"),
+  /** Internal notes — never rendered into a customer document. */
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("remediation_knowledge_base_status_idx").on(t.status),
+]);
+
+export type RemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseTable.$inferSelect;
+export type InsertRemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseTable.$inferInsert;

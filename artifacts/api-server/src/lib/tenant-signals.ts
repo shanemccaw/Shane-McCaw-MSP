@@ -558,10 +558,18 @@ export function deriveMonitorFindings(monitorRows: TenantMonitorProfileRow[]): s
   return deriveMonitorFindingsWithKeys(monitorRows).map(f => f.text);
 }
 
-/** A monitor-derived finding string plus the `monitor_checks.key` that produced it. */
+/** A monitor-derived finding string plus the real per-check facts behind it. */
 export interface MonitorDerivedFinding {
   text: string;
   checkKey: string;
+  /**
+   * The `severity_rules` severity that matched, verbatim (e.g. "critical",
+   * "high", "warning") — NOT normalized here, because the vocabulary is
+   * 100% DB-resident and this module is not its owner.
+   */
+  severity: string;
+  /** `_itemCount` off the check's extracted properties, when it emitted one. */
+  itemCount: number | null;
 }
 
 /**
@@ -585,6 +593,8 @@ export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileR
     const itemCount = firstNumericProp(props, ["_itemCount"]);
     findings.push({
       checkKey: row.checkKey,
+      severity,
+      itemCount: itemCount ?? null,
       text:
         `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
         (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
@@ -692,6 +702,22 @@ export interface CategorizedFinding {
    * permanent-limitation note on `categorizedFindings` below.
    */
   categories: string[];
+  /**
+   * The `monitor_checks.key` this finding came from, or NULL when there isn't
+   * one — every script-run finding (see the limitation note below).
+   *
+   * ADDITIVE (Git #493). Exists because the Remediation Knowledge Base is keyed
+   * on the check key, and the alternative — re-parsing it back out of the
+   * `"<checkKey>: <severity> severity condition matched…"` prefix
+   * `deriveMonitorFindingsWithKeys()` builds — would silently break the KB
+   * lookup the day that wording changes. The producer already has the key; it
+   * now says so instead of encoding it in prose.
+   */
+  checkKey: string | null;
+  /** Verbatim matched severity (e.g. "critical", "warning"), NULL for findings with no check behind them. */
+  severity: string | null;
+  /** `_itemCount` for the matched check, when it emitted one. NULL otherwise. */
+  itemCount: number | null;
 }
 
 export async function buildTenantProfile(customerId: number): Promise<{
@@ -775,8 +801,10 @@ export async function buildTenantProfile(customerId: number): Promise<{
   // Graph-only customers.
   //
   // Category attribution (additive) is keyed by the finding STRING so the
-  // annotation survives the dedupe/reordering `findings` applies below.
-  const categoriesByFindingText = new Map<string, string[]>();
+  // annotation survives the dedupe/reordering `findings` applies below. The
+  // same map now also carries the checkKey/severity/itemCount the finding came
+  // from (Git #493) — one map, so the annotation can never half-apply.
+  const monitorMetaByFindingText = new Map<string, { categories: string[]; checkKey: string; severity: string; itemCount: number | null }>();
   if (tenantId) {
     const monitorRows = await fetchLatestMonitorProfileRows(tenantId);
     mergeMonitorProfileRows(mergedProfile, monitorRows);
@@ -789,8 +817,12 @@ export async function buildTenantProfile(customerId: number): Promise<{
     if (monitorFindings.length > 0) {
       const categoriesByCheckKey = await fetchSignalCategoriesForCheckKeys(monitorFindings.map(f => f.checkKey));
       for (const finding of monitorFindings) {
-        const categories = categoriesByCheckKey.get(finding.checkKey);
-        if (categories?.length) categoriesByFindingText.set(finding.text, categories);
+        monitorMetaByFindingText.set(finding.text, {
+          categories: categoriesByCheckKey.get(finding.checkKey) ?? [],
+          checkKey: finding.checkKey,
+          severity: finding.severity,
+          itemCount: finding.itemCount,
+        });
       }
     }
   } else {
@@ -804,10 +836,16 @@ export async function buildTenantProfile(customerId: number): Promise<{
   // content, order, or dedupe. Anything without a category entry — every
   // script-run finding, plus any monitor finding whose check feeds no
   // category-prefixed rule — gets `[]` (see the type's limitation note).
-  const categorizedFindings: CategorizedFinding[] = findings.map(text => ({
-    text,
-    categories: categoriesByFindingText.get(text) ?? [],
-  }));
+  const categorizedFindings: CategorizedFinding[] = findings.map(text => {
+    const meta = monitorMetaByFindingText.get(text);
+    return {
+      text,
+      categories: meta?.categories ?? [],
+      checkKey: meta?.checkKey ?? null,
+      severity: meta?.severity ?? null,
+      itemCount: meta?.itemCount ?? null,
+    };
+  });
 
   return { mergedProfile, findings, categorizedFindings, customerId, mspId, tenantId };
 }
