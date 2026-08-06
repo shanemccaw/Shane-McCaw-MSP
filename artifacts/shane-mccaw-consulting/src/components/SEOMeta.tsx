@@ -9,6 +9,10 @@ interface SEOMetaProps {
   ogImage?: string;
   ogUrl?: string;
   jsonLd?: object | object[];
+  /** Defaults to "index, follow". Set to "noindex" on pages that should never be indexed
+   *  (e.g. the 404 page) — always set explicitly rather than left absent, so a client-side
+   *  route change away from a noindex page can't leave the tag stuck on the next page. */
+  robots?: string;
 }
 
 function setMeta(property: string, content: string, isName = false) {
@@ -28,13 +32,14 @@ function toAbsoluteUrl(url: string): string {
   return url;
 }
 
-export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl, jsonLd }: SEOMetaProps) {
+export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl, jsonLd, robots = "index, follow" }: SEOMetaProps) {
   useEffect(() => {
     document.title = title;
 
     const absoluteImage = toAbsoluteUrl(ogImage);
 
     setMeta("description", description, true);
+    setMeta("robots", robots, true);
 
     setMeta("og:type", "website");
     setMeta("og:site_name", SITE_NAME);
@@ -47,7 +52,7 @@ export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl,
     setMeta("twitter:title", title, true);
     setMeta("twitter:description", description, true);
     setMeta("twitter:image", absoluteImage, true);
-  }, [title, description, ogImage, ogUrl]);
+  }, [title, description, ogImage, ogUrl, robots]);
 
   useEffect(() => {
     if (!jsonLd) return;

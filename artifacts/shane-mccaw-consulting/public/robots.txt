@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
 
+# Legacy checkout flow (src/pages/Checkout.tsx, src/pages/checkout/) — not currently
+# routed in App.tsx, but referenced by /checkout/:slug links throughout the codebase
+# (RetainerCard, OfferCard, FixedPriceOfferCard, etc). Precautionary: never index it,
+# even if it's re-routed later.
+Disallow: /checkout
+Disallow: /checkout/
+
+# Admin panel (src/pages/Admin.tsx) — not currently routed, precautionary block.
+Disallow: /admin
+
 Sitemap: https://shanemccaw.com/sitemap.xml

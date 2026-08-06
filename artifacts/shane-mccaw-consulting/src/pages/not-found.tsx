@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bot, Brain, Layers, BookOpen, MessageCircle, ArrowLeft } from "lucide-react";
+import { Bot, Brain, BookOpen, MessageCircle, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -30,13 +30,6 @@ const ACTION_CARDS: {
     label: "Find my tier →",
   },
   {
-    icon: <Layers className="w-6 h-6 text-accent-blue" />,
-    title: "Explore Projects",
-    desc: "Microsoft 365, Copilot AI, SharePoint, Power Platform, Governance, Cloud Migration — real scoped engagements, priced before any work starts.",
-    href: "/projects",
-    label: "See all Projects →",
-  },
-  {
     icon: <BookOpen className="w-6 h-6 text-accent-blue" />,
     title: "Browse the Resource Library",
     desc: "Practical guides and deep-dives on M365 architecture, governance, and Copilot rollout.",
@@ -58,6 +51,7 @@ export default function NotFound() {
       <SEOMeta
         title="404: This Page Took a Long Lunch Break | Shane McCaw Consulting"
         description="The page you're looking for doesn't exist — but Shane's Microsoft 365 expertise does. Find what you need from the links below."
+        robots="noindex"
       />
 
       {/* Hero */}

@@ -29,15 +29,37 @@ if (!basePath) {
 
 const SITE_URL = "https://shanemccaw.com";
 
-const STATIC_PAGES = [
-  { path: "/",                          changefreq: "monthly", priority: "1.0" },
-  { path: "/about",                     changefreq: "monthly", priority: "0.8" },
-  { path: "/quick-wins",              changefreq: "monthly", priority: "0.8" },
-  { path: "/resources",                 changefreq: "weekly",  priority: "0.7" },
-  { path: "/contact",                   changefreq: "monthly", priority: "0.7" },
-  { path: "/book",                      changefreq: "monthly", priority: "0.7" },
-  { path: "/privacy",                   changefreq: "yearly",  priority: "0.3" },
-];
+// Hand-tuned changefreq/priority for specific routes; anything routed in App.tsx that
+// isn't listed here still gets a sitemap entry, just with DEFAULT_ROUTE_META below.
+// This keeps priority tuning possible without reintroducing a hand-maintained path list
+// that can drift from what's actually routed.
+const ROUTE_META: Record<string, { changefreq: string; priority: string }> = {
+  "/":          { changefreq: "monthly", priority: "1.0" },
+  "/about":     { changefreq: "monthly", priority: "0.8" },
+  "/resources": { changefreq: "weekly",  priority: "0.7" },
+  "/contact":   { changefreq: "monthly", priority: "0.7" },
+  "/privacy":   { changefreq: "yearly",  priority: "0.3" },
+};
+const DEFAULT_ROUTE_META = { changefreq: "monthly", priority: "0.5" };
+
+// Derives the sitemap's static page list directly from App.tsx's registered <Route>
+// elements instead of a hand-maintained duplicate, so the two can never drift apart.
+// Skips dynamic-param routes (e.g. "/resources/:slug" — its concrete instances are
+// added separately below, from the article files) and pure client-side redirect
+// routes (component name starting with "Redirect"), which have no content of their own.
+function extractRoutedPaths(appTsxPath: string): string[] {
+  const source = fs.readFileSync(appTsxPath, "utf-8");
+  const routeRegex = /<Route\s+path="([^"]+)"\s+component=\{([^}]*)\}/g;
+  const paths: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = routeRegex.exec(source)) !== null) {
+    const [, routePath, componentExpr] = match;
+    if (routePath.includes(":")) continue;
+    if (/^Redirect/.test(componentExpr.trim())) continue;
+    paths.push(routePath);
+  }
+  return paths;
+}
 
 function parseFrontmatter(raw: string): Record<string, string> {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -65,17 +87,19 @@ function toIsoDate(humanDate: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function generateSitemap(articlesDir: string): string {
+function generateSitemap(appTsxPath: string, articlesDir: string): string {
   const today = new Date().toISOString().slice(0, 10);
 
-  const staticEntries = STATIC_PAGES.map(
-    ({ path: p, changefreq, priority }) => `  <url>
+  const routedPaths = extractRoutedPaths(appTsxPath);
+  const staticEntries = routedPaths.map((p) => {
+    const { changefreq, priority } = ROUTE_META[p] ?? DEFAULT_ROUTE_META;
+    return `  <url>
     <loc>${SITE_URL}${p}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>
-  </url>`,
-  ).join("\n\n");
+  </url>`;
+  }).join("\n\n");
 
   let articleEntries = "";
   if (fs.existsSync(articlesDir)) {
@@ -117,6 +141,7 @@ ${staticEntries}${articleEntries}
 }
 
 function sitemapPlugin(): Plugin {
+  const appTsxPath = path.resolve(import.meta.dirname, "src/App.tsx");
   const articlesDir = path.resolve(import.meta.dirname, "src/content/articles");
   const publicDir = path.resolve(import.meta.dirname, "public");
   const sitemapPath = path.join(publicDir, "sitemap.xml");
@@ -124,7 +149,7 @@ function sitemapPlugin(): Plugin {
   return {
     name: "generate-sitemap",
     buildStart() {
-      const xml = generateSitemap(articlesDir);
+      const xml = generateSitemap(appTsxPath, articlesDir);
       fs.writeFileSync(sitemapPath, xml, "utf-8");
     },
   };
