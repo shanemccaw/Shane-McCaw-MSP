@@ -536,9 +536,17 @@ export default function CopilotReadinessPage() {
               border: "1px solid rgba(255,255,255,0.15)",
               background: "rgba(0,0,0,0.4)",
               color: "rgba(255,255,255,0.55)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
             }}
           >
-            {user?.name ?? user?.email}
+            {user?.name ? <span>{user.name}</span> : null}
+            {user?.email && user.email !== user?.name ? (
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 10 }}>
+                {user.email}
+              </span>
+            ) : null}
           </span>
         ) : null}
         <button
