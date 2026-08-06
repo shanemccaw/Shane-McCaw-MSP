@@ -573,11 +573,37 @@ const ENTRA_PREMIUM_ERROR_CODES = new Set([
 ]);
 
 /**
+ * #484 — Exchange Online's Data Insights / Content Search backend (what
+ * `/security/labels/retentionLabels` and similar Purview-routed endpoints
+ * actually hit under the hood) answers a tenant that lacks Advanced eDiscovery
+ * / Information Governance capability (E5 Compliance or the standalone add-on)
+ * with a wrapped 500, not a 401/403: `code: "UnknownError"` at the top level,
+ * with the REAL signature one level down in the message body — a JSON-as-string
+ * blob carrying `"ErrorCode":"DataInsightsRequestError"` and a `Message` of
+ * "DataInsights command(...) FAILED - Forbidden. TargetServer = <mailbox
+ * server>". The `TargetServer` rotates across every mailbox in the tenant on
+ * every attempt (it's just which backend server answered), but the
+ * `DataInsightsRequestError` + `Forbidden` pairing is identical every time —
+ * that consistency across a random backend target, never varying by mailbox,
+ * is what makes this a capability gap rather than a transient/per-mailbox
+ * fault. Requires all three markers (error code + "forbidden" + "targetserver")
+ * so a single generic "forbidden" substring elsewhere can't misfire this.
+ */
+function isDataInsightsLicenseGapBody(lower: string): boolean {
+  return (
+    lower.includes("datainsightsrequesterror") &&
+    lower.includes("forbidden") &&
+    lower.includes("targetserver")
+  );
+}
+
+/**
  * Classify a non-2xx Graph error body into one of three kinds:
  *   - "consent"    : admin consent revoked / never granted → re-authorize needed.
  *   - "license_gap": the tenant doesn't have the M365 add-on the endpoint needs
- *                    (Entra Premium, Defender, etc.) — a real, known SKU limit,
- *                    not a fault. Carries a customer-safe `feature` name.
+ *                    (Entra Premium, Defender, Purview eDiscovery, etc.) — a
+ *                    real, known SKU limit, not a fault. Carries a
+ *                    customer-safe `feature` name.
  *   - "other"      : a genuine permission / request / transient error.
  *
  * License-gap detection keys off documented AAD/Graph error CODES first (the
@@ -586,6 +612,9 @@ const ENTRA_PREMIUM_ERROR_CODES = new Set([
  * "not licensed for this feature"). Anything not matching those exact signals is
  * deliberately left as "consent"/"other" — we never guess a license gap from a
  * generic error, per the no-silent-reclassification rule.
+ *
+ * Called for EVERY non-2xx status (not just 401/403/400) because the
+ * DataInsightsRequestError signature above (#484) rides in on a wrapped 500.
  */
 export function classifyGraphError(
   body: string,
@@ -602,6 +631,15 @@ export function classifyGraphError(
   // Entra ID Premium (P1/P2) — exact error-code match, the strongest signal.
   if (code && ENTRA_PREMIUM_ERROR_CODES.has(code)) {
     return { kind: "license_gap", feature: "Microsoft Entra ID Premium (P1/P2)", code };
+  }
+
+  // #484 — Purview retention/eDiscovery (Data Insights) capability gap.
+  if (isDataInsightsLicenseGapBody(lower)) {
+    return {
+      kind: "license_gap",
+      feature: "Microsoft Purview retention/eDiscovery capability (E5 Compliance or the standalone add-on)",
+      code: "DataInsightsRequestError",
+    };
   }
   if (
     lower.includes("doesn't have premium license") ||
@@ -753,7 +791,11 @@ export async function graphFetchForTenant(
   //      response; never tenant-wide revoke. (Previously any bare 401 revoked —
   //      one misfiring check in a package run nuked a real, fresh grant ~5 min in.)
   //   4. any other non-consent 400/403 → synthetic Response for the caller.
-  if (res.status === 401 || res.status === 400 || res.status === 403) {
+  //   500 is included ONLY because #484's DataInsightsRequestError capability-gap
+  //   signature (see classifyGraphError) rides in on a wrapped 500 from Exchange's
+  //   Data Insights backend — every other 500 body still falls through classifyGraphError
+  //   as "other" and returns an untouched synthetic Response, identical to before.
+  if (res.status === 401 || res.status === 400 || res.status === 403 || res.status === 500) {
     const text = await res.text();
     const cls = classifyGraphError(text, res.status);
 

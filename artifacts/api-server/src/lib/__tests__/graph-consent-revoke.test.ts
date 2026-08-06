@@ -377,6 +377,18 @@ const graph401NotProvisioned = () => ({
   text: async () => '{"error":{"code":"Unauthorized","message":"Account is not provisioned."}}',
 });
 
+// #484 — the real body shape observed on the retention checks: a wrapped 500
+// whose top-level code is a useless "UnknownError", with the real signature
+// nested one level down as a JSON-as-string message. TargetServer intentionally
+// varies per call, the way it does on the real tenant.
+const graph500DataInsights = (targetServer = "DM6PR05MB1234.namprd05.prod.outlook.com") => ({
+  ok: false,
+  status: 500,
+  headers: new Headers(),
+  text: async () =>
+    `{"error":{"code":"UnknownError","message":"{\\"ErrorCode\\":\\"DataInsightsRequestError\\",\\"Message\\":\\"DataInsights command(GET) FAILED - Forbidden. TargetServer = ${targetServer}\\"}"}}`,
+});
+
 describe("graphFetchForTenant — license/feature gap (no consent flip)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -416,6 +428,42 @@ describe("graphFetchForTenant — license/feature gap (no consent flip)", () => 
     expect(mockDb.transaction).not.toHaveBeenCalled();
     expect(mockCreateAuditLog).not.toHaveBeenCalled();
   });
+
+  // #484 — the retention checks' real failure signature: a wrapped 500, not a
+  // 401/403, so this only passes if the 500 status is actually inspected.
+  it("throws LicenseGapError on a 500 DataInsightsRequestError/Forbidden/TargetServer body — does NOT auto-revoke consent", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph500DataInsights());
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-retention", "/security/labels/retentionLabels"); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(LicenseGapError);
+    expect(err).not.toBeInstanceOf(ConsentRevokedError);
+    expect((err as LicenseGapError).feature).toContain("Purview");
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockCreateAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("classifies the rotating TargetServer mailbox exactly the same way every time", async () => {
+    mockFetch
+      .mockResolvedValueOnce(tokenOk())
+      .mockResolvedValueOnce(graph500DataInsights("BN8PR05MB9999.namprd05.prod.outlook.com"));
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-retention-2", "/security/labels/retentionLabels"); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(LicenseGapError);
+    expect((err as LicenseGapError).graphErrorCode).toBe("DataInsightsRequestError");
+  });
+
+  it("does NOT classify an unrelated 500 as a license gap", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      text: async () => '{"error":{"code":"InternalServerError","message":"Something went wrong."}}',
+    });
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-generic-500", "/some/endpoint"); } catch (e) { err = e; }
+    expect(err).toBeUndefined();
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe("classifyGraphError", () => {
@@ -438,6 +486,22 @@ describe("classifyGraphError", () => {
 
   it("leaves a plain permission error as 'other' (not a license gap)", () => {
     const r = classifyGraphError('{"error":{"code":"Authorization_RequestDenied","message":"Insufficient privileges."}}', 403);
+    expect(r.kind).toBe("other");
+  });
+
+  // #484
+  it("classifies DataInsightsRequestError/Forbidden/TargetServer as a license gap (Purview eDiscovery)", () => {
+    const r = classifyGraphError(
+      '{"error":{"code":"UnknownError","message":"{\\"ErrorCode\\":\\"DataInsightsRequestError\\",\\"Message\\":\\"DataInsights command(GET) FAILED - Forbidden. TargetServer = DM6PR05MB1234.namprd05.prod.outlook.com\\"}"}}',
+      500,
+    );
+    expect(r.kind).toBe("license_gap");
+    expect(r.feature).toContain("Purview");
+    expect(r.code).toBe("DataInsightsRequestError");
+  });
+
+  it("does not classify a bare 'forbidden' body as a license gap without the DataInsights/TargetServer markers", () => {
+    const r = classifyGraphError('{"error":{"code":"Forbidden","message":"Forbidden."}}', 403);
     expect(r.kind).toBe("other");
   });
 });
