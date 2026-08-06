@@ -53,7 +53,7 @@ const HEADLINE_MIN_SCALE = 0.42;
  * shimmer pattern instead of introducing a new one. */
 const HERO_GRADIENT_STYLE = {
   backgroundImage:
-    "linear-gradient(96deg,#93c5fd 0%,#c4b5fd 33%,#a5f3fc 66%,#ffffff 100%)," +
+    "linear-gradient(96deg,#5B8DEF 0%,#9B7CFF 100%)," +
     "linear-gradient(96deg,transparent 0%,#67e8f9 10%,#a78bfa 20%,#f472b6 30%,#fbbf24 40%,transparent 50%)",
   backgroundSize: "100% 100%, 220% 100%",
   backgroundPosition: "0 0, 0% 0",
