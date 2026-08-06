@@ -24,10 +24,25 @@
  * platform holds no write consent for these operations against a customer
  * tenant, and a runbook that quietly ran privileged PowerShell from a report
  * viewer would be a very bad idea even if it did.
+ *
+ * PREVIEW VS LIVE (#472)
+ * ----------------------
+ * `RemediationGuideBody` is presentational: pass `isPreview` (the default,
+ * matching its original behaviour byte-for-byte) to render the design's own
+ * Halden Materials runbook, or pass `isPreview={false}` with `live` to render a
+ * real tenant's. `LiveRemediationGuideBody` below is what `DocumentBody.tsx`
+ * mounts on a real journey — it needs no fetch of its own, because every figure
+ * this document can honestly state is already on the journey's view.
+ *
+ * See `remediationLiveGuide.ts` for the whole of what is real: #472's confirmed
+ * step-to-check mapping, which fictional literals became named placeholders and
+ * why the real ones cannot be substituted yet, which counts come from this
+ * tenant's own scan, and the two steps (18 and 28) the platform measures nothing
+ * for and says so.
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { Check, Copy, TriangleAlert } from "lucide-react";
+import { Check, Copy, Info, TriangleAlert } from "lucide-react";
 
 import {
   BRAND,
@@ -47,6 +62,24 @@ import {
   type RemediationCode,
   type RemediationStep,
 } from "./previewRemediationGuide.ts";
+import {
+  LIVE_PRELUDE,
+  UNCONFIRMED_EVIDENCE_DETAIL,
+  buildLiveRemediationSteps,
+  resolveBlockers,
+  resolveChecklistNote,
+  resolveChecklistRows,
+  resolveClosing,
+  resolveExpectedImprovement,
+  resolveHandoffBlurb,
+  resolveScopeHeadline,
+  resolveStandfirst,
+  resolveTotalFindings,
+  type LiveRemediationStep,
+  type StepEvidence,
+} from "./remediationLiveGuide.ts";
+import { buildProvenance } from "./liveReportBlocks.ts";
+import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
 const H2: React.CSSProperties = {
@@ -167,15 +200,30 @@ function CodeBlock({ code }: { readonly code: RemediationCode }) {
  * The caution / verify notes
  * ------------------------------------------------------------------ */
 
+/**
+ * `caution` and `verify` are the design's two notes. `context` is #472's third:
+ * why a step is on this tenant's list, what the reader must fill into a
+ * placeholder, or — for Steps 18 and 28 — that the platform measures nothing
+ * here at all.
+ *
+ * It is deliberately neutral rather than amber or green. A gap styled as a
+ * caution reads as a failing grade, which is exactly the reading #472 ruled out
+ * for the pillar reports' own declared absences.
+ */
 function Note({
   kind,
   children,
 }: {
-  readonly kind: "caution" | "verify";
+  readonly kind: "caution" | "verify" | "context";
   readonly children: React.ReactNode;
 }) {
   const caution = kind === "caution";
-  const colour = caution ? SEVERITY_ON_DARK.attention : SEVERITY_ON_DARK.healthy;
+  const context = kind === "context";
+  const colour = caution
+    ? SEVERITY_ON_DARK.attention
+    : context
+      ? "#7d9ab5"
+      : SEVERITY_ON_DARK.healthy;
   return (
     <div
       style={{
@@ -189,21 +237,70 @@ function Note({
       }}
     >
       <span aria-hidden="true" style={{ flex: "none", marginTop: 2, color: colour, display: "flex" }}>
-        {caution ? <TriangleAlert size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2.2} />}
+        {caution ? (
+          <TriangleAlert size={13} strokeWidth={2} />
+        ) : context ? (
+          <Info size={13} strokeWidth={2.2} />
+        ) : (
+          <Check size={13} strokeWidth={2.2} />
+        )}
       </span>
       <span
         style={{
           fontSize: 12.5,
           fontWeight: 500,
           lineHeight: 1.55,
-          // Tinted ink rather than the body grey: these two notes are the ones
-          // that stop somebody breaking their own tenant.
-          color: caution ? "#e8d9a8" : "#bfe9d6",
+          // Tinted ink rather than the body grey: these notes are the ones that
+          // stop somebody breaking their own tenant.
+          color: caution ? "#e8d9a8" : context ? "#c3d4e3" : "#bfe9d6",
         }}
       >
         {children}
       </span>
     </div>
+  );
+}
+
+/**
+ * The evidence line under a live step.
+ *
+ * Four shapes, and the distinction between the last two is the one that must
+ * never blur: `gap` is "we do not measure this at all", `unconfirmed` is "your
+ * scan reports only its three worst findings per pillar, so this says nothing
+ * either way". Neither is a pass, and neither is styled as a failure.
+ */
+function Evidence({ evidence }: { readonly evidence: StepEvidence }) {
+  if (evidence.kind === "process") return null;
+
+  if (evidence.kind === "finding") {
+    return (
+      <Note kind="context">
+        <span style={{ fontWeight: 700 }}>On your list because:</span>{" "}
+        <span style={{ color: evidence.severity === "critical" ? SEVERITY_ON_DARK.critical : SEVERITY_ON_DARK.attention }}>
+          {evidence.title}
+        </span>{" "}
+        <span style={{ color: INK.micro }}>
+          {`— recorded by ${evidence.checkKey} on this tenant's last scan.`}
+        </span>
+      </Note>
+    );
+  }
+
+  if (evidence.kind === "gap") {
+    return (
+      <Note kind="context">
+        <span style={{ fontWeight: 700 }}>Not measured by this platform:</span> {evidence.detail}
+      </Note>
+    );
+  }
+
+  return (
+    <Note kind="context">
+      <span style={{ fontWeight: 700 }}>Not confirmed either way:</span> {UNCONFIRMED_EVIDENCE_DETAIL}
+      {evidence.checkKeys.length > 0 ? (
+        <span style={{ color: INK.micro }}>{` The checks behind it are ${evidence.checkKeys.join(", ")}.`}</span>
+      ) : null}
+    </Note>
   );
 }
 
@@ -216,10 +313,12 @@ function Step({
   done,
   onToggle,
 }: {
-  readonly step: RemediationStep;
+  readonly step: RemediationStep | LiveRemediationStep;
   readonly done: boolean;
   readonly onToggle: (id: string) => void;
 }) {
+  const fillIn = "fillIn" in step ? step.fillIn : undefined;
+  const evidence = "evidence" in step ? step.evidence : undefined;
   const colour = PILLARS[step.pillar].primary;
   return (
     <div
@@ -320,7 +419,14 @@ function Step({
           </span>
         ) : null}
 
+        {/* Evidence leads: why this step is here comes before what to run. */}
+        {evidence ? <Evidence evidence={evidence} /> : null}
         {step.code ? <CodeBlock code={step.code} /> : null}
+        {fillIn ? (
+          <Note kind="context">
+            <span style={{ fontWeight: 700 }}>Fill in:</span> {fillIn}
+          </Note>
+        ) : null}
         {step.caution ? <Note kind="caution">{step.caution}</Note> : null}
         {step.verify ? (
           <Note kind="verify">
@@ -336,7 +442,41 @@ function Step({
  * The guide
  * ------------------------------------------------------------------ */
 
-export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () => void }) {
+/**
+ * A live tenant's value for one Remediation Overview row, matched on the row's
+ * own label.
+ *
+ * Matched on label rather than an added id because the rows are the design's
+ * `as const` tuple and each label is unique within it. A label that gains no
+ * case here falls back to the design's own value — which is correct only for
+ * "Critical path duration", the one row that states the programme's shape
+ * rather than a measurement of this tenant, and `remediationLiveGuide.test.ts`
+ * pins that so a new fixture row cannot quietly inherit the fallback.
+ */
+function resolveOverviewValue(label: string, fallback: string, view: JourneyView): string {
+  switch (label) {
+    case "Total findings requiring remediation":
+      return resolveTotalFindings(false, view.pillars);
+    case "Not safe yets":
+      return resolveBlockers(false, view.pillars);
+    case "Expected improvement":
+      return resolveExpectedImprovement(false, view.readinessScore);
+    default:
+      return fallback;
+  }
+}
+
+export function RemediationGuideBody({
+  onOpenSow,
+  isPreview = true,
+  live,
+}: {
+  readonly onOpenSow?: () => void;
+  /** Default `true` so every existing (preview) call site is unchanged. */
+  readonly isPreview?: boolean;
+  /** Required when `isPreview` is `false`. */
+  readonly live?: { readonly view: JourneyView };
+}) {
   const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = useCallback((id: string) => {
     setDoneIds((prev) => {
@@ -347,20 +487,48 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
     });
   }, []);
 
-  const total = REMEDIATION_STEPS.length;
+  const view = !isPreview && live ? live.view : null;
+  const tenant = view ? view.tenant : PREVIEW_TENANT;
+
+  // The live steps are `REMEDIATION_STEPS` resolved one-to-one against this
+  // tenant — same ids, same order, same count — so every count, group and phase
+  // reference below is identical in both paths by construction.
+  const steps = useMemo<readonly (RemediationStep | LiveRemediationStep)[]>(
+    () => (view ? buildLiveRemediationSteps(view) : REMEDIATION_STEPS),
+    [view],
+  );
+
+  const total = steps.length;
+  const scripted = useMemo(
+    () => (view ? steps.filter((s) => s.code !== undefined).length : REMEDIATION_SCRIPTED_COUNT),
+    [view, steps],
+  );
   const done = doneIds.size;
   const accent = reportAccent(null);
-  const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
+  const scannedOn = tenant.scannedOn ?? "";
+  const prelude = view ? LIVE_PRELUDE : REMEDIATION_PRELUDE;
 
   const byPillar = useMemo(() => {
-    const map = new Map<PillarKey, RemediationStep[]>();
-    for (const step of REMEDIATION_STEPS) {
+    const map = new Map<PillarKey, (RemediationStep | LiveRemediationStep)[]>();
+    for (const step of steps) {
       const list = map.get(step.pillar);
       if (list) list.push(step);
       else map.set(step.pillar, [step]);
     }
     return map;
-  }, []);
+  }, [steps]);
+
+  const checklistRows = useMemo(
+    () => (view ? resolveChecklistRows(false, view) : REMEDIATION_GUIDE.checklist.rows),
+    [view],
+  );
+  const closing = useMemo(
+    () => resolveClosing(view === null, total, scripted),
+    [view, total, scripted],
+  );
+  const provenance = view
+    ? buildProvenance(tenant.scannedOn, 0)
+    : `Read on ${scannedOn} through the Microsoft Graph API with read-only delegated permissions. ${PREVIEW_SIGNAL_COUNT} signal derivation checks across six pillars. No configuration was altered during assessment.`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -403,7 +571,9 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
         >
           {REMEDIATION_GUIDE.headline}
         </h1>
-        <p style={{ ...BODY, fontSize: 15.5, lineHeight: 1.62 }}>{REMEDIATION_GUIDE.standfirst}</p>
+        <p style={{ ...BODY, fontSize: 15.5, lineHeight: 1.62 }}>
+          {resolveStandfirst(view === null, total, scripted)}
+        </p>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span
             style={{
@@ -458,7 +628,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
             textWrap: "pretty",
           }}
         >
-          {REMEDIATION_GUIDE.scope.headline}
+          {view ? resolveScopeHeadline(false, total, view.pillars) : REMEDIATION_GUIDE.scope.headline}
         </span>
         <span style={{ fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDarkStrong }}>
           {REMEDIATION_GUIDE.scope.sub}
@@ -486,9 +656,16 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
             >
               <span style={{ fontSize: 13, fontWeight: 600, color: INK.headingDark }}>{row.label}</span>
               <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, color: SEVERITY_ON_DARK[row.tone] }}>
+                {/* The step-count row stays derived in both paths — see its own
+                    note in `previewRemediationGuide.ts` for why restating the
+                    design's contradicted figure would be worse than correcting
+                    it. The other four state this tenant's own numbers on a live
+                    journey, or the design's worked example in preview. */}
                 {"derived" in row
-                  ? `${total}, of which ${REMEDIATION_SCRIPTED_COUNT} are scripted`
-                  : row.value}
+                  ? `${total}, of which ${scripted} are scripted`
+                  : view
+                    ? resolveOverviewValue(row.label, row.value, view)
+                    : row.value}
               </span>
             </div>
           ))}
@@ -497,13 +674,13 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
 
       {/* Connect once */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        <h2 style={H2}>{REMEDIATION_PRELUDE.heading}</h2>
+        <h2 style={H2}>{prelude.heading}</h2>
         <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
-          {REMEDIATION_PRELUDE.blurb}
+          {prelude.blurb}
         </p>
-        <CodeBlock code={REMEDIATION_PRELUDE.code} />
+        <CodeBlock code={prelude.code} />
         <p style={{ ...BODY, fontSize: 12.5, lineHeight: 1.6, color: INK.bodyDark }}>
-          {REMEDIATION_PRELUDE.footnote}
+          {prelude.footnote}
         </p>
       </div>
 
@@ -557,7 +734,7 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{REMEDIATION_GUIDE.checklist.heading}</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {REMEDIATION_GUIDE.checklist.rows.map((row) => (
+          {checklistRows.map((row) => (
             <div
               key={row}
               style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 10px" }}
@@ -580,14 +757,14 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
           ))}
         </div>
         <p style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDark }}>
-          {REMEDIATION_GUIDE.checklist.note}
+          {view ? resolveChecklistNote(false, view) : REMEDIATION_GUIDE.checklist.note}
         </p>
       </div>
 
       {/* Executive summary */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>Executive Summary</h2>
-        {REMEDIATION_GUIDE.closing.map((p) => (
+        {closing.map((p) => (
           <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
             {p}
           </p>
@@ -609,7 +786,9 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
         <span style={{ fontSize: 15, fontWeight: 700, color: INK.headingDark }}>
           {REMEDIATION_GUIDE.handoff.heading}
         </span>
-        <p style={{ ...BODY, fontSize: 14, lineHeight: 1.6 }}>{REMEDIATION_GUIDE.handoff.blurb}</p>
+        <p style={{ ...BODY, fontSize: 14, lineHeight: 1.6 }}>
+          {resolveHandoffBlurb(view === null, total)}
+        </p>
         {onOpenSow ? (
           <button
             type="button"
@@ -647,8 +826,31 @@ export function RemediationGuideBody({ onOpenSow }: { readonly onOpenSow?: () =>
           color: INK.bodyDark,
         }}
       >
-        {`Read on ${scannedOn} through the Microsoft Graph API with read-only delegated permissions. ${PREVIEW_SIGNAL_COUNT} signal derivation checks across six pillars. No configuration was altered during assessment.`}
+        {provenance}
       </p>
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * LiveRemediationGuideBody — what `DocumentBody.tsx` mounts on a real journey.
+ * ------------------------------------------------------------------ */
+
+/**
+ * No fetch of its own, unlike `LiveStatementOfWorkBody`.
+ *
+ * The SOW needs a scope and a price, which live behind two endpoints of their
+ * own. This guide needs findings, stat counts, a readiness score and a scan
+ * date — all of which are already on the journey's view by the time any
+ * document renders. Adding a fetch here would be a second round trip for data
+ * the caller is holding.
+ */
+export function LiveRemediationGuideBody({
+  view,
+  onOpenSow,
+}: {
+  readonly view: JourneyView;
+  readonly onOpenSow?: () => void;
+}) {
+  return <RemediationGuideBody isPreview={false} live={{ view }} onOpenSow={onOpenSow} />;
 }

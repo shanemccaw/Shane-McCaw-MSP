@@ -47,7 +47,7 @@ import {
   type JourneyLiveDocument,
   type PillarKey,
 } from "./journeyTokens.ts";
-import { RemediationGuideBody } from "./RemediationGuideBody";
+import { LiveRemediationGuideBody, RemediationGuideBody } from "./RemediationGuideBody";
 import { LiveStatementOfWorkBody, StatementOfWorkBody } from "./StatementOfWorkBody";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
 import { LiveSecurityPostureReport } from "./SecurityPostureReportBody";
@@ -526,6 +526,22 @@ export function DocumentBody({
     return (
       <Card pillar={pillar}>
         <LiveStatementOfWorkBody view={view} onSigned={onSigned} />
+      </Card>
+    );
+  }
+
+  // The Full Remediation Guide (#472): the same arrangement as the SOW above,
+  // and for the same reason. It is not in `JOURNEY_LIVE_DOCUMENTS` because it is
+  // interactive (thirty tickable steps) rather than a rendered report, so it is
+  // not the `(props: {view}) => ReactElement` the registry's `LIVE_BODY` shape
+  // holds — but every figure it can honestly state comes from this tenant's own
+  // scan, already on `view`, so it resolves live ahead of the old
+  // document-generation pipeline's gates below rather than falling through to
+  // generated HTML written from the design's fixture.
+  if (!isPreview && view && doc?.title === JOURNEY_REMEDIATION_DOCUMENT) {
+    return (
+      <Card pillar={pillar}>
+        <LiveRemediationGuideBody view={view} onOpenSow={onOpenSow} />
       </Card>
     );
   }
