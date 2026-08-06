@@ -842,6 +842,12 @@ describe("orderPillarFindings", () => {
    * used to lead purely because it sorts before `identity:ca-mfa-coverage`
    * alphabetically; the real weights are 20 for CA-MFA coverage against 18 for
    * break-glass health.
+   *
+   * Since 2026-08-06 those are `securityImpact` values — api-server narrows a
+   * finding to its own card's impact column before serialising, so what arrives
+   * here is already the right number for the pillar it is filed under. The
+   * client is deliberately blind to WHICH column produced it; see the
+   * pillar-agnostic test at the end of this block.
    */
   const SECURITY_CRITICALS: WirePillarFinding[] = [
     {
@@ -943,5 +949,43 @@ describe("orderPillarFindings", () => {
     const input = [...SECURITY_CRITICALS];
     orderPillarFindings(input);
     assert.equal(input[0]?.checkKey, "identity:break-glass-health");
+  });
+
+  /**
+   * The 2026-08-06 correction moved api-server from ranking every pillar by
+   * `copilot_impact` to ranking each by its own impact column. This file did not
+   * change, and these two tests are why: `rankWeight` stays a flat number whose
+   * meaning is "rank within THIS card", so the correction is invisible here.
+   */
+  it("ranks identically whichever pillar's column the server drew the weight from", () => {
+    const rows = (a: number, b: number): WirePillarFinding[] => [
+      { severity: "critical", checkKey: "x:lighter", title: "lighter", rankWeight: a },
+      { severity: "critical", checkKey: "y:heavier", title: "heavier", rankWeight: b },
+    ];
+    // Security's securityImpact spread and Licensing's licensingImpact spread
+    // are different columns and different magnitudes; the client sees numbers.
+    for (const [lo, hi] of [
+      [18, 20], // securityImpact, the reported case
+      [3, 7], // licensingImpact, a much narrower real spread
+      [0, 1], // the barest possible discrimination
+    ]) {
+      assert.deepEqual(
+        orderPillarFindings(rows(lo!, hi!)).map((f) => f.title),
+        ["heavier", "lighter"],
+        `weights ${lo}/${hi}`,
+      );
+    }
+  });
+
+  it("would have kept the pre-correction bug had the server sent flat weights", () => {
+    // What api-server actually shipped on 2026-08-05: copilot_impact is 0 for
+    // every Security signal, so every finding arrived weighted 0, tied, and this
+    // fell through to the server's alphabetical order. Pinned so the client's
+    // half of that failure stays legible rather than looking like a bug here.
+    const flat: WirePillarFinding[] = SECURITY_CRITICALS.map((f) => ({ ...f, rankWeight: 0 }));
+    assert.deepEqual(
+      orderPillarFindings(flat).map((f) => f.title),
+      ["No enabled break-glass account", "No Conditional Access policies exist"],
+    );
   });
 });

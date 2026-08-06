@@ -156,12 +156,14 @@ import { getMetric } from "@workspace/dashboard-registry";
 import {
   calculateArchitectureHealthScore,
   getSignalHealthImpacts,
+  PILLAR_FIELD,
   type SignalHealthImpactConfig,
 } from "./health-engine.ts";
 import {
   fetchScannedCheckKeys,
   fetchTenantEvaluableSignalKeys,
   resolveOwningCheckKey,
+  RADAR_PILLARS,
   type RadarPillar,
 } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
@@ -595,48 +597,99 @@ export interface WarRoomPillarFinding {
   checkKey: string;
   title: string;
   /**
-   * The real signal weight this finding's own check carries, used to rank it
-   * against its severity peers (#414). See `FINDING_RANK_IMPACT_FIELD` and
-   * `buildFindingRankWeights` for where the number comes from. `0` means the
-   * join found no rule fed by this check — an honest "unranked", not a claim
-   * that the finding does not matter.
+   * The real signal weight this finding's own check carries FOR THE PILLAR THIS
+   * FINDING IS FILED UNDER, used to rank it against its severity peers (#414).
+   * See `FINDING_RANK_IMPACT_FIELD` and `buildFindingRankWeights` for where the
+   * number comes from.
+   *
+   * Deliberately a flat number rather than a per-pillar map: a
+   * `WarRoomPillarCard` is already pillar-scoped, and a finding reaches exactly
+   * one card (`warRoomPillarForCheckKey` is single-valued), so the pillar is
+   * known at the point this is written and carrying the other six columns to
+   * the client would be dead weight the wire cannot use.
+   *
+   * `0` means the join found no rule fed by this check, or found rules that
+   * carry no weight for this pillar — an honest "unranked", not a claim that
+   * the finding does not matter.
    */
   rankWeight: number;
 }
 
+/** The impact columns a signal's weight can live in. Mirrors health-display.ts. */
+type PillarImpactField = keyof Omit<SignalHealthImpactConfig, "signalKey">;
+
 /**
  * Which of `signal_derivation_rules`' seven impact columns ranks a finding
- * against its severity peers (#414).
+ * against its severity peers — resolved PER PILLAR (#414, corrected 2026-08-06).
  *
- * `copilotImpact`, on Shane's explicit call (2026-08-05): the entire product is
- * scoped to Copilot readiness, so the finding a customer sees first should be
- * the one that most obstructs Copilot, not the one that happens to sort first
- * alphabetically. Named as ONE constant so the decision is a single line to
- * revisit rather than a literal buried in a comparator.
+ * Security's findings rank by `securityImpact`, Licensing's by
+ * `licensingImpact`, Copilot's by `copilotImpact`, and so on. This is
+ * health-engine's own `PILLAR_FIELD` — the SAME map `computePillarDisplayScore`
+ * uses to compute the score printed beside these findings — rather than a
+ * second copy that could drift from it. Only the local cast is new, and it
+ * matches what health-display.ts and pillar-coverage.ts already do at their own
+ * call sites (`PILLAR_FIELD` is typed `string`-valued for historical reasons).
  *
- * ── The alternative that was considered and rejected, recorded on purpose ────
- * The other candidate was `PILLAR_FIELD[enginePillar]` — rank Security's
- * findings by `securityImpact`, Licensing's by `licensingImpact`, and so on —
- * which has the real merit that a card's headline would then be the biggest
- * driver of the score printed beside it. It was not chosen. The cost is that
- * six of seven cards would then rank by something the product does not sell:
- * this journey's verdict is the Copilot Gate, and a Security headline chosen
- * for its security weight can be a finding with no Copilot consequence at all.
+ * ── This REVERSES the original #414 decision, and why ───────────────────────
+ * The fix that first landed (`6c648df4`) used a single constant,
+ * `copilotImpact`, for all seven pillars, on the reasoning that the entire
+ * product is scoped to Copilot readiness so the headline should be the finding
+ * that most obstructs Copilot. That docstring recorded `PILLAR_FIELD[enginePillar]`
+ * as the considered-and-rejected alternative, and flagged one risk it could not
+ * check from this environment: `copilotImpact` only ranks anything if it
+ * genuinely varies across the rules feeding a pillar.
  *
- * ── The real risk this carries, stated rather than hidden ───────────────────
- * `copilotImpact` only ranks anything if it genuinely varies across the rules
- * feeding a pillar. The repo's own snapshot of the rule table
- * (`docs/signals.json`, exported 2026-08-05 14:02) has it flat at 0 or 1 for
- * 193 of 198 rows — on that data every Security finding ties and the sort falls
- * straight through to the `checkKey` tiebreak below, i.e. today's behaviour.
- * Shane re-authored the weights directly in the database after that export, so
- * the snapshot is stale and the live column is expected to discriminate; this
- * environment has no database access to confirm it, so the ranking is written
- * to degrade honestly (ties → the existing stable order) rather than to assume.
- * `docs/2026-08-05-finding-rank-weights-414.sql` is the query that confirms it
- * against real data.
+ * It does not. Shane ran Query 1 of `docs/2026-08-05-finding-rank-weights-414.sql`
+ * against the live database on 2026-08-06 and every pillar EXCEPT `copilot`
+ * itself has `copilot_impact` flat at 0 across all of its rules, while every
+ * pillar's own column carries real variance:
+ *
+ *     pillar         rules   distinct copilot_impact   distinct own-field
+ *     security         56      1  (0/0)                  20
+ *     governance       26      1  (0/0)                  11
+ *     architecture     17      1  (0/0)                   8
+ *     cost              8      1  (0/0)                   4
+ *     compliance        5      1  (0/0)                   5
+ *     adoption          8      1  (0/0)                   2
+ *     copilot           6      4  (0/20)                  —
+ *
+ * So the landed ranking was a NO-OP for six of seven pillars — including
+ * Security, the pillar the reported bug came from: `identity:break-glass-health`
+ * and the CA findings both sit at `copilot_impact = 0`, tie, and fall straight
+ * through to the `checkKey.localeCompare` tiebreak that put break-glass first in
+ * the first place. The mechanism (`buildFindingRankWeights`,
+ * `compareRankedFindings`, `orderPillarFindings`) was correct throughout; only
+ * the column it read was empty.
+ *
+ * ── What this trades away, stated rather than hidden ────────────────────────
+ * "Headline = most Copilot-blocking" becomes "headline = most severe on the
+ * pillar being displayed". Signals legitimately cross pillars — `ca-mfa-coverage`
+ * carries real weight in both `securityImpact` and `copilotImpact` — so this is
+ * not a claim that Copilot relevance stopped mattering. It is that a pillar's
+ * own column is the one column proven to be populated for that pillar's own
+ * findings, and a ranking that reads an empty column ranks nothing at all. The
+ * consolation the original docstring named as this option's merit now applies:
+ * a card's headline IS the biggest driver of the score printed next to it.
+ *
+ * The `copilot` card is not a special case under this rule — it is the one
+ * pillar for which the old and new behaviour coincide, since `PILLAR_FIELD.copilot`
+ * IS `copilotImpact`. That is asserted as a test rather than left as a comment.
+ *
+ * Note the live table labels one pillar `cost` where the engine calls it
+ * `licensing`; that is a value in `signal_derivation_rules.pillar`, a free-text
+ * column this lookup never reads. Ranking is keyed by the ENGINE pillar the card
+ * was scored as (`WAR_ROOM_ENGINE_PILLAR`), so the two naming schemes cannot
+ * disagree here.
  */
-export const FINDING_RANK_IMPACT_FIELD = "copilotImpact" satisfies keyof SignalHealthImpactConfig;
+export const FINDING_RANK_IMPACT_FIELD = PILLAR_FIELD as Record<RadarPillar, PillarImpactField>;
+
+/**
+ * A check's rank weight for every engine pillar, so one pass over the rules
+ * serves all seven cards (#414). Read at the point a finding is filed under its
+ * pillar; see `WarRoomPillarFinding.rankWeight` for why only one of the seven
+ * survives onto the wire.
+ */
+export type CheckRankWeights = Record<RadarPillar, number>;
 
 /** The subset of a `monitor_checks` row `resolveOwningCheckKey` needs. */
 interface RankCheckDefinition {
@@ -661,12 +714,21 @@ interface RankCheckDefinition {
  * `impacts` (not the raw rule rows) is the weight source on purpose: it is the
  * same `getSignalHealthImpacts` map the SCORE beside these findings is computed
  * from, so it already resolves a signal's weight as the MAX across every rule
- * and every group carrying it. Reading `rule.copilotImpact` directly would
- * ignore group-level weights and could rank a finding by a number the scoring
- * path does not agree with.
+ * and every group carrying it. Reading the rule row's own impact column directly
+ * would ignore group-level weights and could rank a finding by a number the
+ * scoring path does not agree with.
  *
  * Many rules can resolve to one check; the check takes the strongest of them,
- * mirroring how a signal takes the max across its own rules.
+ * mirroring how a signal takes the max across its own rules. That max is taken
+ * PER PILLAR (#414, corrected 2026-08-06) — one rule can be the heaviest
+ * contributor to a check's `securityImpact` while a different rule on the same
+ * check is the heaviest for `governanceImpact`, and collapsing to one number
+ * before knowing which card is asking would lose that.
+ *
+ * All seven pillars are accumulated in this single pass rather than the function
+ * being called once per pillar: `resolveOwningCheckKey` walks the whole check
+ * catalog per rule, so seven calls would repeat that scan seven times to produce
+ * results the caller reads one column of anyway.
  *
  * Pure; exported for tests.
  */
@@ -674,13 +736,20 @@ export function buildFindingRankWeights(
   rules: readonly Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
   impacts: ReadonlyMap<string, SignalHealthImpactConfig>,
   checkDefinitions: readonly RankCheckDefinition[],
-): Map<string, number> {
-  const byCheckKey = new Map<string, number>();
+): Map<string, CheckRankWeights> {
+  const byCheckKey = new Map<string, CheckRankWeights>();
   for (const rule of rules) {
     const checkKey = resolveOwningCheckKey(rule, checkDefinitions);
     if (!checkKey) continue;
-    const weight = impacts.get(rule.signalKey)?.[FINDING_RANK_IMPACT_FIELD] ?? 0;
-    byCheckKey.set(checkKey, Math.max(byCheckKey.get(checkKey) ?? 0, weight));
+    const impact = impacts.get(rule.signalKey);
+    let weights = byCheckKey.get(checkKey);
+    if (!weights) {
+      weights = Object.fromEntries(RADAR_PILLARS.map((p) => [p, 0])) as CheckRankWeights;
+      byCheckKey.set(checkKey, weights);
+    }
+    for (const pillar of RADAR_PILLARS) {
+      weights[pillar] = Math.max(weights[pillar], impact?.[FINDING_RANK_IMPACT_FIELD[pillar]] ?? 0);
+    }
   }
   return byCheckKey;
 }
@@ -902,10 +971,12 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     }),
   );
 
-  // #414: the real weight each finding is ranked by. `rules`/`impacts` are the
-  // ones already resolved above for scoring — the same numbers the dial uses —
-  // so the only new read is the check catalog `resolveOwningCheckKey` needs to
-  // walk a rule's sourceKey back to the check that produces it.
+  // #414: the real weight each finding is ranked by, for every pillar at once —
+  // `fetchPillarFindings` picks the one column that applies once it knows which
+  // card a finding lands on. `rules`/`impacts` are the ones already resolved
+  // above for scoring — the same numbers the dial uses — so the only new read is
+  // the check catalog `resolveOwningCheckKey` needs to walk a rule's sourceKey
+  // back to the check that produces it.
   const rankCheckDefinitions: RankCheckDefinition[] = await db
     .select({
       key: monitorChecksTable.key,
@@ -1031,10 +1102,16 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
  * to three, so the cap kept whichever findings sorted early in the alphabet
  * rather than whichever mattered most. Ranking after the cap — in the client,
  * say — could only ever reorder a set that was already chosen wrongly.
+ *
+ * Which of a check's seven weights applies is decided HERE (corrected
+ * 2026-08-06), because this is the first point at which the pillar is known:
+ * `warRoomPillarForCheckKey` files the finding, `WAR_ROOM_ENGINE_PILLAR`
+ * translates that to the engine pillar the card was actually scored as, and
+ * `FINDING_RANK_IMPACT_FIELD` names that pillar's own impact column.
  */
 async function fetchPillarFindings(
   customerId: number,
-  rankWeights: ReadonlyMap<string, number>,
+  rankWeights: ReadonlyMap<string, CheckRankWeights>,
 ): Promise<{
   findingsByPillar: Map<WarRoomPillarKey, WarRoomPillarFinding[]>;
   findingsRunId: string | null;
@@ -1074,7 +1151,7 @@ async function fetchPillarFindings(
       severity: row.severity as WarRoomFindingSeverity,
       checkKey: row.checkKey,
       title: row.title,
-      rankWeight: rankWeights.get(row.checkKey) ?? 0,
+      rankWeight: rankWeights.get(row.checkKey)?.[WAR_ROOM_ENGINE_PILLAR[pillar]] ?? 0,
     });
     findingsByPillar.set(pillar, list);
   }

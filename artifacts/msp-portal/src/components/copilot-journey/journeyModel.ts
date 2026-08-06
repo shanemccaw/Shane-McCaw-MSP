@@ -46,6 +46,15 @@ export interface WirePillarFinding {
    * The real signal weight behind this finding's own check (#414) — api-server's
    * `buildFindingRankWeights` over `signal_derivation_rules`, resolved through
    * the same `getSignalHealthImpacts` map the pillar's score is computed from.
+   *
+   * Weighed in THIS CARD'S OWN pillar column (corrected 2026-08-06): a finding
+   * on the Security card carries its `securityImpact`, one on Licensing its
+   * `licensingImpact`. It stays a flat number here — the card is already
+   * pillar-scoped and a finding reaches exactly one card, so the server has
+   * already picked the column that applies and the other six would be dead
+   * weight on the wire. The correction is invisible to this file by design:
+   * only the number changes, never its meaning as "rank within this card".
+   *
    * Optional because a payload from before #414 (or the design fixture) has no
    * such field; absent is read as `0`, which sorts to the same place the
    * server's own "no rule feeds this check" case does.
@@ -327,7 +336,12 @@ function chipText(stat: WirePillarStat): string | null {
  * Ties keep the server's own order (`sort` is stable), so a payload whose
  * weights are all equal — or one from before #414, which carries no weights at
  * all — degrades to exactly today's behaviour rather than to something
- * arbitrary.
+ * arbitrary. That degradation is not hypothetical: the first version of this
+ * fix ranked every pillar by `copilot_impact`, which live data then showed is
+ * flat at 0 outside the Copilot pillar itself, so every Security finding tied
+ * and this fell through to the server's alphabetical order — the original bug,
+ * intact. Ranking is per-pillar since 2026-08-06; see api-server's
+ * `FINDING_RANK_IMPACT_FIELD` for the measured reason.
  *
  * Note this is a genuine second application of a rank the server already
  * applied, not the only one: the server ranks BEFORE its own per-pillar cap, so
