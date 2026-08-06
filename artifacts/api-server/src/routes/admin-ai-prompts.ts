@@ -4,7 +4,6 @@ import { eq, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "admin.content" });
-import { getDefaultPromptMeta } from "../lib/prompt-loader";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
@@ -284,8 +283,9 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
 });
 
 // ── GET /api/admin/ai-prompts/by-key/:key ────────────────────────────────────
-// Fetch a single prompt by its string key. If no DB row exists yet, returns the
-// hardcoded default from prompt-loader so the dialog can pre-fill correctly.
+// Fetch a single prompt by its string key. If no DB row exists yet (#500 removed
+// the hardcoded-seed fallback), returns an empty shell so the dialog can still
+// open in create-new mode.
 router.get("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "").trim();
   if (!key) { res.status(400).json({ error: "Key is required" }); return; }
@@ -298,22 +298,18 @@ router.get("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request, r
 
   if (row) { res.json({ prompt: row, fromDb: true }); return; }
 
-  // Not in DB yet — return hardcoded defaults so the dialog can pre-fill
-  const meta = getDefaultPromptMeta(key);
-  if (!meta) { res.status(404).json({ error: "Prompt key not found" }); return; }
-
   res.json({
     prompt: {
       id: null,
       key,
-      name: meta.name,
-      description: meta.description,
-      category: meta.category,
-      featureArea: meta.featureArea,
-      featureRoute: meta.featureRoute,
-      model: meta.model ?? null,
-      promptBody: meta.body,
-      defaultBody: meta.body,
+      name: key,
+      description: "",
+      category: "insights",
+      featureArea: "",
+      featureRoute: "",
+      model: null,
+      promptBody: "",
+      defaultBody: "",
       draftBody: null,
       updatedAt: null,
     },
@@ -347,24 +343,19 @@ router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request,
     return;
   }
 
-  // Row doesn't exist — insert it using the provided defaultBody or the hardcoded meta
-  const meta = getDefaultPromptMeta(key);
-  if (!meta && !defaultBody) {
-    res.status(404).json({ error: "Prompt key not found and no defaultBody provided" });
-    return;
-  }
-
-  const fallbackDefault = (defaultBody ?? meta?.body ?? trimmedBody).trim();
+  // Row doesn't exist — insert it. No hardcoded seed metadata exists after
+  // #500, so fall back to the submitted defaultBody, or the prompt body itself.
+  const fallbackDefault = (defaultBody?.trim() || trimmedBody);
   const [inserted] = await db
     .insert(aiPromptsTable)
     .values({
       key,
-      name: meta?.name ?? key,
-      description: meta?.description ?? "",
-      category: (meta?.category as "scripting" | "marketing" | "advisory" | "inbox" | "classification" | "artifacts" | "insights") ?? "insights",
-      featureArea: meta?.featureArea ?? "",
-      featureRoute: meta?.featureRoute ?? "",
-      model: meta?.model,
+      name: key,
+      description: "",
+      category: "insights",
+      featureArea: "",
+      featureRoute: "",
+      model: null,
       promptBody: trimmedBody,
       defaultBody: fallbackDefault,
     })

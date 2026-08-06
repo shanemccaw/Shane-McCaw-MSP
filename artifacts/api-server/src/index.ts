@@ -4,7 +4,6 @@ import { ensureAlertEngineReady } from "./lib/alert-engine";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
-import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
@@ -109,10 +108,6 @@ app.listen(port, (err) => {
 
   initGraphSubscription().catch((err) => {
     logger.warn({ err }, "Graph subscription init failed (non-fatal)");
-  });
-
-  seedAiPrompts().catch((err) => {
-    logger.warn({ err }, "AI prompt seed failed (non-fatal)");
   });
 
   // Any document that was left in "generating" when the previous server process
