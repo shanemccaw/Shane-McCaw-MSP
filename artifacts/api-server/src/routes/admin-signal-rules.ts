@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, scriptRunResultsTable, engagementProjectsTable, usersTable } from "@workspace/db";
+import { db, scriptRunResultsTable, engagementProjectsTable, usersTable, monitorChecksTable } from "@workspace/db";
 import { eq, desc, asc, isNull, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -672,6 +672,32 @@ router.get("/admin/signal-rules/check-fed", requireAdmin, async (req: Request, r
   } catch (err) {
     log.error({ err }, "GET /admin/signal-rules/check-fed failed");
     res.status(500).json({ error: "Failed to resolve check-fed status" });
+  }
+});
+
+// ── GET /api/admin/signal-rules/is-monitor-check ────────────────────────────────
+// #510 (Phase 3): does this SIGNAL key happen to also be a real monitor check
+// key? A distinct question from `check-fed` above — that one asks whether a
+// rule's sourceKey is producible by some check; this one asks whether the
+// selected signal itself IS one, so the scattered per-engine pages can point an
+// operator at Simulator Studio's Endpoint Rules tab (#507) instead of duplicating
+// the edit surface here.
+router.get("/admin/signal-rules/is-monitor-check", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const key = String(req.query.key ?? "").trim();
+    if (!key) {
+      res.status(400).json({ error: "key is required" });
+      return;
+    }
+    const [row] = await db
+      .select({ key: monitorChecksTable.key })
+      .from(monitorChecksTable)
+      .where(eq(monitorChecksTable.key, key))
+      .limit(1);
+    res.json({ isMonitorCheck: !!row });
+  } catch (err) {
+    log.error({ err }, "GET /admin/signal-rules/is-monitor-check failed");
+    res.status(500).json({ error: "Failed to check monitor check key" });
   }
 });
 

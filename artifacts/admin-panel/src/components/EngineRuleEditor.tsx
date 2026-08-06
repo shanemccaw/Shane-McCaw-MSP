@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Trash2, Pencil, AlertTriangle, Loader2, Zap, ZapOff } from "lucide-react";
+import { Link } from "wouter";
+import { Plus, Trash2, Pencil, AlertTriangle, Loader2, Zap, ZapOff, ExternalLink, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { simulatorStudioCheckPath } from "./simulatorDeepLink";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -253,6 +255,90 @@ function EvaluabilityHint({ state }: { state: FedState }) {
     >
       <ZapOff className="h-2.5 w-2.5 shrink-0" /> Not evaluable yet — no check currently produces this key
     </p>
+  );
+}
+
+// ─── Simulator Studio pointer (#510) ──────────────────────────────────────────
+// The non-locked signal picker path (used by the 7 /delivery/engines/:engineKey
+// pages) can select a signal key that also happens to be a real monitor check
+// key — an endpoint. Simulator Studio's Endpoint Rules tab (#507) now owns full
+// CRUD for those, so this is a pointer, not a replacement: the edit form below
+// stays fully usable, since some operators still land here first out of habit.
+
+function useIsMonitorCheck(signalKey: string | null, enabled: boolean): boolean {
+  const { fetchWithAuth } = useAuth();
+  const [isMonitorCheck, setIsMonitorCheck] = useState(false);
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  useEffect(() => {
+    if (!enabled || !signalKey) {
+      setIsMonitorCheck(false);
+      return;
+    }
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetchRef.current(
+          `/api/admin/signal-rules/is-monitor-check?key=${encodeURIComponent(signalKey)}`,
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
+        if (!res.ok) { setIsMonitorCheck(false); return; }
+        const d = await res.json() as { isMonitorCheck: boolean };
+        if (!controller.signal.aborted) setIsMonitorCheck(!!d.isMonitorCheck);
+      } catch {
+        if (!controller.signal.aborted) setIsMonitorCheck(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [signalKey, enabled]);
+
+  return isMonitorCheck;
+}
+
+// Dismissed banners persist for the tab's lifetime (sessionStorage), keyed per
+// signal so dismissing one endpoint's pointer doesn't hide another's.
+const SIMULATOR_BANNER_DISMISSED_KEY = "engineRuleEditor.simulatorBannerDismissed";
+
+function isBannerDismissed(signalKey: string): boolean {
+  try {
+    const raw = sessionStorage.getItem(SIMULATOR_BANNER_DISMISSED_KEY);
+    const dismissed: string[] = raw ? JSON.parse(raw) : [];
+    return dismissed.includes(signalKey);
+  } catch { return false; }
+}
+
+function dismissBanner(signalKey: string) {
+  try {
+    const raw = sessionStorage.getItem(SIMULATOR_BANNER_DISMISSED_KEY);
+    const dismissed: string[] = raw ? JSON.parse(raw) : [];
+    if (!dismissed.includes(signalKey)) {
+      sessionStorage.setItem(SIMULATOR_BANNER_DISMISSED_KEY, JSON.stringify([...dismissed, signalKey]));
+    }
+  } catch { /* sessionStorage unavailable — banner just won't stay dismissed */ }
+}
+
+function SimulatorStudioPointerBanner({ signalKey }: { signalKey: string }) {
+  const [dismissed, setDismissed] = useState(() => isBannerDismissed(signalKey));
+  if (dismissed) return null;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+      <ExternalLink className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+      <p className="text-xs text-foreground/80 flex-1">
+        This is a real M365 Endpoint —{" "}
+        <Link href={simulatorStudioCheckPath(signalKey)} className="text-primary font-semibold hover:text-primary">
+          manage it in Simulator Studio →
+        </Link>
+      </p>
+      <button
+        onClick={() => { dismissBanner(signalKey); setDismissed(true); }}
+        className="text-muted-foreground/60 hover:text-foreground/90 transition-colors flex-shrink-0"
+        title="Dismiss"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -554,6 +640,10 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
   const selectedRules = useMemo(() => rules.filter(r => r.signalKey === selectedSignal), [rules, selectedSignal]);
   const conflictRuleIds = useMemo(() => new Set(conflicts.flatMap(c => c.ruleIds)), [conflicts]);
 
+  // #510: only the non-locked signal-picker path needs the Simulator Studio
+  // pointer — a locked signal IS already Simulator Studio itself.
+  const isMonitorCheckSignal = useIsMonitorCheck(selectedSignal, !lockedSignalKey);
+
   // A locked signal IS the selection — track prop changes directly.
   useEffect(() => {
     if (lockedSignalKey) setSelectedSignal(lockedSignalKey);
@@ -816,6 +906,10 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                 {selectedGroups.length} group{selectedGroups.length !== 1 ? "s" : ""} · {selectedRules.length} rule{selectedRules.length !== 1 ? "s" : ""}
               </span>
             </div>
+
+            {!lockedSignalKey && isMonitorCheckSignal && selectedSignal && (
+              <SimulatorStudioPointerBanner signalKey={selectedSignal} />
+            )}
 
             {/* Groups with their rules */}
             {selectedGroups.map(group => {
