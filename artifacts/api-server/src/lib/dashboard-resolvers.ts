@@ -733,8 +733,8 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
 
     // Secure score scalar: percentage of currentScore / maxScore.
     case "security.secureScore": {
-      const current = firstNumber(props, ["currentScore", "secureScore", "current"]);
-      const max = firstNumber(props, ["maxScore", "maxSecureScore", "max"]);
+      const current = firstNumber(props, ["currentScore", "secureScore", "current", "secureScoreCurrent"]);
+      const max = firstNumber(props, ["maxScore", "maxSecureScore", "max", "secureScoreMax"]);
       if (current != null && max != null && max > 0) {
         return ok(def, { value: Math.round((current / max) * 1000) / 10 }, { current, max, unit: "percent" });
       }

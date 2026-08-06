@@ -175,6 +175,7 @@ export default defineConfig({
       "src/lib/shanebot-persona.test.ts",
       "src/lib/health-display-denominator-413.test.ts",
       "src/lib/pillar-denominator-spectrum-413.test.ts",
+      "src/lib/security-secure-score-464.test.ts",
     ],
     coverage: {
       provider: "v8",
