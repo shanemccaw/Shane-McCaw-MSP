@@ -109,6 +109,15 @@ vi.mock("../ps-execution-client", () => ({
   },
 }));
 
+// The DNS-backed executor (#496) resolves real public DNS via node:dns —
+// mocked here so tests control exactly which TXT records "exist" without a
+// real network lookup.
+vi.mock("node:dns", () => ({
+  promises: {
+    resolveTxt: vi.fn(),
+  },
+}));
+
 vi.mock("../logger", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
@@ -120,6 +129,7 @@ import { graphFetchForTenant, getInitialDomainForTenant } from "../graph";
 import { ConsentRevokedError, LicenseGapError } from "../graph";
 import { callPsExecution, PsExecutionError } from "../ps-execution-client";
 import { getTenantSharingCapability, sharePointAdminCredentialsPresent } from "../sharepoint-admin";
+import { promises as dnsPromises } from "node:dns";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
 
@@ -2923,5 +2933,191 @@ describe("applyMapping — countWhere (#402)", () => {
       { sourceField: "value", targetField: "suspended", transform: `countWhere('{{capabilityStatus}} == "Suspended"')` },
     ], []);
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+});
+
+// ── executeMonitorCheck — DNS-backed (executorType='dns', #496) ────────────────
+
+describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => {
+  const mockResolveTxt = dnsPromises.resolveTxt as Mock;
+  const mockInitialDomain = getInitialDomainForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The @workspace/db mock returns no tenants row by default, so the
+    // executor falls back to the Graph /organization initial-domain lookup —
+    // tests opt a real tenants.domain in individually where needed.
+    mockInitialDomain.mockResolvedValue("mccawsoft2.onmicrosoft.com");
+  });
+
+  const dnsCheck = {
+    id: 22,
+    checkId: "uuid-dns",
+    key: "exchange:dkim-spf-dmarc-status",
+    label: "DKIM/SPF/DMARC Status",
+    description: null,
+    endpoint: "(unused — executorType=dns drives dispatch, not endpoint)",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: [] as string[],
+    mapping: [
+      { sourceField: "domain", targetField: "domain", transform: "first" },
+      { sourceField: "spfConfigured", targetField: "spfConfigured", transform: "first" },
+      { sourceField: "dmarcConfigured", targetField: "dmarcConfigured", transform: "first" },
+      { sourceField: "dkimConfiguredAtDefaultSelectors", targetField: "dkimConfiguredAtDefaultSelectors", transform: "first" },
+    ] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [
+      { expression: "spfConfigured == false", severity: "warning", label: "No SPF record found on the domain" },
+      { expression: "dmarcConfigured == false", severity: "warning", label: "No DMARC record found at _dmarc.<domain>" },
+      { expression: "dkimConfiguredAtDefaultSelectors == false", severity: "info", label: "No DKIM record found at Microsoft 365's default selectors" },
+    ] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "dns" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: null,
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  /** dns.promises.resolveTxt resolves each TXT record as an array of chunk strings. */
+  function txt(...records: string[]) {
+    return records.map((r) => [r]);
+  }
+
+  it("dispatches straight to DNS, never Graph/PowerShell/SharePoint, using the tenant's real domain", async () => {
+    mockResolveTxt.mockImplementation(async (hostname: string) => {
+      if (hostname === "mccawsoft2.onmicrosoft.com") return txt("v=spf1 include:spf.protection.outlook.com -all");
+      throw Object.assign(new Error(`queryTxt ENOTFOUND ${hostname}`), { code: "ENOTFOUND" });
+    });
+
+    const result = await executeMonitorCheck({
+      check: dnsCheck,
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-1",
+      skipIdempotency: true,
+    });
+
+    expect(mockResolveTxt).toHaveBeenCalledWith("mccawsoft2.onmicrosoft.com");
+    expect(mockResolveTxt).toHaveBeenCalledWith("_dmarc.mccawsoft2.onmicrosoft.com");
+    expect(mockResolveTxt).toHaveBeenCalledWith("selector1._domainkey.mccawsoft2.onmicrosoft.com");
+    expect(mockResolveTxt).toHaveBeenCalledWith("selector2._domainkey.mccawsoft2.onmicrosoft.com");
+    expect(graphFetchForTenant).not.toHaveBeenCalled();
+    expect(callPsExecution).not.toHaveBeenCalled();
+    expect(getTenantSharingCapability).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.pageCount).toBe(1);
+    expect(result.extractedProperties.domain).toBe("mccawsoft2.onmicrosoft.com");
+  });
+
+  it("real-shaped result: SPF found, DMARC and DKIM honestly not found at the default selectors", async () => {
+    mockResolveTxt.mockImplementation(async (hostname: string) => {
+      if (hostname === "mccawsoft2.onmicrosoft.com") return txt("v=spf1 include:spf.protection.outlook.com -all");
+      throw Object.assign(new Error(`queryTxt ENODATA ${hostname}`), { code: "ENODATA" });
+    });
+
+    const result = await executeMonitorCheck({
+      check: dnsCheck,
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-2",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.extractedProperties.spfConfigured).toBe(true);
+    expect(result.extractedProperties.dmarcConfigured).toBe(false);
+    expect(result.extractedProperties.dkimConfiguredAtDefaultSelectors).toBe(false);
+    // Two severity rules match (no dmarc, no dkim); classifySeverity is
+    // first-match-wins and severityRules lists spf first, so a missing SPF
+    // record would win here too — this case exercises the dmarc rule winning
+    // when SPF is present.
+    expect(result.severityMatched).toBe("warning");
+  });
+
+  it("all three found: no severity rule matches", async () => {
+    mockResolveTxt.mockImplementation(async (hostname: string) => {
+      if (hostname === "mccawsoft2.onmicrosoft.com") return txt("v=spf1 include:spf.protection.outlook.com -all");
+      if (hostname === "_dmarc.mccawsoft2.onmicrosoft.com") return txt("v=DMARC1; p=reject;");
+      if (hostname.startsWith("selector1._domainkey.")) return txt("v=DKIM1; k=rsa; p=abc123");
+      throw Object.assign(new Error(`queryTxt ENOTFOUND ${hostname}`), { code: "ENOTFOUND" });
+    });
+
+    const result = await executeMonitorCheck({
+      check: dnsCheck,
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-3",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.extractedProperties.spfConfigured).toBe(true);
+    expect(result.extractedProperties.dmarcConfigured).toBe(true);
+    expect(result.extractedProperties.dkimConfiguredAtDefaultSelectors).toBe(true);
+    expect(result.severityMatched).toBeNull();
+  });
+
+  it("a genuine DNS resolver error (not ENOTFOUND/ENODATA) surfaces as an error result, not a false 'not configured'", async () => {
+    mockResolveTxt.mockRejectedValue(Object.assign(new Error("queryTxt ETIMEOUT"), { code: "ETIMEOUT" }));
+
+    const result = await executeMonitorCheck({
+      check: dnsCheck,
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-4",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("ETIMEOUT");
+  });
+
+  it("a check whose executorType is still 'graph' never reaches this path (existing checks unaffected)", async () => {
+    (graphFetchForTenant as Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
+      headers: { get: (h: string) => (h === "content-type" ? "application/json" : null) },
+    });
+
+    const result = await executeMonitorCheck({
+      check: { ...dnsCheck, executorType: "graph" as const, endpoint: "/organization" },
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-5",
+      skipIdempotency: true,
+    });
+
+    expect(graphFetchForTenant).toHaveBeenCalled();
+    expect(mockResolveTxt).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+  });
+
+  it("refuses to guess a domain when neither tenants.domain nor the Graph initial-domain lookup resolves one", async () => {
+    mockInitialDomain.mockResolvedValue(null);
+
+    const result = await executeMonitorCheck({
+      check: dnsCheck,
+      tenantId: "tenant-guid-dns",
+      triggerId: "trigger-6",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("cannot resolve a domain");
+    expect(mockResolveTxt).not.toHaveBeenCalled();
   });
 });

@@ -1630,7 +1630,16 @@ export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
 // which api-server's sharepoint-admin.ts already implements. Checks on this
 // transport carry `spOperation` and nothing else; endpoint/method/fanOut*/ps*
 // are unused, the same way they are for 'powershell'.
-export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin"] as const;
+//
+// 'dns' (#496) is the fourth transport, and the odd one out: it needs no
+// tenant credential of any kind. SPF and DMARC are public TXT records on the
+// domain itself, and DKIM is checkable the same way against Microsoft 365's
+// default key-rotation selector names — all of it plain public DNS, resolved
+// with Node's built-in dns module. Checks on this transport carry no
+// executor-specific column at all (the tenant's own `domain` is enough);
+// endpoint/method/fanOut*/ps*/spOperation are unused, the same way ps*/spOperation
+// are unused for the other non-Graph transports.
+export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin", "dns"] as const;
 export type MonitorCheckExecutorType = typeof MONITOR_CHECK_EXECUTOR_TYPES[number];
 
 export const monitorChecksTable = pgTable("monitor_checks", {

@@ -12,6 +12,7 @@
  * - idempotencyKey = "{tenantId}:{checkKey}:{triggerId}" prevents duplicate writes.
  */
 
+import { promises as dnsPromises } from "node:dns";
 import { db } from "@workspace/db";
 import {
   monitorChecksTable,
@@ -1875,6 +1876,164 @@ async function runSharePointAdminCheck(opts: {
   };
 }
 
+// ── DNS-backed check executor (#496) ───────────────────────────────────────────
+//
+// Runs a check whose data is entirely PUBLIC DNS — SPF and DMARC are TXT
+// records anyone can query with no tenant auth at all, and DKIM is checkable
+// the same way against Microsoft 365's default key-rotation selector names.
+// Modeled on runSharePointAdminCheck exactly: a distinct execution path that
+// shares everything downstream of `items` (mapping -> schema -> severity ->
+// persistence) and never touches graphFetchForTenant, so — like the
+// SharePoint-admin path — it is structurally unable to throw
+// ConsentRevokedError. No Graph, no PowerShell, no tenant credential of any
+// kind is involved anywhere in this path.
+
+/** Node dns error codes meaning "no records of this type exist" — the honest, expected shape of an unconfigured SPF/DMARC/DKIM record, not a failure. Any other error (e.g. a real resolver/network fault) is left to propagate to the generic "error" branch below. */
+const DNS_NO_RECORD_CODES = new Set(["ENOTFOUND", "ENODATA"]);
+
+async function queryTxtRecords(hostname: string): Promise<string[]> {
+  try {
+    const records = await dnsPromises.resolveTxt(hostname);
+    return records.map((chunks) => chunks.join(""));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code && DNS_NO_RECORD_CODES.has(code)) return [];
+    throw err;
+  }
+}
+
+/**
+ * Microsoft 365's default DKIM selector names (Get-DkimSigningConfig's
+ * Selector1/Selector2). A tenant that has rotated keys onto custom selector
+ * names will not be found here — that is a real false-negative this check
+ * cannot see past, not something it claims to rule out (see
+ * dkimConfiguredAtDefaultSelectors below).
+ */
+const DKIM_DEFAULT_SELECTORS = ["selector1", "selector2"] as const;
+
+/**
+ * The tenant's real mail domain, reused as-is from whatever consent.ts's
+ * domain-capture logic (#238) already stamped onto tenants.domain — the same
+ * source resolveSharePointTenantRef reads. Unlike the SharePoint path this
+ * does not require the value to be an *.onmicrosoft.com initial domain: any
+ * real domain is a valid thing to run public DNS lookups against.
+ */
+async function resolveTenantDnsDomain(tenantId: string): Promise<string> {
+  const [tenantRow] = await db
+    .select({ domain: tenantsTable.domain })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+
+  const domain = tenantRow?.domain ?? (await getInitialDomainForTenant(tenantId));
+  if (!domain) {
+    throw new Error(
+      `cannot resolve a domain for tenant ${tenantId} to run DNS-backed checks against: ` +
+      `tenants.domain is not set and the Graph /organization lookup returned no initial domain`,
+    );
+  }
+  return domain;
+}
+
+async function runDnsCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+
+  const domain = await resolveTenantDnsDomain(tenantId);
+
+  const [spfRecords, dmarcRecords, dkimSelectorRecords] = await Promise.all([
+    queryTxtRecords(domain),
+    queryTxtRecords(`_dmarc.${domain}`),
+    Promise.all(DKIM_DEFAULT_SELECTORS.map((selector) => queryTxtRecords(`${selector}._domainkey.${domain}`))),
+  ]);
+
+  const spfRecord = spfRecords.find((r) => r.startsWith("v=spf1")) ?? null;
+  const dmarcRecord = dmarcRecords.find((r) => r.startsWith("v=DMARC1")) ?? null;
+  const dkimFoundAtSelectors = DKIM_DEFAULT_SELECTORS.filter((_selector, i) => dkimSelectorRecords[i]!.length > 0);
+
+  // One item per run — a domain's DNS posture is a single fact, same reasoning
+  // as the SharePoint-admin tenant-wide-setting operations.
+  const item: Record<string, unknown> = {
+    domain,
+    spfRecord,
+    spfConfigured: spfRecord !== null,
+    dmarcRecord,
+    dmarcConfigured: dmarcRecord !== null,
+    dkimCheckedSelectors: [...DKIM_DEFAULT_SELECTORS],
+    dkimFoundAtDefaultSelectors: dkimFoundAtSelectors,
+    // Deliberately named "AtDefaultSelectors", not "dkimConfigured": a tenant
+    // using custom/rotated selector names could have a real DKIM record this
+    // check cannot see, so `false` here means "not found at the default
+    // selectors checked", not "DKIM is not configured".
+    dkimConfiguredAtDefaultSelectors: dkimFoundAtSelectors.length > 0,
+  };
+  const items = [item];
+
+  // Same downstream contract as the Graph and SharePoint-admin paths:
+  // mapping/properties -> schema validation -> severity classification ->
+  // persistence, all unmodified.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(items, mapping, properties);
+
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: DNS-backed check output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatch = classifySeverity(severityRules, extracted);
+
+  // One DNS lookup set, one answer — no paging concept here either.
+  const pageCount = 1;
+
+  const rawResponse: Record<string, unknown> = { domain, items };
+
+  const [row] = await db
+    .insert(tenantMonitorProfilesTable)
+    .values({
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "ok",
+      rawResponse,
+      extractedProperties: extracted,
+      severityMatched: severityMatch?.severity ?? null,
+      itemCount: items.length,
+      pageCount,
+    })
+    .onConflictDoNothing()
+    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+  log.info(
+    { checkKey: check.key, tenantId, domain, itemCount: items.length },
+    "monitor-executor: DNS-backed check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status: "ok",
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
+    itemCount: items.length,
+    pageCount,
+    profileId: row?.profileId,
+    ...(opts.includeItems ? { items } : {}),
+  };
+}
+
 // ── Fan-out (group-scoped) check executor ─────────────────────────────────────
 //
 // Runs a check whose target endpoint has no tenant-wide form and must instead be
@@ -2258,6 +2417,16 @@ export async function executeMonitorCheck(opts: {
     // 'powershell' check falls through exactly as before.
     if (check.executorType === "sharepoint-admin") {
       return await runSharePointAdminCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+    }
+
+    // DNS-backed checks (executorType = 'dns', #496) take the same kind of
+    // separate, Graph-free path, for the same reason: SPF/DMARC/DKIM live in
+    // public DNS, not on any Microsoft Graph or Exchange surface — no Graph,
+    // no PowerShell, no tenant credential of any kind. Only a check whose row
+    // explicitly carries this executorType can reach it — every 'graph' and
+    // 'powershell'/'sharepoint-admin' check falls through exactly as before.
+    if (check.executorType === "dns") {
+      return await runDnsCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
     }
 
     // Fan-out (group-scoped) checks take an entirely separate, additive path.
