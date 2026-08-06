@@ -75,6 +75,15 @@ const STEP_LABEL: Record<StepKey, string> = {
  * Compliance + the branch step: they're all one conceptual phase (Microsoft
  * consent/authorization), so they render as a single stage node with its own
  * sub-progress ticks rather than three separate dots.
+ *
+ * #480 asked whether removing the SharePoint consent screen should shrink these
+ * ticks. It should not, and the reason is that they were never counting it: a
+ * tick is one StepKey, and SharePoint was a stage INSIDE the single `consent`
+ * StepKey, never a StepKey of its own. Authorize therefore still holds 2 ticks
+ * on the "Skip it" path and 3 on either branch path, exactly as before. What
+ * did change is that the Consent step no longer carries its own competing
+ * "1 of 2 / 2 of 2" counter, so the ticks are now the only progress claim being
+ * made inside this stage rather than one of two disagreeing ones.
  */
 type StageKey = "details" | "authorize" | "payment" | "account" | "confirmed";
 
@@ -194,11 +203,17 @@ function clearSessionId(): void {
 
 // ── Consent status polling ────────────────────────────────────────────────────
 
+/**
+ * The fields of /api/public/flow/consent-status this flow acts on. The endpoint
+ * also still returns `sharepoint` — the historical grant key, kept server-side
+ * for tenants that consented SharePoint separately before it was merged into
+ * the read registration (#480). Nothing here reads it any more, so it is
+ * deliberately not declared: no branch of this flow may depend on it again.
+ */
 interface FlowStatus {
   sessionStatus: string;
   tenantConnected: boolean;
   graph: string | null;
-  sharepoint: string | null;
   writeBack: string | null;
   complianceGroup: { path: CompliancePath; confirmed: boolean } | null;
 }
@@ -392,8 +407,13 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   /** Reported by /set-password — the real portal base, never a literal here. */
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
 
-  // Which consent the Consent step is currently on (#434: Graph, then SharePoint).
-  const [consentStage, setConsentStage] = useState<"graph" | "sharepoint">("graph");
+  /**
+   * #480 — there is no `consentStage` any more. The Consent step used to run a
+   * two-stage machine ("graph" then "sharepoint") because SharePoint Online was
+   * a separate approval on its own resource. Those permissions have since been
+   * merged into the single read-only App Registration, so one admin-consent
+   * grant covers the whole scan and Step 2 is one step with one URL again.
+   */
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
   /**
@@ -468,18 +488,14 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           else setStep("payment");
           return;
         }
-        // Deliberately NOT subject to #448's pre-granted rule below: this path
-        // only runs for a session being RESUMED after a reload, where "the
-        // grant is already on file" is the normal, expected outcome of work the
-        // buyer already did in this same order. Resuming past a step they
-        // completed is the point. The pre-granted rule applies to the live
-        // stage transition, where the same fact means something different — a
-        // grant that was there before this order ever started.
-        if (s.sharepoint === "granted") setStep("compliance");
-        else if (s.graph === "granted") {
-          setConsentStage("sharepoint");
-          setStep("consent");
-        }
+        // One grant is the whole of Step 2 now (#480), so the read consent
+        // having landed is exactly what "past the Consent step" means. This
+        // also covers a session started before the merge that only ever reached
+        // the old Graph stage: it resumes at Compliance rather than at a second
+        // consent screen that no longer exists. A pre-merge tenant that also
+        // carries a historical `sharepoint` grant resumes to the same place —
+        // that grant is on the tenant and there is nothing left to ask for.
+        if (s.graph === "granted") setStep("compliance");
         // Nothing granted yet — stay on Details; submitting there mints a fresh
         // session, which is correct for an abandoned one.
       })
@@ -498,95 +514,63 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   // ── #434 auto-advance ───────────────────────────────────────────────────────
   // The single place the flow moves itself forward off a landed consent grant.
   //
-  // #448, first fix (cf5b82c8): `graphStatusAtSharepointEntryRef` guards against
-  // a same-tick cascade. A tenant that already has a `sharepoint` grant on file
-  // (e.g. it was consented in an earlier session against this same Microsoft
-  // tenant — consent lives on the TENANT, not the checkout session, #99) can
-  // have BOTH `status.graph` and `status.sharepoint` already "granted" the
-  // moment the very first poll after the Graph grant lands comes back. Without
-  // the guard, this effect fired twice in the same synchronous render pass off
-  // that one stale `status` object — `consentStage` flipped "graph" ->
-  // "sharepoint", and the very next invocation (triggered by that state change,
-  // not a new poll) immediately satisfied the "sharepoint" branch against the
-  // SAME status, so the "Grant SharePoint Access (2 of 2)" screen was never
-  // painted at all.
+  // #480 removed the SharePoint stage and, with it, all of #448's machinery —
+  // `graphStatusAtSharepointEntryRef` and `sharepointPreGranted`. That machinery
+  // existed for one reason worth recording, because it is the reason it does NOT
+  // need re-creating for the read grant: consent lives on the TENANT, not on the
+  // checkout session (#99), so a tenant that had consented SharePoint in some
+  // earlier order arrived at the SharePoint stage with the grant already on
+  // file, and auto-advance tore the step away before the buyer could act on it.
   //
-  // #448, reopened: that guard is correct but was not sufficient, and the reason
-  // is visible in what it actually promises — it only refuses to advance "until
-  // a genuinely NEW poll response arrives". For the same already-granted tenant
-  // the next poll is 3 seconds later and reports "granted" again, so the screen
-  // painted and then tore itself away a tick later. From the buyer's seat that
-  // is still a skipped step, and it is the state Shane's own tenant is
-  // permanently in after the first round of testing.
-  //
-  // So the grant being ALREADY THERE when this stage is entered is now treated
-  // as a distinct case from it LANDING while the stage is open. Pre-granted ->
-  // no auto-advance at all: the step is shown, says so honestly, and waits for
-  // an explicit Continue. Only a grant that arrives after entry advances the
-  // flow by itself, which is the case auto-advance exists for. Between the two,
-  // a tenant that has not really granted SharePoint can never be skipped past,
-  // and one that has is never silently hurried through a screen it can't act on.
-  const graphStatusAtSharepointEntryRef = useRef<FlowStatus | null>(null);
-  const [sharepointPreGranted, setSharepointPreGranted] = useState(false);
+  // The read grant cannot be in that position. A checkout session's tenant GUID
+  // is stamped by the read-consent callback itself, so until THIS order's own
+  // Graph consent lands, the poll has no tenants row to read and reports
+  // `graph: null` no matter what the buyer's tenant has consented before. The
+  // "already granted on entry" case is therefore unreachable here, and the
+  // absence of a pre-granted guard is deliberate rather than an oversight.
   useEffect(() => {
     if (!status) return;
-    if (step === "consent") {
-      if (consentStage === "graph" && status.graph === "granted") {
-        trackEvent("consent_granted", { scope: "graph" });
-        graphStatusAtSharepointEntryRef.current = status;
-        setSharepointPreGranted(status.sharepoint === "granted");
-        setConsentStage("sharepoint");
-        setConsentUrl(null);
-        setError(null);
-      } else if (
-        consentStage === "sharepoint" &&
-        status.sharepoint === "granted" &&
-        !sharepointPreGranted &&
-        status !== graphStatusAtSharepointEntryRef.current
-      ) {
-        trackEvent("consent_granted", { scope: "sharepoint" });
-        setStep("compliance");
-        setError(null);
-      }
+    if (step === "consent" && status.graph === "granted") {
+      trackEvent("consent_granted", { scope: "graph" });
+      setStep("compliance");
+      setError(null);
     } else if (step === "write-consent" && status.writeBack === "granted") {
       trackEvent("consent_granted", { scope: "write_back" });
       setStep("payment");
       setError(null);
     }
-  }, [status, step, consentStage, sharepointPreGranted]);
+  }, [status, step]);
 
   // Surface a declined grant rather than polling forever behind a silent UI —
-  // and mint a FRESH consent link for the retry. The SharePoint and write-app
-  // callbacks burn their single-use token on the decline path too, so the URL
-  // already in hand is spent; reusing it would fail with "already used". The
-  // ref keeps this to one re-fetch per decline instead of one per poll tick.
+  // and mint a FRESH consent link for the retry. The write-app callback burns
+  // its single-use token on the decline path too, so the URL already in hand is
+  // spent and reusing it would fail with "already used". The read link's state
+  // is the checkout session UUID rather than a burnable token, so re-fetching it
+  // is a harmless no-op — the retry is written once, for both. The ref keeps
+  // this to one re-fetch per decline instead of one per poll tick.
   const declineHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (!status) return;
-    const stage = step === "consent" ? consentStage : step;
     const declined =
-      (step === "consent" && consentStage === "graph" && status.graph === "declined") ||
-      (step === "consent" && consentStage === "sharepoint" && status.sharepoint === "declined") ||
+      (step === "consent" && status.graph === "declined") ||
       (step === "write-consent" && status.writeBack === "declined");
-    if (declined && declineHandledRef.current !== stage) {
-      declineHandledRef.current = stage;
+    if (declined && declineHandledRef.current !== step) {
+      declineHandledRef.current = step;
       setError("The Microsoft permission screen was declined. Try again below, or go back and choose a different option.");
       setConsentNonce((n) => n + 1);
     }
-  }, [status, step, consentStage]);
+  }, [status, step]);
 
   // Fetch the consent URL for whichever grant is outstanding, so the click
   // handler has one ready and the popup opens synchronously.
   useEffect(() => {
     if (!sessionId) return;
     const endpoint =
-      step === "consent" && consentStage === "graph"
+      step === "consent"
         ? `/api/public/consent-url?sessionId=${encodeURIComponent(sessionId)}`
-        : step === "consent" && consentStage === "sharepoint"
-          ? `/api/public/flow/sharepoint-consent-url?sessionId=${encodeURIComponent(sessionId)}`
-          : step === "write-consent"
-            ? `/api/public/flow/write-consent-url?sessionId=${encodeURIComponent(sessionId)}`
-            : null;
+        : step === "write-consent"
+          ? `/api/public/flow/write-consent-url?sessionId=${encodeURIComponent(sessionId)}`
+          : null;
     if (!endpoint) return;
 
     let cancelled = false;
@@ -621,7 +605,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     return () => {
       cancelled = true;
     };
-  }, [sessionId, step, consentStage, consentNonce]);
+  }, [sessionId, step, consentNonce]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -656,7 +640,6 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       // the anonymous analytics session to it. (#457's Home-quiz lead capture
       // fires its own identifyLead too, for visitors who convert that way instead.)
       if (f.email) void identifyLead(f.email);
-      setConsentStage("graph");
       setStep("consent");
     } catch {
       setError("Network error. Check your connection and try again.");
@@ -737,13 +720,10 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setSessionId(null);
     setStep("details");
     setCompliancePath(null);
-    setConsentStage("graph");
     setConsentUrl(null);
     setError(null);
     setForm({});
     setPortalUrl(null);
-    setSharepointPreGranted(false);
-    graphStatusAtSharepointEntryRef.current = null;
   }, []);
 
   return (
@@ -975,53 +955,37 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         </div>
       )}
 
-      {/* ── Step 2 — Consent: read-only Graph, then read-only SharePoint ────── */}
+      {/* ── Step 2 — Consent: one read-only grant, whole tenant (#480) ──────── */}
       {step === "consent" && (
         <div style={{ maxWidth: 620 }}>
-          <span style={EYEBROW}>
-            Step 2 — Microsoft consent {consentStage === "graph" ? "(1 of 2)" : "(2 of 2)"}
-          </span>
-          <h3 style={H3}>
-            {consentStage === "graph"
-              ? "Grant read-only access to your tenant."
-              : sharepointPreGranted
-                ? "SharePoint access is already granted."
-                : "Now grant read-only access to SharePoint."}
-          </h3>
+          <span style={EYEBROW}>Step 2 — Microsoft consent</span>
+          <h3 style={H3}>Grant read-only access to your tenant.</h3>
           <p style={BODY}>
-            {consentStage === "graph"
-              ? "This opens the Microsoft admin consent screen in a new window. An account with Global Administrator or Privileged Role Administrator can approve it. The scan reads; it never writes, never moves a file, and never changes a policy."
-              : sharepointPreGranted
-                ? "SharePoint Online is a separate approval, and your organisation has already given it — from an earlier visit or by another administrator. The consent lives on your Microsoft tenant, not on this order, so there is nothing to approve a second time. We are showing you this step rather than skipping it so you can see the access exists."
-                : "SharePoint Online is a separate approval on the same app registration, so it is a second trip to the Microsoft consent screen. Same read-only footing — site inventory and sharing configuration, nothing written."}
+            This opens the Microsoft admin consent screen in a new window. An account with Global Administrator or Privileged Role
+            Administrator can approve it. The scan reads; it never writes, never moves a file, and never changes a policy.
+          </p>
+          {/* #480 — SharePoint used to be a second trip to this screen on its own
+              resource. Its permissions now sit on this same registration, so one
+              approval covers the whole scan. Said out loud because the earlier
+              copy promised two screens and returning buyers will expect one. */}
+          <p style={{ ...BODY, marginTop: -14 }}>
+            One approval covers the whole scan, SharePoint Online included — there is no second consent screen.
           </p>
 
-          {consentStage === "graph" && <ScopesPanel scopes={scopes} loading={scopesLoading} />}
+          <ScopesPanel scopes={scopes} loading={scopesLoading} />
 
-          {/* #448: an already-granted tenant gets an explicit Continue instead
-              of a grant button it cannot meaningfully use and an auto-advance
-              that reads as the step being skipped. */}
-          {consentStage === "sharepoint" && sharepointPreGranted ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-              <Button size="lg" onClick={() => setStep("compliance")}>
-                Continue
-              </Button>
-              <span style={{ fontSize: 12.5, color: "#34d399" }}>● Already approved on your tenant</span>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-              <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
-                {consentStage === "graph" ? "Grant Consent in Microsoft 365" : "Grant SharePoint Access"}
-              </Button>
-              <WaitingPulse
-                label={
-                  consentUrl
-                    ? "Waiting for approval — this page continues on its own"
-                    : "Preparing your consent link…"
-                }
-              />
-            </div>
-          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
+              Grant Consent in Microsoft 365
+            </Button>
+            <WaitingPulse
+              label={
+                consentUrl
+                  ? "Waiting for approval — this page continues on its own"
+                  : "Preparing your consent link…"
+              }
+            />
+          </div>
 
           {popupBlocked && consentUrl && (
             <p style={{ ...FOOTNOTE, color: "#fbbf24" }}>
@@ -1060,6 +1024,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
               onClick={() => void chooseCompliancePath("self_add")}
             />
             <ChoiceCard
+              badge="Most Popular"
               title="You do it for me"
               body="You approve a second, separate app registration that holds the write permission needed to add the group membership. We do the addition once, and you can revoke that app independently at any time."
               action="Choose this"
@@ -2145,6 +2110,7 @@ function ChoiceCard({
   onClick,
   disabled,
   muted,
+  badge,
 }: {
   title: string;
   body: string;
@@ -2152,6 +2118,8 @@ function ChoiceCard({
   onClick: () => void;
   disabled?: boolean;
   muted?: boolean;
+  /** Optional eyebrow above the title, e.g. "Most Popular" (#480). */
+  badge?: string;
 }) {
   return (
     <div
@@ -2168,6 +2136,25 @@ function ChoiceCard({
       }}
     >
       <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+        {badge && (
+          <span
+            style={{
+              display: "inline-block",
+              marginBottom: 8,
+              padding: "3px 9px",
+              borderRadius: 999,
+              border: "1px solid rgba(59,130,246,.45)",
+              background: "rgba(37,99,235,.16)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: ".14em",
+              textTransform: "uppercase",
+              color: "#bfdbfe",
+            }}
+          >
+            {badge}
+          </span>
+        )}
         <p style={{ fontSize: 15, fontWeight: 600, color: "#f1f5f9", margin: "0 0 6px" }}>{title}</p>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "#94a3b8", margin: 0 }}>{body}</p>
       </div>

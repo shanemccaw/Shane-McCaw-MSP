@@ -45,8 +45,18 @@
  *   2. Every write goes through graph.ts's mergeConsentKey() — never a plain
  *      `.set({ consent })`, which would overwrite the whole column and destroy
  *      the other two grants. The three grants stayed independent for a reason
- *      (three different App Registrations / resources, consented separately);
- *      that guarantee now lives in exactly one helper.
+ *      (separate resources and, for `writeBack`, a separate App Registration,
+ *      each consented on its own screen); that guarantee now lives in exactly
+ *      one helper.
+ *
+ *      #480 correction to an "architectural fact" stated in earlier issues:
+ *      there are TWO App Registrations, not three. `graph` and `sharepoint` were
+ *      always the same registration (MT_APP_CLIENT_ID) against two different
+ *      resources — Microsoft Graph and Office 365 SharePoint Online — and as of
+ *      2026-08-06 that registration declares both, so one admin-consent click
+ *      covers them together. Only `writeBack` has a registration of its own
+ *      (MT_APP_WRITE_CLIENT_ID). `sharepoint` remains a live KEY because
+ *      existing tenant rows carry grants under it; it is no longer a live STEP.
  *
  * "customerId" throughout this file is `tenants.id` — the same integer id-space
  * the old msp_customers.id occupied, which every migrated consumer
@@ -1447,19 +1457,34 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
 
 // ── SharePoint consent (Office 365 SharePoint Online resource) ─────────────────
 //
-// THIRD, independent consent flow — for Sites.FullControl.All, an Application
-// permission on the "Office 365 SharePoint Online" API
-// (appId 00000003-0000-0ff1-ce00-000000000000), NOT Microsoft Graph.
+// ⚠ #480, 2026-08-06: this flow is NO LONGER PART OF ANY NEW PURCHASE. Shane's
+// App Registration audit confirmed Sites.FullControl.All now sits on the single
+// read-only registration alongside the Graph permissions, and Microsoft's v2
+// /adminconsent grants everything a registration declares across every resource
+// in one click — so the read consent already covers SharePoint and asking for it
+// a second time was asking for something the tenant had just given. The Home
+// flow's SharePoint step and its /public/flow/sharepoint-consent-url route are
+// deleted; see the deletion note further down for the full keep/delete rationale.
 //
-// Why this is not just "add scopes to the Graph flow": a tenant's granted
-// `graph` consent key is a snapshot of REQUIRED_MT_SCOPES (Graph .default) and
-// says nothing about the SharePoint resource. Every tenant that consented before
-// Sites.FullControl.All was added to the app registration has a perfectly valid
-// Graph consent and NO SharePoint grant, so re-consent detection needs its own
-// per-tenant record (the `sharepoint` key) to diff against — reusing the Graph
-// key would report those tenants as SharePoint-consented when they aren't. This
-// is exactly the independence mergeConsentKey exists to protect now that all
-// three share one jsonb column.
+// What survives here is the HISTORICAL path, kept on purpose:
+//   - 72h consent links minted before that deploy still land on this callback.
+//   - The admin start route and the portal reconsent link below still serve
+//     tenants whose `sharepoint` grant predates the merge, and the status route
+//     is how anything reads one back.
+// Nothing new should be built on it, and nothing here should be re-pointed at
+// the marketing flow.
+//
+// Why the `sharepoint` key was ever separate, which is also why it cannot simply
+// be folded into `graph` now: a tenant's granted `graph` consent key is a
+// snapshot of REQUIRED_MT_SCOPES (Graph .default) and says nothing about the
+// SharePoint resource. Every tenant that consented before Sites.FullControl.All
+// was added to the app registration has a perfectly valid Graph consent and NO
+// SharePoint grant, so re-consent detection needs its own per-tenant record to
+// diff against — reusing the Graph key would report those tenants as
+// SharePoint-consented when they aren't. That is exactly the independence
+// mergeConsentKey exists to protect now that all three share one jsonb column,
+// and it is unchanged by the registration merge: the merge changes what a NEW
+// consent grants, not what an OLD tenant row records.
 //
 // The permission lives on the SAME multi-tenant app as Graph (MT_APP_CLIENT_ID),
 // so this reuses that client id rather than a separate registration — unlike the
@@ -1768,19 +1793,20 @@ router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, asyn
 // unguessable, server-issued, 24h-expiring secret that already carries their
 // name/email/company and, after the read-consent callback, their tenant GUID.
 //
-// These four routes are the public, session-keyed twins of the admin/portal
-// routes above. They reuse the SAME HMAC state signers, the SAME single-use
-// token table and the SAME fixed callbacks — no second consent mechanism, and
-// nothing here can name a tenant the session did not already consent for.
+// These three routes (four until #480 deleted the SharePoint one — see below)
+// are the public, session-keyed twins of the admin/portal routes above. They
+// reuse the SAME HMAC state signers, the SAME single-use token table and the
+// SAME fixed callbacks — no second consent mechanism, and nothing here can name
+// a tenant the session did not already consent for.
 //
 // Authorisation model, stated explicitly because these are unauthenticated:
 //   - The sessionId must resolve to an UNEXPIRED checkout_sessions row.
 //   - Every route that mints a consent URL additionally requires that the
 //     session has already completed READ consent (status "consented" + a
 //     tenant_id stamped by the callback). So a stolen/guessed session cannot be
-//     used to aim a write- or SharePoint-consent link at an arbitrary tenant:
-//     the tenant is whichever one that session's own Global Admin already
-//     approved, resolved server-side, never supplied by the caller.
+//     used to aim a write-consent link at an arbitrary tenant: the tenant is
+//     whichever one that session's own Global Admin already approved, resolved
+//     server-side, never supplied by the caller.
 //   - No PII is returned by any of them.
 
 /** The checkout session a public flow route is acting for, once validated. */
@@ -1892,56 +1918,46 @@ router.get("/public/flow/consent-status", async (req: Request, res: Response) =>
   });
 });
 
-// ── GET /api/public/flow/sharepoint-consent-url ────────────────────────────────
-// Step 2b of #434: the SharePoint read consent, granted immediately after — and
-// only after — the read Graph consent. Byte-for-byte the same mechanism as
-// /portal/consent/sharepoint-link, with the checkout session standing in for
-// the JWT that a Home-page visitor does not have yet.
-
-router.get("/public/flow/sharepoint-consent-url", async (req: Request, res: Response) => {
-  if (!process.env.MT_APP_CLIENT_ID) {
-    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
-    return;
-  }
-  const session = await resolveFlowSession(req.query.sessionId, res);
-  if (!session) return;
-  const tenant = await resolveConsentedTenant(session, res);
-  if (!tenant) return;
-
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-
-  await db.insert(consentInviteTokensTable).values({
-    token,
-    tenantId: tenant.tenantId,
-    customerId: tenant.id,
-    clientUserId: null,
-    expiresAt,
-  });
-
-  // "popup": this URL is opened by the marketing flow's window.open, so the
-  // callback must end by closing that window rather than redirecting an
-  // anonymous buyer into the portal (#474). Carried inside the signed state
-  // because the callback is a single fixed Azure redirect URI shared with the
-  // admin/portal flows and has nothing else to tell them apart by.
-  const consentUrl = buildAdminConsentUrl(
-    tenant.tenantId,
-    signSharePointConsentState(tenant.id, token, "popup"),
-    `${getHostBase(req)}/api/admin/sharepoint-consent/callback`,
-    process.env.MT_APP_CLIENT_ID,
-  );
-
-  await createAuditLog({
-    actorUserId: null,
-    actorName: "public:assessment-flow",
-    actorRole: "client",
-    actionType: "sharepoint_consent_invite_created",
-    entityType: "tenant_sharepoint_consent",
-    metadata: { tenantHint: tenant.tenantId, customerId: tenant.id, expiresAt, checkoutSessionId: session.id },
-  });
-
-  res.json({ consentUrl, expiresAt, permissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
-});
+// ── GET /api/public/flow/sharepoint-consent-url — DELETED (#480) ───────────────
+//
+// This route minted the Home flow's SECOND consent link ("step 2b" of #434), for
+// a SharePoint Online approval the buyer had to give on a separate trip to the
+// Microsoft consent screen. Shane's 2026-08-06 App Registration audit confirmed
+// those permissions have been merged into the single read-only registration, so
+// one admin-consent grant now covers Graph and SharePoint together and there is
+// no second link to mint. AssessmentFlow.tsx was this route's ONLY caller
+// (checked by grep across every artifact before deleting), and its SharePoint
+// stage is gone, so the route is deleted rather than left as an unauthenticated
+// public endpoint with no purpose.
+//
+// What is deliberately NOT deleted, and why — this is the #480 item-3 decision:
+//
+//   - `/api/admin/sharepoint-consent/callback`, signSharePointConsentState and
+//     verifySharePointConsentState STAY — all of them, including the "popup"
+//     origin branch this deleted route was the only minter of. Consent links
+//     live 72h, so a popup-origin SharePoint link handed out before this deploy
+//     is still in flight and must still verify and still self-close rather than
+//     dying on an unrecognised state. The callback is also shared with the admin
+//     and portal routes, which are not part of the marketing flow at all.
+//   - `/api/admin/customers/:customerId/sharepoint-consent/start` and
+//     `/api/portal/consent/sharepoint-link` STAY. They are wired into live UI
+//     (admin-panel's customer pane, msp-portal's reconsent pill) that exists for
+//     tenants whose SharePoint grant predates the merge.
+//   - The `sharepoint` ConsentKey, the `sharepoint` field on
+//     /public/flow/consent-status, and REQUIRED_SHAREPOINT_APP_PERMISSIONS STAY.
+//     They are how an EXISTING tenant's historical, separately-granted SharePoint
+//     consent is read back — by /admin/customers/:id/sharepoint-consent above, by
+//     admin-active-directory (`sharePointConsent`) and by portal-assessment's
+//     `sharePointPermissionsStale`.
+//     Dropping the key would not migrate that data, it would just stop anything
+//     being able to see it. Whether tenant rows in production still carry a
+//     separate `sharepoint` grant is a DB question this environment cannot answer
+//     (no DATABASE_URL), which is itself a reason to keep the readers: the cost of
+//     keeping them is a few dead-for-new-consents lines, and the cost of guessing
+//     wrong the other way is silently blinding every one of those surfaces.
+//
+// Net effect: nothing new ever writes a separate `sharepoint` grant through the
+// public flow; everything that could already read one still can.
 
 // ── GET /api/public/flow/write-consent-url ─────────────────────────────────────
 // Path 2 of the #432 Compliance decision: the customer lets us add the app
