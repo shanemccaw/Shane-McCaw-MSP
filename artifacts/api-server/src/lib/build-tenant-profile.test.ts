@@ -371,9 +371,19 @@ describe("buildTenantProfile — categorizedFindings", () => {
         { checkKey: "sharepoint:anonymous-links", signalKey: "governance:oversharing" },
         { checkKey: "sharepoint:anonymous-links", signalKey: "governance:external_access" },
         { checkKey: "sharepoint:anonymous-links", signalKey: "security:has_gaps" },
+        // Dot form `signal.<domain>.<name>` (the majority real shape, Git #479) —
+        // domain segment "governance" is already a category, deduped against the
+        // colon-form row above.
+        { checkKey: "sharepoint:anonymous-links", signalKey: "signal.governance.retention-label-adoption" },
+        // Dot form whose own leading segment is the category (CRM engine's
+        // mirrored rows, Git #479).
+        { checkKey: "sharepoint:anonymous-links", signalKey: "crm.appgov.risky-permission-grants" },
+        // Dot form whose domain segment is real but not a SIGNAL_CATEGORY_PREFIXES
+        // member ("identity") → dropped, not thrown (Git #479).
+        { checkKey: "sharepoint:anonymous-links", signalKey: "signal.identity.continuous-access-evaluation" },
         // Not a valid SIGNAL_CATEGORY_PREFIXES member → dropped, not passed through.
         { checkKey: "sharepoint:anonymous-links", signalKey: "notacategory:whatever" },
-        // No colon at all → dropped.
+        // No colon and no dot at all → dropped.
         { checkKey: "sharepoint:anonymous-links", signalKey: "bareSignalKey" },
       ],
     });
@@ -382,7 +392,7 @@ describe("buildTenantProfile — categorizedFindings", () => {
 
     expect(result.categorizedFindings).toHaveLength(1);
     expect(result.categorizedFindings[0]!.text).toBe(result.findings[0]);
-    expect([...result.categorizedFindings[0]!.categories].sort()).toEqual(["governance", "security"]);
+    expect([...result.categorizedFindings[0]!.categories].sort()).toEqual(["crm", "governance", "security"]);
   });
 
   it("stays 1:1 with findings and gives script-run findings an empty category list (permanent limitation)", async () => {

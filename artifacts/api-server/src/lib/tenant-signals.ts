@@ -594,11 +594,44 @@ export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileR
 }
 
 /**
+ * Extracts a `SIGNAL_CATEGORY_PREFIXES` category from a `signal_key` in any of
+ * the real naming conventions found in production `signal_derivation_rules`
+ * (Git #479):
+ *   - Legacy colon form `<category>:<name>` (`security:lacks_mfa`) — the
+ *     substring before the first colon.
+ *   - Dot form `signal.<domain>.<name>` (`signal.governance.retention-label-adoption`,
+ *     the majority shape) — the SECOND segment, since the leading `signal`
+ *     literal carries no category information of its own.
+ *   - Dot form `<namespace>.<name...>` whose own first segment already IS a
+ *     valid category (`crm.appgov.risky-permission-grants` → `crm`) — the
+ *     FIRST segment, for namespaces (crm/msp/workflow/...) that don't nest
+ *     under a `signal.` prefix.
+ *   - Bare keys with no separator at all (`hasExchangeOnPrem`) — no category.
+ * The extracted candidate is always validated against `SIGNAL_CATEGORY_PREFIXES`;
+ * an unrecognized candidate (e.g. `signal.identity.*`'s domain segment
+ * "identity", or the `example:*`/`adj:*` documentation/pricing-adjustor rows)
+ * resolves to `null`, not a thrown error — under-attribution is the safe
+ * direction here (see the recall-limit note below).
+ */
+function extractSignalCategoryPrefix(signalKey: string, validPrefixes: ReadonlySet<string>): string | null {
+  const colonAt = signalKey.indexOf(":");
+  if (colonAt > 0) {
+    const prefix = signalKey.slice(0, colonAt);
+    return validPrefixes.has(prefix) ? prefix : null;
+  }
+
+  const segments = signalKey.split(".");
+  if (segments.length < 2) return null;
+  const candidate = segments[0] === "signal" ? segments[1] : segments[0];
+  return validPrefixes.has(candidate) ? candidate : null;
+}
+
+/**
  * Batched checkKey → signal-category-prefix lookup. ONE query for the whole
  * list, never one per check: every `signal_derivation_rules` row whose
  * `source_key` equals one of the given `monitor_checks.key`s, projected down to
- * that rule's `signal_key` category prefix (the substring before the first
- * ":"), validated against `SIGNAL_CATEGORY_PREFIXES` and deduped per checkKey.
+ * that rule's `signal_key` category prefix (see `extractSignalCategoryPrefix`),
+ * validated against `SIGNAL_CATEGORY_PREFIXES` and deduped per checkKey.
  * A checkKey with no matching rule (or only rules whose signalKey has no valid
  * prefix) is simply absent from the returned map.
  *
@@ -629,10 +662,8 @@ export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Pr
 
   const validPrefixes = new Set<string>(SIGNAL_CATEGORY_PREFIXES);
   for (const row of rows) {
-    const colonAt = row.signalKey.indexOf(":");
-    if (colonAt <= 0) continue;
-    const prefix = row.signalKey.slice(0, colonAt);
-    if (!validPrefixes.has(prefix)) continue;
+    const prefix = extractSignalCategoryPrefix(row.signalKey, validPrefixes);
+    if (!prefix) continue;
     const existing = byCheckKey.get(row.checkKey);
     if (!existing) byCheckKey.set(row.checkKey, [prefix]);
     else if (!existing.includes(prefix)) existing.push(prefix);
