@@ -48,6 +48,8 @@ import { getStripeKey, getStripePublishableKey } from "../lib/stripe.ts";
 import { isServiceFree, resolveServicePriceCents } from "../lib/catalog-pricing.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
+import { sendEmail, purchaseConfirmationEmail } from "../lib/mailer.ts";
+import { markAssessmentLeadPurchased } from "../lib/crm-pipeline.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -328,6 +330,24 @@ router.post("/public/flow/payment-confirmed", async (req: Request, res: Response
         { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, amountCents: intent.amount_received },
         "assessment-flow payment: checkout session marked paid",
       );
+
+      // #460 — Thank You + Invoice, combined into one email per Shane's
+      // confirmed scope. Fire-and-forget: a mail hiccup must never fail the
+      // payment response the buyer is waiting on for the next step (Verify).
+      const paidAmountDollars = ((intent.amount_received || order.amountCents) / 100).toFixed(2);
+      void sendEmail(
+        order.email,
+        `Payment confirmed — ${order.serviceName}`,
+        purchaseConfirmationEmail({
+          clientName: order.fullName,
+          serviceName: order.serviceName,
+          amountDollars: paidAmountDollars,
+        }),
+        { templateName: "purchase-confirmation-home-flow" },
+      );
+
+      // #456 — payment-complete CRM signal. Non-fatal, see crm-pipeline.ts.
+      void markAssessmentLeadPurchased(order.email, order.serviceName);
     }
 
     res.json({ ok: true, amountCents: intent.amount_received || order.amountCents, email: order.email });

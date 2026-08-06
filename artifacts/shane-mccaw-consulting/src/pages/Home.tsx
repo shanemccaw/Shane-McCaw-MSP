@@ -1,8 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Footer } from "@/components/Footer";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
+import { trackAssessmentStarted, trackAssessmentCompleted, identifyLead } from "@/lib/analytics";
 import { Button, Eyebrow, Logo } from "./home/dsComponents";
 import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/quizData";
 import { CHAPTERS } from "./home/chapterData";
@@ -177,6 +178,95 @@ function TypewriterHeadline() {
   );
 }
 
+function leadFieldStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 9,
+    border: "1px solid rgba(45,212,191,.3)",
+    background: "rgba(2,6,23,.55)",
+    color: "#f1f5f9",
+    fontFamily: "inherit",
+    fontSize: 14,
+    outline: "none",
+  };
+}
+
+/** #457: reuses the existing lead-capture + PDF-delivery infrastructure
+ *  (quizLeadsTable, ensureLeadForEmail's Zoho bridge, sendEmailWithAttachment)
+ *  via a new POST /api/quiz/home-lead-capture route sized to this quiz's own
+ *  6-pillar/0-100 shape — see quiz.ts and copilot-checklist-pdf.ts. */
+function LeadCaptureCard({ score, band, wedges }: { score: number; band: string; wedges: number[] }) {
+  const [form, setForm] = useState({ name: "", email: "", company: "" });
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email);
+  const canSubmit = form.name.trim().length > 0 && emailValid && status !== "sending";
+
+  async function submit() {
+    if (!canSubmit) return;
+    setStatus("sending");
+    setError(null);
+    try {
+      const pillars = PILLARS.map((p, i) => ({ name: p.name, value: Math.round(wedges[i] * 100) }));
+      const res = await fetch("/api/quiz/home-lead-capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          company: form.company || undefined,
+          score,
+          band,
+          pillars,
+        }),
+      });
+      if (!res.ok) {
+        setStatus("error");
+        setError("We could not send your results just now. Please try again.");
+        return;
+      }
+      setStatus("sent");
+      void identifyLead(form.email);
+    } catch {
+      setStatus("error");
+      setError("Network error. Check your connection and try again.");
+    }
+  }
+
+  if (status === "sent") {
+    return (
+      <div style={{ border: "1px solid rgba(45,212,191,.3)", background: "rgba(45,212,191,.08)", borderRadius: 14, padding: "16px 20px", margin: "0 0 22px" }}>
+        <p style={{ fontSize: 14, lineHeight: 1.5, color: "#5eead4", margin: 0 }}>
+          Sent — check your inbox for your results and the Copilot readiness checklist.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid rgba(45,212,191,.28)", background: "linear-gradient(160deg,rgba(19,50,46,.4),rgba(9,14,28,.5) 70%)", borderRadius: 14, padding: "18px 20px", margin: "0 0 22px" }}>
+      <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#2DD4BF" }}>
+        Free — no purchase required
+      </span>
+      <p style={{ fontSize: 15, lineHeight: 1.6, color: "#e2e8f0", margin: "10px 0 14px", maxWidth: 440 }}>
+        Email me these results, plus a free Copilot readiness checklist.
+      </p>
+      <div style={{ display: "grid", gap: 8, maxWidth: 400, marginBottom: 12 }}>
+        <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" style={leadFieldStyle()} />
+        <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@yourcompany.com" style={leadFieldStyle()} />
+        <input value={form.company} onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))} placeholder="Company (optional)" style={leadFieldStyle()} />
+      </div>
+      {error && <p style={{ fontSize: 13, color: "#fca5a5", margin: "0 0 12px" }}>{error}</p>}
+      <Button size="sm" variant="outline" onClick={submit} disabled={!canSubmit} style={{ borderColor: "rgba(45,212,191,.4)", color: "#5eead4" }}>
+        {status === "sending" ? "Sending…" : "Email me my results"}
+      </Button>
+    </div>
+  );
+}
+
 type Answers = (number | null)[];
 
 const RADAR_SIDE_LABELS: { pillar: string; blurb: string; color: string; left: string; top: string; align: "left" | "right" }[] = [
@@ -217,6 +307,28 @@ export default function Home() {
       : score >= 45
         ? "A middling estimate almost always hides one pillar dragging the rest down. Which one it is, is the whole question."
         : "An estimate this low is common and fixable. The order you fix things in matters more than the score itself.";
+
+  // #458: fired once per visit — the quiz is the hero interaction, visible on
+  // load, so "started" means mounted rather than waiting on a first click.
+  const assessmentStartedRef = useRef(false);
+  useEffect(() => {
+    if (assessmentStartedRef.current) return;
+    assessmentStartedRef.current = true;
+    trackAssessmentStarted();
+  }, []);
+
+  // Fires once per completion (not per render while done stays true), and
+  // again after `restart()` sets done back to false and the visitor finishes
+  // a second time.
+  const assessmentCompletedRef = useRef(false);
+  useEffect(() => {
+    if (done && !assessmentCompletedRef.current) {
+      assessmentCompletedRef.current = true;
+      trackAssessmentCompleted({ score, band });
+    } else if (!done) {
+      assessmentCompletedRef.current = false;
+    }
+  }, [done, score, band]);
 
   const bonusText = useMemo(() => {
     const [, gov, sec, , lic] = answers;
@@ -398,6 +510,7 @@ export default function Home() {
                   </span>
                 </div>
                 <p style={{ fontSize: 15, lineHeight: 1.6, color: "#94a3b8", margin: "14px 0 22px", maxWidth: 400 }}>{blurb}</p>
+                <LeadCaptureCard score={score} band={band} wedges={wedges} />
                 {bonusText && (
                   <div style={{ borderTop: "1px solid rgba(37,99,235,.22)", paddingTop: 18, margin: "0 0 22px" }}>
                     <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#60A5FA" }}>One thing we noticed</span>

@@ -11,6 +11,7 @@ import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
 import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
 import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
+import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead";
 
 const router: IRouter = Router();
 
@@ -186,6 +187,8 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
   // account at consent time (see provisionProspectAccount / convertLeadForClient).
   // Fire-and-forget, non-fatal — must never block session creation.
   void ensureAssessmentFunnelLead(email, fullName, company, ga4ClientId);
+  // Off by default pending Shane's confirmation — see engagebay-marketing-lead.ts.
+  void pushMarketingLeadToEngageBay({ email, name: fullName, company, source: "assessment_funnel" });
 
   res.json({ sessionId: row.id });
 });

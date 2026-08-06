@@ -781,6 +781,45 @@ export function quizLeadNotificationEmail(opts: {
   `;
 }
 
+/**
+ * Admin notification for a lead captured on Home.tsx's own 6-pillar radar
+ * quiz (#457) — deliberately NOT quizLeadNotificationEmail, whose table
+ * hardcodes "/50" for the 5-category conversational quiz score. This quiz
+ * scores 0-100 across six pillars, so it gets its own small template rather
+ * than mislabeling the scale.
+ */
+export function homeQuizLeadNotificationEmail(opts: {
+  name: string;
+  email: string;
+  company?: string | null;
+  score: number;
+  band: string;
+  pillars: Array<{ name: string; value: number }>;
+}): string {
+  const name = escapeHtml(opts.name);
+  const email = escapeHtml(opts.email);
+  const company = opts.company ? escapeHtml(opts.company) : "—";
+  const band = escapeHtml(opts.band);
+  const pillarRows = opts.pillars
+    .map((p) => `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">${escapeHtml(p.name)}</td><td style="padding:4px 0;font-weight:600;">${p.value}/100</td></tr>`)
+    .join("\n");
+  return `
+    <p>Hi Shane,</p>
+    <p>A new lead came in from the Home page's quick readiness quiz — <strong>${name}</strong> requested their results and the Copilot readiness checklist.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Name</td><td style="padding:4px 0;font-weight:600;">${name}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:${email}" style="color:#0078D4;">${email}</a></td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Estimated Score</td><td style="padding:4px 0;font-weight:600;">${opts.score} / 100</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Band</td><td style="padding:4px 0;font-weight:600;">${band}</td></tr>
+      ${pillarRows}
+    </table>
+    <p>The lead has been saved to the admin panel.</p>
+    ${emailButton("Reply to " + name, `mailto:${email}`)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
+  `;
+}
+
 export function adminPurchaseAlertEmail(opts: {
   clientName: string;
   clientEmail: string;

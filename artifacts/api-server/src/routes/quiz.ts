@@ -11,8 +11,10 @@ const log = logger.child({ channel: "growth.quiz" });
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { inferSignalsFromQuizScores, computeLeadOfferEngine } from "../lib/lead-offer-engine.ts";
 import { ensureLeadForEmail } from "../lib/lead-intent.ts";
+import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
-import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
+import { generateCopilotChecklistPdf } from "../lib/copilot-checklist-pdf.ts";
+import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail, homeQuizLeadNotificationEmail } from "../lib/mailer";
 
 const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -726,6 +728,102 @@ Respond ONLY with valid JSON in this exact shape:
     whyThisFits,
     roiProjection,
   });
+});
+
+// ─── POST /api/quiz/home-lead-capture ──────────────────────────────────────────
+// #457: Home.tsx's own 6-pillar radar quiz (home/quizData.ts) is a different shape
+// from the conversational SYSTEM_PROMPTS/SCORING_CONFIGS quizzes above (6 pillars,
+// 0-100 self-scored client-side vs 5 categories, 0-10 AI-scored server-side), so
+// it does not go through /quiz/submit's AI scoring call — the score already exists,
+// computed live on the page. What IS reused: quizLeadsTable, ensureLeadForEmail
+// (the Zoho bridge), pushMarketingLeadToEngageBay, and the same delivery pattern
+// (PDF attachment + admin notify) /quiz/submit already established.
+const homeLeadCaptureSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  company: z.string().optional(),
+  score: z.number().int().min(0).max(100),
+  band: z.string().min(1),
+  pillars: z.array(z.object({ name: z.string().min(1), value: z.number().int().min(0).max(100) })).length(6),
+  ga4ClientId: z.string().trim().max(200).optional(),
+});
+
+router.post("/quiz/home-lead-capture", submitLimiter, async (req, res) => {
+  const parsed = homeLeadCaptureSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
+  const { name, email, company, score, band, pillars, ga4ClientId } = parsed.data;
+
+  const categoryScores = Object.fromEntries(pillars.map((p) => [p.name, p.value]));
+
+  let leadId: number | null = null;
+  try {
+    const [inserted] = await db.insert(quizLeadsTable).values({
+      name,
+      email,
+      company: company ?? null,
+      totalScore: score,
+      tier: band,
+      categoryScores,
+      quizType: "copilot-home",
+    }).returning({ id: quizLeadsTable.id });
+    leadId = inserted?.id ?? null;
+  } catch (err) {
+    log.error({ err }, "quiz/home-lead-capture: DB insert failed");
+    return res.status(500).json({ error: "Failed to save your results. Please try again." });
+  }
+
+  // CRM bridge — same funnel-entry mechanism the checkout "details" step and the
+  // conversational quiz already use. Non-fatal by construction (see lead-intent.ts).
+  void ensureLeadForEmail(email, { name, company: company ?? undefined, source: "quiz", ga4ClientId });
+  // Off by default pending Shane's confirmation — see engagebay-marketing-lead.ts.
+  void pushMarketingLeadToEngageBay({ email, name, company, source: "home_quiz" });
+
+  void (async () => {
+    const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+    if (shaneEmail) {
+      await sendEmail(shaneEmail, `New Home quiz lead: ${name} (${band} — ${score}/100)`, homeQuizLeadNotificationEmail({ name, email, company, score, band, pillars }));
+    }
+  })();
+
+  void (async () => {
+    try {
+      const pdfBuffer = await generateCopilotChecklistPdf({ name, company, score, band, pillars });
+      const firstName = name.split(" ")[0] || "there";
+      const pillarRows = pillars
+        .map((p) => `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">${p.name}</td><td style="padding:4px 0;font-weight:600;">${p.value}/100</td></tr>`)
+        .join("\n");
+      const defaultBody = `
+        <p>Hi ${firstName},</p>
+        <p>Thanks for taking the Copilot Readiness quiz. Your estimated results and a Copilot readiness checklist are attached.</p>
+        <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+          <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Estimated Score</td><td style="padding:4px 0;font-weight:600;">${score} / 100</td></tr>
+          <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Band</td><td style="padding:4px 0;font-weight:600;">${band}</td></tr>
+          ${pillarRows}
+        </table>
+        <p>This is a self-reported estimate — the Copilot Readiness Assessment scans your actual tenant across all six pillars for your real number.</p>
+        <p style="margin:24px 0 0;">
+          <a href="https://shanemccaw.consulting/#assessment" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">See the real assessment →</a>
+        </p>
+        <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+      `;
+      const { subject: emailSubject, bodyHtml } = await getEmailTemplateOrFallback(
+        "copilot-checklist-lead-delivery",
+        { firstName, score: String(score), band, pillarRows },
+        "Your Copilot Readiness results + checklist",
+        defaultBody,
+      );
+      await sendEmailWithAttachment(
+        email,
+        emailSubject,
+        await brandedEmail(bodyHtml),
+        [{ filename: "copilot-readiness-checklist.pdf", content: pdfBuffer }],
+      );
+    } catch (err) {
+      log.warn({ err }, "quiz/home-lead-capture: PDF email failed");
+    }
+  })();
+
+  return res.json({ success: true, leadId });
 });
 
 // ─── POST /api/quiz/resend-pdf ─────────────────────────────────────────────────

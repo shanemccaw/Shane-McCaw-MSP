@@ -36,6 +36,8 @@ import {
 import { eq, and, or, notInArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { ensureLeadStagingForEmail } from "./lead-intent.ts";
+import { queueLeadStagingPush } from "./zoho-lead-sync.ts";
+import { ZOHO_DEFAULT_MSP_ID } from "./zoho-client.ts";
 const log = logger.child({ channel: "crm" });
 
 /**
@@ -179,6 +181,52 @@ export async function convertLeadForClient(
     log.warn({ err, userId, leadId }, "crm-pipeline: convertLeadForClient status flip failed (non-fatal)");
   }
   return leadId;
+}
+
+/**
+ * Records a completed Home-page assessment purchase (#456's payment-complete
+ * CRM trigger) onto the buyer's staged lead and re-syncs it to Zoho.
+ *
+ * There is no "paid" rung on the lead_staging funnel: `converted` already
+ * fires at consent time (see [[convertLeadForClient]], `provisionProspectAccount`),
+ * before payment, because that is when a real account exists — and mapStagingToZohoLead
+ * (zoho-lead-sync.ts) deliberately does not sync `stage`/`score` to Zoho at all
+ * ("Zoho has no home for them"). So a stage bump would be a silent no-op on the
+ * Zoho side, not a real signal. `notes` IS a mapped field (-> Description), so
+ * that is where this actually reaches the CRM — appended, never overwritten,
+ * matching the existing append convention (admin-marketing.ts's lead-notes PATCH).
+ */
+export async function markAssessmentLeadPurchased(
+  email: string,
+  serviceName: string,
+): Promise<void> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) return;
+
+    const [existing] = await db
+      .select({ id: leadStagingTable.id, notes: leadStagingTable.notes })
+      .from(leadStagingTable)
+      .where(eq(leadStagingTable.email, normalizedEmail))
+      .limit(1);
+    if (!existing) return;
+
+    const entry = `Purchased ${serviceName} on ${new Date().toISOString().slice(0, 10)}.`;
+    const updatedNotes = existing.notes ? `${existing.notes}\n${entry}` : entry;
+
+    const [staged] = await db
+      .update(leadStagingTable)
+      .set({ notes: updatedNotes, updatedAt: new Date() })
+      .where(eq(leadStagingTable.id, existing.id))
+      .returning();
+
+    if (staged) {
+      await queueLeadStagingPush(staged, { mspId: ZOHO_DEFAULT_MSP_ID });
+      log.info({ leadStagingId: staged.id, email: normalizedEmail }, "crm-pipeline: assessment purchase noted and re-synced to Zoho");
+    }
+  } catch (err) {
+    log.warn({ err, email }, "crm-pipeline: markAssessmentLeadPurchased failed (non-fatal)");
+  }
 }
 
 /**

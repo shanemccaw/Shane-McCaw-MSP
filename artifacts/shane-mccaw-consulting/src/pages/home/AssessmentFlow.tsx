@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./dsComponents";
 import { useConsentScopes } from "@/hooks/useConsentScopes";
+import { trackCheckoutStarted, trackCheckoutCompleted, identifyLead, trackEvent, getGa4ClientId } from "@/lib/analytics";
 
 /**
  * The real Copilot Readiness Assessment purchase flow, embedded on the Home
@@ -442,6 +443,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     if (!status) return;
     if (step === "consent") {
       if (consentStage === "graph" && status.graph === "granted") {
+        trackEvent("consent_granted", { scope: "graph" });
         graphStatusAtSharepointEntryRef.current = status;
         setConsentStage("sharepoint");
         setConsentUrl(null);
@@ -451,10 +453,12 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         status.sharepoint === "granted" &&
         status !== graphStatusAtSharepointEntryRef.current
       ) {
+        trackEvent("consent_granted", { scope: "sharepoint" });
         setStep("compliance");
         setError(null);
       }
     } else if (step === "write-consent" && status.writeBack === "granted") {
+      trackEvent("consent_granted", { scope: "write_back" });
       setStep("payment");
       setError(null);
     }
@@ -525,6 +529,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setBusy(true);
     setError(null);
     try {
+      const ga4ClientId = await getGa4ClientId();
       const res = await fetch("/api/public/checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -535,6 +540,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           company: f.company,
           industry: f.industry,
           seats: 1,
+          ...(ga4ClientId ? { ga4ClientId } : {}),
         }),
       });
       if (!res.ok) {
@@ -545,6 +551,10 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       const { sessionId: id } = (await res.json()) as { sessionId: string };
       saveSessionId(id);
       setSessionId(id);
+      // #458: this is the funnel's first confirmed email — identifyLead ties
+      // the anonymous analytics session to it. (#457's Home-quiz lead capture
+      // fires its own identifyLead too, for visitors who convert that way instead.)
+      if (f.email) void identifyLead(f.email);
       setConsentStage("graph");
       setStep("consent");
     } catch {
@@ -577,6 +587,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         setError("We could not record that choice. Please try again.");
         return;
       }
+      trackEvent("compliance_path_chosen", { path });
       setCompliancePath(path);
       setStep(path === "self_add" ? "self-add" : path === "delegate_write" ? "write-consent" : "payment");
     } catch {
@@ -615,6 +626,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const goVerify = useCallback(() => setStep("verify"), []);
   const goPassword = useCallback(() => setStep("password"), []);
   const goDone = useCallback((url: string | null) => {
+    trackEvent("account_created");
     setPortalUrl(url);
     setStep("done");
   }, []);
@@ -1039,6 +1051,11 @@ function PaymentStep({
   const [paying, setPaying] = useState(false);
   const [intentId, setIntentId] = useState<string | null>(null);
 
+  // #458: fired once, on mount — mirrors Checkout.tsx's trackCheckoutStarted convention.
+  useEffect(() => {
+    trackCheckoutStarted("copilot-assessment");
+  }, []);
+
   const confirmOnServer = useCallback(
     async (paymentIntentId: string) => {
       const res = await fetch("/api/public/flow/payment-confirmed", {
@@ -1054,6 +1071,8 @@ function PaymentStep({
             : "We took the payment but could not record it. Please contact us before paying again.",
         );
       }
+      const data = (await res.json().catch(() => ({}))) as { amountCents?: number };
+      trackCheckoutCompleted("copilot-assessment", data.amountCents != null ? { amount_cents: data.amountCents } : {});
       onPaid();
     },
     [sessionId, onPaid],
