@@ -1150,12 +1150,21 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
               app's own permissions. Rendered only when the endpoint actually
               reports a list — see REQUIRED_WRITE_APP_PERMISSIONS in the API. */}
           {consentPermissions.length > 0 && (
-            <ScopesPanel
-              scopes={consentPermissions}
-              loading={false}
-              title="Permissions requested"
-              note={`${consentPermissions.length} permission${consentPermissions.length === 1 ? "" : "s"} on a separate app`}
-            />
+            <>
+              <ScopesPanel
+                scopes={consentPermissions}
+                loading={false}
+                title="Permissions requested"
+                note={`${consentPermissions.length} permission${consentPermissions.length === 1 ? "" : "s"} on a separate app`}
+              />
+              {/* Microsoft's admin-consent screen grants everything an app
+                  registration declares, tenant-wide — saying so here keeps this
+                  panel from reading as a narrower promise than it is. */}
+              <p style={{ ...FOOTNOTE, marginTop: -14, marginBottom: 26 }}>
+                Microsoft grants these tenant-wide when you approve the app, as it does for any consent — the group membership described
+                above is the only thing we use them for.
+              </p>
+            </>
           )}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
@@ -1981,6 +1990,10 @@ type ScopeCategoryKey = keyof typeof SCOPE_CATEGORIES;
  * before this map is updated) falls into "Other" rather than disappearing, so
  * the grouped view can never silently drop a permission the backend is
  * actually requesting.
+ *
+ * Covers the write app's permissions too (#475) — this map is keyed by
+ * permission name and `groupScopes` is used by both consent steps, so the write
+ * list would otherwise render under a bare "Other" heading.
  */
 const SCOPE_CATEGORY_BY_NAME: Record<string, ScopeCategoryKey> = {
   "Directory.Read.All": "identity",
@@ -1990,6 +2003,10 @@ const SCOPE_CATEGORY_BY_NAME: Record<string, ScopeCategoryKey> = {
   "Agreement.Read.All": "identity",
   "Application.Read.All": "identity",
   "DelegatedPermissionGrant.Read.All": "identity",
+  // Write app (REQUIRED_WRITE_APP_PERMISSIONS) — both are directory-object
+  // permissions, so they group with Identity & Access.
+  "Application.ReadWrite.All": "identity",
+  "Group.Create": "identity",
   "SecurityEvents.Read.All": "security",
   "AuditLog.Read.All": "security",
   "IdentityRiskyUser.Read.All": "security",

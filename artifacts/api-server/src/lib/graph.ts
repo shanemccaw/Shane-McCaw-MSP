@@ -95,28 +95,35 @@ export type MtScope = typeof REQUIRED_MT_SCOPES[number];
 // mirrors the SharePoint resource, so the assessment flow can show a buyer what
 // they are about to approve before they click through to Microsoft.
 //
-// ⚠️ DELIBERATELY EMPTY — Shane must fill this in, and it is the ONLY edit needed.
+// These values were read off the live App Registration by Shane (2026-08-06) and
+// transcribed verbatim. They are NOT derivable from anywhere in this repo, and
+// nothing here should try to derive them: the write consent uses Microsoft's v2
+// /adminconsent flow, which passes NO scope parameter (see buildAdminConsentUrl
+// below) — it grants whatever the registration already declares in Entra. The
+// code's own write call sites tell you what the app NEEDS, not what it HAS, and
+// `tenants.consent.writeBack` is not a source either (the write callback
+// deliberately records no `grants` snapshot).
 //
-// This list cannot be derived from anywhere in this repo, and nothing here should
-// try. The write consent uses Microsoft's v2 /adminconsent flow, which passes NO
-// scope parameter (see buildAdminConsentUrl below) — it grants whatever the app
-// registration already declares in Entra, so the app registration itself is the
-// only source of truth, and the code's own write call sites tell you what the app
-// NEEDS, not what it HAS. `tenants.consent.writeBack` is not a source either: the
-// write callback deliberately records no `grants` snapshot for exactly this reason.
-//
-// To fill it in:
+// So this array is a TRANSCRIPTION, and it can drift silently if the app
+// registration is edited. It is shown to paying customers next to Microsoft's
+// own consent screen, which would visibly disagree with it. Re-check it against:
 //   Entra admin center → App registrations → "Shane McCaw Consulting — MSP
 //   Platform (Write)" (3308b280-e41e-42ba-9f73-73aac2ad3dee) → API permissions
-//   → copy the Application permission names verbatim.
+// whenever that registration changes.
 //
-// Until then, every consumer degrades honestly rather than inventing a list:
+// An empty array is a supported state, not a broken one:
 // /api/public/flow/write-consent-url returns `permissions: []` and the flow's
 // write-consent step renders its explanation copy with no permission panel at
-// all. A wrong list here would be worse than none — it would be shown to a
-// paying customer next to Microsoft's own consent screen, which would disagree
-// with it.
-export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [];
+// all — showing nothing beats showing a list that is wrong.
+export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [
+  // Manage app registrations — the write app's own reach over directory objects.
+  "Application.ReadWrite.All",
+  // Create the Entra security group that dlp-role-group-provisioning.ts assigns
+  // to the Purview role group. Group.Create makes the calling app the created
+  // group's OWNER, which is what lets that chain then add the read app's service
+  // principal to the group it just created without a broader Group.ReadWrite.All.
+  "Group.Create",
+];
 
 export function graphCredentialsPresent(): boolean {
   return Boolean(
