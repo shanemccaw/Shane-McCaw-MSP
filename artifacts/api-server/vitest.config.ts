@@ -177,6 +177,8 @@ export default defineConfig({
       "src/lib/health-display-denominator-413.test.ts",
       "src/lib/pillar-denominator-spectrum-413.test.ts",
       "src/lib/security-secure-score-464.test.ts",
+      "src/lib/category-pillar-mapping.test.ts",
+      "src/routes/admin-signal-rules-category-pillar-469.test.ts",
     ],
     coverage: {
       provider: "v8",

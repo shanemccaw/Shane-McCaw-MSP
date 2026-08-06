@@ -31,6 +31,11 @@ import {
   type RadarPillar,
 } from "../lib/pillar-coverage";
 import { buildPillarMatrix } from "../lib/pillar-matrix";
+import {
+  resolveCategoryPillar,
+  DeliberatelyUnmappedCategoryDomainError,
+  UnmappedCategoryDomainError,
+} from "../lib/category-pillar-mapping";
 
 const router: IRouter = Router();
 
@@ -124,6 +129,25 @@ export function parseIntelligenceFields(
   if (body.severity !== undefined && !SIGNAL_SEVERITIES.includes(body.severity as typeof SIGNAL_SEVERITIES[number])) {
     return { values: {}, error: `severity must be one of: ${SIGNAL_SEVERITIES.join(", ")}` };
   }
+  // Category -> pillar is derived from the single source of truth (Git #469)
+  // whenever a category is supplied, overriding any pillar the caller sent
+  // for governed domains — a categorized rule can no longer disagree with
+  // its own category. Blank categories and categories from another engine's
+  // own taxonomy (pricing/crm/etc.) fall through unchanged. `devices` and any
+  // genuinely unrecognized domain reject the write instead of silently
+  // defaulting to "governance".
+  let derivedPillar: string | undefined;
+  if (body.category !== undefined) {
+    try {
+      const resolved = resolveCategoryPillar(String(body.category));
+      if (resolved !== null) derivedPillar = resolved;
+    } catch (err) {
+      if (err instanceof DeliberatelyUnmappedCategoryDomainError || err instanceof UnmappedCategoryDomainError) {
+        return { values: {}, error: err.message };
+      }
+      throw err;
+    }
+  }
   return {
     values: {
       priority: num(body.priority, base.priority as number),
@@ -145,7 +169,7 @@ export function parseIntelligenceFields(
       confidence: num(body.confidence, base.confidence as number),
       severity: str(body.severity, base.severity as string),
       category: str(body.category, base.category as string),
-      pillar: str(body.pillar, base.pillar as string),
+      pillar: derivedPillar ?? str(body.pillar, base.pillar as string),
       crmFitContribution: num(body.crmFitContribution, base.crmFitContribution as number),
       crmPainContribution: num(body.crmPainContribution, base.crmPainContribution as number),
       crmMaturityContribution: num(body.crmMaturityContribution, base.crmMaturityContribution as number),
