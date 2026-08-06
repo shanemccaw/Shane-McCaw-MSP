@@ -110,3 +110,7 @@ ON CONFLICT (package_key, check_key) DO NOTHING;
 --      WHERE package_key = 'core:security-baseline';
 --    Expect unchanged (29 or your prior adjusted count).
 -- ============================================================================
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-23-populate-enhanced-monitoring-checks.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

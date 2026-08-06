@@ -395,3 +395,7 @@ ON CONFLICT ("industry", "persona_key", "outcome_key") DO NOTHING;
 --  WHERE c.industry = 'healthcare'
 --  ORDER BY c.sort_order, p.sort_order, u.sort_order;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-quiz-catalog-migrate-existing-271.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -28,3 +28,7 @@ CREATE TABLE IF NOT EXISTS visitor_identities (
   email TEXT NOT NULL,
   identified_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-29-visitor-identities.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

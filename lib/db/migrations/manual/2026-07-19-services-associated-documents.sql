@@ -23,3 +23,7 @@
 
 ALTER TABLE services
   ADD COLUMN IF NOT EXISTS associated_documents jsonb;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-services-associated-documents.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

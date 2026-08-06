@@ -67,6 +67,10 @@ COMMENT ON COLUMN monitor_checks.sp_operation IS
 COMMENT ON COLUMN monitor_checks.executor_type IS
   '''graph'' (default, every pre-existing check) = the endpoint/method/... columns drive a Graph REST fetch. ''powershell'' = ps_cmdlet_key/ps_params drive a ps-execution container call instead. ''sharepoint-admin'' = sp_operation drives a certificate-authenticated SharePoint Online tenant-admin call (sharepoint-admin.ts) instead.';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-04-sharepoint-admin-executor-394.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

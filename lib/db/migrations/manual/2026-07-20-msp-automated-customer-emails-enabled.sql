@@ -9,3 +9,7 @@
 --   artifacts/api-server/src/lib/mailer.ts.
 
 ALTER TABLE "msps" ADD COLUMN IF NOT EXISTS "automated_customer_emails_enabled" boolean NOT NULL DEFAULT true;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-msp-automated-customer-emails-enabled.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -154,3 +154,7 @@ CREATE INDEX IF NOT EXISTS "quiz_outcomes_industry_persona_idx"
 --   LEFT JOIN "quiz_personas" p
 --     ON p.industry = o.industry AND p.persona_key = o.persona_key
 --  WHERE o.persona_key <> '*' AND p.id IS NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-quiz-catalog-tables-271.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

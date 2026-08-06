@@ -20,3 +20,7 @@ ALTER TABLE zoho_connection ADD COLUMN IF NOT EXISTS zoho_books_org_id TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS zoho_books_contact_id TEXT;
 
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS zoho_books_invoice_id TEXT;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-zoho-books.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

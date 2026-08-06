@@ -43,3 +43,7 @@ CREATE INDEX IF NOT EXISTS "dashboard_overrides_template_id_idx" ON "dashboard_o
 
 CREATE UNIQUE INDEX IF NOT EXISTS "dashboard_overrides_template_scope_unique_idx"
   ON "dashboard_overrides" ("template_id", "scope_type", "scope_id");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-18-dashboard-templates.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

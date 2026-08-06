@@ -71,3 +71,7 @@ ORDER BY unmatched_rows DESC;
 SELECT COUNT(*) AS total_stragglers_must_be_zero_before_file_b
 FROM insights_generated_documents
 WHERE msp_customer_id IS NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-igd-msp-customer-id-A-add-and-backfill.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

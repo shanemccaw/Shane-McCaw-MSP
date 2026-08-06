@@ -196,4 +196,8 @@ RETURNING id, signal_key, rule_type, source_key, compare_value;
 -- If the receipts look right:  COMMIT;
 -- If anything looks wrong:     ROLLBACK;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-24-cae-check-reframe.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;

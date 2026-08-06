@@ -140,6 +140,10 @@ COMMENT ON COLUMN monitor_checks.fan_out_item_filter IS
 COMMENT ON COLUMN monitor_checks.fan_out_item_normalizer IS
   'Key into the code-owned FAN_OUT_ITEM_NORMALIZERS registry (monitor-executor.ts) — an identifier only, never a script, same contract as ps_cmdlet_key. Reshapes one source item''s per-item results before they join the flattened union, so a fan-out can emit one row per source item. NULL = flatten raw results (prior behaviour).';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-03-sharepoint-per-site-eeeu-enumeration-357.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

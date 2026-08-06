@@ -36,3 +36,7 @@
 
 ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS copilot_assessment jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-tenants-copilot-assessment.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

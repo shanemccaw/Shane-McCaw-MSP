@@ -57,3 +57,7 @@ WHERE "template_id" = 'teams.add_member';
 UPDATE "baseline_action_templates"
 SET "reversible" = true, "reverse_template_id" = 'teams.add_member'
 WHERE "template_id" = 'teams.remove_member';
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-21-launch-control-rollback.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -12,3 +12,7 @@ CREATE TABLE IF NOT EXISTS active_directory_ous (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-active-directory-ous.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

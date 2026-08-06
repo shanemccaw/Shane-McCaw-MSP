@@ -60,6 +60,20 @@ interface SavedScript {
   isResetScript: boolean;
 }
 
+// One row from GET /api/simulator/migrations/files — ranAt is the last time the
+// file's own trailing self-mark INSERT recorded a run in simulator_migration_runs
+// (#497), or null if it has never been run against the live DB.
+interface MigrationFileEntry {
+  filename: string;
+  ranAt: string | null;
+}
+
+function normalizeMigrationFiles(raw: unknown): MigrationFileEntry[] {
+  return (Array.isArray(raw) ? raw : []).map((f: any) =>
+    typeof f === "string" ? { filename: f, ranAt: null } : { filename: f.filename, ranAt: f.ranAt ?? null }
+  );
+}
+
 // Exact step shapes stored by /api/admin/test-suites — the tree only needs the
 // step count, but the full union keeps the edit-test-suite modalData typed.
 type TestSuiteStep =
@@ -237,7 +251,7 @@ export function SimulatorLeftTree() {
 
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
-  const [migrationFiles, setMigrationFiles] = useState<string[]>([]);
+  const [migrationFiles, setMigrationFiles] = useState<MigrationFileEntry[]>([]);
   const [suites, setSuites] = useState<TestSuite[]>([]);
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [busEventTypes, setBusEventTypes] = useState<BusEventType[]>([]);
@@ -354,8 +368,8 @@ export function SimulatorLeftTree() {
 
   const filteredMigrationFiles = useMemo(() => {
     if (!isSearching) return migrationFiles;
-    return migrationFiles.filter((filename) =>
-      itemMatchesSearch(searchQuery, [filename])
+    return migrationFiles.filter((file) =>
+      itemMatchesSearch(searchQuery, [file.filename])
     );
   }, [migrationFiles, searchQuery, isSearching]);
 
@@ -598,7 +612,7 @@ export function SimulatorLeftTree() {
       const migrationsRes = await fetchWithAuth("/api/simulator/migrations/files");
       if (migrationsRes.ok) {
         const migrationsData = await migrationsRes.json();
-        setMigrationFiles(migrationsData.files || []);
+        setMigrationFiles(normalizeMigrationFiles(migrationsData.files));
       }
 
       // 3. Fetch test suites
@@ -711,6 +725,51 @@ export function SimulatorLeftTree() {
       pollTimersRef.current = [];
     };
   }, []);
+
+  // #497: refresh the run-tracking checkboxes after a migration execute. The
+  // tree only observes the run *starting* (SqlQueryCanvas owns the execute
+  // round-trip and emits no completion event), so poll the files endpoint
+  // briefly after each simulator-run-migration until the file's ranAt is set —
+  // the run itself writes the tracking row via the migration's own trailing
+  // self-mark INSERT, so a set ranAt means the run round-tripped.
+  useEffect(() => {
+    const timers = new Set<number>();
+    const handleRunMigration = (e: Event) => {
+      const filename = (e as CustomEvent).detail?.filename as string | undefined;
+      let attempts = 0;
+      const timer = window.setInterval(async () => {
+        attempts += 1;
+        const done = attempts >= 15; // ~30s cap; a failed run never sets ranAt
+        try {
+          const res = await fetchWithAuth("/api/simulator/migrations/files");
+          if (res.ok) {
+            const data = await res.json();
+            const files = normalizeMigrationFiles(data.files);
+            setMigrationFiles(files);
+            const entry = filename ? files.find((f) => f.filename === filename) : undefined;
+            if (entry?.ranAt || done) {
+              window.clearInterval(timer);
+              timers.delete(timer);
+            }
+          } else if (done) {
+            window.clearInterval(timer);
+            timers.delete(timer);
+          }
+        } catch {
+          if (done) {
+            window.clearInterval(timer);
+            timers.delete(timer);
+          }
+        }
+      }, 2000);
+      timers.add(timer);
+    };
+    window.addEventListener("simulator-run-migration", handleRunMigration);
+    return () => {
+      window.removeEventListener("simulator-run-migration", handleRunMigration);
+      timers.forEach((timer) => window.clearInterval(timer));
+    };
+  }, [fetchWithAuth]);
 
   // Group events by category
   const scenariosByCategory = filteredScenarios.reduce(
@@ -1307,13 +1366,33 @@ export function SimulatorLeftTree() {
               {filteredMigrationFiles.length === 0 ? (
                 <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No manual migration files</div>
               ) : (
-                filteredMigrationFiles.map((filename) => (
+                filteredMigrationFiles.map(({ filename, ranAt }) => (
                   <ContextMenu key={filename}>
                     <ContextMenuTrigger asChild>
                       <div
                         onClick={() => handleMigrationRun(filename)}
                         className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
                       >
+                        {/* Display-only run-tracking checkbox (#497): checked = the file's
+                            trailing self-mark INSERT has recorded a run in
+                            simulator_migration_runs. Auto-tracked only — deliberately no
+                            manual toggle, so it reflects DB reality, not clicks. The
+                            wrapper span eats the click so it can never fire the row's
+                            execute handler. */}
+                        <span
+                          className="flex shrink-0 items-center"
+                          title={ranAt ? `Ran ${new Date(ranAt).toLocaleString()}` : "Not yet run"}
+                          onClick={(evt) => evt.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={ranAt != null}
+                            disabled
+                            tabIndex={-1}
+                            aria-label={ranAt ? `Ran ${new Date(ranAt).toLocaleString()}` : "Not yet run"}
+                            className="pointer-events-none h-3 w-3 accent-primary"
+                          />
+                        </span>
                         <FileDiff className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
                         <span className="flex-1 truncate font-mono text-[11px]" title={filename}>
                           {filename}

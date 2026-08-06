@@ -43,6 +43,10 @@ COMMENT ON COLUMN monitor_checks.ps_cmdlet_key IS
 COMMENT ON COLUMN monitor_checks.ps_params IS
   'Static params merged with resolved tenant-identity context ({organization}/{tenantId} placeholders) at dispatch time. NULL unless executor_type = ''powershell''.';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-monitor-checks-powershell-executor.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

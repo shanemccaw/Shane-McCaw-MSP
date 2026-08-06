@@ -62,3 +62,7 @@ FROM "ai_prompts" ap
 WHERE dt."ai_prompt_id" IS NULL
   AND dt."key" IN ('compliance_alignment_report', 'operational_health_report')
   AND ap."key" = 'insights-report-' || dt."key";
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-document-types-live-reports-292.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -145,3 +145,7 @@ SELECT
   (SELECT count(*) FROM monitoring_packages       WHERE key = 'detail:full-item-collection')          AS package_rows,
   (SELECT count(*) FROM monitoring_package_checks WHERE package_key = 'detail:full-item-collection')  AS linked_checks,
   (SELECT count(*) FROM monitor_checks            WHERE status = 'active')                            AS active_checks;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-02-full-item-detail-collection-339.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

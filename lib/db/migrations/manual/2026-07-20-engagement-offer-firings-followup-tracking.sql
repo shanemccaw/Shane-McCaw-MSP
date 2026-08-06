@@ -21,3 +21,7 @@ ALTER TABLE engagement_offer_firings
 
 ALTER TABLE engagement_offer_firings
   ADD COLUMN IF NOT EXISTS follow_up_run_id integer REFERENCES wf_runs(id) ON DELETE SET NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-engagement-offer-firings-followup-tracking.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

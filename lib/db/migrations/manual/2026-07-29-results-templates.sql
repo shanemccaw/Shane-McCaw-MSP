@@ -95,3 +95,7 @@ ON CONFLICT ("key") DO NOTHING;
 -- SELECT s."id", s."name" FROM "services" s
 --   WHERE s."id" BETWEEN 13 AND 33
 --     AND NOT EXISTS (SELECT 1 FROM "results_templates" rt WHERE rt."service_id" = s."id");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-29-results-templates.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -46,3 +46,7 @@ CREATE INDEX IF NOT EXISTS "ai_dev_response_cache_expires_at_idx" ON "ai_dev_res
 -- searching the deployed app for "ai_dev_response_cache" outside
 -- lib/ai-dev-response-cache.ts and this schema file.
 -- SELECT count(*) FROM "ai_dev_response_cache";
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-30-ai-dev-response-cache.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

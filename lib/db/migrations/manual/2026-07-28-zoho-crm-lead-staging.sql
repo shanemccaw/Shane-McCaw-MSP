@@ -119,6 +119,10 @@ ALTER TABLE recommended_leads
   ADD COLUMN IF NOT EXISTS converted_zoho_lead_id     text,
   ADD COLUMN IF NOT EXISTS converted_lead_staging_id  integer REFERENCES lead_staging(id) ON DELETE SET NULL;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-zoho-crm-lead-staging.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- ─────────────────────────────────────────────────────────────────────────────

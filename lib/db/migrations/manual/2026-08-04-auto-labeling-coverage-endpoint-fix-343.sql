@@ -29,3 +29,7 @@ WHERE key = 'governance:auto-labeling-coverage';
 SELECT key, label, status, method, endpoint, mapping
 FROM monitor_checks
 WHERE key = 'governance:auto-labeling-coverage';
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-04-auto-labeling-coverage-endpoint-fix-343.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

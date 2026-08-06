@@ -115,6 +115,10 @@ VALUES (
   '["413", "spectrum", "hand-authored"]'::jsonb
 );
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-05-seed-413-spectrum-simulation-profiles.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- Verify what landed:

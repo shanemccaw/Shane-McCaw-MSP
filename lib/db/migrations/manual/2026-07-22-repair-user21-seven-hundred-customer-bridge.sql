@@ -215,6 +215,10 @@ LEFT JOIN msp_customers mc ON mc.id = mu.customer_id
 WHERE mu.user_id = 21;
 
 -- If the verify row looks right:
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-22-repair-user21-seven-hundred-customer-bridge.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 -- If anything looks wrong: ROLLBACK;
 

@@ -36,3 +36,7 @@ CREATE TABLE IF NOT EXISTS "msp_partner_qbrs" (
 -- One QBR per MSP per quarter (the cache key + upsert target).
 CREATE UNIQUE INDEX IF NOT EXISTS "msp_partner_qbrs_msp_quarter_idx"
   ON "msp_partner_qbrs" ("msp_id", "quarter_key");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-msp-partner-qbrs.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

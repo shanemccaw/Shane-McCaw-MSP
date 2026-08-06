@@ -166,3 +166,7 @@ BEGIN
     );
   END IF;
 END $$;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-24-change-control-log.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

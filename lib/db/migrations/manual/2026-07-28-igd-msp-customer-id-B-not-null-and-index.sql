@@ -66,3 +66,7 @@ WHERE tablename = 'insights_generated_documents'
 -- deliberately typed nullable until then so reads don't claim a non-null value
 -- that real rows may not have yet.
 -- =============================================================================
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-igd-msp-customer-id-B-not-null-and-index.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

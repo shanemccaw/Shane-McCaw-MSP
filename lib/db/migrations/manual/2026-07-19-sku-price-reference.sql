@@ -69,3 +69,7 @@ INSERT INTO "sku_price_reference" ("sku_part_number", "display_name", "monthly_p
   ('DEFENDER_ENDPOINT_P2',     'Defender for Endpoint P2',            520, 'Microsoft published list price', '2026-07-19'),
   ('ATP_ENTERPRISE',           'Defender for Office 365 P1',          200, 'Microsoft published list price', '2026-07-19')
 ON CONFLICT ("sku_part_number") DO NOTHING;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-sku-price-reference.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

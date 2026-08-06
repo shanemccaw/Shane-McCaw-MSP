@@ -35,3 +35,7 @@ VALUES
   ('Your tenant has problems. ', 'We find them before your CEO does.', true, 0),
   ('We watch your tenant ', 'so you don''t have to.', true, 1),
   ('30 years finding what M365 admins ', 'miss.', true, 2);
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-hero-headlines.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

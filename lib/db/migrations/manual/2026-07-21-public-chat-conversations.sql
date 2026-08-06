@@ -43,3 +43,7 @@ CREATE INDEX IF NOT EXISTS "public_chat_conversations_needs_review_idx"
   ON "public_chat_conversations" ("needs_review", "review_status");
 CREATE INDEX IF NOT EXISTS "public_chat_conversations_updated_at_idx"
   ON "public_chat_conversations" ("updated_at");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-21-public-chat-conversations.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

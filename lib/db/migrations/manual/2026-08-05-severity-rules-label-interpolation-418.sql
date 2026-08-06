@@ -99,6 +99,10 @@ SET severity_rules = '[
 WHERE key = 'identity:pim-groups'
   AND severity_rules = '[{"expression":"{{_fanOut.sourceItemsWithResults}} > 0","severity":"warning","label":"One or more groups have standing eligible PIM assignments"}]'::jsonb;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-05-severity-rules-label-interpolation-418.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- Verification (read-only, run after the above):

@@ -170,3 +170,7 @@ ON CONFLICT (key) DO UPDATE SET
   sort_order              = EXCLUDED.sort_order,
   example_profile_key     = EXCLUDED.example_profile_key,
   example_finding_keyword = EXCLUDED.example_finding_keyword;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-21-unify-signal-catalog-custom-signals.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

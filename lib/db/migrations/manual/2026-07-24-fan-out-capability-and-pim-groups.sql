@@ -48,6 +48,10 @@ COMMENT ON COLUMN monitor_checks.fan_out_item_id_field IS
 COMMENT ON COLUMN monitor_checks.fan_out_max_items IS
   'Per-check cap on enumerated items scanned (throttle guard). NULL = platform default (FAN_OUT_MAX_ITEMS_DEFAULT = 500).';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-24-fan-out-capability-and-pim-groups.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

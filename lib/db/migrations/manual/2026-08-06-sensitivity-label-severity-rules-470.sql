@@ -56,3 +56,7 @@ WHERE key = 'governance:sensitivity-label-adoption';
 SELECT key, status, severity_rules
 FROM monitor_checks
 WHERE key IN ('copilot:sensitivity-labels-exist', 'governance:sensitivity-label-adoption');
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-sensitivity-label-severity-rules-470.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

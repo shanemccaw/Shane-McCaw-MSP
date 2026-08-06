@@ -20,3 +20,7 @@ CREATE TABLE IF NOT EXISTS "dashboard_executive_summaries" (
 );
 
 CREATE INDEX IF NOT EXISTS "dashboard_executive_summaries_msp_id_idx" ON "dashboard_executive_summaries" ("msp_id");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-dashboard-executive-summaries.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

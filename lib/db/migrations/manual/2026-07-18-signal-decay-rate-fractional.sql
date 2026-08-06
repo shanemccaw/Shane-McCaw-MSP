@@ -38,3 +38,7 @@ ALTER TABLE "signal_rule_groups" DROP CONSTRAINT IF EXISTS "signal_rule_groups_d
 ALTER TABLE "signal_rule_groups"
   ADD CONSTRAINT "signal_rule_groups_decay_rate_check"
   CHECK ("decay_rate" >= 0 AND "decay_rate" <= 1);
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-18-signal-decay-rate-fractional.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

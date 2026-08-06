@@ -297,6 +297,10 @@ WHERE COALESCE(service_type, '') NOT IN (
   AND COALESCE(type_attributes->>'pricePerUserMonth', '') = ''
   AND COALESCE(price, base_price) <= 21474836.47;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-23-price-cents-backfill.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

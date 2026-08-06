@@ -82,3 +82,7 @@ WHERE tenant_id = 'c4c814d4-3afe-441e-9145-62461d0a4fd3'
   AND check_key = 'governance:auto-labeling-coverage'
 ORDER BY collected_at DESC
 LIMIT 1;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-auto-labeling-coverage-endpoint-fix-483.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

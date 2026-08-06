@@ -62,3 +62,7 @@ SELECT DISTINCT severity, 'signal_derivation_rules' AS source_table FROM signal_
 UNION
 SELECT DISTINCT severity, 'signal_rule_groups' AS source_table FROM signal_rule_groups
 ORDER BY severity;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-23-signal-severity-informational.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

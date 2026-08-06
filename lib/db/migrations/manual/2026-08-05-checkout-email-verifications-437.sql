@@ -33,3 +33,7 @@ CREATE INDEX IF NOT EXISTS checkout_email_verifications_session_id_idx
 
 CREATE INDEX IF NOT EXISTS checkout_email_verifications_expires_at_idx
   ON checkout_email_verifications (expires_at);
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-05-checkout-email-verifications-437.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

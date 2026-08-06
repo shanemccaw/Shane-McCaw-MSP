@@ -326,4 +326,8 @@ ORDER BY key;
 -- If the receipt looks right:   COMMIT;
 -- If anything looks wrong:      ROLLBACK;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-23-monitor-check-endpoint-corrections.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;

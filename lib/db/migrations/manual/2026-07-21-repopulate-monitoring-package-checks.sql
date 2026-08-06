@@ -127,3 +127,7 @@ ON CONFLICT (package_key, check_key) DO NOTHING;
 --    may legitimately error if the tenant lacks a given workload/SKU or the
 --    app registration is missing a scope — that is real data, not the bug.)
 -- ============================================================================
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-21-repopulate-monitoring-package-checks.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

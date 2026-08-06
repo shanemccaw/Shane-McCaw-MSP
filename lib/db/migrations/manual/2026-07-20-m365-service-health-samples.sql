@@ -30,3 +30,7 @@ CREATE INDEX IF NOT EXISTS "m365_service_health_samples_service_sampled_idx"
 
 CREATE INDEX IF NOT EXISTS "m365_service_health_samples_tenant_service_sampled_idx"
   ON "m365_service_health_samples" ("tenant_id", "service", "sampled_at");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-m365-service-health-samples.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

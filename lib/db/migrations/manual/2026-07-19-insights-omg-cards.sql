@@ -14,3 +14,7 @@ ALTER TABLE insights_generated_documents
 
 ALTER TABLE insights_generated_documents
   ADD COLUMN IF NOT EXISTS omg_cards_generated_at timestamp;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-insights-omg-cards.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -102,3 +102,7 @@ WHERE dt."ai_prompt_id" IS NULL
     WHEN 'report'     THEN 'insights-report-' || dt."key"
     WHEN 'consulting' THEN 'insights-consulting-' || dt."key"
   END;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-document-types.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

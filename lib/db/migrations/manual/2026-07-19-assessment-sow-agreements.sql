@@ -37,3 +37,7 @@ CREATE INDEX IF NOT EXISTS asa_client_user_idx ON assessment_sow_agreements (cli
 CREATE UNIQUE INDEX IF NOT EXISTS asa_stripe_session_uidx
   ON assessment_sow_agreements (stripe_session_id)
   WHERE stripe_session_id IS NOT NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-assessment-sow-agreements.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

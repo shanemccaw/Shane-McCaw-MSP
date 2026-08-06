@@ -283,6 +283,10 @@ WHERE t.template_type = 'customer_default'
     )
   );
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-customer-dashboard-category-tabs.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- ── Part E (OPTIONAL — run by hand per customer to LIGHT UP the tabs) ────────────

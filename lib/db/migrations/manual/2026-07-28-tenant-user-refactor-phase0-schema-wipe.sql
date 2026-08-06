@@ -551,4 +551,8 @@ DROP TABLE IF EXISTS msp_customers             CASCADE;
 DROP TABLE public.wipe_kept_users;
 DROP FUNCTION public.wipe_exec_if_exists(text, text);
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-tenant-user-refactor-phase0-schema-wipe.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;

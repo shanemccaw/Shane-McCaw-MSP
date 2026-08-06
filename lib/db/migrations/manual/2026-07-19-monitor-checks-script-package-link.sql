@@ -19,3 +19,7 @@ ALTER TABLE "monitor_checks"
 
 CREATE INDEX IF NOT EXISTS "monitor_checks_script_package_id_idx"
   ON "monitor_checks" ("script_package_id");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-monitor-checks-script-package-link.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -170,3 +170,7 @@ ON CONFLICT ("industry", "persona_key", "outcome_key") DO NOTHING;
 -- persona alongside Flight Controller's real ten. Delete them separately if you
 -- want Flight Controller to show only its own:
 -- DELETE FROM "quiz_outcomes" WHERE industry = 'space' AND persona_key = '*';
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-quiz-catalog-space-seed-271.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

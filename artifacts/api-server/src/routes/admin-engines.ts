@@ -1807,6 +1807,8 @@ const MANUAL_MIGRATIONS_DIR = path.resolve(process.cwd(), "../../lib/db/migratio
 
 async function listManualMigrationFiles(): Promise<string[]> {
   const entries = await fs.readdir(MANUAL_MIGRATIONS_DIR, { withFileTypes: true });
+  // Non-recursive by design: archived files under archive/diagnostics/ and
+  // archive/obsolete/ are meant to disappear from the Simulator tree (#497).
   return entries
     .filter((e) => e.isFile() && e.name.endsWith(".sql"))
     .map((e) => e.name)
@@ -1818,11 +1820,33 @@ async function listManualMigrationFiles(): Promise<string[]> {
  * @route GET /api/simulator/migrations/files
  * @desc Lists every .sql file in lib/db/migrations/manual/, sorted reverse-alphabetically
  *       (filenames are dated YYYY-MM-DD-description.sql, so reverse-alphabetical order
- *       is newest-to-oldest chronological order).
+ *       is newest-to-oldest chronological order). Each entry carries `ranAt` — the
+ *       last time the file's own trailing self-mark INSERT recorded a run in
+ *       simulator_migration_runs (#497) — or null if it has never been run.
  */
 router.get("/simulator/migrations/files", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const files = await listManualMigrationFiles();
+    const filenames = await listManualMigrationFiles();
+
+    // simulator_migration_runs is provisioned by a manual migration Shane runs
+    // himself — until it exists, degrade to ranAt: null on every file rather
+    // than breaking the whole migrations tree.
+    const ranAtByFilename = new Map<string, string>();
+    try {
+      const result = await pool.query("SELECT filename, ran_at FROM simulator_migration_runs");
+      for (const row of result.rows) {
+        if (row.filename && row.ran_at != null) {
+          ranAtByFilename.set(String(row.filename), new Date(row.ran_at).toISOString());
+        }
+      }
+    } catch (err: any) {
+      systemLog.warn({ err }, "Simulator migrations: simulator_migration_runs not readable — reporting all files as not yet run");
+    }
+
+    const files = filenames.map((filename) => ({
+      filename,
+      ranAt: ranAtByFilename.get(filename) ?? null,
+    }));
     return res.json({ files });
   } catch (err: any) {
     systemLog.error({ err }, "Simulator migrations: failed to list manual migration files");

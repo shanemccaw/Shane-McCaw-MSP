@@ -24,3 +24,7 @@ CREATE TABLE IF NOT EXISTS "platform_incidents" (
 
 CREATE INDEX IF NOT EXISTS "platform_incidents_started_at_idx" ON "platform_incidents" ("started_at");
 CREATE INDEX IF NOT EXISTS "platform_incidents_status_idx" ON "platform_incidents" ("status");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-platform-incidents.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

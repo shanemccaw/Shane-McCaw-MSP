@@ -9,3 +9,7 @@
 
 ALTER TABLE consent_invite_tokens ADD COLUMN IF NOT EXISTS invited_email text;
 ALTER TABLE consent_invite_tokens ADD COLUMN IF NOT EXISTS invited_name text;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-consent-invite-invited-email.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -26,6 +26,10 @@ UPDATE wf_triggers
  )
    AND enabled = true;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-remove-kanban-auto-fire.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- Optional follow-up, run separately once you're satisfied nothing needs the

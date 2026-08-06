@@ -19,3 +19,7 @@ CREATE TABLE IF NOT EXISTS "customer_notification_preferences" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "customer_notif_prefs_user_category_uidx"
   ON "customer_notification_preferences" ("user_id", "category");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-customer-notification-preferences.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

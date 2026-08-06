@@ -268,6 +268,10 @@ UPDATE services SET
   )
 WHERE id = 33;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-assessment-detail-content.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 -- Verification: confirm all 21 rows now have a description and deliverables.

@@ -17,3 +17,7 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS domain text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS industry text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'onboarding';
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_testbed boolean NOT NULL DEFAULT false;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-tenants-restore-customer-fields.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

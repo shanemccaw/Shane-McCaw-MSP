@@ -179,6 +179,10 @@ INSERT INTO "monitor_checks" (
 )
 ON CONFLICT ("key") DO NOTHING;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-dlp-label-monitor-checks-212.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

@@ -4,6 +4,9 @@
 -- results — "relation does not exist" on all 12). Written to exactly
 -- match their real schema definitions. Safe to run any time (all
 -- CREATE TABLE IF NOT EXISTS), independent of wipe timing.
+-- Trimmed to 10 by #497: the two legacy service/script linking-table
+-- blocks were removed (both tables confirmed dropped, per comments in
+-- admin-ps-scripts.ts).
 -- ═══════════════════════════════════════════════════════════════
 
 -- ── AI credit system (ai_usage_events, ai_balance_ledger, msp_ai_purchases) ────
@@ -162,31 +165,17 @@ CREATE TABLE IF NOT EXISTS "conversations" (
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Legacy service/script linking tables (from migrate-prod.ts, never applied) ─
-
-CREATE TABLE IF NOT EXISTS "service_script_sets" (
-  "service_id" INTEGER NOT NULL REFERENCES "services"("id") ON DELETE CASCADE,
-  "script_package_id" UUID NOT NULL REFERENCES "script_packages"("id") ON DELETE CASCADE,
-  "display_order" INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY ("service_id", "script_package_id")
-);
-
-CREATE TABLE IF NOT EXISTS "service_required_scripts" (
-  "service_id" INTEGER NOT NULL,
-  "script_id" UUID NOT NULL,
-  PRIMARY KEY ("service_id", "script_id"),
-  CONSTRAINT "fk_srs_service" FOREIGN KEY ("service_id") REFERENCES "services"("id") ON DELETE CASCADE,
-  CONSTRAINT "fk_srs_script" FOREIGN KEY ("script_id") REFERENCES "powershell_scripts"("id") ON DELETE CASCADE
-);
-
--- ── Verification — should show all 12 now existing ─────────────────────────────
+-- ── Verification — should show all 10 now existing ─────────────────────────────
 SELECT table_name FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name IN (
     'ai_balance_ledger', 'ai_usage_events', 'conversations',
     'exception_groups', 'exception_occurrences', 'msp_ai_purchases',
     'msp_report_canvases', 'msp_report_schedules',
-    'simulation_profiles', 'simulation_runs',
-    'service_required_scripts', 'service_script_sets'
+    'simulation_profiles', 'simulation_runs'
   )
 ORDER BY table_name;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('create-12-missing-tables.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

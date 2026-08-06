@@ -28,3 +28,7 @@
 -- Safe to run even if the column is already nullable (no-op in that case).
 
 ALTER TABLE "services" ALTER COLUMN "service_class" DROP NOT NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-22-service-class-drop-not-null.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

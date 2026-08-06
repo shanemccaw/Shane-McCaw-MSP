@@ -160,3 +160,7 @@ WHERE key IN (
   'devices:update-rings-config', 'devices:compliant-vs-noncompliant'
 )
 ORDER BY key;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-devices-intune-not-configured-487.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -5,3 +5,7 @@
 -- Additive/nullable: existing checkout_sessions rows predate this capture.
 ALTER TABLE checkout_sessions ADD COLUMN IF NOT EXISTS company text;
 ALTER TABLE checkout_sessions ADD COLUMN IF NOT EXISTS industry text;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-29-checkout-session-company-industry.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

@@ -41,3 +41,7 @@ CREATE INDEX IF NOT EXISTS "msp_staff_customer_scopes_customer_id_idx"
   ON "msp_staff_customer_scopes" ("customer_id");
 CREATE INDEX IF NOT EXISTS "msp_staff_customer_scopes_msp_id_idx"
   ON "msp_staff_customer_scopes" ("msp_id");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-msp-staff-customer-scopes.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

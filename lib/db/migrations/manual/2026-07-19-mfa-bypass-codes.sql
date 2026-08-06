@@ -38,3 +38,7 @@ CREATE INDEX IF NOT EXISTS "mfa_bypass_codes_user_id_idx" ON "mfa_bypass_codes" 
 ALTER TABLE "user_sessions" DROP CONSTRAINT IF EXISTS "user_sessions_login_method_check";
 ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_login_method_check"
   CHECK ("login_method" IN ('password', 'totp', 'sms', 'passkey', 'impersonation', 'bypass'));
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-mfa-bypass-codes.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

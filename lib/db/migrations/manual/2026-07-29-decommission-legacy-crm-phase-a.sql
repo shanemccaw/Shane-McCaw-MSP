@@ -85,6 +85,10 @@ WHERE s.legacy_lead_id = r.converted_lead_id
   AND r.converted_lead_id IS NOT NULL
   AND r.converted_lead_staging_id IS NULL;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-29-decommission-legacy-crm-phase-a.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

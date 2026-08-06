@@ -146,3 +146,7 @@ SELECT
   'Git #493 example/shape row. status = draft, so the document path ignores it and falls through to the AI fallback. Safe to delete. Phase 1''s 25 real entries are separate content work.'
 WHERE EXISTS (SELECT 1 FROM "monitor_checks" WHERE "key" = 'identity:global-admin-count')
 ON CONFLICT ("check_key") DO NOTHING;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-remediation-knowledge-base-493.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

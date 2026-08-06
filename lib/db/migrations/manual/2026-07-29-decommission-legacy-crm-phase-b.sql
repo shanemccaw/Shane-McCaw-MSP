@@ -58,3 +58,7 @@ ALTER TABLE opportunities ALTER COLUMN lead_id DROP NOT NULL;
 -- other nine satellite FK columns still store `leads.id`, and #114's scoring
 -- engine (recomputeAndPersistHotScore, in lead-intent.ts) still reads `leads`
 -- directly — explicitly out of this phase's scope.
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-29-decommission-legacy-crm-phase-b.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

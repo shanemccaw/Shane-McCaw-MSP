@@ -20,3 +20,7 @@ ALTER TABLE quick_win_result_shares
   ADD COLUMN IF NOT EXISTS document_id INTEGER REFERENCES insights_generated_documents(id) ON DELETE CASCADE;
 
 ALTER TABLE quick_win_result_shares ALTER COLUMN scores_snapshot DROP NOT NULL;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-document-sharing-view-tracking.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

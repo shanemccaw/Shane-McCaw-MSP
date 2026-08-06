@@ -65,4 +65,8 @@ WHERE key IN (
 AND default_body IS NOT NULL
 AND default_body NOT LIKE '%EMPTY-DATA HONESTY%';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-22-assessment-empty-data-prompt-instructions.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;

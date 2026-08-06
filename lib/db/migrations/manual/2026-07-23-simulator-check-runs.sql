@@ -110,3 +110,7 @@ CREATE INDEX IF NOT EXISTS simulator_check_runs_customer_id_idx
 -- SIMULATOR_RUN_RETENTION_PER_CHECK runs per check_key on each insert
 -- (simulator-run-store.ts), which is the durable replacement for the old
 -- in-memory MAX_TRACKED_RUNS eviction. No scheduled job is required.
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-23-simulator-check-runs.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

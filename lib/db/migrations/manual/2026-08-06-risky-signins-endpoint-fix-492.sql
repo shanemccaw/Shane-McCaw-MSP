@@ -160,4 +160,8 @@ RETURNING key, label, endpoint, properties, mapping, severity_rules, schema_vers
 -- If the receipt looks right:  COMMIT;
 -- If anything looks wrong:     ROLLBACK;
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-risky-signins-endpoint-fix-492.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;

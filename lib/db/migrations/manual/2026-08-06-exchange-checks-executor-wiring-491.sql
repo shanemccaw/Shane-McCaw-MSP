@@ -179,6 +179,10 @@ UPDATE "monitor_checks" SET
   "ps_params" = '{"Organization":"{organization}"}'::jsonb
 WHERE "key" = 'exchange:dkim-spf-dmarc-status';
 
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-08-06-exchange-checks-executor-wiring-491.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
 COMMIT;
 
 

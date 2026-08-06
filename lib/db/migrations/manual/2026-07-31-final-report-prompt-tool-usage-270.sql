@@ -45,3 +45,7 @@ WHERE key = 'assessment-final-report-narrative'
 --        prompt_body  LIKE '%{{toolUsage}}%' AS body_has_token,
 --        default_body LIKE '%{{toolUsage}}%' AS default_has_token
 -- FROM ai_prompts WHERE key = 'assessment-final-report-narrative';
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-31-final-report-prompt-tool-usage-270.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

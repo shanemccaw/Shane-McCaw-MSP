@@ -27,3 +27,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS user_entitlement_overrides_user_capability_uni
 
 CREATE INDEX IF NOT EXISTS user_entitlement_overrides_user_id_idx
   ON user_entitlement_overrides (user_id);
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-28-user-entitlement-overrides.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

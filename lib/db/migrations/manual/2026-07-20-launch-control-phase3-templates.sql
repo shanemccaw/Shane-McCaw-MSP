@@ -191,3 +191,7 @@ VALUES
   )
 
 ON CONFLICT ("template_id") DO NOTHING;
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-20-launch-control-phase3-templates.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();

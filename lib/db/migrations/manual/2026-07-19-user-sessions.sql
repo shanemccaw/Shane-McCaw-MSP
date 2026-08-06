@@ -36,3 +36,7 @@ CREATE TABLE IF NOT EXISTS "user_sessions" (
 CREATE INDEX IF NOT EXISTS "user_sessions_user_id_idx" ON "user_sessions" ("user_id");
 CREATE INDEX IF NOT EXISTS "user_sessions_current_token_hash_idx" ON "user_sessions" ("current_token_hash");
 CREATE INDEX IF NOT EXISTS "user_sessions_created_at_idx" ON "user_sessions" ("created_at");
+
+INSERT INTO simulator_migration_runs (filename, ran_at)
+VALUES ('2026-07-19-user-sessions.sql', now())
+ON CONFLICT (filename) DO UPDATE SET ran_at = now();
