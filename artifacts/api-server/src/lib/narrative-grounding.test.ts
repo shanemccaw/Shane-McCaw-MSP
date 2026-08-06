@@ -85,7 +85,7 @@ describe("collectFactsForPillars", () => {
           score: 38,
           findingCounts: { critical: 1, warning: 0 },
           stats: [stat({ id: "s.a", label: "admins", value: 11 }), stat({ id: "s.b", unavailableReason: "no_data" })],
-          findings: [{ severity: "critical", checkKey: "identity:mfa-registration", title: "No MFA" }],
+          findings: [{ severity: "critical", checkKey: "identity:mfa-registration", title: "No MFA", rankWeight: 0 }],
         }),
       ],
     );

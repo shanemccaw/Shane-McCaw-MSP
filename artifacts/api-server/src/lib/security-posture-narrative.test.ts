@@ -253,7 +253,7 @@ describe("a section with no real facts is not generated at all", () => {
         c.pillar === "security"
           ? card({
               pillar: "security",
-              findings: [{ severity: "critical", checkKey: "identity:mfa-registration", title: "14 accounts have no MFA" }],
+              findings: [{ severity: "critical", checkKey: "identity:mfa-registration", title: "14 accounts have no MFA", rankWeight: 0 }],
               findingCounts: { critical: 1, warning: 0 },
             })
           : c,
@@ -437,7 +437,7 @@ describe("one section's failure never costs the reader the others", () => {
           ...c,
           pillar: c.pillar,
           score: 40,
-          findings: [{ severity: "warning", checkKey: `${c.pillar}:x`, title: "A real finding" }],
+          findings: [{ severity: "warning", checkKey: `${c.pillar}:x`, title: "A real finding", rankWeight: 0 }],
           findingCounts: { critical: 0, warning: 1 },
         }),
       ),

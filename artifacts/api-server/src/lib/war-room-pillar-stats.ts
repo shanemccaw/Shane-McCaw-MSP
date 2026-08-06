@@ -148,13 +148,20 @@ import {
   tenantsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
+  monitorChecksTable,
+  type SignalDerivationRule,
 } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getMetric } from "@workspace/dashboard-registry";
-import { calculateArchitectureHealthScore, getSignalHealthImpacts } from "./health-engine.ts";
+import {
+  calculateArchitectureHealthScore,
+  getSignalHealthImpacts,
+  type SignalHealthImpactConfig,
+} from "./health-engine.ts";
 import {
   fetchScannedCheckKeys,
   fetchTenantEvaluableSignalKeys,
+  resolveOwningCheckKey,
   type RadarPillar,
 } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
@@ -587,6 +594,112 @@ export interface WarRoomPillarFinding {
   severity: WarRoomFindingSeverity;
   checkKey: string;
   title: string;
+  /**
+   * The real signal weight this finding's own check carries, used to rank it
+   * against its severity peers (#414). See `FINDING_RANK_IMPACT_FIELD` and
+   * `buildFindingRankWeights` for where the number comes from. `0` means the
+   * join found no rule fed by this check — an honest "unranked", not a claim
+   * that the finding does not matter.
+   */
+  rankWeight: number;
+}
+
+/**
+ * Which of `signal_derivation_rules`' seven impact columns ranks a finding
+ * against its severity peers (#414).
+ *
+ * `copilotImpact`, on Shane's explicit call (2026-08-05): the entire product is
+ * scoped to Copilot readiness, so the finding a customer sees first should be
+ * the one that most obstructs Copilot, not the one that happens to sort first
+ * alphabetically. Named as ONE constant so the decision is a single line to
+ * revisit rather than a literal buried in a comparator.
+ *
+ * ── The alternative that was considered and rejected, recorded on purpose ────
+ * The other candidate was `PILLAR_FIELD[enginePillar]` — rank Security's
+ * findings by `securityImpact`, Licensing's by `licensingImpact`, and so on —
+ * which has the real merit that a card's headline would then be the biggest
+ * driver of the score printed beside it. It was not chosen. The cost is that
+ * six of seven cards would then rank by something the product does not sell:
+ * this journey's verdict is the Copilot Gate, and a Security headline chosen
+ * for its security weight can be a finding with no Copilot consequence at all.
+ *
+ * ── The real risk this carries, stated rather than hidden ───────────────────
+ * `copilotImpact` only ranks anything if it genuinely varies across the rules
+ * feeding a pillar. The repo's own snapshot of the rule table
+ * (`docs/signals.json`, exported 2026-08-05 14:02) has it flat at 0 or 1 for
+ * 193 of 198 rows — on that data every Security finding ties and the sort falls
+ * straight through to the `checkKey` tiebreak below, i.e. today's behaviour.
+ * Shane re-authored the weights directly in the database after that export, so
+ * the snapshot is stale and the live column is expected to discriminate; this
+ * environment has no database access to confirm it, so the ranking is written
+ * to degrade honestly (ties → the existing stable order) rather than to assume.
+ * `docs/2026-08-05-finding-rank-weights-414.sql` is the query that confirms it
+ * against real data.
+ */
+export const FINDING_RANK_IMPACT_FIELD = "copilotImpact" satisfies keyof SignalHealthImpactConfig;
+
+/** The subset of a `monitor_checks` row `resolveOwningCheckKey` needs. */
+interface RankCheckDefinition {
+  key: string;
+  mapping: Array<{ sourceField: string; targetField: string; transform?: string }> | null;
+  properties: string[] | null;
+}
+
+/**
+ * Real check key → the weight its findings rank by (#414).
+ *
+ * ── Why this join is needed at all ──────────────────────────────────────────
+ * A finding row (`msp_diagnostic_findings`) carries a `check_key` and nothing
+ * else that could rank it. The weights live on `signal_derivation_rules`, keyed
+ * by `signal_key`. Those two are three hops apart (#441): a rule names a
+ * `source_key`, which is a merged-PROFILE key, which some check's `mapping` /
+ * `properties` / bare key / bridged key produces. `resolveOwningCheckKey` is
+ * the platform's existing, already-tested answer to exactly that hop, so it is
+ * reused here rather than re-deriving a second matching rule that could drift
+ * from the one the Simulator Studio Pillar Matrix already uses.
+ *
+ * `impacts` (not the raw rule rows) is the weight source on purpose: it is the
+ * same `getSignalHealthImpacts` map the SCORE beside these findings is computed
+ * from, so it already resolves a signal's weight as the MAX across every rule
+ * and every group carrying it. Reading `rule.copilotImpact` directly would
+ * ignore group-level weights and could rank a finding by a number the scoring
+ * path does not agree with.
+ *
+ * Many rules can resolve to one check; the check takes the strongest of them,
+ * mirroring how a signal takes the max across its own rules.
+ *
+ * Pure; exported for tests.
+ */
+export function buildFindingRankWeights(
+  rules: readonly Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
+  impacts: ReadonlyMap<string, SignalHealthImpactConfig>,
+  checkDefinitions: readonly RankCheckDefinition[],
+): Map<string, number> {
+  const byCheckKey = new Map<string, number>();
+  for (const rule of rules) {
+    const checkKey = resolveOwningCheckKey(rule, checkDefinitions);
+    if (!checkKey) continue;
+    const weight = impacts.get(rule.signalKey)?.[FINDING_RANK_IMPACT_FIELD] ?? 0;
+    byCheckKey.set(checkKey, Math.max(byCheckKey.get(checkKey) ?? 0, weight));
+  }
+  return byCheckKey;
+}
+
+/**
+ * The order a pillar's findings are presented in, and the order its cap keeps
+ * (#414). Severity tier first and always — a warning can never outrank a
+ * critical however heavy it is — then the real signal weight, then the
+ * pre-existing `checkKey` tiebreak so two identical runs cannot disagree.
+ *
+ * Pure; exported for tests.
+ */
+export function compareRankedFindings(a: WarRoomPillarFinding, b: WarRoomPillarFinding): number {
+  const severityRank: Record<WarRoomFindingSeverity, number> = { critical: 0, warning: 1 };
+  return (
+    severityRank[a.severity] - severityRank[b.severity] ||
+    b.rankWeight - a.rankWeight ||
+    a.checkKey.localeCompare(b.checkKey)
+  );
 }
 
 export interface WarRoomPillarCard {
@@ -789,7 +902,23 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     }),
   );
 
-  const { findingsByPillar, findingsRunId, findingsRunStatus } = await fetchPillarFindings(customerId);
+  // #414: the real weight each finding is ranked by. `rules`/`impacts` are the
+  // ones already resolved above for scoring — the same numbers the dial uses —
+  // so the only new read is the check catalog `resolveOwningCheckKey` needs to
+  // walk a rule's sourceKey back to the check that produces it.
+  const rankCheckDefinitions: RankCheckDefinition[] = await db
+    .select({
+      key: monitorChecksTable.key,
+      mapping: monitorChecksTable.mapping,
+      properties: monitorChecksTable.properties,
+    })
+    .from(monitorChecksTable);
+  const findingRankWeights = buildFindingRankWeights(rules, impacts, rankCheckDefinitions);
+
+  const { findingsByPillar, findingsRunId, findingsRunStatus } = await fetchPillarFindings(
+    customerId,
+    findingRankWeights,
+  );
 
   const [activeRun] = await db
     .select({ runId: mspDiagnosticRunsTable.runId })
@@ -894,8 +1023,19 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
  * Real findings of the most recent run that OWNS any, grouped per pillar with
  * critical before warning. Mid-scan that is the previous run — reported with its
  * own id/status so the caller never presents it as the run in flight.
+ *
+ * `rankWeights` (#414) orders findings WITHIN a severity tier by their real
+ * signal weight. It is applied here, before the caller's
+ * `WAR_ROOM_FINDINGS_PER_PILLAR` cap, and that ordering is the whole point:
+ * this list used to be sorted alphabetically by `checkKey` and then truncated
+ * to three, so the cap kept whichever findings sorted early in the alphabet
+ * rather than whichever mattered most. Ranking after the cap — in the client,
+ * say — could only ever reorder a set that was already chosen wrongly.
  */
-async function fetchPillarFindings(customerId: number): Promise<{
+async function fetchPillarFindings(
+  customerId: number,
+  rankWeights: ReadonlyMap<string, number>,
+): Promise<{
   findingsByPillar: Map<WarRoomPillarKey, WarRoomPillarFinding[]>;
   findingsRunId: string | null;
   findingsRunStatus: string | null;
@@ -926,7 +1066,6 @@ async function fetchPillarFindings(customerId: number): Promise<{
       ),
     );
 
-  const severityRank: Record<WarRoomFindingSeverity, number> = { critical: 0, warning: 1 };
   for (const row of rows) {
     const pillar = warRoomPillarForCheckKey(row.checkKey);
     if (!pillar) continue;
@@ -935,16 +1074,13 @@ async function fetchPillarFindings(customerId: number): Promise<{
       severity: row.severity as WarRoomFindingSeverity,
       checkKey: row.checkKey,
       title: row.title,
+      rankWeight: rankWeights.get(row.checkKey) ?? 0,
     });
     findingsByPillar.set(pillar, list);
   }
-  // Same ordering rule as telemetry-comparison's rankDiscrepancies: severity
-  // first, then stably by check key so two identical runs can't disagree.
-  for (const list of findingsByPillar.values()) {
-    list.sort(
-      (a, b) => severityRank[a.severity] - severityRank[b.severity] || a.checkKey.localeCompare(b.checkKey),
-    );
-  }
+  // Severity tier first (unchanged), then real signal weight (#414), then the
+  // pre-existing check-key tiebreak so two identical runs can't disagree.
+  for (const list of findingsByPillar.values()) list.sort(compareRankedFindings);
 
   const [runRow] = await db
     .select({ status: mspDiagnosticRunsTable.status })

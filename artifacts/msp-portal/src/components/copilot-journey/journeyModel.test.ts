@@ -18,6 +18,7 @@ import {
   formatJourneyDate,
   gapSentence,
   isGenerationUnknown,
+  orderPillarFindings,
   pillarTrend,
   remediatedScore,
   scoredPillarCount,
@@ -27,6 +28,7 @@ import {
   verdictSentence,
   type JourneyDocumentView,
   type WireAssessmentStatus,
+  type WirePillarFinding,
   type WirePillarStatsPayload,
 } from "./journeyModel.ts";
 import {
@@ -827,5 +829,119 @@ describe("a report's accent pillar", () => {
 
   it("falls back to the catalogue key when the title says nothing", () => {
     assert.equal(documentPillar(doc("Quarterly Review", "m365_security_posture")), "security");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #414 — real signal weight ranks a pillar's headline within its tier
+ * ------------------------------------------------------------------ */
+
+describe("orderPillarFindings", () => {
+  /**
+   * The reported regression, on the real check keys. `identity:break-glass-health`
+   * used to lead purely because it sorts before `identity:ca-mfa-coverage`
+   * alphabetically; the real weights are 20 for CA-MFA coverage against 18 for
+   * break-glass health.
+   */
+  const SECURITY_CRITICALS: WirePillarFinding[] = [
+    {
+      severity: "critical",
+      checkKey: "identity:break-glass-health",
+      title: "No enabled break-glass account",
+      rankWeight: 18,
+    },
+    {
+      severity: "critical",
+      checkKey: "identity:ca-mfa-coverage",
+      title: "No Conditional Access policies exist",
+      rankWeight: 20,
+    },
+  ];
+
+  it("makes the heavier finding the pillar's headline and satellite", () => {
+    const view = buildPillarViews({
+      pillars: [{ pillar: "security", score: 38, findings: SECURITY_CRITICALS }],
+    }).find((v) => v.key === "security");
+
+    assert.equal(view?.headline, "No Conditional Access policies exist");
+    assert.equal(view?.satelliteFinding, "No Conditional Access policies exist");
+    // The projection the scenes read must agree with the headline, not just
+    // the headline string — they are separate fields off the same order.
+    assert.equal(view?.findings[0]?.title, "No Conditional Access policies exist");
+  });
+
+  it("never lets a heavier warning displace a lighter critical", () => {
+    const ordered = orderPillarFindings([
+      { severity: "warning", checkKey: "a:heavy", title: "heavy warning", rankWeight: 90 },
+      { severity: "critical", checkKey: "b:light", title: "light critical", rankWeight: 1 },
+    ]);
+    assert.deepEqual(
+      ordered.map((f) => f.severity),
+      ["critical", "warning"],
+    );
+    assert.equal(ordered[0]?.title, "light critical");
+  });
+
+  it("ranks within both tiers without mixing them", () => {
+    const ordered = orderPillarFindings([
+      { severity: "warning", checkKey: "a", title: "w-light", rankWeight: 2 },
+      { severity: "critical", checkKey: "b", title: "c-light", rankWeight: 3 },
+      { severity: "warning", checkKey: "c", title: "w-heavy", rankWeight: 40 },
+      { severity: "critical", checkKey: "d", title: "c-heavy", rankWeight: 50 },
+    ]);
+    assert.deepEqual(
+      ordered.map((f) => f.title),
+      ["c-heavy", "c-light", "w-heavy", "w-light"],
+    );
+  });
+
+  it("keeps the server's order when weights tie", () => {
+    // The honest-degradation case: if the ranking column turns out flat on live
+    // data, this must behave exactly as it did before #414, not arbitrarily.
+    const tied: WirePillarFinding[] = [
+      { severity: "critical", checkKey: "identity:break-glass-health", title: "first", rankWeight: 1 },
+      { severity: "critical", checkKey: "identity:ca-mfa-coverage", title: "second", rankWeight: 1 },
+    ];
+    assert.deepEqual(
+      orderPillarFindings(tied).map((f) => f.title),
+      ["first", "second"],
+    );
+  });
+
+  it("treats a payload with no weights at all as ties, not as zero-ranked noise", () => {
+    // A payload predating #414, or the design fixture: `rankWeight` is absent,
+    // read as 0 for every finding, so array order survives intact.
+    const legacy: WirePillarFinding[] = [
+      { severity: "critical", checkKey: "z:last-alphabetically", title: "first" },
+      { severity: "warning", checkKey: "a:first-alphabetically", title: "third" },
+      { severity: "critical", checkKey: "m:middle", title: "second" },
+    ];
+    assert.deepEqual(
+      orderPillarFindings(legacy).map((f) => f.title),
+      ["first", "second", "third"],
+    );
+  });
+
+  it("does not disturb a pillar with a single critical finding", () => {
+    const one: WirePillarFinding[] = [
+      { severity: "critical", checkKey: "identity:ca-policy-count", title: "the only one", rankWeight: 12 },
+    ];
+    assert.deepEqual(orderPillarFindings(one), one);
+
+    const view = buildPillarViews({ pillars: [{ pillar: "security", score: 38, findings: one }] }).find(
+      (v) => v.key === "security",
+    );
+    assert.equal(view?.headline, "the only one");
+    assert.equal(view?.criticalCount, 0); // findingCounts absent — unchanged by #414
+  });
+
+  it("leaves an empty pillar empty rather than inventing an order", () => {
+    assert.deepEqual(orderPillarFindings([]), []);
+  });
+
+  it("does not mutate the payload it was handed", () => {
+    const input = [...SECURITY_CRITICALS];
+    orderPillarFindings(input);
+    assert.equal(input[0]?.checkKey, "identity:break-glass-health");
   });
 });

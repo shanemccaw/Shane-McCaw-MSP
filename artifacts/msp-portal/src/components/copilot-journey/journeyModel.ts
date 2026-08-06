@@ -42,6 +42,15 @@ export interface WirePillarFinding {
   readonly severity: "critical" | "warning";
   readonly checkKey: string;
   readonly title: string;
+  /**
+   * The real signal weight behind this finding's own check (#414) — api-server's
+   * `buildFindingRankWeights` over `signal_derivation_rules`, resolved through
+   * the same `getSignalHealthImpacts` map the pillar's score is computed from.
+   * Optional because a payload from before #414 (or the design fixture) has no
+   * such field; absent is read as `0`, which sorts to the same place the
+   * server's own "no rule feeds this check" case does.
+   */
+  readonly rankWeight?: number;
 }
 
 export interface WirePillarStat {
@@ -297,6 +306,46 @@ function chipText(stat: WirePillarStat): string | null {
   return `${Math.round(stat.value).toLocaleString("en-US")} ${stat.label.toLowerCase()}`;
 }
 
+/**
+ * The order a pillar presents its findings in — and therefore which one becomes
+ * its headline and satellite (#414).
+ *
+ * Criticals lead, exactly as before: this changes ordering WITHIN a severity
+ * tier only, never across tiers, so a heavily-weighted warning can never
+ * displace a critical.
+ *
+ * Within a tier, findings order by their real `rankWeight` — the weight
+ * api-server resolved from `signal_derivation_rules` for that finding's own
+ * check. Before this, the tier kept raw array order, which the previous comment
+ * here justified as "already ranked by the check catalogue". That was not true:
+ * the server's order was `checkKey.localeCompare`, i.e. alphabetical. That is
+ * precisely how "No enabled break-glass account" came to outrank the tenant's
+ * Conditional Access findings as Security's headline — `identity:break-glass-
+ * health` sorts ahead of both `identity:ca-mfa-coverage` and
+ * `identity:ca-policy-count` on `b` before `c`, and nothing else was consulted.
+ *
+ * Ties keep the server's own order (`sort` is stable), so a payload whose
+ * weights are all equal — or one from before #414, which carries no weights at
+ * all — degrades to exactly today's behaviour rather than to something
+ * arbitrary.
+ *
+ * Note this is a genuine second application of a rank the server already
+ * applied, not the only one: the server ranks BEFORE its own per-pillar cap, so
+ * it decides WHICH findings survive; this decides how the survivors read. Doing
+ * it here too is what keeps the headline honest for any caller that assembles a
+ * payload itself — the design fixture, and this file's tests.
+ *
+ * Exported for tests.
+ */
+export function orderPillarFindings(
+  findings: readonly WirePillarFinding[],
+): readonly WirePillarFinding[] {
+  const severityRank = (f: WirePillarFinding) => (f.severity === "critical" ? 0 : 1);
+  return [...findings].sort(
+    (a, b) => severityRank(a) - severityRank(b) || (b.rankWeight ?? 0) - (a.rankWeight ?? 0),
+  );
+}
+
 export function buildPillarViews(
   payload: WirePillarStatsPayload | null | undefined,
 ): JourneyPillarView[] {
@@ -307,12 +356,7 @@ export function buildPillarViews(
     const id = PILLARS[key];
     const card = byKey.get(key);
     const findings = card?.findings ?? [];
-    // Criticals lead. Within a severity the scan's own order is kept — it is
-    // already ranked by the check catalogue, so re-sorting would lose that.
-    const ordered = [
-      ...findings.filter((f) => f.severity === "critical"),
-      ...findings.filter((f) => f.severity !== "critical"),
-    ];
+    const ordered = orderPillarFindings(findings);
     const statChips = (card?.stats ?? [])
       .map(chipText)
       .filter((t): t is string => t !== null)
@@ -343,7 +387,7 @@ export function buildPillarViews(
       chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
       stats: card?.stats ?? [],
       // `ordered`, not `findings`: criticals lead, and within a severity the
-      // scan's own catalogue order is kept — the same ranking every other
+      // real signal weight ranks (#414) — the same ranking every other
       // projection above already reads.
       findings: ordered,
       satelliteFinding: leadTitle,
