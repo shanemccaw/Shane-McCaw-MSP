@@ -9,9 +9,11 @@
  *
  *   GET  /api/consent/callback
  *     Microsoft redirects here after the customer's admin approves (or declines).
- *     Burns the single-use token, stamps tenants.consent.graph, redirects to a
- *     result page. Also handles checkout-session state (UUID) — marks the
- *     session consented.
+ *     Burns the single-use token, stamps tenants.consent.graph, then ends by
+ *     redirecting to a portal result page OR — when the consent came from the
+ *     marketing site's popup flow — by returning a page that closes the popup
+ *     (#474; see "How a consent callback ENDS" below). Also handles
+ *     checkout-session state (UUID) — marks the session consented.
  *
  *   GET  /api/consent/declined
  *     Shown when the admin clicked "No" at the Microsoft screen — never a blank page.
@@ -59,7 +61,7 @@ import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
-import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES, REQUIRED_WRITE_APP_PERMISSIONS } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
@@ -171,6 +173,100 @@ function getHostBase(req: Request): string {
  */
 function getCallbackUrl(req: Request): string {
   return `${getHostBase(req)}/api/consent/callback`;
+}
+
+// ── How a consent callback ENDS (#474) ─────────────────────────────────────────
+//
+// The three OAuth callbacks in this file are reached from two structurally
+// different UIs, and they must not end the same way:
+//
+//   "portal" — the MSP/admin and logged-in-customer flows. Microsoft was opened
+//     by navigating the whole tab, so the callback's only way to return the user
+//     anywhere is a redirect, and /portal/consent/success|declined is a page
+//     their portal session can actually render. Unchanged.
+//
+//   "popup"  — the marketing-site assessment flow (#434). Microsoft was opened
+//     in a `window.open` popup so the buyer's page never navigates away; that
+//     page polls GET /api/public/flow/consent-status and advances itself. The
+//     buyer is anonymous — they have no portal session at all — so redirecting
+//     the popup to /portal/consent/success lands them on a page that was never
+//     built for them and cannot work. It also leaves the popup sitting open on
+//     top of the flow. The popup's correct ending is to close itself.
+//
+// No postMessage to the opener. It was considered and is genuinely not needed:
+// the grant is stamped on the tenants row BEFORE any of these responses is
+// written, and useFlowStatus already polls consent-status on a 3s tick while a
+// grant is outstanding — so the flow learns about the grant from the server,
+// which is also the only source that survives the popup being closed by hand,
+// blocked, or opened as a tab instead. Adding a message channel would be a
+// second, weaker path to the same fact.
+
+/** Which UI opened the Microsoft screen, and therefore how this callback ends. */
+type ConsentUiOrigin = "portal" | "popup";
+
+/**
+ * The whole response for a popup-origin callback: a self-contained page that
+ * reports the outcome and closes itself.
+ *
+ * `window.close()` is permitted here because the window was opened by script
+ * (`window.open`) — but it is best-effort: a browser that refuses, or a buyer
+ * who opened the link in a normal tab after a popup block, is left looking at
+ * the message instead of a blank page. Terminal problems pass autoClose:false
+ * so they stay on screen to be read.
+ *
+ * Every value interpolated below is a literal from this module — no request
+ * data reaches this markup, which is what keeps it injection-free.
+ */
+function consentPopupPage(opts: {
+  title: string;
+  heading: string;
+  detail: string;
+  tone: "ok" | "warn";
+  autoClose: boolean;
+}): string {
+  const accent = opts.tone === "ok" ? "#34d399" : "#fbbf24";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${opts.title}</title>
+<style>
+  html,body{height:100%}
+  body{margin:0;display:flex;align-items:center;justify-content:center;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:#020617;color:#e2e8f0}
+  main{max-width:26rem;padding:2rem;text-align:center}
+  .dot{width:.6rem;height:.6rem;border-radius:50%;background:${accent};display:inline-block;margin-right:.5rem}
+  h1{font-size:1.05rem;font-weight:600;margin:0 0 .6rem}
+  p{font-size:.85rem;line-height:1.6;color:#94a3b8;margin:0}
+</style></head>
+<body><main>
+  <h1><span class="dot"></span>${opts.heading}</h1>
+  <p>${opts.detail}</p>
+</main>
+${opts.autoClose ? `<script>setTimeout(function(){try{window.close()}catch(e){}},600)</script>` : ""}
+</body></html>`;
+}
+
+/**
+ * Ends a consent callback the way its origin requires: the popup page for
+ * "popup", the caller's existing portal redirect for "portal".
+ *
+ * Deliberately takes the portal URL as a callback rather than a string so each
+ * call site keeps building its own redirect exactly as it always has — this
+ * splits where the response is written, never what the portal path is.
+ */
+function endConsentCallback(
+  res: Response,
+  origin: ConsentUiOrigin,
+  popup: Parameters<typeof consentPopupPage>[0],
+  portalRedirect: () => string,
+): void {
+  if (origin === "popup") {
+    // No explicit .type() — Express already sends a string body as
+    // text/html, which is what the sibling /consent/declined page relies on.
+    res.status(200).send(consentPopupPage(popup));
+    return;
+  }
+  res.redirect(portalRedirect());
 }
 
 // ── POST /api/consent/invite-link ──────────────────────────────────────────────
@@ -287,6 +383,13 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   const hostBase = getHostBase(req);
 
+  // Determine whether `state` is a checkout session UUID or an MSP invite token.
+  // Hoisted above the decline branch by #474: a declined popup has to close
+  // itself just like an approved one does, so every exit below needs to know
+  // which UI it is answering. Pure move — the expression is unchanged.
+  const isCheckoutSession = !!state && UUID_RE.test(state);
+  const uiOrigin: ConsentUiOrigin = isCheckoutSession ? "popup" : "portal";
+
   // Microsoft declined callback — surface a clear message
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
@@ -314,7 +417,19 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       }
     }
 
-    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    endConsentCallback(
+      res,
+      uiOrigin,
+      {
+        title: "Consent not granted",
+        heading: "Permissions were not granted",
+        detail:
+          "You can close this window. The page you started from will offer the approval again — nothing has been connected.",
+        tone: "warn",
+        autoClose: true,
+      },
+      () => `${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`,
+    );
     return;
   }
 
@@ -324,9 +439,6 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     res.status(400).send("Invalid consent callback parameters.");
     return;
   }
-
-  // Determine whether `state` is a checkout session UUID or an MSP invite token.
-  const isCheckoutSession = !!state && UUID_RE.test(state);
 
   // ── Cross-MSP tenant boundary guard (direct self-service checkout path only) ──
   // A checkout session always belongs to the isDirectBusiness MSP (checkout_sessions
@@ -365,8 +477,23 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         },
         "Consent callback: REJECTED cross-MSP tenant conflict — this Microsoft tenant is already connected to a customer under a different MSP; not marking the checkout session consented",
       );
-      res.redirect(
-        `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
+      // The only popup ending that deliberately does NOT close itself: this is
+      // a terminal refusal the buyer has to actually read, and the flow behind
+      // it will never advance (the session was not marked consented). Closing
+      // the window silently would strand them on "waiting for approval" with no
+      // explanation of why it never comes.
+      endConsentCallback(
+        res,
+        uiOrigin,
+        {
+          title: "Organisation already connected",
+          heading: "This Microsoft organisation is already connected",
+          detail:
+            "Your tenant is already registered with another provider on this platform, so this order cannot continue. Please contact support — you can close this window.",
+          tone: "warn",
+          autoClose: false,
+        },
+        () => `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
       );
       return;
     }
@@ -415,7 +542,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // name — which only this update returns. Nothing here depends on the consent
   // stamp, and the cross-MSP boundary guard above (the actual safety gate)
   // has already run and returned on conflict.
-  let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
+  // Portal-origin only — a checkout-session (popup) consent never reaches this
+  // URL now, it gets the self-closing page instead (#474).
+  const successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
   // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
   let updatedSession: { id: string; email: string; fullName: string; company: string | null; industry: string | null; productSlug: string } | undefined;
 
@@ -444,10 +573,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       });
 
     if (updatedSession) {
-      successRedirect += `&session=${encodeURIComponent(state)}`;
       log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
     } else {
-      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
+      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
     }
   }
 
@@ -833,7 +961,18 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   })();
 
-  res.redirect(successRedirect);
+  endConsentCallback(
+    res,
+    uiOrigin,
+    {
+      title: "Access granted",
+      heading: "Access granted",
+      detail: "You can close this window — the page you started from is already continuing on its own.",
+      tone: "ok",
+      autoClose: true,
+    },
+    () => successRedirect,
+  );
 });
 
 // ── GET /api/consent/declined ──────────────────────────────────────────────────
@@ -960,22 +1099,65 @@ function writeConsentStateSecret(): string {
   if (!s) throw new Error("JWT_SECRET not configured");
   return s;
 }
-function signWriteConsentState(customerId: number, token: string): string {
-  const mac = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${customerId}:${token}`).digest("hex");
-  return `wc.${customerId}.${token}.${mac}`;
+/**
+ * The signed payload behind a write- or SharePoint-consent state (#474).
+ *
+ * The "portal" payload is byte-for-byte what it has always been, so every state
+ * minted before this change still verifies and every in-flight consent link
+ * keeps working. "popup" appends its own segment, which means the origin a
+ * callback acts on is covered by the HMAC exactly like customerId and the token
+ * are — it cannot be flipped by editing the redirect URL. (Even if it could, the
+ * only thing it selects is which response body the browser gets; it grants
+ * nothing and picks no tenant. Covering it is still the right default.)
+ */
+function consentStatePayload(prefix: string, customerId: number, token: string, origin: ConsentUiOrigin): string {
+  return origin === "popup" ? `${prefix}:${customerId}:${token}:popup` : `${prefix}:${customerId}:${token}`;
 }
-function verifyWriteConsentState(state: string): { customerId: number; token: string } | null {
+
+/**
+ * Shared parse for both `wc.` and `sp.` states. Accepts the original 4-segment
+ * portal form and the 5-segment popup form (`<kind>.<id>.<token>.popup.<mac>`)
+ * and NOTHING else — "popup" is the one literal allowed in that slot, so an
+ * arbitrary segment cannot be smuggled through even before the MAC is checked.
+ */
+function verifyConsentState(
+  state: string,
+  kind: "wc" | "sp",
+  payloadPrefix: string,
+): { customerId: number; token: string; origin: ConsentUiOrigin } | null {
   const parts = state.split(".");
-  if (parts.length !== 4 || parts[0] !== "wc" || !parts[1] || !parts[2] || !parts[3]) return null;
-  const customerId = parseInt(parts[1], 10);
+  if (parts.length !== 4 && parts.length !== 5) return null;
+  if (parts[0] !== kind) return null;
+
+  const origin: ConsentUiOrigin | null =
+    parts.length === 4 ? "portal" : parts[3] === "popup" ? "popup" : null;
+  if (!origin) return null;
+
+  const idPart = parts[1];
   const token = parts[2];
-  const mac = parts[3];
-  if (isNaN(customerId) || String(customerId) !== parts[1]) return null;
-  const expected = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${customerId}:${token}`).digest("hex");
+  const mac = parts[parts.length - 1];
+  if (!idPart || !token || !mac) return null;
+
+  const customerId = parseInt(idPart, 10);
+  if (isNaN(customerId) || String(customerId) !== idPart) return null;
+
+  const expected = createHmac("sha256", writeConsentStateSecret())
+    .update(consentStatePayload(payloadPrefix, customerId, token, origin))
+    .digest("hex");
   const a = Buffer.from(mac, "hex");
   const b = Buffer.from(expected, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { customerId, token };
+  return { customerId, token, origin };
+}
+
+function signWriteConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
+  const mac = createHmac("sha256", writeConsentStateSecret())
+    .update(consentStatePayload("write-consent", customerId, token, origin))
+    .digest("hex");
+  return origin === "popup" ? `wc.${customerId}.${token}.popup.${mac}` : `wc.${customerId}.${token}.${mac}`;
+}
+function verifyWriteConsentState(state: string): { customerId: number; token: string; origin: ConsentUiOrigin } | null {
+  return verifyConsentState(state, "wc", "write-consent");
 }
 
 // ── GET /api/admin/customers/:customerId/write-consent/start ───────────────────
@@ -1131,7 +1313,7 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     res.status(400).send("Invalid consent callback state.");
     return;
   }
-  const { customerId, token } = verified;
+  const { customerId, token, origin: uiOrigin } = verified;
 
   // Validate + burn the single-use token; it must belong to THIS customer.
   const now = new Date();
@@ -1177,7 +1359,19 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ customerId, tenant, error, error_subcode }, "Write-consent callback: admin declined");
     await stampConsent(eq(tenantsTable.id, target.id), "writeBack", { status: "declined" });
-    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    endConsentCallback(
+      res,
+      uiOrigin,
+      {
+        title: "Write access not granted",
+        heading: "Write access was not granted",
+        detail:
+          "You can close this window. The page you started from will offer it again, or let you choose a different option.",
+        tone: "warn",
+        autoClose: true,
+      },
+      () => `${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`,
+    );
     return;
   }
 
@@ -1210,7 +1404,18 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
   });
 
   log.info({ tenant, customerId }, "Tenant WRITE admin consent granted");
-  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&write=1`);
+  endConsentCallback(
+    res,
+    uiOrigin,
+    {
+      title: "Write access granted",
+      heading: "Write access granted",
+      detail: "You can close this window — the page you started from is already continuing on its own.",
+      tone: "ok",
+      autoClose: true,
+    },
+    () => `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&write=1`,
+  );
 });
 
 // ── GET /api/admin/customers/:customerId/write-consent ─────────────────────────
@@ -1263,22 +1468,14 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
 // consent_invite_tokens row, with an "sp." prefix so a state minted for this flow
 // cannot be replayed against the read or write callbacks (and vice versa).
 
-function signSharePointConsentState(customerId: number, token: string): string {
-  const mac = createHmac("sha256", writeConsentStateSecret()).update(`sharepoint-consent:${customerId}:${token}`).digest("hex");
-  return `sp.${customerId}.${token}.${mac}`;
+function signSharePointConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
+  const mac = createHmac("sha256", writeConsentStateSecret())
+    .update(consentStatePayload("sharepoint-consent", customerId, token, origin))
+    .digest("hex");
+  return origin === "popup" ? `sp.${customerId}.${token}.popup.${mac}` : `sp.${customerId}.${token}.${mac}`;
 }
-function verifySharePointConsentState(state: string): { customerId: number; token: string } | null {
-  const parts = state.split(".");
-  if (parts.length !== 4 || parts[0] !== "sp" || !parts[1] || !parts[2] || !parts[3]) return null;
-  const customerId = parseInt(parts[1], 10);
-  const token = parts[2];
-  const mac = parts[3];
-  if (isNaN(customerId) || String(customerId) !== parts[1]) return null;
-  const expected = createHmac("sha256", writeConsentStateSecret()).update(`sharepoint-consent:${customerId}:${token}`).digest("hex");
-  const a = Buffer.from(mac, "hex");
-  const b = Buffer.from(expected, "hex");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { customerId, token };
+function verifySharePointConsentState(state: string): { customerId: number; token: string; origin: ConsentUiOrigin } | null {
+  return verifyConsentState(state, "sp", "sharepoint-consent");
 }
 
 // ── GET /api/admin/customers/:customerId/sharepoint-consent/start ──────────────
@@ -1413,7 +1610,7 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
     res.status(400).send("Invalid consent callback state.");
     return;
   }
-  const { customerId, token } = verified;
+  const { customerId, token, origin: uiOrigin } = verified;
 
   // Validate + burn the single-use token; it must belong to THIS customer.
   const now = new Date();
@@ -1459,7 +1656,19 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ customerId, tenant, error, error_subcode }, "SharePoint-consent callback: admin declined");
     await stampConsent(eq(tenantsTable.id, target.id), "sharepoint", { status: "declined" });
-    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    endConsentCallback(
+      res,
+      uiOrigin,
+      {
+        title: "SharePoint access not granted",
+        heading: "SharePoint access was not granted",
+        detail:
+          "You can close this window. The page you started from will offer the approval again — nothing has been connected.",
+        tone: "warn",
+        autoClose: true,
+      },
+      () => `${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`,
+    );
     return;
   }
 
@@ -1494,7 +1703,18 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
   });
 
   log.info({ tenant, customerId }, "Tenant SHAREPOINT admin consent granted");
-  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&sharepoint=1`);
+  endConsentCallback(
+    res,
+    uiOrigin,
+    {
+      title: "SharePoint access granted",
+      heading: "SharePoint access granted",
+      detail: "You can close this window — the page you started from is already continuing on its own.",
+      tone: "ok",
+      autoClose: true,
+    },
+    () => `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&sharepoint=1`,
+  );
 });
 
 // ── GET /api/admin/customers/:customerId/sharepoint-consent ────────────────────
@@ -1699,9 +1919,14 @@ router.get("/public/flow/sharepoint-consent-url", async (req: Request, res: Resp
     expiresAt,
   });
 
+  // "popup": this URL is opened by the marketing flow's window.open, so the
+  // callback must end by closing that window rather than redirecting an
+  // anonymous buyer into the portal (#474). Carried inside the signed state
+  // because the callback is a single fixed Azure redirect URI shared with the
+  // admin/portal flows and has nothing else to tell them apart by.
   const consentUrl = buildAdminConsentUrl(
     tenant.tenantId,
-    signSharePointConsentState(tenant.id, token),
+    signSharePointConsentState(tenant.id, token, "popup"),
     `${getHostBase(req)}/api/admin/sharepoint-consent/callback`,
     process.env.MT_APP_CLIENT_ID,
   );
@@ -1745,9 +1970,10 @@ router.get("/public/flow/write-consent-url", async (req: Request, res: Response)
     expiresAt,
   });
 
+  // "popup" — same reason as the SharePoint route above (#474).
   const consentUrl = buildAdminConsentUrl(
     tenant.tenantId,
-    signWriteConsentState(tenant.id, token),
+    signWriteConsentState(tenant.id, token, "popup"),
     `${getHostBase(req)}/api/admin/write-consent/callback`,
     process.env.MT_APP_WRITE_CLIENT_ID,
   );
@@ -1761,7 +1987,12 @@ router.get("/public/flow/write-consent-url", async (req: Request, res: Response)
     metadata: { tenantHint: tenant.tenantId, customerId: tenant.id, expiresAt, checkoutSessionId: session.id },
   });
 
-  res.json({ consentUrl, expiresAt });
+  // `permissions` mirrors what /public/flow/sharepoint-consent-url has always
+  // returned, so the flow can show the buyer the write app's permission list
+  // before they approve it (#475). It is [] until REQUIRED_WRITE_APP_PERMISSIONS
+  // is filled in from the app registration — see the constant's note in graph.ts.
+  // The client renders nothing rather than a placeholder when it is empty.
+  res.json({ consentUrl, expiresAt, permissions: REQUIRED_WRITE_APP_PERMISSIONS });
 });
 
 // ── POST /api/public/flow/compliance-decision ──────────────────────────────────

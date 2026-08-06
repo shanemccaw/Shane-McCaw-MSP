@@ -396,6 +396,14 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const [consentStage, setConsentStage] = useState<"graph" | "sharepoint">("graph");
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
+  /**
+   * The permission list the CURRENT consent link's endpoint reported (#475).
+   * The read step gets its scopes from useConsentScopes instead; this is for the
+   * write app, whose permissions only its own endpoint knows. Stays [] when the
+   * endpoint reports none, and the panel is then not rendered at all rather than
+   * showing a placeholder that would contradict Microsoft's own consent screen.
+   */
+  const [consentPermissions, setConsentPermissions] = useState<string[]>([]);
   /** Bumped to force a fresh consent link (a declined grant spends the old one). */
   const [consentNonce, setConsentNonce] = useState(0);
 
@@ -460,6 +468,13 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           else setStep("payment");
           return;
         }
+        // Deliberately NOT subject to #448's pre-granted rule below: this path
+        // only runs for a session being RESUMED after a reload, where "the
+        // grant is already on file" is the normal, expected outcome of work the
+        // buyer already did in this same order. Resuming past a step they
+        // completed is the point. The pre-granted rule applies to the live
+        // stage transition, where the same fact means something different — a
+        // grant that was there before this order ever started.
         if (s.sharepoint === "granted") setStep("compliance");
         else if (s.graph === "granted") {
           setConsentStage("sharepoint");
@@ -483,36 +498,50 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   // ── #434 auto-advance ───────────────────────────────────────────────────────
   // The single place the flow moves itself forward off a landed consent grant.
   //
-  // #448 fix: `graphStatusAtSharepointEntryRef` guards against a same-tick
-  // cascade. A tenant that already has a `sharepoint` grant on file (e.g. it
-  // was consented in an earlier session against this same Microsoft tenant —
-  // consent lives on the TENANT, not the checkout session, #99) can have BOTH
-  // `status.graph` and `status.sharepoint` already "granted" the moment the
-  // very first poll after the Graph grant lands comes back. Without the guard,
-  // this effect fires twice in the same synchronous render pass off that one
-  // stale `status` object — `consentStage` flips "graph" -> "sharepoint", and
-  // the very next invocation (triggered by that state change, not a new poll)
-  // immediately satisfies the "sharepoint" branch against the SAME status —
-  // so the "Grant SharePoint Access (2 of 2)" screen is never painted at all,
-  // which is exactly #448's report. Remembering which `status` object caused
-  // the "graph" -> "sharepoint" transition, and refusing to advance past it
-  // until a genuinely NEW poll response arrives, guarantees the SharePoint
-  // step is always shown — and given at least one real round trip to confirm
-  // its state — before the flow ever moves on, even when the grant turns out
-  // to already be there.
+  // #448, first fix (cf5b82c8): `graphStatusAtSharepointEntryRef` guards against
+  // a same-tick cascade. A tenant that already has a `sharepoint` grant on file
+  // (e.g. it was consented in an earlier session against this same Microsoft
+  // tenant — consent lives on the TENANT, not the checkout session, #99) can
+  // have BOTH `status.graph` and `status.sharepoint` already "granted" the
+  // moment the very first poll after the Graph grant lands comes back. Without
+  // the guard, this effect fired twice in the same synchronous render pass off
+  // that one stale `status` object — `consentStage` flipped "graph" ->
+  // "sharepoint", and the very next invocation (triggered by that state change,
+  // not a new poll) immediately satisfied the "sharepoint" branch against the
+  // SAME status, so the "Grant SharePoint Access (2 of 2)" screen was never
+  // painted at all.
+  //
+  // #448, reopened: that guard is correct but was not sufficient, and the reason
+  // is visible in what it actually promises — it only refuses to advance "until
+  // a genuinely NEW poll response arrives". For the same already-granted tenant
+  // the next poll is 3 seconds later and reports "granted" again, so the screen
+  // painted and then tore itself away a tick later. From the buyer's seat that
+  // is still a skipped step, and it is the state Shane's own tenant is
+  // permanently in after the first round of testing.
+  //
+  // So the grant being ALREADY THERE when this stage is entered is now treated
+  // as a distinct case from it LANDING while the stage is open. Pre-granted ->
+  // no auto-advance at all: the step is shown, says so honestly, and waits for
+  // an explicit Continue. Only a grant that arrives after entry advances the
+  // flow by itself, which is the case auto-advance exists for. Between the two,
+  // a tenant that has not really granted SharePoint can never be skipped past,
+  // and one that has is never silently hurried through a screen it can't act on.
   const graphStatusAtSharepointEntryRef = useRef<FlowStatus | null>(null);
+  const [sharepointPreGranted, setSharepointPreGranted] = useState(false);
   useEffect(() => {
     if (!status) return;
     if (step === "consent") {
       if (consentStage === "graph" && status.graph === "granted") {
         trackEvent("consent_granted", { scope: "graph" });
         graphStatusAtSharepointEntryRef.current = status;
+        setSharepointPreGranted(status.sharepoint === "granted");
         setConsentStage("sharepoint");
         setConsentUrl(null);
         setError(null);
       } else if (
         consentStage === "sharepoint" &&
         status.sharepoint === "granted" &&
+        !sharepointPreGranted &&
         status !== graphStatusAtSharepointEntryRef.current
       ) {
         trackEvent("consent_granted", { scope: "sharepoint" });
@@ -524,7 +553,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       setStep("payment");
       setError(null);
     }
-  }, [status, step, consentStage]);
+  }, [status, step, consentStage, sharepointPreGranted]);
 
   // Surface a declined grant rather than polling forever behind a silent UI —
   // and mint a FRESH consent link for the retry. The SharePoint and write-app
@@ -562,12 +591,22 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
 
     let cancelled = false;
     setConsentUrl(null);
+    setConsentPermissions([]);
     fetch(endpoint)
-      .then((r) => r.json() as Promise<{ url?: string | null; consentUrl?: string | null; error?: string }>)
+      .then(
+        (r) =>
+          r.json() as Promise<{
+            url?: string | null;
+            consentUrl?: string | null;
+            permissions?: string[] | null;
+            error?: string;
+          }>,
+      )
       .then((d) => {
         if (cancelled) return;
         const url = d.consentUrl ?? d.url ?? null;
         setConsentUrl(url);
+        setConsentPermissions(Array.isArray(d.permissions) ? d.permissions : []);
         if (!url) {
           setError(
             d.error === "session_expired" || d.error === "session_invalid"
@@ -703,6 +742,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setError(null);
     setForm({});
     setPortalUrl(null);
+    setSharepointPreGranted(false);
     graphStatusAtSharepointEntryRef.current = null;
   }, []);
 
@@ -944,28 +984,44 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           <h3 style={H3}>
             {consentStage === "graph"
               ? "Grant read-only access to your tenant."
-              : "Now grant read-only access to SharePoint."}
+              : sharepointPreGranted
+                ? "SharePoint access is already granted."
+                : "Now grant read-only access to SharePoint."}
           </h3>
           <p style={BODY}>
             {consentStage === "graph"
               ? "This opens the Microsoft admin consent screen in a new window. An account with Global Administrator or Privileged Role Administrator can approve it. The scan reads; it never writes, never moves a file, and never changes a policy."
-              : "SharePoint Online is a separate approval on the same app registration, so it is a second trip to the Microsoft consent screen. Same read-only footing — site inventory and sharing configuration, nothing written."}
+              : sharepointPreGranted
+                ? "SharePoint Online is a separate approval, and your organisation has already given it — from an earlier visit or by another administrator. The consent lives on your Microsoft tenant, not on this order, so there is nothing to approve a second time. We are showing you this step rather than skipping it so you can see the access exists."
+                : "SharePoint Online is a separate approval on the same app registration, so it is a second trip to the Microsoft consent screen. Same read-only footing — site inventory and sharing configuration, nothing written."}
           </p>
 
           {consentStage === "graph" && <ScopesPanel scopes={scopes} loading={scopesLoading} />}
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-            <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
-              {consentStage === "graph" ? "Grant Consent in Microsoft 365" : "Grant SharePoint Access"}
-            </Button>
-            <WaitingPulse
-              label={
-                consentUrl
-                  ? "Waiting for approval — this page continues on its own"
-                  : "Preparing your consent link…"
-              }
-            />
-          </div>
+          {/* #448: an already-granted tenant gets an explicit Continue instead
+              of a grant button it cannot meaningfully use and an auto-advance
+              that reads as the step being skipped. */}
+          {consentStage === "sharepoint" && sharepointPreGranted ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <Button size="lg" onClick={() => setStep("compliance")}>
+                Continue
+              </Button>
+              <span style={{ fontSize: 12.5, color: "#34d399" }}>● Already approved on your tenant</span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
+                {consentStage === "graph" ? "Grant Consent in Microsoft 365" : "Grant SharePoint Access"}
+              </Button>
+              <WaitingPulse
+                label={
+                  consentUrl
+                    ? "Waiting for approval — this page continues on its own"
+                    : "Preparing your consent link…"
+                }
+              />
+            </div>
+          )}
 
           {popupBlocked && consentUrl && (
             <p style={{ ...FOOTNOTE, color: "#fbbf24" }}>
@@ -1062,6 +1118,46 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
             your Enterprise applications list, with its own consent and its own revoke. It exists so the one write we need (adding the read
             app to the compliance role group) never rides on the read app's permissions.
           </p>
+
+          {/* #475 — say plainly what this consent is FOR, in mechanism terms. */}
+          <div
+            style={{
+              ...CARD,
+              borderRadius: 14,
+              padding: "18px 20px",
+              margin: "22px 0",
+              borderColor: "rgba(251,191,36,.28)",
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
+              What this consent does
+            </span>
+            <p style={{ ...BODY, fontSize: 13.5, margin: "12px 0 0" }}>
+              Approving this lets us add the read-only app registration to a{" "}
+              <strong style={{ color: "#cbd5e1" }}>role group in the Microsoft Purview compliance portal</strong>. That membership is the
+              only thing that makes your{" "}
+              <strong style={{ color: "#cbd5e1" }}>DLP (Data Loss Prevention) policies readable</strong>, which is what the Compliance
+              pillar of your report is scored on. Purview role groups are a permission system of their own — Microsoft 365 admin consent,
+              however broad, does not reach them, which is why this cannot be folded into the read-only approval you already gave.
+            </p>
+            <p style={{ ...FOOTNOTE, marginTop: 12 }}>
+              It is one membership addition, made once. The scan itself stays read-only, and revoking this app in Entra ID stops it having
+              any write ability at all.
+            </p>
+          </div>
+
+          {/* Same grouped presentation as the read step (#447), for the write
+              app's own permissions. Rendered only when the endpoint actually
+              reports a list — see REQUIRED_WRITE_APP_PERMISSIONS in the API. */}
+          {consentPermissions.length > 0 && (
+            <ScopesPanel
+              scopes={consentPermissions}
+              loading={false}
+              title="Permissions requested"
+              note={`${consentPermissions.length} permission${consentPermissions.length === 1 ? "" : "s"} on a separate app`}
+            />
+          )}
+
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
             <Button size="lg" onClick={grantConsent} disabled={!consentUrl}>
               Approve Write Access in Microsoft 365
@@ -1928,15 +2024,34 @@ function groupScopes(scopes: string[]): Array<{ key: ScopeCategoryKey; items: st
   return SCOPE_CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({ key, items: buckets.get(key)! }));
 }
 
-function ScopesPanel({ scopes, loading }: { scopes: string[]; loading: boolean }) {
+/**
+ * `title`/`note` are parameterised (#475) so the write-consent step can reuse
+ * this exact grouped presentation without inheriting the read step's
+ * "all read-only" claim, which would be false for the write app.
+ */
+function ScopesPanel({
+  scopes,
+  loading,
+  title = "Scopes requested",
+  note,
+}: {
+  scopes: string[];
+  loading: boolean;
+  title?: string;
+  note?: string;
+}) {
   const groups = groupScopes(scopes);
   return (
     <div style={{ ...CARD, borderRadius: 14, padding: "20px 22px", marginBottom: 26 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
-          Scopes requested
+          {title}
         </span>
-        {scopes.length > 0 && <span style={{ fontSize: 11.5, color: "#475569" }}>{scopes.length} permissions, all read-only</span>}
+        {scopes.length > 0 && (
+          <span style={{ fontSize: 11.5, color: "#475569" }}>
+            {note ?? `${scopes.length} permissions, all read-only`}
+          </span>
+        )}
       </div>
 
       {scopes.length > 0 ? (

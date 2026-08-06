@@ -86,6 +86,38 @@ export const REQUIRED_MT_SCOPES = [
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];
 
+// ── Write App Registration permissions (#475) ──────────────────────────────────
+//
+// The Application permissions configured on the SEPARATE write app
+// (MT_APP_WRITE_CLIENT_ID — appId 3308b280-e41e-42ba-9f73-73aac2ad3dee,
+// "Shane McCaw Consulting — MSP Platform (Write)"), mirrored here the same way
+// REQUIRED_MT_SCOPES mirrors the read app and REQUIRED_SHAREPOINT_APP_PERMISSIONS
+// mirrors the SharePoint resource, so the assessment flow can show a buyer what
+// they are about to approve before they click through to Microsoft.
+//
+// ⚠️ DELIBERATELY EMPTY — Shane must fill this in, and it is the ONLY edit needed.
+//
+// This list cannot be derived from anywhere in this repo, and nothing here should
+// try. The write consent uses Microsoft's v2 /adminconsent flow, which passes NO
+// scope parameter (see buildAdminConsentUrl below) — it grants whatever the app
+// registration already declares in Entra, so the app registration itself is the
+// only source of truth, and the code's own write call sites tell you what the app
+// NEEDS, not what it HAS. `tenants.consent.writeBack` is not a source either: the
+// write callback deliberately records no `grants` snapshot for exactly this reason.
+//
+// To fill it in:
+//   Entra admin center → App registrations → "Shane McCaw Consulting — MSP
+//   Platform (Write)" (3308b280-e41e-42ba-9f73-73aac2ad3dee) → API permissions
+//   → copy the Application permission names verbatim.
+//
+// Until then, every consumer degrades honestly rather than inventing a list:
+// /api/public/flow/write-consent-url returns `permissions: []` and the flow's
+// write-consent step renders its explanation copy with no permission panel at
+// all. A wrong list here would be worse than none — it would be shown to a
+// paying customer next to Microsoft's own consent screen, which would disagree
+// with it.
+export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [];
+
 export function graphCredentialsPresent(): boolean {
   return Boolean(
     process.env.GRAPH_TENANT_ID &&

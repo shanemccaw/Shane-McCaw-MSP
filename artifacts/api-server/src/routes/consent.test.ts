@@ -535,6 +535,13 @@ describe("consent route handlers", () => {
   // already registered as a customer under a DIFFERENT MSP must be REJECTED
   // before the session is marked consented and before any write happens —
   // never silently cross-linked.
+  //
+  // NOTE (#474): a UUID state IS the marketing-site popup flow, and a popup
+  // callback no longer redirects anywhere — it answers with a self-closing page
+  // (an anonymous checkout buyer has no portal session to land in). So these
+  // cases assert on the SENT PAGE, not on a redirect URL, while the guard
+  // invariants they exist for — no write, no cross-link, no customer row —
+  // are unchanged and still asserted directly.
   describe("GET /consent/callback — cross-MSP tenant conflict (checkout session)", () => {
     // Valid UUID v4 so UUID_RE.test(state) === true (checkout-session path).
     const CHECKOUT_STATE = "11111111-1111-4111-8111-111111111111";
@@ -549,8 +556,12 @@ describe("consent route handlers", () => {
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
 
-      expect(store.redirectUrl).toContain("/consent/tenant-conflict");
-      expect(store.redirectUrl).toContain("tenant=tenant-conflict");
+      // Popup origin: no redirect at all, and the refusal is stated on a page
+      // that deliberately does NOT close itself — the flow behind it will never
+      // advance, so the buyer has to be able to read why.
+      expect(store.redirectUrl).toBeNull();
+      expect(store.sentText).toContain("already connected");
+      expect(store.sentText).not.toContain("window.close");
       // Session must NOT be marked consented and no grant may be stamped.
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockInsert).not.toHaveBeenCalled();
@@ -569,8 +580,10 @@ describe("consent route handlers", () => {
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
 
-      expect(store.redirectUrl).not.toContain("/consent/tenant-conflict");
-      expect(store.redirectUrl).toContain("/consent/success");
+      expect(store.redirectUrl).toBeNull();
+      expect(store.sentText).not.toContain("already connected");
+      expect(store.sentText).toContain("Access granted");
+      expect(store.sentText).toContain("window.close");
     });
 
     it("proceeds when no customer exists for the checkout tenant yet", async () => {
@@ -583,8 +596,42 @@ describe("consent route handlers", () => {
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
 
-      expect(store.redirectUrl).not.toContain("/consent/tenant-conflict");
-      expect(store.redirectUrl).toContain("/consent/success");
+      expect(store.redirectUrl).toBeNull();
+      expect(store.sentText).not.toContain("already connected");
+      expect(store.sentText).toContain("Access granted");
+      expect(store.sentText).toContain("window.close");
+    });
+
+    // The other half of #474's contract, asserted so it cannot silently regress:
+    // a NON-checkout (portal/invite-token) consent must still redirect exactly
+    // as it always has, and must never be handed the popup page.
+    it("still redirects the portal/invite path to /consent/success (no popup page)", async () => {
+      dbSelectQueue.push([{ customerId: null, clientUserId: null }]);   // invite-token lookup
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-portal", admin_consent: "True", state: "not-a-uuid-token" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/success");
+      expect(store.redirectUrl).toContain("tenant=tenant-portal");
+      expect(store.sentText).toBeNull();
+    });
+
+    // A declined popup has to close itself too — otherwise the buyer is left
+    // staring at a portal page they cannot use after saying "no".
+    it("answers a declined checkout-session consent with a self-closing page", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-declined", error: "access_denied", state: CHECKOUT_STATE },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toBeNull();
+      expect(store.sentText).toContain("not granted");
+      expect(store.sentText).toContain("window.close");
     });
   });
 
@@ -655,6 +702,70 @@ describe("consent route handlers", () => {
       expect(store.redirectUrl).toContain("/consent/success");
       expect(store.redirectUrl).toContain("write=1");
       expect(consentWasStamped()).toBe(true);
+    });
+
+    // ── #474: the popup-origin state form ────────────────────────────────────
+    // The write callback is ONE fixed Azure redirect URI shared by the admin,
+    // portal and marketing-site flows, so the only thing that can tell it which
+    // UI to answer is the state — and that has to be tamper-proof, hence the
+    // origin segment being covered by the same HMAC as customerId and the token.
+
+    /** Mirrors signWriteConsentState(..., "popup") — the 5-segment form. */
+    function writeStatePopup(customerId: number, token: string): string {
+      const mac = createHmac("sha256", process.env.JWT_SECRET as string)
+        .update(`write-consent:${customerId}:${token}:popup`)
+        .digest("hex");
+      return `wc.${customerId}.${token}.popup.${mac}`;
+    }
+
+    it("answers a popup-origin write consent with a self-closing page, not a portal redirect", async () => {
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: writeStatePopup(7, "tok-w") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toBeNull();
+      expect(store.sentText).toContain("Write access granted");
+      expect(store.sentText).toContain("window.close");
+      // The grant itself is unaffected by which UI asked for it.
+      expect(consentWasStamped()).toBe(true);
+    });
+
+    it("REFUSES a state whose origin segment was tampered onto a portal MAC", async () => {
+      // Take a valid PORTAL state and splice "popup" in front of its MAC. The
+      // MAC was computed without the origin, so this must fail closed rather
+      // than be accepted as a popup consent.
+      const portal = writeState(7, "tok-w");           // wc.7.tok-w.<mac>
+      const parts = portal.split(".");
+      const forged = `${parts[0]}.${parts[1]}.${parts[2]}.popup.${parts[3]}`;
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: forged },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(400);
+      expect(consentWasStamped()).toBe(false);
+    });
+
+    it("REFUSES a 5-segment state whose origin segment is not the literal 'popup'", async () => {
+      const mac = createHmac("sha256", process.env.JWT_SECRET as string)
+        .update(`write-consent:7:tok-w:portal`)
+        .digest("hex");
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: `wc.7.tok-w.portal.${mac}` },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(400);
+      expect(consentWasStamped()).toBe(false);
     });
   });
 
