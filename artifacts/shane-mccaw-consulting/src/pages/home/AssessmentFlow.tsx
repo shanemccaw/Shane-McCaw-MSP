@@ -689,6 +689,28 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         })}
       </div>
 
+      {/* #468: temporary debug tooling, dev-only. Remove or confirm dev-gated before production release. */}
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          onClick={restartFlow}
+          style={{
+            marginBottom: 22,
+            padding: "4px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: ".05em",
+            color: "#fca5a5",
+            background: "rgba(127,29,29,.22)",
+            border: "1px solid rgba(248,113,113,.35)",
+            borderRadius: 8,
+            cursor: "pointer",
+          }}
+        >
+          [DEBUG] Reset flow
+        </button>
+      )}
+
       {error && (
         <div
           style={{
