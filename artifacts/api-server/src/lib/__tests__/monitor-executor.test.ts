@@ -1398,6 +1398,69 @@ describe("graphFetchPaginated", () => {
     await expect(graphFetchPaginated("tenant1", "/deviceManagement/deviceConfigurations", "GET"))
       .rejects.toThrow(/non-JSON body/);
   });
+
+  // ── #487 — Intune "MDM never configured" — treated as a real ok/empty result ──
+
+  function errRes(status: number, body: string) {
+    return { ok: false, status, text: async () => body };
+  }
+
+  const DEVICE_FE_FORBIDDEN_BODY =
+    'Graph API error 401: {"error":{"code":"UnknownError","message":"{\\"ErrorCode\\":\\"Forbidden\\",\\"Message\\":\\"{\\\\r\\\\n  \\\\\\"_version\\\\\\": 3,\\\\r\\\\n  \\\\\\"Message\\\\\\": \\\\\\"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 01399de2-e6e8-4ddb-98cf-65acb6f3b91c - Url: https://proxy.msua01.manage.microsoft.com/DeviceFE/StatelessDeviceFEService/deviceManagement/manage';
+
+  const AUTOPILOT_SEGMENT_BODY =
+    '{"error":{"code":"BadRequest","message":"Resource not found for the segment \'windowsAutopilotDeploymentProfiles\'.","innerError":{"date":"2026-07-23T06:11:09","request-id":"x","client-request-id":"x"}}}';
+
+  const IIS_503_BODY =
+    '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">\r\n<HTML><HEAD><TITLE>Service Unavailable</TITLE></HEAD>\r\n<BODY><h2>Service Unavailable</h2>\r\n<hr><p>HTTP Error 503. The service is unavailable.</p>\r\n</BODY></HTML>\r\n';
+
+  it("treats the DeviceFE/StatelessDeviceFEService 401 as a real ok/empty result on a managedDevices endpoint", async () => {
+    mockFetch.mockResolvedValue(errRes(401, DEVICE_FE_FORBIDDEN_BODY));
+
+    const result = await graphFetchPaginated("tenant1", "/deviceManagement/managedDevices", "GET");
+    expect(result.items).toEqual([]);
+    expect(result.pageCount).toBe(1);
+    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+  });
+
+  it("treats the windowsAutopilotDeploymentProfiles 'segment not found' 400 as a real ok/empty result", async () => {
+    mockFetch.mockResolvedValue(errRes(400, AUTOPILOT_SEGMENT_BODY));
+
+    const result = await graphFetchPaginated("tenant1", "/deviceManagement/windowsAutopilotDeploymentProfiles", "GET");
+    expect(result.items).toEqual([]);
+    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+  });
+
+  it("treats a raw IIS 'Service Unavailable' 503 on an Intune endpoint as a real ok/empty result", async () => {
+    mockFetch.mockResolvedValue(errRes(503, IIS_503_BODY));
+
+    const result = await graphFetchPaginated("tenant1", "/deviceAppManagement/managedAppPolicies", "GET");
+    expect(result.items).toEqual([]);
+    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+  });
+
+  it("does NOT swallow the same 401/400/503 signatures on a non-Intune endpoint", async () => {
+    mockFetch.mockResolvedValue(errRes(401, DEVICE_FE_FORBIDDEN_BODY));
+    await expect(graphFetchPaginated("tenant1", "/users", "GET")).rejects.toThrow("Graph API error 401");
+
+    mockFetch.mockResolvedValue(errRes(400, AUTOPILOT_SEGMENT_BODY));
+    await expect(graphFetchPaginated("tenant1", "/groups", "GET")).rejects.toThrow("Graph API error 400");
+
+    mockFetch.mockResolvedValue(errRes(503, IIS_503_BODY));
+    await expect(graphFetchPaginated("tenant1", "/security/alerts_v2", "GET")).rejects.toThrow("Graph API error 503");
+  });
+
+  it("does NOT swallow a genuine permission-denied 403 on an Intune endpoint (contrast with the not-configured signatures)", async () => {
+    mockFetch.mockResolvedValue(
+      errRes(
+        403,
+        '{"error":{"code":"authorization_error","message":"Failed to authorize, token doesn\'t have the required permissions."}}',
+      ),
+    );
+
+    await expect(graphFetchPaginated("tenant1", "/deviceManagement/managedDevices", "GET"))
+      .rejects.toThrow("Graph API error 403");
+  });
 });
 
 // ── parseCsvReport / isCsvReportResponse ──────────────────────────────────────

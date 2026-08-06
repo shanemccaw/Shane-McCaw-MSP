@@ -1292,6 +1292,57 @@ export interface ThrottleRetryOptions {
   baseDelayMs: number;
 }
 
+// ── Intune "MDM never configured" detection (#487) ─────────────────────────────
+// Devices/Intune checks (encryption-status, os-patch-compliance,
+// autopilot-coverage, enrollment-status, app-protection-coverage,
+// compliance-policy-coverage, update-rings-config, compliant-vs-noncompliant)
+// were landing as status: 'error' at up to 100% platform-wide. The raw error
+// bodies (pulled via sqloutput.json's statement-1 query, grouped and
+// normalized past their per-request noise — Activity IDs, request IDs,
+// TargetServer hosts) resolve to exactly THREE distinct wire signatures, not
+// one, and none of them is a license/SKU signal:
+//   1. 401, the four `managedDevices`-backed checks — a legacy Intune backend
+//      proxy (`DeviceFE/StatelessDeviceFEService`) answers with a wrapped,
+//      truncated "Forbidden" body.
+//   2. 400 BadRequest, `windowsAutopilotDeploymentProfiles` — Graph's OData
+//      router reports the navigation property itself doesn't resolve
+//      ("Resource not found for the segment").
+//   3. 503, the `deviceAppManagement`/`deviceCompliancePolicies`/
+//      `deviceConfigurations`-backed checks — a raw IIS "Service Unavailable"
+//      HTML page, not a Graph JSON error at all.
+// All three are documented artifacts of a tenant whose MDM authority has
+// never been set — Intune IS licensed (bundled in this test tenant's
+// Microsoft 365 E3) but has never been enrolled/configured, exactly what
+// Shane confirmed by hand for this tenant in the issue. The endpoints
+// themselves are NOT wrong — all three match docs/endpoints.json's existing
+// v1.0 paths — and a genuine missing-permission-scope error looks nothing
+// like any of these (contrast devices:bitlocker-key-escrow's clean 403
+// `authorization_error` / "token doesn't have the required permissions" in
+// the same sample pull, an unrelated real permission bug left untouched
+// here). So this is scenario (2) from the issue for all 8 checks: reachable,
+// simply never configured — not (1) license_gap and not (3) an
+// endpoint/request bug.
+//
+// Deliberately gated on Intune's own endpoint prefixes: the 503 IIS page in
+// particular has no Intune-specific text of its own, and firing on it
+// endpoint-agnostically would risk silently swallowing a genuine outage on
+// an unrelated workload as "no MDM configured".
+const INTUNE_ENDPOINT_PREFIXES = ["/deviceManagement/", "/deviceAppManagement/"];
+
+export function isIntuneServiceNotConfiguredError(endpoint: string, status: number, body: string): boolean {
+  if (!INTUNE_ENDPOINT_PREFIXES.some((p) => endpoint.startsWith(p))) return false;
+  if (status === 401) {
+    return body.includes("DeviceFE/StatelessDeviceFEService");
+  }
+  if (status === 400) {
+    return body.includes('"code":"BadRequest"') && body.includes("Resource not found for the segment");
+  }
+  if (status === 503) {
+    return body.includes("<!DOCTYPE HTML") && body.includes("Service Unavailable");
+  }
+  return false;
+}
+
 export async function graphFetchPaginated(
   tenantId: string,
   endpoint: string,
@@ -1366,6 +1417,16 @@ export async function graphFetchPaginated(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      if (isIntuneServiceNotConfiguredError(resolvedEndpoint, res.status, text)) {
+        log.info(
+          { tenantId, endpoint: resolvedEndpoint, status: res.status },
+          "monitor-executor: Intune backend returned a known 'MDM never configured' signature (#487) — treating as a real ok result with zero devices/policies, not an error",
+        );
+        if (pageCount === 0) rawResponse = { value: [], _intuneNotConfigured: true };
+        pageCount++;
+        url = "";
+        continue;
+      }
       throw new Error(`Graph API error ${res.status}: ${text.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`);
     }
 
