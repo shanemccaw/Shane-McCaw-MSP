@@ -86,6 +86,11 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 {user.mspRole}
               </Badge>
             )}
+            {user?.customerId != null && (
+              <p className="mt-1 text-[10px] text-sidebar-foreground/40 truncate">
+                customerId {user.customerId}
+              </p>
+            )}
           </div>
           <Button
             variant="ghost"

@@ -125,6 +125,11 @@ export default function AssessmentShellPage() {
                       </Badge>
                     </div>
                   )}
+                  {user?.customerId != null && (
+                    <p className="text-[10px] leading-none text-muted-foreground/70 truncate pt-1">
+                      customerId {user.customerId}
+                    </p>
+                  )}
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

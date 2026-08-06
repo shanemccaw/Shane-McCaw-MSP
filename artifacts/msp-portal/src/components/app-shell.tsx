@@ -1493,6 +1493,11 @@ function CustomerTopBar({
                     </Badge>
                   </div>
                 )}
+                {user?.customerId != null && (
+                  <p className="text-[10px] leading-none text-muted-foreground/70 truncate pt-1">
+                    customerId {user.customerId}
+                  </p>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -1919,6 +1924,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
                 {mspRole}
               </Badge>
             )}
+            {user?.customerId != null && (
+              <p className="mt-1 text-[10px] text-sidebar-foreground/40 truncate">
+                customerId {user.customerId}
+              </p>
+            )}
           </div>
         )}
         <Button
@@ -2228,6 +2238,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
                           {mspRole}
                         </Badge>
                       </div>
+                    )}
+                    {user?.customerId != null && (
+                      <p className="text-[10px] leading-none text-muted-foreground/70 truncate pt-1">
+                        customerId {user.customerId}
+                      </p>
                     )}
                   </div>
                 </DropdownMenuLabel>
