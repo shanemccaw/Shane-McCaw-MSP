@@ -785,3 +785,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #481 - Epic: none (standalone) Switch document scoping to pillar-based |  |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #482 - Epic: #427 Marketing Site Home Page — Wire Claude Design Build to Live Data/Backend: theme/reimagine the embedded Stripe Payment Element (PaymentStep, AssessmentFlow.tsx) |  |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #483 - Epic: none (standalone) Fix auto-labeling-coverage endpoint |  |
+| 2026-08-06 | ⏳ IN FLIGHT | Git #484 - Epic: none (standalone) Classify retention checks as license_gap |  |
