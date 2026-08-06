@@ -50,6 +50,7 @@ import {
   unavailableBlock,
   unavailableChecksForReader,
   upgradeOpportunities,
+  upgradeOpportunityCallToAction,
   type BuiltRows,
   type LiveReportBlock,
   type LiveReportSection,
@@ -82,6 +83,7 @@ export {
   unavailableChecksForReader,
   unavailableReasonText,
   upgradeOpportunities,
+  upgradeOpportunityCallToAction,
 } from "./liveReportBlocks.ts";
 
 export type {
@@ -397,12 +399,17 @@ export function buildCopilotReadinessReport(input: {
     ...workloads.missing,
     ...prerequisites.missing,
     ...(narrative?.sections ?? []).flatMap((s) => s.missingChecks ?? []),
-  ]);
+  ], view.licenseGapPurchase);
   if (licenceGaps.length) {
     sections.push({
       heading: UPGRADE_OPPORTUNITY_HEADING,
       blocks: [
-        { kind: "upgradeOpportunity", detail: UPGRADE_OPPORTUNITY_DETAIL, items: licenceGaps },
+        {
+          kind: "upgradeOpportunity",
+          detail: UPGRADE_OPPORTUNITY_DETAIL,
+          items: licenceGaps,
+          callToAction: upgradeOpportunityCallToAction(view.licenseGapPurchase),
+        },
       ],
     });
   }

@@ -50,6 +50,25 @@ export interface WarRoomPillarFindingPayload {
   title: string;
 }
 
+/**
+ * A Microsoft purchase link for the licence gaps THIS pillar's own checks
+ * reported (#489), exactly as api-server's `license-gap-purchase-links.ts`
+ * resolved it.
+ *
+ * Never re-derived here. Which SKU a card shows depends on how many of the
+ * three gap categories the WHOLE TENANT is missing — one gapped category links
+ * that category's add-on, all three link Microsoft 365 E7 instead — and a card
+ * that decided for itself would name its own add-on for a tenant whose real
+ * recommendation is the consolidated one.
+ */
+export interface WarRoomPillarUpgradePayload {
+  skuKey: string;
+  skuName: string;
+  url: string;
+  /** This pillar's real gapped check keys behind the link. */
+  checkKeys: string[];
+}
+
 export interface WarRoomPillarCardPayload {
   pillar: string;
   enginePillar: string;
@@ -59,6 +78,8 @@ export interface WarRoomPillarCardPayload {
   stats: WarRoomStatPayload[];
   findings: WarRoomPillarFindingPayload[];
   findingCounts: { critical: number; warning: number };
+  /** Empty for a pillar with no licence gap — never a placeholder link. */
+  licenseGapUpgrades?: WarRoomPillarUpgradePayload[];
 }
 
 export interface WarRoomPillarStatsPayload {
@@ -76,6 +97,17 @@ export interface WarRoomPillarView {
   /** Real finding titles for this pillar, worst first. Empty when there are none. */
   findings: string[];
   findingCounts: { critical: number; warning: number };
+  /**
+   * Purchase links for this pillar's own licence gaps (#489). Empty for every
+   * pillar of a tenant with no licence gap, which is most of them.
+   *
+   * The card carries these rather than a finding, because a licence gap never
+   * BECOMES a card finding: `diagnostics-runner` classifies it as severity
+   * `info` (a licence tier is not a security finding) and this card's finding
+   * list is critical/warning only. Without this field the War Room says nothing
+   * at all about a tenant's licence gaps.
+   */
+  upgrades: WarRoomPillarUpgradePayload[];
   /** True when a real payload covered this pillar at all. */
   loaded: boolean;
 }
@@ -85,6 +117,7 @@ export const WAR_ROOM_PILLAR_VIEW_EMPTY: WarRoomPillarView = {
   stats: [],
   findings: [],
   findingCounts: { critical: 0, warning: 0 },
+  upgrades: [],
   loaded: false,
 };
 
@@ -158,6 +191,11 @@ export function warRoomPillarView(
       .map((s) => ({ v: formatStatValue(s.value, s.unit), l: s.label })),
     findings: (card.findings ?? []).map((f) => f.title).filter((t) => typeof t === "string" && t.length > 0),
     findingCounts: card.findingCounts ?? { critical: 0, warning: 0 },
+    // Only links that actually carry a URL and a name. A malformed or
+    // pre-#489 payload degrades to no link rather than to a dead one.
+    upgrades: (card.licenseGapUpgrades ?? []).filter(
+      (u) => typeof u?.url === "string" && u.url.length > 0 && typeof u?.skuName === "string" && u.skuName.length > 0,
+    ),
     loaded: true,
   };
 }
@@ -187,6 +225,28 @@ export function warRoomPillarNote(view: WarRoomPillarView, scored: boolean): str
   if (!view.loaded) return "waiting for scan data";
   if (!scored) return "not covered by this scan";
   return "no critical or warning findings";
+}
+
+/**
+ * The card's licence-gap line (#489) — how many of this pillar's checks could
+ * not run for want of a licence, and what would let them.
+ *
+ * Null when the pillar has no gap, so no card ever shows an empty upsell strip.
+ * Deliberately counts the pillar's OWN gapped checks rather than the category's
+ * full roster: the card is entitled to say what this tenant's scan actually hit,
+ * and nothing more.
+ *
+ * A live function rather than a string built in the .tsx for the same reason
+ * every other rule in this file is: the component that draws the card cannot be
+ * type-checked or unit-tested, so anything worth getting right has to be an
+ * exported function it calls.
+ */
+export function warRoomUpgradeNote(view: WarRoomPillarView): string | null {
+  if (!view.upgrades.length) return null;
+  const checks = new Set(view.upgrades.flatMap((u) => u.checkKeys ?? []));
+  const noun = checks.size === 1 ? "check" : "checks";
+  const skus = view.upgrades.map((u) => u.skuName).join(" · ");
+  return checks.size > 0 ? `${checks.size} ${noun} not licensed — ${skus}` : `Not licensed — ${skus}`;
 }
 
 /**

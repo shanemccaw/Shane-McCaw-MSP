@@ -60,6 +60,10 @@ export function view(overrides: Partial<JourneyView> = {}): JourneyView {
     remediatedScore: null,
     pillars: PILLAR_KEYS.map((k) => pillar(k)),
     generation: { ready: 0, total: 0, allReady: false, documents: [] },
+    // No licence gap unless a test asks for one (#489). A fixture that carried
+    // a purchase recommendation by default would put a Microsoft buy link into
+    // every report every other suite renders.
+    licenseGapPurchase: null,
     isPreview: false,
     ...overrides,
   };

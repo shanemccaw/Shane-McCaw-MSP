@@ -126,6 +126,9 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
 function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
   return {
     pillars,
+    // No licence gap: this fixture tests narrative grounding, not #489's
+    // purchase tiering.
+    licenseGapPurchase: null,
     findingsRunId: "run-1",
     findingsRunStatus: "completed",
     activeRunId: null,

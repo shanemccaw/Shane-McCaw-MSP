@@ -371,6 +371,11 @@ export function previewJourneyView(readyDocuments = 3): JourneyView {
     tenant: PREVIEW_TENANT,
     readinessScore: PREVIEW_READINESS_SCORE,
     remediatedScore: PREVIEW_REMEDIATED_SCORE,
+    // The design preview has no tenant and therefore no licence gap (#489).
+    // Deliberately null rather than a fixture recommendation: a purchase link
+    // is a claim about a real tenant's real scan, and the preview exists to
+    // show the layout, not to advertise a SKU to whoever opens it.
+    licenseGapPurchase: null,
     pillars: PREVIEW_PILLARS.map((p) => ({
       key: p.key,
       label: PILLARS[p.key].label,

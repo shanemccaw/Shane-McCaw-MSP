@@ -4104,13 +4104,38 @@ export class WarRoomLogic extends React.Component<Record<string, unknown>, any> 
           // that is mid-scan is what made the old premature NO DATA readable as
           // a verdict in the first place. Any real stat it already has follows
           // it, so nothing true is hidden while it finishes.
-          stats: noStatsAtAll
+          stats: (noStatsAtAll
             ? [{ v: "NO DATA", l: "no evaluable check fed this pillar", delay: "0ms" }]
             : scanning
               ? [{ v: "SCANNING", l: warRoomScanningNote(rScan, p.k), delay: "0ms" }]
                 .concat(rv.stats.slice(0, 1).map(sv => ({ v: sv.v, l: sv.l, delay: "260ms" })))
               : (complete ? rv.stats : live ? rv.stats.slice(0, 2) : [])
-                .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })),
+                .map((sv, si) => ({ v: sv.v, l: sv.l, delay: (si * 260) + "ms" })))
+            // #489 — the licence gaps this pillar's own checks reported, and the
+            // Microsoft page where the customer's own admin would close them.
+            // APPENDED, never substituted: the four cells above are real
+            // measurements and dropping one to make room for a purchase link
+            // would trade the tenant's own data for an upsell. The grid widens
+            // to a fifth column instead (`statCols` below), and only on the
+            // cards that genuinely have a gap.
+            //
+            // Which SKU appears is the server's tenant-wide decision (one gapped
+            // category → that add-on, all three → Microsoft 365 E7), so two
+            // cards on one tenant can never recommend two different things.
+            // Only ever rendered on a pillar the scan has FINISHED: mid-scan the
+            // gap list is still filling, and "not licensed" is a verdict.
+            .concat(complete ? (rv.upgrades || []).map((up, ui) => ({
+              v: up.skuName,
+              l: (up.checkKeys || []).length === 1
+                ? "1 check not licensed — buy at Microsoft"
+                : (up.checkKeys || []).length + " checks not licensed — buy at Microsoft",
+              href: up.url,
+              delay: ((rv.stats.length + ui) * 260) + "ms",
+            })) : []),
+          // The stat grid's real column count. Four unless this card carries a
+          // licence-gap link, so every card without one is pixel-identical to
+          // what the design signed off.
+          statCols: 4 + (complete ? (rv.upgrades || []).length : 0),
           text: live || complete || scanning ? "#fff" : "#cbd5e1"
         };
       }),

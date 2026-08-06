@@ -535,10 +535,30 @@ export function PreludeScreen({ v }: { v: any }) {
                       <span style={css(`position:absolute;left:0;right:0;top:50%;transform:translateY(-50%) skewX(-11deg);padding:0 10px;text-align:center;font-size:clamp(18px,3.9vw,62px);font-weight:900;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;line-height:1;pointer-events:none;opacity:${ps?.labelOp};color:transparent;-webkit-text-stroke:.8px ${ps?.text};background:linear-gradient(100deg,transparent 18%,${ps?.text}14 50%,transparent 82%);-webkit-background-clip:text;background-clip:text;animation:${ps?.labelAnim};transition:opacity 700ms ease`)}>
                         <Txt v={ps?.label} />
                       </span>
-                      <div style={css(`position:relative;flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-content:center;gap:4px;padding-left:2px`)}>
+                      {/* Four columns, as the design signed off — five only on a
+                          card carrying a #489 licence-gap purchase link, so no
+                          real stat is ever displaced to make room for it. */}
+                      <div style={css(`position:relative;flex:1;min-width:0;display:grid;grid-template-columns:repeat(${ps?.statCols || 4},minmax(0,1fr));align-content:center;gap:4px;padding-left:2px`)}>
                         {(ps?.stats || []).map((st, stIdx) => (
                           <React.Fragment key={stIdx}>
                             {" "}
+                            {/* A stat with an `href` is a purchase link, not a
+                                measurement (#489): it opens Microsoft's own page
+                                for the add-on this pillar's gapped checks need.
+                                `rel="noopener noreferrer"` because this is an
+                                outbound link from a page the customer is signed
+                                into — a bare target="_blank" hands the opener
+                                reference to the destination. */}
+                            {st?.href ? (
+                              <a href={st?.href} target={"_blank"} rel={"noopener noreferrer"} title={`${st?.v} — opens Microsoft's own page in a new tab`} style={css(`position:relative;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:4px 7px;border-radius:9px;overflow:hidden;border:1px solid ${ps?.edge}66;background:rgba(2,6,23,.45);text-decoration:none;animation:wr-statslide 720ms cubic-bezier(.22,1,.36,1) ${st?.delay} both`)}>
+                                <span style={css(`position:relative;max-width:100%;flex:none;font-size:11.5px;font-weight:800;line-height:1.15;color:${ps?.edge};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 10px ${ps?.statGlow}`)}>
+                                  <Txt v={st?.v} />
+                                </span>
+                                <span style={css(`position:relative;max-width:100%;font-size:7.5px;font-weight:600;line-height:1.25;letter-spacing:.01em;color:${ps?.statL};display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden`)}>
+                                  <Txt v={st?.l} />
+                                </span>
+                              </a>
+                            ) : (
                             <div style={css(`position:relative;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:4px 7px;border-radius:9px;overflow:hidden;border:none;background:transparent;animation:wr-statslide 720ms cubic-bezier(.22,1,.36,1) ${st?.delay} both`)}>
                               <span style={css(`position:relative;max-width:100%;flex:none;font-size:11.5px;font-weight:800;line-height:1.15;color:${ps?.statV};font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 10px ${ps?.statGlow}`)}>
                                 <Txt v={st?.v} />
@@ -547,6 +567,7 @@ export function PreludeScreen({ v }: { v: any }) {
                                 <Txt v={st?.l} />
                               </span>
                             </div>
+                            )}
                             {" "}
                           </React.Fragment>
                         ))}

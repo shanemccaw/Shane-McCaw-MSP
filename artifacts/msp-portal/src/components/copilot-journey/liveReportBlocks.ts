@@ -51,7 +51,13 @@
  */
 
 import { COPILOT_GATE_TARGET, severityForScore, type PillarKey, type Severity } from "./journeyTokens.ts";
-import type { JourneyPillarView, JourneyView, WirePillarFinding, WirePillarStat } from "./journeyModel.ts";
+import type {
+  JourneyPillarView,
+  JourneyView,
+  WireLicenseGapPurchase,
+  WirePillarFinding,
+  WirePillarStat,
+} from "./journeyModel.ts";
 import type { PreviewFindingRow, PreviewKeyValueRow, ReportBlock } from "./previewDocumentBodies.ts";
 
 /* ------------------------------------------------------------------ *
@@ -118,6 +124,12 @@ export type LiveReportExtraBlock =
       readonly kind: "upgradeOpportunity";
       readonly detail: string;
       readonly items: readonly UpgradeOpportunity[];
+      /**
+       * The purchase call to action (#489). Absent when the tenant's gapped
+       * checks map to no purchase category, or when the payload predates #489 —
+       * the category still renders in full either way, minus the link.
+       */
+      readonly callToAction?: UpgradeOpportunityCallToAction | null;
     };
 
 export type LiveReportBlock = ReportBlock | LiveReportExtraBlock;
@@ -517,10 +529,38 @@ export function licenceGapDisclosure(check: UnavailableCheck): string {
     : `This assessment cannot read ${entry.unlocks} — ${entry.means} The scan reported a Microsoft 365 licence gap but did not name the tier, so none is named here.`;
 }
 
+/** A purchase link as a report renders it. */
+export interface UpgradeOpportunityLink {
+  readonly skuName: string;
+  readonly url: string;
+}
+
 /** One rendered row of the Upgrade Opportunity category. */
 export interface UpgradeOpportunity {
   readonly checkKey: string;
   readonly disclosure: string;
+  /**
+   * The specific add-on that answers THIS check (#489). Present only when the
+   * tenant is gapped in one or two categories: at tier 3 the recommendation is
+   * consolidated into a single E7 call to action on the block, and repeating it
+   * on every row would turn one clear recommendation back into several purchase
+   * asks — the exact thing the consolidation exists to avoid.
+   */
+  readonly link?: UpgradeOpportunityLink;
+}
+
+/**
+ * The block's own call to action (#489) — one recommendation per gapped
+ * category, or the single E7 link that replaces all three.
+ *
+ * Separate from the rows on purpose. The rows say what is missing and are
+ * unchanged by the tier; this says what to do about it and is the only thing
+ * the tier decides. Keeping them apart is what lets a tier-3 report stay
+ * specific about all three gaps while making exactly one purchase ask.
+ */
+export interface UpgradeOpportunityCallToAction {
+  readonly text: string;
+  readonly links: readonly UpgradeOpportunityLink[];
 }
 
 /**
@@ -549,15 +589,68 @@ export function splitLicenceGaps(checks: readonly UnavailableCheck[]): {
  */
 export function upgradeOpportunities(
   checks: readonly UnavailableCheck[],
+  purchase?: WireLicenseGapPurchase | null,
 ): readonly UpgradeOpportunity[] {
   const seen = new Set<string>();
   const rows: UpgradeOpportunity[] = [];
   for (const check of checks) {
     if (!isLicenceGap(check.reason) || seen.has(check.checkKey)) continue;
     seen.add(check.checkKey);
-    rows.push({ checkKey: check.checkKey, disclosure: licenceGapDisclosure(check) });
+    rows.push({
+      checkKey: check.checkKey,
+      disclosure: licenceGapDisclosure(check),
+      ...(purchaseLinkForCheck(purchase, check.checkKey) ?? {}),
+    });
   }
   return rows;
+}
+
+/**
+ * The per-row link, or nothing.
+ *
+ * Nothing in three cases, all deliberate: the tenant has no purchase payload at
+ * all; the tier consolidated to E7 (the link belongs to the block, not the row);
+ * or this check is a real licence gap that maps to none of the three purchase
+ * categories. That last one is the honest case — the row still declares the gap
+ * in full, it just makes no purchase claim we cannot back.
+ */
+function purchaseLinkForCheck(
+  purchase: WireLicenseGapPurchase | null | undefined,
+  checkKey: string,
+): { readonly link: UpgradeOpportunityLink } | null {
+  if (!purchase || purchase.consolidated) return null;
+  const rec = purchase.recommendations.find((r) => r.checkKeys.includes(checkKey));
+  return rec ? { link: { skuName: rec.sku.name, url: rec.sku.url } } : null;
+}
+
+/**
+ * The block's call to action, or null when there is nothing to recommend.
+ *
+ * The tier-3 sentence says outright that ONE purchase covers all three gaps.
+ * That is not salesmanship — it is the reason E7 replaces three add-on links
+ * here, and a reader who is not told why they are seeing one link instead of
+ * three has been given a recommendation with its reasoning removed.
+ */
+export function upgradeOpportunityCallToAction(
+  purchase: WireLicenseGapPurchase | null | undefined,
+): UpgradeOpportunityCallToAction | null {
+  if (!purchase || purchase.recommendations.length === 0) return null;
+
+  const links = purchase.recommendations.map((r) => ({ skuName: r.sku.name, url: r.sku.url }));
+  const where = `Buying it is done by your own administrator in ${purchase.adminCenterPath} — we do not resell Microsoft licensing, so this is a pointer, not an offer.`;
+
+  if (purchase.consolidated) {
+    const sku = purchase.recommendations[0]!.sku.name;
+    return {
+      text: `All three of the areas above — ${purchase.recommendations[0]!.categoryLabels.join(", ").toLowerCase()} — are covered by ${sku}, so it is named here instead of three separate add-ons. ${where}`,
+      links,
+    };
+  }
+
+  const named = purchase.recommendations
+    .map((r) => `${r.sku.name} for ${r.categoryLabels.join(" and ").toLowerCase()}`)
+    .join("; ");
+  return { text: `What would close the gaps above: ${named}. ${where}`, links };
 }
 
 /**

@@ -82,6 +82,7 @@ import {
   narrativeBlocks,
   unavailableBlock,
   upgradeOpportunities,
+  upgradeOpportunityCallToAction,
   type LiveReportBlock,
   type LiveReportSection,
   type StatPick,
@@ -294,12 +295,17 @@ export function buildLicensingAlignmentReport(input: {
     ...summary.missing,
     ...cost.missing,
     ...(narrative?.sections ?? []).flatMap((s) => s.missingChecks ?? []),
-  ] as readonly UnavailableCheck[]);
+  ] as readonly UnavailableCheck[], view.licenseGapPurchase);
   if (licenceGaps.length) {
     sections.push({
       heading: UPGRADE_OPPORTUNITY_HEADING,
       blocks: [
-        { kind: "upgradeOpportunity", detail: UPGRADE_OPPORTUNITY_DETAIL, items: licenceGaps },
+        {
+          kind: "upgradeOpportunity",
+          detail: UPGRADE_OPPORTUNITY_DETAIL,
+          items: licenceGaps,
+          callToAction: upgradeOpportunityCallToAction(view.licenseGapPurchase),
+        },
       ],
     });
   }

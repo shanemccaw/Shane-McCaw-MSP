@@ -34,6 +34,7 @@ import {
   type LiveReportBlock,
   type LiveReportSection,
   type UpgradeOpportunity,
+  type UpgradeOpportunityCallToAction,
 } from "./liveReportBlocks.ts";
 
 /* ------------------------------------------------------------------ *
@@ -117,9 +118,11 @@ export function UnavailableBlock({
 export function UpgradeOpportunityBlock({
   detail,
   items,
+  callToAction,
 }: {
   readonly detail: string;
   readonly items: readonly UpgradeOpportunity[];
+  readonly callToAction?: UpgradeOpportunityCallToAction | null;
 }) {
   const teal = PILLARS.licensing.primary;
   return (
@@ -151,9 +154,80 @@ export function UpgradeOpportunityBlock({
             <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
               {item.disclosure}
             </p>
+            {/* The add-on that answers THIS check, at tier 1/2 only. Absent at
+                tier 3, where one E7 link on the block replaces all three. */}
+            {item.link ? (
+              <a
+                href={item.link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ ...BODY, fontSize: 13, fontWeight: 600, color: teal, textDecoration: "underline" }}
+              >
+                {item.link.skuName}
+              </a>
+            ) : null}
           </li>
         ))}
       </ul>
+      {callToAction ? <UpgradeCallToAction accent={teal} callToAction={callToAction} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The block's closing recommendation (#489).
+ *
+ * Set apart from the rows by a full-width rule rather than another tinted
+ * panel: the rows are observations and this is the one thing being asked of the
+ * reader, and a reader who has scrolled six disclosures should be able to find
+ * it without reading them again.
+ *
+ * Every link opens in a new tab with `rel="noopener noreferrer"` — these are
+ * outbound links to microsoft.com from a page the customer is signed into, and
+ * a bare `target="_blank"` hands the opener reference to the destination.
+ */
+function UpgradeCallToAction({
+  accent,
+  callToAction,
+}: {
+  readonly accent: string;
+  readonly callToAction: UpgradeOpportunityCallToAction;
+}) {
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${hexAlpha(accent, 0.28)}`,
+        paddingTop: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 9,
+      }}
+    >
+      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDarkStrong }}>
+        {callToAction.text}
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
+        {callToAction.links.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              ...BODY,
+              fontSize: 13,
+              fontWeight: 600,
+              color: accent,
+              border: `1px solid ${hexAlpha(accent, 0.45)}`,
+              borderRadius: 7,
+              padding: "6px 12px",
+              textDecoration: "none",
+            }}
+          >
+            {link.skuName}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -217,7 +291,14 @@ export function LiveReportShell({
       return <UnavailableBlock key={key} detail={block.detail} checks={block.checks} />;
     }
     if (block.kind === "upgradeOpportunity") {
-      return <UpgradeOpportunityBlock key={key} detail={block.detail} items={block.items} />;
+      return (
+        <UpgradeOpportunityBlock
+          key={key}
+          detail={block.detail}
+          items={block.items}
+          callToAction={block.callToAction}
+        />
+      );
     }
     // Everything else is the shared vocabulary — one renderer, one appearance.
     // `Block` directly rather than `Section`, because the heading is drawn by

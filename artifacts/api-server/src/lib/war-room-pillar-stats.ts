@@ -172,6 +172,12 @@ import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
 import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 import { getPillarScoreTrends, PILLAR_TREND_WINDOW_DAYS } from "./pillar-trend.ts";
+import {
+  buildLicenseGapPurchase,
+  recommendationForCheckKey,
+  type LicenseGapPurchase,
+  type LicenseGapRecommendation,
+} from "./license-gap-purchase-links.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -771,6 +777,25 @@ export function compareRankedFindings(a: WarRoomPillarFinding, b: WarRoomPillarF
   );
 }
 
+/**
+ * A purchase link on ONE pillar card (#489).
+ *
+ * The card shows the recommendation that answers ITS OWN gapped checks, and the
+ * tier that chose that recommendation was decided tenant-wide before this was
+ * built — so at tier 3 every affected card points at the same single E7 link
+ * rather than each card advertising its own add-on. That is the whole point of
+ * the consolidation and it would be undone by deciding per card.
+ *
+ * `checkKeys` is this pillar's real gapped checks only, so the card can name its
+ * own evidence rather than the category's full roster.
+ */
+export interface WarRoomPillarUpgradeLink {
+  skuKey: string;
+  skuName: string;
+  url: string;
+  checkKeys: string[];
+}
+
 export interface WarRoomPillarCard {
   pillar: WarRoomPillarKey;
   /** The engine pillar this score really came from — provenance, not decoration. */
@@ -790,10 +815,27 @@ export interface WarRoomPillarCard {
    * never a synthesised shape.
    */
   trend: { series: number[]; window: string } | null;
+  /**
+   * Purchase links for the licence gaps THIS pillar's own checks reported
+   * (#489). Empty for a pillar with no gapped check — never a placeholder.
+   */
+  licenseGapUpgrades: WarRoomPillarUpgradeLink[];
 }
 
 export interface WarRoomPillarStatsPayload {
   pillars: WarRoomPillarCard[];
+  /**
+   * The tenant-wide licence-gap purchase recommendation (#489): which of the
+   * three categories are gapped, and the 1/2/3-tiered call to action that
+   * follows. Null when this tenant has no licence gap at all — there is then
+   * nothing to recommend and nothing is rendered.
+   *
+   * Computed ONCE here, tenant-wide, rather than per card or per report,
+   * because the tier is a fact about the whole tenant: a report that only sees
+   * its own pillar's gaps would count one category and link one add-on for a
+   * tenant that is actually gapped in all three and should be seeing E7.
+   */
+  licenseGapPurchase: LicenseGapPurchase | null;
   /** The run the findings belong to, and its real status — never implied. */
   findingsRunId: string | null;
   findingsRunStatus: string | null;
@@ -986,10 +1028,53 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     .from(monitorChecksTable);
   const findingRankWeights = buildFindingRankWeights(rules, impacts, rankCheckDefinitions);
 
-  const { findingsByPillar, findingsRunId, findingsRunStatus } = await fetchPillarFindings(
-    customerId,
-    findingRankWeights,
-  );
+  const { findingsByPillar, findingsRunId, findingsRunStatus, licenseGapCheckKeys } =
+    await fetchPillarFindings(customerId, findingRankWeights);
+
+  // #489. Tenant-wide, from the same run the findings came from, so the tier and
+  // the findings beside it can never describe two different scans.
+  const licenseGapPurchase = buildLicenseGapPurchase(licenseGapCheckKeys);
+
+  // A check that reported a real licence gap but belongs to none of the three
+  // categories is a gap in OUR mapping, not in the tenant — logged for the same
+  // reason a wiring-fault stat is: it is silent otherwise, and #441 showed how
+  // long silent registry drift can survive. Nothing renders a link from these.
+  if (licenseGapPurchase?.uncategorisedCheckKeys.length) {
+    log.warn(
+      { customerId, checkKeys: licenseGapPurchase.uncategorisedCheckKeys },
+      "war-room-pillar-stats: license_gap checks map to no purchase category — no upgrade link can be offered for them",
+    );
+  }
+
+  /**
+   * The links one card shows, grouped by SKU. Derived from the tenant's real
+   * gapped keys through `warRoomPillarForCheckKey` — the same function that
+   * files a finding under a card — rather than from a second category→pillar
+   * table that could disagree with it.
+   */
+  const upgradesByPillar = new Map<WarRoomPillarKey, WarRoomPillarUpgradeLink[]>();
+  for (const checkKey of licenseGapCheckKeys) {
+    const pillar = warRoomPillarForCheckKey(checkKey);
+    const recommendation: LicenseGapRecommendation | null = recommendationForCheckKey(
+      licenseGapPurchase,
+      checkKey,
+    );
+    if (!pillar || !recommendation) continue;
+
+    const list = upgradesByPillar.get(pillar) ?? [];
+    const existing = list.find((u) => u.skuKey === recommendation.sku.key);
+    if (existing) {
+      if (!existing.checkKeys.includes(checkKey)) existing.checkKeys.push(checkKey);
+    } else {
+      list.push({
+        skuKey: recommendation.sku.key,
+        skuName: recommendation.sku.name,
+        url: recommendation.sku.url,
+        checkKeys: [checkKey],
+      });
+    }
+    upgradesByPillar.set(pillar, list);
+  }
 
   const [activeRun] = await db
     .select({ runId: mspDiagnosticRunsTable.runId })
@@ -1076,11 +1161,13 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       trend: trendPoints
         ? { series: trendPoints.map((p) => p.score), window: `${PILLAR_TREND_WINDOW_DAYS}d` }
         : null,
+      licenseGapUpgrades: upgradesByPillar.get(pillar) ?? [],
     };
   });
 
   return {
     pillars,
+    licenseGapPurchase,
     findingsRunId,
     findingsRunStatus,
     activeRunId: activeRun?.runId ?? null,
@@ -1116,6 +1203,7 @@ async function fetchPillarFindings(
   findingsByPillar: Map<WarRoomPillarKey, WarRoomPillarFinding[]>;
   findingsRunId: string | null;
   findingsRunStatus: string | null;
+  licenseGapCheckKeys: string[];
 }> {
   const findingsByPillar = new Map<WarRoomPillarKey, WarRoomPillarFinding[]>();
 
@@ -1126,7 +1214,14 @@ async function fetchPillarFindings(
     .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
     .limit(1);
 
-  if (!latest) return { findingsByPillar, findingsRunId: null, findingsRunStatus: null };
+  if (!latest) {
+    return {
+      findingsByPillar,
+      findingsRunId: null,
+      findingsRunStatus: null,
+      licenseGapCheckKeys: [],
+    };
+  }
 
   const rows = await db
     .select({
@@ -1159,11 +1254,37 @@ async function fetchPillarFindings(
   // pre-existing check-key tiebreak so two identical runs can't disagree.
   for (const list of findingsByPillar.values()) list.sort(compareRankedFindings);
 
+  // #489. The licence gaps of the SAME run, read separately because they are
+  // deliberately not in the query above: `diagnostics-runner` classifies a
+  // `license_gap` as severity `info` (a licence tier is not a security finding),
+  // and the card's finding list is critical/warning only. So the pillar cards
+  // have never carried them and this second read is the only way the run's real
+  // licence gaps reach the payload at all.
+  //
+  // Keyed off `check_status`, the raw status `diagnostics-runner` stamps on the
+  // row, rather than off the recommendation JSON or the finding title: that
+  // column is the classification itself, and matching on prose would break the
+  // moment #484-#495's wording is edited.
+  const gapRows = await db
+    .select({ checkKey: mspDiagnosticFindingsTable.checkKey })
+    .from(mspDiagnosticFindingsTable)
+    .where(
+      and(
+        eq(mspDiagnosticFindingsTable.runId, latest.runId),
+        eq(mspDiagnosticFindingsTable.checkStatus, "license_gap"),
+      ),
+    );
+
   const [runRow] = await db
     .select({ status: mspDiagnosticRunsTable.status })
     .from(mspDiagnosticRunsTable)
     .where(eq(mspDiagnosticRunsTable.runId, latest.runId))
     .limit(1);
 
-  return { findingsByPillar, findingsRunId: latest.runId, findingsRunStatus: runRow?.status ?? null };
+  return {
+    findingsByPillar,
+    findingsRunId: latest.runId,
+    findingsRunStatus: runRow?.status ?? null,
+    licenseGapCheckKeys: gapRows.map((r) => r.checkKey),
+  };
 }

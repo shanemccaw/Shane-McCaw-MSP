@@ -96,10 +96,44 @@ export interface WirePillarCard {
   readonly trend?: { readonly series: readonly number[]; readonly window: string } | null;
 }
 
+/**
+ * One Microsoft SKU a licence gap points at (#489), exactly as api-server's
+ * `license-gap-purchase-links.ts` computed it. Never re-derived on this side:
+ * the 1/2/3 tiering rule is a fact about the whole tenant, and a client that
+ * recomputed it from whatever checks its own report happened to see would count
+ * one category for a tenant that is actually gapped in three.
+ */
+export interface WireLicenseGapRecommendation {
+  readonly categoryKeys: readonly string[];
+  /** The same categories' customer-facing names, resolved server-side. */
+  readonly categoryLabels: readonly string[];
+  readonly sku: { readonly key: string; readonly name: string; readonly url: string };
+  /** THIS tenant's real gapped check keys behind the link. */
+  readonly checkKeys: readonly string[];
+}
+
+export interface WireLicenseGapPurchase {
+  /** How many of the three gap categories are gapped. 3 means the E7 consolidation. */
+  readonly tier: 1 | 2 | 3;
+  readonly gappedCategories: readonly string[];
+  /** True at tier 3 only: one consolidated recommendation replaced three. */
+  readonly consolidated: boolean;
+  readonly recommendations: readonly WireLicenseGapRecommendation[];
+  /** Where the customer's own admin completes the purchase, in words. */
+  readonly adminCenterPath: string;
+}
+
 export interface WirePillarStatsPayload {
   readonly pillars: readonly WirePillarCard[];
   readonly findingsRunId?: string | null;
   readonly generatedAt?: string;
+  /**
+   * The tenant-wide licence-gap purchase recommendation (#489). Absent/null
+   * when this tenant has no licence gap, or when the payload predates #489 —
+   * both render as no link at all, which is the honest outcome for a tenant we
+   * have nothing to recommend to.
+   */
+  readonly licenseGapPurchase?: WireLicenseGapPurchase | null;
 }
 
 export interface WireDocumentItem {
@@ -258,6 +292,16 @@ export interface JourneyView {
   readonly remediatedScore: number | null;
   readonly pillars: readonly JourneyPillarView[];
   readonly generation: JourneyGeneration;
+  /**
+   * The tenant-wide licence-gap purchase recommendation (#489), carried through
+   * from the pillar-stats payload untouched. Null when nothing is gapped.
+   *
+   * It lives on the view rather than being threaded into each report separately
+   * because all six reports render the same Upgrade Opportunity category and
+   * must show the same tier — a report that reached a different tier from its
+   * sibling would be two contradictory recommendations about one tenant.
+   */
+  readonly licenseGapPurchase: WireLicenseGapPurchase | null;
   /** True when this view is the labelled design preview rather than live data. */
   readonly isPreview: boolean;
 }
@@ -561,6 +605,7 @@ export function buildJourneyView(input: {
     remediatedScore: remediatedScore(pillars, input.projectedByPillar ?? {}),
     pillars,
     generation: buildGeneration(input.status),
+    licenseGapPurchase: input.pillarStats?.licenseGapPurchase ?? null,
     isPreview: input.isPreview === true,
   };
 }

@@ -185,6 +185,7 @@ export default defineConfig({
       "src/routes/admin-signal-rules-category-pillar-469.test.ts",
       "src/lib/remediation-knowledge-base.test.ts",
       "src/routes/public-assessment-rescan-addon.test.ts",
+      "src/lib/license-gap-purchase-links.test.ts",
     ],
     coverage: {
       provider: "v8",

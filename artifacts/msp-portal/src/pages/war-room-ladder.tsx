@@ -6,6 +6,7 @@ import {
 import {
   warRoomPillarViews,
   warRoomPillarNote,
+  warRoomUpgradeNote,
   WAR_ROOM_NO_DATA_COLOR,
   WAR_ROOM_SCANNING_COLOR,
   type WarRoomPillarView,
@@ -301,6 +302,7 @@ function LadderRow({ row, first }: { row: Row; first: boolean }) {
   const hue = PILLAR_HUE[key];
   const stateColor =
     state === "scanning" ? WAR_ROOM_SCANNING_COLOR : state === "nodata" ? WAR_ROOM_NO_DATA_COLOR : BAR;
+  const upgradeNote = view ? warRoomUpgradeNote(view) : null;
 
   return (
     <div
@@ -463,6 +465,50 @@ function LadderRow({ row, first }: { row: Row; first: boolean }) {
           </div>
         )}
       </div>
+
+      {/* #489 — the pillar's licence gaps, and where its own admin would buy
+          what would close them. Drawn OUTSIDE the stat grid and below the note,
+          because it is neither a measurement nor a finding: it says why some of
+          this card's checks have no number at all. Which SKU appears was
+          decided tenant-wide (one gapped category → that add-on; all three →
+          Microsoft 365 E7), so two cards on the same tenant can never recommend
+          two different things. Rendered only when there is a real gap. */}
+      {upgradeNote ? (
+        <div
+          style={{
+            // Spans the row's three columns: it belongs to the whole pillar,
+            // not to the stat grid it sits under.
+            gridColumn: "1 / -1",
+            marginLeft: 18,
+            marginTop: 6,
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 10.5,
+            color: INK_2,
+          }}
+        >
+          <span>{upgradeNote}</span>
+          {view.upgrades.map((u) => (
+            <a
+              key={u.skuKey}
+              href={u.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`${u.skuName} — opens Microsoft's own page in a new tab`}
+              style={{
+                color: hue,
+                borderBottom: `1px solid ${hue}`,
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              {u.skuName}
+            </a>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
