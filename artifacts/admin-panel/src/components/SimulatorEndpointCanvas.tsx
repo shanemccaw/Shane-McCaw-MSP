@@ -39,7 +39,7 @@
 // which PATCHes the existing /api/admin/monitor-checks/:key CRUD route.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Play, Save, Archive, RotateCcw, Lightbulb, Trash2 } from "lucide-react";
+import { Loader2, Play, Save, Archive, RotateCcw, Lightbulb, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -182,6 +182,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const [inCopilotPackage, setInCopilotPackage] = useState<boolean | null>(null);
   const [removeConfirm, setRemoveConfirm] = useState<{ sharedNames: string[] } | null>(null);
   const [removingFromPackage, setRemovingFromPackage] = useState(false);
+  const [addingToPackage, setAddingToPackage] = useState(false);
 
   // Re-seed every field when a different endpoint is selected in the tree.
   useEffect(() => {
@@ -606,6 +607,67 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     void removeCheckFromCopilotPackage(0);
   };
 
+  // #505 — "Add to Copilot Package", the mirror of #390's Remove above.
+  // Adding is non-destructive, so unlike Remove there's no confirmation gate:
+  // the shared-assessment count (same #376/AssessmentCreationWizard.tsx
+  // packageKey filter Remove already uses) is informational-only, folded
+  // straight into the success toast.
+  const addCheckToCopilotPackage = async () => {
+    setAddingToPackage(true);
+    try {
+      const currentRes = await fetchWithAuth(
+        `/api/admin/monitoring-packages/${encodeURIComponent(COPILOT_PACKAGE_KEY)}/checks`,
+      );
+      if (!currentRes.ok) {
+        toast.error(`Failed to load "${COPILOT_PACKAGE_KEY}"'s current check list.`);
+        return;
+      }
+      const currentBody = (await currentRes.json()) as { checks: { checkKey: string }[] };
+      const currentKeys = currentBody.checks.map((c) => c.checkKey);
+      if (currentKeys.includes(check.key)) {
+        setInCopilotPackage(true);
+        return;
+      }
+
+      const putRes = await fetchWithAuth(
+        `/api/admin/monitoring-packages/${encodeURIComponent(COPILOT_PACKAGE_KEY)}/checks`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checkKeys: [...currentKeys, check.key] }),
+        },
+      );
+      if (!putRes.ok) {
+        const body = (await putRes.json().catch(() => null)) as { error?: string } | null;
+        toast.error(body?.error ?? `Failed to add "${check.key}" to the Copilot package.`);
+        return;
+      }
+
+      setInCopilotPackage(true);
+
+      let sharedCount = 0;
+      try {
+        const assessmentsRes = await fetchWithAuth("/api/admin/simulator/assessments");
+        if (assessmentsRes.ok) {
+          const data = (await assessmentsRes.json()) as { assessments: AssessmentNode[] };
+          sharedCount = data.assessments.filter((a) => a.packageKey === COPILOT_PACKAGE_KEY).length;
+        }
+      } catch {
+        // Informational only — a failed shared-count lookup shouldn't mask the successful add.
+      }
+
+      toast.success(
+        sharedCount > 0
+          ? `Added "${check.key}" to the Copilot package, shared with ${sharedCount} other assessment${sharedCount === 1 ? "" : "s"}.`
+          : `Added "${check.key}" to the Copilot package.`,
+      );
+    } catch {
+      toast.error(`Failed to add "${check.key}" to the Copilot package.`);
+    } finally {
+      setAddingToPackage(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background p-4">
       {/* Header */}
@@ -646,6 +708,17 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
             >
               {removingFromPackage ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
               Remove from Copilot Package
+            </button>
+          )}
+          {inCopilotPackage === false && (
+            <button
+              onClick={() => void addCheckToCopilotPackage()}
+              disabled={addingToPackage}
+              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              title="Add this check to the Copilot Readiness monitoring package"
+            >
+              {addingToPackage ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Add to Copilot Package
             </button>
           )}
           {check.status === "active" ? (
