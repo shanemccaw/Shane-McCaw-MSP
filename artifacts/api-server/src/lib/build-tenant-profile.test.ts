@@ -42,8 +42,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: { __table: "tenants", id: "id", tenantId: "tenantId", mspId: "mspId" },
   usersTable: { __table: "users", id: "id", tenantId: "tenantId", isActive: "isActive" },
   tenantMonitorProfilesTable: { __table: "tenant_monitor_profiles", checkKey: "checkKey", extractedProperties: "extractedProperties", tenantId: "tenantId", collectedAt: "collectedAt" },
-  // Joined pair behind categorizedFindings' checkKey → signal-category lookup.
-  signalDerivationRulesTable: { __table: "signal_derivation_rules", signalKey: "signalKey", sourceKey: "sourceKey" },
+  // Joined pair behind categorizedFindings' checkKey → signal-pillar lookup (Git #481).
+  signalDerivationRulesTable: { __table: "signal_derivation_rules", signalKey: "signalKey", pillar: "pillar", sourceKey: "sourceKey" },
   monitorChecksTable: { __table: "monitor_checks", key: "key", frequency: "frequency" },
 }));
 
@@ -90,9 +90,9 @@ function makeDb(canned: {
   tenantMonitorProfiles: Rows;
   /**
    * Rows the signal_derivation_rules ⋈ monitor_checks join returns — i.e. the
-   * `{ checkKey, signalKey }` pairs behind categorizedFindings. Optional: every
-   * pre-existing test omits it and gets no categories, which is exactly the
-   * shape of a tenant whose checks feed no category-prefixed rules.
+   * `{ checkKey, pillar }` pairs behind categorizedFindings (Git #481). Optional:
+   * every pre-existing test omits it and gets no categories, which is exactly
+   * the shape of a tenant whose checks feed no pillar-tagged rules.
    */
   signalRuleCheckJoin?: Rows;
 }) {
@@ -349,15 +349,16 @@ describe("deriveMonitorFindings", () => {
   });
 });
 
-// ─── categorizedFindings — additive signal-category annotation ────────────────
+// ─── categorizedFindings — additive signal-pillar annotation (Git #481) ────────
 //
 // Locks the contract document-engine.ts's includedSignalCategories filter
 // depends on: categorizedFindings is 1:1 with findings, monitor findings carry
-// their check's signal-category prefixes, and script-run findings are present
-// with an empty category list (the permanent limitation) rather than dropped.
+// their check's signal_derivation_rules.pillar value(s), and script-run
+// findings are present with an empty category list (the permanent limitation)
+// rather than dropped.
 
 describe("buildTenantProfile — categorizedFindings", () => {
-  it("annotates monitor findings with their check's signal-category prefixes, deduped", async () => {
+  it("annotates monitor findings with their check's signal pillar(s), deduped", async () => {
     makeDb({
       mspCustomers: [{ tenantId: "tenant-abc", mspId: 9 }],
       mspUsers: [{ userId: 777 }],
@@ -367,24 +368,13 @@ describe("buildTenantProfile — categorizedFindings", () => {
         { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 7 } },
       ],
       signalRuleCheckJoin: [
-        // Two rules in the same category → one deduped entry.
-        { checkKey: "sharepoint:anonymous-links", signalKey: "governance:oversharing" },
-        { checkKey: "sharepoint:anonymous-links", signalKey: "governance:external_access" },
-        { checkKey: "sharepoint:anonymous-links", signalKey: "security:has_gaps" },
-        // Dot form `signal.<domain>.<name>` (the majority real shape, Git #479) —
-        // domain segment "governance" is already a category, deduped against the
-        // colon-form row above.
-        { checkKey: "sharepoint:anonymous-links", signalKey: "signal.governance.retention-label-adoption" },
-        // Dot form whose own leading segment is the category (CRM engine's
-        // mirrored rows, Git #479).
-        { checkKey: "sharepoint:anonymous-links", signalKey: "crm.appgov.risky-permission-grants" },
-        // Dot form whose domain segment is real but not a SIGNAL_CATEGORY_PREFIXES
-        // member ("identity") → dropped, not thrown (Git #479).
-        { checkKey: "sharepoint:anonymous-links", signalKey: "signal.identity.continuous-access-evaluation" },
-        // Not a valid SIGNAL_CATEGORY_PREFIXES member → dropped, not passed through.
-        { checkKey: "sharepoint:anonymous-links", signalKey: "notacategory:whatever" },
-        // No colon and no dot at all → dropped.
-        { checkKey: "sharepoint:anonymous-links", signalKey: "bareSignalKey" },
+        // Two rules with the same pillar → one deduped entry.
+        { checkKey: "sharepoint:anonymous-links", pillar: "governance" },
+        { checkKey: "sharepoint:anonymous-links", pillar: "governance" },
+        { checkKey: "sharepoint:anonymous-links", pillar: "security" },
+        // A rule that predates pillar backfill (column default `""`) → dropped,
+        // not attributed as an empty-string category.
+        { checkKey: "sharepoint:anonymous-links", pillar: "" },
       ],
     });
 
@@ -392,7 +382,7 @@ describe("buildTenantProfile — categorizedFindings", () => {
 
     expect(result.categorizedFindings).toHaveLength(1);
     expect(result.categorizedFindings[0]!.text).toBe(result.findings[0]);
-    expect([...result.categorizedFindings[0]!.categories].sort()).toEqual(["crm", "governance", "security"]);
+    expect([...result.categorizedFindings[0]!.categories].sort()).toEqual(["governance", "security"]);
   });
 
   it("stays 1:1 with findings and gives script-run findings an empty category list (permanent limitation)", async () => {
@@ -404,7 +394,7 @@ describe("buildTenantProfile — categorizedFindings", () => {
       tenantMonitorProfiles: [
         { checkKey: "identity:stale-guests", status: "ok", severityMatched: "high", extractedProperties: { _itemCount: 4 } },
       ],
-      signalRuleCheckJoin: [{ checkKey: "identity:stale-guests", signalKey: "security:stale_identities" }],
+      signalRuleCheckJoin: [{ checkKey: "identity:stale-guests", pillar: "security" }],
     });
 
     const result = await buildTenantProfile(42);

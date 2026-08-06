@@ -11,14 +11,14 @@
  *     group that has a match.
  *   - Wildcard/custom patterns not found in the registry render as read-only
  *     removable chips, and are left untouched by checkbox interactions.
- *   - Signal Categories renders the fixed SIGNAL_CATEGORY_PREFIXES list and
- *     toggles independently of the profile key patterns array.
+ *   - Pillars renders the fixed SIGNAL_PILLARS list (Git #481) and toggles
+ *     independently of the profile key patterns array.
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
-import { SIGNAL_CATEGORY_PREFIXES } from "@workspace/db/schema";
+import { SIGNAL_PILLARS } from "@workspace/db/schema";
 
 const fetchWithAuth = vi.fn();
 
@@ -126,18 +126,18 @@ describe("DocumentScopingEditor", () => {
     expect(screen.queryByText("sharepoint.*")).toBeNull();
   });
 
-  it("renders the fixed signal category checkboxes and toggles independently of profile key patterns", async () => {
+  it("renders the fixed pillar checkboxes and toggles independently of profile key patterns", async () => {
     render(<Harness />);
     await screen.findByText("sharepoint-admin");
 
-    for (const category of SIGNAL_CATEGORY_PREFIXES) {
-      expect(screen.getByText(category)).toBeTruthy();
+    for (const pillar of SIGNAL_PILLARS) {
+      expect(screen.getByText(pillar)).toBeTruthy();
     }
 
-    const label = screen.getByText(SIGNAL_CATEGORY_PREFIXES[0]).closest("label")!;
+    const label = screen.getByText(SIGNAL_PILLARS[0]).closest("label")!;
     fireEvent.click(label.querySelector("input")!);
     await waitFor(() =>
-      expect(screen.getByTestId("categories-out").textContent).toBe(JSON.stringify([SIGNAL_CATEGORY_PREFIXES[0]]))
+      expect(screen.getByTestId("categories-out").textContent).toBe(JSON.stringify([SIGNAL_PILLARS[0]]))
     );
     expect(screen.getByTestId("patterns-out").textContent).toBe(JSON.stringify([]));
   });
@@ -148,7 +148,7 @@ describe("DocumentScopingEditor", () => {
       if (url === SUGGEST_URL_KEYLESS) {
         return jsonResponse({
           profileKeyPatterns: ["mailboxCount"],
-          signalCategories: [SIGNAL_CATEGORY_PREFIXES[0]],
+          signalCategories: [SIGNAL_PILLARS[0]],
           sections: [],
         });
       }
@@ -161,7 +161,7 @@ describe("DocumentScopingEditor", () => {
     await waitFor(() =>
       expect(screen.getByTestId("patterns-out").textContent).toBe(JSON.stringify(["siteCount", "mailboxCount"]))
     );
-    expect(screen.getByTestId("categories-out").textContent).toBe(JSON.stringify([SIGNAL_CATEGORY_PREFIXES[0]]));
+    expect(screen.getByTestId("categories-out").textContent).toBe(JSON.stringify([SIGNAL_PILLARS[0]]));
   });
 
   it("AI Suggest posts to the keyed route when docTypeKey is present", async () => {

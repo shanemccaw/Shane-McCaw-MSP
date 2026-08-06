@@ -594,60 +594,37 @@ export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileR
 }
 
 /**
- * Extracts a `SIGNAL_CATEGORY_PREFIXES` category from a `signal_key` in any of
- * the real naming conventions found in production `signal_derivation_rules`
- * (Git #479):
- *   - Legacy colon form `<category>:<name>` (`security:lacks_mfa`) — the
- *     substring before the first colon.
- *   - Dot form `signal.<domain>.<name>` (`signal.governance.retention-label-adoption`,
- *     the majority shape) — the SECOND segment, since the leading `signal`
- *     literal carries no category information of its own.
- *   - Dot form `<namespace>.<name...>` whose own first segment already IS a
- *     valid category (`crm.appgov.risky-permission-grants` → `crm`) — the
- *     FIRST segment, for namespaces (crm/msp/workflow/...) that don't nest
- *     under a `signal.` prefix.
- *   - Bare keys with no separator at all (`hasExchangeOnPrem`) — no category.
- * The extracted candidate is always validated against `SIGNAL_CATEGORY_PREFIXES`;
- * an unrecognized candidate (e.g. `signal.identity.*`'s domain segment
- * "identity", or the `example:*`/`adj:*` documentation/pricing-adjustor rows)
- * resolves to `null`, not a thrown error — under-attribution is the safe
- * direction here (see the recall-limit note below).
- */
-function extractSignalCategoryPrefix(signalKey: string, validPrefixes: ReadonlySet<string>): string | null {
-  const colonAt = signalKey.indexOf(":");
-  if (colonAt > 0) {
-    const prefix = signalKey.slice(0, colonAt);
-    return validPrefixes.has(prefix) ? prefix : null;
-  }
-
-  const segments = signalKey.split(".");
-  if (segments.length < 2) return null;
-  const candidate = segments[0] === "signal" ? segments[1] : segments[0];
-  return validPrefixes.has(candidate) ? candidate : null;
-}
-
-/**
- * Batched checkKey → signal-category-prefix lookup. ONE query for the whole
+ * Batched checkKey → signal-pillar lookup (Git #481). ONE query for the whole
  * list, never one per check: every `signal_derivation_rules` row whose
  * `source_key` equals one of the given `monitor_checks.key`s, projected down to
- * that rule's `signal_key` category prefix (see `extractSignalCategoryPrefix`),
- * validated against `SIGNAL_CATEGORY_PREFIXES` and deduped per checkKey.
- * A checkKey with no matching rule (or only rules whose signalKey has no valid
- * prefix) is simply absent from the returned map.
+ * that rule's `pillar` column and deduped per checkKey. A checkKey with no
+ * matching rule, or whose matching rules all carry an empty `pillar` (the
+ * column's `""` default — rows that predate pillar backfill), is simply absent
+ * from the returned map.
+ *
+ * Replaces the #479 domain-segment parser (`extractSignalCategoryPrefix`, which
+ * derived a category by splitting `signal_key` against the separate, narrower
+ * `SIGNAL_CATEGORY_PREFIXES` list): `pillar` is Git #469's enforced single
+ * source of truth for "what pillar does this signal belong to", so this reads
+ * it directly instead of re-deriving a second vocabulary from the key string
+ * that can drift out of sync with it — which is exactly what #481's live-corpus
+ * audit found had happened (e.g. every `identity:*` finding carries
+ * `pillar = 'security'` but never matched `SIGNAL_CATEGORY_PREFIXES`'s
+ * "security" via key-parsing).
  *
  * The join is `signal_derivation_rules.source_key = monitor_checks.key` — the
- * exact join `getSignalStabilizationWindowHours` / `getSignalStabilizationWindowHoursBatch`
- * above already use, so category attribution and stabilization windows agree on
- * what "this rule is fed by this check" means.
+ * exact join `getSignalStabilizationWindowHours` above already uses, so pillar
+ * attribution and stabilization windows agree on what "this rule is fed by
+ * this check" means.
  *
  * KNOWN RECALL LIMIT (deliberate, matches the existing join): a rule whose
  * `source_key` is a mapping targetField (e.g. `globalAdminCount`) or the
  * synthetic `<checkKey>__itemCount` rather than the bare check key will not
- * match, so its category is not attributed to that check. Widening the join to
+ * match, so its pillar is not attributed to that check. Widening the join to
  * mapping targetFields would be ambiguous — two checks can emit the same
- * targetField — so it is not done here. Under-attribution is the safe direction:
- * it can only make a category-scoped document narrower, never leak a finding
- * into a document type that didn't ask for its category.
+ * targetField — so it is not done here. Under-attribution is the safe
+ * direction: it can only make a pillar-scoped document narrower, never leak a
+ * finding into a document type that didn't ask for its pillar.
  */
 export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Promise<Map<string, string[]>> {
   const byCheckKey = new Map<string, string[]>();
@@ -655,18 +632,17 @@ export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Pr
   if (uniqueKeys.length === 0) return byCheckKey;
 
   const rows = await db
-    .select({ checkKey: monitorChecksTable.key, signalKey: signalDerivationRulesTable.signalKey })
+    .select({ checkKey: monitorChecksTable.key, pillar: signalDerivationRulesTable.pillar })
     .from(signalDerivationRulesTable)
     .innerJoin(monitorChecksTable, eq(signalDerivationRulesTable.sourceKey, monitorChecksTable.key))
     .where(inArray(monitorChecksTable.key, uniqueKeys));
 
-  const validPrefixes = new Set<string>(SIGNAL_CATEGORY_PREFIXES);
   for (const row of rows) {
-    const prefix = extractSignalCategoryPrefix(row.signalKey, validPrefixes);
-    if (!prefix) continue;
+    const pillar = row.pillar?.trim();
+    if (!pillar) continue;
     const existing = byCheckKey.get(row.checkKey);
-    if (!existing) byCheckKey.set(row.checkKey, [prefix]);
-    else if (!existing.includes(prefix)) existing.push(prefix);
+    if (!existing) byCheckKey.set(row.checkKey, [pillar]);
+    else if (!existing.includes(pillar)) existing.push(pillar);
   }
   return byCheckKey;
 }
@@ -702,14 +678,16 @@ export async function fetchSignalCategoriesForCheckKeys(checkKeys: string[]): Pr
 //
 // ADDITIVE (2026-07-28): the return also carries `categorizedFindings` — the
 // exact same strings as `findings`, in the same order, each annotated with the
-// signal-category prefixes of the check that produced it. `findings` itself and
-// every field's existing shape are untouched; consumers that don't want
-// category scoping keep reading `findings` and see no change.
+// signal pillar(s) of the check that produced it (pillar-based since Git #481;
+// previously a parsed `signal_key` domain-segment category). `findings` itself
+// and every field's existing shape are untouched; consumers that don't want
+// pillar scoping keep reading `findings` and see no change.
 export interface CategorizedFinding {
   text: string;
   /**
-   * Signal-category prefixes (`SIGNAL_CATEGORY_PREFIXES` — security, compliance,
-   * governance, …) this finding belongs to. EMPTY means "not categorizable",
+   * `signal_derivation_rules.pillar` value(s) (governance, security,
+   * compliance, adoption, copilot, architecture, licensing, cost) of the
+   * check(s) that produced this finding. EMPTY means "not categorizable",
    * which is a real, distinguishable state — not "belongs to nothing". See the
    * permanent-limitation note on `categorizedFindings` below.
    */
@@ -1025,12 +1003,6 @@ export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];
 
 export const SIGNAL_SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
 export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
-
-export const SIGNAL_CATEGORY_PREFIXES = [
-  "pricing", "priority", "governance", "security", "compliance", "adoption",
-  "copilot", "architecture", "drift", "forecasting", "crm", "msp", "workflow",
-] as const;
-export type SignalCategoryPrefix = typeof SIGNAL_CATEGORY_PREFIXES[number];
 
 export interface SignalIntelligenceFields {
   priority: number;

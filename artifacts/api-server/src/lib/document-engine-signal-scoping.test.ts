@@ -15,6 +15,13 @@
  *   3. An uncategorizable finding (`categories: []` — every script-run finding)
  *      is EXCLUDED when a filter is set, never included by default.
  *
+ * `scopeFindingsBySignalCategory` itself is vocabulary-agnostic — it does plain
+ * set-membership on whatever strings `categories` carries, never parses or
+ * validates them. So these fixtures are unaffected by Git #481's switch of that
+ * vocabulary from a parsed `signal_key` domain segment to `signal_derivation_
+ * rules.pillar` directly; "security"/"governance"/"adoption"/"copilot" below are
+ * valid values under either scheme.
+ *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
  */

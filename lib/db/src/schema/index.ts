@@ -322,6 +322,15 @@ export const documentTypesTable = pgTable("document_types", {
   requiresSowHtml: boolean("requires_sow_html").notNull().default(false),
   serviceId: integer("service_id").references((): AnyPgColumn => servicesTable.id, { onDelete: "set null" }),
   includedProfileKeyPatterns: jsonb("included_profile_key_patterns").$type<string[]>().notNull().default([]),
+  // Column/field name kept as-is (Git #481, deliberate, minimize blast radius)
+  // even though its SEMANTICS changed: values are now `SIGNAL_PILLARS` members
+  // (`signal_derivation_rules.pillar`), not the old `SIGNAL_CATEGORY_PREFIXES`
+  // signal_key domain-segment values #479 parsed. `scopeFindingsBySignalCategory`
+  // (document-engine.ts) is vocabulary-agnostic set-membership, so no code
+  // changed shape — but any row saved under the old scheme now scopes against
+  // the wrong vocabulary until an admin re-saves it via DocumentScopingEditor.
+  // No real document type had this configured as of #481 (out-of-scope follow-up
+  // with Shane), so there was nothing live to migrate.
   includedSignalCategories: jsonb("included_signal_categories").$type<string[]>().notNull().default([]),
   pipelineCategory: text("pipeline_category", { enum: ["standalone", "pipeline_output"] }).notNull().default("standalone"),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -951,6 +960,27 @@ export const SIGNAL_CATEGORY_PREFIXES = [
   "copilot", "architecture", "drift", "forecasting", "crm", "msp", "workflow",
 ] as const;
 export type SignalCategoryPrefix = typeof SIGNAL_CATEGORY_PREFIXES[number];
+
+/**
+ * Canonical values of `signalDerivationRulesTable.pillar` (a DIFFERENT axis
+ * from `category` above — see the `pillar` column itself). Git #469 made
+ * `pillar` the enforced single source of truth for "what pillar does this
+ * signal belong to"; Git #481 switched `document_types.included_signal_categories`
+ * document scoping onto it directly instead of parsing a `signal_key` domain
+ * segment against `SIGNAL_CATEGORY_PREFIXES`.
+ *
+ * Equal to `HEALTH_PILLARS` (`artifacts/api-server/src/lib/health-engine.ts`)
+ * plus `security` and `cost`, which score outside `HEALTH_PILLARS`. Duplicated
+ * here as a static literal rather than imported — `health-engine.ts` lives in
+ * api-server, and this package (`@workspace/db`) is a lower-level dependency of
+ * BOTH api-server and admin-panel, so it cannot import from either without
+ * inverting the dependency graph. If `HEALTH_PILLARS` changes, update this by
+ * hand.
+ */
+export const SIGNAL_PILLARS = [
+  "governance", "security", "compliance", "adoption", "copilot", "architecture", "licensing", "cost",
+] as const;
+export type SignalPillar = typeof SIGNAL_PILLARS[number];
 
 export const SIGNAL_TREND_DIRECTIONS = ["up", "down", "flat"] as const;
 export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];

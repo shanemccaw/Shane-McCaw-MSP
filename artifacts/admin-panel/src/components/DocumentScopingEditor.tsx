@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { SIGNAL_CATEGORY_PREFIXES } from "@workspace/db/schema";
+import { SIGNAL_PILLARS } from "@workspace/db/schema";
 
 // Drop-in replacement for the raw JSON CodeMirror textboxes previously used
 // for `includedProfileKeyPatterns` / `includedSignalCategories` (Phase 2 of
@@ -276,16 +276,16 @@ export default function DocumentScopingEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">Signal Categories</label>
+        <label className="text-[11px] font-medium text-muted-foreground">Pillars</label>
         <div className="border border-border rounded-md px-2.5 py-2 grid grid-cols-2 gap-x-3 gap-y-1">
-          {SIGNAL_CATEGORY_PREFIXES.map(category => (
-            <label key={category} className="flex items-center gap-2 text-xs text-foreground/80 py-0.5 cursor-pointer">
+          {SIGNAL_PILLARS.map(pillar => (
+            <label key={pillar} className="flex items-center gap-2 text-xs text-foreground/80 py-0.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={signalCategories.includes(category)}
-                onChange={e => toggleSignalCategory(category, e.target.checked)}
+                checked={signalCategories.includes(pillar)}
+                onChange={e => toggleSignalCategory(pillar, e.target.checked)}
               />
-              {category}
+              {pillar}
             </label>
           ))}
         </div>
