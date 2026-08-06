@@ -39,6 +39,18 @@ const KEYFRAMES = `
 .smc-scope-group[open] summary::after{transform:rotate(-135deg)}
 `;
 
+/** #466: before the visitor answers anything, `hubNum`/`closingLine` had no
+ * real content to show — this site has no scan yet to report a score off
+ * of, and there is no single "industry average score out of 100" that would
+ * match this site's 0-100 methodology to fabricate one. These are real,
+ * attributable third-party findings instead, shown as "here's what's
+ * typical" rather than this visitor's own number. */
+const PRE_QUIZ_STATS = [
+  { stat: "80%", finding: "of audited enterprise Copilot tenants had material oversharing exposure", source: "EPC Group audits" },
+  { stat: "47%", finding: "of IT leaders aren't confident they can manage Copilot's security and access risks", source: "Gartner, Jan 2025" },
+  { stat: "40%", finding: "of organizations delayed their Copilot rollout three months over oversharing concerns", source: "Gartner survey of 132 IT leaders" },
+] as const;
+
 const HEADLINE_FONT_SIZE = "clamp(30px,6.4vw,52px)";
 const HEADLINE_LINE_HEIGHT = 1.06;
 const HEADLINE_LETTER_SPACING = "-.028em";
@@ -401,7 +413,9 @@ export default function Home() {
   const adoptionReveal2 = useReveal<HTMLDivElement>();
   const adoptionReveal3 = useReveal<HTMLDivElement>();
   const assessmentReveal = useReveal<HTMLDivElement>();
-  const closingLine = done ? `Your estimate of ${score} came from seven answers about how things are meant to work.` : "An estimate comes from how things are meant to work.";
+  const closingLine = done
+    ? `Your estimate of ${score} came from seven answers about how things are meant to work.`
+    : "Industry-wide, 80% of audited Copilot tenants had material oversharing exposure before guardrails went in (EPC Group audits) — an estimate here shows how yours might compare.";
 
   return (
     <>
@@ -440,6 +454,21 @@ export default function Home() {
             <p style={{ fontSize: "clamp(15px,2.3vw,17px)", lineHeight: 1.6, color: "#94a3b8", margin: "0 0 32px", maxWidth: 440 }}>
               Seven questions. No sign-in, no scan, no sales call. The radar fills in as you answer, one pillar at a time.
             </p>
+
+            {!answered && (
+              <div style={{ display: "grid", gap: 10, marginBottom: 24, maxWidth: 460 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>What's typical, industry-wide</span>
+                {PRE_QUIZ_STATS.map((s) => (
+                  <div key={s.stat} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(51,65,85,.7)", background: "rgba(2,6,23,.4)" }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: "#93c5fd", letterSpacing: "-.02em", flexShrink: 0 }}>{s.stat}</span>
+                    <span style={{ fontSize: 13, lineHeight: 1.45, color: "#94a3b8" }}>
+                      {s.finding} <span style={{ color: "#475569" }}>— {s.source}</span>
+                    </span>
+                  </div>
+                ))}
+                <span style={{ fontSize: 11.5, color: "#475569", fontStyle: "italic" }}>Third-party findings, not this site's own data — your seven answers below build your own estimate.</span>
+              </div>
+            )}
 
             {!done && (
               <div style={{ background: "#0f172a", border: "1px solid rgba(30,41,59,.9)", borderRadius: 16, padding: "clamp(18px,4vw,26px) clamp(18px,4vw,26px) 22px", maxWidth: 520 }}>
