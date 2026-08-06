@@ -56,7 +56,15 @@ const HERO_GRADIENT_STYLE = {
     "linear-gradient(96deg,transparent 0%,#67e8f9 10%,#a78bfa 20%,#f472b6 30%,#fbbf24 40%,transparent 50%)",
   backgroundSize: "100% 100%, 220% 100%",
   backgroundPosition: "0 0, 0% 0",
-  backgroundBlendMode: "overlay",
+  // #450: "overlay" rendered text near-invisible wherever the shimmer layer's
+  // transparent stops (rgba(0,0,0,0), interpolated non-premultiplied toward
+  // the adjacent color stops) swept over it — confirmed by rendering this
+  // exact gradient pair at several shimmer sweep positions and headline
+  // lengths and screenshotting: the 50%-ish sweep position went nearly
+  // black-on-black under overlay, matching Shane's screenshot. "screen" never
+  // darkens (screen(x,0)=x), so every sweep position stays readable while
+  // keeping the rainbow shimmer accent.
+  backgroundBlendMode: "screen",
   WebkitBackgroundClip: "text" as const,
   backgroundClip: "text" as const,
   color: "transparent",
@@ -257,6 +265,16 @@ export default function Home() {
     const el = document.getElementById("chapters");
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: "smooth" });
   };
+  const goAdoption = () => {
+    const el = document.getElementById("adoption");
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: "smooth" });
+  };
+  /** #453: above this score the foundational pillars already look strong per
+   *  self-report, so White-Glove Adoption becomes the headline upsell — a
+   *  prominence change only, distinct from `band`/`bonusText`. The Copilot
+   *  Assessment stays the actual purchase; this just surfaces existing
+   *  "adoption" section content earlier instead of only late-page. */
+  const highAdoptionFit = score > 82;
 
   const hubSize = done ? "56%" : "54%";
   const hubGlow = done ? "46%" : "40%";
@@ -384,6 +402,25 @@ export default function Home() {
                   <div style={{ borderTop: "1px solid rgba(37,99,235,.22)", paddingTop: 18, margin: "0 0 22px" }}>
                     <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#60A5FA" }}>One thing we noticed</span>
                     <p style={{ fontSize: 15.5, lineHeight: 1.6, color: "#e2e8f0", margin: "10px 0 0", maxWidth: 440 }}>{bonusText}</p>
+                  </div>
+                )}
+                {highAdoptionFit && (
+                  <div style={{ border: "1px solid rgba(251,146,60,.3)", background: "linear-gradient(160deg,rgba(60,28,10,.4),rgba(9,14,28,.5) 70%)", borderRadius: 14, padding: "18px 20px", margin: "0 0 22px" }}>
+                    <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#FB923C" }}>Your better next step</span>
+                    <p style={{ fontSize: 15.5, lineHeight: 1.6, color: "#e2e8f0", margin: "10px 0 14px", maxWidth: 440 }}>
+                      An estimate this high usually means the foundational pillars already hold up. The assessment still confirms that against your real tenant, but from here the bigger lever is White-Glove
+                      Copilot Adoption — getting your people to the second prompt.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                      {ADOPTION_STEPS.slice(0, 3).map((s) => (
+                        <span key={s.title} style={{ fontSize: 12, color: "#fdba74", border: "1px solid rgba(251,146,60,.3)", background: "rgba(251,146,60,.09)", borderRadius: 999, padding: "6px 12px" }}>
+                          {s.title}
+                        </span>
+                      ))}
+                    </div>
+                    <Button size="sm" variant="outline" onClick={goAdoption} style={{ borderColor: "rgba(251,146,60,.4)", color: "#fdba74" }}>
+                      See the White-Glove Adoption programme
+                    </Button>
                   </div>
                 )}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -659,9 +696,12 @@ export default function Home() {
                   Want your actual number,{" "}
                   <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>not an estimate?</span>
                 </h2>
-                <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: "0 0 32px" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: "0 0 20px" }}>
                   {closingLine} The Copilot Readiness Assessment connects to your tenant through the Microsoft Graph API and scores all six pillars on what is actually there — every site, every policy, every
                   dormant seat. You get your Copilot Gate status, your blast radius, the evidence behind every finding, and the order to fix them in.
+                </p>
+                <p style={{ fontSize: 15, lineHeight: 1.6, color: "#7dd3c8", margin: "0 0 32px" }}>
+                  It's not a one-time snapshot: the same scan re-runs weekly, so you can watch your score move as things change instead of guessing whether last quarter's fixes stuck.
                 </p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>
@@ -670,6 +710,7 @@ export default function Home() {
                   </span>
                   <span style={{ fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>Scan: a minute or two</span>
                   <span style={{ fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>Reports: under thirty</span>
+                  <span style={{ fontSize: 12, color: "#cbd5e1", border: "1px solid rgba(51,65,85,.85)", background: "rgba(2,6,23,.45)", borderRadius: 999, padding: "7px 14px" }}>Re-scanned weekly, not once</span>
                 </div>
               </div>
 
