@@ -184,6 +184,7 @@ export default defineConfig({
       "src/lib/category-pillar-mapping.test.ts",
       "src/routes/admin-signal-rules-category-pillar-469.test.ts",
       "src/lib/remediation-knowledge-base.test.ts",
+      "src/routes/public-assessment-rescan-addon.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -3167,6 +3167,26 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   seats: integer("seats").notNull().default(1),
   status: text("status", { enum: ["pending", "consented", "paid", "expired"] }).notNull().default("pending"),
   tenantId: text("tenant_id"),
+
+  // ── Recurring rescan add-on (#490) ──────────────────────────────────────────
+  // The buyer's answer to the opt-in step that sits between the #432 Compliance
+  // decision and Payment. Deliberately TRI-STATE: null means "not asked yet",
+  // which is what lets a resumed session land back on the add-on step rather
+  // than silently treating an unanswered question as a decline.
+  rescanAddonOptIn: boolean("rescan_addon_opt_in"),
+  // The catalog row the offer was quoted from, and the monthly price in integer
+  // cents AS QUOTED at decision time. The price is snapshotted rather than
+  // re-resolved at charge time because the buyer agreed to a specific number:
+  // if the catalog row is edited between the decision and the payment landing,
+  // the subscription is created at the price that was on screen, and the
+  // divergence is logged rather than silently charged.
+  rescanAddonServiceId: integer("rescan_addon_service_id"),
+  rescanAddonPriceCents: integer("rescan_addon_price_cents"),
+  // The Stripe Subscription created once the one-time payment succeeded. Also
+  // the idempotency record: a replayed /payment-confirmed with this already set
+  // creates nothing.
+  rescanSubscriptionId: text("rescan_subscription_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

@@ -49,6 +49,7 @@ type StepKey =
   | "compliance"
   | "self-add"
   | "write-consent"
+  | "rescan"
   | "payment"
   | "verify"
   | "password"
@@ -62,6 +63,7 @@ const STEP_LABEL: Record<StepKey, string> = {
   compliance: "Compliance",
   "self-add": "Group",
   "write-consent": "Write access",
+  rescan: "Rescan",
   payment: "Payment",
   verify: "Verify",
   password: "Password",
@@ -103,6 +105,11 @@ const STAGE_OF: Record<StepKey, StageKey> = {
   compliance: "authorize",
   "self-add": "authorize",
   "write-consent": "authorize",
+  // #490 — the rescan add-on decision belongs to the Payment stage rather than
+  // to a sixth top-level stage: it is part of deciding what is being bought,
+  // and the stage row already wraps at five entries on small screens. The same
+  // generic sub-progress ticks the Authorize stage uses cover it for free.
+  rescan: "payment",
   payment: "payment",
   verify: "account",
   password: "account",
@@ -142,11 +149,47 @@ function stageProgressFor(steps: StepKey[], stepIdx: number): StageProgress[] {
  * `verify` and `password` (#436/#437/#438) sit AFTER payment: the account is
  * completed inline rather than deferred to an email. No `mfa` step — #439 is
  * held for a separate final pre-deployment build.
+ *
+ * `rescan` (#490) is present only when the add-on is genuinely sellable — i.e.
+ * a Product Catalog row for it exists with a real price. There is no such row
+ * as of #490 shipping, so the default shape of this flow is unchanged and the
+ * step appears the moment the catalog says it can be sold.
  */
-function stepsFor(path: CompliancePath | null): StepKey[] {
+function stepsFor(path: CompliancePath | null, withRescan: boolean): StepKey[] {
   const branch: StepKey[] =
     path === "self_add" ? ["self-add"] : path === "delegate_write" ? ["write-consent"] : [];
-  return ["details", "consent", "compliance", ...branch, "payment", "verify", "password", "done"];
+  const rescan: StepKey[] = withRescan ? ["rescan"] : [];
+  return ["details", "consent", "compliance", ...branch, ...rescan, "payment", "verify", "password", "done"];
+}
+
+// ── Recurring rescan add-on (#490) ────────────────────────────────────────────
+
+/**
+ * What GET /api/public/flow/rescan-addon reports.
+ *
+ * Every field that costs money comes from here — the Product Catalog, resolved
+ * server-side on each call. Nothing in this file names a price, and `available:
+ * false` (no catalog row, or a row with no price) is a normal answer that
+ * removes the step rather than a failure to paper over with a placeholder.
+ */
+interface RescanOffer {
+  available: boolean;
+  name?: string;
+  description?: string | null;
+  priceCents?: number;
+  interval?: "month";
+  included?: string[];
+  /** null until the buyer has answered; the resume path reads this. */
+  optIn: boolean | null;
+}
+
+/** Display-only formatter — no amount originates here. */
+function formatCents(cents: number): string {
+  const dollars = cents / 100;
+  return `$${dollars.toLocaleString("en-US", {
+    minimumFractionDigits: dollars % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /**
@@ -249,6 +292,22 @@ function useFlowStatus(sessionId: string | null, active: boolean): FlowStatus | 
   }, [sessionId, active]);
 
   return status;
+}
+
+/**
+ * Reads the #490 add-on offer for a session. Resolves to null on any failure —
+ * a flow that cannot reach the offer endpoint must still be able to sell the
+ * assessment, so "unknown" is treated as "not offered", never as an error the
+ * buyer has to deal with.
+ */
+async function fetchRescanOffer(sessionId: string): Promise<RescanOffer | null> {
+  try {
+    const res = await fetch(`/api/public/flow/rescan-addon?sessionId=${encodeURIComponent(sessionId)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as RescanOffer;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -685,6 +744,14 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compliancePath, setCompliancePath] = useState<CompliancePath | null>(null);
+  /**
+   * #490 — the add-on offer, prefetched as soon as there is a session so the
+   * step machine knows whether the step exists long before the buyer gets
+   * there. null means "not answered yet by the server"; the flow treats that as
+   * "do not offer", which is the safe default: skipping an add-on costs a sale
+   * of an add-on, whereas stalling costs the whole purchase.
+   */
+  const [rescanOffer, setRescanOffer] = useState<RescanOffer | null>(null);
   /** Reported by /set-password — the real portal base, never a literal here. */
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
 
@@ -720,9 +787,18 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
 
   const includeList = includes && includes.length > 0 ? includes : INCLUDES_FALLBACK;
   const isMobile = useIsMobile();
-  const steps = stepsFor(compliancePath);
+  const rescanSellable = rescanOffer?.available === true;
+  const steps = stepsFor(compliancePath, rescanSellable);
   const stepIdx = Math.max(0, steps.indexOf(step));
   const stageInfo = stageProgressFor(steps, stepIdx);
+
+  /**
+   * Where the flow goes once the #432 Compliance branch is settled: the add-on
+   * step when there is a real, priced, not-yet-answered offer, and Payment —
+   * exactly as before #490 — in every other case.
+   */
+  const afterCompliance: StepKey =
+    rescanSellable && rescanOffer?.optIn == null ? "rescan" : "payment";
 
   const f = form;
   const detailsInvalid = !(
@@ -749,10 +825,22 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     resumedRef.current = true;
 
     let cancelled = false;
-    fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(stored)}`)
-      .then((r) => (r.ok ? (r.json() as Promise<FlowStatus>) : Promise.reject(new Error("gone"))))
-      .then((s) => {
+    // #490 — the add-on offer is resolved alongside the consent status rather
+    // than after it, so a resumed session that has not yet answered the add-on
+    // question lands ON that step instead of skipping past a question it was
+    // never asked. A failed offer lookup resolves to "no offer", which resumes
+    // the pre-#490 shape.
+    Promise.all([
+      fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(stored)}`).then((r) =>
+        r.ok ? (r.json() as Promise<FlowStatus>) : Promise.reject(new Error("gone")),
+      ),
+      fetchRescanOffer(stored),
+    ])
+      .then(([s, offer]) => {
         if (cancelled) return;
+        setRescanOffer(offer);
+        const resumeAfterCompliance: StepKey =
+          offer?.available === true && offer.optIn == null ? "rescan" : "payment";
         // Paid, but the account may not be finished — a reload here resumes at
         // Verify rather than jumping to Done, because Done now means "account
         // complete", not merely "payment taken". Verify is safe to re-enter: a
@@ -766,7 +854,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
           setCompliancePath(s.complianceGroup.path);
           if (s.complianceGroup.path === "self_add" && !s.complianceGroup.confirmed) setStep("self-add");
           else if (s.complianceGroup.path === "delegate_write" && s.writeBack !== "granted") setStep("write-consent");
-          else setStep("payment");
+          else setStep(resumeAfterCompliance);
           return;
         }
         // One grant is the whole of Step 2 now (#480), so the read consent
@@ -817,10 +905,10 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       setError(null);
     } else if (step === "write-consent" && status.writeBack === "granted") {
       trackEvent("consent_granted", { scope: "write_back" });
-      setStep("payment");
+      setStep(afterCompliance);
       setError(null);
     }
-  }, [status, step]);
+  }, [status, step, afterCompliance]);
 
   // Surface a declined grant rather than polling forever behind a silent UI —
   // and mint a FRESH consent link for the retry. The write-app callback burns
@@ -917,6 +1005,11 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       const { sessionId: id } = (await res.json()) as { sessionId: string };
       saveSessionId(id);
       setSessionId(id);
+      // #490 — resolve the add-on offer now, at the START of the flow. The
+      // buyer then spends a minute or more in Microsoft's consent screens, so
+      // by the time the step machine has to decide whether the add-on step
+      // exists, the answer is already in hand.
+      void fetchRescanOffer(id).then((offer) => setRescanOffer(offer));
       // #458: this is the funnel's first confirmed email — identifyLead ties
       // the anonymous analytics session to it. (#457's Home-quiz lead capture
       // fires its own identifyLead too, for visitors who convert that way instead.)
@@ -954,7 +1047,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
       }
       trackEvent("compliance_path_chosen", { path });
       setCompliancePath(path);
-      setStep(path === "self_add" ? "self-add" : path === "delegate_write" ? "write-consent" : "payment");
+      setStep(path === "self_add" ? "self-add" : path === "delegate_write" ? "write-consent" : afterCompliance);
     } catch {
       setError("Network error. Check your connection and try again.");
     } finally {
@@ -976,9 +1069,49 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         setError("We could not record your confirmation. Please try again.");
         return;
       }
-      setStep("payment");
+      setStep(afterCompliance);
     } catch {
       setError("Network error. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * #490 — records the add-on answer, then moves to Payment either way.
+   *
+   * A decline is deliberately still a recorded answer rather than a silent
+   * skip: it is what stops a resumed session re-asking, and it is what tells
+   * /payment-intent not to ask Stripe to save the buyer's card.
+   *
+   * A failed decline is not worth blocking the sale over (nothing is created by
+   * a decline), but a failed OPT-IN is: proceeding would put the buyer through
+   * a card form believing they had bought a monthly service that nothing had
+   * recorded.
+   */
+  async function chooseRescanAddon(optIn: boolean) {
+    if (!sessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/public/flow/rescan-addon-decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, optIn }),
+      });
+      if (!res.ok && optIn) {
+        setError("We could not add the recurring rescan to your order. Please try again, or continue without it.");
+        return;
+      }
+      trackEvent("rescan_addon_decision", { opt_in: optIn });
+      setRescanOffer((o) => (o ? { ...o, optIn } : o));
+      setStep("payment");
+    } catch {
+      if (optIn) {
+        setError("Network error. Check your connection and try again.");
+        return;
+      }
+      setStep("payment");
     } finally {
       setBusy(false);
     }
@@ -988,7 +1121,13 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   // here would give that effect a new identity on every render, re-creating the
   // PaymentIntent in a loop. It advances to Verify, not Done: account creation
   // now happens inline (#437/#438) instead of being deferred to an email.
-  const goVerify = useCallback(() => setStep("verify"), []);
+  const goVerify = useCallback((warning?: string | null) => {
+    // #490 — carries a failed add-on forward into the banner rather than
+    // dropping it: the payment step unmounts here, so this is the last chance
+    // to tell the buyer.
+    if (warning) setError(warning);
+    setStep("verify");
+  }, []);
   const goPassword = useCallback(() => setStep("password"), []);
   const goDone = useCallback((url: string | null) => {
     trackEvent("account_created");
@@ -1005,6 +1144,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
     setError(null);
     setForm({});
     setPortalUrl(null);
+    setRescanOffer(null);
   }, []);
 
   return (
@@ -1443,6 +1583,83 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         </div>
       )}
 
+      {/* ── Recurring rescan add-on — its own step before Payment (#490) ────── */}
+      {step === "rescan" && rescanOffer?.available && (
+        <div style={{ maxWidth: 720 }}>
+          <span style={EYEBROW}>Before you pay — optional</span>
+          <h3 style={H3}>Keep scanning, or take the one snapshot?</h3>
+          <p style={{ ...BODY, maxWidth: 640 }}>
+            The assessment you're buying is a single scan of your tenant as it is today. Tenants don't stay as they are today: a new
+            sharing link, a changed policy, a license reassigned, and the picture you paid for is a month out of date. This add-on re-runs
+            the <strong style={{ color: "#cbd5e1" }}>same read-only scan every week</strong> and keeps the results, so the change is
+            visible instead of inferred.
+          </p>
+
+          {/* Said plainly, because the difference is worth real money to get
+              wrong: this is passive tracking, NOT the Tenant Monitoring SOW. */}
+          <div
+            style={{
+              ...CARD,
+              borderRadius: 14,
+              padding: "18px 20px",
+              margin: "22px 0",
+              borderColor: "rgba(251,191,36,.28)",
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>
+              What this is not
+            </span>
+            <p style={{ ...BODY, fontSize: 13.5, margin: "12px 0 0" }}>
+              This is not Tenant Monitoring. Nobody is paged when something changes, no alert is raised, and no remediation work is
+              included — it re-scans and it records, and you look when you want to. Monitoring with active alerting and hands-on
+              remediation is a separate engagement with its own scope and its own price, and buying this does not buy any part of it.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <ChoiceCard
+              badge={`${formatCents(rescanOffer.priceCents ?? 0)}/month`}
+              title="Yes — keep scanning weekly"
+              body={
+                rescanOffer.description ??
+                "Your tenant is re-scanned every week and each pass is kept, so drift shows up as a change over time rather than as a surprise on the next assessment. Billed monthly on the card you're about to enter, and cancellable at any time."
+              }
+              action="Add it to my order"
+              disabled={busy}
+              onClick={() => void chooseRescanAddon(true)}
+            />
+            <ChoiceCard
+              title="No — just the one assessment"
+              body="You get exactly what you came for: one full scan and the reports that come out of it. Nothing recurring, nothing on your card afterwards. You can add weekly rescanning later from your portal."
+              action="Continue without it"
+              disabled={busy}
+              muted
+              onClick={() => void chooseRescanAddon(false)}
+            />
+          </div>
+
+          {/* Catalog-authored bullets, when the row carries any. */}
+          {rescanOffer.included && rescanOffer.included.length > 0 && (
+            <ul style={{ listStyle: "none", padding: 0, margin: "22px 0 0", display: "grid", gap: 8 }}>
+              {rescanOffer.included.map((item) => (
+                <li key={item} style={{ fontSize: 13.5, lineHeight: 1.55, color: "#94a3b8", paddingLeft: 18, position: "relative" }}>
+                  <span style={{ position: "absolute", left: 0, color: "#3B82F6" }}>·</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* The badge above is a 10px uppercase pill — fine as a marker, not
+              enough on its own for the number someone is agreeing to pay every
+              month. It is stated again here in plain body text. */}
+          <p style={FOOTNOTE}>
+            {formatCents(rescanOffer.priceCents ?? 0)} a month. The first month is charged today alongside the assessment, as a separate
+            line from the same card. Cancel any time from your portal — the assessment itself is yours regardless.
+          </p>
+        </div>
+      )}
+
       {/* ── Payment — embedded Stripe Payment Element (#435) + single price (#430) */}
       {step === "payment" && sessionId && (
         <PaymentStep
@@ -1525,7 +1742,7 @@ function PaymentStep({
   company?: string;
   includes: string[];
   compliancePath: CompliancePath | null;
-  onPaid: () => void;
+  onPaid: (warning?: string | null) => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stripeRef = useRef<StripeInstance | null>(null);
@@ -1536,6 +1753,14 @@ function PaymentStep({
   const [payError, setPayError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [intentId, setIntentId] = useState<string | null>(null);
+  /**
+   * #490 — the order's real amounts, as the SERVER resolved them. `fee` above
+   * is the catalog display string this component has always shown; these are
+   * what the card is actually being charged, which is what a summary listing
+   * two charges has to be built from.
+   */
+  const [baseCents, setBaseCents] = useState<number | null>(null);
+  const [rescan, setRescan] = useState<{ priceCents: number; interval: string } | null>(null);
 
   // #458: fired once, on mount — mirrors Checkout.tsx's trackCheckoutStarted convention.
   useEffect(() => {
@@ -1557,9 +1782,19 @@ function PaymentStep({
             : "We took the payment but could not record it. Please contact us before paying again.",
         );
       }
-      const data = (await res.json().catch(() => ({}))) as { amountCents?: number };
+      const data = (await res.json().catch(() => ({}))) as {
+        amountCents?: number;
+        rescanAddOn?: { status: string };
+      };
       trackCheckoutCompleted("copilot-assessment", data.amountCents != null ? { amount_cents: data.amountCents } : {});
-      onPaid();
+      // #490 — the assessment is paid for either way, so this never blocks the
+      // flow. But a buyer who opted into a monthly charge that did not take is
+      // told so rather than left to discover it from a missing invoice.
+      onPaid(
+        data.rescanAddOn?.status === "failed"
+          ? "Your assessment payment went through. The recurring rescan add-on could not be set up — you have not been charged for it, and we'll be in touch to sort it out."
+          : null,
+      );
     },
     [sessionId, onPaid],
   );
@@ -1593,9 +1828,13 @@ function PaymentStep({
           publishableKey: string;
           paymentIntentId: string;
           alreadyPaid: boolean;
+          amountCents?: number;
+          rescanAddOn?: { priceCents: number; interval: string } | null;
         };
         if (cancelled) return;
         setIntentId(data.paymentIntentId);
+        if (typeof data.amountCents === "number") setBaseCents(data.amountCents);
+        setRescan(data.rescanAddOn ?? null);
 
         // Recovered an intent that already succeeded (paid, then reloaded
         // before the callback landed) — finish the flow rather than asking
@@ -1683,6 +1922,34 @@ function PaymentStep({
                   ? "Compliance group membership: we'll add it"
                   : "All six pillars"}
           </p>
+          {/* #490 — when the buyer opted into the recurring rescan the order is
+              genuinely two things, so it is listed as two things. #430's "one
+              price" rule is about not repeating the SAME price; it was never a
+              reason to hide a second, real charge. */}
+          {rescan && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 12,
+                paddingTop: 14,
+                marginBottom: 2,
+                borderTop: "1px solid rgba(30,41,59,.9)",
+              }}
+            >
+              <span style={{ fontSize: 13, color: "#94a3b8" }}>
+                Recurring rescan
+                <span style={{ display: "block", fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  Weekly re-scan, billed monthly
+                </span>
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", whiteSpace: "nowrap" }}>
+                {formatCents(rescan.priceCents)}/mo
+              </span>
+            </div>
+          )}
+
           <div
             style={{
               display: "flex",
@@ -1692,9 +1959,21 @@ function PaymentStep({
               borderTop: "1px solid rgba(30,41,59,.9)",
             }}
           >
-            <span style={{ fontSize: 13, color: "#94a3b8" }}>Total due today</span>
-            <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc" }}>{fee}</span>
+            <span style={{ fontSize: 13, color: "#94a3b8" }}>{rescan ? "Charged today" : "Total due today"}</span>
+            <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc" }}>
+              {/* Without the add-on this is unchanged: the catalog display
+                  string. With it, the honest number is the server's own
+                  amount plus the first month, so it is computed from the
+                  server's figures rather than from the display string. */}
+              {rescan && baseCents != null ? formatCents(baseCents + rescan.priceCents) : fee}
+            </span>
           </div>
+          {rescan && (
+            <p style={{ fontSize: 12, lineHeight: 1.55, color: "#64748b", margin: "10px 0 0" }}>
+              Appears as two entries from Stripe — the assessment, and the first month of rescanning. Then{" "}
+              {formatCents(rescan.priceCents)} a month until you cancel.
+            </p>
+          )}
         </div>
 
         {initError ? (
@@ -1746,7 +2025,11 @@ function PaymentStep({
       <ValueCard
         includes={includes}
         heading="What you're paying for"
-        note="One scan of your whole tenant, and the reports that come out of it. No subscription, no hourly billing afterwards, no per-seat maths."
+        note={
+          rescan
+            ? "One scan of your whole tenant and the reports that come out of it, plus the weekly re-scan you added — billed monthly and cancellable at any time. No hourly billing, no per-seat maths."
+            : "One scan of your whole tenant, and the reports that come out of it. No subscription, no hourly billing afterwards, no per-seat maths."
+        }
       />
     </div>
   );

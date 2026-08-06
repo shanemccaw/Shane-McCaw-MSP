@@ -186,6 +186,24 @@ export const tenantsTable = pgTable("tenants", {
   industry: text("industry"),
   status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
   isTestbed: boolean("is_testbed").notNull().default(false),
+  // The tenant's Stripe Customer (`cus_…`), created once and reused for every
+  // charge this direct customer ever makes (#490).
+  //
+  // Before #490 the Home-page assessment flow was fully anonymous on Stripe's
+  // side: `public-assessment-payment.ts` created a bare PaymentIntent with no
+  // `customer`, so nothing tied the $5,000 one-time charge to a Stripe object
+  // that a later Subscription could hang off. A recurring add-on cannot work
+  // that way — a Subscription REQUIRES a customer, and the payment method that
+  // funds it has to be attached to that same customer during the one card-entry
+  // step the buyer ever sees. This column is that shared identity.
+  //
+  // Deliberately on `tenants` rather than on `checkout_sessions`: the Stripe
+  // customer outlives any single order (a second purchase, a retainer, a
+  // renewal) and belongs to the organisation, exactly like `consent` does. Note
+  // this is a REAL Stripe id — unrelated to the "customerId" naming used
+  // throughout consent.ts / portal routes, which everywhere else in this
+  // codebase means `tenants.id`, a local row id.
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
