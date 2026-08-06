@@ -1390,7 +1390,7 @@ export function SimulatorLeftTree() {
                             disabled
                             tabIndex={-1}
                             aria-label={ranAt ? `Ran ${new Date(ranAt).toLocaleString()}` : "Not yet run"}
-                            className="pointer-events-none h-3 w-3 accent-primary"
+                            className="pointer-events-none h-3 w-3 accent-green-500"
                           />
                         </span>
                         <FileDiff className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
