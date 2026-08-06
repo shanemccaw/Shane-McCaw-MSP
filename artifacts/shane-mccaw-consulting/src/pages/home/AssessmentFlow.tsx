@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./dsComponents";
 import { useConsentScopes } from "@/hooks/useConsentScopes";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { trackCheckoutStarted, trackCheckoutCompleted, identifyLead, trackEvent, getGa4ClientId } from "@/lib/analytics";
 
 /**
@@ -66,6 +67,65 @@ const STEP_LABEL: Record<StepKey, string> = {
   password: "Password",
   done: "Confirmed",
 };
+
+/**
+ * #467 — the top-level indicator groups steps into a handful of stages
+ * instead of one flat entry per StepKey (that flat row wraps even on large
+ * screens once the #432 branch is spliced in). "Authorize" bundles Consent +
+ * Compliance + the branch step: they're all one conceptual phase (Microsoft
+ * consent/authorization), so they render as a single stage node with its own
+ * sub-progress ticks rather than three separate dots.
+ */
+type StageKey = "details" | "authorize" | "payment" | "account" | "confirmed";
+
+const STAGE_ORDER: StageKey[] = ["details", "authorize", "payment", "account", "confirmed"];
+
+const STAGE_LABEL: Record<StageKey, string> = {
+  details: "Details",
+  authorize: "Authorize",
+  payment: "Payment",
+  account: "Account",
+  confirmed: "Confirmed",
+};
+
+const STAGE_OF: Record<StepKey, StageKey> = {
+  details: "details",
+  consent: "authorize",
+  compliance: "authorize",
+  "self-add": "authorize",
+  "write-consent": "authorize",
+  payment: "payment",
+  verify: "account",
+  password: "account",
+  done: "confirmed",
+};
+
+type StageProgress = {
+  stage: StageKey;
+  keys: StepKey[];
+  status: "done" | "active" | "upcoming";
+  /** Index of the current step within `keys`, only meaningful when active. */
+  activePos: number;
+};
+
+/** Groups the flat, branch-aware `steps` list into the fixed 5 top-level stages. */
+function stageProgressFor(steps: StepKey[], stepIdx: number): StageProgress[] {
+  return STAGE_ORDER.map((stage) => {
+    const entries = steps.map((k, i) => ({ k, i })).filter(({ k }) => STAGE_OF[k] === stage);
+    const indices = entries.map((e) => e.i);
+    const status: StageProgress["status"] = indices.includes(stepIdx)
+      ? "active"
+      : indices.length > 0 && indices.every((i) => i < stepIdx)
+        ? "done"
+        : "upcoming";
+    return {
+      stage,
+      keys: entries.map((e) => e.k),
+      status,
+      activePos: status === "active" ? indices.indexOf(stepIdx) : -1,
+    };
+  });
+}
 
 /**
  * The flow's step list, which #432's decision reshapes mid-flow.
@@ -350,8 +410,10 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const status = useFlowStatus(sessionId, polling);
 
   const includeList = includes && includes.length > 0 ? includes : INCLUDES_FALLBACK;
+  const isMobile = useIsMobile();
   const steps = stepsFor(compliancePath);
   const stepIdx = Math.max(0, steps.indexOf(step));
+  const stageInfo = stageProgressFor(steps, stepIdx);
 
   const f = form;
   const detailsInvalid = !(
@@ -655,36 +717,87 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         padding: "clamp(22px,4vw,34px)",
       }}
     >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 22px", marginBottom: 34 }}>
-        {steps.map((key, i) => {
-          const ring = i === stepIdx ? "#3B82F6" : i < stepIdx ? "rgba(37,99,235,.5)" : "rgba(51,65,85,.9)";
-          const fill = i === stepIdx ? "#3B82F6" : i < stepIdx ? "rgba(37,99,235,.14)" : "transparent";
-          const numColor = i === stepIdx ? "#f8fafc" : i < stepIdx ? "#93c5fd" : "#475569";
-          const color = i === stepIdx ? "#f1f5f9" : i < stepIdx ? "#93c5fd" : "#475569";
+      <div
+        style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, marginBottom: 34 }}
+        role="list"
+        aria-label="Assessment progress"
+      >
+        {stageInfo.map((s, idx) => {
+          const ring = s.status === "active" ? "#3B82F6" : s.status === "done" ? "rgba(37,99,235,.5)" : "rgba(51,65,85,.9)";
+          const fill = s.status === "active" ? "#3B82F6" : s.status === "done" ? "rgba(37,99,235,.14)" : "transparent";
+          const numColor = s.status === "active" ? "#f8fafc" : s.status === "done" ? "#93c5fd" : "#475569";
+          const color = s.status === "active" ? "#f1f5f9" : s.status === "done" ? "#93c5fd" : "#475569";
+          // On mobile only the active stage spells out its label; the rest stay as plain dots so the row never wraps.
+          const showLabel = !isMobile || s.status === "active";
           return (
-            <span key={key} style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: "50%",
-                  border: `1px solid ${ring}`,
-                  background: fill,
-                  color: numColor,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {i < stepIdx ? "✓" : String(i + 1)}
+            <Fragment key={s.stage}>
+              <span role="listitem" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    border: `1px solid ${ring}`,
+                    background: fill,
+                    color: numColor,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {s.status === "done" ? "✓" : String(idx + 1)}
+                </span>
+                {showLabel && (
+                  <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: ".1em",
+                        textTransform: "uppercase",
+                        color,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {STAGE_LABEL[s.stage]}
+                    </span>
+                    {/* Sub-progress ticks for the Authorize stage's bundled Consent/Compliance/branch steps. */}
+                    {s.status === "active" && s.keys.length > 1 && (
+                      <span
+                        style={{ display: "flex", gap: 3 }}
+                        title={`${STEP_LABEL[s.keys[s.activePos]]} (${s.activePos + 1} of ${s.keys.length})`}
+                      >
+                        {s.keys.map((k, i) => (
+                          <span
+                            key={k}
+                            style={{
+                              width: 12,
+                              height: 3,
+                              borderRadius: 2,
+                              background: i <= s.activePos ? "#3B82F6" : "rgba(51,65,85,.9)",
+                            }}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </span>
+                )}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color }}>
-                {STEP_LABEL[key]}
-              </span>
-            </span>
+              {idx < stageInfo.length - 1 && (
+                <span
+                  aria-hidden
+                  style={{
+                    flex: 1,
+                    minWidth: 10,
+                    height: 1,
+                    background: s.status === "done" ? "rgba(37,99,235,.4)" : "rgba(51,65,85,.6)",
+                  }}
+                />
+              )}
+            </Fragment>
           );
         })}
       </div>
