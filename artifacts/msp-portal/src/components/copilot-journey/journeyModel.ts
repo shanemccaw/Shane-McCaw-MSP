@@ -24,11 +24,11 @@
 
 import {
   COPILOT_GATE_TARGET,
-  JOURNEY_READINESS_DOCUMENT,
-  JOURNEY_READINESS_DOC_TYPE,
+  JOURNEY_LIVE_DOCUMENTS,
   PILLAR_KEYS,
   PILLARS,
-  isCopilotReadinessReport,
+  isLiveRenderedDocument,
+  liveDocumentFor,
   type PillarKey,
 } from "./journeyTokens.ts";
 
@@ -380,61 +380,63 @@ export function buildGeneration(status: WireAssessmentStatus | null | undefined)
 }
 
 /**
- * The Copilot Readiness Report, guaranteed present in a document set (#424).
+ * Every live-rendered document, guaranteed present in a document set (#424,
+ * generalised in #343).
  *
  * WHY THIS EXISTS. Every other document in the set is a row the old async
  * generation pipeline writes: it is listed because `GET
  * /api/portal/assessment/status` said so, and it is readable because that
- * pipeline finished writing its HTML. The readiness report is not one of those.
- * It is rendered live, in the browser, from the tenant's own scan data — the
- * pillar payload plus the narrative route (#409) — so its content exists the
- * moment the scan does, with nothing to generate, no row to wait for and no
+ * pipeline finished writing its HTML. A document on the new pattern is not one
+ * of those. It is rendered live, in the browser, from the tenant's own scan data
+ * — the pillar payload plus its narrative route (#409) — so its content exists
+ * the moment the scan does, with nothing to generate, no row to wait for and no
  * assessment service scope to be listed by.
  *
  * `buildGeneration`'s spine is `documents.expected` (falling back to the
  * generated rows), which is exactly the wrong shape for that: a tenant with no
- * assessment service row, or one whose service does not name this deliverable,
- * gets an empty set, so the one document the platform can always render was the
- * one document that could never be resolved to render it. This closes that: the
- * report is constructed here rather than looked up.
+ * assessment service row, or one whose service does not name a deliverable,
+ * gets an empty set, so the documents the platform can always render were the
+ * ones that could never be resolved to render them. This closes that: they are
+ * constructed here rather than looked up.
  *
  * WHAT IT DOES NOT DO. It never touches the other documents, and it never
- * invents one — a set with no rows still gets exactly one entry, this one. A
- * readiness row the pipeline HAS generated (`id !== null`) is left completely
- * alone, so the generated HTML and its PDF export keep behaving as they do
- * today; only the "listed but never generated" and "not listed at all" cases are
- * filled in, and both get `ready` because for this document there is genuinely
- * nothing outstanding to wait for.
+ * invents one — a set with no rows gets exactly the entries in
+ * `JOURNEY_LIVE_DOCUMENTS` and nothing else. A row the pipeline HAS generated
+ * (`id !== null`) is left completely alone, so the generated HTML and its PDF
+ * export keep behaving as they do today; only the "listed but never generated"
+ * and "not listed at all" cases are filled in, and both get `ready` because for
+ * these documents there is genuinely nothing outstanding to wait for.
  *
  * `ready`/`total` are recomputed from the resulting list so the counter and the
  * rows it counts can never disagree.
  */
-export function withReadinessDocument(generation: JourneyGeneration): JourneyGeneration {
-  const index = generation.documents.findIndex((d) => isCopilotReadinessReport(d));
-  const existing = index >= 0 ? generation.documents[index] : null;
+export function withLiveDocuments(generation: JourneyGeneration): JourneyGeneration {
+  let documents = generation.documents;
+  const added: JourneyDocumentView[] = [];
 
-  // A real generated row owns its own state — including a `failed` one, which is
-  // a fact about the pipeline this must not paper over.
-  if (existing && existing.id !== null) return generation;
+  for (const live of JOURNEY_LIVE_DOCUMENTS) {
+    const index = documents.findIndex((d) => liveDocumentFor(d)?.key === live.key);
+    const existing = index >= 0 ? documents[index] : null;
 
-  const entry: JourneyDocumentView = existing
-    ? { ...existing, status: "ready" }
-    : {
-        title: JOURNEY_READINESS_DOCUMENT,
-        docType: JOURNEY_READINESS_DOC_TYPE,
-        id: null,
-        status: "ready",
-      };
+    // A real generated row owns its own state — including a `failed` one, which
+    // is a fact about the pipeline this must not paper over.
+    if (existing && existing.id !== null) continue;
 
-  // First when it is being added: it is the roll-up the other reports expand on,
-  // and the design's own set leads with it.
-  const documents =
-    index >= 0
-      ? generation.documents.map((d, i) => (i === index ? entry : d))
-      : [entry, ...generation.documents];
+    if (existing) {
+      documents = documents.map((d, i) => (i === index ? { ...d, status: "ready" } : d));
+    } else {
+      added.push({ title: live.title, docType: live.docType, id: null, status: "ready" });
+    }
+  }
 
-  const ready = documents.filter((d) => d.status === "ready").length;
-  return { ready, total: documents.length, allReady: ready === documents.length, documents };
+  // Nothing to do — return the same object so a memoised caller sees no change.
+  if (added.length === 0 && documents === generation.documents) return generation;
+
+  // Added entries lead, in registry order: the roll-up is the report the others
+  // expand on, and the design's own set leads with it.
+  const all = added.length ? [...added, ...documents] : documents;
+  const ready = all.filter((d) => d.status === "ready").length;
+  return { ready, total: all.length, allReady: ready === all.length, documents: all };
 }
 
 /**
@@ -606,6 +608,10 @@ export function documentPillar(doc: { readonly title: string; readonly docType: 
  * wait for — so a resolved `doc` on that pattern is real regardless of what
  * `gen.known` says. Every document still on the old pattern keeps the gate
  * exactly as it works today.
+ *
+ * #343: "on that pattern" is `JOURNEY_LIVE_DOCUMENTS` membership, not a named
+ * report. This function therefore needs no edit when a document is ported — the
+ * registry entry is the whole of it.
  */
 export function isGenerationUnknown(
   doc: JourneyDocumentView | null,
@@ -613,7 +619,7 @@ export function isGenerationUnknown(
 ): boolean {
   if (!doc) return true;
   if (gen.known) return false;
-  return !isCopilotReadinessReport(doc);
+  return !isLiveRenderedDocument(doc);
 }
 
 /** "Halden Materials · 1,240 seats", degrading cleanly when seats are unknown. */

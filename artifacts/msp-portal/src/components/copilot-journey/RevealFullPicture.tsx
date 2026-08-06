@@ -29,7 +29,7 @@ import {
   gapSentence,
   isGenerationUnknown,
   scoredPillarCount,
-  withReadinessDocument,
+  withLiveDocuments,
 } from "./journeyModel.ts";
 import {
   BRAND,
@@ -247,7 +247,7 @@ export function RevealFullPicture({
    * the report itself always renders regardless of any of this.
    */
   const generation =
-    payloadState === "ready" ? withReadinessDocument(view.generation) : view.generation;
+    payloadState === "ready" ? withLiveDocuments(view.generation) : view.generation;
   const gen = generationView(generation.ready, generation.total);
   const documents = generation.documents;
   // Lead on the Executive Summary by KEY. A tenant whose expected set does not

@@ -387,14 +387,17 @@ function GateBlock({ tenant, score }: { tenant: JourneyTenant; score: number | n
  * rather than rendered at "0 of 0". Before the payload lands the block still
  * shows, holding an em dash, because "we are still asking" is true.
  *
- * Unlike `DocumentBody`'s per-document gate (#409, #416), this needs no
- * new-pattern exemption: `total` is `documents.length` — the size of the whole
- * expected/generated set — so it is only ever 0 when NO document, old-pattern
- * or new, is known at all. A resolvable readiness report already makes
- * `total >= 1` and this counter true, on its own, with no special-casing.
+ * Unlike `DocumentBody`'s per-document gate (#409, #416, generalised in #343),
+ * this needs no new-pattern exemption and gets none: `total` is
+ * `documents.length` — the size of the whole expected/generated set — so it is
+ * only ever 0 when NO document, old-pattern or new, is known at all. Any
+ * resolvable live-rendered report already makes `total >= 1` and this counter
+ * true, on its own, with no special-casing. That is why this rail is untouched
+ * by the #343 registry: it is already general, and registering another document
+ * in `JOURNEY_LIVE_DOCUMENTS` changes nothing here but the count it draws.
  *
  * Since #424 that is not a hypothetical: the viewer builds its list through
- * `withReadinessDocument`, so the readiness report is always one of the rows
+ * `withLiveDocuments`, so every live-rendered report is one of the rows
  * this rail draws and `total` is never 0 on a landed payload. The counter and
  * the rows therefore agree by construction — which is also why the page passes
  * that list's own `ready`/`total` here rather than the status payload's.

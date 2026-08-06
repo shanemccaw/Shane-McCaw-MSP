@@ -397,32 +397,101 @@ export const JOURNEY_DESIGN_DOCUMENTS = [
 export const JOURNEY_REMEDIATION_DOCUMENT = "Full Remediation Guide — Copilot Gate Clearance Plan";
 export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearance";
 
+/* ------------------------------------------------------------------ *
+ * The live-rendered documents — the "new pattern" registry (#343)
+ * ------------------------------------------------------------------ */
+
 /**
- * The roll-up readiness report — the one document the viewer renders from the
- * tenant's own live data rather than from the platform's generated HTML (#409).
+ * One document the viewer renders from the tenant's own live scan data rather
+ * than from the platform's generated HTML (#409).
  *
  * MATCHED ON `docType`, NOT TITLE. `document_types` is the real catalogue and
- * `copilot_readiness` is its real key (seeded by
- * `lib/db/migrations/manual/2026-07-20-document-types.sql`, label "Copilot
- * Readiness Assessment"). The title is admin-editable free text on the
- * service's `associated_documents`, so matching on it would silently stop
- * working the first time somebody renames a deliverable — the same reason
- * `buildGeneration` joins its expected set to its rows on `docType` and not on
- * title.
+ * each `docType` below is a real seeded key (see
+ * `lib/db/migrations/manual/2026-07-20-document-types.sql`). The title is
+ * admin-editable free text on the service's `associated_documents`, so matching
+ * on it would silently stop working the first time somebody renames a
+ * deliverable — the same reason `buildGeneration` joins its expected set to its
+ * rows on `docType` and not on title.
  *
  * The design's own title is accepted as a SECOND key purely so a document set
- * that names the report the design's way still resolves. It is deliberately an
+ * that names a report the design's way still resolves. It is deliberately an
  * exact match, not a substring one: a loose match here would hijack the live
- * HTML rendering of some other report that happens to mention Copilot.
+ * rendering of some other report that happens to share a word.
+ *
+ * `key` is this journey's OWN stable discriminator, not a catalogue column. It
+ * is what a renderer switches on to pick a body component, so a `docType`
+ * rename in the catalogue is a one-line change to the entry below rather than a
+ * change to every consumer.
  */
-export const JOURNEY_READINESS_DOC_TYPE = "copilot_readiness";
-export const JOURNEY_READINESS_DOCUMENT = "Copilot Readiness, Safety & Enablement Report";
+export interface JourneyLiveDocument {
+  readonly key: JourneyLiveDocumentKey;
+  /** `document_types.key` — the real catalogue key, and the primary match. */
+  readonly docType: string;
+  /** The design's own title, accepted as an exact-match second key. */
+  readonly title: string;
+}
 
-export function isCopilotReadinessReport(
+export type JourneyLiveDocumentKey = "copilotReadiness";
+
+/**
+ * Every document on the new pattern, in the order they lead a document set.
+ *
+ * ── WHY THIS IS A REGISTRY AND NOT A PREDICATE PER DOCUMENT (#343) ───────────
+ * The gate this backs — "is this document rendered live, so the old async
+ * generation pipeline's expected/generated bookkeeping is not a question about
+ * it" — was a hardcoded `isCopilotReadinessReport(doc)` at three real call
+ * sites. That was correct while exactly one document was on the pattern and
+ * silently wrong the moment a second one arrived: every one of those sites
+ * would have kept gating the new document on a generation run that does not
+ * exist for it, showing a spinner or a "not available yet" over a report that
+ * is complete.
+ *
+ * Registering a document here is therefore the ONLY thing a port has to do to
+ * the gate. `DocumentBody`, `RevealFullPicture` and `withLiveDocuments` read
+ * this list rather than naming any document, so they behave identically with
+ * one entry or five.
+ */
+export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
+  {
+    key: "copilotReadiness",
+    docType: "copilot_readiness",
+    title: "Copilot Readiness, Safety & Enablement Report",
+  },
+];
+
+/**
+ * The registry entry for a document, or null when it is still on the old
+ * generated-HTML pattern.
+ *
+ * Returns the ENTRY rather than a boolean so a renderer gets the discriminator
+ * it needs from the same lookup that answered the gate — two separate calls
+ * could disagree about the same document.
+ */
+export function liveDocumentFor(
+  doc: { readonly title: string; readonly docType: string } | null | undefined,
+): JourneyLiveDocument | null {
+  if (!doc) return null;
+  return (
+    JOURNEY_LIVE_DOCUMENTS.find((d) => d.docType === doc.docType || d.title === doc.title) ?? null
+  );
+}
+
+/** True when this document renders from the tenant's own scan data (#409, #343). */
+export function isLiveRenderedDocument(
   doc: { readonly title: string; readonly docType: string } | null | undefined,
 ): boolean {
-  if (!doc) return false;
-  return doc.docType === JOURNEY_READINESS_DOC_TYPE || doc.title === JOURNEY_READINESS_DOCUMENT;
+  return liveDocumentFor(doc) !== null;
 }
+
+/**
+ * The roll-up readiness report's own catalogue key and design title.
+ *
+ * Read off the registry rather than declared beside it, so there is exactly one
+ * place either string is written down and a future rename cannot leave the two
+ * disagreeing.
+ */
+const READINESS_ENTRY = JOURNEY_LIVE_DOCUMENTS.find((d) => d.key === "copilotReadiness")!;
+export const JOURNEY_READINESS_DOC_TYPE = READINESS_ENTRY.docType;
+export const JOURNEY_READINESS_DOCUMENT = READINESS_ENTRY.title;
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;

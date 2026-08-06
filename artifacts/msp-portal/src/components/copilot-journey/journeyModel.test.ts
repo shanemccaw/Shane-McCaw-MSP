@@ -22,7 +22,7 @@ import {
   remediatedScore,
   scoredPillarCount,
   tenantStrip,
-  withReadinessDocument,
+  withLiveDocuments,
   verdictLabel,
   verdictSentence,
   type JourneyDocumentView,
@@ -31,10 +31,13 @@ import {
 } from "./journeyModel.ts";
 import {
   COPILOT_GATE_TARGET,
+  JOURNEY_LIVE_DOCUMENTS,
   JOURNEY_READINESS_DOC_TYPE,
   JOURNEY_READINESS_DOCUMENT,
   PILLAR_KEYS,
   gateLabel,
+  isLiveRenderedDocument,
+  liveDocumentFor,
   severityForScore,
   severityColor,
 } from "./journeyTokens.ts";
@@ -372,7 +375,7 @@ describe("document generation", () => {
   });
 });
 
-describe("withReadinessDocument (#424 — the report depends on no generation row)", () => {
+describe("withLiveDocuments (#424 — the report depends on no generation row)", () => {
   const readiness = (docs: readonly JourneyDocumentView[]) =>
     docs.filter((d) => d.docType === JOURNEY_READINESS_DOC_TYPE || d.title === JOURNEY_READINESS_DOCUMENT);
 
@@ -380,7 +383,7 @@ describe("withReadinessDocument (#424 — the report depends on no generation ro
     // `buildGeneration({})` is what a tenant with no assessment service row, or
     // a failed status fetch, genuinely produces: an empty set. Before #424 that
     // left the one document the platform can always render unresolvable.
-    const g = withReadinessDocument(buildGeneration({}));
+    const g = withLiveDocuments(buildGeneration({}));
     assert.equal(g.total, 1);
     assert.equal(g.ready, 1);
     assert.equal(g.documents[0].title, JOURNEY_READINESS_DOCUMENT);
@@ -399,7 +402,7 @@ describe("withReadinessDocument (#424 — the report depends on no generation ro
         items: [{ id: 1, docType: "exec", title: "Executive Summary", status: "delivered" }],
       },
     });
-    const g = withReadinessDocument(base);
+    const g = withLiveDocuments(base);
     assert.equal(g.total, 3);
     assert.deepEqual(
       g.documents.map((d) => d.docType),
@@ -417,7 +420,7 @@ describe("withReadinessDocument (#424 — the report depends on no generation ro
       documents: { expected: [{ docType: "sec", title: "Security Posture Report" }], items: [] },
     });
     assert.equal(base.ready, 0);
-    const g = withReadinessDocument(base);
+    const g = withLiveDocuments(base);
     assert.equal(g.ready, 1);
     assert.equal(g.total, 2);
     assert.equal(g.allReady, false);
@@ -431,7 +434,7 @@ describe("withReadinessDocument (#424 — the report depends on no generation ro
       },
     });
     assert.equal(base.documents[0].status, "pending");
-    const g = withReadinessDocument(base);
+    const g = withLiveDocuments(base);
     assert.equal(g.total, 1, "the existing entry is replaced, never duplicated");
     assert.equal(g.documents[0].status, "ready");
     assert.equal(
@@ -450,29 +453,29 @@ describe("withReadinessDocument (#424 — the report depends on no generation ro
         ],
       },
     });
-    const g = withReadinessDocument(base);
+    const g = withLiveDocuments(base);
     assert.equal(g, base, "an existing row owns its own state, including a failed one");
     assert.equal(g.documents[0].status, "generating");
   });
 
   it("never lists the report twice, whichever key it was matched on", () => {
     // The design's own title with a different docType — the second key
-    // `isCopilotReadinessReport` accepts.
+    // `liveDocumentFor` accepts.
     const base = buildGeneration({
       documents: {
         expected: [{ docType: "some_other_key", title: JOURNEY_READINESS_DOCUMENT }],
         items: [],
       },
     });
-    const g = withReadinessDocument(base);
+    const g = withLiveDocuments(base);
     assert.equal(readiness(g.documents).length, 1);
     assert.equal(g.documents[0].docType, "some_other_key", "the platform's own key is kept");
     assert.equal(g.documents[0].status, "ready");
   });
 
   it("is idempotent — applying it twice changes nothing", () => {
-    const once = withReadinessDocument(buildGeneration({}));
-    const twice = withReadinessDocument(once);
+    const once = withLiveDocuments(buildGeneration({}));
+    const twice = withLiveDocuments(once);
     assert.deepEqual(twice, once);
   });
 });
@@ -509,9 +512,73 @@ describe("isGenerationUnknown (#409, #416 — DocumentBody's 'nothing to show' g
     assert.equal(isGenerationUnknown(READINESS_DOC, { known: true }), false);
   });
 
-  it("matches on title as well as docType, same as isCopilotReadinessReport", () => {
+  it("matches on title as well as docType, same as liveDocumentFor", () => {
     const titleOnly: JourneyDocumentView = { ...READINESS_DOC, docType: "some_other_key" };
     assert.equal(isGenerationUnknown(titleOnly, { known: false }), false);
+  });
+});
+
+describe("the live-document registry (#343 — the gate is general, not per-report)", () => {
+  it("every entry is reachable by its own docType AND by its own design title", () => {
+    // The whole promise of the registry: registering a document is the only
+    // thing a port has to do to the gate. If either key stopped resolving, the
+    // document would fall back to the old pipeline's gates and show a spinner
+    // over a report that is complete.
+    for (const live of JOURNEY_LIVE_DOCUMENTS) {
+      assert.equal(
+        liveDocumentFor({ title: "renamed by an admin", docType: live.docType })?.key,
+        live.key,
+      );
+      assert.equal(
+        liveDocumentFor({ title: live.title, docType: "some_other_key" })?.key,
+        live.key,
+      );
+    }
+  });
+
+  it("keys are unique, so a document can never resolve to two bodies", () => {
+    const keys = JOURNEY_LIVE_DOCUMENTS.map((d) => d.key);
+    assert.equal(new Set(keys).size, keys.length);
+    const docTypes = JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType);
+    assert.equal(new Set(docTypes).size, docTypes.length);
+  });
+
+  it("matching is exact, never a substring — a near-miss title stays on the old pattern", () => {
+    // A loose match here would hijack the live rendering of some other report
+    // that happens to share a word with a registered one.
+    for (const live of JOURNEY_LIVE_DOCUMENTS) {
+      assert.equal(isLiveRenderedDocument({ title: `${live.title} (draft)`, docType: "x" }), false);
+      assert.equal(isLiveRenderedDocument({ title: "x", docType: `${live.docType}_v2` }), false);
+    }
+  });
+
+  it("an unregistered document is not live-rendered, and null is not one either", () => {
+    assert.equal(isLiveRenderedDocument({ title: "Executive Summary", docType: "exec" }), false);
+    assert.equal(isLiveRenderedDocument(null), false);
+    assert.equal(liveDocumentFor(undefined), null);
+  });
+
+  it("withLiveDocuments guarantees EVERY registered entry, not a named one", () => {
+    const g = withLiveDocuments(buildGeneration({}));
+    assert.equal(g.total, JOURNEY_LIVE_DOCUMENTS.length);
+    assert.deepEqual(
+      g.documents.map((d) => d.docType),
+      JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType),
+      "added entries lead, in registry order",
+    );
+    assert.ok(
+      g.documents.every((d) => d.status === "ready" && d.id === null),
+      "nothing is outstanding for a live-rendered document, and no row id may be claimed",
+    );
+  });
+
+  it("isGenerationUnknown exempts every registered entry, on either key", () => {
+    for (const live of JOURNEY_LIVE_DOCUMENTS) {
+      const byType: JourneyDocumentView = { title: "renamed", docType: live.docType, id: null, status: "pending" };
+      const byTitle: JourneyDocumentView = { title: live.title, docType: "renamed", id: null, status: "pending" };
+      assert.equal(isGenerationUnknown(byType, { known: false }), false);
+      assert.equal(isGenerationUnknown(byTitle, { known: false }), false);
+    }
   });
 });
 

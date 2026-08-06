@@ -42,8 +42,9 @@ import {
   JOURNEY_REMEDIATION_DOCUMENT,
   JOURNEY_SOW_DOCUMENT,
   RADIUS,
-  isCopilotReadinessReport,
+  liveDocumentFor,
   reportAccent,
+  type JourneyLiveDocument,
   type PillarKey,
 } from "./journeyTokens.ts";
 import { RemediationGuideBody } from "./RemediationGuideBody";
@@ -372,14 +373,45 @@ function LiveBody({ documentId, title }: { documentId: number; title: string }) 
 }
 
 /* ------------------------------------------------------------------ *
- * The roll-up readiness report, on real data (#409)
+ * The live-rendered reports, on real data (#409, #343)
  * ------------------------------------------------------------------ */
+
+/**
+ * One live-rendered document's body, chosen from its registry entry.
+ *
+ * Each case is its OWN component, not a branch inside one, and that is
+ * load-bearing: every one of them mounts a narrative hook that makes real,
+ * metered Anthropic calls server-side, and a hook can only be scoped to the
+ * document that needs it by living in a component that only mounts for it.
+ * Calling them from `DocumentBody` itself would fire every report's narrative
+ * on every report in the set.
+ *
+ * `Record<JourneyLiveDocumentKey, …>` rather than a `switch` with a default:
+ * a document added to `JOURNEY_LIVE_DOCUMENTS` with no body here fails to
+ * compile, instead of rendering an empty card at runtime.
+ */
+const LIVE_BODY: Record<
+  JourneyLiveDocument["key"],
+  (props: { readonly view: JourneyView }) => React.ReactElement
+> = {
+  copilotReadiness: RealReadinessReport,
+};
+
+function LiveDocumentBody({
+  live,
+  view,
+}: {
+  readonly live: JourneyLiveDocument;
+  readonly view: JourneyView;
+}) {
+  const Body = LIVE_BODY[live.key];
+  return <Body view={view} />;
+}
 
 /**
  * A thin wrapper so the narrative hook — which makes up to three real,
  * metered Anthropic calls server-side — is only ever mounted when the Copilot
- * Readiness report is genuinely the open document. Calling it from
- * `DocumentBody` itself would fire it on every report in the set.
+ * Readiness report is genuinely the open document.
  */
 function RealReadinessReport({ view }: { readonly view: JourneyView }) {
   const { narrative, settled } = useCopilotReadinessNarrative({ enabled: true });
@@ -441,26 +473,33 @@ export function DocumentBody({
   // pillar cannot be read from its name simply gets the journey's own accent.
   const pillar = documentPillar(doc);
 
-  // The roll-up readiness report, on this tenant's own live data (#409, #424).
+  // The live-rendered documents, on this tenant's own scan data (#409, #424,
+  // generalised in #343).
   //
   // FIRST, ahead of every gate below — the loading gate, the unreadable gate,
   // the "nothing is listed" gate and the `doc.status === "ready"` one. Every
-  // number and sentence in this report comes from the scan (`war-room-pillars`
-  // plus the narrative route), never from the document-generation pipeline, so
-  // none of those gates is asking a question about it: whether the status
+  // number and sentence in these reports comes from the scan (`war-room-pillars`
+  // plus a narrative route), never from the document-generation pipeline, so
+  // none of those gates is asking a question about them: whether the status
   // payload has landed, whether it failed, and whether a row exists say nothing
-  // about whether this document can be rendered. It can, always. Gating it on
+  // about whether the document can be rendered. It can, always. Gating it on
   // any of them would show a spinner, an error or a "not available yet" over a
   // report that is complete.
+  //
+  // Which body renders is read off the registry entry's own `key`, so adding a
+  // document to `JOURNEY_LIVE_DOCUMENTS` and adding its case below is the whole
+  // of the port on this side. `LIVE_BODY` is exhaustive over the key union, so
+  // a registry entry with no body is a compile error rather than a blank card.
   //
   // `view` guards it rather than being assumed: a caller that does not pass one
   // falls through to the generated HTML, which is the honest degradation.
   // `isPreview` too — `?preview=design` keeps rendering the design's own worked
   // example from `PREVIEW_DOCUMENT_BODIES` rather than this tenant's data.
-  if (!isPreview && view && isCopilotReadinessReport(doc)) {
+  const live = liveDocumentFor(doc);
+  if (!isPreview && view && live) {
     return (
       <Card pillar={pillar}>
-        <RealReadinessReport view={view} />
+        <LiveDocumentBody live={live} view={view} />
       </Card>
     );
   }

@@ -64,7 +64,7 @@ import { PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
 import {
   documentPillar,
-  withReadinessDocument,
+  withLiveDocuments,
   type JourneyView,
 } from "@/components/copilot-journey/journeyModel.ts";
 import {
@@ -350,19 +350,19 @@ export default function CopilotReadinessDocumentsPage() {
   const loaded = isPreview ? true : live.statusLoaded;
 
   /**
-   * The set this screen switches between, with the Copilot Readiness Report
-   * guaranteed to be in it (#424).
+   * The set this screen switches between, with every live-rendered document
+   * guaranteed to be in it (#424, generalised in #343).
    *
-   * It is constructed rather than looked up because it is the one document that
-   * does not come from the generation pipeline: it renders live from this
-   * tenant's own scan data, so it exists whether or not `documents.expected`
-   * names it and whether or not a row has ever been written. Everything else in
-   * the list is exactly what the platform reported, untouched — see
-   * `withReadinessDocument`, which no-ops entirely on a readiness row the
-   * pipeline has actually generated (which is the design preview's case too, so
+   * They are constructed rather than looked up because they are the documents
+   * that do not come from the generation pipeline: they render live from this
+   * tenant's own scan data, so they exist whether or not `documents.expected`
+   * names them and whether or not a row has ever been written. Everything else
+   * in the list is exactly what the platform reported, untouched — see
+   * `withLiveDocuments`, which no-ops entirely on a row the pipeline has
+   * actually generated (which is the design preview's case too, so
    * `?preview=design` is byte-for-byte unchanged).
    */
-  const generation = useMemo(() => withReadinessDocument(view.generation), [view.generation]);
+  const generation = useMemo(() => withLiveDocuments(view.generation), [view.generation]);
   const documents = generation.documents;
 
   /* ---------------------------------------------------------------- *
