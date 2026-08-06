@@ -15,12 +15,13 @@ import { AssessmentFlow } from "./home/AssessmentFlow";
 import { useReveal, useParallax } from "./home/useScrollFx";
 
 /**
- * The catalog row this page's assessment CTA references. Matched by exact
- * service name, the same convention the previous Home.tsx used — the price
- * comes from `/api/services`, never a literal in this file.
+ * The catalog row this page's assessment CTA references. Matched by slug
+ * (#476) — a display-name match silently broke every time admin-panel
+ * renamed the product. The price comes from `/api/services`, never a
+ * literal in this file.
  */
-const COPILOT_ASSESSMENT_NAME = "Copilot Readiness Assessment";
-const FEE_UNRESOLVED = "a fixed fee";
+const COPILOT_ASSESSMENT_SLUG = "copilot-for-m365-readiness-assessment";
+const FEE_UNRESOLVED = "Contact us for pricing";
 
 function formatCents(cents: number): string {
   return "$" + Math.round(cents / 100).toLocaleString("en-US");
@@ -276,7 +277,7 @@ const RADAR_SIDE_LABELS: { pillar: string; blurb: string; color: string; left: s
 
 export default function Home() {
   const { services } = useServices();
-  const service = useMemo(() => services.find((s) => s.name.trim() === COPILOT_ASSESSMENT_NAME) ?? null, [services]);
+  const service = useMemo(() => services.find((s) => s.slug === COPILOT_ASSESSMENT_SLUG) ?? null, [services]);
   const feeCents = service ? resolvePublicServicePriceCents(service) : null;
   const feePrice = feeCents != null && feeCents > 0 ? formatCents(feeCents) : null;
   const fee = feePrice ?? FEE_UNRESOLVED;
