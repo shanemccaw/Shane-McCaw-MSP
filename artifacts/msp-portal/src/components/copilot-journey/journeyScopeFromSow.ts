@@ -76,6 +76,8 @@ export interface WireSowState {
   readonly adjustments?: readonly WireSowLine[];
   readonly selectedWorkstreamTitles?: readonly string[];
   readonly pricing?: { readonly validUntil?: string };
+  /** `buildSowState()`'s own `doc` — the real, stable `sow_documents.id` this SOW is. */
+  readonly doc?: { readonly id: number };
 }
 
 /* ------------------------------------------------------------------ *
@@ -158,6 +160,8 @@ export interface JourneySowScope {
   readonly quoteHoldIso: string | null;
   /** The platform's own record of what the active SOW includes. */
   readonly serverSelectedTitles: readonly string[] | null;
+  /** The real `sow_documents.id` this SOW is, or `null` when the wire carries none. */
+  readonly docId: number | null;
 }
 
 function toPhase(line: WireSowLine): JourneySowPhase {
@@ -220,6 +224,7 @@ export function journeyScopeFromSow(body: WireSowState): JourneySowScope | null 
     pillarById,
     quoteHoldIso: body.pricing?.validUntil ?? null,
     serverSelectedTitles: body.selectedWorkstreamTitles ?? null,
+    docId: typeof body.doc?.id === "number" ? body.doc.id : null,
   };
 }
 

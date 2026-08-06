@@ -48,7 +48,7 @@ import {
   type PillarKey,
 } from "./journeyTokens.ts";
 import { RemediationGuideBody } from "./RemediationGuideBody";
-import { StatementOfWorkBody } from "./StatementOfWorkBody";
+import { LiveStatementOfWorkBody, StatementOfWorkBody } from "./StatementOfWorkBody";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
 import { LiveSecurityPostureReport } from "./SecurityPostureReportBody";
 import { LiveGovernancePostureReport } from "./GovernancePostureReportBody";
@@ -511,6 +511,21 @@ export function DocumentBody({
     return (
       <Card pillar={pillar}>
         <LiveDocumentBody live={live} view={view} />
+      </Card>
+    );
+  }
+
+  // The Statement of Work (#292): not in `JOURNEY_LIVE_DOCUMENTS` — it is
+  // interactive (phase toggles, a hard sign-lock) rather than a rendered
+  // report, so it is not a `(props: {view}) => ReactElement` the registry's
+  // `LIVE_BODY` shape can hold — but it is resolved live from the tenant's own
+  // scan and SOW documents exactly like the registry reports are, ahead of the
+  // old document-generation pipeline's gates below. `LiveStatementOfWorkBody`
+  // owns its own fetch of `GET .../assessment/sow` and `.../sow/payment-options`.
+  if (!isPreview && view && doc?.title === JOURNEY_SOW_DOCUMENT) {
+    return (
+      <Card pillar={pillar}>
+        <LiveStatementOfWorkBody view={view} onSigned={onSigned} />
       </Card>
     );
   }

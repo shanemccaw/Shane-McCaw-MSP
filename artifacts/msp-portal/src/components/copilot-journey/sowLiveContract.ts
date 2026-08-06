@@ -1,0 +1,275 @@
+/**
+ * sowLiveContract.ts — the real per-tenant content behind the Statement of
+ * Work's `derived` rows and its Section 7 carry table (#292, document 9 of 9).
+ *
+ * A pure `.ts` module, not inlined into `StatementOfWorkBody.tsx`, for the same
+ * reason every other live-rendered document's logic lives outside its `.tsx`:
+ * `node --test` cannot load `.tsx`, so this is what makes the honesty rules
+ * below testable.
+ *
+ * EVERY FUNCTION HERE TAKES AN `isPreview` FLAG AND RETURNS THE DESIGN'S OWN
+ * TEXT VERBATIM WHEN IT IS TRUE. `previewStatementOfWork.ts` used to hold these
+ * strings directly on the row as a static `value`; they moved here, unchanged,
+ * so the preview surface (`?preview=design`, permanently badged) keeps
+ * rendering Halden Materials' exact worked example while a live tenant's copy
+ * of the same row is computed from what this platform actually measured.
+ *
+ * WHAT #292'S AUDIT FOUND, AND THE THREE SHAPES THE FIX TAKES
+ * -------------------------------------------------------------
+ *   1. Genuinely derivable from data already on the journey's view or the two
+ *      named SOW endpoints (`objective`, `findingsCarried`, `elapsedDays`,
+ *      `telemetrySource`, `validity`, `wasteRecovered`, the Section 7 carry
+ *      table and blockers list) — computed for real below.
+ *   2. Not derivable from any check this platform runs, on the same rule
+ *      #451 already established for a required licence tier: "New budget
+ *      required" claims a specific uplift figure and user count for an E5
+ *      upgrade, and nothing in `monitor_checks` or the licensing pillar's own
+ *      stats names a required tier per user — only a licence gap's own
+ *      `_licenseGapFeature` does, and that names a capability, not a SKU count.
+ *      `newBudget` and the `netYear` figure computed from it are therefore an
+ *      honest declared gap on a live tenant, exactly as `GOVERNANCE_FRAMEWORK_GAP`
+ *      is for the Governance Posture Report.
+ *   3. Contract terms invented for the worked example that do not match what
+ *      the real `sow/payment-options` endpoint reports: the design's "40%
+ *      deposit … 14 days net" names a deposit percentage and net term this
+ *      platform's real billing does not use — `phased.selfServe` on the real
+ *      endpoint is `false` with the comment "Milestone billing is
+ *      provider-arranged for Assessment … there is no self-serve deposit
+ *      charge." `paymentTerms` states that real fact instead of a percentage
+ *      nobody would actually be charged.
+ */
+
+import { COPILOT_GATE_TARGET, type PillarKey } from "./journeyTokens.ts";
+import type { JourneyPillarView } from "./journeyModel.ts";
+import { findingRows } from "./liveReportBlocks.ts";
+import type { SowPillarCarry } from "./previewStatementOfWork.ts";
+
+/* ------------------------------------------------------------------ *
+ * Section 5 blockers + Section 7 carry table — real, ranked findings
+ * ------------------------------------------------------------------ */
+
+/**
+ * The real blockers list: this tenant's own critical findings, one per pillar
+ * that has one, in `PILLAR_KEYS` order, capped at six to match the design's own
+ * "6 findings holding the gate shut" framing.
+ *
+ * Each `text` is the finding's own title VERBATIM — the same rule
+ * `findingRows()` applies everywhere else in this journey — never an invented
+ * elaboration like the design's "four holding HR and finance content", which
+ * this platform's findings do not carry as a second sentence.
+ */
+export function buildLiveBlockers(
+  pillars: readonly JourneyPillarView[],
+): readonly { readonly pillar: PillarKey; readonly text: string }[] {
+  const rows: { pillar: PillarKey; text: string }[] = [];
+  for (const p of pillars) {
+    const critical = p.findings.find((f) => f.severity === "critical");
+    if (critical) rows.push({ pillar: p.key, text: critical.title });
+    if (rows.length >= 6) break;
+  }
+  return rows;
+}
+
+/**
+ * Section 7's real carry table: every pillar this tenant's scan actually
+ * evaluated, with its real finding count and its real finding titles joined —
+ * never the design's invented per-pillar prose ("no lifecycle policy", "90-day
+ * audit retention") which is Halden's own detail, not a fact this platform
+ * reads for any tenant.
+ *
+ * A pillar with a real score and zero findings is a genuine clean result
+ * (#399) and is still listed, with `count: 0` and a clean-result detail — the
+ * same distinction `findingsBlocks()` draws, reproduced here because this is a
+ * table row rather than a block list. A pillar with no score at all (never
+ * evaluated) is left out entirely: there is nothing carried into scope from a
+ * pillar the scan did not reach.
+ */
+export function buildLiveCarry(pillars: readonly JourneyPillarView[]): readonly SowPillarCarry[] {
+  const rows: SowPillarCarry[] = [];
+  for (const p of pillars) {
+    if (p.score === null) continue;
+    const leads = findingRows(p.findings).map((f) => f.lead);
+    rows.push({
+      pillar: p.key,
+      count: leads.length,
+      detail: leads.length ? leads.join(", ") : "No critical or warning findings on this tenant's last scan.",
+    });
+  }
+  // Worst first, matching the design's own count-descending order.
+  return [...rows].sort((a, b) => b.count - a.count);
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 1
+ * ------------------------------------------------------------------ */
+
+export function resolveObjective(isPreview: boolean, score: number | null): string {
+  if (isPreview) return "Copilot Gate clearance · readiness 41 → 82 minimum";
+  return score === null
+    ? `Copilot Gate clearance · readiness at or above ${COPILOT_GATE_TARGET}`
+    : `Copilot Gate clearance · readiness ${score} → ${COPILOT_GATE_TARGET} minimum`;
+}
+
+export function resolveFindingsCarried(
+  isPreview: boolean,
+  totalFindings: number | null,
+  blockersCount: number,
+): string {
+  if (isPreview) return "41 findings across six pillars · 6 of them gate blockers";
+  if (totalFindings === null) return "No findings are yet recorded for this tenant's scan";
+  const blockersClause = blockersCount > 0 ? ` · ${blockersCount} of them gate blockers` : "";
+  return `${totalFindings} findings across six pillars${blockersClause}`;
+}
+
+export function resolveWhyMatters(isPreview: boolean, sitesInScope: number | null): string {
+  const lead =
+    "Copilot inherits every permission, label and licence state on day one. Enabling it against the current configuration extends a known identity and exposure gap into a conversational interface";
+  if (isPreview) {
+    return `${lead} across 1,847 sites.`;
+  }
+  return sitesInScope !== null
+    ? `${lead} across ${sitesInScope.toLocaleString("en-US")} sites.`
+    : `${lead}.`;
+}
+
+export function resolveBasisOfScope(isPreview: boolean, signalCount: number | null): string {
+  if (isPreview) return "Read-only Microsoft Graph assessment · 158 signal derivation checks · no configuration altered";
+  const checksClause = signalCount !== null ? ` · ${signalCount} signal derivation checks` : "";
+  return `Read-only Microsoft Graph assessment${checksClause} · no configuration altered`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 2
+ * ------------------------------------------------------------------ */
+
+export function resolveChangeWindows(isPreview: boolean): string {
+  if (isPreview) {
+    return "2 change windows — legacy authentication retirement (1 week notice) and device compliance enforcement (3 days, 88 devices)";
+  }
+  // Neither the affected device count nor a per-tenant notice period is a
+  // figure any check this platform runs produces — the two windows themselves
+  // are a real fact about the sequence (identity work always touches legacy
+  // auth and device compliance), stated without a Halden-specific count.
+  return "2 change windows — legacy authentication retirement and device compliance enforcement, each scheduled with advance notice";
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 3
+ * ------------------------------------------------------------------ */
+
+/** Whole days between `scannedOnIso` and `nowIso`, or `null` when either is unknown. Floored, never rounded, so "today" reads as 0 rather than 1. */
+export function elapsedDaysSince(scannedOnIso: string | null, nowIso: string): number | null {
+  if (!scannedOnIso) return null;
+  const scanned = new Date(scannedOnIso).getTime();
+  const now = new Date(nowIso).getTime();
+  if (Number.isNaN(scanned) || Number.isNaN(now)) return null;
+  const days = Math.floor((now - scanned) / (24 * 60 * 60 * 1000));
+  return days >= 0 ? days : null;
+}
+
+export function resolveElapsedDays(isPreview: boolean, days: number | null): string {
+  if (isPreview) return "12 days";
+  return days === null ? "Not established — no scan date on record" : `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+export function resolveTelemetrySource(isPreview: boolean, scannedOn: string | null): string {
+  const lead = "Microsoft Graph API · read-only delegated permissions";
+  if (isPreview) return `${lead} · 3 August 2026`;
+  return scannedOn ? `${lead} · ${scannedOn}` : lead;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 4 — Commercial Terms
+ * ------------------------------------------------------------------ */
+
+/**
+ * "New budget required" claims a specific new-licence-spend figure and a user
+ * count for an E5 upgrade. Neither is derivable: #451 established that no
+ * check this platform runs names a REQUIRED tier per user — only a licence
+ * gap's own `_licenseGapFeature` names a capability, never a seat count. So a
+ * live tenant gets an honest declared gap here, the same discipline
+ * `GOVERNANCE_FRAMEWORK_GAP` applies to a claim this platform cannot evaluate.
+ */
+export function resolveNewBudget(isPreview: boolean): string {
+  if (isPreview) return "$27,600 — the E5 uplift for 96 users, offset by reclaimed licence waste";
+  return "Not stated on this contract — no check this platform runs names a required licence tier per user; see the Licensing Alignment Report's Upgrade Opportunities for what confirming one would take.";
+}
+
+/**
+ * The real annual recoverable licence spend, off the licensing pillar's own
+ * `licensing.annualWaste` stat — already on the journey's view, not a new
+ * fetch. `null` when that check did not report for this tenant.
+ */
+export function resolveWasteRecovered(isPreview: boolean, annualWasteUsd: number | null): string {
+  if (isPreview) return "$18,400 a year, available from month one";
+  return annualWasteUsd === null
+    ? "Not measured on this tenant's last scan"
+    : `$${Math.round(annualWasteUsd).toLocaleString("en-US")} a year, from paid seats provisioned but unassigned`;
+}
+
+/** Depends on the E5 uplift figure `resolveNewBudget` cannot state for a live tenant, so a net figure cannot be honestly stated either. */
+export function resolveNetYear(isPreview: boolean): string {
+  if (isPreview) return "$9,200 net, after $18,400 of recovered licence waste";
+  return "Not stated — this figure would net the recovered licence waste above against a required-budget figure this contract does not assert for your tenant.";
+}
+
+export function resolvePaymentTerms(
+  isPreview: boolean,
+  phasedSelfServe: boolean | null,
+  payInFullActive: boolean,
+): string {
+  if (isPreview) {
+    return "40% deposit at signature · balance invoiced per phase on your sign-off · 14 days net";
+  }
+  if (phasedSelfServe === null) {
+    return "Confirmed at checkout for your agreed scope";
+  }
+  const phasedClause = phasedSelfServe
+    ? "phased billing invoices per phase on your sign-off"
+    : "phased billing is milestone-based and arranged directly with your assessment lead, not a self-serve deposit";
+  const discountClause = payInFullActive ? " · paying in full at checkout applies the active discount" : "";
+  return `Pay in full at checkout, or ${phasedClause}${discountClause}`;
+}
+
+export function resolveValidity(isPreview: boolean, validUntil: string | null): string {
+  if (isPreview) return "Quoted pricing holds until 2 September 2026, after which a fresh scan is required";
+  return validUntil
+    ? `Quoted pricing holds until ${validUntil}, after which a fresh scan is required`
+    : "No fixed hold date is quoted for this scope";
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 3 Telemetry row + the two rows the original switch hardcoded
+ * Halden's own numbers into directly (found on #292's audit — neither was
+ * routed through `previewStatementOfWork.ts`'s fixture at all).
+ * ------------------------------------------------------------------ */
+
+/** "Findings in scope" — the design hardcoded "of 41" as the tenant's total finding count. A live tenant states its own real total, or omits the clause when that too is unmeasured. */
+export function resolveFindingsInScope(
+  isPreview: boolean,
+  findingsInScope: number | null,
+  totalFindings: number | null,
+): string {
+  if (isPreview) {
+    return findingsInScope === null
+      ? "Not itemised per phase on this statement of work"
+      : `${findingsInScope} of 41 findings addressed by the selected phases`;
+  }
+  if (findingsInScope === null) return "Not itemised per phase on this statement of work";
+  return totalFindings === null
+    ? `${findingsInScope} findings addressed by the selected phases`
+    : `${findingsInScope} of ${totalFindings} findings addressed by the selected phases`;
+}
+
+/** "Objective target" — the design hardcoded "41 of 100 today" as the tenant's current score. */
+export function resolveProjected(
+  isPreview: boolean,
+  currentScore: number | null,
+  projected: number | null,
+  gate: number,
+): string {
+  if (isPreview) return `41 of 100 today · ${projected} on this scope · ${gate} is safe to deploy`;
+  if (projected === null) return "No projection — no pillar in this scope has a score";
+  const todayClause = currentScore === null ? "unmeasured today" : `${currentScore} of 100 today`;
+  return `${todayClause} · ${projected} on this scope · ${gate} is safe to deploy`;
+}

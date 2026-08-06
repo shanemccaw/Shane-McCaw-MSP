@@ -4,16 +4,18 @@
  *
  * ONE AGREEMENT, ONE SET OF ARITHMETIC
  * ------------------------------------
- * Scope and totals come from `journeyPricing.ts` over `PREVIEW_SCOPE` — the same
- * module and the same phase/add-on data the standalone proposal screen
+ * Scope and totals come from `journeyPricing.ts`. In preview that is over
+ * `PREVIEW_SCOPE`, the design's worked example; on a live journey it is the
+ * mapped `GET /api/portal/assessment/sow` scope — the SAME module and the same
+ * `journeyScopeFromSow()` mapping the standalone proposal screen
  * (`/copilot-readiness/proposal`) uses. Nothing in this file adds up a fee.
  * Two live surfaces over one contract that each did their own maths would
- * eventually quote two different numbers to the same customer, and the one place
- * that must never happen is the page with a signature on it.
+ * eventually quote two different numbers to the same customer, and the one
+ * place that must never happen is the page with a signature on it.
  *
- * The design intends this document to supersede that screen. It is left standing
- * for now and this is additive; the header's "Ready to fix this?" already lands
- * here when the document exists.
+ * The design intends this document to supersede that screen. It is left
+ * standing for now and this is additive; the header's "Ready to fix this?"
+ * already lands here when the document exists.
  *
  * SIGNING IS A HARD LOCK, NOT A DISABLED STATE
  * --------------------------------------------
@@ -24,10 +26,27 @@
  * WHAT THIS DOES NOT DO: it takes no payment and creates no agreement record.
  * Signing hands the agreed scope to the checkout screen, which is where the
  * platform's real Stripe path lives — the same handoff the proposal screen makes.
+ *
+ * PREVIEW VS LIVE (#292)
+ * -----------------------
+ * `StatementOfWorkBody` itself is presentational: pass `isPreview` (the
+ * default, matching its original behaviour byte-for-byte) to render the
+ * design's own Halden Materials worked example, or pass `isPreview={false}`
+ * with `live` to render a real tenant's contract. `LiveStatementOfWorkBody`
+ * below is the self-fetching wrapper `DocumentBody.tsx` actually mounts on a
+ * real journey — it owns the two real fetches
+ * (`GET /api/portal/assessment/sow`, `.../sow/payment-options`), mirroring the
+ * proposal screen's own fetch/error/loading pattern exactly, and hands the
+ * resolved scope down as `live`. See `sowLiveContract.ts` for what is real,
+ * what is computed, and — for the handful of rows the design's fixture can
+ * state and this platform genuinely cannot — what is an honest declared gap.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Lock } from "lucide-react";
+
+import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 
 import {
   BRAND,
@@ -39,6 +58,7 @@ import {
   hexAlpha,
   reportAccent,
   severityColor,
+  type PillarKey,
 } from "./journeyTokens.ts";
 import {
   computeTotals,
@@ -50,10 +70,55 @@ import {
   togglePhase,
   toggleAddon,
   weeksLabel,
+  type JourneyPhase,
+  type JourneyScopeInput,
   type JourneySelection,
 } from "./journeyPricing.ts";
 import { PREVIEW_SCOPE, PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
-import { STATEMENT_OF_WORK, type SowRow } from "./previewStatementOfWork.ts";
+import {
+  STATEMENT_OF_WORK,
+  sowConsent,
+  sowDeliverables,
+  sowHeadline,
+  sowKicker,
+  sowReference,
+  sowStandfirst,
+  type SowPillarCarry,
+  type SowRow,
+} from "./previewStatementOfWork.ts";
+import {
+  buildLiveBlockers,
+  buildLiveCarry,
+  elapsedDaysSince,
+  resolveBasisOfScope,
+  resolveChangeWindows,
+  resolveElapsedDays,
+  resolveFindingsCarried,
+  resolveFindingsInScope,
+  resolveNetYear,
+  resolveNewBudget,
+  resolveObjective,
+  resolvePaymentTerms,
+  resolveProjected,
+  resolveTelemetrySource,
+  resolveValidity,
+  resolveWasteRecovered,
+  resolveWhyMatters,
+} from "./sowLiveContract.ts";
+import { buildProvenance } from "./liveReportBlocks.ts";
+import {
+  journeyScopeFromSow,
+  withAdjustments,
+  type JourneyAdjustmentLine,
+  type JourneySowScope,
+  type WireSowState,
+} from "./journeyScopeFromSow.ts";
+import type { JourneyView } from "./journeyModel.ts";
+import { JourneyUnavailable } from "./JourneyPrimitives";
+
+const SOW_URL = "/api/portal/assessment/sow";
+const PAYMENT_OPTIONS_URL = "/api/portal/assessment/sow/payment-options";
+const JOURNEY_CHANNEL = "engine.dashboard";
 
 const H2: React.CSSProperties = {
   margin: 0,
@@ -136,21 +201,85 @@ function Toggle({ on, locked }: { on: boolean; locked: boolean }) {
   );
 }
 
-export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: string) => void }) {
-  const [selection, setSelection] = useState<JourneySelection>(() => defaultSelection(PREVIEW_SCOPE));
+/** Which pillar identity to draw for a phase, or `null` when it cannot be shown honestly — see `journeyScopeFromSow.ts`'s `pillarShown`. Preview phases (`JourneyPhase`, no `pillarById`) are always shown as their own `pillar`: the fixture's attribution is a real design decision, not a guess. */
+function identityPillarFor(
+  phase: JourneyPhase,
+  pillarById: Readonly<Partial<Record<string, PillarKey>>> | undefined,
+): PillarKey | null {
+  if (!pillarById) return phase.pillar;
+  return pillarById[phase.id] ?? null;
+}
+
+/* ------------------------------------------------------------------ *
+ * The real inputs a live journey supplies. See `LiveStatementOfWorkBody`
+ * below for how these are fetched and mapped.
+ * ------------------------------------------------------------------ */
+
+export interface SowLiveInputs {
+  readonly view: JourneyView;
+  readonly built: JourneySowScope;
+  /** `payment-options`' own `phased.selfServe`, or `null` before that fetch settles. Best-effort: the contract renders fully without it. */
+  readonly phasedSelfServe: boolean | null;
+  /** `payment-options`' own `payInFull.active`. `false` before that fetch settles — an unconfirmed discount is never implied. */
+  readonly payInFullActive: boolean;
+}
+
+export function StatementOfWorkBody({
+  onSigned,
+  isPreview = true,
+  live,
+}: {
+  readonly onSigned?: (query: string) => void;
+  /** Default `true` so every existing (preview) call site is unchanged. */
+  readonly isPreview?: boolean;
+  /** Required when `isPreview` is `false`. */
+  readonly live?: SowLiveInputs;
+}) {
+  const scope: JourneyScopeInput = !isPreview && live ? live.built.scope : PREVIEW_SCOPE;
+  const pillarById = !isPreview && live ? live.built.pillarById : undefined;
+  const tenant = !isPreview && live ? live.view.tenant : PREVIEW_TENANT;
+  const pillars = !isPreview && live ? live.view.pillars : [];
+
+  const [selection, setSelection] = useState<JourneySelection>(() => defaultSelection(scope));
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
 
-  const totals = useMemo(() => computeTotals(PREVIEW_SCOPE, selection), [selection]);
-  const scannedOn = PREVIEW_TENANT.scannedOn ?? "";
+  // A live scope can change identity between the loading state and the ready
+  // one (or across a re-selected SOW version) — reset the selection to match
+  // whenever the scope itself changes, exactly as the proposal screen does.
+  useEffect(() => {
+    setSelection(defaultSelection(scope));
+  }, [scope]);
+
+  const adjustments = !isPreview && live ? live.built.adjustments : [];
+  const adjustmentsUsd = !isPreview && live ? live.built.adjustmentsUsd : 0;
+  // The platform's mandatory adjustment lines are never phases, but their
+  // money is always owed — `withAdjustments()` is the same fold the proposal
+  // screen applies before it shows a total, and skipping it here would
+  // under-state what a signature on this page actually commits the customer
+  // to pay.
+  const totals = useMemo(
+    () => withAdjustments(computeTotals(scope, selection), adjustmentsUsd),
+    [scope, selection, adjustmentsUsd],
+  );
+  const scannedOn = tenant.scannedOn ?? "";
   const accent = reportAccent(null);
 
+  const reference = !isPreview && live ? sowReference(live.built.docId) : "SMC-HM-2026-0803";
+  const kicker = sowKicker(reference);
+  const headline = sowHeadline(tenant.name);
+  const standfirst = sowStandfirst(tenant.scannedOn);
+  const consent = sowConsent(tenant.name);
+
   const allPhases = totals.includedPhaseCount === totals.totalPhaseCount;
-  const credit = allPhases ? STATEMENT_OF_WORK.fullScopeCredit.amountUsd : 0;
+  // The assessment-fee credit is a claim about what THIS tenant has already
+  // paid. No check this platform runs reads that, so it is preview-only.
+  const credit = isPreview && allPhases ? STATEMENT_OF_WORK.fullScopeCredit.amountUsd : 0;
   const netFee = totals.upfrontUsd - credit;
 
   const projected = totals.projectedScore;
   const clears = projected !== null && projected >= SOW_GATE_TARGET;
+  const currentScore = !isPreview && live ? live.view.readinessScore : null;
 
   /**
    * Findings closed by the phases actually in scope, from the phases' own counts
@@ -162,20 +291,36 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
    */
   const findingsInScope = useMemo<number | null>(() => {
     let sum = 0;
-    for (const p of PREVIEW_SCOPE.phases) {
-      if (!isPhaseIncluded(PREVIEW_SCOPE, selection, p.id)) continue;
+    for (const p of scope.phases) {
+      if (!isPhaseIncluded(scope, selection, p.id)) continue;
       if (p.findingCount === undefined) return null;
       sum += p.findingCount;
     }
     return sum;
-  }, [selection]);
+  }, [scope, selection]);
+
+  /** This tenant's real total finding count across all six pillars — the number Section 1/3/6 used to hardcode as Halden's "41". */
+  const totalFindings = useMemo<number | null>(() => {
+    if (isPreview || !live) return null;
+    const total = pillars.reduce((n, p) => n + p.criticalCount + p.warningCount, 0);
+    return total > 0 ? total : null;
+  }, [isPreview, live, pillars]);
+
+  const blockers = useMemo(
+    () => (isPreview || !live ? STATEMENT_OF_WORK.blockers : buildLiveBlockers(pillars)),
+    [isPreview, live, pillars],
+  );
+  const carry = useMemo<readonly SowPillarCarry[]>(
+    () => (isPreview || !live ? STATEMENT_OF_WORK.carry : buildLiveCarry(pillars)),
+    [isPreview, live, pillars],
+  );
 
   const onTogglePhase = useCallback(
     (id: string) => {
       if (signed) return; // hard lock — scope is fixed at signature
-      setSelection((prev) => togglePhase(PREVIEW_SCOPE, prev, id));
+      setSelection((prev) => togglePhase(scope, prev, id));
     },
-    [signed],
+    [signed, scope],
   );
 
   const onToggleAddon = useCallback(
@@ -189,10 +334,10 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
   const sign = useCallback(() => {
     if (!agreed || signed) return;
     setSigned(true);
-    const phases = PREVIEW_SCOPE.phases
-      .map((p) => (isPhaseIncluded(PREVIEW_SCOPE, selection, p.id) ? "1" : "0"))
+    const phases = scope.phases
+      .map((p) => (isPhaseIncluded(scope, selection, p.id) ? "1" : "0"))
       .join("");
-    const addons = PREVIEW_SCOPE.addons
+    const addons = scope.addons
       .filter((a) => selection.addons[a.id])
       .map((a) => `${a.id}:${selection.tiers[a.id] ?? ""}`)
       .join(",");
@@ -201,7 +346,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
     // is actually seen.
     const query = new URLSearchParams({ signed: "1", phases, addons }).toString();
     window.setTimeout(() => onSigned?.(query), 1100);
-  }, [agreed, signed, selection, onSigned]);
+  }, [agreed, signed, selection, onSigned, scope]);
 
   /** Substitutes the figures the contract computes rather than states. */
   const resolveRow = useCallback(
@@ -210,28 +355,97 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
         case "total":
           return `${money(netFee)} fixed fee, phase by phase`;
         case "projected":
-          return projected === null
-            ? "No projection — no pillar in this scope has a score"
-            : `41 of 100 today · ${projected} on this scope · ${SOW_GATE_TARGET} is safe to deploy`;
+          return resolveProjected(isPreview, currentScore, projected, SOW_GATE_TARGET);
         case "findings":
-          return findingsInScope === null
-            ? "Not itemised per phase on this statement of work"
-            : `${findingsInScope} of 41 findings addressed by the selected phases`;
+          return resolveFindingsInScope(isPreview, findingsInScope, totalFindings);
         case "phaseCount":
           return phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount);
         case "weeks":
           return `${weeksLabel(totals.weeks)} to certification`;
         case "newBudget":
-          return `${money(STATEMENT_OF_WORK.budget.upliftUsd)} — the E5 uplift for 96 users, offset by reclaimed licence waste`;
+          return resolveNewBudget(isPreview);
         case "netYear":
-          return `${money(STATEMENT_OF_WORK.budget.upliftUsd - STATEMENT_OF_WORK.budget.recoveredUsd)} net, after ${money(STATEMENT_OF_WORK.budget.recoveredUsd)} of recovered licence waste`;
+          return resolveNetYear(isPreview);
         case "gateLabel":
           return clears ? "Passing on this scope" : "Not safe yet";
+        case "objective":
+          return resolveObjective(isPreview, currentScore);
+        case "findingsCarried":
+          return resolveFindingsCarried(isPreview, totalFindings, blockers.length);
+        case "whyMatters": {
+          const sitesStat = pillars
+            .find((p) => p.key === "governance")
+            ?.stats.find((s) => s.id === "governance.sites");
+          const sitesInScope = sitesStat && typeof sitesStat.value === "number" ? sitesStat.value : null;
+          return resolveWhyMatters(isPreview, sitesInScope);
+        }
+        case "basisOfScope":
+          // No narrative fetch runs on this document, so this platform has no
+          // real curated-check count to quote here without a fetch beyond the
+          // two this task named — the clause is honestly omitted rather than
+          // sourced from a third endpoint.
+          return resolveBasisOfScope(isPreview, null);
+        case "changeWindows":
+          return resolveChangeWindows(isPreview);
+        case "elapsedDays": {
+          const days = isPreview ? null : elapsedDaysSince(tenant.scannedOn ? tenant.scannedOn : null, new Date().toISOString());
+          return resolveElapsedDays(isPreview, days);
+        }
+        case "telemetrySource":
+          return resolveTelemetrySource(isPreview, tenant.scannedOn);
+        case "wasteRecovered": {
+          const wasteStat = pillars
+            .find((p) => p.key === "licensing")
+            ?.stats.find((s) => s.id === "licensing.annualWaste");
+          const wasteUsd = wasteStat && typeof wasteStat.value === "number" ? wasteStat.value : null;
+          return resolveWasteRecovered(isPreview, wasteUsd);
+        }
+        case "paymentTerms":
+          return resolvePaymentTerms(
+            isPreview,
+            !isPreview && live ? live.phasedSelfServe : null,
+            !isPreview && live ? live.payInFullActive : false,
+          );
+        case "validity": {
+          const validUntilIso = !isPreview && live ? live.built.quoteHoldIso : null;
+          return resolveValidity(isPreview, validUntilIso ? formatSowDate(validUntilIso) : null);
+        }
         default:
           return row.value ?? "";
       }
     },
-    [netFee, projected, findingsInScope, totals, clears],
+    [
+      netFee,
+      isPreview,
+      currentScore,
+      projected,
+      findingsInScope,
+      totalFindings,
+      totals,
+      clears,
+      blockers.length,
+      pillars,
+      tenant.scannedOn,
+      live,
+    ],
+  );
+
+  const deliverables = useMemo(
+    () =>
+      sowDeliverables({
+        findingsLabel:
+          isPreview || totalFindings === null ? "41 findings" : `${totalFindings} findings`,
+        blockersLabel: `${blockers.length} findings`,
+      }),
+    [isPreview, totalFindings, blockers.length],
+  );
+
+  const provenance = useMemo(
+    () =>
+      isPreview
+        ? `Read on ${scannedOn} through the Microsoft Graph API with read-only delegated permissions. ${PREVIEW_SIGNAL_COUNT} signal derivation checks across six pillars. No configuration was altered during assessment.`
+        : buildProvenance(tenant.scannedOn, 0),
+    [isPreview, scannedOn, tenant.scannedOn],
   );
 
   return (
@@ -260,7 +474,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={BRAND.teal} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none" }} aria-hidden="true">
             <path d={accent.icon} />
           </svg>
-          {STATEMENT_OF_WORK.kicker}
+          {kicker}
         </span>
         <h1
           style={{
@@ -272,9 +486,9 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
             color: INK.headingDark,
           }}
         >
-          {STATEMENT_OF_WORK.headline}
+          {headline}
         </h1>
-        <p style={{ ...BODY, fontSize: 15.5, lineHeight: 1.62 }}>{STATEMENT_OF_WORK.standfirst}</p>
+        <p style={{ ...BODY, fontSize: 15.5, lineHeight: 1.62 }}>{standfirst}</p>
       </div>
 
       {/* Sections 1-5 and 7 */}
@@ -296,7 +510,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
 
           {/* Section 5 lists the blockers under its two rows. */}
           {section.heading.startsWith("5 ·")
-            ? STATEMENT_OF_WORK.blockers.map((b) => (
+            ? blockers.map((b) => (
                 <div
                   key={b.text}
                   style={{
@@ -329,7 +543,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
           {section.heading.startsWith("7 ·")
             ? (
                 <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
-                  {STATEMENT_OF_WORK.carry.map((c) => (
+                  {carry.map((c) => (
                     <div
                       key={c.pillar}
                       style={{
@@ -375,7 +589,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>6 · Section-by-Section Deliverable Summary</h2>
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
-          {STATEMENT_OF_WORK.deliverables.map((d) => (
+          {deliverables.map((d) => (
             <Row key={d.section} label={d.section} tone="healthy" value={d.detail} />
           ))}
         </div>
@@ -388,8 +602,14 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
           {STATEMENT_OF_WORK.timeline.intro}
         </p>
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
-          {PREVIEW_SCOPE.phases.map((p, i) => {
-            const on = isPhaseIncluded(PREVIEW_SCOPE, selection, p.id);
+          {scope.phases.map((p, i) => {
+            const on = isPhaseIncluded(scope, selection, p.id);
+            const identity = identityPillarFor(p, pillarById);
+            // Preview phases each carry a matching design deliverable; a live
+            // SOW workstream has its own scope sentence but no separate
+            // per-phase deliverable list, so that column is left blank rather
+            // than reused from an unrelated phase index.
+            const deliverable = isPreview ? STATEMENT_OF_WORK.timeline.deliverables[i] : p.scope;
             return (
               <div
                 key={p.id}
@@ -405,14 +625,14 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
               >
                 <span style={{ fontSize: 13, fontWeight: 600, color: INK.headingDark }}>{p.title}</span>
                 <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>
-                  {STATEMENT_OF_WORK.timeline.deliverables[i]}
+                  {deliverable}
                 </span>
                 <span
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
                     textAlign: "right",
-                    color: on ? PILLARS[p.pillar].primary : INK.micro,
+                    color: on && identity ? PILLARS[identity].primary : INK.micro,
                     ...TABULAR,
                   }}
                 >
@@ -432,9 +652,10 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          {PREVIEW_SCOPE.phases.map((p, i) => {
-            const on = isPhaseIncluded(PREVIEW_SCOPE, selection, p.id);
-            const identity = PILLARS[p.pillar];
+          {scope.phases.map((p, i) => {
+            const on = isPhaseIncluded(scope, selection, p.id);
+            const identityKey = identityPillarFor(p, pillarById);
+            const identity = identityKey ? PILLARS[identityKey] : null;
             return (
               <button
                 key={p.id}
@@ -475,10 +696,10 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
                         fontWeight: 700,
                         letterSpacing: ".16em",
                         textTransform: "uppercase",
-                        color: identity.primary,
+                        color: identity ? identity.primary : INK.micro,
                       }}
                     >
-                      {`Phase ${i + 1} · ${identity.label}`}
+                      {identity ? `Phase ${i + 1} · ${identity.label}` : `Phase ${i + 1}`}
                     </span>
                     {p.locked ? (
                       <span
@@ -503,20 +724,22 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
                   <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>
                     {p.addresses}
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: severityColor(p.scoreFrom), ...TABULAR }}>
-                      {p.scoreFrom}
+                  {p.scoreTo !== p.scoreFrom ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: severityColor(p.scoreFrom), ...TABULAR }}>
+                        {p.scoreFrom}
+                      </span>
+                      <span aria-hidden="true" style={{ color: INK.micro, fontSize: 12 }}>
+                        →
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: severityColor(p.scoreTo), ...TABULAR }}>
+                        {p.scoreTo}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.teal, ...TABULAR }}>
+                        {`+${p.scoreTo - p.scoreFrom}`}
+                      </span>
                     </span>
-                    <span aria-hidden="true" style={{ color: INK.micro, fontSize: 12 }}>
-                      →
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: severityColor(p.scoreTo), ...TABULAR }}>
-                      {p.scoreTo}
-                    </span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.teal, ...TABULAR }}>
-                      {`+${p.scoreTo - p.scoreFrom}`}
-                    </span>
-                  </span>
+                  ) : null}
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flex: "none" }}>
                   <span style={{ fontSize: 17, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>
@@ -529,9 +752,11 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
           })}
         </div>
 
+        {adjustments.length > 0 ? <IncludedAdjustments lines={adjustments} /> : null}
+
         {/* Optional services */}
         <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6 }}>
-          {PREVIEW_SCOPE.addons.map((a) => {
+          {scope.addons.map((a) => {
             const on = Boolean(selection.addons[a.id]);
             return (
               <button
@@ -703,7 +928,7 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
                 <Check size={11} strokeWidth={3.4} color="#020617" style={{ opacity: agreed ? 1 : 0 }} />
               </span>
               <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDarkStrong }}>
-                {STATEMENT_OF_WORK.signature.consent}
+                {consent}
               </span>
             </button>
             <button
@@ -743,8 +968,193 @@ export function StatementOfWorkBody({ onSigned }: { readonly onSigned?: (query: 
           color: INK.bodyDark,
         }}
       >
-        {`Read on ${scannedOn} through the Microsoft Graph API with read-only delegated permissions. ${PREVIEW_SIGNAL_COUNT} signal derivation checks across six pillars. No configuration was altered during assessment.`}
+        {provenance}
       </p>
     </div>
+  );
+}
+
+/**
+ * The platform's mandatory price lines, shown as what they are — same
+ * treatment `IncludedAdjustments` gets on the SOW Proposal screen. Not phase
+ * cards: an adjustment has no scope of work, no toggle, and its money is
+ * already inside `totals` above.
+ */
+function IncludedAdjustments({ lines }: { readonly lines: readonly JourneyAdjustmentLine[] }) {
+  return (
+    <div
+      style={{
+        border: "1px dashed rgba(51,65,85,.9)",
+        borderRadius: 10,
+        background: "rgba(15,23,42,.3)",
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: ".2em",
+          textTransform: "uppercase",
+          color: INK.micro,
+        }}
+      >
+        <Lock size={11} strokeWidth={2.2} color={INK.micro} aria-hidden="true" />
+        Included adjustments
+      </span>
+      {lines.map((line) => (
+        <div
+          key={line.id}
+          style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14 }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: INK.bodyDarkStrong }}>{line.title}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: INK.headingDark, ...TABULAR }}>
+            {money(line.priceUsd)}
+          </span>
+        </div>
+      ))}
+      <p style={{ margin: 0, fontSize: 11.5, fontWeight: 500, lineHeight: 1.55, color: INK.micro }}>
+        Set by the platform against your tenant, not a phase you can add or remove. Already counted in the totals
+        below.
+      </p>
+    </div>
+  );
+}
+
+function formatSowDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/* ------------------------------------------------------------------ *
+ * LiveStatementOfWorkBody — the self-fetching wrapper `DocumentBody.tsx`
+ * mounts on a real journey.
+ * ------------------------------------------------------------------ */
+
+type SowLoad =
+  | { readonly status: "loading" }
+  | { readonly status: "ready"; readonly built: JourneySowScope }
+  | { readonly status: "none"; readonly regenerating: boolean }
+  | { readonly status: "error"; readonly message: string };
+
+/** The subset of `payment-options`' response this document reads. Every field optional — a malformed or partial payload degrades to the generic Payment Terms wording rather than failing the fetch. */
+interface WirePaymentOptions {
+  readonly ready?: boolean;
+  readonly phased?: { readonly selfServe?: boolean };
+  readonly payInFull?: { readonly active?: boolean };
+}
+
+export function LiveStatementOfWorkBody({
+  view,
+  onSigned,
+}: {
+  readonly view: JourneyView;
+  readonly onSigned?: (query: string) => void;
+}) {
+  const { fetchWithAuth, accessToken } = useAuth();
+  const [load, setLoad] = useState<SowLoad>({ status: "loading" });
+  const [payment, setPayment] = useState<WirePaymentOptions | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(SOW_URL);
+        if (!res.ok) throw new Error(`sow ${res.status}`);
+        const body = (await res.json()) as WireSowState;
+        if (cancelled) return;
+        const built = journeyScopeFromSow(body);
+        if (!built) {
+          setLoad({ status: "none", regenerating: body.regenerating === true });
+          return;
+        }
+        setLoad({ status: "ready", built });
+      } catch (e) {
+        if (cancelled) return;
+        const message = e instanceof Error ? e.message : String(e);
+        setLoad({ status: "error", message });
+        reportClientEvent(accessToken, "StatementOfWorkScopeFetchFailed", message, JOURNEY_CHANNEL, {
+          url: SOW_URL,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth, accessToken]);
+
+  // Best-effort and independent of the scope fetch above: the contract's
+  // Payment Terms row degrades to generic-but-honest wording if this never
+  // lands, exactly as the rest of the document degrades when a check did not
+  // report — it never blocks the signable contract from rendering.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(PAYMENT_OPTIONS_URL);
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as WirePaymentOptions;
+        if (!cancelled) setPayment(body);
+      } catch {
+        // Non-fatal — see the comment above.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  if (load.status === "ready") {
+    return (
+      <StatementOfWorkBody
+        isPreview={false}
+        onSigned={onSigned}
+        live={{
+          view,
+          built: load.built,
+          phasedSelfServe: payment?.phased?.selfServe ?? null,
+          payInFullActive: payment?.payInFull?.active === true,
+        }}
+      />
+    );
+  }
+
+  if (load.status === "loading") {
+    return (
+      <span style={{ fontSize: 13, fontWeight: 500, color: INK.micro, padding: "26px 0", display: "block" }}>
+        Loading your statement of work…
+      </span>
+    );
+  }
+
+  if (load.status === "error") {
+    return (
+      <JourneyUnavailable
+        title="We could not load your statement of work"
+        detail={`The scope request failed (${load.message}). Nothing has been lost — reload the page, and if it keeps failing your assessment lead can pull the scope up directly.`}
+      />
+    );
+  }
+
+  return (
+    <JourneyUnavailable
+      title={
+        load.status === "none" && load.regenerating
+          ? "Your statement of work is being rebuilt"
+          : "Your statement of work has not been generated yet"
+      }
+      detail={
+        load.status === "none" && load.regenerating
+          ? "A new version of your scope is generating from the assessment right now. It takes a few minutes; this page will show it once it lands."
+          : "The scope is written from your assessment findings, and it has not been produced for this tenant yet. Your other reports are already available — the priced phases follow from them."
+      }
+    />
   );
 }
