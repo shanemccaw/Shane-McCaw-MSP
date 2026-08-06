@@ -761,6 +761,15 @@ export async function graphFetchForTenant(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      // #393/#488 — undici (Node's global fetch) injects `accept-language: *` on
+      // every outgoing request when no Accept-Language header is set. Graph's PIM
+      // backend (roleEligibilitySchedules, privilegedAccess/group/*) parses that
+      // header as a culture identifier and rejects the literal "*" with a wrapped
+      // 400 CultureNotFoundException — misread by #488 as a P2 license gap before
+      // the real captured error body (sqloutput.json) showed every failure was
+      // this same signature. Setting an explicit value replaces undici's default
+      // outright, so the PIM backend gets a culture it can actually parse.
+      "Accept-Language": "en-US",
       ...(options.headers ?? {}),
     },
   };

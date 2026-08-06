@@ -466,6 +466,36 @@ describe("graphFetchForTenant — license/feature gap (no consent flip)", () => 
   });
 });
 
+// #393/#488 — undici (Node's global fetch) defaults `accept-language` to the
+// literal `*` on any request that doesn't set it, which Graph's PIM backend
+// (roleEligibilitySchedules, privilegedAccess/group/*) rejects as an invalid
+// culture identifier. graphFetchForTenant must always send an explicit,
+// parseable Accept-Language so undici's default never reaches the wire.
+describe("graphFetchForTenant — explicit Accept-Language (undici *-default fix)", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("sets an explicit Accept-Language header on every outgoing Graph request", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph200());
+    await graphFetchForTenant("tenant-pim", "/roleManagement/directory/roleEligibilitySchedules?$expand=principal");
+    const graphCallInit = mockFetch.mock.calls[1]?.[1] as RequestInit;
+    const headers = graphCallInit.headers as Record<string, string>;
+    expect(headers["Accept-Language"]).toBeTruthy();
+    expect(headers["Accept-Language"]).not.toBe("*");
+  });
+
+  it("does not let a caller-supplied header get silently dropped, but still defaults when absent", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph200());
+    await graphFetchForTenant("tenant-pim-2", "/roleManagement/directory/roleEligibilitySchedules", {
+      headers: { "Accept-Language": "fr-FR" },
+    });
+    const graphCallInit = mockFetch.mock.calls[1]?.[1] as RequestInit;
+    const headers = graphCallInit.headers as Record<string, string>;
+    expect(headers["Accept-Language"]).toBe("fr-FR");
+  });
+});
+
 describe("classifyGraphError", () => {
   it("classifies the Entra Premium error code as a license gap", () => {
     const r = classifyGraphError('{"error":{"code":"Authentication_RequestFromNonPremiumTenantOrB2CTenant"}}', 403);
