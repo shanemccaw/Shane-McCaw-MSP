@@ -633,6 +633,14 @@ export function classifyGraphError(
     return { kind: "license_gap", feature: "Microsoft Entra ID Premium (P1/P2)", code };
   }
 
+  // #495 — PIM (identity:pim-eligible-roles, identity:pim-groups) confirmed live
+  // (2026-08-06, tenant c4c814d4-3afe-441e-9145-62461d0a4fd3): "AadPremiumLicenseRequired"
+  // is a distinct, narrower code than the P1/P2 set above — PIM specifically requires
+  // Entra ID P2 or Entra ID Governance, not just P1, so it gets its own feature message.
+  if (code === "AadPremiumLicenseRequired") {
+    return { kind: "license_gap", feature: "Microsoft Entra ID P2 or Microsoft Entra ID Governance", code };
+  }
+
   // #484 — Purview retention/eDiscovery (Data Insights) capability gap.
   if (isDataInsightsLicenseGapBody(lower)) {
     return {
