@@ -1515,15 +1515,20 @@ export function licenseGapProfileFlags(feature: string): Record<string, boolean>
 }
 
 /**
- * #250: the customer-safe feature name stamped into `_licenseGapFeature` when
- * a PS-backed check hits "cmdlet_unavailable" — deliberately named after the
- * Purview capability area, not a specific cmdlet, since the same missing-
- * cmdlet symptom can mean either a licensing gap or a role-group provisioning
- * gap (see the "cmdlet_unavailable" branch's own comment). Keyed off
- * check.psCmdletKey, not the check's `key`, since the cmdlet identity is what
- * determines which Purview area is actually gated.
+ * #250 (renamed #491): the customer-safe feature name stamped into
+ * `_licenseGapFeature` when a PS-backed check hits "cmdlet_unavailable" —
+ * deliberately named after the specific capability area, not a specific
+ * cmdlet, since the same missing-cmdlet symptom can mean either a licensing
+ * gap or a role-group/RBAC provisioning gap (see the "cmdlet_unavailable"
+ * branch's own comment). Keyed off check.psCmdletKey, not the check's `key`,
+ * since the cmdlet identity is what determines which capability area is
+ * actually gated. Originally Purview-only (#250); #491 added Exchange Online
+ * admin cmdlets (a different product/RBAC surface entirely — Exchange
+ * Online's role groups, not a Purview role group), so the default case can
+ * no longer assume "Purview" without being actively misleading to a
+ * customer reading `_licenseGapFeature`.
  */
-function purviewFeatureForCmdletKey(cmdletKey: string | null): string {
+function licenseGapFeatureForCmdletKey(cmdletKey: string | null): string {
   switch (cmdletKey) {
     case "get-dlp-policies":
     case "get-dlp-incidents":
@@ -1531,6 +1536,21 @@ function purviewFeatureForCmdletKey(cmdletKey: string | null): string {
     case "get-labels":
     case "get-label-policies":
       return "Microsoft Purview sensitivity labels";
+    // #491: Exchange Online admin cmdlets — gated by Exchange RBAC role
+    // assignment (or, in principle, an Exchange Online license gap), not a
+    // Purview capability. See entrypoint.ps1's #491 catalog comment for the
+    // exact prerequisite (Exchange.ManageAsApp + an Exchange RBAC role group
+    // on the same app-only cert already used for Graph/Purview).
+    case "get-antispam-policies":
+    case "get-shared-mailboxes":
+    case "get-litigation-hold-gap":
+    case "get-archive-mailbox-gap":
+    case "get-transport-rules":
+    case "get-inbound-connector-tls-gap":
+    case "get-auto-forward-risk-policies":
+    case "get-dkim-disabled-domains":
+    case "get-mailbox-quota-utilization":
+      return "Exchange Online admin data (requires the app's Exchange Online role assignment)";
     default:
       return "Microsoft Purview compliance features";
   }
@@ -2392,13 +2412,15 @@ export async function executeMonitorCheck(opts: {
       };
     }
 
-    // PsExecutionError with kind "cmdlet_unavailable" (#250): the ps-execution
-    // container caught a real CommandNotFoundException resolving the check's
-    // cmdlet — see ps-execution-client.ts's PsExecutionError doc comment for
-    // why this can ONLY mean the tenant's Security & Compliance session never
-    // got this cmdlet registered (a Purview licensing gap OR the app not yet
-    // being in the right Purview role group — the two are indistinguishable
-    // from the error text alone, confirmed by inspecting
+    // PsExecutionError with kind "cmdlet_unavailable" (#250, #491): the
+    // ps-execution container caught a real CommandNotFoundException
+    // resolving the check's cmdlet — see ps-execution-client.ts's
+    // PsExecutionError doc comment for why this can ONLY mean the tenant's
+    // Security & Compliance (or, #491, Exchange Online) session never got
+    // this cmdlet registered (a licensing gap OR the app not yet being in
+    // the right role group — Purview role group for the #250 checks,
+    // Exchange RBAC role for #491's — the two are indistinguishable from the
+    // error text alone, confirmed by inspecting
     // dlp-role-group-provisioning.ts's own problem statement). Reuses the
     // EXISTING "license_gap" status/shape (not a new status value) so this
     // slides into every consumer that already treats license_gap as an
@@ -2410,7 +2432,7 @@ export async function executeMonitorCheck(opts: {
     // BOTH possible causes rather than asserting "not licensed" specifically,
     // per the ambiguity above.
     if (err instanceof PsExecutionError && err.kind === "cmdlet_unavailable") {
-      const feature = purviewFeatureForCmdletKey(check.psCmdletKey);
+      const feature = licenseGapFeatureForCmdletKey(check.psCmdletKey);
       const licenseFlags = licenseGapProfileFlags(feature);
       const extracted: Record<string, unknown> = {
         _licenseGap: true,

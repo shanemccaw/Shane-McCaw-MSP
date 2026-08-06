@@ -144,7 +144,7 @@ export interface MetricResultNotAvailable extends MetricResultBase {
    * Set ONLY when `reason === "license_gap"`: the customer-safe name of the
    * Microsoft 365 add-on the tenant's own scan reported as missing, straight
    * off `_licenseGapFeature` (monitor-executor stamps it from the real
-   * `LicenseGapError.feature`, or from `purviewFeatureForCmdletKey` on the
+   * `LicenseGapError.feature`, or from `licenseGapFeatureForCmdletKey` on the
    * PowerShell path).
    *
    * Carried as its own field rather than left buried in `detail`'s prose so a

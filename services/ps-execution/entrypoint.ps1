@@ -439,6 +439,222 @@ $script:CmdletCatalog = @{
         AllowedParams  = @("Identity", "Member")
         IsWrite        = $true
     }
+
+    # #491: 11 Exchange checks that had a literal `exchange-online://Get-X`
+    # pseudo-URI as their `endpoint` — never intercepted, so it went straight
+    # to Graph and 400'd. `Session = "exchange"` on every entry below is the
+    # key difference from every catalog entry above: Get-Mailbox,
+    # Get-TransportRule, Get-InboundConnector, Get-HostedContentFilterPolicy,
+    # Get-HostedOutboundSpamFilterPolicy, Get-DkimSigningConfig and
+    # Get-MailboxStatistics are Exchange Online Management cmdlets, NOT
+    # Security & Compliance cmdlets — confirmed against Microsoft Learn's
+    # Connect-ExchangeOnline vs Connect-IPPSSession docs (checked 2026-08-06):
+    # an IPPSSession (what every entry above connects with) simply does not
+    # expose them. Adding them to the catalog without also branching the
+    # connect step to Connect-ExchangeOnline would have hit the exact same
+    # `cmdlet_unavailable`/CommandNotFoundException path #250 built for the
+    # Purview case — see the connect block below for the `Session`-keyed
+    # branch and Resolve-CmdletInvocation/the dispatch block for `Script`
+    # support (added for get-mailbox-quota-utilization, the one check that
+    # needs two composed cmdlets, not one).
+    #
+    # Prerequisite this session could NOT configure or verify (no Azure/
+    # Graph/DB reachability here): the same app-only cert already loaded at
+    # startup (reused, not a new registration, mirroring the Purview
+    # role-group precedent add-role-group-member exists for) must ALSO be
+    # granted the Exchange.ManageAsApp API permission and have its service
+    # principal added to an Exchange RBAC role group (e.g. "View-Only
+    # Organization Management") via Entra/Exchange admin center. Until
+    # that's done, every entry below will surface as `cmdlet_unavailable` —
+    # an honest, already-handled failure, not silently wrong data — flagged
+    # for Shane to confirm/configure.
+    #
+    # No PostFilter is a raw tenant-wide count/list (the check's own name —
+    # "X Count", "X Review" — reads as wanting the full set). A PostFilter
+    # narrows to a "gap"/"risk" subset, matching the compliance:missing-labels
+    # /weak-dlp-policies precedent above, and is this session's own product
+    # read of what each check's name implies — flagged per-entry for Shane to
+    # correct the bar if it doesn't match his intent, exactly like that
+    # precedent. `mapping`/`properties`/`severity_rules` on the DB rows
+    # themselves were deliberately left untouched by #491's migration (no DB
+    # read access to confirm the field names/thresholds already configured
+    # against — see the migration file's own header).
+
+    # exchange:antispam-policy-coverage. No params needed to list every
+    # custom anti-spam (HostedContentFilter) policy in the org; "coverage" is
+    # read as "how many custom policies exist" — no PostFilter, a policy-level
+    # list has no obvious single-cmdlet "gap" proxy the way a per-mailbox
+    # check does.
+    "get-antispam-policies" = @{
+        Cmdlet         = "Get-HostedContentFilterPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+
+    # exchange:shared-mailbox-licensing (raw count — the check's own name
+    # says "Count") and exchange:mail-flow-rule-review/transport-rule-count's
+    # sibling use of Get-Mailbox for a different recipient type. ResultSize
+    # must be forced to Unlimited — EXO defaults Get-Mailbox to a 1000-row
+    # cap otherwise — and RecipientTypeDetails to SharedMailbox, both fixed
+    # via ps_params (code/DB-owned, never client-driven, same posture as
+    # DLP's Filter1/OutputFormat above). FLAGGED: the "Licensing" half of
+    # this check's name isn't answerable from Get-Mailbox alone — whether a
+    # shared mailbox has a paid license assigned is an Entra
+    # assignedLicenses property, not an Exchange mailbox property, so it
+    # would need a Graph cross-reference per mailbox UPN. Out of this
+    # session's scope; this returns the raw shared-mailbox count only.
+    "get-shared-mailboxes" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize", "RecipientTypeDetails")
+        Session        = "exchange"
+    }
+
+    # exchange:litigation-hold-coverage. PostFilter narrows to mailboxes
+    # WITHOUT litigation hold enabled — the coverage GAP, same proxy shape as
+    # compliance:missing-labels above (a "coverage" name paired with a raw
+    # _itemCount of ALL mailboxes would be meaningless: a healthy and an
+    # unhealthy tenant with the same headcount would score identically).
+    "get-litigation-hold-gap" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize")
+        PostFilter     = { -not $_.LitigationHoldEnabled }
+        Session        = "exchange"
+    }
+
+    # exchange:archive-mailbox-rate. Same "rate" reasoning as the litigation
+    # hold gap above — PostFilter narrows to mailboxes whose archive is NOT
+    # active (defined-but-inactive archives are treated the same as never
+    # enabled, matching Get-Mailbox's own ArchiveStatus enum, which has no
+    # separate "was on now off" state worth distinguishing here).
+    "get-archive-mailbox-gap" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize")
+        PostFilter     = { $_.ArchiveStatus -ne "Active" }
+        Session        = "exchange"
+    }
+
+    # exchange:transport-rule-count (raw count) and exchange:mail-flow-rule-review
+    # (raw list "to review") share this ONE catalog entry across two separate
+    # monitor_checks rows/cmdletKey references — same pattern as this file's
+    # existing DLP entries being distinct per-check where compliance:dlp-incidents
+    # and compliance:weak-dlp-policies are NOT shared (different cmdlets) but
+    # mirrors add-role-group-member's single-entry-multiple-callers shape.
+    # No PostFilter: "review" reads as "here is the full list to look at",
+    # not a pre-filtered risk subset this session has no basis to define.
+    "get-transport-rules" = @{
+        Cmdlet         = "Get-TransportRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+
+    # exchange:connector-health. PostFilter narrows to inbound connectors
+    # that do NOT require TLS — RequireTls=$false is Microsoft's own
+    # documented Exchange Online connector security-baseline flag, the
+    # closest honest single-property "health" signal Get-InboundConnector
+    # exposes (vs. e.g. Enabled=$false, which is often an intentional,
+    # non-risky state, not a health problem).
+    "get-inbound-connector-tls-gap" = @{
+        Cmdlet         = "Get-InboundConnector"
+        AllowedParams  = @()
+        PostFilter     = { -not $_.RequireTls }
+        Session        = "exchange"
+    }
+
+    # exchange:auto-forwarding-rules. Deliberately NOT Get-InboxRule, despite
+    # that being the literal pseudo-URI the original (broken) endpoint named
+    # — confirmed via Microsoft Learn that Get-InboxRule has no tenant-wide
+    # form (Identity/Mailbox is mandatory in EXO, same limitation Microsoft
+    # Graph's own /users/{id}/mailFolders/inbox/messageRules equivalent has),
+    # so it cannot answer this check in one call the way every other entry
+    # here does, and doing it per-mailbox would need a NEW fan-out mechanism
+    # this container doesn't have (runFanOutCheck, the closest analog, is
+    # Graph-only — see monitor-executor.ts). Rerouted instead to
+    # Get-HostedOutboundSpamFilterPolicy's AutoForwardingMode — the real,
+    # tenant-wide, single-call EXO security-baseline control that governs
+    # whether auto-forwarding to external recipients is even possible, and
+    # the mechanism Microsoft's own Defender documentation names for exactly
+    # this risk. PostFilter narrows to policies where external auto-forwarding
+    # is allowed (AutoForwardingMode -eq "On"; "Automatic" now behaves as
+    # "Off" per Microsoft Learn, so only "On" is the risk state). FLAGGED:
+    # this check's PRE-EXISTING severity_rules/mapping (untouched by #491's
+    # migration) were presumably authored against a per-mailbox-rule-count
+    # assumption that never actually ran — Shane should confirm the
+    # thresholds still read sensibly against this policy-level _itemCount
+    # (0 or 1 in almost every tenant, not a per-mailbox count).
+    "get-auto-forward-risk-policies" = @{
+        Cmdlet         = "Get-HostedOutboundSpamFilterPolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.AutoForwardingMode -eq "On" }
+        Session        = "exchange"
+    }
+
+    # exchange:dkim-spf-dmarc-status. Get-DkimSigningConfig only covers the
+    # DKIM third of this check's name — SPF and DMARC are public DNS TXT
+    # records, not Exchange or Graph configuration state, and reading them
+    # would need an actual DNS query against each accepted domain (a
+    # different execution class entirely, no cmdlet or Graph endpoint
+    # involved). FLAGGED, not built here: out of #491's wiring-fix scope: a
+    # true SPF/DMARC check needs a DNS-lookup capability this container
+    # doesn't have. PostFilter narrows to domains where DKIM signing is NOT
+    # enabled — the same missing-control-gap shape as every other narrowed
+    # entry above.
+    "get-dkim-disabled-domains" = @{
+        Cmdlet         = "Get-DkimSigningConfig"
+        AllowedParams  = @()
+        PostFilter     = { -not $_.Enabled }
+        Session        = "exchange"
+    }
+
+    # exchange:mailbox-quota-utilization. No single EXO cmdlet answers this:
+    # quota thresholds live on Get-Mailbox (ProhibitSendQuota), actual usage
+    # only on Get-MailboxStatistics, and Get-MailboxStatistics has no
+    # tenant-wide form in EXO (Identity is mandatory — confirmed against
+    # Microsoft Learn, same class of limitation as Get-InboxRule above) — the
+    # standard, Microsoft-documented pattern for a tenant-wide report is
+    # exactly the composition below (Get-Mailbox piped per-mailbox into
+    # Get-MailboxStatistics). `Script` is a NEW catalog field (see
+    # Resolve-CmdletInvocation/the dispatch block) for the one check that
+    # genuinely needs more than one splatted cmdlet call — every other entry
+    # in this file, including every #491 entry above, still fits the
+    # existing single-Cmdlet shape and deliberately does NOT use it.
+    # ProhibitSendQuota/TotalItemSize are Exchange's ByteQuantifiedSize type;
+    # .Value.ToBytes() is its documented conversion method. Unlimited-quota
+    # mailboxes (ProhibitSendQuota has no numeric value) get
+    # UtilizationPercent = $null and are excluded by the PostFilter's null
+    # check, not miscounted as 0% or over-quota. PostFilter narrows to
+    # mailboxes at or above 90% utilization — this session's own threshold
+    # pick (flagged, same as the DLP "weak" bar above) for what counts as
+    # "near quota", not a Microsoft-defined cutoff.
+    "get-mailbox-quota-utilization" = @{
+        Script = {
+            Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox, SharedMailbox |
+                ForEach-Object {
+                    $mbx = $_
+                    $prohibitBytes = $null
+                    if ($mbx.ProhibitSendQuota -and $mbx.ProhibitSendQuota.ToString() -ne "Unlimited") {
+                        $prohibitBytes = $mbx.ProhibitSendQuota.Value.ToBytes()
+                    }
+                    $stats = Get-MailboxStatistics -Identity $mbx.Identity -ErrorAction SilentlyContinue
+                    $usedBytes = $null
+                    if ($stats -and $stats.TotalItemSize) {
+                        $usedBytes = $stats.TotalItemSize.Value.ToBytes()
+                    }
+                    $utilizationPercent = $null
+                    if ($prohibitBytes -and $usedBytes) {
+                        $utilizationPercent = [math]::Round(($usedBytes / $prohibitBytes) * 100, 1)
+                    }
+                    [PSCustomObject]@{
+                        PrimarySmtpAddress = $mbx.PrimarySmtpAddress
+                        DisplayName        = $mbx.DisplayName
+                        ProhibitSendQuotaBytes = $prohibitBytes
+                        TotalItemSizeBytes = $usedBytes
+                        UtilizationPercent = $utilizationPercent
+                    }
+                }
+        }
+        PostFilter = { $null -ne $_.UtilizationPercent -and $_.UtilizationPercent -ge 90 }
+        Session    = "exchange"
+    }
 }
 
 # --- Bearer-token check -------------------------------------------------------
@@ -503,6 +719,20 @@ function Resolve-CmdletInvocation {
     )
 
     $catalogEntry = $script:CmdletCatalog[$CmdletKey]
+
+    # #491: get-mailbox-quota-utilization's Script entry — a composed,
+    # code-owned scriptblock (no single EXO cmdlet answers that check; see
+    # its catalog comment) rather than one splatted cmdlet. Never
+    # request-driven, same as every other field on a catalog entry — Params
+    # stays empty because the script takes none.
+    if ($catalogEntry.Script) {
+        return @{
+            Cmdlet   = "<script:$CmdletKey>"
+            Params   = @{}
+            IsScript = $true
+        }
+    }
+
     $cmdletParams = @{}
     foreach ($allowedName in $catalogEntry.AllowedParams) {
         if ($RequestParams.ContainsKey($allowedName)) {
@@ -511,8 +741,9 @@ function Resolve-CmdletInvocation {
     }
 
     return @{
-        Cmdlet = $catalogEntry.Cmdlet
-        Params = $cmdletParams
+        Cmdlet   = $catalogEntry.Cmdlet
+        Params   = $cmdletParams
+        IsScript = $false
     }
 }
 
@@ -591,12 +822,24 @@ try {
         $invocation = Resolve-CmdletInvocation -CmdletKey $cmdletKey -RequestParams $requestParams
         $catalogEntry = $script:CmdletCatalog[$cmdletKey]
 
+        # #491: catalog entries default to "compliance" (Connect-IPPSSession,
+        # every entry present before #491) unless they declare
+        # `Session = "exchange"` (Connect-ExchangeOnline) — see the #491
+        # catalog block's own comment for why Get-Mailbox/Get-TransportRule/
+        # etc. need the latter and cannot run over an IPPSSession.
+        $sessionType = if ($catalogEntry.Session) { $catalogEntry.Session } else { "compliance" }
         try {
-            Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
+            if ($sessionType -eq "exchange") {
+                Connect-ExchangeOnline -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ShowBanner:$false -ErrorAction Stop | Out-Null
+            }
+            else {
+                Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
+            }
         }
         catch {
-            Write-Log -Level "error" -Message "Connect-IPPSSession failed" -Extra @{ cmdletKey = $cmdletKey; organization = $organization; error = $_.Exception.Message }
-            Send-ErrorResponse -Response $response -StatusCode 502 -Kind "auth_failed" -Message "Could not establish a Security & Compliance session for the target tenant."
+            Write-Log -Level "error" -Message "Connect-$sessionType session failed" -Extra @{ cmdletKey = $cmdletKey; organization = $organization; error = $_.Exception.Message }
+            $sessionLabel = if ($sessionType -eq "exchange") { "an Exchange Online" } else { "a Security & Compliance" }
+            Send-ErrorResponse -Response $response -StatusCode 502 -Kind "auth_failed" -Message "Could not establish $sessionLabel session for the target tenant."
             continue
         }
 
@@ -611,8 +854,17 @@ try {
 
         $writeOutcome = $null
         try {
-            $cmdletParams = $invocation.Params
-            $result = & $invocation.Cmdlet @cmdletParams
+            # #491: Script entries (get-mailbox-quota-utilization) run their
+            # composed scriptblock directly — no cmdlet name to splat params
+            # onto, and IsScript entries always carry empty Params (see
+            # Resolve-CmdletInvocation).
+            if ($invocation.IsScript) {
+                $result = & $catalogEntry.Script
+            }
+            else {
+                $cmdletParams = $invocation.Params
+                $result = & $invocation.Cmdlet @cmdletParams
+            }
 
             if ($catalogEntry.IsWrite) {
                 # Add-RoleGroupMember has no meaningful success payload to
@@ -674,20 +926,26 @@ try {
                 # Every cmdlet name here comes from $script:CmdletCatalog — a
                 # fixed, code-owned literal already confirmed correct (it
                 # works for other tenants) — so this can only mean the tenant's
-                # Security & Compliance session never got this cmdlet
-                # dynamically registered into it. That happens for EITHER of
-                # two separate causes this container cannot distinguish from
-                # here: the tenant lacks the underlying Purview license/add-on,
-                # or the connecting app-only identity isn't a member of the
-                # Purview role group that grants it (see
-                # dlp-role-group-provisioning.ts) — so the message below
-                # names both possibilities rather than asserting either one.
+                # Security & Compliance (or, #491, Exchange Online) session
+                # never got this cmdlet dynamically registered into it. That
+                # happens for EITHER of two separate causes this container
+                # cannot distinguish from here: the tenant lacks the
+                # underlying license/add-on, or the connecting app-only
+                # identity isn't a member of the role group that grants it
+                # (Purview role group for compliance-session entries, see
+                # dlp-role-group-provisioning.ts; an Exchange RBAC role group
+                # e.g. "View-Only Organization Management" plus the
+                # Exchange.ManageAsApp permission for #491's exchange-session
+                # entries) — so the message below names both possibilities
+                # rather than asserting either one.
                 $isCmdletNotFound = ($_.Exception -is [System.Management.Automation.CommandNotFoundException]) -or
                     ($_.Exception.Message -match "(?i)is not recognized as (a|the) name of a cmdlet, function, script file, or executable program")
 
                 if ($isCmdletNotFound) {
-                    Write-Log -Level "warn" -Message "cmdlet not available in this tenant's session (license or role-group provisioning gap)" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; error = $_.Exception.Message }
-                    Send-ErrorResponse -Response $response -StatusCode 500 -Kind "cmdlet_unavailable" -Message "The '$($invocation.Cmdlet)' cmdlet is not available in this tenant's Security & Compliance session (missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role)."
+                    $sessionLabel = if ($sessionType -eq "exchange") { "Exchange Online" } else { "Security & Compliance" }
+                    $roleHint = if ($sessionType -eq "exchange") { "missing Exchange Online license/add-on, or the connecting app isn't yet granted Exchange.ManageAsApp and assigned the required Exchange RBAC role" } else { "missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role" }
+                    Write-Log -Level "warn" -Message "cmdlet not available in this tenant's session (license or role-group provisioning gap)" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; session = $sessionType; error = $_.Exception.Message }
+                    Send-ErrorResponse -Response $response -StatusCode 500 -Kind "cmdlet_unavailable" -Message "The '$($invocation.Cmdlet)' cmdlet is not available in this tenant's $sessionLabel session ($roleHint)."
                     continue
                 }
 
