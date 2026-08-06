@@ -6,7 +6,7 @@ import {
   tenantsTable,
   quickWinPresentationsTable,
 } from "@workspace/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
@@ -150,6 +150,19 @@ export async function generateSowDocument(params: GenerateSowParams & { dryRun?:
 export async function generateSowDocument(params: GenerateSowParams): Promise<GenerateSowResult | DryRunSowResult> {
   const { mspCustomerId, projectId, docTypeKey, testMode = false } = params;
 
+  // "No project selected" reaches this engine as the caller's `0` sentinel (the
+  // admin route defaults an absent/NaN projectId to 0). `project_id` is a real
+  // FK to `projects.id`, whose serial starts at 1, so there is no id=0 row and
+  // writing the sentinel through is a foreign-key violation. NULL is the legal
+  // representation, so normalize once here and derive the read predicate from
+  // the same value — `= 0` can never match a row stored as NULL, which would
+  // otherwise make the supersede and grounding lookups below silently miss
+  // every no-project document.
+  const normalizedProjectId = projectId || null;
+  const projectIdMatches = normalizedProjectId === null
+    ? isNull(insightsGeneratedDocumentsTable.projectId)
+    : eq(insightsGeneratedDocumentsTable.projectId, normalizedProjectId);
+
   let documentId: number | null = null;
 
   try {
@@ -172,7 +185,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         .innerJoin(documentTypesTable, eq(documentTypesTable.key, insightsGeneratedDocumentsTable.docType))
         .where(and(
           inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIdsDry),
-          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          projectIdMatches,
           eq(documentTypesTable.pipelineCategory, "standalone"),
         ));
 
@@ -293,7 +306,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       // customer is the function's own required param — nothing to resolve here.
       mspCustomerId,
       customerId: documentOwnerUserId,
-      projectId,
+      projectId: normalizedProjectId,
       category: docTypeRow.category,
       docType: docTypeKey,
       title: docTypeRow.label,
@@ -313,7 +326,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         .from(insightsGeneratedDocumentsTable)
         .where(and(
           inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIds),
-          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          projectIdMatches,
           eq(insightsGeneratedDocumentsTable.docType, docTypeKey),
           inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
         ))
@@ -354,7 +367,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       .where(
         and(
           inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIds),
-          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          projectIdMatches,
           eq(documentTypesTable.pipelineCategory, "standalone"),
         ),
       );

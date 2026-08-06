@@ -314,7 +314,13 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // customer is the function's own required param — nothing to resolve here.
     mspCustomerId,
     customerId: documentOwnerUserId,
-    projectId,
+    // "No project selected" reaches this engine as the caller's `0` sentinel
+    // (the admin route defaults an absent/NaN projectId to 0). `project_id` is
+    // a real FK to `projects.id`, whose serial starts at 1, so there is no id=0
+    // row to point at and writing the sentinel through is a foreign-key
+    // violation — this insert was the one actually returning 500 on every
+    // generate-without-a-project. NULL is the legal representation.
+    projectId: projectId || null,
     category: docTypeRow.category,
     docType: docTypeKey,
     title: docTypeRow.label,

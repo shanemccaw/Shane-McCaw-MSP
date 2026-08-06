@@ -20,7 +20,7 @@ import {
   engagementProjectsTable,
   documentTypesTable,
 } from "@workspace/db";
-import { eq, and, desc, ne } from "drizzle-orm";
+import { eq, and, desc, ne, isNull } from "drizzle-orm";
 import { buildTenantProfile } from "./tenant-signals";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
@@ -517,7 +517,14 @@ async function fetchPriorDocuments(clientUserId: number, projectId: number, excl
     .from(insightsGeneratedDocumentsTable)
     .where(and(
       eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
-      eq(insightsGeneratedDocumentsTable.projectId, projectId),
+      // Same "no project" normalization the write side uses (see
+      // upsertDocument): no-project documents are stored with project_id NULL,
+      // and `= 0` can never match NULL — without this the prior-document
+      // grounding block would silently come back empty for every no-project
+      // customer, quietly dropping the consistency context from the prompt.
+      projectId
+        ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
+        : isNull(insightsGeneratedDocumentsTable.projectId),
       ne(insightsGeneratedDocumentsTable.docType, excludeDocType),
     ))
     .orderBy(desc(insightsGeneratedDocumentsTable.createdAt));
@@ -559,11 +566,23 @@ async function upsertDocument(
     sowTotalPrice: string | null;
   },
 ): Promise<{ id: number }> {
+  // "No project selected" arrives as the caller's `0` sentinel (the admin UI
+  // sends `selectedProjectId ?? 0`), but `project_id` is a real FK to
+  // `projects.id`, whose serial starts at 1 — there is no id=0 row, so writing
+  // the sentinel through is a foreign-key violation, not a null. Normalize once
+  // here so BOTH the dedupe lookup and the write below agree on what "no
+  // project" means; a mismatch between them is the second half of this bug
+  // (lookup on `= 0` can never match a row stored as NULL, so every repeat
+  // generation would insert a duplicate instead of updating in place).
+  const normalizedProjectId = projectId || null;
+
   const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
     .from(insightsGeneratedDocumentsTable)
     .where(and(
       eq(insightsGeneratedDocumentsTable.customerId, customerId),
-      eq(insightsGeneratedDocumentsTable.projectId, projectId),
+      normalizedProjectId === null
+        ? isNull(insightsGeneratedDocumentsTable.projectId)
+        : eq(insightsGeneratedDocumentsTable.projectId, normalizedProjectId),
       eq(insightsGeneratedDocumentsTable.docType, values.docType),
     ))
     .limit(1);
@@ -588,7 +607,7 @@ async function upsertDocument(
   const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
     mspCustomerId,
     customerId,
-    projectId,
+    projectId:       normalizedProjectId,
     category:        values.category,
     docType:         values.docType,
     title:           values.title,
