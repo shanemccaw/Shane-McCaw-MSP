@@ -144,7 +144,7 @@ function previewMarginNote(key: PillarKey): string | null {
 export default function CopilotReadinessPage() {
   const [, navigate] = useLocation();
   const search = useSearch();
-  const { fetchWithAuth, logout } = useAuth();
+  const { user, fetchWithAuth, logout } = useAuth();
   const versionInfo = useVersionInfo();
 
   const params = useMemo(() => new URLSearchParams(search), [search]);
@@ -515,25 +515,48 @@ export default function CopilotReadinessPage() {
 
       <RevealProgressRail active={metrics.active} count={SCENE_COUNT} />
 
-      <button
-        type="button"
-        onClick={() => void logout()}
+      <div
         style={{
           position: "fixed",
           top: 12,
           left: 12,
           zIndex: 9999,
-          padding: "4px 10px",
-          fontSize: 11,
-          borderRadius: 6,
-          border: "1px solid rgba(255,255,255,0.15)",
-          background: "rgba(0,0,0,0.4)",
-          color: "rgba(255,255,255,0.55)",
-          cursor: "pointer",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 4,
         }}
       >
-        Sign out
-      </button>
+        {(user?.name || user?.email) ? (
+          <span
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: "rgba(0,0,0,0.4)",
+              color: "rgba(255,255,255,0.55)",
+            }}
+          >
+            {user?.name ?? user?.email}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void logout()}
+          style={{
+            padding: "4px 10px",
+            fontSize: 11,
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.15)",
+            background: "rgba(0,0,0,0.4)",
+            color: "rgba(255,255,255,0.55)",
+            cursor: "pointer",
+          }}
+        >
+          Sign out
+        </button>
+      </div>
 
       {!isPreview && scanStatusData?.isTestbed ? (
         <button
