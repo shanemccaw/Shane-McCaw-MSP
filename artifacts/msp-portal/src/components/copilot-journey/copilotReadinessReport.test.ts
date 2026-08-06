@@ -59,6 +59,7 @@ function pillar(key: PillarKey, overrides: Partial<JourneyPillarView> = {}): Jou
     headline: null,
     chips: [],
     stats: [],
+    findings: [],
     satelliteFinding: null,
     trend: null,
     criticalCount: 0,
@@ -696,13 +697,17 @@ describe("#451 — licence gaps are their own category", () => {
     for (const key of keys) {
       assert.match(key, /^[a-z]+:[a-z0-9-]+$/, `${key} must look like a real monitor_checks key`);
     }
-    // The 18 distinct checks behind WAR_ROOM_PILLAR_STAT_SPECS' 28 stats — the
-    // complete set that can reach this report as a licence gap. A new stat spec
-    // without a disclosure here falls back to the generic line, which is honest
-    // but unspecific; this count is what makes that a deliberate choice.
-    assert.equal(keys.length, 18);
+    // The 18 distinct checks behind WAR_ROOM_PILLAR_STAT_SPECS' 28 stats, plus
+    // `security:secure-score` — the one metric the Security Posture report
+    // resolves for itself rather than off the War Room payload (#343). Together
+    // that is the complete set that can reach a live-rendered report as a
+    // licence gap. A new stat spec without a disclosure here falls back to the
+    // generic line, which is honest but unspecific; this count is what makes
+    // that a deliberate choice.
+    assert.equal(keys.length, 19);
     assert.ok(keys.includes("identity:mfa-registration"));
     assert.ok(keys.includes("identity:legacy-auth-usage"));
+    assert.ok(keys.includes("security:secure-score"));
   });
 
   it("reads as a factual disclosure and never as a pitch", () => {

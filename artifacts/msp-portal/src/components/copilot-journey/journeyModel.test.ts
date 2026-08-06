@@ -375,21 +375,31 @@ describe("document generation", () => {
   });
 });
 
-describe("withLiveDocuments (#424 — the report depends on no generation row)", () => {
+describe("withLiveDocuments (#424 — a live report depends on no generation row)", () => {
   const readiness = (docs: readonly JourneyDocumentView[]) =>
     docs.filter((d) => d.docType === JOURNEY_READINESS_DOC_TYPE || d.title === JOURNEY_READINESS_DOCUMENT);
 
-  it("constructs the report for a tenant with ZERO document rows — the real current state", () => {
+  /**
+   * Counts are expressed against the registry's own length rather than written
+   * out (#343). Hardcoding "1" here is what turned every one of these into a
+   * failing test the moment a second document was registered — and the
+   * behaviour under test never mentioned a count in the first place.
+   */
+  const LIVE = JOURNEY_LIVE_DOCUMENTS.length;
+
+  it("constructs every live report for a tenant with ZERO document rows — the real current state", () => {
     // `buildGeneration({})` is what a tenant with no assessment service row, or
     // a failed status fetch, genuinely produces: an empty set. Before #424 that
-    // left the one document the platform can always render unresolvable.
+    // left the documents the platform can always render unresolvable.
     const g = withLiveDocuments(buildGeneration({}));
-    assert.equal(g.total, 1);
-    assert.equal(g.ready, 1);
+    assert.equal(g.total, LIVE);
+    assert.equal(g.ready, LIVE);
     assert.equal(g.documents[0].title, JOURNEY_READINESS_DOCUMENT);
     assert.equal(g.documents[0].docType, JOURNEY_READINESS_DOC_TYPE);
-    assert.equal(g.documents[0].status, "ready");
-    assert.equal(g.documents[0].id, null, "no row exists, so no id may be claimed");
+    for (const doc of g.documents.slice(0, LIVE)) {
+      assert.equal(doc.status, "ready");
+      assert.equal(doc.id, null, "no row exists, so no id may be claimed");
+    }
   });
 
   it("leaves every other document exactly as the platform reported it", () => {
@@ -403,16 +413,16 @@ describe("withLiveDocuments (#424 — the report depends on no generation row)",
       },
     });
     const g = withLiveDocuments(base);
-    assert.equal(g.total, 3);
+    assert.equal(g.total, LIVE + 2);
     assert.deepEqual(
       g.documents.map((d) => d.docType),
-      [JOURNEY_READINESS_DOC_TYPE, "exec", "sec"],
-      "the roll-up leads; the reported set follows in its own order",
+      [...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType), "exec", "sec"],
+      "the live reports lead, in registry order; the reported set follows in its own",
     );
-    // The other two are the SAME objects, not rebuilt ones.
-    assert.equal(g.documents[1], base.documents[0]);
-    assert.equal(g.documents[2], base.documents[1]);
-    assert.equal(g.documents[2].status, "pending", "the un-generated report is still pending");
+    // The reported two are the SAME objects, not rebuilt ones.
+    assert.equal(g.documents[LIVE], base.documents[0]);
+    assert.equal(g.documents[LIVE + 1], base.documents[1]);
+    assert.equal(g.documents[LIVE + 1].status, "pending", "the un-generated report is still pending");
   });
 
   it("recomputes ready/total off the list, so the counter cannot disagree with the rows", () => {
@@ -421,12 +431,12 @@ describe("withLiveDocuments (#424 — the report depends on no generation row)",
     });
     assert.equal(base.ready, 0);
     const g = withLiveDocuments(base);
-    assert.equal(g.ready, 1);
-    assert.equal(g.total, 2);
+    assert.equal(g.ready, LIVE);
+    assert.equal(g.total, LIVE + 1);
     assert.equal(g.allReady, false);
   });
 
-  it("marks a listed-but-never-generated readiness row ready — nothing is outstanding for it", () => {
+  it("marks a listed-but-never-generated live row ready — nothing is outstanding for it", () => {
     const base = buildGeneration({
       documents: {
         expected: [{ docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment" }],
@@ -435,30 +445,32 @@ describe("withLiveDocuments (#424 — the report depends on no generation row)",
     });
     assert.equal(base.documents[0].status, "pending");
     const g = withLiveDocuments(base);
-    assert.equal(g.total, 1, "the existing entry is replaced, never duplicated");
-    assert.equal(g.documents[0].status, "ready");
-    assert.equal(
-      g.documents[0].title,
-      "Copilot Readiness Assessment",
-      "the platform's own title for it is kept",
-    );
+    assert.equal(g.total, LIVE, "the existing entry is replaced, never duplicated");
+    const row = readiness(g.documents)[0];
+    assert.equal(row.status, "ready");
+    assert.equal(row.title, "Copilot Readiness Assessment", "the platform's own title for it is kept");
   });
 
-  it("leaves a genuinely generated readiness row completely alone", () => {
+  it("leaves a genuinely generated live row completely alone", () => {
+    // Every registered document has a real generated row here, so there is
+    // nothing at all to add and the input object is returned unchanged.
     const base = buildGeneration({
       documents: {
-        expected: [{ docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment" }],
-        items: [
-          { id: 42, docType: JOURNEY_READINESS_DOC_TYPE, title: "Copilot Readiness Assessment", status: "draft" },
-        ],
+        expected: JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({ docType: d.docType, title: `Catalogue label ${i}` })),
+        items: JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({
+          id: 42 + i,
+          docType: d.docType,
+          title: `Catalogue label ${i}`,
+          status: "draft",
+        })),
       },
     });
     const g = withLiveDocuments(base);
     assert.equal(g, base, "an existing row owns its own state, including a failed one");
-    assert.equal(g.documents[0].status, "generating");
+    assert.ok(g.documents.every((d) => d.status === "generating"));
   });
 
-  it("never lists the report twice, whichever key it was matched on", () => {
+  it("never lists a report twice, whichever key it was matched on", () => {
     // The design's own title with a different docType — the second key
     // `liveDocumentFor` accepts.
     const base = buildGeneration({
@@ -469,8 +481,10 @@ describe("withLiveDocuments (#424 — the report depends on no generation row)",
     });
     const g = withLiveDocuments(base);
     assert.equal(readiness(g.documents).length, 1);
-    assert.equal(g.documents[0].docType, "some_other_key", "the platform's own key is kept");
-    assert.equal(g.documents[0].status, "ready");
+    assert.equal(g.total, LIVE, "the title match resolved it; nothing was added for it");
+    const row = readiness(g.documents)[0];
+    assert.equal(row.docType, "some_other_key", "the platform's own key is kept");
+    assert.equal(row.status, "ready");
   });
 
   it("is idempotent — applying it twice changes nothing", () => {

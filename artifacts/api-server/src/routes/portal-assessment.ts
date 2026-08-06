@@ -90,6 +90,7 @@ import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-g
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
 import { computeCopilotGate, copilotGate, type CopilotGateResult } from "../lib/copilot-gate";
 import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
+import { generateSecurityPostureNarrative } from "../lib/security-posture-narrative-generator.ts";
 import { resolveMspId } from "../lib/resolve-msp-id";
 import { resolveBillingMspId } from "../lib/ai-billing";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
@@ -648,6 +649,67 @@ router.get(
       // omitted sections with a machine reason and the viewer says so.
       log.error({ err, customerId }, "GET /portal/assessment/copilot-readiness-narrative failed");
       res.status(500).json({ error: "Failed to generate the Copilot readiness narrative" });
+    }
+  },
+);
+
+// ── Security Posture report — prose sections + Secure Score (#343) ────────────
+//
+//   GET /api/portal/assessment/security-posture-narrative
+//
+// The Microsoft 365 Security Posture & Blast Radius Report's three prose
+// sections — the Summary's opening paragraph, the Blast Radius section's causal
+// explanation, and the Copilot Readiness Impact section's connection to the
+// Gate score — plus the one real metric the report needs that
+// `war-room-pillars` does not carry (Microsoft Secure Score; see the
+// generator's header for why it is resolved here rather than added to the War
+// Room spec list).
+//
+// Every OTHER row in that report — the identity and endpoint figures, the
+// findings, the blast-radius row, the Upgrade Opportunity category — is pure
+// data rendered client-side straight from `war-room-pillars`, and goes nowhere
+// near an AI call.
+//
+// Deliberately its OWN route rather than a field on /status, and GET despite
+// the metered side effect, for the same two reasons as its Copilot sibling
+// above: /status is polled every 4s, and the caller supplies nothing — every
+// number the prose is grounded in is recomputed server-side from this
+// customer's own real data.
+router.get(
+  "/portal/assessment/security-posture-narrative",
+  // Same floor as the pillar stats it is grounded in.
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const [tenantRow] = await db
+        .select({ customerName: tenantsTable.customerName })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      const user = req.user!;
+      const result = await generateSecurityPostureNarrative({
+        customerId,
+        tenantName: tenantRow?.customerName?.trim() || "this tenant",
+        attribution: {
+          mspId: resolveBillingMspId(user) ?? (await resolveMspId(req)),
+          customerId,
+          triggerSource: "security-posture-report",
+        },
+      });
+      res.json(result);
+    } catch (err) {
+      // Only reached when the REAL data behind the report could not be read at
+      // all. A thin or empty tenant is not an error — the generator returns
+      // omitted sections with a machine reason and the viewer says so.
+      log.error({ err, customerId }, "GET /portal/assessment/security-posture-narrative failed");
+      res.status(500).json({ error: "Failed to generate the security posture narrative" });
     }
   },
 );

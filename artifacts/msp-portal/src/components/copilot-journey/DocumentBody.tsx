@@ -50,6 +50,7 @@ import {
 import { RemediationGuideBody } from "./RemediationGuideBody";
 import { StatementOfWorkBody } from "./StatementOfWorkBody";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
+import { LiveSecurityPostureReport } from "./SecurityPostureReportBody";
 import { useCopilotReadinessNarrative } from "./useCopilotReadinessNarrative.ts";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant, JourneyView } from "./journeyModel.ts";
 import { documentPillar, isGenerationUnknown } from "./journeyModel.ts";
@@ -395,6 +396,7 @@ const LIVE_BODY: Record<
   (props: { readonly view: JourneyView }) => React.ReactElement
 > = {
   copilotReadiness: RealReadinessReport,
+  securityPosture: LiveSecurityPostureReport,
 };
 
 function LiveDocumentBody({

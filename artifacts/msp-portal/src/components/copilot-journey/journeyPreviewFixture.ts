@@ -385,6 +385,12 @@ export function previewJourneyView(readyDocuments = 3): JourneyView {
       // consumer of `stats` treats empty as "nothing measured", which for a
       // worked example is exactly right.
       stats: [],
+      // Same rule as `stats` above (#343): the fixture writes its headline and
+      // satellite line out by hand, so there are no real finding ROWS behind
+      // them to carry. Empty rather than reconstructed — a preview must not
+      // grow a second synthesised data surface, and every consumer already
+      // reads empty-with-a-score as "evaluated, nothing found".
+      findings: [],
       satelliteFinding: p.satelliteFinding,
       trend: null,
       criticalCount: p.score < 40 ? 2 : 0,

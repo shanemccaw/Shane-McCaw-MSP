@@ -18,6 +18,9 @@ import { logger } from "./logger.ts";
 // `getPrompt` fallbacks, and it already imports this file — so inlining them
 // here would mean two copies free to drift (#270).
 import { COPILOT_READINESS_PROMPT_SEEDS } from "./copilot-readiness-prompts.ts";
+// #343 — the three Security Posture & Blast Radius report section prompts, held
+// in a leaf module for exactly the same reason as the three above.
+import { SECURITY_POSTURE_PROMPT_SEEDS } from "./security-posture-prompts.ts";
 const log = logger.child({ channel: "admin.content" });
 
 /**
@@ -1602,6 +1605,8 @@ INSTRUCTIONS:
   // #409 — Copilot Readiness report sections. Spread rather than inlined; see
   // the import comment at the top of this file for why.
   ...COPILOT_READINESS_PROMPT_SEEDS,
+  // #343 — Security Posture & Blast Radius report sections.
+  ...SECURITY_POSTURE_PROMPT_SEEDS,
 ];
 
 

@@ -179,6 +179,25 @@ export interface JourneyPillarView {
    */
   readonly stats: readonly WirePillarStat[];
   /**
+   * This pillar's real `msp_diagnostic_findings` rows, verbatim off the wire,
+   * criticals first (#343).
+   *
+   * `headline` and `chips` above are *presentation* projections of these — one
+   * title, or three — so both drop the severity and the check key behind each
+   * one. The Security Posture report's Identity & Access Risks and Device &
+   * Endpoint Compliance sections need all three fields per row, so the rows are
+   * carried through rather than re-fetched.
+   *
+   * CAPPED SERVER-SIDE at `WAR_ROOM_FINDINGS_PER_PILLAR` (3). This is the
+   * worst-first head of the pillar's findings, not its complete set, and no
+   * consumer may present it as a total.
+   *
+   * Empty for a pillar the payload has no card for, AND for a pillar that was
+   * genuinely evaluated clean — the two are told apart by `score`, which is
+   * null only in the first case (#399). Never a synthesised row.
+   */
+  readonly findings: readonly WirePillarFinding[];
+  /**
    * The satellite line on Scene 1: a specific finding, or `CLEAN_PILLAR_HEADLINE`
    * when the pillar was evaluated and came back clean. Same `null`-means-no-data
    * rule as `headline`.
@@ -323,6 +342,10 @@ export function buildPillarViews(
       // stats are all unavailable still populates its wedge.
       chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
       stats: card?.stats ?? [],
+      // `ordered`, not `findings`: criticals lead, and within a severity the
+      // scan's own catalogue order is kept — the same ranking every other
+      // projection above already reads.
+      findings: ordered,
       satelliteFinding: leadTitle,
       trend: pillarTrend(card),
       criticalCount: card?.findingCounts?.critical ?? 0,

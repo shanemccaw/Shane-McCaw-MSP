@@ -12,7 +12,9 @@
  * Shared: the block loop and every block's styling (`ReportBlocks.tsx`), the
  * header, the verdict card and the provenance line's placement — because a
  * report of real numbers has to look like the report the design signed off, not
- * a second-class variant of it.
+ * a second-class variant of it. Since #343 all of that chrome lives in
+ * `LiveReportShell.tsx`, shared with the other live-rendered reports rather
+ * than written out per report.
  *
  * NOT shared: the figures. `PreviewReportBody` resolves figure names against
  * `PREVIEW_FIGURES` and `journeyPreviewFixture.ts`; this file resolves them
@@ -39,8 +41,6 @@
  *     an honest "Not evaluated" rather than a dash that reads as "nothing found".
  */
 
-import { Loader2 } from "lucide-react";
-
 import {
   COPILOT_GATE_TARGET,
   INK,
@@ -48,21 +48,16 @@ import {
   PILLAR_ORDER,
   TABULAR,
   gateLabel,
-  hexAlpha,
-  reportAccent,
   severityColor,
 } from "./journeyTokens.ts";
 import { PillarSwatch } from "./JourneyPrimitives";
-import { BODY, Block, EYEBROW, H2, type FigureRenderer } from "./ReportBlocks";
+import { BODY, EYEBROW, type FigureRenderer } from "./ReportBlocks";
 import { ReadinessRadar } from "./ReportFigures";
+import { LiveReportShell } from "./LiveReportShell";
 import type { JourneyView } from "./journeyModel.ts";
 import type { ReportFigure } from "./previewDocumentBodies.ts";
 import {
   buildCopilotReadinessReport,
-  unavailableReasonText,
-  type ReadinessBlock,
-  type ReadinessSection,
-  type UpgradeOpportunity,
   type WireNarrativePayload,
 } from "./copilotReadinessReport.ts";
 
@@ -206,138 +201,6 @@ function RealPillarTable({ view }: { readonly view: JourneyView }) {
 }
 
 /* ------------------------------------------------------------------ *
- * The two blocks the shared renderer does not know about
- * ------------------------------------------------------------------ */
-
-/**
- * One AI-written section.
- *
- * The HTML is sanitised server-side by the same `sanitizeNarrativeHtml` every
- * sibling Anthropic call site uses (script/style/iframe/on* stripped), and it
- * is model output constrained to p/strong/em/ul/li — never customer- or
- * user-authored input. `.cj-doc-body` carries the reading measure and rhythm,
- * the same class `LiveBody` uses for platform-generated document HTML.
- */
-function NarrativeBlock({ html }: { readonly html: string }) {
-  return <div className="cj-doc-body" dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-/**
- * The honest empty state. Deliberately styled as a quiet note, NOT as a finding
- * row: an uncollected check is a gap in coverage, and colouring it with a
- * severity would turn our own missing data into a verdict about the tenant.
- */
-function UnavailableBlock({
-  detail,
-  checks,
-}: {
-  readonly detail: string;
-  readonly checks: readonly { readonly checkKey: string; readonly reason: string }[];
-}) {
-  return (
-    <div
-      style={{
-        border: `1px dashed ${INK.hairlineDark}`,
-        borderRadius: 10,
-        padding: "13px 15px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>{detail}</p>
-      {checks.length > 0 ? (
-        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
-          {checks.map((c) => (
-            <li key={`${c.checkKey}:${c.reason}`} style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.5, color: INK.micro }}>
-              <code style={{ fontFamily: "ui-monospace, monospace", color: INK.bodyDark }}>{c.checkKey}</code>
-              {` — ${unavailableReasonText(c.reason)}`}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The Upgrade Opportunity category (#451).
- *
- * ── WHY IT LOOKS LIKE THIS AND NOT LIKE ANYTHING ELSE IN THE REPORT ──────────
- * It has to be unmistakably not a finding. Three things separate it:
- *
- *   • Colour. The Licensing pillar's own teal (`PILLARS.licensing.primary`),
- *     because that is what this is — a licensing fact. Never `severityColor()`:
- *     red or amber here would read as risk, and "you are not licensed to
- *     measure X" is not a risk finding, it is an unmeasured quantity. The
- *     pillar identity colours exist precisely to say *what a thing is* while
- *     severity says *how bad it is*, and this row asserts the first only.
- *   • Shape. A solid 3px left rule and a filled tint, against the
- *     `UnavailableBlock`'s dashed hairline and the `keyValues` rows' plain
- *     table. A reader scanning the page can tell the three apart without
- *     reading a word of any of them.
- *   • A named eyebrow, so the category announces itself rather than relying on
- *     the section heading two lines up.
- */
-function UpgradeOpportunityBlock({
-  detail,
-  items,
-}: {
-  readonly detail: string;
-  readonly items: readonly UpgradeOpportunity[];
-}) {
-  const teal = PILLARS.licensing.primary;
-  return (
-    <div
-      style={{
-        borderLeft: `3px solid ${teal}`,
-        borderTop: `1px solid ${hexAlpha(teal, 0.22)}`,
-        borderRight: `1px solid ${hexAlpha(teal, 0.22)}`,
-        borderBottom: `1px solid ${hexAlpha(teal, 0.22)}`,
-        borderRadius: 10,
-        background: hexAlpha(teal, 0.06),
-        padding: "15px 17px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-      }}
-    >
-      <span style={{ ...EYEBROW, color: teal }}>Upgrade opportunity</span>
-      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDarkStrong }}>{detail}</p>
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
-        {items.map((item) => (
-          <li
-            key={item.checkKey}
-            style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 11, borderTop: `1px solid ${hexAlpha(teal, 0.16)}` }}
-          >
-            <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: teal }}>
-              {item.checkKey}
-            </code>
-            <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
-              {item.disclosure}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * A prose section whose fetch has not settled. A spinner, not a blank: the two
- * pure-data sections around it are already on screen, so an unexplained gap
- * between them would read as a section that has nothing to say.
- */
-function NarrativePending({ heading }: { readonly heading: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0", color: INK.micro }}>
-      <Loader2 className="size-4 animate-spin" />
-      <span style={{ fontSize: 13.5, fontWeight: 500 }}>{`Writing ${heading.toLowerCase()} from your scan…`}</span>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * The report
  * ------------------------------------------------------------------ */
 
@@ -354,10 +217,6 @@ export function CopilotReadinessReportBody({
   readonly scannedCheckCount: number;
 }) {
   const report = buildCopilotReadinessReport({ view, narrative, narrativeSettled, scannedCheckCount });
-
-  // The roll-up report belongs to no single pillar, so it takes the journey's
-  // own blue→teal — the same accent the preview's executive report takes.
-  const accent = reportAccent(null);
 
   const renderFigure: FigureRenderer = (figure: ReportFigure) => {
     switch (figure) {
@@ -382,159 +241,22 @@ export function CopilotReadinessReportBody({
     }
   };
 
-  const renderBlock = (block: ReadinessBlock, key: string) => {
-    if (block.kind === "narrative") return <NarrativeBlock key={key} html={block.html} />;
-    if (block.kind === "unavailable") {
-      return <UnavailableBlock key={key} detail={block.detail} checks={block.checks} />;
-    }
-    if (block.kind === "upgradeOpportunity") {
-      return <UpgradeOpportunityBlock key={key} detail={block.detail} items={block.items} />;
-    }
-    // Everything else is the shared vocabulary — one renderer, one appearance.
-    // `Block` directly rather than `Section`, because the heading is drawn by
-    // `renderSection` below; wrapping each block in its own Section would emit
-    // an empty <h2> before every one of them.
-    return <Block key={key} block={block} renderFigure={renderFigure} />;
-  };
-
-  const renderSection = (section: ReadinessSection) => (
-    <div key={section.heading} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-      <h2 style={H2}>{section.heading}</h2>
-      {section.blocks.length === 0 ? (
-        <NarrativePending heading={section.heading} />
-      ) : (
-        section.blocks.map((b, i) => renderBlock(b, `${section.heading}-${i}`))
-      )}
-    </div>
-  );
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          borderBottom: `1px solid ${INK.hairlineDark}`,
-          paddingBottom: 26,
-        }}
-      >
-        <span style={{ ...EYEBROW, color: accent.colour, display: "flex", alignItems: "center", gap: 8 }}>
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={accent.colour}
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flex: "none" }}
-            aria-hidden="true"
-          >
-            <path d={accent.icon} />
-          </svg>
-          {/* The scan date is appended only when the platform has one — the
-              preview's eyebrow always has a fixture date to show; a real tenant
-              that has never completed a scan does not. */}
-          {view.tenant.scannedOn ? `${report.kicker} · ${view.tenant.scannedOn}` : report.kicker}
-        </span>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(26px,3vw,34px)",
-            fontWeight: 800,
-            letterSpacing: "-0.025em",
-            lineHeight: 1.18,
-            color: INK.headingDark,
-            textWrap: "pretty",
-          }}
-        >
-          {report.headline}
-        </h1>
-        <p style={{ ...BODY, fontSize: 16, lineHeight: 1.62 }}>{report.standfirst}</p>
-      </div>
-
-      <div
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${hexAlpha(accent.colour, 0.33)}`,
-          borderRadius: 12,
-          background: `linear-gradient(135deg,${hexAlpha(accent.colour, 0.1)},rgba(2,6,23,.45))`,
-          padding: "22px 24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 11,
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: "-6%",
-            top: "-70%",
-            width: "60%",
-            height: "220%",
-            borderRadius: "50%",
-            background: accent.glow,
-            pointerEvents: "none",
-          }}
-        />
-        <span
-          style={{
-            position: "relative",
-            fontSize: 9.5,
-            fontWeight: 700,
-            letterSpacing: ".2em",
-            textTransform: "uppercase",
-            color: accent.colour,
-          }}
-        >
-          {report.verdict.eyebrow}
-        </span>
-        <span
-          style={{
-            position: "relative",
-            fontSize: "clamp(26px,3.4vw,40px)",
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            lineHeight: 1.08,
-            color: INK.headingDark,
-            textWrap: "pretty",
-          }}
-        >
-          {report.verdict.headline}
-        </span>
-        <span style={{ position: "relative", fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDarkStrong }}>
-          {report.verdict.sub}
-        </span>
-      </div>
-
-      {report.sections.map(renderSection)}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        <h2 style={H2}>Executive Summary</h2>
-        {report.closing.map((p) => (
-          <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
-            {p}
-          </p>
-        ))}
-      </div>
-
-      <p
-        style={{
-          margin: 0,
-          paddingTop: 20,
-          borderTop: `1px solid ${INK.hairlineDark}`,
-          fontSize: 12.5,
-          fontWeight: 500,
-          lineHeight: 1.6,
-          color: INK.bodyDark,
-        }}
-      >
-        {report.provenance}
-      </p>
-    </div>
+    <LiveReportShell
+      kicker={report.kicker}
+      headline={report.headline}
+      standfirst={report.standfirst}
+      verdict={report.verdict}
+      sections={report.sections}
+      closing={report.closing}
+      provenance={report.provenance}
+      scannedOn={view.tenant.scannedOn}
+      // The roll-up report belongs to no single pillar, so it takes the
+      // journey's own blue→teal — the same accent the preview's executive
+      // report takes.
+      accentPillar={null}
+      closingHeading="Executive Summary"
+      renderFigure={renderFigure}
+    />
   );
 }

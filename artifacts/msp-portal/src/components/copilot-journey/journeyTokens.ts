@@ -431,7 +431,7 @@ export interface JourneyLiveDocument {
   readonly title: string;
 }
 
-export type JourneyLiveDocumentKey = "copilotReadiness";
+export type JourneyLiveDocumentKey = "copilotReadiness" | "securityPosture";
 
 /**
  * Every document on the new pattern, in the order they lead a document set.
@@ -456,6 +456,14 @@ export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
     key: "copilotReadiness",
     docType: "copilot_readiness",
     title: "Copilot Readiness, Safety & Enablement Report",
+  },
+  // #343. `security_posture_report` is the real seeded `document_types` key
+  // (label "Security Posture Report", sort_order 30, in the same manual
+  // migration as `copilot_readiness`); the title is the design's own.
+  {
+    key: "securityPosture",
+    docType: "security_posture_report",
+    title: "Microsoft 365 Security Posture & Blast Radius Report",
   },
 ];
 
@@ -493,5 +501,10 @@ export function isLiveRenderedDocument(
 const READINESS_ENTRY = JOURNEY_LIVE_DOCUMENTS.find((d) => d.key === "copilotReadiness")!;
 export const JOURNEY_READINESS_DOC_TYPE = READINESS_ENTRY.docType;
 export const JOURNEY_READINESS_DOCUMENT = READINESS_ENTRY.title;
+
+/** The Security Posture & Blast Radius report's catalogue key and design title (#343). */
+const SECURITY_POSTURE_ENTRY = JOURNEY_LIVE_DOCUMENTS.find((d) => d.key === "securityPosture")!;
+export const JOURNEY_SECURITY_POSTURE_DOC_TYPE = SECURITY_POSTURE_ENTRY.docType;
+export const JOURNEY_SECURITY_POSTURE_DOCUMENT = SECURITY_POSTURE_ENTRY.title;
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;

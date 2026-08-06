@@ -37,6 +37,8 @@ export default defineConfig({
       "src/lib/telemetry-comparison.test.ts",
       "src/lib/copilot-gate.test.ts",
       "src/lib/copilot-readiness-narrative.test.ts",
+      "src/lib/security-posture-narrative.test.ts",
+      "src/lib/narrative-grounding.test.ts",
       "src/lib/pillar-coverage.test.ts",
       "src/lib/pillar-matrix.test.ts",
       "src/lib/crm-engine.test.ts",

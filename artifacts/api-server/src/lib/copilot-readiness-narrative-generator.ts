@@ -63,11 +63,26 @@ import {
   COPILOT_ENABLEMENT_PROMPT,
   COPILOT_SAFETY_PROMPT,
 } from "./copilot-readiness-prompts.ts";
+// The never-fabricate machinery, shared with every other live-rendered report
+// (#343). Extracted verbatim from this file — see narrative-grounding.ts's own
+// header for what is shared and what deliberately is not.
+import {
+  MIN_FACTS_FOR_NARRATIVE,
+  collectFactsForPillars,
+  formatStatValue,
+  gateBlock,
+  isRealStat,
+  renderNarrativePrompt,
+  sanitizeNarrativeHtml,
+  stripFence,
+  type MissingCheck,
+  type NarrativeOmission,
+  type SectionFacts,
+} from "./narrative-grounding.ts";
 import {
   buildWarRoomPillarStats,
   type WarRoomPillarCard,
   type WarRoomPillarKey,
-  type WarRoomStat,
 } from "./war-room-pillar-stats.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -80,28 +95,14 @@ export type ReadinessNarrativeSectionKey = (typeof READINESS_NARRATIVE_SECTIONS)
  * Why a section carries no prose. Machine-stable, so the viewer can say WHICH
  * kind of nothing it is rather than printing one blanket placeholder — the same
  * distinction `refineStatUnavailability` draws for stats (#341).
- */
-export type ReadinessNarrativeOmission =
-  | "no_real_data"
-  | "generation_failed"
-  | "empty_response";
-
-/**
- * One check this section wanted and did not get, with the resolver's own
- * machine reason.
  *
- * `licenseFeature` rides along ONLY when the reason is `license_gap`, carrying
- * the real add-on name the tenant's own scan reported (`WarRoomStat
- * .licenseFeature`). #451 renders those under their own category in the
- * Copilot Readiness Report rather than in the generic "could not measure"
- * list, and naming the tier from the tenant's response is what keeps that copy
- * factual instead of a per-check guess.
+ * Aliased onto the shared type rather than redeclared, so this report's wire
+ * contract keeps the name its client already imports.
  */
-export interface MissingCheck {
-  readonly checkKey: string;
-  readonly reason: string;
-  readonly licenseFeature?: string;
-}
+export type ReadinessNarrativeOmission = NarrativeOmission;
+
+/** Re-exported unchanged — see `narrative-grounding.ts` for the field rules. */
+export type { MissingCheck };
 
 export interface ReadinessNarrativeSection {
   readonly key: ReadinessNarrativeSectionKey;
@@ -163,101 +164,20 @@ const SECTION_PROMPT_KEYS: Record<ReadinessNarrativeSectionKey, string> = {
   blockers: "assessment-copilot-gate-blockers",
 };
 
-/** A stat the model may cite: it has a real, finite number behind it. */
-function isRealStat(stat: WarRoomStat): boolean {
-  return typeof stat.value === "number" && Number.isFinite(stat.value);
-}
-
-/**
- * Render one real stat value. Deliberately no rounding, bucketing or
- * "approximately" — the number the reader sees in the table beside this prose
- * is the number the model is given.
- */
-function formatStatValue(stat: WarRoomStat): string {
-  const value = stat.value as number;
-  if (stat.unit === "percent") return `${value}%`;
-  if (stat.unit === "currency") return `$${value.toLocaleString("en-US")}`;
-  return value.toLocaleString("en-US");
-}
-
-interface SectionFacts {
-  readonly factCount: number;
-  readonly pillarBlock: string;
-  readonly statBlock: string;
-  readonly findingBlock: string;
-  readonly missingBlock: string;
-  readonly missingChecks: readonly MissingCheck[];
-}
-
 /**
  * Everything real this section has, and nothing it does not.
  *
- * A "fact" is one of three things, all of which the platform genuinely holds:
- * a pillar with a real display score, a stat with a real value, or a real
- * `msp_diagnostic_findings` row. Nothing else counts — in particular an
- * unavailable stat counts toward `missingChecks`, never toward `factCount`, so
- * a tenant whose checks all failed to collect cannot reach the fact floor on
- * the strength of its own gaps.
+ * The rule itself lives in `collectFactsForPillars` (#343) and is shared with
+ * every other live-rendered report; this is only the section→pillars lookup in
+ * front of it. Kept as its own named function because `SECTION_PILLARS` is the
+ * part that is genuinely about THIS report, and because it is what the tests
+ * exercise by section key.
  */
 function collectSectionFacts(
   key: ReadinessNarrativeSectionKey,
   cards: readonly WarRoomPillarCard[],
 ): SectionFacts {
-  const wanted = new Set<string>(SECTION_PILLARS[key]);
-  const relevant = cards.filter((c) => wanted.has(c.pillar));
-
-  const pillarLines: string[] = [];
-  const statLines: string[] = [];
-  const findingLines: string[] = [];
-  const missing: MissingCheck[] = [];
-  let factCount = 0;
-
-  for (const card of relevant) {
-    if (typeof card.score === "number") {
-      pillarLines.push(
-        `- ${card.pillar}: score ${card.score}/100 (higher is healthier), ${card.findingCounts.critical} critical and ${card.findingCounts.warning} warning findings`,
-      );
-      factCount += 1;
-    } else {
-      pillarLines.push(
-        `- ${card.pillar}: NO SCORE — no evaluable rule fed this pillar, so nothing may be claimed about it either way`,
-      );
-    }
-
-    for (const stat of card.stats) {
-      if (isRealStat(stat)) {
-        statLines.push(`- ${card.pillar} · ${stat.label}: ${formatStatValue(stat)}`);
-        factCount += 1;
-      } else if (stat.checkKey) {
-        missing.push({
-          checkKey: stat.checkKey,
-          reason: stat.unavailableReason ?? "no_data",
-          // Only ever the stat's own value — never inferred from the check key.
-          ...(stat.licenseFeature ? { licenseFeature: stat.licenseFeature } : {}),
-        });
-      }
-    }
-
-    for (const finding of card.findings) {
-      findingLines.push(`- [${finding.severity}] ${card.pillar} · ${finding.checkKey}: ${finding.title}`);
-      factCount += 1;
-    }
-  }
-
-  return {
-    factCount,
-    pillarBlock: pillarLines.length ? pillarLines.join("\n") : "No pillar in scope for this section carries a score.",
-    statBlock: statLines.length
-      ? statLines.join("\n")
-      : "No measured figure in scope for this section has a value. Do not cite any number here.",
-    findingBlock: findingLines.length
-      ? findingLines.join("\n")
-      : "No critical or warning finding was recorded for the pillars in scope. Do not describe any finding.",
-    missingBlock: missing.length
-      ? missing.map((m) => `- ${m.checkKey} (${m.reason})`).join("\n")
-      : "None — every check in scope for this section reported.",
-    missingChecks: missing,
-  };
+  return collectFactsForPillars(SECTION_PILLARS[key], cards);
 }
 
 /* ------------------------------------------------------------------ *
@@ -276,49 +196,16 @@ const PROMPT_FALLBACKS: Record<ReadinessNarrativeSectionKey, string> = {
 };
 
 /* ------------------------------------------------------------------ *
- * Sanitising — mirrors final-report-narrative-generator.ts exactly
- * ------------------------------------------------------------------ */
-
-/** Same defence-in-depth as the sibling call sites: this HTML is injected into a live page. */
-function sanitizeNarrativeHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<(iframe|object|embed|link|meta)[^>]*>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "");
-}
-
-function stripFence(text: string): string {
-  return text.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
-}
-
-/**
- * The floor below which a section is not generated at all.
- *
- * ONE real fact. Not zero — a section built from literally nothing would be the
- * model writing from its own priors, which is the fabrication this file exists
- * to prevent — and not higher, because a tenant with one real finding deserves
- * one honest sentence about it rather than a blanket "unavailable" that hides a
- * real result. The three-facts-is-thin case is handled by the prompt's own
- * length rule, not by suppression.
- */
-export const MIN_FACTS_FOR_NARRATIVE = 1;
-
-/* ------------------------------------------------------------------ *
  * Generation
+ *
+ * Sanitising, the fact floor and the Gate block are all in
+ * `narrative-grounding.ts` now (#343) — shared verbatim rather than reworded
+ * per report, because they are the guarantee itself and not a detail of this
+ * document.
  * ------------------------------------------------------------------ */
 
-function gateBlock(gate: { score: number | null; threshold: number; status: string | null }): string {
-  if (gate.score === null) {
-    return `NO SCORE. No evaluable rule fed this tenant's Copilot pillar, so there is no readiness figure and no verdict. The Gate threshold is ${gate.threshold}. Do not state a score, a gap or a Go/No-Go verdict.`;
-  }
-  const gap = gate.threshold - gate.score;
-  const verdict = gate.status === "go" ? "cleared" : "not cleared";
-  return gap > 0
-    ? `Score ${gate.score}/100 against a Gate of ${gate.threshold} — ${verdict}. The gap is exactly ${gap} points. Never quote a different gap.`
-    : `Score ${gate.score}/100 against a Gate of ${gate.threshold} — ${verdict}. The tenant is at or above the Gate; there is no gap to close.`;
-}
+/** Re-exported so this module's own contract (and its tests) are unchanged. */
+export { MIN_FACTS_FOR_NARRATIVE };
 
 async function generateSection(
   key: ReadinessNarrativeSectionKey,
@@ -347,14 +234,11 @@ async function generateSection(
   }
 
   const rawTemplate = await getPrompt(SECTION_PROMPT_KEYS[key], PROMPT_FALLBACKS[key]);
-  const prompt = rawTemplate
-    .replace(/\{\{tenantName\}\}/g, context.tenantName)
-    .replace(/\{\{pillarBlock\}\}/g, facts.pillarBlock)
-    .replace(/\{\{statBlock\}\}/g, facts.statBlock)
-    .replace(/\{\{findingBlock\}\}/g, facts.findingBlock)
-    .replace(/\{\{missingBlock\}\}/g, facts.missingBlock)
-    .replace(/\{\{gateBlock\}\}/g, gateBlock(context.gate))
-    .replace(/\{\{factCount\}\}/g, String(facts.factCount));
+  const prompt = renderNarrativePrompt(rawTemplate, {
+    tenantName: context.tenantName,
+    facts,
+    gate: context.gate,
+  });
 
   try {
     const aiResponse = await withAiDevResponseCache(
