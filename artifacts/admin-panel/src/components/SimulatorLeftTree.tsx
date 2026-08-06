@@ -367,11 +367,16 @@ export function SimulatorLeftTree() {
   }, [scripts, searchQuery, isSearching]);
 
   const filteredMigrationFiles = useMemo(() => {
-    if (!isSearching) return migrationFiles;
+    if (!isSearching) return migrationFiles.filter((file) => file.ranAt == null);
     return migrationFiles.filter((file) =>
       itemMatchesSearch(searchQuery, [file.filename])
     );
   }, [migrationFiles, searchQuery, isSearching]);
+
+  const unrunMigrationCount = useMemo(
+    () => migrationFiles.filter((file) => file.ranAt == null).length,
+    [migrationFiles]
+  );
 
   const exceptionMatches = useMemo(() => {
     if (!isSearching) return true;
@@ -1358,13 +1363,15 @@ export function SimulatorLeftTree() {
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             )}
-            <span className="truncate">Migrations</span>
+            <span className="truncate">Migrations{unrunMigrationCount > 0 ? ` (${unrunMigrationCount})` : ""}</span>
           </div>
 
           {(isSearching || migrationsOpen) && (
             <div className="ml-[22px] border-l border-accent">
               {filteredMigrationFiles.length === 0 ? (
-                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No manual migration files</div>
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
+                  {!isSearching && migrationFiles.length > 0 ? "All migrations have been run" : "No manual migration files"}
+                </div>
               ) : (
                 filteredMigrationFiles.map(({ filename, ranAt }) => (
                   <ContextMenu key={filename}>
