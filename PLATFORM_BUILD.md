@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-05 | ⏳ IN FLIGHT | Git #464 - Fix security.secureScore resolver field-name mismatch |  |
 | 2026-08-05 | ⏳ IN FLIGHT | Git #414 - Use real signal weight to rank pillar headline findings within severity tier. |  |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #463 - Epic: #427 Marketing Site Home Page — Wire Claude Design Build to Live Data/Backend: swap TypewriterHeadline's primary gradient colors to the old blue/violet pair. |  |
 | 2026-08-05 | ✅ DONE | Git #461 - Marketing Site SEO/sitemap fixes, items 2-5 only (item 1's orphaned-page decision left to Shane). Sitemap generation now derives its page list directly from App.tsx's registered routes instead of a drifted hand-maintained array (no server exists for this static SPA, so build-time generation from the real route source is the drift-proof option). robots.txt gets its first Disallow rules (`/checkout`, `/admin` — both unrouted but referenced elsewhere, precautionary). not-found.tsx now sends `noindex` via a new `SEOMeta` `robots` prop. Fixed 404's broken "Explore Projects" card (removed, pointed at unrouted /projects) rather than inventing a page. Real HTTP 404 status confirmed infeasible here — Replit static-serve's blanket SPA rewrite has no per-path override. `npx tsc --noEmit` clean; real `vite build` verified the generated sitemap.xml. | `c36994e6` |
