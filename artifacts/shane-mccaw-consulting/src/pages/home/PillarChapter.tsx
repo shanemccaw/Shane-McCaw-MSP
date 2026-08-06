@@ -1,6 +1,114 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { ChapterDatum } from "./chapterData";
 import { useParallax, useReveal } from "./useScrollFx";
+
+/** How far down the viewport the line sits that decides which chapter "owns" the
+ * stage. Slightly above centre so the wordmark changes as a section's heading
+ * arrives, not after you've already read half of it. */
+const FOCUS_LINE = 0.42;
+
+/** The old `paintRoom` faded the wordmark out, swapped its text/colour/icon, then
+ * faded it back in. Same beat, same 240ms. */
+const SWAP_MS = 240;
+
+const WORDMARK_CSS = `
+.smc-wordmark{position:fixed;left:0;right:0;top:42%;z-index:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:clamp(10px,2.4vw,34px);pointer-events:none;transition:opacity 900ms cubic-bezier(.22,1,.36,1),transform 900ms cubic-bezier(.22,1,.36,1)}
+.smc-wordmark-text{font-size:clamp(40px,12.4vw,168px);font-weight:800;letter-spacing:-.04em;line-height:.86;white-space:nowrap;-webkit-text-fill-color:transparent;-webkit-text-stroke-color:currentColor;-webkit-text-stroke-width:clamp(1.2px,.28vw,2.6px);opacity:.28}
+.smc-wordmark-glyph{width:clamp(44px,9vw,132px);height:auto;flex:0 0 auto;opacity:.4}
+@media (max-width:640px){.smc-wordmark{top:46%;gap:8px}.smc-wordmark-text{opacity:.36;-webkit-text-stroke-width:1.4px}.smc-wordmark-glyph{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.smc-wordmark{transition:opacity 200ms linear}}
+`;
+
+/** Chapters announce themselves to the stage through this, so the fixed wordmark
+ * layer knows which pillar is currently in view. */
+const ChapterStageContext = createContext<((index: number, el: HTMLElement | null, chapter: ChapterDatum) => void) | null>(null);
+
+/**
+ * The giant outlined pillar wordmark + glyph that sits fixed behind the scrolling
+ * chapters, so crossing from one pillar into the next is unmistakable (#452).
+ *
+ * Ported from the pre-rebuild `RoomStage.tsx` / `useRoomChoreography.ts` (deleted
+ * at `a42b8118`), but driven by React state off whichever chapter straddles the
+ * viewport's focus line rather than the old `querySelector`/`innerHTML` repaint.
+ * Renders a fragment, so it adds no box to the chapter list's own layout.
+ */
+export function PillarChapterStage({ children }: { children: ReactNode }) {
+  const chapters = useRef(new Map<number, { el: HTMLElement; chapter: ChapterDatum }>());
+  const [active, setActive] = useState<ChapterDatum | null>(null);
+  const [painted, setPainted] = useState<ChapterDatum | null>(null);
+  const [lit, setLit] = useState(false);
+
+  const register = useCallback((index: number, el: HTMLElement | null, chapter: ChapterDatum) => {
+    if (el) chapters.current.set(index, { el, chapter });
+    else chapters.current.delete(index);
+  }, []);
+
+  useEffect(() => {
+    let queued = false;
+    const run = () => {
+      queued = false;
+      const focus = window.innerHeight * FOCUS_LINE;
+      let next: ChapterDatum | null = null;
+      for (const { el, chapter } of chapters.current.values()) {
+        const r = el.getBoundingClientRect();
+        if (r.top <= focus && r.bottom > focus) next = chapter;
+      }
+      setActive((prev) => (prev?.index === next?.index ? prev : next));
+    };
+    const request = () => {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(run);
+    };
+    request();
+    window.addEventListener("scroll", request, { passive: true });
+    window.addEventListener("resize", request);
+    return () => {
+      window.removeEventListener("scroll", request);
+      window.removeEventListener("resize", request);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (active?.index === painted?.index) {
+      setLit(active != null);
+      return;
+    }
+    setLit(false);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setPainted(active);
+      setLit(active != null);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      setPainted(active);
+      setLit(active != null);
+    }, SWAP_MS);
+    return () => window.clearTimeout(id);
+  }, [active, painted]);
+
+  return (
+    <>
+      <style>{WORDMARK_CSS}</style>
+      <div
+        aria-hidden
+        className="smc-wordmark"
+        style={{
+          color: painted?.color ?? "transparent",
+          opacity: lit ? 1 : 0,
+          transform: lit ? "translateY(-50%) scale(1)" : "translateY(-50%) scale(.965)",
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" className="smc-wordmark-glyph">
+          {painted?.glyph}
+        </svg>
+        <span className="smc-wordmark-text">{painted?.name.toUpperCase() ?? ""}</span>
+      </div>
+      <ChapterStageContext.Provider value={register}>{children}</ChapterStageContext.Provider>
+    </>
+  );
+}
 
 function useCountUp(target: number | null, active: boolean): number {
   const [value, setValue] = useState(0);
@@ -36,9 +144,16 @@ export function PillarChapter({
   showCaption: boolean;
 }) {
   const revealRef = useReveal<HTMLElement>();
-  const iconParallax = useParallax<HTMLDivElement>(0.3);
   const glowParallax = useParallax<HTMLDivElement>(0.14);
   const [inView, setInView] = useState(false);
+  const register = useContext(ChapterStageContext);
+
+  useEffect(() => {
+    const el = revealRef.current;
+    if (!register || !el) return;
+    register(chapter.index, el, chapter);
+    return () => register(chapter.index, null, chapter);
+  }, [register, revealRef, chapter]);
 
   useEffect(() => {
     const el = revealRef.current;
@@ -71,9 +186,9 @@ export function PillarChapter({
         borderTop: "1px solid rgba(30,41,59,.75)",
       }}
     >
-      <div ref={iconParallax} style={{ position: "absolute", left: 0, top: "8%", width: 340, height: 340, opacity: 0.055, pointerEvents: "none", willChange: "transform" }}>
-        {chapter.icon}
-      </div>
+      {/* The old opacity-.055 parallax icon watermark that used to sit here is gone:
+          #452 named it as one of the cues too faint to register, and the fixed
+          wordmark glyph is the same shape doing the same job, legibly. */}
       <div
         ref={glowParallax}
         style={{

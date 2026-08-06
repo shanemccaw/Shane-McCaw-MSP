@@ -15,9 +15,14 @@ export interface ChapterCostBox {
 export interface ChapterDatum {
   index: number;
   tag: string;
+  /** Short pillar name on its own, without the "Pillar 0n — " prefix `tag` carries.
+   * Drives the giant background wordmark (#452), which has no room for the prefix. */
+  name: string;
   color: string;
   glow: string;
-  icon: ReactNode;
+  /** The icon's inner shapes only — no `<svg>` wrapper, so each consumer sets its
+   * own size, stroke weight and color. Rendered inside a `0 0 24 24` viewBox. */
+  glyph: ReactNode;
   /** Big stat rendered with a `data-countup`-equivalent animated number. */
   statValue: number | null;
   statPrefix?: string;
@@ -31,22 +36,21 @@ export interface ChapterDatum {
   costBox?: ChapterCostBox;
 }
 
-const ICON_STROKE_PROPS = { fill: "none", strokeWidth: 0.45, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-
 export const CHAPTERS: ChapterDatum[] = [
   {
     index: 0,
     tag: "Pillar 01 — Governance",
+    name: "Governance",
     color: "#60a5fa",
     glow: "rgba(37,99,235,.14)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#60a5fa" {...ICON_STROKE_PROPS}>
+    glyph: (
+      <>
         <circle cx="18" cy="5" r="3" />
         <circle cx="6" cy="12" r="3" />
         <circle cx="18" cy="19" r="3" />
         <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
         <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-      </svg>
+      </>
     ),
     statValue: 3,
     statPrefix: "1 in ",
@@ -63,13 +67,10 @@ export const CHAPTERS: ChapterDatum[] = [
   {
     index: 1,
     tag: "Pillar 02 — Security",
+    name: "Security",
     color: "#a78bfa",
     glow: "rgba(139,92,246,.13)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#a78bfa" {...ICON_STROKE_PROPS}>
-        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-      </svg>
-    ),
+    glyph: <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />,
     statValue: 41,
     statSuffix: "%",
     statCaption: "of tenants still have a path that bypasses Conditional Access somewhere.",
@@ -85,14 +86,15 @@ export const CHAPTERS: ChapterDatum[] = [
   {
     index: 2,
     tag: "Pillar 03 — Compliance",
+    name: "Compliance",
     color: "#D1D5DB",
     glow: "rgba(148,163,184,.10)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#D1D5DB" {...ICON_STROKE_PROPS}>
+    glyph: (
+      <>
         <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
         <path d="M14 2v4a2 2 0 0 0 2 2h4" />
         <path d="m9 15 2 2 4-4" />
-      </svg>
+      </>
     ),
     statValue: 6,
     statSuffix: " mo",
@@ -109,14 +111,15 @@ export const CHAPTERS: ChapterDatum[] = [
   {
     index: 3,
     tag: "Pillar 04 — Licensing",
+    name: "Licensing",
     color: "#2dd4bf",
     glow: "rgba(20,184,166,.13)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#2dd4bf" {...ICON_STROKE_PROPS}>
+    glyph: (
+      <>
         <circle cx="12" cy="12" r="10" />
         <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
         <path d="M12 18V6" />
-      </svg>
+      </>
     ),
     statValue: 22,
     statSuffix: "%",
@@ -137,15 +140,16 @@ export const CHAPTERS: ChapterDatum[] = [
   {
     index: 4,
     tag: "Pillar 05 — Adoption",
+    name: "Adoption",
     color: "#fb923c",
     glow: "rgba(249,115,22,.12)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#fb923c" {...ICON_STROKE_PROPS}>
+    glyph: (
+      <>
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
         <circle cx="9" cy="7" r="4" />
         <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
+      </>
     ),
     statValue: 3,
     statSuffix: " apps",
@@ -162,13 +166,10 @@ export const CHAPTERS: ChapterDatum[] = [
   {
     index: 5,
     tag: "Pillar 06 — Health",
+    name: "Health",
     color: "#4ADE80",
     glow: "rgba(34,197,94,.12)",
-    icon: (
-      <svg viewBox="0 0 24 24" width="340" height="340" stroke="#4ADE80" {...ICON_STROKE_PROPS}>
-        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-      </svg>
-    ),
+    glyph: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
     statValue: null,
     statLiteral: "Hourly",
     statCaption: "how often tenant configuration changes. Most reviews run quarterly.",

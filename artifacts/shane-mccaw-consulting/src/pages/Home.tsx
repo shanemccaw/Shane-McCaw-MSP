@@ -9,7 +9,7 @@ import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/qui
 import { CHAPTERS } from "./home/chapterData";
 import { REPORT_CARDS } from "./home/reportCardData";
 import { RadarChart, RadarBackdrop, OrbitRing } from "./home/RadarChart";
-import { PillarChapter } from "./home/PillarChapter";
+import { PillarChapter, PillarChapterStage } from "./home/PillarChapter";
 import { ReportCard } from "./home/ReportCard";
 import { AssessmentFlow } from "./home/AssessmentFlow";
 import { useReveal, useParallax } from "./home/useScrollFx";
@@ -650,11 +650,13 @@ export default function Home() {
           </div>
 
           <div style={{ maxWidth: 1160, margin: "0 auto", padding: "0 clamp(16px,4vw,32px) 40px" }}>
-            {CHAPTERS.map((chapter) => {
-              const answer = answers[chapter.index + 1];
-              const [headline, body] = answer == null ? VARIANTS[chapter.index].none : VARIANTS[chapter.index].a[answer];
-              return <PillarChapter key={chapter.index} chapter={chapter} headline={headline} body={body} showBenchmarks showCaption />;
-            })}
+            <PillarChapterStage>
+              {CHAPTERS.map((chapter) => {
+                const answer = answers[chapter.index + 1];
+                const [headline, body] = answer == null ? VARIANTS[chapter.index].none : VARIANTS[chapter.index].a[answer];
+                return <PillarChapter key={chapter.index} chapter={chapter} headline={headline} body={body} showBenchmarks showCaption />;
+              })}
+            </PillarChapterStage>
           </div>
         </div>
 
