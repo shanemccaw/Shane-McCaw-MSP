@@ -8,7 +8,7 @@
  * button visibly drives the real indicator instead of the two components
  * running independent, disconnected fetches.
  *
- * Polls every 45s while idle; switches to a fast 3s cadence while a scan is
+ * Polls every 10s while idle; switches to a fast 3s cadence while a scan is
  * active (or immediately after a trigger, before the run row has even been
  * picked up yet) so the progress bar actually looks live.
  *
@@ -190,7 +190,7 @@ const TERMINAL_RUN_STATUSES = new Set(["completed", "partial", "failed"]);
 
 const ScanStatusContext = createContext<ScanStatusContextValue | null>(null);
 
-const IDLE_POLL_MS = 45_000;
+const IDLE_POLL_MS = 10_000;
 const ACTIVE_POLL_MS = 3_000;
 
 // Live diagnostics SSE events — same discriminated union the assessment
