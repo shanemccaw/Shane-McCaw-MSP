@@ -1,0 +1,235 @@
+[
+  {
+    "statementIndex": 0,
+    "statementText": "SELECT key, label, category, sort_order, is_active, remediation_detail_appendix,\n  included_profile_key_patterns, included_signal_categories, section_hints\nFROM document_types\nWHERE category IN ('report', 'consulting')\nORDER BY sort_order;",
+    "success": true,
+    "rowCount": 18,
+    "rows": [
+      {
+        "key": "access_review_summary_report",
+        "label": "Access Review Summary Report",
+        "category": "report",
+        "sort_order": 0,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [
+          "accessReviewCompletedCount",
+          "governance:access-review-completion__itemCount",
+          "governance:auto-labeling-coverage__itemCount",
+          "autoLabelingPolicyExists",
+          "dynamicGroupCount",
+          "governance:dynamic-group-usage__itemCount",
+          "governance:group-expiration-policy__itemCount",
+          "groupExpirationPolicyConfigured",
+          "governance:guest-access-reviews__itemCount",
+          "guestAccessReviewExists",
+          "governance:guest-count__itemCount",
+          "governance:guest-staleness__itemCount",
+          "governance:overdue-access-reviews__itemCount",
+          "governance:ownerless-groups__itemCount",
+          "governance:retention-label-adoption__itemCount",
+          "governance:retention-policy-coverage__itemCount",
+          "governance:sensitivity-label-adoption__itemCount",
+          "teams:guest-settings-governance__itemCount"
+        ],
+        "included_signal_categories": [
+          "security",
+          "compliance",
+          "governance"
+        ],
+        "section_hints": null
+      },
+      {
+        "key": "executive_summary",
+        "label": "Executive Summary",
+        "category": "report",
+        "sort_order": 10,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "full_readiness_report",
+        "label": "Full Readiness Report",
+        "category": "report",
+        "sort_order": 20,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "security_posture_report",
+        "label": "Security Posture Report",
+        "category": "report",
+        "sort_order": 30,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "governance_maturity_report",
+        "label": "Governance Maturity Report",
+        "category": "report",
+        "sort_order": 40,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "data_exposure_risk_report",
+        "label": "Data Exposure Risk Report",
+        "category": "report",
+        "sort_order": 50,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "license_optimization_report",
+        "label": "License Optimization Report",
+        "category": "report",
+        "sort_order": 60,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "compliance_alignment_report",
+        "label": "Compliance & Regulatory Alignment Report",
+        "category": "report",
+        "sort_order": 70,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "operational_health_report",
+        "label": "Operational Health & Service Integrity Report",
+        "category": "report",
+        "sort_order": 80,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": null
+      },
+      {
+        "key": "sow",
+        "label": "Statement of Work",
+        "category": "consulting",
+        "sort_order": 100,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria (each criterion on its own line as <div style='margin:6px 0'>&#9744; criterion</div>), Terms & Conditions"
+      },
+      {
+        "key": "task_execution_guide",
+        "label": "SOW Task Execution Guide",
+        "category": "consulting",
+        "sort_order": 110,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Use the project task list below as your source. For EACH task produce: Task name (h3), Purpose (one sentence), Prerequisites, Step-by-step instructions (numbered, technically specific for Microsoft 365), Expected outcome, Validation check, Common pitfalls. Group tasks by their workflow phase/group. Add an intro section and a completion checklist at the end."
+      },
+      {
+        "key": "remediation_plan",
+        "label": "Remediation Plan",
+        "category": "consulting",
+        "sort_order": 120,
+        "is_active": true,
+        "remediation_detail_appendix": true,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation"
+      },
+      {
+        "key": "deployment_plan",
+        "label": "Deployment Plan",
+        "category": "consulting",
+        "sort_order": 130,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support"
+      },
+      {
+        "key": "governance_framework",
+        "label": "Governance Framework",
+        "category": "consulting",
+        "sort_order": 140,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process"
+      },
+      {
+        "key": "security_hardening_plan",
+        "label": "Security Hardening Plan",
+        "category": "consulting",
+        "sort_order": 150,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Privileged Access Workstations, Defender Configuration, Security Monitoring, Incident Response"
+      },
+      {
+        "key": "copilot_enablement_plan",
+        "label": "Copilot Enablement Plan",
+        "category": "consulting",
+        "sort_order": 160,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [
+          "adoption:email-activity-trend__itemCount",
+          "emailActiveUserCount"
+        ],
+        "included_signal_categories": [],
+        "section_hints": "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy"
+      },
+      {
+        "key": "identity_modernization_plan",
+        "label": "Identity Modernization Plan",
+        "category": "consulting",
+        "sort_order": 170,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission"
+      },
+      {
+        "key": "copilot_readiness",
+        "label": "Copilot Readiness Assessment",
+        "category": "consulting",
+        "sort_order": 180,
+        "is_active": true,
+        "remediation_detail_appendix": false,
+        "included_profile_key_patterns": [],
+        "included_signal_categories": [],
+        "section_hints": "Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness (sensitivity labels, DLP, sharing policies), Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)"
+      }
+    ],
+    "error": null
+  }
+]
