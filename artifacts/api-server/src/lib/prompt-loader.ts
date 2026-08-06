@@ -21,6 +21,13 @@ import { COPILOT_READINESS_PROMPT_SEEDS } from "./copilot-readiness-prompts.ts";
 // #343 — the three Security Posture & Blast Radius report section prompts, held
 // in a leaf module for exactly the same reason as the three above.
 import { SECURITY_POSTURE_PROMPT_SEEDS } from "./security-posture-prompts.ts";
+// #292 — the four pillar reports' section prompts, each in its own leaf module
+// for exactly the same reason as the two above. Their shared honesty rules live
+// in `pillar-report-prompt-rules.ts`, a leaf module those four import.
+import { GOVERNANCE_POSTURE_PROMPT_SEEDS } from "./governance-posture-prompts.ts";
+import { COMPLIANCE_ALIGNMENT_PROMPT_SEEDS } from "./compliance-alignment-prompts.ts";
+import { LICENSING_ALIGNMENT_PROMPT_SEEDS } from "./licensing-alignment-prompts.ts";
+import { OPERATIONAL_HEALTH_PROMPT_SEEDS } from "./operational-health-prompts.ts";
 const log = logger.child({ channel: "admin.content" });
 
 /**
@@ -1607,6 +1614,11 @@ INSTRUCTIONS:
   ...COPILOT_READINESS_PROMPT_SEEDS,
   // #343 — Security Posture & Blast Radius report sections.
   ...SECURITY_POSTURE_PROMPT_SEEDS,
+  // #292 — the four pillar reports' sections, three each.
+  ...GOVERNANCE_POSTURE_PROMPT_SEEDS,
+  ...COMPLIANCE_ALIGNMENT_PROMPT_SEEDS,
+  ...LICENSING_ALIGNMENT_PROMPT_SEEDS,
+  ...OPERATIONAL_HEALTH_PROMPT_SEEDS,
 ];
 
 

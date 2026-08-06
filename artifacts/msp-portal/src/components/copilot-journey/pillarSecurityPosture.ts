@@ -42,9 +42,7 @@
  * reasoning and for why it is stated in prose rather than as a named check key.
  */
 
-import { COPILOT_GATE_TARGET } from "./journeyTokens.ts";
-import type { JourneyPillarView, JourneyView, WirePillarFinding, WirePillarStat } from "./journeyModel.ts";
-import type { PreviewFindingRow, PreviewKeyValueRow } from "./previewDocumentBodies.ts";
+import type { JourneyPillarView, JourneyView, WirePillarStat } from "./journeyModel.ts";
 import { blastRadiusRows } from "./copilotReadinessReport.ts";
 import {
   UPGRADE_OPPORTUNITY_DETAIL,
@@ -53,6 +51,8 @@ import {
   buildRows,
   buildRowsFromStats,
   declaredGapBlock,
+  findingsBlocks,
+  gateRow,
   keyValuesBlock,
   narrativeBlocks,
   pillarTone,
@@ -65,6 +65,15 @@ import {
   type WireNarrativePayload,
   type WireNarrativeSection,
 } from "./liveReportBlocks.ts";
+
+/**
+ * `findingRows` and `findingsBlocks` were written here for #343 and now live in
+ * `liveReportBlocks.ts`, shared with the four pillar reports #292 added. They
+ * are re-exported unchanged so this module's contract with its renderer and its
+ * tests is exactly what it was — the same treatment the honesty machinery got
+ * when #343 extracted it out of `copilotReadinessReport.ts`.
+ */
+export { findingRows, findingsBlocks } from "./liveReportBlocks.ts";
 
 /* ------------------------------------------------------------------ *
  * The wire shape — mirrors the api-server route's response
@@ -206,52 +215,6 @@ const DEVICE_PICKS: readonly StatPick[] = [
 const COPILOT_IMPACT_PICKS: readonly StatPick[] = [];
 
 /* ------------------------------------------------------------------ *
- * Findings
- * ------------------------------------------------------------------ */
-
-/**
- * Turn one pillar's real findings into rows.
- *
- * `lead` is the finding's own title verbatim — since #408 that is the
- * `severity_rules` label, which is the sentence the platform itself decided
- * describes this result. `rest` is provenance and nothing else: it names the
- * real check the finding came from. It deliberately does NOT elaborate on the
- * finding, because the platform holds no second sentence about it and writing
- * one here would be exactly the invention this report exists to avoid.
- *
- * The wire's `warning` maps to the `attention` tone: `Severity` is the
- * three-band presentation scale (critical / attention / healthy) and `warning`
- * is its middle band under a different name. Nothing is re-graded.
- */
-export function findingRows(findings: readonly WirePillarFinding[]): readonly PreviewFindingRow[] {
-  return findings.map((f) => ({
-    severity: f.severity === "critical" ? ("critical" as const) : ("attention" as const),
-    lead: f.title,
-    rest: `Recorded by ${f.checkKey} on this tenant's last scan.`,
-  }));
-}
-
-/**
- * A findings section's blocks: the real rows, or an honest statement of which
- * kind of nothing an empty list is.
- *
- * The distinction is #399's and it is load-bearing: a pillar with a real score
- * and no findings was genuinely evaluated clean, and a pillar with no score was
- * never evaluated at all. Rendering both as "no findings" would turn an absence
- * of data into a clean bill of health.
- */
-export function findingsBlocks(
-  pillar: JourneyPillarView | undefined,
-  cleanDetail: string,
-  unevaluatedDetail: string,
-): SecurityPostureBlock[] {
-  const rows = findingRows(pillar?.findings ?? []);
-  if (rows.length) return [{ kind: "findings", rows }];
-  if (typeof pillar?.score === "number") return [{ kind: "prose", text: cleanDetail }];
-  return [{ kind: "unavailable", detail: unevaluatedDetail, checks: [] }];
-}
-
-/* ------------------------------------------------------------------ *
  * The verdict
  * ------------------------------------------------------------------ */
 
@@ -292,23 +255,6 @@ const SECTION_HEADINGS: Record<SecurityPostureSectionKey, string> = {
   blastRadius: "Data Exposure & Blast Radius",
   copilotImpact: "Copilot Readiness Impact",
 };
-
-/** The Gate row — real, and only rendered when the platform actually has a score. */
-function gateRow(view: JourneyView): PreviewKeyValueRow[] {
-  const score = view.readinessScore;
-  if (score === null) return [];
-  const gap = COPILOT_GATE_TARGET - score;
-  return [
-    {
-      label: "Copilot Gate",
-      tone: gap > 0 ? ("critical" as const) : ("healthy" as const),
-      value:
-        gap > 0
-          ? `${score} against a Gate of ${COPILOT_GATE_TARGET} — ${gap} points short`
-          : `${score} against a Gate of ${COPILOT_GATE_TARGET} — cleared`,
-    },
-  ];
-}
 
 /**
  * Build the whole report from real data.

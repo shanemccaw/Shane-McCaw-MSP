@@ -91,6 +91,13 @@ import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/cop
 import { computeCopilotGate, copilotGate, type CopilotGateResult } from "../lib/copilot-gate";
 import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
 import { generateSecurityPostureNarrative } from "../lib/security-posture-narrative-generator.ts";
+// #292 — the four pillar reports' prose sections. Each is the same shape as the
+// two above: real data in, up to three attributed Anthropic calls, HTML out.
+import { generateGovernancePostureNarrative } from "../lib/governance-posture-narrative-generator.ts";
+import { generateComplianceAlignmentNarrative } from "../lib/compliance-alignment-narrative-generator.ts";
+import { generateLicensingAlignmentNarrative } from "../lib/licensing-alignment-narrative-generator.ts";
+import { generateOperationalHealthNarrative } from "../lib/operational-health-narrative-generator.ts";
+import type { PillarReportAttribution, PillarReportNarrativeResult } from "../lib/pillar-report-narrative.ts";
 import { resolveMspId } from "../lib/resolve-msp-id";
 import { resolveBillingMspId } from "../lib/ai-billing";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
@@ -712,6 +719,104 @@ router.get(
       res.status(500).json({ error: "Failed to generate the security posture narrative" });
     }
   },
+);
+
+// ── The four pillar reports' prose sections (#292) ────────────────────────────
+//
+//   GET /api/portal/assessment/governance-posture-narrative
+//   GET /api/portal/assessment/compliance-alignment-narrative
+//   GET /api/portal/assessment/licensing-alignment-narrative
+//   GET /api/portal/assessment/operational-health-narrative
+//
+// Four routes with one body, registered by the helper below rather than written
+// out four times. They differ ONLY in which generator they call and what the log
+// line says: every one of them resolves the same customer identity from the same
+// JWT claim, reads the same `tenants.customer_name`, attributes to the same
+// billing msp, and fails the same way. Four copies of that would be four places
+// for the 403 guard or the error handling to drift.
+//
+// Each report's OTHER content — every metric row, every finding, every declared
+// gap, the whole Upgrade Opportunity category — is pure data rendered
+// client-side straight from `war-room-pillars`, and goes nowhere near an AI
+// call.
+//
+// Deliberately their OWN routes rather than fields on /status, and GET despite
+// the metered side effect, for the same two reasons as their two predecessors:
+// /status is polled every 4s while documents generate, and the caller supplies
+// nothing — every number the prose is grounded in is recomputed server-side from
+// this customer's own real data. A narrative grounded in request-supplied
+// figures is a narrative anyone can dictate.
+function registerPillarReportNarrativeRoute(
+  path: string,
+  triggerSource: string,
+  generate: (params: {
+    customerId: number;
+    tenantName: string;
+    attribution: PillarReportAttribution;
+  }) => Promise<PillarReportNarrativeResult>,
+): void {
+  router.get(
+    path,
+    // Same floor as the pillar stats it is grounded in.
+    requireRole("Assessment"),
+    async (req: Request, res: Response): Promise<void> => {
+      const customerId = resolveCustomerId(req);
+      if (customerId === null) {
+        res.status(403).json({ error: "No customer identity on token" });
+        return;
+      }
+
+      try {
+        // The customer's real company name, from the same column the dashboard
+        // and the War Room read. Falls back to the generic label the journey
+        // already uses rather than inventing an organisation.
+        const [tenantRow] = await db
+          .select({ customerName: tenantsTable.customerName })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, customerId))
+          .limit(1);
+
+        const user = req.user!;
+        const result = await generate({
+          customerId,
+          tenantName: tenantRow?.customerName?.trim() || "this tenant",
+          attribution: {
+            mspId: resolveBillingMspId(user) ?? (await resolveMspId(req)),
+            customerId,
+            triggerSource,
+          },
+        });
+        res.json(result);
+      } catch (err) {
+        // Only reached when the REAL data behind the report could not be read at
+        // all. A thin or empty tenant is not an error — the generator returns
+        // omitted sections with a machine reason and the viewer says so.
+        log.error({ err, customerId }, `GET ${path} failed`);
+        res.status(500).json({ error: `Failed to generate the ${triggerSource} narrative` });
+      }
+    },
+  );
+}
+
+registerPillarReportNarrativeRoute(
+  "/portal/assessment/governance-posture-narrative",
+  "governance-posture-report",
+  generateGovernancePostureNarrative,
+);
+registerPillarReportNarrativeRoute(
+  "/portal/assessment/compliance-alignment-narrative",
+  "compliance-alignment-report",
+  generateComplianceAlignmentNarrative,
+);
+registerPillarReportNarrativeRoute(
+  "/portal/assessment/licensing-alignment-narrative",
+  "licensing-alignment-report",
+  generateLicensingAlignmentNarrative,
+);
+registerPillarReportNarrativeRoute(
+  "/portal/assessment/operational-health-narrative",
+  "operational-health-report",
+  generateOperationalHealthNarrative,
 );
 
 // ── Shell-wide scan status (lightweight, poll every 30-60s from app-shell.tsx) ─

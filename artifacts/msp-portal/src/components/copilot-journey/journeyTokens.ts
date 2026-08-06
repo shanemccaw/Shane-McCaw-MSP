@@ -431,7 +431,13 @@ export interface JourneyLiveDocument {
   readonly title: string;
 }
 
-export type JourneyLiveDocumentKey = "copilotReadiness" | "securityPosture";
+export type JourneyLiveDocumentKey =
+  | "copilotReadiness"
+  | "securityPosture"
+  | "governancePosture"
+  | "complianceAlignment"
+  | "licensingAlignment"
+  | "operationalHealth";
 
 /**
  * Every document on the new pattern, in the order they lead a document set.
@@ -465,6 +471,52 @@ export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
     docType: "security_posture_report",
     title: "Microsoft 365 Security Posture & Blast Radius Report",
   },
+  // ── #292, the four pillar reports ──────────────────────────────────────────
+  //
+  // TWO OF THESE REUSE A SEEDED KEY AND TWO MINT ONE, and which is which was a
+  // lookup rather than a preference. `2026-07-20-document-types.sql` seeds six
+  // report types; `governance_maturity_report` (label "Governance Maturity
+  // Report", sort_order 40) and `license_optimization_report` ("License
+  // Optimization Report", sort_order 60) are the same deliverable as the
+  // design's Governance Posture and Copilot Licensing Alignment reports under
+  // the catalogue's own names, so they are reused exactly as #343 reused
+  // `security_posture_report` rather than minting a duplicate beside them.
+  //
+  // The catalogue has NO compliance or operational-health report type. Those two
+  // keys are new and are seeded by
+  // `lib/db/migrations/manual/2026-08-06-document-types-live-reports-292.sql`,
+  // for Shane to run. Registering them here does not depend on that SQL having
+  // run: `liveDocumentFor` matches `docType` OR the design's exact title, so a
+  // document set that names either report the design's way resolves today, and
+  // the seeded key is what keeps it resolving after an admin renames the title.
+  {
+    key: "governancePosture",
+    docType: "governance_maturity_report",
+    title: "Microsoft 365 Governance Posture Report",
+  },
+  {
+    key: "complianceAlignment",
+    docType: "compliance_alignment_report",
+    title: "Microsoft 365 Compliance & Regulatory Alignment Report",
+  },
+  {
+    key: "licensingAlignment",
+    docType: "license_optimization_report",
+    title: "Copilot Licensing Alignment Report",
+  },
+  {
+    key: "operationalHealth",
+    docType: "operational_health_report",
+    title: "Microsoft 365 Operational Health & Service Integrity Report",
+  },
+  // DELIBERATELY ABSENT: "Copilot Adoption & Workflow Readiness Report". The
+  // adoption pillar carries ZERO real stats — `WAR_ROOM_PILLAR_STAT_SPECS
+  // .adoption` is an empty array, and its own note says why: the four figures it
+  // used to claim named `usage:*` keys that #441 established are not a check-key
+  // domain in this catalog at all, and the nearest real checks are per-user
+  // Graph detail endpoints that would render the licensed roster under a caption
+  // reading "active users". That is a real, documented gap rather than a wiring
+  // miss, so the report is not built on top of it.
 ];
 
 /**

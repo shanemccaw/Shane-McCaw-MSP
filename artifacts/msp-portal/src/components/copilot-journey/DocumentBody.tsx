@@ -51,6 +51,10 @@ import { RemediationGuideBody } from "./RemediationGuideBody";
 import { StatementOfWorkBody } from "./StatementOfWorkBody";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
 import { LiveSecurityPostureReport } from "./SecurityPostureReportBody";
+import { LiveGovernancePostureReport } from "./GovernancePostureReportBody";
+import { LiveComplianceAlignmentReport } from "./ComplianceAlignmentReportBody";
+import { LiveLicensingAlignmentReport } from "./LicensingAlignmentReportBody";
+import { LiveOperationalHealthReport } from "./OperationalHealthReportBody";
 import { useCopilotReadinessNarrative } from "./useCopilotReadinessNarrative.ts";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant, JourneyView } from "./journeyModel.ts";
 import { documentPillar, isGenerationUnknown } from "./journeyModel.ts";
@@ -397,6 +401,11 @@ const LIVE_BODY: Record<
 > = {
   copilotReadiness: RealReadinessReport,
   securityPosture: LiveSecurityPostureReport,
+  // #292 — the four pillar reports.
+  governancePosture: LiveGovernancePostureReport,
+  complianceAlignment: LiveComplianceAlignmentReport,
+  licensingAlignment: LiveLicensingAlignmentReport,
+  operationalHealth: LiveOperationalHealthReport,
 };
 
 function LiveDocumentBody({

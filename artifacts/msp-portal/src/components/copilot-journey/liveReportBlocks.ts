@@ -50,9 +50,9 @@
  * "attention" tone and says so in the row's own text.
  */
 
-import { severityForScore, type PillarKey, type Severity } from "./journeyTokens.ts";
-import type { JourneyPillarView, WirePillarStat } from "./journeyModel.ts";
-import type { PreviewKeyValueRow, ReportBlock } from "./previewDocumentBodies.ts";
+import { COPILOT_GATE_TARGET, severityForScore, type PillarKey, type Severity } from "./journeyTokens.ts";
+import type { JourneyPillarView, JourneyView, WirePillarFinding, WirePillarStat } from "./journeyModel.ts";
+import type { PreviewFindingRow, PreviewKeyValueRow, ReportBlock } from "./previewDocumentBodies.ts";
 
 /* ------------------------------------------------------------------ *
  * The narrative wire shape — mirrors the api-server routes' responses
@@ -739,6 +739,88 @@ export function narrativeBlocks(
       kind: "unavailable",
       detail: narrativeUnavailableDetail(section?.omittedReason ?? null),
       checks: unavailableChecksForReader(section?.missingChecks ?? []),
+    },
+  ];
+}
+
+/* ------------------------------------------------------------------ *
+ * Findings — real rows, and the #399 clean/unevaluated distinction
+ *
+ * Written for the Security Posture report (#343) and moved here by #292, when
+ * four more pillar reports needed the identical two functions. Same reasoning as
+ * everything else in this module: a second copy of "how a real finding becomes a
+ * row" is a second place for it to drift, and the distinction the second
+ * function draws is one no report may get wrong.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Turn one pillar's real findings into rows.
+ *
+ * `lead` is the finding's own title verbatim — since #408 that is the
+ * `severity_rules` label, which is the sentence the platform itself decided
+ * describes this result. `rest` is provenance and nothing else: it names the
+ * real check the finding came from. It deliberately does NOT elaborate on the
+ * finding, because the platform holds no second sentence about it and writing
+ * one here would be exactly the invention these reports exist to avoid.
+ *
+ * The wire's `warning` maps to the `attention` tone: `Severity` is the
+ * three-band presentation scale (critical / attention / healthy) and `warning`
+ * is its middle band under a different name. Nothing is re-graded.
+ */
+export function findingRows(findings: readonly WirePillarFinding[]): readonly PreviewFindingRow[] {
+  return findings.map((f) => ({
+    severity: f.severity === "critical" ? ("critical" as const) : ("attention" as const),
+    lead: f.title,
+    rest: `Recorded by ${f.checkKey} on this tenant's last scan.`,
+  }));
+}
+
+/**
+ * A findings section's blocks: the real rows, or an honest statement of which
+ * kind of nothing an empty list is.
+ *
+ * The distinction is #399's and it is load-bearing: a pillar with a real score
+ * and no findings was genuinely evaluated clean, and a pillar with no score was
+ * never evaluated at all. Rendering both as "no findings" would turn an absence
+ * of data into a clean bill of health.
+ *
+ * Note the rows are the worst-first HEAD of the pillar's findings, capped
+ * server-side at `WAR_ROOM_FINDINGS_PER_PILLAR` — no caller may present them as
+ * a complete set, and none of the copy passed in here does.
+ */
+export function findingsBlocks(
+  pillar: JourneyPillarView | undefined,
+  cleanDetail: string,
+  unevaluatedDetail: string,
+): LiveReportBlock[] {
+  const rows = findingRows(pillar?.findings ?? []);
+  if (rows.length) return [{ kind: "findings", rows }];
+  if (typeof pillar?.score === "number") return [{ kind: "prose", text: cleanDetail }];
+  return [{ kind: "unavailable", detail: unevaluatedDetail, checks: [] }];
+}
+
+/**
+ * The Copilot Gate row every pillar report's own "Copilot Readiness Impact"
+ * section closes on — real, and only rendered when the platform actually has a
+ * score (#343, shared in #292).
+ *
+ * Never rendered as a zero or an em dash for a tenant whose scan evaluated no
+ * rule feeding the Copilot pillar: there is no readiness figure for them, and a
+ * row saying "0 against a Gate of 82" would state a verdict the platform has not
+ * reached. The section's prose says so in words instead.
+ */
+export function gateRow(view: JourneyView): PreviewKeyValueRow[] {
+  const score = view.readinessScore;
+  if (score === null) return [];
+  const gap = COPILOT_GATE_TARGET - score;
+  return [
+    {
+      label: "Copilot Gate",
+      tone: gap > 0 ? ("critical" as const) : ("healthy" as const),
+      value:
+        gap > 0
+          ? `${score} against a Gate of ${COPILOT_GATE_TARGET} — ${gap} points short`
+          : `${score} against a Gate of ${COPILOT_GATE_TARGET} — cleared`,
     },
   ];
 }
