@@ -31,8 +31,7 @@ const KEYFRAMES = `
 @keyframes smcOrb{to{transform:rotate(-360deg)}}
 @keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
 @keyframes smcBlink{50%{opacity:0}}
-@keyframes smcHeroShimmer{0%{background-position:0 0,0% 0}100%{background-position:0 0,220% 0}}
-@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}.smc-hero-gradient{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}}
 .smc-scope-group summary{list-style:none}
 .smc-scope-group summary::-webkit-details-marker{display:none}
 .smc-scope-group summary::after{content:"";width:7px;height:7px;margin-left:auto;flex-shrink:0;border-right:1.5px solid #64748b;border-bottom:1.5px solid #64748b;transform:rotate(45deg);transition:transform .15s ease}
@@ -58,30 +57,13 @@ const HEADLINE_WIDTH = 520;
 const HEADLINE_BOX_HEIGHT_EM = 3.18;
 const HEADLINE_MIN_SCALE = 0.42;
 
-/** Blue -> Violet -> Cyan -> White primary treatment (#446), with a second
- * comma-layered background (the same background-position-sweep technique the
- * War Room briefing scene's "tipsheen" line already uses) blended on top for
- * the holographic rainbow shimmer accent, so this reuses that established
- * shimmer pattern instead of introducing a new one. */
+/** Blue -> Violet primary treatment (#446/#463). #465: the animated rainbow
+ * shimmer layer (#446/#450) is removed — plain static gradient only. */
 const HERO_GRADIENT_STYLE = {
-  backgroundImage:
-    "linear-gradient(96deg,#5B8DEF 0%,#9B7CFF 100%)," +
-    "linear-gradient(96deg,transparent 0%,#67e8f9 10%,#a78bfa 20%,#f472b6 30%,#fbbf24 40%,transparent 50%)",
-  backgroundSize: "100% 100%, 220% 100%",
-  backgroundPosition: "0 0, 0% 0",
-  // #450: "overlay" rendered text near-invisible wherever the shimmer layer's
-  // transparent stops (rgba(0,0,0,0), interpolated non-premultiplied toward
-  // the adjacent color stops) swept over it — confirmed by rendering this
-  // exact gradient pair at several shimmer sweep positions and headline
-  // lengths and screenshotting: the 50%-ish sweep position went nearly
-  // black-on-black under overlay, matching Shane's screenshot. "screen" never
-  // darkens (screen(x,0)=x), so every sweep position stays readable while
-  // keeping the rainbow shimmer accent.
-  backgroundBlendMode: "screen",
+  backgroundImage: "linear-gradient(96deg,#5B8DEF 0%,#9B7CFF 100%)",
   WebkitBackgroundClip: "text" as const,
   backgroundClip: "text" as const,
   color: "transparent",
-  animation: "smcHeroShimmer 5s linear infinite",
 };
 
 /** Types out admin-authored headline variants (admin-panel/content/hero-headlines)
