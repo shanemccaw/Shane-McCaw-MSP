@@ -4,8 +4,8 @@
 // token system (bg-background / bg-card / border-border / #2F6FED primary):
 //   left    — Explorer tree (scenarios + saved SQL scripts)
 //   center  — working canvas (SQL / testbeds / overrides / engines)
-//   right   — collapsible tabbed panel: Portal Snapshot / DB Schema
-//             (collapsed by default)
+//   right   — collapsible tabbed panel: Portal Snapshot / DB Schema /
+//             Endpoint Rules (collapsed by default)
 //   bottom  — tabbed: Log Stream (multi-channel split panes) / Query Output
 //             (results from the center canvas's SQL editor)
 //   footer  — status bar
@@ -39,6 +39,7 @@ import { SimulatorLogStream } from "../components/SimulatorLogStream";
 import { SqlQueryOutput } from "../components/SqlQueryOutput";
 import { EMPTY_SQL_OUTPUT, type SqlOutput } from "../components/SqlQueryCanvas";
 import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
+import { SimulatorEndpointRules } from "../components/SimulatorEndpointRules";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
 import { TestbedProvider, useTestbedContext } from "../contexts/TestbedContext";
@@ -200,7 +201,7 @@ function StudioShell() {
   const bottomPanelRef = useRef<ImperativePanelHandle>(null);
 
   const [rightOpen, setRightOpen] = useState<boolean>(() => readJson(RIGHT_PANEL_KEY, false));
-  const [rightTab, setRightTab] = useState<"portal" | "schema">("portal");
+  const [rightTab, setRightTab] = useState<"portal" | "schema" | "rules">("portal");
   const [selectedChannels, setSelectedChannels] = useState<string[]>(() => readJson(LOG_CHANNELS_KEY, []));
 
   // SQL output is lifted here (same pattern as selectedChannels feeding the
@@ -473,7 +474,7 @@ function StudioShell() {
           </ResizablePanel>
 
           {/* Right side panel — collapsed by default. Tabbed: Portal
-              Snapshot / DB Schema share the one panel. */}
+              Snapshot / DB Schema / Endpoint Rules share the one panel. */}
           {rightOpen && (
             <>
               <ResizableHandle className="w-px bg-border" />
@@ -486,6 +487,7 @@ function StudioShell() {
                         [
                           { key: "portal", label: "Portal Snapshot" },
                           { key: "schema", label: "DB Schema" },
+                          { key: "rules", label: "Endpoint Rules" },
                         ] as const
                       ).map(({ key, label }) => (
                         <button
@@ -517,6 +519,9 @@ function StudioShell() {
                   </div>
                   <div className={`min-h-0 flex-1 overflow-hidden ${rightTab === "schema" ? "" : "hidden"}`}>
                     <LiveDbSchemaTree />
+                  </div>
+                  <div className={`min-h-0 flex-1 overflow-hidden ${rightTab === "rules" ? "" : "hidden"}`}>
+                    <SimulatorEndpointRules />
                   </div>
                 </div>
               </ResizablePanel>

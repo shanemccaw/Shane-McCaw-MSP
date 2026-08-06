@@ -305,9 +305,16 @@ interface EngineRuleEditorProps {
   categoryPrefix: string;
   engineLabel: string;
   importRevision?: number;
+  // #507: when set, the editor is pre-scoped to this one signal — no signal
+  // list/picker, no "new signal key" flow — and its rules/groups come from
+  // GET /api/admin/signal-rules `bySignal[lockedSignalKey]` instead of the
+  // engineKey-scoped configuration endpoint (an endpoint's signal may not
+  // belong to any engine's configuration payload). When absent, behavior is
+  // identical to before the prop existed.
+  lockedSignalKey?: string;
 }
 
-export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabel, importRevision }: EngineRuleEditorProps) {
+export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabel, importRevision, lockedSignalKey }: EngineRuleEditorProps) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
@@ -316,7 +323,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedSignal, setSelectedSignal] = useState<string | null>(null);
+  const [selectedSignal, setSelectedSignal] = useState<string | null>(lockedSignalKey ?? null);
   const [newSignalKey, setNewSignalKey] = useState(`${categoryPrefix}:`);
   const [showNewSignalInput, setShowNewSignalInput] = useState(false);
 
@@ -348,13 +355,20 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
     setLoading(true);
     try {
       const [configRes, conflictsRes] = await Promise.all([
-        fetchWithAuth(`/api/admin/engines/${engineKey}/configuration`),
+        fetchWithAuth(lockedSignalKey ? "/api/admin/signal-rules" : `/api/admin/engines/${engineKey}/configuration`),
         fetchWithAuth("/api/admin/signal-rules/conflicts"),
       ]);
       if (configRes.ok) {
-        const data = await configRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
-        setRules(data.rules ?? []);
-        setGroups(data.groups ?? []);
+        if (lockedSignalKey) {
+          const data = await configRes.json() as { bySignal: Record<string, { rules: SignalRule[]; groups: SignalGroup[] }> };
+          const scoped = data.bySignal?.[lockedSignalKey] ?? { rules: [], groups: [] };
+          setRules(scoped.rules ?? []);
+          setGroups(scoped.groups ?? []);
+        } else {
+          const data = await configRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
+          setRules(data.rules ?? []);
+          setGroups(data.groups ?? []);
+        }
       }
       if (conflictsRes.ok) {
         const d = await conflictsRes.json() as { conflicts: Conflict[] };
@@ -365,7 +379,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
     } finally {
       setLoading(false);
     }
-  }, [engineKey, fetchWithAuth, toast]);
+  }, [engineKey, lockedSignalKey, fetchWithAuth, toast]);
 
   useEffect(() => { void loadData(); }, [loadData]);
   useEffect(() => { if (importRevision) void loadData(); }, [importRevision, loadData]);
@@ -381,10 +395,15 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
   const selectedRules = useMemo(() => rules.filter(r => r.signalKey === selectedSignal), [rules, selectedSignal]);
   const conflictRuleIds = useMemo(() => new Set(conflicts.flatMap(c => c.ruleIds)), [conflicts]);
 
+  // A locked signal IS the selection — track prop changes directly.
+  useEffect(() => {
+    if (lockedSignalKey) setSelectedSignal(lockedSignalKey);
+  }, [lockedSignalKey]);
+
   // Auto-select first signal when data loads
   useEffect(() => {
-    if (!selectedSignal && signalKeys.length > 0) setSelectedSignal(signalKeys[0]);
-  }, [signalKeys, selectedSignal]);
+    if (!lockedSignalKey && !selectedSignal && signalKeys.length > 0) setSelectedSignal(signalKeys[0]);
+  }, [signalKeys, selectedSignal, lockedSignalKey]);
 
   // ── Group CRUD ───────────────────────────────────────────────────────────────
 
@@ -539,7 +558,8 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
 
   return (
     <div className="flex gap-0 min-h-[28rem] border border-border rounded-xl overflow-hidden">
-      {/* ── Left: signal key list ────────────────────────────────────────────── */}
+      {/* ── Left: signal key list — hidden entirely when the signal is locked ── */}
+      {!lockedSignalKey && (
       <div className="w-52 flex-shrink-0 border-r border-border bg-background flex flex-col">
         <div className="px-3 py-2 border-b border-border">
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 font-semibold">
@@ -620,6 +640,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
           )}
         </div>
       </div>
+      )}
 
       {/* ── Right: rules/groups editor ───────────────────────────────────────── */}
       <div className="flex-1 bg-background overflow-y-auto">
