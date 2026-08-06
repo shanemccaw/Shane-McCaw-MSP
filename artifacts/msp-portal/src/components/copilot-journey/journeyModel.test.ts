@@ -135,7 +135,7 @@ describe("pillar views", () => {
           pillar: "licensing",
           score: 57,
           stats: [
-            { id: "a", label: "Unassigned spend", unit: "currency", value: 1840000, checkKey: "c" },
+            { id: "a", label: "Unassigned spend", unit: "currency", value: 18400, checkKey: "c" },
             { id: "b", label: "seats need E5", unit: "count", value: 96, checkKey: "c" },
             { id: "c", label: "Dormant", unit: "percent", value: 31, checkKey: "c" },
           ],

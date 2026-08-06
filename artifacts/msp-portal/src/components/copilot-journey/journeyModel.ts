@@ -354,7 +354,7 @@ function chipText(stat: WirePillarStat): string | null {
   if (stat.value === null || stat.unavailableReason) return null;
   if (stat.unit === "percent") return `${stat.label} ${Math.round(stat.value)}%`;
   if (stat.unit === "currency") {
-    return `${stat.label} $${Math.round(stat.value / 100).toLocaleString("en-US")}`;
+    return `${stat.label} $${Math.round(stat.value).toLocaleString("en-US")}`;
   }
   return `${Math.round(stat.value).toLocaleString("en-US")} ${stat.label.toLowerCase()}`;
 }
