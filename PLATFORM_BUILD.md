@@ -789,3 +789,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #486 - Epic: none (standalone) Classify Compliance PS Docker checks as license_gap | |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #485 - Epic: none (standalone) Classify Exchange checks as license_gap | |
 | 2026-08-06 | ⏳ IN FLIGHT | Git #488 - Epic: none (standalone) Classify PIM checks as license_gap | |
+| 2026-08-06 | ⏳ IN FLIGHT | Git #487 - Epic: none (standalone) Investigate Devices/Intune check failures |  |
