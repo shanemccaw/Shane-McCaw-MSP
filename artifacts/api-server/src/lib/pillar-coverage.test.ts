@@ -68,6 +68,7 @@ import {
   ruleIsFedByPackage,
   fetchEvaluableSignalKeys,
   resolveOwningCheckKey,
+  computeRuleFedStatus,
 } from "./pillar-coverage.ts";
 import { computePillarDisplayScore, computeDisplayHealth } from "./health-display.ts";
 import {
@@ -706,5 +707,94 @@ describe("fetchEvaluableSignalKeys + live scoring — Shane's exact exploit agai
       .find((p) => p.pillar === "governance")!;
     // theoreticalMax = 20 + 1000 = 1020 → 100 − 20/1020·100 = round(98.04) = 98.
     expect(gov.displayScore).toBe(98);
+  });
+});
+
+// ── #509: the contract behind GET /api/admin/signal-rules/check-fed ────────────
+// That route is a thin wrapper: it hands `computeRuleFedStatus` a single
+// synthetic rule (id 0) built from the ruleType + sourceKey the operator is
+// typing, and returns `{ fed, owningCheckKey }` straight out of the two maps it
+// gets back. So exercising computeRuleFedStatus with a one-rule array IS
+// exercising the endpoint's answer, without an HTTP harness — and it pins the
+// property that makes the live feedback worth showing at all: the verdict is
+// ruleType-SENSITIVE, so the same string can be fed as one type and inert as
+// another.
+describe("computeRuleFedStatus — single-rule lookups (the /check-fed endpoint's answer)", () => {
+  function wireCatalog(defs: CheckDef[]) {
+    const rows = defs.map((d) => ({
+      key: d.key,
+      mapping: d.mapping ?? [],
+      properties: d.properties ?? [],
+      requiresCustomerScript: d.requiresCustomerScript ?? false,
+    }));
+    vi.mocked(db.select).mockImplementation((() => ({
+      from: (table: unknown) => {
+        if (table === monitorChecksTable) {
+          return Object.assign(Promise.resolve(rows), { where: async () => rows });
+        }
+        throw new Error("wireCatalog: unexpected table in db.select mock");
+      },
+    })) as unknown as typeof db.select);
+  }
+
+  /** Exactly what the route does for one (ruleType, sourceKey) pair. */
+  async function checkFed(ruleType: string, sourceKey: string) {
+    const { fedByRuleId, checkKeyByRuleId } = await computeRuleFedStatus([
+      { id: 0, ruleType, sourceKey, signalKey: "" } as Parameters<typeof computeRuleFedStatus>[0][number],
+    ]);
+    return { fed: fedByRuleId.get(0) ?? false, owningCheckKey: checkKeyByRuleId.get(0) ?? null };
+  }
+
+  it("a threshold rule on a real check key is fed, and names that check", async () => {
+    wireCatalog([{ key: "identity:ca-policy-count" }, { key: "security:secure-score" }]);
+    // threshold reads profile[`${sourceKey}__itemCount`], stamped per check row —
+    // so the sourceKey IS a check key.
+    expect(await checkFed("threshold", "identity:ca-policy-count")).toEqual({
+      fed: true,
+      owningCheckKey: "identity:ca-policy-count",
+    });
+  });
+
+  it("`copilotReadinessMet` is NOT evaluable — no check in the catalog produces it", async () => {
+    // A realistic catalog that nonetheless produces no such profile key: no
+    // mapping targets it, no raw property derives it, it is no check's key.
+    wireCatalog([
+      { key: "identity:ca-policy-count" },
+      { key: "licensing:project-online-detection", mapping: [{ sourceField: "n", targetField: "projectPlanFiveCount" }] },
+    ]);
+    expect(await checkFed("profile_key_truthy", "copilotReadinessMet")).toEqual({
+      fed: false,
+      owningCheckKey: null,
+    });
+  });
+
+  it("a profile_key_* rule on a real mapping targetField is fed, and names the producing check", async () => {
+    wireCatalog([
+      { key: "licensing:project-online-detection", mapping: [{ sourceField: "n", targetField: "projectPlanFiveCount" }] },
+    ]);
+    expect(await checkFed("profile_key_gt", "projectPlanFiveCount")).toEqual({
+      fed: true,
+      owningCheckKey: "licensing:project-online-detection",
+    });
+  });
+
+  it("the SAME key flips fed→inert when the ruleType changes — why the feedback is worth showing live", async () => {
+    wireCatalog([
+      { key: "licensing:project-online-detection", mapping: [{ sourceField: "n", targetField: "projectPlanFiveCount" }] },
+    ]);
+    // As a profile read it is produced by that check's mapping (above); as a
+    // threshold it would have to BE a check key, and no check is named that.
+    expect(await checkFed("threshold", "projectPlanFiveCount")).toEqual({
+      fed: false,
+      owningCheckKey: null,
+    });
+  });
+
+  it("reports fed with a null owningCheckKey when the producer is genuinely ambiguous", async () => {
+    // resolveOwningCheckKey deliberately refuses to guess when a keyword matches
+    // more than one check key — the rule is still fed, just not by ONE check.
+    // The UI renders this as "Fed by a real check" rather than naming one.
+    wireCatalog([{ key: "identity:mfa-state" }, { key: "identity:mfa-registration" }]);
+    expect(await checkFed("findings_keyword", "mfa")).toEqual({ fed: true, owningCheckKey: null });
   });
 });

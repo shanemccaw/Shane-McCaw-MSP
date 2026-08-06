@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Trash2, Pencil, AlertTriangle, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Plus, Trash2, Pencil, AlertTriangle, Loader2, Zap, ZapOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -106,8 +106,29 @@ function intelToBody(f: IntelFormFields): Record<string, unknown> {
   return body;
 }
 
+// `threshold` IS a compare-value rule. evaluateRule (api-server
+// lib/tenant-signals.ts) reads `profile[sourceKey + "__itemCount"] > Number(compareValue ?? 0)`
+// — the same shape as profile_key_gt, just against the synthetic per-check item
+// count. Omitting it here would post `compareValue: null` for every threshold
+// rule (see handleAddRule/handleSaveEditRule, which null the field whenever
+// needsCompare is false), silently rewriting an existing "item count above 10"
+// rule to "above 0" the first time anyone opened it in this editor. This matches
+// the canonical rule-type table in components/signal-rules/signalRuleForm.ts,
+// whose own comment records the same four compare-reading types.
 function needsCompare(ruleType: string) {
-  return ["profile_key_eq", "profile_key_gt", "profile_key_lt"].includes(ruleType);
+  return ["profile_key_eq", "profile_key_gt", "profile_key_lt", "threshold"].includes(ruleType);
+}
+
+/** The source key means something different per rule type — label it honestly. */
+function sourceKeyLabel(ruleType: string) {
+  if (ruleType === "findings_keyword") return "Keyword";
+  if (ruleType === "threshold") return "Check Key";
+  return "Profile Key";
+}
+
+/** threshold's compare value is an item count, not a generic comparand. */
+function compareLabel(ruleType: string) {
+  return ruleType === "threshold" ? "Item Count Above" : "Compare Value";
 }
 
 const RULE_TYPES = [
@@ -116,6 +137,7 @@ const RULE_TYPES = [
   { value: "profile_key_eq",     label: "Equals",       color: "bg-blue-900/40 text-blue-400" },
   { value: "profile_key_gt",     label: "Greater Than", color: "bg-purple-900/40 text-purple-400" },
   { value: "profile_key_lt",     label: "Less Than",    color: "bg-yellow-900/40 text-yellow-400" },
+  { value: "threshold",          label: "Item Count Above", color: "bg-orange-900/40 text-orange-400" },
   { value: "findings_keyword",   label: "Keyword",      color: "bg-teal-900/40 text-teal-400" },
 ];
 
@@ -128,8 +150,145 @@ function RuleTypePill({ ruleType }: { ruleType: string }) {
   );
 }
 
+// ─── Live evaluability feedback (#509) ────────────────────────────────────────
+// Answers "will a real monitor check ever produce this sourceKey" while the
+// operator is still typing it, instead of making them discover it later in the
+// Pillar Matrix trace. The decision is made SERVER-side by
+// GET /api/admin/signal-rules/check-fed, which calls the very same
+// `computeRuleFedStatus` (→ buildProducibleProfileKeys + ruleIsFedByPackage +
+// resolveOwningCheckKey) the Pillar Matrix's `fed` column uses — so the two
+// surfaces can't drift, and the ~200-check mapping/properties catalog never has
+// to be shipped to the browser for what is a yes/no answer.
+//
+// Advisory only: nothing here blocks saving. A rule is legitimately allowed to
+// exist ahead of the check that will feed it (either half of the pair can be
+// built first).
+
+type FedState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "fed"; owningCheckKey: string | null }
+  | { status: "unfed" }
+  | { status: "error" };
+
+const FED_DEBOUNCE_MS = 400;
+
+function useCheckFed(ruleType: string, sourceKey: string, enabled: boolean): FedState {
+  const { fetchWithAuth } = useAuth();
+  const [state, setState] = useState<FedState>({ status: "idle" });
+  // fetchWithAuth identity is not guaranteed stable across renders; holding it
+  // in a ref keeps it out of the effect deps so typing (not re-rendering) is
+  // what re-triggers the lookup.
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  const trimmed = sourceKey.trim();
+
+  useEffect(() => {
+    if (!enabled || !trimmed) {
+      setState({ status: "idle" });
+      return;
+    }
+    setState({ status: "loading" });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetchRef.current(
+            `/api/admin/signal-rules/check-fed?ruleType=${encodeURIComponent(ruleType)}&sourceKey=${encodeURIComponent(trimmed)}`,
+            { signal: controller.signal },
+          );
+          if (controller.signal.aborted) return;
+          if (!res.ok) { setState({ status: "error" }); return; }
+          const d = await res.json() as { fed: boolean; owningCheckKey: string | null };
+          if (controller.signal.aborted) return;
+          setState(d.fed ? { status: "fed", owningCheckKey: d.owningCheckKey } : { status: "unfed" });
+        } catch {
+          // An aborted in-flight request lands here too — it has been superseded
+          // by a newer keystroke, so leave the newer effect run to set state.
+          if (!controller.signal.aborted) setState({ status: "error" });
+        }
+      })();
+    }, FED_DEBOUNCE_MS);
+
+    // Cancels BOTH a not-yet-fired debounce and an already-in-flight request, so
+    // a stale response can never overwrite a newer key's verdict.
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [ruleType, trimmed, enabled]);
+
+  return state;
+}
+
+/** Matches the Pillar Matrix's fed/inert visual language (SimulatorPillarMatrixCanvas.tsx). */
+function EvaluabilityHint({ state }: { state: FedState }) {
+  if (state.status === "idle" || state.status === "error") return null;
+  if (state.status === "loading") {
+    return (
+      <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground/60">
+        <Loader2 className="h-2.5 w-2.5 animate-spin" /> checking…
+      </p>
+    );
+  }
+  if (state.status === "fed") {
+    return (
+      <p
+        className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400"
+        title="A real monitor check can produce this rule's source key"
+      >
+        <Zap className="h-2.5 w-2.5 shrink-0" />
+        {state.owningCheckKey
+          ? <>Fed by <code className="font-mono">{state.owningCheckKey}</code></>
+          // resolveOwningCheckKey deliberately returns null rather than guessing
+          // for a keyword matching several checks, or the license-gap flags any
+          // Graph check can stamp — still genuinely fed, just not by ONE check.
+          : <>Fed by a real check</>}
+      </p>
+    );
+  }
+  return (
+    <p
+      className="mt-1 flex items-center gap-1 text-[10px] text-amber-400/80"
+      title="No monitor check can currently produce this source key — a rule on it would never fire. Saving is still allowed: the check may not exist yet."
+    >
+      <ZapOff className="h-2.5 w-2.5 shrink-0" /> Not evaluable yet — no check currently produces this key
+    </p>
+  );
+}
+
 // ─── IntelligenceFieldsPanel ──────────────────────────────────────────────────
 
+/**
+ * One collapsible group inside the panel. Same disclosure-triangle affordance as
+ * the outer "Show intelligence fields" toggle, nested a level in.
+ */
+function IntelSection({ title, count, defaultOpen, children }: {
+  title: string; count: number; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/60 transition-colors hover:text-foreground/90 mb-1"
+      >
+        <span>{open ? "▲" : "▼"}</span>
+        <span>{title}</span>
+        <span className="text-muted-foreground/40 normal-case tracking-normal">({count})</span>
+      </button>
+      {open && <div className="grid grid-cols-3 gap-2">{children}</div>}
+    </div>
+  );
+}
+
+// #509 groups these 24 fields into four independently-collapsible sections. Every
+// field keeps its exact input type, validation attributes and change handler —
+// this is a layout change only, nothing about the data model or the request body
+// (`intelToBody`) moved. NOTE: `licensingImpact` is a real column the API both
+// returns and accepts, but it has never been part of THIS form's IntelFormFields
+// and adding it would be a data-model change, so Pillar Impacts deliberately
+// carries the six pillars the form actually has.
 function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; onChange: (f: IntelFormFields) => void }) {
   const set = <K extends keyof IntelFormFields>(k: K, v: string) => onChange({ ...value, [k]: v });
   const cls = "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-full";
@@ -140,70 +299,63 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
   );
   return (
     <div className="space-y-2.5">
-      <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Core</p>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <label className={lbl}>Category</label>
-            <input value={value.category} onChange={e => set("category", e.target.value)} placeholder="e.g. pricing:general" className={cls} />
-          </div>
-          <div>
-            <label className={lbl}>Pillar</label>
-            <input value={value.pillar} onChange={e => set("pillar", e.target.value)} placeholder="e.g. licensing" className={cls} />
-          </div>
-          <div>
-            <label className={lbl}>Severity</label>
-            <select value={value.severity} onChange={e => set("severity", e.target.value)} className={sel}>
-              <option value="">— low —</option>
-              <option value="informational">informational</option>
-              <option value="low">low</option><option value="medium">medium</option>
-              <option value="high">high</option><option value="critical">critical</option>
-            </select>
-          </div>
-          {num("priority", "Priority")}
-          {num("weight", "Weight")}
-          {num("confidence", "Confidence")}
+      {/* Expanded by default — from an endpoint-locked context most edits only
+          ever touch these. */}
+      <IntelSection title="Pillar Impacts" count={6} defaultOpen>
+        {num("governanceImpact", "Governance")}
+        {num("securityImpact", "Security")}
+        {num("complianceImpact", "Compliance")}
+        {num("adoptionImpact", "Adoption")}
+        {num("copilotImpact", "Copilot")}
+        {num("architectureImpact", "Architecture")}
+      </IntelSection>
+
+      <IntelSection title="Pricing & CRM" count={8}>
+        {num("pricingImpact", "Pricing")}
+        {num("priorityScoreContribution", "Priority score")}
+        {num("pricingValueContribution", "Pricing value")}
+        {num("crmFitContribution", "CRM Fit")}
+        {num("crmPainContribution", "CRM Pain")}
+        {num("crmMaturityContribution", "CRM Maturity")}
+        {num("crmIntentContribution", "CRM Intent")}
+        {num("crmUrgencyContribution", "CRM Urgency")}
+      </IntelSection>
+
+      <IntelSection title="Trend & Decay" count={4}>
+        {num("trendValue", "Trend value")}
+        <div>
+          <label className={lbl}>Direction</label>
+          <select value={value.trendDirection} onChange={e => set("trendDirection", e.target.value)} className={sel}>
+            <option value="">— flat —</option>
+            <option value="up">up</option><option value="down">down</option><option value="flat">flat</option>
+          </select>
         </div>
-      </div>
-      <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Impact</p>
-        <div className="grid grid-cols-3 gap-2">
-          {num("pricingImpact", "Pricing")}
-          {num("priorityScoreContribution", "Priority score")}
-          {num("pricingValueContribution", "Pricing value")}
-          {num("governanceImpact", "Governance")}
-          {num("securityImpact", "Security")}
-          {num("complianceImpact", "Compliance")}
-          {num("adoptionImpact", "Adoption")}
-          {num("copilotImpact", "Copilot")}
-          {num("architectureImpact", "Architecture")}
+        {num("decayRate", "Decay rate (0–1)", { step: "0.01", min: "0", max: "1" })}
+        {num("ttlDays", "TTL (days)")}
+      </IntelSection>
+
+      <IntelSection title="Priority & Severity" count={6}>
+        {num("priority", "Priority")}
+        {num("weight", "Weight")}
+        {num("confidence", "Confidence")}
+        <div>
+          <label className={lbl}>Severity</label>
+          <select value={value.severity} onChange={e => set("severity", e.target.value)} className={sel}>
+            <option value="">— low —</option>
+            <option value="informational">informational</option>
+            <option value="low">low</option><option value="medium">medium</option>
+            <option value="high">high</option><option value="critical">critical</option>
+          </select>
         </div>
-      </div>
-      <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Trend</p>
-        <div className="grid grid-cols-3 gap-2">
-          {num("trendValue", "Trend value")}
-          <div>
-            <label className={lbl}>Direction</label>
-            <select value={value.trendDirection} onChange={e => set("trendDirection", e.target.value)} className={sel}>
-              <option value="">— flat —</option>
-              <option value="up">up</option><option value="down">down</option><option value="flat">flat</option>
-            </select>
-          </div>
-          {num("decayRate", "Decay rate (0–1)", { step: "0.01", min: "0", max: "1" })}
-          {num("ttlDays", "TTL (days)")}
+        <div>
+          <label className={lbl}>Category</label>
+          <input value={value.category} onChange={e => set("category", e.target.value)} placeholder="e.g. pricing:general" className={cls} />
         </div>
-      </div>
-      <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">CRM</p>
-        <div className="grid grid-cols-3 gap-2">
-          {num("crmFitContribution", "Fit")}
-          {num("crmPainContribution", "Pain")}
-          {num("crmMaturityContribution", "Maturity")}
-          {num("crmIntentContribution", "Intent")}
-          {num("crmUrgencyContribution", "Urgency")}
+        <div>
+          <label className={lbl}>Pillar</label>
+          <input value={value.pillar} onChange={e => set("pillar", e.target.value)} placeholder="e.g. licensing" className={cls} />
         </div>
-      </div>
+      </IntelSection>
     </div>
   );
 }
@@ -230,6 +382,9 @@ function RuleRow({
   const isEditing = editingRuleId === rule.id;
   const conflictText = conflicts.find(c => c.ruleIds.includes(rule.id))?.description;
   const isConflict = !!conflictText;
+  // Only the row actually being edited looks up evaluability — a collapsed row
+  // would otherwise fire a request per rule on every render.
+  const fedState = useCheckFed(editRuleForm.ruleType, editRuleForm.sourceKey, isEditing);
 
   if (isEditing) {
     return (
@@ -239,14 +394,17 @@ function RuleRow({
             className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs">
             {RULE_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <input value={editRuleForm.sourceKey} onChange={e => setEditRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
-            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono"
-            placeholder="Source key" />
+          <div>
+            <input value={editRuleForm.sourceKey} onChange={e => setEditRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
+              className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-full"
+              placeholder={sourceKeyLabel(editRuleForm.ruleType)} />
+            <EvaluabilityHint state={fedState} />
+          </div>
         </div>
         {needsCompare(editRuleForm.ruleType) && (
           <input value={editRuleForm.compareValue} onChange={e => setEditRuleForm(f => ({ ...f, compareValue: e.target.value }))}
             className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-32"
-            placeholder="Value" />
+            placeholder={compareLabel(editRuleForm.ruleType)} />
         )}
         <input value={editRuleForm.description} onChange={e => setEditRuleForm(f => ({ ...f, description: e.target.value }))}
           className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full"
@@ -348,6 +506,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
   const [addRuleForm, setAddRuleForm] = useState({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "", intel: EMPTY_INTEL });
   const [addRuleConflictError, setAddRuleConflictError] = useState<string | null>(null);
   const [showAddRuleIntel, setShowAddRuleIntel] = useState(false);
+  const addFedState = useCheckFed(addRuleForm.ruleType, addRuleForm.sourceKey, true);
 
   // ── Load ────────────────────────────────────────────────────────────────────
 
@@ -807,16 +966,18 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">
-                    {addRuleForm.ruleType === "findings_keyword" ? "Keyword" : "Profile Key"}
+                    {sourceKeyLabel(addRuleForm.ruleType)}
                   </label>
                   <input value={addRuleForm.sourceKey} onChange={e => setAddRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
-                    placeholder="e.g. mfaEnforced" className={inputCls} />
+                    placeholder={addRuleForm.ruleType === "threshold" ? "e.g. identity:ca-policy-count" : "e.g. mfaEnforced"}
+                    className={inputCls} />
+                  <EvaluabilityHint state={addFedState} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {needsCompare(addRuleForm.ruleType) && (
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Compare Value</label>
+                    <label className="block text-xs text-muted-foreground mb-1">{compareLabel(addRuleForm.ruleType)}</label>
                     <input value={addRuleForm.compareValue} onChange={e => setAddRuleForm(f => ({ ...f, compareValue: e.target.value }))}
                       placeholder="e.g. 60" className={inputCls} />
                   </div>

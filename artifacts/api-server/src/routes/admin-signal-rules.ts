@@ -625,6 +625,56 @@ router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Reques
   }
 });
 
+// ── GET /api/admin/signal-rules/check-fed ──────────────────────────────────────
+// Live evaluability feedback for the rule builder (#509): given a prospective
+// ruleType + sourceKey the operator is still typing, is there any real monitor
+// check that can produce it, and which one?
+//
+// Deliberately reuses `computeRuleFedStatus` verbatim rather than reimplementing
+// the producible-key logic — it already wraps `buildProducibleProfileKeys` +
+// `ruleIsFedByPackage` + `resolveOwningCheckKey` over a single monitor_checks
+// read, so this endpoint and the Pillar Matrix's own `fed` column can never
+// disagree about the same (ruleType, sourceKey) pair. The synthetic rule below
+// exists only to satisfy that function's by-id map shape; `id`/`signalKey` are
+// never read by the fed decision itself.
+//
+// Same catalog-wide scope as the Pillar Matrix (#413): this answers "can ANY
+// check anywhere produce this key", which is the right question for a rule being
+// authored — NOT "will it fire for a given tenant". Advisory only; the POST/PATCH
+// routes deliberately do not gate on it, since a rule is allowed to be created
+// ahead of the check that will feed it.
+router.get("/admin/signal-rules/check-fed", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const ruleType = String(req.query.ruleType ?? "").trim();
+    const sourceKey = String(req.query.sourceKey ?? "").trim();
+    if (!ruleType || !sourceKey) {
+      res.status(400).json({ error: "ruleType and sourceKey are required" });
+      return;
+    }
+
+    const { fedByRuleId, checkKeyByRuleId } = await computeRuleFedStatus([
+      { id: 0, ruleType, sourceKey, signalKey: "" } as Pick<
+        SignalDerivationRule,
+        "id" | "ruleType" | "sourceKey" | "signalKey"
+      >,
+    ]);
+
+    res.json({
+      ruleType,
+      sourceKey,
+      fed: fedByRuleId.get(0) ?? false,
+      // Null even when `fed` is true for the genuinely ambiguous/diffuse
+      // producers `resolveOwningCheckKey` refuses to guess at: a
+      // findings_keyword matching more than one check key, and the runtime
+      // license-gap flags any Graph check can stamp.
+      owningCheckKey: checkKeyByRuleId.get(0) ?? null,
+    });
+  } catch (err) {
+    log.error({ err }, "GET /admin/signal-rules/check-fed failed");
+    res.status(500).json({ error: "Failed to resolve check-fed status" });
+  }
+});
+
 // ── GET /api/admin/signal-rules/customer-pillar-scores/:customerId ─────────────
 // The Pillar Matrix's live summary header: this customer's actual 7 pillar
 // display scores, computed with the EXACT same real functions the customer
