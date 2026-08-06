@@ -20,7 +20,7 @@ import { useReveal, useParallax } from "./home/useScrollFx";
  * renamed the product. The price comes from `/api/services`, never a
  * literal in this file.
  */
-const COPILOT_ASSESSMENT_SLUG = "copilot-for-m365-readiness-assessment";
+const COPILOT_ASSESSMENT_SLUG = "copilot-readiness-assessment";
 const FEE_UNRESOLVED = "Contact us for pricing";
 
 function formatCents(cents: number): string {
