@@ -497,7 +497,7 @@ export const UNEVALUATED_PILLAR_CHIP = "This pillar was not evaluated in your sc
  * either, an empty finding list here is not evidence of anything — showing
  * `CLEAN_PILLAR_HEADLINE` for it was this issue's confirmed live bug.
  */
-export const SCANNING_PILLAR_CHIP = "Still scanning this pillar — check back when the scan completes.";
+export const SCANNING_PILLAR_CHIP = "Scan in progress — evaluating this pillar now.";
 
 /**
  * The wire's evaluation verdict, or the honest reconstruction of it for a

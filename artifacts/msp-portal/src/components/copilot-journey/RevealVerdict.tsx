@@ -45,7 +45,7 @@
 import { useEffect, useState } from "react";
 
 import type { JourneyPillarView, WirePillarEvaluation } from "./journeyModel.ts";
-import { verdictLabel, verdictSentence } from "./journeyModel.ts";
+import { SCANNING_PILLAR_CHIP, verdictLabel, verdictSentence } from "./journeyModel.ts";
 import {
   COPILOT_ORB_CONIC,
   INK,
@@ -286,7 +286,11 @@ function Satellite({
             bounded to the fixed LABEL_W box above. An em dash rather than an
             invented finding: the scan genuinely returned nothing quotable for
             this pillar. */}
-        <FindingChip color={pillar.primary} text={pillar.satelliteFinding ?? "—"} />
+        <FindingChip
+          color={pillar.primary}
+          text={pillar.satelliteFinding ?? "—"}
+          pulse={pillar.satelliteFinding === SCANNING_PILLAR_CHIP}
+        />
       </div>
     </div>
   );

@@ -351,15 +351,22 @@ export function ScoreDelta({
  * (which lets a long finding grow past its anchor). Built for Scene 0's
  * scan-overlay clusters (#412) and reused verbatim by Scene 1's satellites
  * (#417) so both screens present the same finding the same way.
+ *
+ * `pulse` (#530): swaps the static pillar-coloured bullet for a blinking green
+ * dot — ONLY for the live-scanning-placeholder chip (`SCANNING_PILLAR_CHIP`),
+ * never for a real finding or stat chip, so "actively scanning" reads as
+ * visually distinct from a static fact at a glance.
  */
 export function FindingChip({
   color,
   text,
   opacity = 1,
+  pulse = false,
 }: {
   color: string;
   text: string;
   opacity?: number;
+  pulse?: boolean;
 }) {
   return (
     <div
@@ -379,7 +386,20 @@ export function FindingChip({
       }}
     >
       <span
-        style={{ width: 4, height: 4, borderRadius: "50%", background: color, flex: "none", marginTop: 1 }}
+        aria-hidden="true"
+        style={
+          pulse
+            ? {
+                width: 4,
+                height: 4,
+                borderRadius: "50%",
+                background: "#22c55e",
+                flex: "none",
+                marginTop: 1,
+                animation: "cj-pulse-dot 1400ms ease-in-out infinite",
+              }
+            : { width: 4, height: 4, borderRadius: "50%", background: color, flex: "none", marginTop: 1 }
+        }
       />
       <span
         style={{

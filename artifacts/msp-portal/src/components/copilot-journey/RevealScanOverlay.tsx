@@ -28,7 +28,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { JourneyPillarView } from "./journeyModel.ts";
+import { SCANNING_PILLAR_CHIP, type JourneyPillarView } from "./journeyModel.ts";
 import { BRAND, INK, PILLARS, PILLAR_KEYS, TABULAR } from "./journeyTokens.ts";
 import {
   RADAR_INNER_R,
@@ -516,6 +516,7 @@ export function RevealScanOverlay({
                     color={identity.primary}
                     text={chip}
                     opacity={radarChipOpacity(fill, chipIndex)}
+                    pulse={chip === SCANNING_PILLAR_CHIP}
                   />
                 ))}
               </div>
