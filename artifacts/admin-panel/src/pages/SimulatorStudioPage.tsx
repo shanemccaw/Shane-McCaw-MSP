@@ -34,6 +34,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../compone
 import { ApiTesterDialog } from "../components/ApiTesterDialog";
 import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
+import { ActiveDirectoryCenterCanvas } from "../components/ActiveDirectoryCenterCanvas";
+import { AD_SELECT_EVENT } from "../components/ActiveDirectoryTree";
 import { SimulatorPortalSnapshot } from "../components/SimulatorPortalSnapshot";
 import { SimulatorLogStream } from "../components/SimulatorLogStream";
 import { SqlQueryOutput } from "../components/SqlQueryOutput";
@@ -185,6 +187,21 @@ function StudioShell() {
   // long since registered the `simulator-select-endpoint` listener, and the
   // deep link therefore wins over its restore-last-open-document effect.
   useCheckKeyDeepLink();
+  // Which detail view the center canvas slot shows — whichever of Simulator's
+  // own endpoint selection or the embedded Active Directory tree's selection
+  // fired most recently wins. ActiveDirectoryCenterCanvas needs no props of
+  // its own; it tracks its selected object internally off AD_SELECT_EVENT.
+  const [canvasMode, setCanvasMode] = useState<"endpoint" | "ad">("endpoint");
+  useEffect(() => {
+    const onEndpoint = () => setCanvasMode("endpoint");
+    const onAd = () => setCanvasMode("ad");
+    window.addEventListener("simulator-select-endpoint", onEndpoint);
+    window.addEventListener(AD_SELECT_EVENT, onAd);
+    return () => {
+      window.removeEventListener("simulator-select-endpoint", onEndpoint);
+      window.removeEventListener(AD_SELECT_EVENT, onAd);
+    };
+  }, []);
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [timeMultiplier, setTimeMultiplier] = useState<number>(1);
@@ -407,12 +424,16 @@ function StudioShell() {
           <ResizablePanel id="center" order={2} defaultSize={rightOpen ? 59 : 83} minSize={30}>
             <ResizablePanelGroup direction="vertical" autoSaveId="simulator-studio-v">
               <ResizablePanel id="canvas" order={1} defaultSize={62} minSize={20}>
-                <SimulatorCenterCanvas
-                  simDate={simDate}
-                  isReplaying={isReplaying}
-                  sqlOutput={sqlOutput}
-                  onSqlOutputChange={handleSqlOutputChange}
-                />
+                {canvasMode === "ad" ? (
+                  <ActiveDirectoryCenterCanvas />
+                ) : (
+                  <SimulatorCenterCanvas
+                    simDate={simDate}
+                    isReplaying={isReplaying}
+                    sqlOutput={sqlOutput}
+                    onSqlOutputChange={handleSqlOutputChange}
+                  />
+                )}
               </ResizablePanel>
               <ResizableHandle className="h-px bg-border" />
               <ResizablePanel

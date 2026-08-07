@@ -32,6 +32,7 @@ import {
   Search,
   X,
   FileText,
+  Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,6 +42,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { readTreeState, writeTreeState, DEFAULT_EXPANDED_CATS } from "./simulatorTreeState";
+import { ActiveDirectoryTree } from "./ActiveDirectoryTree";
 
 interface EventDef {
   id: string;
@@ -278,6 +280,9 @@ export function SimulatorLeftTree() {
   const initialTreeState = useRef(readTreeState()).current;
   const [scenariosOpen, setScenariosOpen] = useState(initialTreeState?.sections.scenarios ?? true);
   const [scriptsOpen, setScriptsOpen] = useState(initialTreeState?.sections.scripts ?? true);
+  const [activeDirectoryOpen, setActiveDirectoryOpen] = useState(
+    initialTreeState?.sections.activeDirectory ?? true,
+  );
   const [migrationsOpen, setMigrationsOpen] = useState(initialTreeState?.sections.migrations ?? true);
   const [exceptionsOpen, setExceptionsOpen] = useState(initialTreeState?.sections.exceptions ?? true);
   const [suitesOpen, setSuitesOpen] = useState(initialTreeState?.sections.suites ?? true);
@@ -318,6 +323,7 @@ export function SimulatorLeftTree() {
       sections: {
         scenarios: scenariosOpen,
         scripts: scriptsOpen,
+        activeDirectory: activeDirectoryOpen,
         migrations: migrationsOpen,
         exceptions: exceptionsOpen,
         suites: suitesOpen,
@@ -335,6 +341,7 @@ export function SimulatorLeftTree() {
   }, [
     scenariosOpen,
     scriptsOpen,
+    activeDirectoryOpen,
     migrationsOpen,
     exceptionsOpen,
     suitesOpen,
@@ -1419,6 +1426,32 @@ export function SimulatorLeftTree() {
           )}
         </div>
         )}
+
+        {/* Section 2c: Active Directory (#537) — the standalone /system/active-directory
+            page's own tree, embedded here so Simulator Studio doesn't rebuild it.
+            Independent of Simulator's own search box — it has its own universal
+            search (MSPs/tenants/users/roles) and doesn't participate in
+            isSearching's expand-on-match behavior above. */}
+        <div>
+          <div
+            onClick={() => setActiveDirectoryOpen(!activeDirectoryOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {activeDirectoryOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="truncate">Active Directory</span>
+          </div>
+
+          {activeDirectoryOpen && (
+            <div className="h-96 border-l border-accent">
+              <ActiveDirectoryTree embedded />
+            </div>
+          )}
+        </div>
 
         {/* Section 3: Exception Testing */}
         {showExceptions && (

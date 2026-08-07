@@ -102,7 +102,7 @@ function dispatchSelect(detail: AdSelectedObject) {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function ActiveDirectoryTree() {
+export function ActiveDirectoryTree({ embedded = false }: { embedded?: boolean } = {}) {
   const { fetchWithAuth } = useAuth();
 
   const [msps, setMsps] = useState<AdMspNode[]>([]);
@@ -272,20 +272,24 @@ export function ActiveDirectoryTree() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-xs select-none">
-      {/* Explorer header */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Active Directory
-        </span>
-        <button
-          onClick={() => void loadTree()}
-          disabled={loading}
-          className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-          title="Refresh directory"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
+      {/* Explorer header — suppressed when embedded; Simulator's own section
+          chevron already labels this tree, so a second "Active Directory"
+          label directly under it would be redundant. */}
+      {!embedded && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Active Directory
+          </span>
+          <button
+            onClick={() => void loadTree()}
+            disabled={loading}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title="Refresh directory"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      )}
 
       {/* Universal search box — one query across MSP/customer/user/role */}
       <div className="shrink-0 border-b border-border bg-card/50 px-2 py-1.5">
