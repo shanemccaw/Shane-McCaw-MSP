@@ -168,9 +168,10 @@ describe('Top Discrepancies moves DURING the scan, off real per-check results', 
       deriveLiveDiscrepancies(REAL_STREAM.slice(0, i + 1)).length,
     );
 
-    // 1 ok → 0; +critical-matched → 1; +error → 2; +license_gap → still 2
-    // (a missing SKU is not a finding to fix); +medium-matched → 3; +ok → 3.
-    assert.deepEqual(countsAfterEachCheck, [0, 1, 2, 2, 3, 3]);
+    // 1 ok → 0; +critical-matched → 1; +error → still 1 (a check-execution
+    // failure is not a finding to fix, #522); +license_gap → still 1 (a missing
+    // SKU is not a finding to fix either); +medium-matched → 2; +ok → 2.
+    assert.deepEqual(countsAfterEachCheck, [0, 1, 1, 1, 2, 2]);
 
     // The panel genuinely changed several times mid-run, well before the run
     // ended — which is the whole point of #245's live requirement.
@@ -181,7 +182,7 @@ describe('Top Discrepancies moves DURING the scan, off real per-check results', 
   it('classifies a live check exactly as the server will when it persists the finding', () => {
     // Mirrors diagnostics-runner.ts's classifyCheckSeverity, branch for branch.
     assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'consent_revoked' }), 'critical');
-    assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'error' }), 'warning');
+    assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'error' }), null);
     assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'requires_script' }), null);
     assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'license_gap' }), null);
     assert.equal(classifyLiveCheckSeverity({ ...REAL_STREAM[0]!, status: 'ok', severityMatched: 'high' }), 'critical');
@@ -194,12 +195,15 @@ describe('Top Discrepancies moves DURING the scan, off real per-check results', 
     const items = deriveLiveDiscrepancies(REAL_STREAM);
     assert.deepEqual(
       items.map((i) => i.severity),
-      ['critical', 'warning', 'warning'],
+      ['critical', 'warning'],
     );
     assert.equal(items[0]?.checkKey, 'identity:ca-policy-count');
-    // The real Graph error text is what the customer sees, not a canned line.
-    const secureScore = items.find((i) => i.checkKey === 'security:secure-score');
-    assert.equal(secureScore?.detail, 'Graph returned 403 for this check.');
+    // A check-execution error is a technical failure, not a customer-facing
+    // finding (#522) — it must never appear in the discrepancies list.
+    assert.ok(
+      !items.some((i) => i.checkKey === 'security:secure-score'),
+      'a check-execution error must not surface as a discrepancy',
+    );
     // The strings the old hardcoded generator always emitted are gone.
     for (const item of items) {
       assert.ok(!item.detail.includes('62%'), 'no hardcoded "Unlabeled files (62%)" text');

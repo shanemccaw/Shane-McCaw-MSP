@@ -49,7 +49,10 @@ type FindingSeverity = "ok" | "info" | "warning" | "critical";
 
 function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   if (result.status === "consent_revoked") return "critical";
-  if (result.status === "error") return "warning";
+  // A check-execution error is a technical failure, not a real security finding
+  // (#522) — never a warning-severity row the customer reads as genuine signal.
+  // `checkStatus` on the persisted row still records "error" for MSP-side triage.
+  if (result.status === "error") return "info";
   if (result.status === "requires_script") return "info";
   // A license gap is not a security finding — it's a known SKU limitation. Surface
   // it as informational, never as a red/critical item the customer must "fix".

@@ -271,7 +271,9 @@ describe("diagnostics-runner severity classification", () => {
   it("check statuses map to expected severity tier", () => {
     const expectedSeverity: Record<string, string> = {
       consent_revoked: "critical",
-      error: "warning",
+      // A check-execution error is a technical failure, not a real security
+      // finding (#522) — never surfaced at warning severity.
+      error: "info",
       requires_script: "info",
       ok: "ok",
     };
@@ -281,7 +283,7 @@ describe("diagnostics-runner severity classification", () => {
       const result = { status, checkKey: "test.check" };
       let severity: string;
       if (result.status === "consent_revoked") severity = "critical";
-      else if (result.status === "error") severity = "warning";
+      else if (result.status === "error") severity = "info";
       else if (result.status === "requires_script") severity = "info";
       else severity = "ok";
       expect(severity).toBe(expected);

@@ -104,10 +104,10 @@ export interface LiveCheckResult {
  */
 export function classifyLiveCheckSeverity(result: LiveCheckResult): DiscrepancySeverity | null {
   if (result.status === 'consent_revoked') return 'critical';
-  if (result.status === 'error') return 'warning';
-  // requires_script / license_gap are informational in the runner — a license
-  // gap is a known SKU limitation, never a red item the customer must "fix".
-  if (result.status === 'requires_script' || result.status === 'license_gap') return null;
+  // requires_script / license_gap / error are informational in the runner — a
+  // license gap is a known SKU limitation and a check-execution error (#522) is
+  // a technical failure, never a red item the customer must "fix".
+  if (result.status === 'requires_script' || result.status === 'license_gap' || result.status === 'error') return null;
   if (result.severityMatched) {
     const s = result.severityMatched.toLowerCase();
     if (s === 'critical' || s === 'high') return 'critical';
