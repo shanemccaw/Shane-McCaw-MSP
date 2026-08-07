@@ -43,6 +43,12 @@ interface SignalRule extends Partial<SignalIntelligenceFields> {
   compareValue: string | null;
   description: string | null;
   sortOrder: number;
+  // #511, locked path only: how GET /api/admin/signal-rules/for-check matched
+  // this rule to the endpoint. "sourceKey" means the rule READS this check but
+  // is NAMED under a different signal key — which is exactly what the panel has
+  // to say out loud (see ForeignSignalTag). Absent on the non-locked path, whose
+  // data source doesn't answer this question.
+  matchedVia?: "signalKey" | "sourceKey";
 }
 
 interface SignalGroup extends Partial<SignalIntelligenceFields> {
@@ -148,6 +154,24 @@ function RuleTypePill({ ruleType }: { ruleType: string }) {
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${opt?.color ?? "bg-border text-muted-foreground"}`}>
       {opt?.label ?? ruleType}
+    </span>
+  );
+}
+
+/**
+ * #511: names the signal a rule/group actually lives under, when that isn't the
+ * endpoint's own key. Shown only on the locked (Endpoint Rules) path, where the
+ * panel is scoped to a monitor check rather than to a signal — a rule matched by
+ * what it READS (`sourceKey`) can be NAMED anything, and an operator editing it
+ * here needs to know that or the mismatch reads as a bug (it was reported as one).
+ */
+function ForeignSignalTag({ signalKey }: { signalKey: string }) {
+  return (
+    <span
+      className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-1.5 py-0.5 rounded-full flex-shrink-0 font-mono max-w-56 truncate"
+      title={`This rule reads this endpoint but is defined under the signal "${signalKey}"`}
+    >
+      from {signalKey}
     </span>
   );
 }
@@ -521,6 +545,9 @@ function RuleRow({
     <div className="flex items-center gap-3 px-4 py-2.5 group">
       <RuleTypePill ruleType={rule.ruleType} />
       <code className="text-xs text-foreground/90 font-mono flex-1 truncate">{rule.sourceKey}</code>
+      {/* Only "sourceKey" matches need explaining — "signalKey" means the rule's
+          own name already equals the endpoint key. */}
+      {rule.matchedVia === "sourceKey" && <ForeignSignalTag signalKey={rule.signalKey} />}
       {rule.compareValue && <code className="text-xs text-muted-foreground font-mono">{rule.compareValue}</code>}
       {rule.description && <p className="text-xs text-muted-foreground/60 truncate max-w-32">{rule.description}</p>}
       {rule.category && (
@@ -600,20 +627,24 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
     setLoading(true);
     try {
       const [configRes, conflictsRes] = await Promise.all([
-        fetchWithAuth(lockedSignalKey ? "/api/admin/signal-rules" : `/api/admin/engines/${engineKey}/configuration`),
+        fetchWithAuth(lockedSignalKey
+          // #511: `bySignal[lockedSignalKey]` (#507's original lookup) only ever
+          // found rules NAMED after the check. This endpoint returns the union of
+          // those and the rules that READ it via sourceKey, which the Engine Trace
+          // has always resolved correctly — the server does the matching, using the
+          // same `computeRuleFedStatus` resolution, so nothing is filtered here.
+          ? `/api/admin/signal-rules/for-check?checkKey=${encodeURIComponent(lockedSignalKey)}`
+          : `/api/admin/engines/${engineKey}/configuration`),
         fetchWithAuth("/api/admin/signal-rules/conflicts"),
       ]);
       if (configRes.ok) {
-        if (lockedSignalKey) {
-          const data = await configRes.json() as { bySignal: Record<string, { rules: SignalRule[]; groups: SignalGroup[] }> };
-          const scoped = data.bySignal?.[lockedSignalKey] ?? { rules: [], groups: [] };
-          setRules(scoped.rules ?? []);
-          setGroups(scoped.groups ?? []);
-        } else {
-          const data = await configRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
-          setRules(data.rules ?? []);
-          setGroups(data.groups ?? []);
-        }
+        // Both endpoints return the same `{ rules, groups }` shape — since #511
+        // the locked path no longer has to dig a signal out of `bySignal`, so
+        // there is one parse rather than two. Only `/for-check`'s rules carry
+        // `matchedVia`; it is optional and simply absent on the other.
+        const data = await configRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
+        setRules(data.rules ?? []);
+        setGroups(data.groups ?? []);
       }
       if (conflictsRes.ok) {
         const d = await conflictsRes.json() as { conflicts: Conflict[] };
@@ -636,9 +667,35 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
     return [...keys].sort();
   }, [groups, rules]);
 
-  const selectedGroups = useMemo(() => groups.filter(g => g.signalKey === selectedSignal), [groups, selectedSignal]);
-  const selectedRules = useMemo(() => rules.filter(r => r.signalKey === selectedSignal), [rules, selectedSignal]);
+  // #511: on the LOCKED path the server already returned exactly this endpoint's
+  // rules/groups (`/for-check`), and a legitimately-matched rule can carry a
+  // signalKey that differs from the check key — filtering by `selectedSignal`
+  // here would throw away the very rows the fix exists to surface. The
+  // non-locked (signal-picker) path keeps its filter untouched: there, `rules`
+  // is the whole engine's set and `selectedSignal` is the only thing scoping it.
+  const selectedGroups = useMemo(
+    () => (lockedSignalKey ? groups : groups.filter(g => g.signalKey === selectedSignal)),
+    [groups, selectedSignal, lockedSignalKey],
+  );
+  const selectedRules = useMemo(
+    () => (lockedSignalKey ? rules : rules.filter(r => r.signalKey === selectedSignal)),
+    [rules, selectedSignal, lockedSignalKey],
+  );
   const conflictRuleIds = useMemo(() => new Set(conflicts.flatMap(c => c.ruleIds)), [conflicts]);
+
+  // Groups a NEW rule may be assigned to. `computeTenantSignals` collects a
+  // group's rules by groupId alone but only ever evaluates the group under the
+  // group's OWN signalKey, so dropping a rule created under signal A into a
+  // group owned by signal B silently makes it contribute to B instead. Since
+  // #511 the locked path can now legitimately DISPLAY foreign-signal groups
+  // (pulled in because their rules read this endpoint) — displaying them is the
+  // point, offering them as targets for a rule created under the check's own key
+  // is not. No-op on the non-locked path, where every selectedGroup already has
+  // signalKey === selectedSignal.
+  const assignableGroups = useMemo(
+    () => selectedGroups.filter(g => g.signalKey === selectedSignal),
+    [selectedGroups, selectedSignal],
+  );
 
   // #510: only the non-locked signal-picker path needs the Simulator Studio
   // pointer — a locked signal IS already Simulator Studio itself.
@@ -930,6 +987,14 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                         {group.logic}
                       </button>
                       <span className="text-sm font-semibold text-foreground/90">{group.label ?? `Group ${group.id}`}</span>
+                      {/* #511's group equivalent: a group pulled in because one of
+                          its rules reads this endpoint carries its own signal key.
+                          Groups have no `matchedVia` (the server returns them
+                          unannotated), so compare the key directly — the same
+                          condition, since a group whose key matches needs no tag. */}
+                      {lockedSignalKey && group.signalKey !== lockedSignalKey && (
+                        <ForeignSignalTag signalKey={group.signalKey} />
+                      )}
                       {group.category && (
                         <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full">
                           {group.category}
@@ -1081,7 +1146,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                   <select value={addRuleForm.groupId} onChange={e => setAddRuleForm(f => ({ ...f, groupId: e.target.value }))}
                     className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
                     <option value="">— Ungrouped —</option>
-                    {selectedGroups.map(g => (
+                    {assignableGroups.map(g => (
                       <option key={g.id} value={g.id}>{g.label ?? `Group ${g.id}`} ({g.logic})</option>
                     ))}
                   </select>

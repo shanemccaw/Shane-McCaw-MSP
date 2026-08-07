@@ -701,6 +701,83 @@ router.get("/admin/signal-rules/is-monitor-check", requireAdmin, async (req: Req
   }
 });
 
+// ── GET /api/admin/signal-rules/for-check ──────────────────────────────────────
+// #511: every rule that genuinely belongs to ONE monitor check's Endpoint Rules
+// panel (#507) — which is NOT the same thing as every rule NAMED after it.
+//
+// `monitor_checks.key` and `signal_derivation_rules.signal_key` are two different
+// vocabularies that happen to coincide for some rows. A rule can READ a check
+// (via its `sourceKey`) while living under its own distinct signal name — e.g.
+// `signal.adoption.email-activity-trend` is a `threshold` rule whose sourceKey is
+// the check key `adoption:email-activity-trend`. #507's panel only did the exact
+// `bySignal[check.key]` lookup, so it reported "0 groups · 0 rules" for that
+// endpoint while the Engine Trace (`monitor-check-trace.ts`, which has always
+// grouped by sourceKey — what a rule READS — rather than signalKey) showed the
+// same rule firing against the same check.
+//
+// So the matched set is the UNION of:
+//   1. rules whose `signalKey === checkKey` (the original, still-valid case), and
+//   2. rules whose `sourceKey` resolves back to this check via the SAME
+//      catalog-wide resolution `computeRuleFedStatus`/`resolveOwningCheckKey`
+//      already computes for the Pillar Matrix and `check-fed` — reused verbatim,
+//      not reimplemented, so this panel can never disagree with those about which
+//      check owns a given sourceKey. That resolution covers BOTH item-count
+//      storage conventions monitor-check-trace.ts documents: a `threshold` rule
+//      storing the bare `checkKey` (evaluateRule appends `__itemCount` itself)
+//      and a `profile_key_*` rule storing the full `<checkKey>__itemCount`.
+//
+// Each returned rule carries `matchedVia` so the panel can label the ones whose
+// own signalKey differs from the check — the confusion #511 reported is fixed by
+// making that visible, not by silently folding the rule in under the wrong name.
+//
+// Groups are the distinct groups referenced by matched rules PLUS any group whose
+// own signalKey === checkKey (a group can legitimately exist before it has rules),
+// so AND/OR context renders even when the group's rules matched via sourceKey.
+type MatchedRule = SignalDerivationRule & { matchedVia: "signalKey" | "sourceKey" };
+
+router.get("/admin/signal-rules/for-check", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const checkKey = String(req.query.checkKey ?? "").trim();
+    if (!checkKey) {
+      res.status(400).json({ error: "checkKey is required" });
+      return;
+    }
+
+    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
+    const { checkKeyByRuleId } = await computeRuleFedStatus(rules);
+
+    const matchedRules = rules.flatMap<MatchedRule>((rule) => {
+      // signalKey wins when both hold: the names already agree, so there is
+      // nothing for the panel to clarify.
+      if (rule.signalKey === checkKey) return [{ ...rule, matchedVia: "signalKey" }];
+      if (checkKeyByRuleId.get(rule.id) === checkKey) return [{ ...rule, matchedVia: "sourceKey" }];
+      return [];
+    });
+
+    const referencedGroupIds = new Set(
+      matchedRules.map((r) => r.groupId).filter((id): id is number => id != null),
+    );
+    const matchedGroups = groups.filter(
+      (g) => g.signalKey === checkKey || referencedGroupIds.has(g.id),
+    );
+
+    log.debug(
+      {
+        checkKey,
+        ruleCount: matchedRules.length,
+        viaSourceKey: matchedRules.filter((r) => r.matchedVia === "sourceKey").length,
+        groupCount: matchedGroups.length,
+      },
+      "admin-signal-rules: resolved rules for check",
+    );
+
+    res.json({ checkKey, rules: matchedRules, groups: matchedGroups });
+  } catch (err) {
+    log.error({ err }, "GET /admin/signal-rules/for-check failed");
+    res.status(500).json({ error: "Failed to resolve rules for check" });
+  }
+});
+
 // ── GET /api/admin/signal-rules/customer-pillar-scores/:customerId ─────────────
 // The Pillar Matrix's live summary header: this customer's actual 7 pillar
 // display scores, computed with the EXACT same real functions the customer
