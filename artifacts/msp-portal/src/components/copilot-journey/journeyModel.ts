@@ -147,6 +147,17 @@ export interface WireLicenseGapPurchase {
 
 export interface WirePillarStatsPayload {
   readonly pillars: readonly WirePillarCard[];
+  /**
+   * The run api-server's `fetchPillarFindings` sourced `pillars[].findings`
+   * from — the just-finished run, or an older one being borrowed as a
+   * placeholder mid-scan (findings write in one batch at run completion, so a
+   * live run's own findings do not exist yet). `null` only when NO run has
+   * EVER persisted findings for this tenant — first scan ever, or scan history
+   * deleted (#524) — in which case every pillar's `findings` is `[]` for
+   * reasons that have nothing to do with the tenant being clean. Absent on a
+   * payload that predates this field (the design fixture, older tests), read
+   * the same as `null` — no evidence, not a claim there is none.
+   */
   readonly findingsRunId?: string | null;
   readonly generatedAt?: string;
   /**
@@ -453,6 +464,16 @@ export const UNEVALUATED_PILLAR_CHIP = "This pillar was not evaluated in your sc
  * (`scan.running`, Scene 0's own signal), so this substitution happens here,
  * not in `pillarEvaluation()` — the wire's `insufficient_data` verdict itself
  * is unchanged and still the honest fact once the run finishes.
+ *
+ * #524: also shown for a `"scored"` pillar with zero findings while a scan is
+ * live and no run has ever persisted findings for this tenant (see
+ * `WirePillarStatsPayload.findingsRunId`). A pillar's score can become
+ * computable from partial live signals well before the run completes and
+ * writes its findings batch — `evaluatePillarDisplay`'s floor is about
+ * SCORING coverage, not about whether findings exist yet, so `"scored"` alone
+ * says nothing about that. With no fallback run to borrow a result from
+ * either, an empty finding list here is not evidence of anything — showing
+ * `CLEAN_PILLAR_HEADLINE` for it was this issue's confirmed live bug.
  */
 export const SCANNING_PILLAR_CHIP = "Still scanning this pillar — check back when the scan completes.";
 
@@ -511,9 +532,12 @@ function pillarChips(
   if (evaluation.status === "not_evaluated") {
     return { chips: [UNEVALUATED_PILLAR_CHIP], chipsAreReal: false };
   }
-  // Scored, with zero stat readouts and zero critical/warning findings: the
-  // pillar genuinely was measured and genuinely came back clean. That is a real
-  // positive result, and it gets the same words `headline` already gives it.
+  // Scored, with zero stat readouts and zero critical/warning findings. #524:
+  // that is only a genuine positive result once there is real evidence behind
+  // it — this run's own completed findings, or an older real run's — which is
+  // exactly what `stillScanning` is false for here. While it's true, an empty
+  // list means nothing yet, not a clean bill of health.
+  if (stillScanning) return { chips: [SCANNING_PILLAR_CHIP], chipsAreReal: false };
   return { chips: [CLEAN_PILLAR_HEADLINE], chipsAreReal: false };
 }
 
@@ -582,6 +606,14 @@ export function buildPillarViews(
   const byKey = new Map<string, WirePillarCard>();
   (payload?.pillars ?? []).forEach((p) => byKey.set(p.pillar, p));
 
+  // #524: whether ANY run — this one, or an older one being borrowed as a
+  // placeholder — has ever persisted findings for this tenant. See
+  // `WirePillarStatsPayload.findingsRunId`. One tenant-wide fact, computed
+  // once: `fetchPillarFindings` (api-server) is a single query per request, so
+  // every pillar's `findings` is empty for the exact same reason when this is
+  // true — there is nothing per-pillar to distinguish here.
+  const noFindingsSourceRun = (payload?.findingsRunId ?? null) === null;
+
   return PILLAR_KEYS.map((key) => {
     const id = PILLARS[key];
     const card = byKey.get(key);
@@ -603,14 +635,25 @@ export function buildPillarViews(
     // the `null` that renders the scenes' "no finding was recorded" state.
     const evaluation = pillarEvaluation(card);
     const wasEvaluated = evaluation.status === "scored";
-    // #518: `insufficient_data` while a scan is live means "hasn't finished
-    // collecting yet", not "stayed thin" — only `insufficient_data` gets this
-    // treatment; `not_evaluated` (no evaluable rule exists at all) is a
-    // structural gap unrelated to scan timing and is left alone.
-    const stillScanning = scanRunning && evaluation.status === "insufficient_data";
+    // #518/#524: `insufficient_data` while a scan is live means "hasn't
+    // finished collecting yet", not "stayed thin". A `"scored"` pillar with an
+    // empty finding list while a scan is live AND no run has ever persisted
+    // findings for this tenant means the same thing for a different reason —
+    // the score came from partial live signals, which race ahead of the
+    // findings batch write, and there is no completed prior run to borrow a
+    // real result from either. Both read as "still scanning", never as clean.
+    // `not_evaluated` (no evaluable rule exists at all) is a structural gap
+    // unrelated to scan timing and is left alone.
+    const stillScanning =
+      scanRunning &&
+      (evaluation.status === "insufficient_data" || (wasEvaluated && noFindingsSourceRun));
+    // `stillScanning` is checked FIRST: a pillar can be `"scored"` (wasEvaluated)
+    // and still have nothing real to show yet (#524), and that must win over the
+    // clean headline — a live scan's honest "don't know yet" outranks a stale
+    // "evaluated" flag that raced ahead of the findings it would need to prove.
     const leadTitle =
       ordered[0]?.title ??
-      (wasEvaluated ? CLEAN_PILLAR_HEADLINE : stillScanning ? SCANNING_PILLAR_CHIP : null);
+      (stillScanning ? SCANNING_PILLAR_CHIP : wasEvaluated ? CLEAN_PILLAR_HEADLINE : null);
     const { chips, chipsAreReal } = pillarChips(statChips, ordered, evaluation, stillScanning);
 
     return {

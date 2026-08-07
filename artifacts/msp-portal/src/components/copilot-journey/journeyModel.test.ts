@@ -252,8 +252,13 @@ describe("pillar views", () => {
     assert.notEqual(view?.chips[0], SCANNING_PILLAR_CHIP);
   });
 
-  it("#518: a scored, genuinely-clean pillar keeps its earned clean state regardless of scan.running", () => {
+  it("#518/#524: a scored, genuinely-clean pillar keeps its earned clean state regardless of scan.running, once a real run backs the empty result", () => {
     const payload: WirePillarStatsPayload = {
+      // #524: `findingsRunId` is the evidence a "scored" pillar's empty finding
+      // list is real — a completed run (this one, or a borrowed older one)
+      // actually reported nothing critical/warning, not just that nobody has
+      // looked yet.
+      findingsRunId: "run-a",
       pillars: [
         {
           pillar: "compliance",
@@ -272,6 +277,126 @@ describe("pillar views", () => {
     const view = buildPillarViews(payload, true).find((v) => v.key === "compliance");
     assert.deepEqual(view?.chips, [CLEAN_PILLAR_HEADLINE]);
     assert.equal(view?.headline, CLEAN_PILLAR_HEADLINE);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * #524 — a live scan with no fallback run to borrow from must never
+   * print "clean" for a pillar whose score raced ahead of its findings
+   * ---------------------------------------------------------------- */
+
+  it("#524: a scored pillar with no findings run at all (fresh tenant / deleted history) reads as still-scanning, never clean", () => {
+    const payload: WirePillarStatsPayload = {
+      // The confirmed root cause: no run has EVER persisted findings for this
+      // tenant, so `findings: []` below means nothing yet, not "measured clean".
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: 22,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 6,
+            minRequiredSignals: 2,
+            reason: "scored from 6 evaluable security signals",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "security");
+    assert.deepEqual(view?.chips, [SCANNING_PILLAR_CHIP]);
+    assert.equal(view?.headline, SCANNING_PILLAR_CHIP);
+    assert.notEqual(view?.chips[0], CLEAN_PILLAR_HEADLINE);
+    // The wire's own score and verdict are untouched — only presentation changes.
+    assert.equal(view?.score, 22);
+    assert.equal(view?.evaluation.status, "scored");
+  });
+
+  it("#524: the same no-fallback-run pillar shows its earned clean state once the scan is no longer running", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: 22,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 6,
+            minRequiredSignals: 2,
+            reason: "scored from 6 evaluable security signals",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    // Once the run completes, `fetchPillarFindings` writes this run's own
+    // findings and `findingsRunId` stops being null server-side — but even
+    // before that round-trip, `scanRunning: false` alone must not still say
+    // "still scanning" for a run that's no longer live.
+    const view = buildPillarViews(payload, false).find((v) => v.key === "security");
+    assert.deepEqual(view?.chips, [CLEAN_PILLAR_HEADLINE]);
+    assert.equal(view?.headline, CLEAN_PILLAR_HEADLINE);
+  });
+
+  it("#524: a scored pillar with real stat readouts but no findings run still shows those real numbers, not a fabricated verdict", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: 22,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 6,
+            minRequiredSignals: 2,
+            reason: "scored from 6 evaluable security signals",
+          },
+          stats: [
+            {
+              id: "security.globalAdmins",
+              label: "global administrators",
+              unit: "count",
+              value: 14,
+              checkKey: "identity:global-admin-count",
+            },
+          ],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "security");
+    // A stat is a real, already-measured number — independent of the findings
+    // batch write — so it is shown, not suppressed behind "still scanning".
+    assert.deepEqual(view?.chips, ["14 global administrators"]);
+    assert.equal(view?.chipsAreReal, true);
+    // But the headline is a VERDICT, not a number, and this run has not proven
+    // one yet — it must still read as still-scanning.
+    assert.equal(view?.headline, SCANNING_PILLAR_CHIP);
+    assert.notEqual(view?.headline, CLEAN_PILLAR_HEADLINE);
+  });
+
+  it("#524: insufficient_data with no findings run is unaffected — that branch already reads still-scanning off evaluation.status alone", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "governance",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a governance impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "governance");
+    assert.deepEqual(view?.chips, [SCANNING_PILLAR_CHIP]);
   });
 
   it("#518: buildJourneyView threads scan.running through to its pillars", () => {
@@ -309,6 +434,51 @@ describe("pillar views", () => {
       idle.pillars.find((p) => p.key === "governance")?.chips,
       [INSUFFICIENT_PILLAR_CHIP],
     );
+  });
+
+  // #524: the full reproduction case — a fresh tenant / deleted scan history
+  // (no findings run at all), an active run in progress, and a pillar whose
+  // score already came back from partial live signals. Threaded through the
+  // whole `buildJourneyView` pipeline, not just `buildPillarViews`, since that
+  // is what the live page actually calls.
+  it("#524: buildJourneyView never reports a scored-but-unproven pillar as clean while a scan with no fallback run is live", () => {
+    const status: WireAssessmentStatus = {
+      copilotGate: { score: null, threshold: 82, status: null },
+    };
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: 18,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 5,
+            minRequiredSignals: 2,
+            reason: "scored from 5 evaluable security signals",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const running = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: payload,
+      status,
+      scanRunning: true,
+    });
+    const security = running.pillars.find((p) => p.key === "security");
+    assert.equal(security?.headline, SCANNING_PILLAR_CHIP);
+    assert.notEqual(security?.headline, CLEAN_PILLAR_HEADLINE);
+    assert.deepEqual(security?.chips, [SCANNING_PILLAR_CHIP]);
+
+    // The same payload, once the scan is no longer running, reverts to its
+    // earned clean state — the wire's findings genuinely haven't changed, only
+    // the client's own knowledge that no run is left to write them.
+    const idle = buildJourneyView({ tenant: TENANT, pillarStats: payload, status });
+    const idleSecurity = idle.pillars.find((p) => p.key === "security");
+    assert.equal(idleSecurity?.headline, CLEAN_PILLAR_HEADLINE);
   });
 
   it("#517: real stat readouts and real findings still win over the explanatory fallback", () => {
