@@ -132,10 +132,20 @@
  * `lib/db/migrations/manual/2026-08-02-war-room-pillar-stat-coverage-341.sql`.
  *
  * ── Findings ─────────────────────────────────────────────────────────────────
- * Real `msp_diagnostic_findings` rows, grouped per pillar by their check key's
- * domain (`WAR_ROOM_PILLAR_CHECK_DOMAINS` — the same grouping #305 uses to light
- * the pillar rows). These replace `HERO_PHASE`'s fake `find` strings ("41 sites
- * publishing tenant-wide", "no named champions") on the card's own note line.
+ * Real `msp_diagnostic_findings` rows, grouped per pillar primarily by
+ * `signal_derivation_rules.pillar` for that check's owning signal — #469's
+ * enforced single source of truth for "what pillar does this signal belong
+ * to", joined via the same `resolveOwningCheckKey` hop `buildFindingRankWeights`
+ * already uses (`buildCheckKeyPillarMap`, below). `WAR_ROOM_PILLAR_CHECK_DOMAINS`
+ * (the domain grouping #305 introduced) is now only the FALLBACK, for a check
+ * with no matching rule row or an ambiguous one. Before #521 the domain map was
+ * the ONLY signal read here, so a check reclassified to a different pillar
+ * without its key being renamed (`governance:sensitivity-label-adoption`,
+ * `governance:auto-labeling-coverage`, `copilot:sensitivity-labels-exist`, …,
+ * since #469) kept filing findings under its old domain-prefixed card instead
+ * of the one it actually scores. These replace `HERO_PHASE`'s fake `find`
+ * strings ("41 sites publishing tenant-wide", "no named champions") on the
+ * card's own note line.
  *
  * As in telemetry-comparison.ts: findings are written in ONE batch AFTER every
  * check finishes, so mid-run they belong to the most recent run that HAS them.
@@ -268,9 +278,48 @@ for (const pillar of WAR_ROOM_PILLAR_KEYS) {
   for (const domain of WAR_ROOM_PILLAR_CHECK_DOMAINS[pillar]) PILLAR_BY_DOMAIN.set(domain, pillar);
 }
 
-/** Which pillar a real check key's findings belong to, or null if unclaimed. Pure. */
-export function warRoomPillarForCheckKey(checkKey: string | null | undefined): WarRoomPillarKey | null {
+/**
+ * `signal_derivation_rules.pillar` (free text, `SIGNAL_PILLARS`) → the War Room
+ * pillar it names, inverted from `WAR_ROOM_ENGINE_PILLAR` so the two naming
+ * schemes can never disagree (`architecture` → `health`, same as the engine
+ * pillar every score already resolves through). `cost` is kept as a second
+ * accepted string alongside `licensing`, mirroring the SAME real alias
+ * `WAR_ROOM_PILLAR_CHECK_DOMAINS` already documents for the `cost:*` check-key
+ * domain — the live table uses it interchangeably with `licensing` (see that
+ * map's own comment).
+ */
+const RADAR_PILLAR_BY_RULE_PILLAR = new Map<string, WarRoomPillarKey>(
+  WAR_ROOM_PILLAR_KEYS.map((pillar) => [WAR_ROOM_ENGINE_PILLAR[pillar], pillar]),
+);
+RADAR_PILLAR_BY_RULE_PILLAR.set("cost", "licensing");
+
+/**
+ * A `signal_derivation_rules.pillar` value → the War Room pillar it names, or
+ * null when the column is blank or names something outside `SIGNAL_PILLARS`
+ * (an unset/typo'd row, not a claim on any card). Pure; exported for tests.
+ */
+export function warRoomPillarForRulePillar(rulePillar: string | null | undefined): WarRoomPillarKey | null {
+  if (!rulePillar) return null;
+  return RADAR_PILLAR_BY_RULE_PILLAR.get(rulePillar.trim().toLowerCase()) ?? null;
+}
+
+/**
+ * Which War Room pillar a real check key's findings belong to, or null if
+ * unclaimed (#521). Resolved primarily from `checkKeyPillars`
+ * (`buildCheckKeyPillarMap` — `signal_derivation_rules.pillar` for that check's
+ * owning signal, #469's enforced single source of truth), falling back to the
+ * `WAR_ROOM_PILLAR_CHECK_DOMAINS` prefix map only for a check with no matching
+ * rule row (or an ambiguous one — see `buildCheckKeyPillarMap`). Callers with no
+ * rule data at all (tests, or a caller that genuinely has none) get the domain
+ * fallback outright, same as before #521. Pure.
+ */
+export function warRoomPillarForCheckKey(
+  checkKey: string | null | undefined,
+  checkKeyPillars?: ReadonlyMap<string, WarRoomPillarKey>,
+): WarRoomPillarKey | null {
   if (!checkKey) return null;
+  const fromRules = checkKeyPillars?.get(checkKey);
+  if (fromRules) return fromRules;
   const domain = String(checkKey).split(":")[0]!.trim().toLowerCase();
   return PILLAR_BY_DOMAIN.get(domain) ?? null;
 }
@@ -762,6 +811,51 @@ export function buildFindingRankWeights(
 }
 
 /**
+ * Real check key → the War Room pillar its owning signal's
+ * `signal_derivation_rules.pillar` names (#521), for `warRoomPillarForCheckKey`
+ * to prefer over `WAR_ROOM_PILLAR_CHECK_DOMAINS`. Joins through
+ * `resolveOwningCheckKey` — the SAME check-ownership hop `buildFindingRankWeights`
+ * uses just above, over the SAME `rules` — rather than a second mapping that
+ * could drift from it: a check's pillar and a check's rank-weight column both
+ * need to agree on which signal owns the check, and this reuses that answer
+ * rather than re-deriving it.
+ *
+ * `pillar` (not the impact columns `buildFindingRankWeights` reads) is the
+ * source here on purpose: since #469 it is the enforced single source of truth
+ * for "what pillar does this signal belong to", independent of how many pillars
+ * the signal's impact columns happen to carry nonzero weight in.
+ *
+ * When two rules resolve to the SAME check key but name two DIFFERENT pillars,
+ * neither wins — the check is left out of the map entirely, so the caller falls
+ * back to the domain map rather than this function guessing between two live,
+ * disagreeing classifications. Mirrors `resolveOwningCheckKey`'s own
+ * `findings_keyword` tie-break: an ambiguous case is reported as unresolved, not
+ * guessed at.
+ *
+ * Pure; exported for tests.
+ */
+export function buildCheckKeyPillarMap(
+  rules: readonly Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "pillar">[],
+  checkDefinitions: readonly RankCheckDefinition[],
+): Map<string, WarRoomPillarKey> {
+  const pillarsByCheckKey = new Map<string, Set<WarRoomPillarKey>>();
+  for (const rule of rules) {
+    const pillar = warRoomPillarForRulePillar(rule.pillar);
+    if (!pillar) continue;
+    const checkKey = resolveOwningCheckKey(rule, checkDefinitions);
+    if (!checkKey) continue;
+    const pillars = pillarsByCheckKey.get(checkKey) ?? new Set<WarRoomPillarKey>();
+    pillars.add(pillar);
+    pillarsByCheckKey.set(checkKey, pillars);
+  }
+  const resolved = new Map<string, WarRoomPillarKey>();
+  for (const [checkKey, pillars] of pillarsByCheckKey) {
+    if (pillars.size === 1) resolved.set(checkKey, [...pillars][0]!);
+  }
+  return resolved;
+}
+
+/**
  * The order a pillar's findings are presented in, and the order its cap keeps
  * (#414). Severity tier first and always — a warning can never outrank a
  * critical however heavy it is — then the real signal weight, then the
@@ -1035,8 +1129,13 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     .from(monitorChecksTable);
   const findingRankWeights = buildFindingRankWeights(rules, impacts, rankCheckDefinitions);
 
+  // #521: the same rules/checkDefinitions pair, joined instead to
+  // `signal_derivation_rules.pillar` so a finding files under the pillar its own
+  // signal was reclassified to rather than its check key's domain prefix.
+  const checkKeyPillars = buildCheckKeyPillarMap(rules, rankCheckDefinitions);
+
   const { findingsByPillar, findingsRunId, findingsRunStatus, licenseGapCheckKeys } =
-    await fetchPillarFindings(customerId, findingRankWeights);
+    await fetchPillarFindings(customerId, findingRankWeights, checkKeyPillars);
 
   // #489. Tenant-wide, from the same run the findings came from, so the tier and
   // the findings beside it can never describe two different scans.
@@ -1061,7 +1160,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
    */
   const upgradesByPillar = new Map<WarRoomPillarKey, WarRoomPillarUpgradeLink[]>();
   for (const checkKey of licenseGapCheckKeys) {
-    const pillar = warRoomPillarForCheckKey(checkKey);
+    const pillar = warRoomPillarForCheckKey(checkKey, checkKeyPillars);
     const recommendation: LicenseGapRecommendation | null = recommendationForCheckKey(
       licenseGapPurchase,
       checkKey,
@@ -1224,10 +1323,17 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
  * `warRoomPillarForCheckKey` files the finding, `WAR_ROOM_ENGINE_PILLAR`
  * translates that to the engine pillar the card was actually scored as, and
  * `FINDING_RANK_IMPACT_FIELD` names that pillar's own impact column.
+ *
+ * `checkKeyPillars` (#521, `buildCheckKeyPillarMap`) is what `warRoomPillarForCheckKey`
+ * uses to file a finding by its check's real `signal_derivation_rules.pillar`
+ * before falling back to the domain map — passed in so the caller resolves it
+ * once from the same `rules`/`checkDefinitions` pair `rankWeights` was built
+ * from, rather than this function re-deriving it.
  */
 async function fetchPillarFindings(
   customerId: number,
   rankWeights: ReadonlyMap<string, CheckRankWeights>,
+  checkKeyPillars: ReadonlyMap<string, WarRoomPillarKey>,
 ): Promise<{
   findingsByPillar: Map<WarRoomPillarKey, WarRoomPillarFinding[]>;
   findingsRunId: string | null;
@@ -1268,7 +1374,7 @@ async function fetchPillarFindings(
     );
 
   for (const row of rows) {
-    const pillar = warRoomPillarForCheckKey(row.checkKey);
+    const pillar = warRoomPillarForCheckKey(row.checkKey, checkKeyPillars);
     if (!pillar) continue;
     const list = findingsByPillar.get(pillar) ?? [];
     list.push({

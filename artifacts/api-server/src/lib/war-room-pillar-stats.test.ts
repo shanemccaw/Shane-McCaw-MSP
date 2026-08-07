@@ -49,6 +49,8 @@ import {
   WAR_ROOM_PILLAR_STAT_SPECS,
   WAR_ROOM_PILLAR_CHECK_DOMAINS,
   warRoomPillarForCheckKey,
+  warRoomPillarForRulePillar,
+  buildCheckKeyPillarMap,
   statFromMetricResult,
   refineStatUnavailability,
   WAR_ROOM_STAT_NOT_SCANNED,
@@ -176,6 +178,102 @@ describe("finding → pillar grouping by real check-key domain", () => {
         seen.add(domain);
       }
     }
+  });
+});
+
+describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", () => {
+  it("maps every SIGNAL_PILLARS value onto its War Room pillar, plus the `cost` alias", () => {
+    expect(warRoomPillarForRulePillar("governance")).toBe("governance");
+    expect(warRoomPillarForRulePillar("security")).toBe("security");
+    expect(warRoomPillarForRulePillar("compliance")).toBe("compliance");
+    expect(warRoomPillarForRulePillar("adoption")).toBe("adoption");
+    expect(warRoomPillarForRulePillar("copilot")).toBe("copilot");
+    expect(warRoomPillarForRulePillar("licensing")).toBe("licensing");
+    // The one non-identity pair — same translation `WAR_ROOM_ENGINE_PILLAR`
+    // already uses for the score beside these findings.
+    expect(warRoomPillarForRulePillar("architecture")).toBe("health");
+    // The live-data alias `WAR_ROOM_PILLAR_CHECK_DOMAINS` already documents for
+    // the `cost:*` check-key domain — `signal_derivation_rules.pillar` uses it
+    // interchangeably with `licensing` too.
+    expect(warRoomPillarForRulePillar("cost")).toBe("licensing");
+  });
+
+  it("returns null for blank or unrecognised pillar text rather than guessing", () => {
+    expect(warRoomPillarForRulePillar(null)).toBeNull();
+    expect(warRoomPillarForRulePillar(undefined)).toBeNull();
+    expect(warRoomPillarForRulePillar("")).toBeNull();
+    expect(warRoomPillarForRulePillar("not-a-real-pillar")).toBeNull();
+  });
+
+  // #521's own confirmed-live example: since #469 these three checks score as
+  // `compliance` in signal_derivation_rules.pillar, but their check keys were
+  // never renamed off their original domain — so the pre-#521 domain-only
+  // resolution filed their findings on Governance/Copilot instead of Compliance.
+  const RECLASSIFIED_RULES = [
+    { ruleType: "threshold", sourceKey: "governance:sensitivity-label-adoption", pillar: "compliance" },
+    { ruleType: "threshold", sourceKey: "governance:auto-labeling-coverage", pillar: "compliance" },
+    { ruleType: "threshold", sourceKey: "copilot:sensitivity-labels-exist", pillar: "compliance" },
+    // A check whose own rule agrees with its domain — proves the map isn't only
+    // exercised by the reclassified set.
+    { ruleType: "threshold", sourceKey: "identity:mfa-registration", pillar: "security" },
+  ];
+  const RECLASSIFIED_CHECK_DEFS = [
+    { key: "governance:sensitivity-label-adoption", mapping: null, properties: null },
+    { key: "governance:auto-labeling-coverage", mapping: null, properties: null },
+    { key: "copilot:sensitivity-labels-exist", mapping: null, properties: null },
+    { key: "identity:mfa-registration", mapping: null, properties: null },
+  ];
+  const RECLASSIFIED_MAP = buildCheckKeyPillarMap(RECLASSIFIED_RULES, RECLASSIFIED_CHECK_DEFS);
+
+  it("resolves a reclassified check to its rule's pillar, not its domain prefix", () => {
+    expect(warRoomPillarForCheckKey("governance:sensitivity-label-adoption", RECLASSIFIED_MAP)).toBe("compliance");
+    expect(warRoomPillarForCheckKey("governance:auto-labeling-coverage", RECLASSIFIED_MAP)).toBe("compliance");
+    expect(warRoomPillarForCheckKey("copilot:sensitivity-labels-exist", RECLASSIFIED_MAP)).toBe("compliance");
+    // Without the map, the same checks still fall back to their old domain —
+    // proving the map (not a change to the domain fallback) is what moved them.
+    expect(warRoomPillarForCheckKey("governance:sensitivity-label-adoption")).toBe("governance");
+    expect(warRoomPillarForCheckKey("copilot:sensitivity-labels-exist")).toBe("copilot");
+  });
+
+  it("agrees with the domain map when the rule's pillar and the domain already agree", () => {
+    expect(warRoomPillarForCheckKey("identity:mfa-registration", RECLASSIFIED_MAP)).toBe("security");
+  });
+
+  it("falls back to the domain map for a check with no matching rule row", () => {
+    expect(warRoomPillarForCheckKey("sharepoint:anonymous-links", RECLASSIFIED_MAP)).toBe("governance");
+  });
+
+  it("reaches a check no domain claims at all when its rule names a pillar (#521's exchange example)", () => {
+    const rules = [
+      { ruleType: "threshold", sourceKey: "exchange:litigation-hold-coverage", pillar: "compliance" },
+    ];
+    const checkDefs = [{ key: "exchange:litigation-hold-coverage", mapping: null, properties: null }];
+    const map = buildCheckKeyPillarMap(rules, checkDefs);
+    // `exchange` is deliberately unmapped in WAR_ROOM_PILLAR_CHECK_DOMAINS
+    // (#389) — without the rule the finding renders on no card at all.
+    expect(warRoomPillarForCheckKey("exchange:litigation-hold-coverage")).toBeNull();
+    expect(warRoomPillarForCheckKey("exchange:litigation-hold-coverage", map)).toBe("compliance");
+  });
+
+  it("leaves a check out of the map — falling back to the domain map — when two rules disagree on its pillar", () => {
+    const rules = [
+      { ruleType: "threshold", sourceKey: "governance:ambiguous-check", pillar: "compliance" },
+      { ruleType: "threshold", sourceKey: "governance:ambiguous-check", pillar: "security" },
+    ];
+    const checkDefs = [{ key: "governance:ambiguous-check", mapping: null, properties: null }];
+    const map = buildCheckKeyPillarMap(rules, checkDefs);
+    expect(map.has("governance:ambiguous-check")).toBe(false);
+    expect(warRoomPillarForCheckKey("governance:ambiguous-check", map)).toBe("governance");
+  });
+
+  it("ignores a rule with no real owning check, and a rule with no recognised pillar", () => {
+    const rules = [
+      { ruleType: "threshold", sourceKey: "no-such-check", pillar: "compliance" },
+      { ruleType: "threshold", sourceKey: "governance:sensitivity-label-adoption", pillar: "" },
+    ];
+    const checkDefs = [{ key: "governance:sensitivity-label-adoption", mapping: null, properties: null }];
+    const map = buildCheckKeyPillarMap(rules, checkDefs);
+    expect(map.size).toBe(0);
   });
 });
 
