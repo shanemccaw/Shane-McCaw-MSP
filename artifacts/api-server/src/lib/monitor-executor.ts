@@ -1566,6 +1566,40 @@ function licenseGapFeatureForCmdletKey(cmdletKey: string | null): string {
   }
 }
 
+/**
+ * The single write into `tenant_monitor_profiles` — shared by every executor
+ * branch (Graph, PowerShell, SharePoint-admin, DNS, fan-out, and each of the
+ * requires-script / consent-revoked / license-gap / error paths).
+ *
+ * WHY `persist:false` EXISTS (#543)
+ *   `tenant_monitor_profiles` is not a log. It IS the scoring surface:
+ *   `fetchLatestMonitorProfileRows()` (tenant-signals.ts) reads it as
+ *   DISTINCT ON (check_key) ORDER BY collected_at DESC, with no package, run or
+ *   trigger scoping whatsoever. So ANY row written for a check becomes that
+ *   check's live signal for the tenant, forever, until something newer lands.
+ *
+ *   That makes "additive, honestly recorded second collection" an impossible
+ *   position: a non-scoring pass that writes here does not sit ALONGSIDE the
+ *   scan's rows, it silently replaces them (it finishes later, so it wins the
+ *   DISTINCT ON) — and for a check the scan deliberately never ran, it
+ *   manufactures a scoring signal out of nothing. That is exactly how checks
+ *   excluded from a package kept turning up with fresh rows after a scan.
+ *
+ *   Any caller that is not the scoring scan therefore passes `persist:false`.
+ */
+async function persistCheckProfile(
+  persist: boolean,
+  values: typeof tenantMonitorProfilesTable.$inferInsert,
+): Promise<string | undefined> {
+  if (!persist) return undefined;
+  const [row] = await db
+    .insert(tenantMonitorProfilesTable)
+    .values(values)
+    .onConflictDoNothing()
+    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+  return row?.profileId;
+}
+
 // ── PowerShell-backed check executor ──────────────────────────────────────────
 //
 // Runs a check whose data can only be read via Connect-IPPSSession (DLP/Label
@@ -1582,6 +1616,7 @@ async function runPowerShellCheck(opts: {
   triggerId: string;
   idempotencyKey: string;
   includeItems?: boolean;
+  persistProfile: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId, idempotencyKey } = opts;
 
@@ -1631,23 +1666,19 @@ async function runPowerShellCheck(opts: {
   // @odata.nextLink, no CSV — so pageCount is always 1.
   const pageCount = 1;
 
-  const [row] = await db
-    .insert(tenantMonitorProfilesTable)
-    .values({
-      tenantId,
-      checkKey: check.key,
-      checkSchemaVersion: check.schemaVersion,
-      triggerId,
-      idempotencyKey,
-      status: "ok",
-      rawResponse: rawResponse as Record<string, unknown>,
-      extractedProperties: extracted,
-      severityMatched: severityMatch?.severity ?? null,
-      itemCount: items.length,
-      pageCount,
-    })
-    .onConflictDoNothing()
-    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status: "ok",
+    rawResponse: rawResponse as Record<string, unknown>,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    itemCount: items.length,
+    pageCount,
+  });
 
   log.info(
     { checkKey: check.key, tenantId, itemCount: items.length, cmdletKey: check.psCmdletKey },
@@ -1662,7 +1693,7 @@ async function runPowerShellCheck(opts: {
     severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
-    profileId: row?.profileId,
+    profileId,
     ...(opts.includeItems ? { items } : {}),
   };
 }
@@ -1795,6 +1826,7 @@ async function runSharePointAdminCheck(opts: {
   triggerId: string;
   idempotencyKey: string;
   includeItems?: boolean;
+  persistProfile: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId, idempotencyKey } = opts;
 
@@ -1849,23 +1881,19 @@ async function runSharePointAdminCheck(opts: {
     items,
   };
 
-  const [row] = await db
-    .insert(tenantMonitorProfilesTable)
-    .values({
-      tenantId,
-      checkKey: check.key,
-      checkSchemaVersion: check.schemaVersion,
-      triggerId,
-      idempotencyKey,
-      status: "ok",
-      rawResponse,
-      extractedProperties: extracted,
-      severityMatched: severityMatch?.severity ?? null,
-      itemCount: items.length,
-      pageCount,
-    })
-    .onConflictDoNothing()
-    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status: "ok",
+    rawResponse,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    itemCount: items.length,
+    pageCount,
+  });
 
   log.info(
     { checkKey: check.key, tenantId, spOperation: check.spOperation, itemCount: items.length },
@@ -1880,7 +1908,7 @@ async function runSharePointAdminCheck(opts: {
     severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
-    profileId: row?.profileId,
+    profileId,
     ...(opts.includeItems ? { items } : {}),
   };
 }
@@ -1950,6 +1978,7 @@ async function runDnsCheck(opts: {
   triggerId: string;
   idempotencyKey: string;
   includeItems?: boolean;
+  persistProfile: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId, idempotencyKey } = opts;
 
@@ -2007,23 +2036,19 @@ async function runDnsCheck(opts: {
 
   const rawResponse: Record<string, unknown> = { domain, items };
 
-  const [row] = await db
-    .insert(tenantMonitorProfilesTable)
-    .values({
-      tenantId,
-      checkKey: check.key,
-      checkSchemaVersion: check.schemaVersion,
-      triggerId,
-      idempotencyKey,
-      status: "ok",
-      rawResponse,
-      extractedProperties: extracted,
-      severityMatched: severityMatch?.severity ?? null,
-      itemCount: items.length,
-      pageCount,
-    })
-    .onConflictDoNothing()
-    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status: "ok",
+    rawResponse,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    itemCount: items.length,
+    pageCount,
+  });
 
   log.info(
     { checkKey: check.key, tenantId, domain, itemCount: items.length },
@@ -2038,7 +2063,7 @@ async function runDnsCheck(opts: {
     severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
-    profileId: row?.profileId,
+    profileId,
     ...(opts.includeItems ? { items } : {}),
   };
 }
@@ -2084,6 +2109,7 @@ async function runFanOutCheck(opts: {
   triggerId: string;
   idempotencyKey: string;
   includeItems?: boolean;
+  persistProfile: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId, idempotencyKey } = opts;
   const throttleRetry: ThrottleRetryOptions = {
@@ -2284,26 +2310,22 @@ async function runFanOutCheck(opts: {
     sourceSample: enumResult.items.slice(0, 5),
   };
 
-  const [row] = await db
-    .insert(tenantMonitorProfilesTable)
-    .values({
-      tenantId,
-      checkKey: check.key,
-      checkSchemaVersion: check.schemaVersion,
-      triggerId,
-      idempotencyKey,
-      status,
-      rawResponse: rawResponse as Record<string, unknown>,
-      extractedProperties: extracted,
-      severityMatched: severityMatch?.severity ?? null,
-      errorMessage: status === "ok"
-        ? undefined
-        : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
-      itemCount: combinedItems.length,
-      pageCount,
-    })
-    .onConflictDoNothing()
-    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status,
+    rawResponse: rawResponse as Record<string, unknown>,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    errorMessage: status === "ok"
+      ? undefined
+      : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
+    itemCount: combinedItems.length,
+    pageCount,
+  });
 
   log.info(
     { checkKey: check.key, tenantId, status, ...extracted._fanOut as Record<string, unknown> },
@@ -2319,7 +2341,7 @@ async function runFanOutCheck(opts: {
     errorMessage: status === "ok" ? undefined : `${succeeded}/${entries.length} items succeeded, ${failed} failed`,
     itemCount: combinedItems.length,
     pageCount,
-    profileId: row?.profileId,
+    profileId,
     ...(opts.includeItems ? { items: combinedItems } : {}),
   };
 }
@@ -2338,8 +2360,18 @@ export async function executeMonitorCheck(opts: {
    * real mapping to the real, untruncated response.
    */
   includeItems?: boolean;
+  /**
+   * Write this check's result into `tenant_monitor_profiles` (default true).
+   *
+   * FALSE IS NOT AN OPTIMISATION — it is a correctness requirement for any
+   * caller that is not the scoring scan. See `persistCheckProfile`'s comment:
+   * that table is read unscoped as the tenant's live per-check signal, so a
+   * non-scoring pass writing to it silently becomes the score. #543.
+   */
+  persistProfile?: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId } = opts;
+  const persistProfile = opts.persistProfile !== false;
   const idempotencyKey = `${tenantId}:${check.key}:${triggerId}`;
 
   // Idempotency guard — return cached result if already collected
@@ -2380,23 +2412,19 @@ export async function executeMonitorCheck(opts: {
 
   // Air-gapped / customer-script mode: flag as requires_script, don't attempt Graph fetch
   if (check.requiresCustomerScript) {
-    const row = await db
-      .insert(tenantMonitorProfilesTable)
-      .values({
-        tenantId,
-        checkKey: check.key,
-        checkSchemaVersion: check.schemaVersion,
-        triggerId,
-        idempotencyKey,
-        status: "requires_script",
-        rawResponse: null,
-        extractedProperties: {},
-        severityMatched: null,
-        itemCount: 0,
-        pageCount: 0,
-      })
-      .onConflictDoNothing()
-      .returning({ profileId: tenantMonitorProfilesTable.profileId });
+    const profileId = await persistCheckProfile(persistProfile, {
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "requires_script",
+      rawResponse: null,
+      extractedProperties: {},
+      severityMatched: null,
+      itemCount: 0,
+      pageCount: 0,
+    });
 
     return {
       checkKey: check.key,
@@ -2405,7 +2433,7 @@ export async function executeMonitorCheck(opts: {
       severityMatched: null,
       itemCount: 0,
       pageCount: 0,
-      profileId: row[0]?.profileId,
+      profileId,
     };
   }
 
@@ -2415,7 +2443,7 @@ export async function executeMonitorCheck(opts: {
     // ahead of the fan-out/Graph branches below, which are Graph-only by
     // construction (executorType defaults to 'graph' for every existing check).
     if (check.executorType === "powershell") {
-      return await runPowerShellCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+      return await runPowerShellCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     // SharePoint-admin-backed checks (executorType = 'sharepoint-admin', #394)
@@ -2425,7 +2453,7 @@ export async function executeMonitorCheck(opts: {
     // every 'graph' (the column default, i.e. every pre-existing check) and
     // 'powershell' check falls through exactly as before.
     if (check.executorType === "sharepoint-admin") {
-      return await runSharePointAdminCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+      return await runSharePointAdminCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     // DNS-backed checks (executorType = 'dns', #496) take the same kind of
@@ -2435,7 +2463,7 @@ export async function executeMonitorCheck(opts: {
     // explicitly carries this executorType can reach it — every 'graph' and
     // 'powershell'/'sharepoint-admin' check falls through exactly as before.
     if (check.executorType === "dns") {
-      return await runDnsCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+      return await runDnsCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     // Fan-out (group-scoped) checks take an entirely separate, additive path.
@@ -2444,7 +2472,7 @@ export async function executeMonitorCheck(opts: {
     // contract is shared, not duplicated. Non-fan-out checks (fanOutSource NULL —
     // every existing check) fall straight through to the unchanged path.
     if (check.fanOutSource) {
-      return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+      return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     const finalEndpoint = appendQueryParams(check.endpoint, check.selectParams, check.filterParams);
@@ -2479,23 +2507,19 @@ export async function executeMonitorCheck(opts: {
     const severityMatch = classifySeverity(severityRules, extracted);
 
     // 5. Persist result
-    const [row] = await db
-      .insert(tenantMonitorProfilesTable)
-      .values({
-        tenantId,
-        checkKey: check.key,
-        checkSchemaVersion: check.schemaVersion,
-        triggerId,
-        idempotencyKey,
-        status: "ok",
-        rawResponse: rawResponse as Record<string, unknown>,
-        extractedProperties: extracted,
-        severityMatched: severityMatch?.severity ?? null,
-        itemCount: items.length,
-        pageCount,
-      })
-      .onConflictDoNothing()
-      .returning({ profileId: tenantMonitorProfilesTable.profileId });
+    const profileId = await persistCheckProfile(persistProfile, {
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "ok",
+      rawResponse: rawResponse as Record<string, unknown>,
+      extractedProperties: extracted,
+      severityMatched: severityMatch?.severity ?? null,
+      itemCount: items.length,
+      pageCount,
+    });
 
     return {
       checkKey: check.key,
@@ -2505,27 +2529,23 @@ export async function executeMonitorCheck(opts: {
       severityLabel: severityMatch?.label ?? null,
       itemCount: items.length,
       pageCount,
-      profileId: row?.profileId,
+      profileId,
       ...(opts.includeItems ? { items } : {}),
     };
   } catch (err) {
     if (err instanceof ConsentRevokedError) {
       await markTenantConsentRevoked(tenantId);
-      const [row] = await db
-        .insert(tenantMonitorProfilesTable)
-        .values({
-          tenantId,
-          checkKey: check.key,
-          checkSchemaVersion: check.schemaVersion,
-          triggerId,
-          idempotencyKey,
-          status: "consent_revoked",
-          errorMessage: err.message,
-          itemCount: 0,
-          pageCount: 0,
-        })
-        .onConflictDoNothing()
-        .returning({ profileId: tenantMonitorProfilesTable.profileId });
+      const profileId = await persistCheckProfile(persistProfile, {
+        tenantId,
+        checkKey: check.key,
+        checkSchemaVersion: check.schemaVersion,
+        triggerId,
+        idempotencyKey,
+        status: "consent_revoked",
+        errorMessage: err.message,
+        itemCount: 0,
+        pageCount: 0,
+      });
 
       return {
         checkKey: check.key,
@@ -2535,7 +2555,7 @@ export async function executeMonitorCheck(opts: {
         errorMessage: err.message,
         itemCount: 0,
         pageCount: 0,
-        profileId: row?.profileId,
+        profileId,
       };
     }
 
@@ -2560,22 +2580,18 @@ export async function executeMonitorCheck(opts: {
         { checkKey: check.key, tenantId, feature: err.feature, code: err.graphErrorCode },
         "monitor-executor: check unavailable — tenant lacks required M365 license/add-on",
       );
-      const [row] = await db
-        .insert(tenantMonitorProfilesTable)
-        .values({
-          tenantId,
-          checkKey: check.key,
-          checkSchemaVersion: check.schemaVersion,
-          triggerId,
-          idempotencyKey,
-          status: "license_gap",
-          extractedProperties: extracted,
-          errorMessage: `Requires ${err.feature}`,
-          itemCount: 0,
-          pageCount: 0,
-        })
-        .onConflictDoNothing()
-        .returning({ profileId: tenantMonitorProfilesTable.profileId });
+      const profileId = await persistCheckProfile(persistProfile, {
+        tenantId,
+        checkKey: check.key,
+        checkSchemaVersion: check.schemaVersion,
+        triggerId,
+        idempotencyKey,
+        status: "license_gap",
+        extractedProperties: extracted,
+        errorMessage: `Requires ${err.feature}`,
+        itemCount: 0,
+        pageCount: 0,
+      });
 
       return {
         checkKey: check.key,
@@ -2585,7 +2601,7 @@ export async function executeMonitorCheck(opts: {
         errorMessage: `Requires ${err.feature}`,
         itemCount: 0,
         pageCount: 0,
-        profileId: row?.profileId,
+        profileId,
         licenseFeature: err.feature,
       };
     }
@@ -2622,22 +2638,18 @@ export async function executeMonitorCheck(opts: {
         { checkKey: check.key, tenantId, cmdletKey: check.psCmdletKey, feature },
         "monitor-executor: check unavailable — cmdlet not registered in this tenant's Security & Compliance session (license or role-group gap)",
       );
-      const [row] = await db
-        .insert(tenantMonitorProfilesTable)
-        .values({
-          tenantId,
-          checkKey: check.key,
-          checkSchemaVersion: check.schemaVersion,
-          triggerId,
-          idempotencyKey,
-          status: "license_gap",
-          extractedProperties: extracted,
-          errorMessage: `Requires ${feature}`,
-          itemCount: 0,
-          pageCount: 0,
-        })
-        .onConflictDoNothing()
-        .returning({ profileId: tenantMonitorProfilesTable.profileId });
+      const profileId = await persistCheckProfile(persistProfile, {
+        tenantId,
+        checkKey: check.key,
+        checkSchemaVersion: check.schemaVersion,
+        triggerId,
+        idempotencyKey,
+        status: "license_gap",
+        extractedProperties: extracted,
+        errorMessage: `Requires ${feature}`,
+        itemCount: 0,
+        pageCount: 0,
+      });
 
       return {
         checkKey: check.key,
@@ -2647,7 +2659,7 @@ export async function executeMonitorCheck(opts: {
         errorMessage: `Requires ${feature}`,
         itemCount: 0,
         pageCount: 0,
-        profileId: row?.profileId,
+        profileId,
         licenseFeature: feature,
       };
     }
@@ -2666,21 +2678,17 @@ export async function executeMonitorCheck(opts: {
       "monitor-executor: check failed",
     );
 
-    const [row] = await db
-      .insert(tenantMonitorProfilesTable)
-      .values({
-        tenantId,
-        checkKey: check.key,
-        checkSchemaVersion: check.schemaVersion,
-        triggerId,
-        idempotencyKey,
-        status: "error",
-        errorMessage: errorMessage.slice(0, 1000),
-        itemCount: 0,
-        pageCount: 0,
-      })
-      .onConflictDoNothing()
-      .returning({ profileId: tenantMonitorProfilesTable.profileId });
+    const profileId = await persistCheckProfile(persistProfile, {
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status: "error",
+      errorMessage: errorMessage.slice(0, 1000),
+      itemCount: 0,
+      pageCount: 0,
+    });
 
     return {
       checkKey: check.key,
@@ -2690,7 +2698,7 @@ export async function executeMonitorCheck(opts: {
       errorMessage,
       itemCount: 0,
       pageCount: 0,
-      profileId: row?.profileId,
+      profileId,
     };
   }
 }
@@ -2782,6 +2790,27 @@ export async function executeMonitoringPackage(opts: {
       completedAt: new Date().toISOString(),
     };
   }
+
+  // The resolved check list, logged in full before the first check runs (#543).
+  //
+  // This exists because "is check X actually in this package's run?" was, until
+  // now, unanswerable from the logs — the only observable was rows appearing in
+  // tenant_monitor_profiles afterwards, which several different code paths can
+  // write. That ambiguity is what turned a one-line answer into a multi-night
+  // investigation. `checkKeys` is the definitive, pre-execution answer for this
+  // run: if a key is absent here, THIS package run did not execute it, and any
+  // row that shows up for it came from somewhere else.
+  log.info(
+    {
+      packageKey,
+      tenantId,
+      triggerId,
+      linkedCheckCount,
+      resolvedCheckCount: orderedChecks.length,
+      checkKeys: orderedChecks.map(c => c.key),
+    },
+    "monitor-executor: resolved package check list — these and ONLY these will execute in this run",
+  );
 
   const results: CheckResult[] = [];
   let consentRevoked = false;

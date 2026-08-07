@@ -1878,7 +1878,16 @@ export const tenantCheckItemDetailsTable = pgTable("tenant_check_item_details", 
    * scan would return that run's cached, item-less result instead of fetching.
    */
   triggerId: text("trigger_id").notNull(),
-  /** The tenant_monitor_profiles row this same collection wrote, for traceability. */
+  /**
+   * ALWAYS NULL since #543, and kept only so existing rows stay readable.
+   *
+   * It used to hold the tenant_monitor_profiles row this same collection wrote.
+   * That write was the #543 bug — tenant_monitor_profiles is the unscoped
+   * scoring surface, so a detail pass writing to it silently became the score
+   * (see item-detail-collector.ts's NON-INTERFERENCE #3). The collection no
+   * longer writes one, so there is no profile row to point at. Nothing has ever
+   * read this column.
+   */
   profileId: uuid("profile_id"),
   status: text("status", { enum: TENANT_MONITOR_PROFILE_STATUS }).notNull().default("ok"),
   itemCount: integer("item_count").notNull().default(0),

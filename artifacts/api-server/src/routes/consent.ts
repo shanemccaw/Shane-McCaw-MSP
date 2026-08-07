@@ -934,16 +934,23 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // collected instead of being fetched reactively at the point of need.
   //
   // It never touches the scoring scan: its own package (engines: []), its own
-  // triggerId, its own table, and it resolves rather than rejects on every
-  // failure path — see item-detail-collector.ts's NON-INTERFERENCE notes. The
-  // packageKey is deliberately NOT the ordered product's `resolvedPackageKey`
-  // (that is the scoring package); detail collection covers the whole catalog.
+  // triggerId, its own table, no tenant_monitor_profiles row at all, and it
+  // resolves rather than rejects on every failure path — see
+  // item-detail-collector.ts's NON-INTERFERENCE notes.
+  //
+  // `packageKey` stays the detail package; `scopeToPackageKey` is the SCORING
+  // package this consent-time scan is actually running, mirroring the
+  // `resolvedPackageKey ?? "core:security-baseline"` default runDiagnostics
+  // applies just above. Collection covers the intersection of the two, not the
+  // whole catalog — see #543: an unscoped sweep re-ran every check curated out
+  // of the scoring package, on every scan.
   void (async () => {
     try {
       const { runItemDetailCollection } = await import("../lib/item-detail-collector.js");
       const detail = await runItemDetailCollection({
         tenantId: tenant,
         customerId: inviteRecord?.customerId ?? prospectCustomerId ?? consentTenant.id,
+        scopeToPackageKey: resolvedPackageKey ?? "core:security-baseline",
       });
       log.info(
         { tenant, runId: detail.runId, status: detail.status, checksWithItems: detail.checksWithItems, itemsPersisted: detail.itemsPersisted },

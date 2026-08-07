@@ -294,8 +294,15 @@ router.post(
       //    Its own package, triggerId and table — it cannot affect this run's
       //    scoring, findings or SSE stream. Skipped when the customer has no
       //    connected tenant, which the scoring run reports as its own failure.
+      //
+      //    `scopeToPackageKey` is the SAME packageKey the scoring run above was
+      //    given (#543): the detail package is linked to the entire check
+      //    catalogue, so without it this parallel pass re-ran every check an
+      //    operator had curated out of `packageKey` — the reported "excluded
+      //    checks still execute during a scan" bug, arriving here rather than
+      //    through executeMonitoringPackage.
       if (customer.tenantId) {
-        void runItemDetailCollection({ tenantId: customer.tenantId, customerId, parallelToRunId: runId })
+        void runItemDetailCollection({ tenantId: customer.tenantId, customerId, scopeToPackageKey: packageKey, parallelToRunId: runId })
           .catch((err: unknown) => {
             // runItemDetailCollection resolves rather than rejects; this is a
             // belt-and-braces guard against an unhandled rejection, never the

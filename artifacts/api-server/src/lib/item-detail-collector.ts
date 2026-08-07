@@ -21,19 +21,29 @@
  *   dialog needs it — the same concurrency shape the conversational quiz already
  *   uses alongside the main scan.
  *
- * NON-INTERFERENCE — the four things that keep this off the scoring path:
+ * NON-INTERFERENCE — the five things that keep this off the scoring path:
  *   1. Its own triggerId. The executor's idempotency key is
  *      "{tenantId}:{checkKey}:{triggerId}". Reusing the scoring run's triggerId
  *      would hand back that run's cached, item-LESS result — a silently empty
  *      item list. A distinct id is what makes this a real, separate fetch.
  *   2. Its own package (`engines: []`), so no engine recompute is triggered and
  *      it can never feed a score.
- *   3. It never awaits, blocks, or writes to anything the scoring run reads to
- *      build findings. `executeMonitorCheck` still writes its normal
- *      tenant_monitor_profiles row here (the same additive arrangement
- *      simulator_check_runs already relies on), which is a second collection of
- *      the same check, honestly recorded — not a mutation of the scan's rows.
- *   4. It never throws at its caller. Every failure mode resolves to a result
+ *   3. It writes NO tenant_monitor_profiles row at all (`persistProfile:false`).
+ *      >>> THIS WAS THE #543 BUG. <<< The original design wrote one, reasoning
+ *      that it was "a second collection of the same check, honestly recorded —
+ *      not a mutation of the scan's rows", by analogy with simulator_check_runs.
+ *      The analogy is false: simulator_check_runs is its own table, but
+ *      tenant_monitor_profiles is THE scoring surface, read by
+ *      fetchLatestMonitorProfileRows() as DISTINCT ON (check_key) ORDER BY
+ *      collected_at DESC with no package, run or trigger scoping. There is no
+ *      "alongside" in that table — the newest row per check simply IS the
+ *      tenant's signal. So this pass was (a) overwriting the scan's own reading
+ *      for shared checks whenever it finished later, and (b) manufacturing live
+ *      signals for checks the scan deliberately never ran.
+ *   4. It runs only checks the SCORING package for this scan actually ran
+ *      (`scopeToPackageKey`, see below) — so package curation is a real gate on
+ *      execution, not merely on scoring.
+ *   5. It never throws at its caller. Every failure mode resolves to a result
  *      object; the caller fires it and forgets it.
  *
  * THE TRUNCATION RULE: a persisted row holds the FULL item list or none of it
@@ -111,12 +121,32 @@ export async function runItemDetailCollection(opts: {
   customerId?: number | null;
   packageKey?: string;
   /**
+   * The SCORING package this collection is running alongside. REQUIRED, and
+   * deliberately not defaulted (#543).
+   *
+   * The detail package is linked to every active check in the catalog on
+   * purpose (see the #339 migration's scope decision), so without this the
+   * collector sweeps the whole ~133-check catalog on every single scan —
+   * including every check an operator has deliberately curated OUT of the
+   * scoring package. That is precisely the reported bug: checks excluded from
+   * `monitoring_package_checks` still executing during a scan against that
+   * package.
+   *
+   * The covered set is the INTERSECTION of the two packages. Nothing real is
+   * lost by that: item detail exists to let remediation documents list every
+   * affected item for a FINDING, findings only come from checks the scoring
+   * scan ran, so a check outside the scoring package can never have a finding
+   * whose detail anyone could cite. Pruning the detail package still works as
+   * documented — it narrows the intersection further.
+   */
+  scopeToPackageKey: string;
+  /**
    * The scoring run this collection was fired alongside. Correlation for the
    * logs only — this collector never reads or writes that run's rows.
    */
   parallelToRunId?: string;
 }): Promise<ItemDetailRunResult> {
-  const { tenantId, customerId = null, packageKey = ITEM_DETAIL_PACKAGE_KEY, parallelToRunId } = opts;
+  const { tenantId, customerId = null, packageKey = ITEM_DETAIL_PACKAGE_KEY, scopeToPackageKey, parallelToRunId } = opts;
   const runId = randomUUID();
   // Distinct from any scoring run's `diag-run-{runId}` — see NON-INTERFERENCE #1.
   const triggerId = `item-detail-${runId}`;
@@ -141,8 +171,14 @@ export async function runItemDetailCollection(opts: {
   const empty = { checksTotal: 0, checksWithItems: 0, checksOmitted: 0, checksWithoutItems: 0, itemsPersisted: 0 };
 
   let checks;
+  let droppedOutOfScope: string[] = [];
   try {
-    const loaded = await loadOrderedPackageChecks(packageKey);
+    // Both packages resolved through the SAME loader the executor uses, so
+    // "what the scan ran" here can never drift from what the scan actually ran.
+    const [loaded, scope] = await Promise.all([
+      loadOrderedPackageChecks(packageKey),
+      loadOrderedPackageChecks(scopeToPackageKey),
+    ]);
     if (!loaded.pkg || loaded.linkedCheckCount === 0) {
       // Loud, not silent: a missing package or an unpopulated junction means
       // every remediation document downstream will find no detail rows, and the
@@ -153,15 +189,43 @@ export async function runItemDetailCollection(opts: {
       );
       return done("no_checks", empty);
     }
-    checks = loaded.checks;
+
+    // Strict intersection, with NO fall-back to the full catalog when the
+    // scoring package resolves to nothing. An unresolvable scoring package
+    // means the scan itself ran zero checks, so there is zero detail to
+    // collect — falling back to "everything" here is exactly the #543 bug.
+    const scopeKeys = new Set(scope.checks.map(c => c.key));
+    checks = loaded.checks.filter(c => scopeKeys.has(c.key));
+    droppedOutOfScope = loaded.checks.filter(c => !scopeKeys.has(c.key)).map(c => c.key);
   } catch (err) {
-    log.error({ err, tenantId, packageKey, parallelToRunId }, "item-detail-collector: failed to load the detail package");
+    log.error({ err, tenantId, packageKey, scopeToPackageKey, parallelToRunId }, "item-detail-collector: failed to load the detail package");
+    return done("no_checks", empty);
+  }
+
+  if (checks.length === 0) {
+    log.warn(
+      { tenantId, packageKey, scopeToPackageKey, droppedOutOfScopeCount: droppedOutOfScope.length, parallelToRunId },
+      "item-detail-collector: nothing to collect — no check is in both the detail package and the scan's scoring package",
+    );
     return done("no_checks", empty);
   }
 
   log.info(
-    { runId, tenantId, customerId, packageKey, checkCount: checks.length, parallelToRunId },
-    "item-detail-collector: full-item collection started (parallel to the scoring scan)",
+    {
+      runId,
+      tenantId,
+      customerId,
+      packageKey,
+      scopeToPackageKey,
+      checkCount: checks.length,
+      // The counterpart to executeMonitoringPackage's own resolved-list line:
+      // between the two, every check this scan touches is named in the logs
+      // before it runs, with the reason it was or wasn't included.
+      checkKeys: checks.map(c => c.key),
+      droppedOutOfScopeCount: droppedOutOfScope.length,
+      parallelToRunId,
+    },
+    "item-detail-collector: full-item collection started (parallel to the scoring scan, scoped to its package)",
   );
 
   let checksTotal = 0;
@@ -175,7 +239,19 @@ export async function runItemDetailCollection(opts: {
     checksTotal++;
     let result: CheckResult;
     try {
-      result = await executeMonitorCheck({ check, tenantId, triggerId, includeItems: true });
+      result = await executeMonitorCheck({
+        check,
+        tenantId,
+        triggerId,
+        includeItems: true,
+        // NON-INTERFERENCE #3 — see this file's header. Never write a scoring row.
+        persistProfile: false,
+        // With persistProfile:false no idempotency row is written either, so the
+        // guard has nothing of ours to find; skipping it makes that explicit and
+        // removes the one way a reused triggerId could hand us the scan's cached,
+        // item-LESS result (NON-INTERFERENCE #1's hazard) instead of a real fetch.
+        skipIdempotency: true,
+      });
     } catch (err) {
       // executeMonitorCheck returns statuses rather than throwing, but a genuine
       // throw here must cost this run one check, not the whole collection.

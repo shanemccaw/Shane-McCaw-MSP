@@ -27,8 +27,29 @@ import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// The fake DB has to actually honour WHERE clauses now (#543): the collector
+// resolves TWO packages — the detail package and the scan's scoring package —
+// and the whole point of the fix is that they hold different check sets. A fake
+// that returns every junction row regardless of `package_key` cannot tell them
+// apart, and would pass whether or not the scoping works. These are the only
+// three drizzle helpers monitor-executor uses.
+vi.mock("drizzle-orm", () => ({
+  eq: (col: unknown, value: unknown) => ({ __op: "eq", col, value }),
+  and: (...conds: unknown[]) => ({ __op: "and", conds }),
+  inArray: (col: unknown, values: unknown[]) => ({ __op: "inArray", col, values }),
+}));
+
 vi.mock("@workspace/db", () => {
-  const table = (name: string) => ({ __table: name });
+  // Column access yields a {table, column} marker so the fake WHERE evaluator
+  // knows which field an eq()/inArray() is actually about.
+  const table = (name: string) =>
+    new Proxy({ __table: name } as Record<string, unknown>, {
+      get: (_t, prop) => {
+        if (prop === "__table") return name;
+        if (typeof prop === "symbol") return undefined;
+        return { __table: name, __col: String(prop) };
+      },
+    });
   const monitorChecksTable = table("monitor_checks");
   const monitoringPackagesTable = table("monitoring_packages");
   const monitoringPackageChecksTable = table("monitoring_package_checks");
@@ -62,13 +83,22 @@ vi.mock("@workspace/db", () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matches = (row: any, cond: any): boolean => {
+    if (!cond || typeof cond !== "object") return true;
+    if (cond.__op === "and") return (cond.conds as unknown[]).every(c => matches(row, c));
+    if (cond.__op === "eq") return row?.[cond.col?.__col] === cond.value;
+    if (cond.__op === "inArray") return (cond.values as unknown[]).includes(row?.[cond.col?.__col]);
+    return true;
+  };
+
   // Drizzle's builder is chainable AND awaitable at several different depths
   // (…where() for the checks load, …orderBy() for the junction, …limit() for
   // the single-row lookups), so the fake has to be all three.
   const query = (rows: unknown[]): Record<string, unknown> => ({
-    where: () => query(rows),
+    where: (cond: unknown) => query(rows.filter(r => matches(r, cond))),
     orderBy: () => query(rows),
-    limit: () => Promise.resolve(rows),
+    limit: (n: number) => Promise.resolve(rows.slice(0, n)),
     then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => Promise.resolve(rows).then(res, rej),
   });
 
@@ -234,10 +264,28 @@ function mockPaginatedGraph(pages: number) {
 const detailRows = () => state.inserts.filter(i => i.table === "tenant_check_item_details");
 const profileRows = () => state.inserts.filter(i => i.table === "tenant_monitor_profiles");
 
+/** The scoring package every test's scan runs — the collector scopes to it. */
+const SCORING_PACKAGE_KEY = "core:security-baseline";
+
+/**
+ * Junction rows for BOTH packages. Passing different key lists is how a test
+ * expresses "this check is in the detail catalogue but curated out of the scan"
+ * — the exact shape of the #543 bug.
+ */
+function linkChecks(detailKeys: string[], scoringKeys: string[]): void {
+  state.packageChecks = [
+    ...detailKeys.map((checkKey, i) => ({ packageKey: ITEM_DETAIL_PACKAGE_KEY, checkKey, sortOrder: i })),
+    ...scoringKeys.map((checkKey, i) => ({ packageKey: SCORING_PACKAGE_KEY, checkKey, sortOrder: i })),
+  ];
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  state.packages = [{ key: ITEM_DETAIL_PACKAGE_KEY, label: "Full Item Detail Collection", engines: [], status: "active" }];
-  state.packageChecks = [{ checkKey: baseCheck.key, sortOrder: 0 }];
+  state.packages = [
+    { key: ITEM_DETAIL_PACKAGE_KEY, label: "Full Item Detail Collection", engines: [], status: "active" },
+    { key: SCORING_PACKAGE_KEY, label: "Security Baseline", engines: ["health"], status: "active" },
+  ];
+  linkChecks([baseCheck.key], [baseCheck.key]);
   state.checks = [baseCheck];
   state.profiles = [];
   state.inserts = [];
@@ -250,7 +298,7 @@ describe("runItemDetailCollection — completeness", () => {
   it("persists EVERY page's items, not the first page rawResponse would have kept", async () => {
     mockPaginatedGraph(3);
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid", customerId: 42 });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", customerId: 42, scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     expect(result.status).toBe("completed");
     expect(result.checksTotal).toBe(1);
@@ -277,17 +325,18 @@ describe("runItemDetailCollection — completeness", () => {
     expect(row["packageKey"]).toBe(ITEM_DETAIL_PACKAGE_KEY);
     expect(row["tenantId"]).toBe("tenant-guid");
     expect(row["customerId"]).toBe(42);
-    // Traceable back to the profile row this same collection wrote.
-    expect(row["profileId"]).toBeTruthy();
+    // NULL since #543 — the collection no longer writes a tenant_monitor_profiles
+    // row, so there is none to point at. Traceability is via runId/triggerId.
+    expect(row["profileId"]).toBeNull();
   });
 
   it("writes one row per covered check, all under a single run id", async () => {
     const second = { ...baseCheck, id: 2, checkId: "uuid-2", key: "identity:mfa-registration" };
-    state.packageChecks = [{ checkKey: baseCheck.key, sortOrder: 0 }, { checkKey: second.key, sortOrder: 1 }];
+    linkChecks([baseCheck.key, second.key], [baseCheck.key, second.key]);
     state.checks = [baseCheck, second];
     mockPaginatedGraph(2);
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid" });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     const rows = detailRows();
     expect(rows).toHaveLength(2);
@@ -300,7 +349,7 @@ describe("runItemDetailCollection — completeness", () => {
     const oversized = "x".repeat(MAX_PERSISTED_ITEM_BYTES + 1024);
     mockFetch.mockResolvedValue(mockRes({ value: [{ id: "u1", blob: oversized }] }));
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid" });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     const row = detailRows()[0]!.values;
     expect(row["itemsOmitted"]).toBe(true);
@@ -323,7 +372,7 @@ describe("runItemDetailCollection — completeness", () => {
       headers: { get: () => null },
     });
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid" });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     const row = detailRows()[0]!.values;
     expect(row["status"]).toBe("error");
@@ -347,7 +396,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
         tenantId: "tenant-guid",
         triggerId: "diag-run-abc",
       }),
-      runItemDetailCollection({ tenantId: "tenant-guid", customerId: 42, parallelToRunId: "abc" }),
+      runItemDetailCollection({ tenantId: "tenant-guid", customerId: 42, scopeToPackageKey: SCORING_PACKAGE_KEY, parallelToRunId: "abc" }),
     ]);
 
     // The scoring run is untouched: same shape, same statuses, still completes.
@@ -369,17 +418,15 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
 
     const [, detail] = await Promise.all([
       executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc" }),
-      runItemDetailCollection({ tenantId: "tenant-guid" }),
+      runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY }),
     ]);
 
-    // Two profile rows — one per run — with DIFFERENT idempotency keys. Sharing
-    // a triggerId would collide on "{tenant}:{check}:{trigger}" and hand one run
-    // the other's cached, item-less result.
+    // Exactly ONE profile row — the scoring run's. Since #543 the detail pass
+    // writes none at all, so it can neither collide on
+    // "{tenant}:{check}:{trigger}" nor win the DISTINCT ON that decides which
+    // row is the tenant's live signal for this check.
     const keys = profileRows().map(r => String(r.values["idempotencyKey"]));
-    expect(keys).toHaveLength(2);
-    expect(new Set(keys).size).toBe(2);
-    expect(keys).toContain("tenant-guid:identity:stale-guest-accounts:diag-run-abc");
-    expect(keys.some(k => k.endsWith(`item-detail-${detail.runId}`))).toBe(true);
+    expect(keys).toEqual(["tenant-guid:identity:stale-guest-accounts:diag-run-abc"]);
 
     // The detail run's triggerId is recorded on its own row too, so a detail row
     // can always be traced back to the collection that produced it.
@@ -389,12 +436,14 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
   it("writes only to its own table — it never touches the scoring run's findings", async () => {
     mockPaginatedGraph(1);
 
-    await runItemDetailCollection({ tenantId: "tenant-guid" });
+    await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     const tables = new Set(state.inserts.map(i => i.table));
-    // tenant_monitor_profiles is written by executeMonitorCheck itself — the
-    // same additive arrangement simulator runs already rely on — and nothing else.
-    expect(tables).toEqual(new Set(["tenant_monitor_profiles", "tenant_check_item_details"]));
+    // Its own table and NOTHING else (#543). tenant_monitor_profiles used to be
+    // written here too, justified as an additive second recording; it isn't
+    // additive — it is the unscoped scoring surface, so writing it made this
+    // pass the score.
+    expect(tables).toEqual(new Set(["tenant_check_item_details"]));
   });
 
   it("resolves rather than rejecting when its own persistence fails, so a caller can void it", async () => {
@@ -403,7 +452,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
 
     const [scoring, detail] = await Promise.all([
       executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc" }),
-      runItemDetailCollection({ tenantId: "tenant-guid" }),
+      runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY }),
     ]);
 
     // No rejection, and the scoring run beside it is entirely unaffected.
@@ -417,7 +466,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
   it("reports no_checks — loudly, not silently — when the package is unpopulated", async () => {
     state.packageChecks = [];
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid" });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     expect(result.status).toBe("no_checks");
     expect(result.checksTotal).toBe(0);
@@ -427,17 +476,159 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
 
   it("stops on a revoked grant instead of re-proving it on every remaining check", async () => {
     const second = { ...baseCheck, id: 2, checkId: "uuid-2", key: "identity:mfa-registration" };
-    state.packageChecks = [{ checkKey: baseCheck.key, sortOrder: 0 }, { checkKey: second.key, sortOrder: 1 }];
+    linkChecks([baseCheck.key, second.key], [baseCheck.key, second.key]);
     state.checks = [baseCheck, second];
 
     const { ConsentRevokedError } = await import("../graph");
     mockFetch.mockRejectedValue(new ConsentRevokedError("tenant-guid"));
 
-    const result = await runItemDetailCollection({ tenantId: "tenant-guid" });
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
 
     expect(result.status).toBe("consent_revoked");
     expect(result.checksTotal).toBe(1);
     expect(detailRows()).toHaveLength(1);
     expect(detailRows()[0]!.values["status"]).toBe("consent_revoked");
+  });
+});
+
+// ── 3. #543 — package curation must gate EXECUTION, not just scoring ──────────
+//
+// The reported bug: checks deliberately removed from `monitoring_package_checks`
+// for a package still ended up with fresh `tenant_monitor_profiles` rows,
+// timestamped to the minute of a scan against that package. The scoring scan was
+// innocent — `executeMonitoringPackage` never ran them. This parallel collector
+// did, because it runs its OWN package, which the #339 migration links to every
+// active check in the catalogue, and every check it ran wrote a profile row.
+//
+// These tests pin both halves of the fix, from the outside: what executes, and
+// what reaches the scoring surface.
+
+describe("runItemDetailCollection — #543 package-curation gating", () => {
+  /** A check in the detail catalogue that has been curated OUT of the scan. */
+  const excluded = { ...baseCheck, id: 9, checkId: "uuid-9", key: "appgov:stale-app-registrations" };
+
+  beforeEach(() => {
+    state.checks = [baseCheck, excluded];
+    // Exactly the live shape: the detail package covers the whole catalogue,
+    // the scoring package covers a curated subset that excludes this check.
+    linkChecks([baseCheck.key, excluded.key], [baseCheck.key]);
+  });
+
+  it("never executes a check the scan's package excludes", async () => {
+    mockPaginatedGraph(1);
+
+    const result = await runItemDetailCollection({
+      tenantId: "tenant-guid",
+      customerId: 42,
+      scopeToPackageKey: SCORING_PACKAGE_KEY,
+    });
+
+    // Only the in-scope check ran. Before the fix this was 2 — the excluded
+    // check made a real Graph fetch on every single scan.
+    expect(result.checksTotal).toBe(1);
+    expect(detailRows().map(r => r.values["checkKey"])).toEqual([baseCheck.key]);
+    expect(detailRows().map(r => r.values["checkKey"])).not.toContain(excluded.key);
+  });
+
+  it("leaves NO tenant_monitor_profiles row for an excluded check — the reported symptom", async () => {
+    mockPaginatedGraph(1);
+
+    await Promise.all([
+      executeMonitoringPackage({
+        packageKey: SCORING_PACKAGE_KEY,
+        tenantId: "tenant-guid",
+        triggerId: "diag-run-abc",
+      }),
+      runItemDetailCollection({
+        tenantId: "tenant-guid",
+        customerId: 42,
+        scopeToPackageKey: SCORING_PACKAGE_KEY,
+        parallelToRunId: "abc",
+      }),
+    ]);
+
+    // This is the exact question Shane put to the live testbed: after a scan of
+    // this package, does the excluded check have a fresh profile row? It must not.
+    const profiledKeys = profileRows().map(r => String(r.values["checkKey"]));
+    expect(profiledKeys).not.toContain(excluded.key);
+    // And the only rows that exist at all are the scoring run's own.
+    expect(profiledKeys).toEqual([baseCheck.key]);
+    expect(profileRows().every(r => r.values["triggerId"] === "diag-run-abc")).toBe(true);
+  });
+
+  it("writes no profile row even for an IN-scope check, so it can never outrank the scan's own", async () => {
+    mockPaginatedGraph(1);
+
+    // Collector alone, no scoring run beside it: still zero profile rows.
+    await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
+
+    expect(profileRows()).toHaveLength(0);
+    // fetchLatestMonitorProfileRows() takes the newest row per check_key with no
+    // package/run scoping, so a later-finishing detail row would silently BECOME
+    // the tenant's signal for a check the scan had already read differently.
+    expect(detailRows()).toHaveLength(1);
+  });
+
+  it("collects nothing rather than falling back to the whole catalogue when the scan's package resolves to no checks", async () => {
+    mockPaginatedGraph(1);
+    // Scoring package present but unpopulated — the scan itself ran zero checks.
+    linkChecks([baseCheck.key, excluded.key], []);
+
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
+
+    // Falling back to "everything" here is exactly the bug, so an empty scope
+    // must mean an empty collection — never a full-catalogue sweep.
+    expect(result.status).toBe("no_checks");
+    expect(result.checksTotal).toBe(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("collects nothing when the scan's package does not exist at all", async () => {
+    mockPaginatedGraph(1);
+
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: "no:such-package" });
+
+    expect(result.status).toBe("no_checks");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("still honours detail-package pruning within the scan's scope", async () => {
+    mockPaginatedGraph(1);
+    // Both checks scored, but the detail package has been pruned to one — the
+    // documented way (#339) to skip item collection for a heavy check. The
+    // intersection must respect that too, not just the scoring side.
+    linkChecks([baseCheck.key], [baseCheck.key, excluded.key]);
+
+    const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
+
+    expect(result.checksTotal).toBe(1);
+    expect(detailRows().map(r => r.values["checkKey"])).toEqual([baseCheck.key]);
+  });
+});
+
+describe("executeMonitoringPackage — #543 resolved-check-list logging", () => {
+  it("names every check that will run, and only those, before the first one runs", async () => {
+    const excluded = { ...baseCheck, id: 9, checkId: "uuid-9", key: "appgov:stale-app-registrations" };
+    state.checks = [baseCheck, excluded];
+    linkChecks([baseCheck.key, excluded.key], [baseCheck.key]);
+    mockPaginatedGraph(1);
+
+    await executeMonitoringPackage({
+      packageKey: SCORING_PACKAGE_KEY,
+      tenantId: "tenant-guid",
+      triggerId: "diag-run-abc",
+    });
+
+    // The line that makes "did this run execute check X?" answerable from the
+    // logs alone, rather than inferred from rows several paths can write.
+    const { logger } = await import("../logger");
+    const resolved = (logger.info as unknown as Mock).mock.calls.find(
+      (call: unknown[]) => typeof call[1] === "string" && call[1].includes("resolved package check list"),
+    );
+    expect(resolved).toBeDefined();
+    const meta = resolved![0] as { checkKeys: string[]; packageKey: string };
+    expect(meta.packageKey).toBe(SCORING_PACKAGE_KEY);
+    expect(meta.checkKeys).toEqual([baseCheck.key]);
+    expect(meta.checkKeys).not.toContain(excluded.key);
   });
 });
