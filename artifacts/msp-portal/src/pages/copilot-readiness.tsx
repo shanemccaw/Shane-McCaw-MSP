@@ -587,6 +587,27 @@ export default function CopilotReadinessPage() {
         </button>
       ) : null}
 
+      {!isPreview && scanStatusData?.isTestbed ? (
+        <button
+          onClick={() => live.refresh()}
+          style={{
+            position: "fixed",
+            top: 44,
+            right: 12,
+            zIndex: 9999,
+            padding: "4px 10px",
+            fontSize: 11,
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            color: "rgba(255,255,255,0.7)",
+            cursor: "pointer",
+          }}
+        >
+          [DEBUG] Reload Data
+        </button>
+      ) : null}
+
       <RevealScanOverlay
         open={overlayOpen}
         tenantLabel={tenantStrip(view.tenant)}
