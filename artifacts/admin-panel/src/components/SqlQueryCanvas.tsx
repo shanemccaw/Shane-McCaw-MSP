@@ -4,7 +4,7 @@ import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { keymap, EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Play, Clock } from "lucide-react";
+import { Play, Clock, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
@@ -51,6 +51,17 @@ const editorSurfaceTheme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "#11151C80" },
 });
 
+// Mirrors SimulatorLeftTree.tsx's SavedScript shape — the full row is what
+// arrives as the simulator-load-script/simulator-run-script event detail.
+interface SavedScript {
+  id: number;
+  name: string;
+  category: string;
+  query: string;
+  isDestructive: boolean;
+  isResetScript: boolean;
+}
+
 interface SqlQueryCanvasProps {
   output: SqlOutput;
   onOutputChange: (next: SqlOutput) => void;
@@ -61,6 +72,8 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
   const [query, setQuery] = useState("SELECT * FROM msps LIMIT 10;");
   const [hasSelection, setHasSelection] = useState(false);
   const [schemaMap, setSchemaMap] = useState<Record<string, { label: string; detail: string }[]> | null>(null);
+  const [loadedScript, setLoadedScript] = useState<SavedScript | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const cmRef = useRef<ReactCodeMirrorRef>(null);
 
   const executeSql = async (statementText: string) => {
@@ -116,12 +129,46 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
   const handleRunClickRef = useRef(handleRunClick);
   handleRunClickRef.current = handleRunClick;
 
+  // Same PUT endpoint/logic as ModalContext.tsx's ScriptEditorModal save
+  // (isNew=false branch) — updates the loaded script in place with the
+  // editor's current contents rather than duplicating the save mechanism.
+  const handleSaveScript = async () => {
+    if (!loadedScript) return;
+    setIsSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/simulator/sql/scripts/${loadedScript.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: loadedScript.name,
+          category: loadedScript.category,
+          query,
+          isDestructive: loadedScript.isDestructive,
+          isResetScript: loadedScript.isResetScript,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Script updated successfully");
+        setLoadedScript({ ...loadedScript, query });
+        window.dispatchEvent(new CustomEvent("simulator-scripts-updated"));
+      } else {
+        toast.error(data.error || "Failed to save script");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error when saving script");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Saved scripts clicked in the Explorer tree load into this editor; the
   // center canvas listens for the same event to switch to the SQL Query tab.
   useEffect(() => {
     const handleLoadScript = (e: CustomEvent) => {
       const script = e.detail;
       setQuery(script.query);
+      setLoadedScript(script);
       toast.info(`Loaded script: ${script.name}`);
     };
     window.addEventListener("simulator-load-script", handleLoadScript as EventListener);
@@ -136,6 +183,7 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
     const handleRunScript = (e: CustomEvent) => {
       const script = e.detail;
       setQuery(script.query);
+      setLoadedScript(script);
       toast.info(`Running script: ${script.name}`);
       void executeSqlRef.current(script.query);
     };
@@ -217,6 +265,17 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
           <Play className={`h-3 w-3 ${output.isExecuting ? "animate-spin" : ""}`} />
           {output.isExecuting ? "Running…" : hasSelection ? "Run Selection" : "Run All"}
         </button>
+        {loadedScript && (
+          <button
+            onClick={handleSaveScript}
+            disabled={isSaving}
+            className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+            title={`Save changes to "${loadedScript.name}"`}
+          >
+            <Save className="h-3 w-3" />
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+        )}
         {output.statements && output.statements.length > 0 && (
           <span className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3 text-emerald-400" />
