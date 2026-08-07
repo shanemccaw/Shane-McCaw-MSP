@@ -21,6 +21,7 @@ import {
   isGenerationUnknown,
   orderPillarFindings,
   pillarTrend,
+  SCANNING_PILLAR_CHIP,
   UNEVALUATED_PILLAR_CHIP,
   remediatedScore,
   scoredPillarCount,
@@ -180,6 +181,134 @@ describe("pillar views", () => {
     // "not enough data" must never be dressed up as a clean result.
     assert.notEqual(view?.chips[0], CLEAN_PILLAR_HEADLINE);
     assert.equal(view?.headline, null);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * #518 — insufficient_data while a scan is genuinely running is a
+   * different fact from a complete-but-thin scan
+   * ---------------------------------------------------------------- */
+
+  it("#518: insufficient_data + scan.running renders still-scanning copy, not the insufficient-data fallback", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "governance",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a governance impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "governance");
+    // The wire's own verdict is untouched — only presentation changes.
+    assert.equal(view?.evaluation.status, "insufficient_data");
+    assert.deepEqual(view?.chips, [SCANNING_PILLAR_CHIP]);
+    assert.equal(view?.chipsAreReal, false);
+    assert.equal(view?.headline, SCANNING_PILLAR_CHIP);
+    assert.notEqual(view?.chips[0], INSUFFICIENT_PILLAR_CHIP);
+  });
+
+  it("#518: the same insufficient_data pillar falls through to #517's copy once scan.running is false", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "governance",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a governance impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    // Explicit `false`, and the default (omitted) argument, both prove this is
+    // a scan-state-gated override, not a blanket rewrite of #517's behaviour.
+    for (const view of [
+      buildPillarViews(payload, false).find((v) => v.key === "governance"),
+      buildPillarViews(payload).find((v) => v.key === "governance"),
+    ]) {
+      assert.deepEqual(view?.chips, [INSUFFICIENT_PILLAR_CHIP]);
+      assert.equal(view?.headline, null);
+    }
+  });
+
+  it("#518: not_evaluated is left completely untouched by scan.running — it is a structural gap, not a timing one", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [{ pillar: "adoption", score: null, stats: [], findings: [] }],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "adoption");
+    assert.equal(view?.evaluation.status, "not_evaluated");
+    assert.deepEqual(view?.chips, [UNEVALUATED_PILLAR_CHIP]);
+    assert.notEqual(view?.chips[0], SCANNING_PILLAR_CHIP);
+  });
+
+  it("#518: a scored, genuinely-clean pillar keeps its earned clean state regardless of scan.running", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "compliance",
+          score: 88,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 4,
+            minRequiredSignals: 2,
+            reason: "scored from 4 evaluable compliance signals",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload, true).find((v) => v.key === "compliance");
+    assert.deepEqual(view?.chips, [CLEAN_PILLAR_HEADLINE]);
+    assert.equal(view?.headline, CLEAN_PILLAR_HEADLINE);
+  });
+
+  it("#518: buildJourneyView threads scan.running through to its pillars", () => {
+    const status: WireAssessmentStatus = {
+      copilotGate: { score: null, threshold: 82, status: null },
+    };
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "governance",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a governance impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const running = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: payload,
+      status,
+      scanRunning: true,
+    });
+    const idle = buildJourneyView({ tenant: TENANT, pillarStats: payload, status });
+    assert.deepEqual(
+      running.pillars.find((p) => p.key === "governance")?.chips,
+      [SCANNING_PILLAR_CHIP],
+    );
+    assert.deepEqual(
+      idle.pillars.find((p) => p.key === "governance")?.chips,
+      [INSUFFICIENT_PILLAR_CHIP],
+    );
   });
 
   it("#517: real stat readouts and real findings still win over the explanatory fallback", () => {

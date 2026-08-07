@@ -208,6 +208,13 @@ export function useCopilotJourney(options?: {
     [options?.tenantName, options?.seatCount, scanStatus.data?.lastScanAt],
   );
 
+  // #518: whether a scan is genuinely running right now, needed by `view` (a
+  // pillar below the #517 evaluable-signal floor because the run hasn't
+  // finished collecting is a different fact from one that stayed thin) as well
+  // as by `scan` below — one source, so the two can't disagree about it.
+  const scanData = scanStatus.data;
+  const scanRunning = Boolean(scanData?.active ?? null);
+
   const view = useMemo(
     () =>
       buildJourneyView({
@@ -216,11 +223,11 @@ export function useCopilotJourney(options?: {
         status,
         projectedByPillar: options?.projectedByPillar,
         isPreview: false,
+        scanRunning,
       }),
-    [tenant, pillarStats, status, options?.projectedByPillar],
+    [tenant, pillarStats, status, options?.projectedByPillar, scanRunning],
   );
 
-  const scanData = scanStatus.data;
   const scan: JourneyScanState = useMemo(() => {
     const active = scanData?.active ?? null;
     const progressState = scanStatus.scanCheckProgress;
@@ -232,7 +239,7 @@ export function useCopilotJourney(options?: {
     const total = progressState?.total ?? active?.checksTotal ?? 0;
 
     return {
-      running: Boolean(active),
+      running: scanRunning,
       everScanned: scanData?.everScanned === true,
       progress: total > 0 ? Math.max(0, Math.min(1, done / total)) : 0,
       checksDone: done,
@@ -240,7 +247,7 @@ export function useCopilotJourney(options?: {
       currentCheckLabel: progressState?.checkLabel ?? null,
       runId: active?.runId ?? null,
     };
-  }, [scanData, scanStatus.scanCheckProgress]);
+  }, [scanData, scanStatus.scanCheckProgress, scanRunning]);
 
   const refresh = useCallback(() => {
     void load("both");

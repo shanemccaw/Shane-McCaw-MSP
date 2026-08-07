@@ -435,6 +435,20 @@ export const INSUFFICIENT_PILLAR_CHIP = "Not enough scan data to score this pill
 export const UNEVALUATED_PILLAR_CHIP = "This pillar was not evaluated in your scan.";
 
 /**
+ * #518: what `insufficient_data` means while the scan producing this pillar's
+ * signals is still running, instead of `INSUFFICIENT_PILLAR_CHIP`.
+ *
+ * `evaluatePillarDisplay` (server-side, #517) has no notion of an in-flight
+ * run — its floor is a count of evaluable signals seen so far, so a pillar
+ * whose checks simply haven't executed yet reads identically to one whose
+ * completed scan genuinely stayed thin. Only the client knows a run is live
+ * (`scan.running`, Scene 0's own signal), so this substitution happens here,
+ * not in `pillarEvaluation()` — the wire's `insufficient_data` verdict itself
+ * is unchanged and still the honest fact once the run finishes.
+ */
+export const SCANNING_PILLAR_CHIP = "Still scanning this pillar — check back when the scan completes.";
+
+/**
  * The wire's evaluation verdict, or the honest reconstruction of it for a
  * payload that predates #517 (and for the design fixture, which has none).
  *
@@ -467,6 +481,7 @@ function pillarChips(
   statChips: readonly string[],
   ordered: readonly WirePillarFinding[],
   evaluation: WirePillarEvaluation,
+  stillScanning: boolean,
 ): { chips: readonly string[]; chipsAreReal: boolean } {
   if (statChips.length) return { chips: statChips, chipsAreReal: true };
 
@@ -474,6 +489,10 @@ function pillarChips(
   if (findingChips.length) return { chips: findingChips, chipsAreReal: true };
 
   if (evaluation.status === "insufficient_data") {
+    // #518: a scan in progress hasn't finished collecting this pillar's
+    // signals yet — a different fact from a complete-but-thin scan, so it
+    // gets its own honest line instead of `INSUFFICIENT_PILLAR_CHIP`.
+    if (stillScanning) return { chips: [SCANNING_PILLAR_CHIP], chipsAreReal: false };
     return { chips: [INSUFFICIENT_PILLAR_CHIP], chipsAreReal: false };
   }
   if (evaluation.status === "not_evaluated") {
@@ -541,6 +560,10 @@ export function orderPillarFindings(
 
 export function buildPillarViews(
   payload: WirePillarStatsPayload | null | undefined,
+  // #518: true while a scan is genuinely running right now (Scene 0). Purely
+  // additive — every existing caller (tests, the design fixture) omits it and
+  // gets today's behaviour unchanged.
+  scanRunning = false,
 ): JourneyPillarView[] {
   const byKey = new Map<string, WirePillarCard>();
   (payload?.pillars ?? []).forEach((p) => byKey.set(p.pillar, p));
@@ -566,8 +589,15 @@ export function buildPillarViews(
     // the `null` that renders the scenes' "no finding was recorded" state.
     const evaluation = pillarEvaluation(card);
     const wasEvaluated = evaluation.status === "scored";
-    const leadTitle = ordered[0]?.title ?? (wasEvaluated ? CLEAN_PILLAR_HEADLINE : null);
-    const { chips, chipsAreReal } = pillarChips(statChips, ordered, evaluation);
+    // #518: `insufficient_data` while a scan is live means "hasn't finished
+    // collecting yet", not "stayed thin" — only `insufficient_data` gets this
+    // treatment; `not_evaluated` (no evaluable rule exists at all) is a
+    // structural gap unrelated to scan timing and is left alone.
+    const stillScanning = scanRunning && evaluation.status === "insufficient_data";
+    const leadTitle =
+      ordered[0]?.title ??
+      (wasEvaluated ? CLEAN_PILLAR_HEADLINE : stillScanning ? SCANNING_PILLAR_CHIP : null);
+    const { chips, chipsAreReal } = pillarChips(statChips, ordered, evaluation, stillScanning);
 
     return {
       key,
@@ -728,8 +758,10 @@ export function buildJourneyView(input: {
   readonly status: WireAssessmentStatus | null | undefined;
   readonly projectedByPillar?: Readonly<Partial<Record<PillarKey, number>>>;
   readonly isPreview?: boolean;
+  /** #518: true while a scan is genuinely running right now (Scene 0). */
+  readonly scanRunning?: boolean;
 }): JourneyView {
-  const pillars = buildPillarViews(input.pillarStats);
+  const pillars = buildPillarViews(input.pillarStats, input.scanRunning === true);
   // `copilotGate.score` is the canonical headline: the engine's Copilot pillar.
   // `copilotReadiness.overall.score` now carries the identical number, but it is
   // null whenever the last completed run has no tenantId (the sub-indicators
