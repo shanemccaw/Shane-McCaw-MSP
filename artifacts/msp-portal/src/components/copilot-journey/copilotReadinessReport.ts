@@ -263,6 +263,19 @@ const WORKLOAD_PICKS: readonly StatPick[] = [
 function buildVerdict(view: JourneyView, scoredPillars: number): ReadinessReport["verdict"] {
   const score = view.readinessScore;
   if (score === null) {
+    // #517: WHICH kind of no-score this is decides the sentence. The line below
+    // used to assert one reason for all of them — "has not yet evaluated a rule
+    // that feeds the Copilot pillar" — which is simply untrue of a tenant whose
+    // scan evaluated some Copilot-impacting rules and merely too few of them.
+    // A report that gets the reason wrong is the same failure as one that gets
+    // the number wrong, and it is stated with the same confidence.
+    if (view.readinessEvaluation.status === "insufficient_data") {
+      return {
+        eyebrow: "The verdict",
+        headline: "No scan results to score",
+        sub: `The Copilot Gate needs ${COPILOT_GATE_TARGET}. This tenant's scan did cover Copilot-impacting checks, but too few of them for a score to mean anything — so none is stated here, in either direction. Re-running the scan against the full package is what produces one.`,
+      };
+    }
     return {
       eyebrow: "The verdict",
       headline: "No readiness score yet",

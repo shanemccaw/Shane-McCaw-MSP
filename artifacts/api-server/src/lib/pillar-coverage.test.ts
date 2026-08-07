@@ -187,14 +187,27 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
     //   license-gap check --mapping--> hasAADP1orP2
     //     → rule profile_key_falsy hasAADP1orP2       (2026-07-22-license-gap-sales-offer-wiring.sql)
     // NONE of these sourceKeys equal a check key — the old join matched zero.
+    // TWO evaluable signals per pillar, not one, since #517: a pillar backed by
+    // a single signal is now withheld as `insufficient_data` rather than scored,
+    // so a one-rule fixture would exercise the floor instead of the linkage this
+    // test is about. Both extra rules read a second real mapping targetField on
+    // the SAME check, which is exactly the shape the regression describes.
     const rules = [
       makeRule({
         signalKey: "licensing:has_project_online", ruleType: "profile_key_gt",
         sourceKey: "projectPlanFiveCount", compareValue: "0", licensingImpact: 10,
       }),
       makeRule({
+        signalKey: "licensing:has_visio", ruleType: "profile_key_gt",
+        sourceKey: "visioPlanTwoCount", compareValue: "0", licensingImpact: 10,
+      }),
+      makeRule({
         signalKey: "security:lacks_entra_premium", ruleType: "profile_key_falsy",
         sourceKey: "hasAADP1orP2", securityImpact: 15,
+      }),
+      makeRule({
+        signalKey: "security:lacks_defender", ruleType: "profile_key_falsy",
+        sourceKey: "hasDefender", securityImpact: 15,
       }),
     ];
     wireScenario({
@@ -202,11 +215,17 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
       checkDefinitions: [
         {
           key: "licensing:project-online-detection",
-          mapping: [{ sourceField: "skuPartNumber", targetField: "projectPlanFiveCount", transform: "countEquals('PROJECTPREMIUM')" }],
+          mapping: [
+            { sourceField: "skuPartNumber", targetField: "projectPlanFiveCount", transform: "countEquals('PROJECTPREMIUM')" },
+            { sourceField: "skuPartNumber", targetField: "visioPlanTwoCount", transform: "countEquals('VISIOCLIENT')" },
+          ],
         },
         {
           key: "identity:entra-plan-detection",
-          mapping: [{ sourceField: "servicePlans", targetField: "hasAADP1orP2", transform: "exists" }],
+          mapping: [
+            { sourceField: "servicePlans", targetField: "hasAADP1orP2", transform: "exists" },
+            { sourceField: "servicePlans", targetField: "hasDefender", transform: "exists" },
+          ],
         },
       ],
       rules,
@@ -221,17 +240,24 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
   });
 
   it("threshold rules link via bare checkKey (evaluateRule reads <sourceKey>__itemCount stamped per check)", async () => {
+    // Two threshold rules on the same check, both firing, so the pillar clears
+    // the #517 evaluable-signal floor without changing what this test asserts:
+    // raw 16 of theoreticalMax 16 is still a fully-realized risk → display 0.
     const rules = [
       makeRule({
         signalKey: "governance:orphaned-teams", ruleType: "threshold",
         sourceKey: "teams:orphaned-teams", compareValue: "3", governanceImpact: 8,
+      }),
+      makeRule({
+        signalKey: "governance:orphaned-teams-severe", ruleType: "threshold",
+        sourceKey: "teams:orphaned-teams", compareValue: "4", governanceImpact: 8,
       }),
     ];
     wireScenario({
       packageCheckKeys: ["teams:orphaned-teams"],
       checkDefinitions: [{ key: "teams:orphaned-teams" }],
       rules,
-      profile: { "teams:orphaned-teams__itemCount": 5 }, // fires: 5 > 3 → raw 8 of max 8 → display 0
+      profile: { "teams:orphaned-teams__itemCount": 5 }, // both fire: 5 > 3 and 5 > 4
     });
 
     const covered = await getPillarCoverage("core:enhanced-monitoring", 4);
@@ -240,10 +266,16 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
   });
 
   it("profile_key_* rules on a raw-properties extraction key (<prop>_count/_first/_values) count as coverage", async () => {
+    // Two rules on two extraction keys of the same raw property, clearing the
+    // #517 floor while keeping the claim (an extraction key is real coverage).
     const rules = [
       makeRule({
         signalKey: "adoption:no-owners", ruleType: "profile_key_eq",
         sourceKey: "owner_count", compareValue: "0", adoptionImpact: 6,
+      }),
+      makeRule({
+        signalKey: "adoption:no-named-owner", ruleType: "profile_key_falsy",
+        sourceKey: "owner_first", adoptionImpact: 6,
       }),
     ];
     wireScenario({
@@ -259,10 +291,17 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
   });
 
   it("bridged legacy keys count only when their real producer check is in the package (securityScore ← security:secure-score)", async () => {
+    // Both rules read the SAME bridged key, so the producer-gating claim is
+    // unchanged — they are covered together or not at all — while the pillar
+    // clears the #517 evaluable-signal floor.
     const rules = [
       makeRule({
         signalKey: "security:low-secure-score", ruleType: "profile_key_lt",
         sourceKey: "securityScore", compareValue: "60", securityImpact: 20,
+      }),
+      makeRule({
+        signalKey: "security:very-low-secure-score", ruleType: "profile_key_lt",
+        sourceKey: "securityScore", compareValue: "30", securityImpact: 20,
       }),
     ];
 
@@ -286,10 +325,17 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
   });
 
   it("findings_keyword rules link when the keyword appears inside a covered check key (deriveMonitorFindings strings start with it)", async () => {
+    // Two keywords, both genuinely inside the covered check key, so the
+    // case-insensitive substring claim is unchanged and the pillar clears the
+    // #517 evaluable-signal floor.
     const rules = [
       makeRule({
         signalKey: "collab:sharepoint-issues", ruleType: "findings_keyword",
         sourceKey: "SharePoint", architectureImpact: 5,
+      }),
+      makeRule({
+        signalKey: "collab:anonymous-link-issues", ruleType: "findings_keyword",
+        sourceKey: "anonymous", architectureImpact: 5,
       }),
     ];
     wireScenario({
@@ -503,14 +549,24 @@ describe("getPillarCoverage — security pillar (Security Engine, combined one l
   });
 
   it("a broader package surfaces all seven pillars when coverage genuinely exists — security appended after the six", async () => {
+    // TWO rules per pillar (#517's evaluable-signal floor) — the second reads a
+    // second real check, which is also the more realistic shape for a "broad
+    // package" fixture. Neither fires, so every pillar still displays 100.
     const rules = [
       makeRule({ signalKey: "sig:gov", ruleType: "profile_key_truthy", sourceKey: "check:gov", governanceImpact: 10 }),
+      makeRule({ signalKey: "sig:gov-b", ruleType: "profile_key_truthy", sourceKey: "check:gov-b", governanceImpact: 10 }),
       makeRule({ signalKey: "sig:comp", ruleType: "profile_key_truthy", sourceKey: "check:comp", complianceImpact: 10 }),
+      makeRule({ signalKey: "sig:comp-b", ruleType: "profile_key_truthy", sourceKey: "check:comp-b", complianceImpact: 10 }),
       makeRule({ signalKey: "sig:adopt", ruleType: "profile_key_truthy", sourceKey: "check:adopt", adoptionImpact: 10 }),
+      makeRule({ signalKey: "sig:adopt-b", ruleType: "profile_key_truthy", sourceKey: "check:adopt-b", adoptionImpact: 10 }),
       makeRule({ signalKey: "sig:copilot", ruleType: "profile_key_truthy", sourceKey: "check:copilot", copilotImpact: 10 }),
+      makeRule({ signalKey: "sig:copilot-b", ruleType: "profile_key_truthy", sourceKey: "check:copilot-b", copilotImpact: 10 }),
       makeRule({ signalKey: "sig:arch", ruleType: "profile_key_truthy", sourceKey: "check:arch", architectureImpact: 10 }),
+      makeRule({ signalKey: "sig:arch-b", ruleType: "profile_key_truthy", sourceKey: "check:arch-b", architectureImpact: 10 }),
       makeRule({ signalKey: "sig:lic", ruleType: "profile_key_truthy", sourceKey: "check:lic", licensingImpact: 10 }),
+      makeRule({ signalKey: "sig:lic-b", ruleType: "profile_key_truthy", sourceKey: "check:lic-b", licensingImpact: 10 }),
       makeRule({ signalKey: "sig:sec", ruleType: "profile_key_truthy", sourceKey: "check:sec", securityImpact: 10 }),
+      makeRule({ signalKey: "sig:sec-b", ruleType: "profile_key_truthy", sourceKey: "check:sec-b", securityImpact: 10 }),
     ];
     wireScenario({
       packageCheckKeys: rules.map((r) => r.sourceKey),
@@ -529,10 +585,14 @@ describe("getPillarCoverage — security pillar (Security Engine, combined one l
 
   it("honest omission stands: a package whose checks feed no security-impacting signal gets no security entry", async () => {
     const rules = [
-      // The package's own check — governance only.
+      // The package's own check — governance only. Two signals off the one check
+      // so governance clears #517's evaluable-signal floor and the assertion
+      // below is about the SECURITY omission, not about the floor.
       makeRule({ signalKey: "sig:gov", ruleType: "profile_key_truthy", sourceKey: "check:gov", governanceImpact: 10 }),
+      makeRule({ signalKey: "sig:gov-b", ruleType: "profile_key_truthy", sourceKey: "check:gov__itemCount", governanceImpact: 10 }),
       // A security rule EXISTS system-wide, but no check in this package feeds it.
       makeRule({ signalKey: "sig:sec", ruleType: "profile_key_truthy", sourceKey: "check:sec", securityImpact: 20 }),
+      makeRule({ signalKey: "sig:sec-b", ruleType: "profile_key_truthy", sourceKey: "check:sec-b", securityImpact: 20 }),
     ];
     wireScenario({
       packageCheckKeys: ["check:gov"],
@@ -552,6 +612,13 @@ describe("getPillarCoverage — security pillar (Security Engine, combined one l
       makeRule({
         signalKey: "sig:multi", ruleType: "profile_key_truthy", sourceKey: "check:multi",
         governanceImpact: 5, securityImpact: 5, // nothing for the other five pillars
+      }),
+      // A second signal off the same check, weighted on the same two pillars, so
+      // both clear #517's evaluable-signal floor. The other five pillars stay at
+      // zero weight — which is what this test is actually asserting.
+      makeRule({
+        signalKey: "sig:multi-b", ruleType: "profile_key_truthy", sourceKey: "check:multi__itemCount",
+        governanceImpact: 5, securityImpact: 5,
       }),
     ];
     wireScenario({
@@ -598,36 +665,55 @@ describe("computePillarDisplayScore — shared normalization, no fabrication", (
   });
 
   it("computeDisplayHealth is unchanged for the six health pillars", () => {
+    // Two governance rules, both firing (#517's evaluable-signal floor): raw 20
+    // of theoreticalMax 20 is still a fully-realized risk → display 0.
     const govRule = makeRule({
       signalKey: "sig:gov", ruleType: "profile_key_truthy", sourceKey: "check:gov", governanceImpact: 10,
     });
-    const output = computeHealthEngine({ "check:gov": true }, [], [govRule], []);
-    const display = computeDisplayHealth(output, [govRule], [], new Set(["sig:gov"]));
+    const govRuleB = makeRule({
+      signalKey: "sig:gov-b", ruleType: "profile_key_truthy", sourceKey: "check:gov-b", governanceImpact: 10,
+    });
+    const rules = [govRule, govRuleB];
+    const output = computeHealthEngine({ "check:gov": true, "check:gov-b": true }, [], rules, []);
+    const display = computeDisplayHealth(output, rules, [], new Set(["sig:gov", "sig:gov-b"]));
 
     expect(display.map((p) => p.pillar)).toEqual([...HEALTH_PILLARS]);
-    expect(display.find((p) => p.pillar === "governance")!.displayScore).toBe(0); // 10 of max 10 fired
+    expect(display.find((p) => p.pillar === "governance")!.displayScore).toBe(0); // 20 of max 20 fired
     for (const p of display) {
       if (p.pillar !== "governance") expect(p.displayScore).toBeNull(); // no impacts configured
     }
   });
 
   it("theoreticalMax excludes non-evaluable signals — a non-producible rule's impact must not dilute the denominator", () => {
-    // Governance real risk fully realized: raw 20 of an evaluable max 20 → 0.
+    // Governance real risk fully realized: raw 40 of an evaluable max 40 → 0.
+    // TWO real rules, both firing, so the pillar clears #517's evaluable-signal
+    // floor and this test measures the denominator claim rather than the floor.
     const realRule = makeRule({
       signalKey: "gov:real", ruleType: "profile_key_truthy", sourceKey: "gov:real-check", governanceImpact: 20,
+    });
+    const realRuleB = makeRule({
+      signalKey: "gov:real-b", ruleType: "profile_key_truthy", sourceKey: "gov:real-check-b", governanceImpact: 20,
     });
     // Orphaned rule: extreme impact but its signal is NOT in the evaluable set.
     const orphanRule = makeRule({
       signalKey: "gov:orphan", ruleType: "profile_key_truthy", sourceKey: "gov:nonexistent", governanceImpact: 1000,
     });
-    const output = computeHealthEngine({ "gov:real-check": true }, [], [realRule, orphanRule], []);
-    const impacts = getSignalHealthImpacts([realRule, orphanRule], []);
+    const rules = [realRule, realRuleB, orphanRule];
+    const output = computeHealthEngine(
+      { "gov:real-check": true, "gov:real-check-b": true },
+      [],
+      rules,
+      [],
+    );
+    const impacts = getSignalHealthImpacts(rules, []);
 
-    // Only the real signal is evaluable → theoreticalMax 20 → 100 − 20/20·100 = 0.
-    expect(computePillarDisplayScore("governance", output, impacts, new Set(["gov:real"]))).toBe(0);
-    // The OLD (buggy) behaviour, reproduced by treating BOTH as evaluable:
-    // theoreticalMax 1020 → 100 − 20/1020·100 = round(98.04) = 98 (falsely healthier).
-    expect(computePillarDisplayScore("governance", output, impacts, new Set(["gov:real", "gov:orphan"]))).toBe(98);
+    // Only the real signals are evaluable → theoreticalMax 40 → 100 − 40/40·100 = 0.
+    expect(computePillarDisplayScore("governance", output, impacts, new Set(["gov:real", "gov:real-b"]))).toBe(0);
+    // The OLD (buggy) behaviour, reproduced by treating the orphan as evaluable:
+    // theoreticalMax 1040 → 100 − 40/1040·100 = round(96.15) = 96 (falsely healthier).
+    expect(
+      computePillarDisplayScore("governance", output, impacts, new Set(["gov:real", "gov:real-b", "gov:orphan"])),
+    ).toBe(96);
   });
 });
 
@@ -653,12 +739,18 @@ describe("fetchEvaluableSignalKeys + live scoring — Shane's exact exploit agai
   }
 
   it("a rule with an EXTREME weight whose sourceKey no check produces does NOT move theoreticalMax (score stays honest)", async () => {
-    // Only `gov:real-check` exists in the catalog. `gov:phantom-check` does not.
-    wireCatalog([{ key: "gov:real-check" }]);
+    // Only the two real checks exist in the catalog. `gov:phantom-check` does not.
+    // Two real rules rather than one so governance clears #517's evaluable-signal
+    // floor — this test is about the orphan's weight, not about coverage depth.
+    wireCatalog([{ key: "gov:real-check" }, { key: "gov:real-check-b" }]);
 
     const realRule = makeRule({
       signalKey: "governance:real", ruleType: "profile_key_truthy",
       sourceKey: "gov:real-check", governanceImpact: 20,
+    });
+    const realRuleB = makeRule({
+      signalKey: "governance:real-b", ruleType: "profile_key_truthy",
+      sourceKey: "gov:real-check-b", governanceImpact: 20,
     });
     // Shane's test rule: weight 1000 + governanceImpact 1000, but its sourceKey
     // matches nothing producible → it can never fire and must never count.
@@ -667,18 +759,24 @@ describe("fetchEvaluableSignalKeys + live scoring — Shane's exact exploit agai
       sourceKey: "gov:phantom-check", weight: 1000, governanceImpact: 1000,
     });
 
-    // Only the real signal fires (raw governance 20); the orphan never fires.
-    const output = computeHealthEngine({ "gov:real-check": true }, [], [realRule, extremeOrphan], []);
-    expect(output.breakdown.find((b) => b.pillar === "governance")!.score).toBe(20);
+    const rules = [realRule, realRuleB, extremeOrphan];
+    // Only the real signals fire (raw governance 40); the orphan never fires.
+    const output = computeHealthEngine(
+      { "gov:real-check": true, "gov:real-check-b": true },
+      [],
+      rules,
+      [],
+    );
+    expect(output.breakdown.find((b) => b.pillar === "governance")!.score).toBe(40);
 
-    const evaluable = await fetchEvaluableSignalKeys([realRule, extremeOrphan]);
+    const evaluable = await fetchEvaluableSignalKeys(rules);
     expect(evaluable.has("governance:real")).toBe(true);
     expect(evaluable.has("governance:orphan")).toBe(false); // sourceKey not producible by any real check
 
-    const gov = computeDisplayHealth(output, [realRule, extremeOrphan], [], evaluable)
+    const gov = computeDisplayHealth(output, rules, [], evaluable)
       .find((p) => p.pillar === "governance")!;
-    // theoreticalMax = 20 (the orphan's 1000 is excluded) → 100 − 20/20·100 = 0.
-    // The bug would have produced ~98 (falsely healthier the instant the rule was created).
+    // theoreticalMax = 40 (the orphan's 1000 is excluded) → 100 − 40/40·100 = 0.
+    // The bug would have produced ~96 (falsely healthier the instant the rule was created).
     expect(gov.displayScore).toBe(0);
   });
 

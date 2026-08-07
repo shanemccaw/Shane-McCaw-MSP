@@ -101,19 +101,33 @@ function makeRule(
 }
 
 /**
- * A realistic rule set: one signal per pillar, each fired by a profile key a
+ * A realistic rule set: TWO signals per pillar, each fired by a profile key a
  * real monitor check genuinely produces. Weights differ per pillar exactly as
  * real seeded rules do, so an equal-weighting bug would show up as identical
  * pillar movement.
+ *
+ * Two rather than one since #517: a pillar backed by a single evaluable signal
+ * is now withheld as `insufficient_data` rather than scored, so a one-per-pillar
+ * fixture would null every axis and this file would be testing the coverage
+ * floor instead of the panel. The second rule on each pillar reads a profile key
+ * present in NEITHER scan, so it widens the denominator without changing which
+ * signals fire — every "did this axis move" claim below is unchanged.
  */
 const RULES: SignalDerivationRule[] = [
   makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "governanceGapsDetected", governanceImpact: 12 }),
+  makeRule({ signalKey: "hasOwnerlessGroups", ruleType: "profile_key_truthy", sourceKey: "ownerlessGroupsDetected", governanceImpact: 12 }),
   makeRule({ signalKey: "hasComplianceGaps", ruleType: "profile_key_truthy", sourceKey: "retentionPolicyMissing", complianceImpact: 9 }),
+  makeRule({ signalKey: "hasLabelGaps", ruleType: "profile_key_truthy", sourceKey: "sensitivityLabelsMissing", complianceImpact: 9 }),
   makeRule({ signalKey: "lowAdoption", ruleType: "profile_key_truthy", sourceKey: "teamsAdoptionLow", adoptionImpact: 7 }),
+  makeRule({ signalKey: "lowSharePointAdoption", ruleType: "profile_key_truthy", sourceKey: "sharePointAdoptionLow", adoptionImpact: 7 }),
   makeRule({ signalKey: "copilotBlocked", ruleType: "profile_key_truthy", sourceKey: "copilotPrereqMissing", copilotImpact: 15 }),
+  makeRule({ signalKey: "copilotUnlicensed", ruleType: "profile_key_truthy", sourceKey: "copilotSeatsUnassigned", copilotImpact: 15 }),
   makeRule({ signalKey: "architectureDrift", ruleType: "profile_key_truthy", sourceKey: "legacyAuthEnabled", architectureImpact: 6 }),
+  makeRule({ signalKey: "architectureSprawl", ruleType: "profile_key_truthy", sourceKey: "tenantSprawlDetected", architectureImpact: 6 }),
   makeRule({ signalKey: "licenseWaste", ruleType: "profile_key_truthy", sourceKey: "unassignedSeatsDetected", licensingImpact: 11 }),
+  makeRule({ signalKey: "licenseOverlap", ruleType: "profile_key_truthy", sourceKey: "overlappingSkusDetected", licensingImpact: 11 }),
   makeRule({ signalKey: "hasSecurityGaps", ruleType: "profile_key_falsy", sourceKey: "mfaEnforced", securityImpact: 20 }),
+  makeRule({ signalKey: "hasCaGaps", ruleType: "profile_key_truthy", sourceKey: "conditionalAccessMissing", securityImpact: 20 }),
 ];
 
 const ALL_SIGNAL_KEYS = new Set(RULES.map((r) => r.signalKey));
@@ -225,11 +239,12 @@ describe("right panel reflects the real scan — two different scans, different 
 
   it("never fabricates a pillar the engine has no evaluable rule for", () => {
     // No rule anywhere configures a copilot impact for this evaluable set.
+    const copilotSignals = new Set(["copilotBlocked", "copilotUnlicensed"]);
     const impactsWithoutCopilot = getSignalHealthImpacts(
-      RULES.filter((r) => r.signalKey !== "copilotBlocked"),
+      RULES.filter((r) => !copilotSignals.has(r.signalKey)),
       [],
     );
-    const evaluable = new Set([...ALL_SIGNAL_KEYS].filter((k) => k !== "copilotBlocked"));
+    const evaluable = new Set([...ALL_SIGNAL_KEYS].filter((k) => !copilotSignals.has(k)));
     const views = buildPillarViews(runRealScan(SCAN_B_PROFILE, []), impactsWithoutCopilot, evaluable);
     expect(views.pillars.find((p) => p.pillar === "copilot")!.displayScore).toBeNull();
   });

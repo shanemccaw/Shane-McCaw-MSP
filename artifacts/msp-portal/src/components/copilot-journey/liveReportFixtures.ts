@@ -21,7 +21,28 @@
  */
 
 import { PILLARS, PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
-import type { JourneyPillarView, JourneyView, WirePillarStat } from "./journeyModel.ts";
+import { UNEVALUATED_PILLAR_CHIP } from "./journeyModel.ts";
+import type {
+  JourneyPillarView,
+  JourneyView,
+  WirePillarEvaluation,
+  WirePillarStat,
+} from "./journeyModel.ts";
+
+/**
+ * The evaluation an unscored fixture pillar carries (#517).
+ *
+ * `not_evaluated` rather than `insufficient_data`: the empty tenant below has
+ * nothing behind any pillar at all, and `insufficient_data` is a claim about a
+ * real, measured, too-small count. A suite that wants the other state sets it
+ * explicitly — which is the point of having two.
+ */
+const NOT_EVALUATED: WirePillarEvaluation = {
+  status: "not_evaluated",
+  evaluableSignalCount: 0,
+  minRequiredSignals: 2,
+  reason: "no evaluable signal configures an impact for this pillar",
+};
 
 export function stat(overrides: Partial<WirePillarStat> & { id: string }): WirePillarStat {
   return {
@@ -41,7 +62,13 @@ export function pillar(key: PillarKey, overrides: Partial<JourneyPillarView> = {
     accent: PILLARS[key].accent,
     score: null,
     headline: null,
-    chips: [],
+    evaluation: NOT_EVALUATED,
+    // Matches what `buildPillarViews` genuinely produces for an unscored pillar
+    // since #503 — an honest line, never a silently empty wedge. No report body
+    // reads `chips` (they read `stats` and `findings`), so this is fidelity to
+    // the real shape rather than something the four #292 suites assert on.
+    chips: [UNEVALUATED_PILLAR_CHIP],
+    chipsAreReal: false,
     stats: [],
     findings: [],
     satelliteFinding: null,
@@ -57,6 +84,16 @@ export function view(overrides: Partial<JourneyView> = {}): JourneyView {
   return {
     tenant: { name: "Contoso", seatCount: null, scannedOn: "6 August 2026" },
     readinessScore: 41,
+    // The default fixture DOES carry a readiness score, so it declares itself
+    // scored — a view with a number and a `not_evaluated` verdict beside it
+    // would be a contradiction no real payload can produce (#517). A suite
+    // overriding `readinessScore: null` should override this too.
+    readinessEvaluation: {
+      status: "scored",
+      evaluableSignalCount: 2,
+      minRequiredSignals: 2,
+      reason: "scored",
+    },
     remediatedScore: null,
     pillars: PILLAR_KEYS.map((k) => pillar(k)),
     generation: { ready: 0, total: 0, allReady: false, documents: [] },

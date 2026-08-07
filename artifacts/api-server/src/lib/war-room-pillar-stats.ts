@@ -168,6 +168,7 @@ import {
 } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { buildPillarViews } from "./telemetry-comparison.ts";
+import { MIN_EVALUABLE_SIGNALS_PER_PILLAR, type PillarEvaluation } from "./health-display.ts";
 import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
 import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
@@ -802,6 +803,15 @@ export interface WarRoomPillarCard {
   enginePillar: RadarPillar;
   /** 0–100, higher = healthier. Null when no evaluable rule feeds it — never fabricated. */
   score: number | null;
+  /**
+   * WHY `score` is (or is not) a number (#517). `"scored"` means the pillar had
+   * enough genuinely evaluable signals behind it to state one;
+   * `"insufficient_data"` means it had some but too few, and
+   * `"not_evaluated"` means it had none at all. The client renders different,
+   * honest copy for each — a bare null let all three read as the same shrug, and
+   * a nonzero-but-tiny denominator let the third read as a confident 100.
+   */
+  evaluation: PillarEvaluation;
   /** The engine's raw risk accumulation for the pillar (higher = worse). */
   rawRiskScore: number;
   stats: WarRoomStat[];
@@ -1092,6 +1102,17 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     const enginePillar = WAR_ROOM_ENGINE_PILLAR[pillar];
     const view = byEnginePillar.get(enginePillar);
     const score = view?.displayScore ?? null;
+    // `buildPillarViews` covers every RADAR_PILLARS entry, so a missing view is
+    // a wiring fault rather than a thin tenant — reported as "not evaluated"
+    // rather than silently defaulted to something that sounds measured (#517).
+    const evaluation: PillarEvaluation = view?.evaluation ?? {
+      status: "not_evaluated",
+      score: null,
+      evaluableSignalCount: 0,
+      minRequiredSignals: MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+      theoreticalMax: 0,
+      reason: `the engine produced no ${enginePillar} pillar view for this tenant`,
+    };
 
     const stats = WAR_ROOM_PILLAR_STAT_SPECS[pillar].map((spec): WarRoomStat => {
       const base = {
@@ -1103,8 +1124,18 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       };
 
       if (spec.source.kind === "pillarScore") {
+        // #517: the two kinds of "no score" are now told apart here too. A
+        // pillar with SOME evaluable coverage that fell below the floor is not
+        // the same tenant as one with none, and labelling both
+        // "no_evaluable_rules" was the second half of the same lie.
         return score == null
-          ? { ...base, value: null, unavailableReason: "no_evaluable_rules", source: `health_engine:${enginePillar}` }
+          ? {
+              ...base,
+              value: null,
+              unavailableReason:
+                evaluation.status === "insufficient_data" ? "insufficient_data" : "no_evaluable_rules",
+              source: `health_engine:${enginePillar}`,
+            }
           : { ...base, value: score, source: `health_engine:${enginePillar}` };
       }
 
@@ -1151,6 +1182,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       pillar,
       enginePillar,
       score,
+      evaluation,
       rawRiskScore: view?.rawRiskScore ?? 0,
       stats,
       findings: found.slice(0, WAR_ROOM_FINDINGS_PER_PILLAR),

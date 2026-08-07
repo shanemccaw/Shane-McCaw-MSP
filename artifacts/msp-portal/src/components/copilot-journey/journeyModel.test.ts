@@ -17,9 +17,11 @@ import {
   documentPillar,
   formatJourneyDate,
   gapSentence,
+  INSUFFICIENT_PILLAR_CHIP,
   isGenerationUnknown,
   orderPillarFindings,
   pillarTrend,
+  UNEVALUATED_PILLAR_CHIP,
   remediatedScore,
   scoredPillarCount,
   tenantStrip,
@@ -56,7 +58,12 @@ describe("pillar views", () => {
     views.forEach((v) => {
       assert.equal(v.score, null);
       assert.equal(v.headline, null);
-      assert.deepEqual(v.chips, []);
+      // #503: a wedge is never silently empty. An empty payload means nothing
+      // was evaluated, and the chip says exactly that — `chipsAreReal` is what
+      // callers testing for genuine content read instead of `chips.length`.
+      assert.deepEqual(v.chips, [UNEVALUATED_PILLAR_CHIP]);
+      assert.equal(v.chipsAreReal, false);
+      assert.equal(v.evaluation.status, "not_evaluated");
     });
   });
 
@@ -111,6 +118,101 @@ describe("pillar views", () => {
     assert.equal(view?.score, null);
     assert.equal(view?.headline, null);
     assert.equal(view?.satelliteFinding, null);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * #503 / #517 — chips are never a silent empty
+   * ---------------------------------------------------------------- */
+
+  it("#503: a scored, genuinely-clean pillar with no stat readouts gets the clean chip, not an empty wedge", () => {
+    // The live case #503 was filed on: Compliance came back with a real score,
+    // zero critical/warning findings, and all four of its stats unavailable.
+    // `headline` said "No critical or warning findings."; `chips` said nothing
+    // at all, which in the Reveal wheel is indistinguishable from broken.
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "compliance",
+          score: 88,
+          evaluation: {
+            status: "scored",
+            evaluableSignalCount: 4,
+            minRequiredSignals: 2,
+            reason: "scored from 4 evaluable compliance signals",
+          },
+          stats: [
+            { id: "compliance.missingLabels", label: "missing labels", unit: "count", value: null, unavailableReason: "no_data", checkKey: "compliance:missing-labels" },
+          ],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "compliance");
+    assert.deepEqual(view?.chips, [CLEAN_PILLAR_HEADLINE]);
+    assert.equal(view?.chipsAreReal, false);
+  });
+
+  it("#517: a pillar below the server's coverage floor says so, and carries no score", () => {
+    // `governance`, not `copilot`: the Copilot pillar is the CENTRE of this
+    // composition, not one of the six satellites, so it is deliberately absent
+    // from `PILLAR_KEYS` and `buildPillarViews` never returns a card for it.
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "governance",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a governance impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "governance");
+    assert.equal(view?.score, null);
+    assert.equal(view?.evaluation.status, "insufficient_data");
+    assert.deepEqual(view?.chips, [INSUFFICIENT_PILLAR_CHIP]);
+    assert.equal(view?.chipsAreReal, false);
+    // "not enough data" must never be dressed up as a clean result.
+    assert.notEqual(view?.chips[0], CLEAN_PILLAR_HEADLINE);
+    assert.equal(view?.headline, null);
+  });
+
+  it("#517: real stat readouts and real findings still win over the explanatory fallback", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "security",
+          score: 38,
+          stats: [
+            { id: "security.mfa", label: "accounts without MFA", unit: "count", value: 14, checkKey: "identity:mfa" },
+          ],
+          findings: [{ severity: "critical", checkKey: "identity:mfa", title: "14 accounts have no MFA" }],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.deepEqual(view?.chips, ["14 accounts without mfa"]);
+    assert.equal(view?.chipsAreReal, true);
+  });
+
+  it("#517: a payload from before the evaluation field degrades to today's behaviour, never inventing 'insufficient'", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        { pillar: "security", score: 38, stats: [], findings: [] },
+        { pillar: "adoption", score: null, stats: [], findings: [] },
+      ],
+    };
+    const views = buildPillarViews(payload);
+    assert.equal(views.find((v) => v.key === "security")?.evaluation.status, "scored");
+    assert.equal(views.find((v) => v.key === "adoption")?.evaluation.status, "not_evaluated");
+    // A client counts no signals, so it may never claim the middle state.
+    assert.ok(views.every((v) => v.evaluation.status !== "insufficient_data"));
+    assert.deepEqual(views.find((v) => v.key === "adoption")?.chips, [UNEVALUATED_PILLAR_CHIP]);
   });
 
   it("still leads with the real finding when a scored pillar has critical/warning findings", () => {
@@ -673,6 +775,43 @@ describe("journey view", () => {
     assert.equal(view.readinessScore, null);
     assert.equal(view.generation.total, 0);
     assert.equal(view.pillars.length, 6);
+  });
+
+  it("#517: carries the gate's own real-coverage verdict so Scene 1 can say WHY there is no number", () => {
+    const view = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: null,
+      status: {
+        copilotGate: {
+          score: null,
+          threshold: 82,
+          status: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a copilot impact (minimum 2)",
+          },
+        },
+      },
+    });
+    assert.equal(view.readinessScore, null);
+    assert.equal(view.readinessEvaluation.status, "insufficient_data");
+    assert.equal(view.readinessEvaluation.evaluableSignalCount, 1);
+  });
+
+  it("#517: a status payload without the evaluation block still reports an honest state", () => {
+    const scored = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: null,
+      status: { copilotGate: { score: 70, threshold: 82, status: "no_go" } },
+    });
+    assert.equal(scored.readinessEvaluation.status, "scored");
+
+    const none = buildJourneyView({ tenant: TENANT, pillarStats: null, status: null });
+    assert.equal(none.readinessEvaluation.status, "not_evaluated");
+    // Never the middle state — a client that counted no signals cannot claim it.
+    assert.notEqual(none.readinessEvaluation.status, "insufficient_data");
   });
 });
 

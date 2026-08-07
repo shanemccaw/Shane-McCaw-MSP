@@ -88,7 +88,7 @@ import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
-import { computeCopilotGate, copilotGate, type CopilotGateResult } from "../lib/copilot-gate";
+import { computeCopilotGate, copilotGateNotEvaluated, type CopilotGateResult } from "../lib/copilot-gate";
 import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
 import { generateSecurityPostureNarrative } from "../lib/security-posture-narrative-generator.ts";
 // #292 — the four pillar reports' prose sections. Each is the same shape as the
@@ -324,7 +324,12 @@ router.get(
       // pillar scenes can no longer disagree about the tenant in front of them.
       // Keyed by customerId (the engine's own id space), not tenantId, and so
       // it is available even for a customer whose last run carries no tenantId.
-      let copilotGateResult: CopilotGateResult = copilotGate(null);
+      // #517: the pre-scan default says WHAT it could not measure, so a customer
+      // who has never completed a scan gets copy about that rather than the same
+      // shrug a tenant with a broken engine gets.
+      let copilotGateResult: CopilotGateResult = copilotGateNotEvaluated(
+        "no completed scan for this customer yet — nothing has been measured",
+      );
 
       if (lastCompleted) {
         const runSummary = (lastCompleted.summary as Record<string, unknown> | null | undefined) ?? null;
@@ -517,6 +522,13 @@ router.get(
         // confirmed by Shane — 82 itself is a Go), "no_go" below it, and null
         // when there is no score to gate on. Every Gate display across the
         // funnel reads this one verdict rather than re-deriving its own.
+        //
+        // `evaluation` (#517) is the explicit real-coverage status behind that:
+        // "scored" / "insufficient_data" / "not_evaluated", with the real
+        // evaluable-signal count and a plain-language reason. The client renders
+        // an honest no-score state from it instead of having to guess which kind
+        // of nothing a null `score` is — and the server never sends a computed
+        // number for a tenant it did not genuinely measure.
         copilotGate: copilotGateResult,
         // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see note above)
         isTestbed: customerRow?.isTestbed === true,

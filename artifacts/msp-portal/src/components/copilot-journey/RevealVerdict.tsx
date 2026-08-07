@@ -44,7 +44,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { JourneyPillarView } from "./journeyModel.ts";
+import type { JourneyPillarView, WirePillarEvaluation } from "./journeyModel.ts";
 import { verdictLabel, verdictSentence } from "./journeyModel.ts";
 import {
   COPILOT_ORB_CONIC,
@@ -118,16 +118,28 @@ function VerdictPending({ label }: { label: string }) {
  * What the score slot shows in place of a number, on both the ring and the
  * stacked layouts — so the two cannot drift into saying different things about
  * the same missing figure.
+ *
+ * #517 split the loaded-and-empty case in two. A tenant whose scan covered SOME
+ * Copilot-impacting signal, but not enough of one for the platform to stand
+ * behind a number, is a different fact from a tenant nothing feeds — and both
+ * are a different fact from a request that failed. Shane's rule is that the
+ * screen says which: "I would rather an error message on the Scanner than
+ * display a lie." Every branch here renders the journey's existing
+ * `JourneyUnavailable` chrome, so the honesty arrives in the words rather than
+ * in a new visual language nobody has seen before.
  */
 function VerdictScoreUnavailable({
   payloadState,
   retryAction,
-  detail,
+  evaluation,
+  concise,
 }: {
   payloadState: VerdictPayloadState;
   retryAction: React.ReactNode;
-  /** The loaded-and-empty copy, which differs by layout only in length. */
-  detail: string;
+  /** The server's own real-coverage verdict (#517). */
+  evaluation: WirePillarEvaluation;
+  /** The stacked layout has less room — same claim, fewer words. */
+  concise?: boolean;
 }) {
   if (payloadState === "loading") return <VerdictPending label="Reading your readiness score…" />;
   if (payloadState === "error") {
@@ -140,7 +152,32 @@ function VerdictScoreUnavailable({
       />
     );
   }
-  return <JourneyUnavailable title="No readiness score yet" detail={detail} />;
+
+  if (evaluation.status === "insufficient_data") {
+    return (
+      <JourneyUnavailable
+        eyebrow="Not enough scan data"
+        title="No scan results to score"
+        detail={
+          concise
+            ? "Your scan did not cover enough of this tenant to put a number on it. The pillar findings below are still real."
+            : "Your scan did not cover enough of this tenant for a readiness score to mean anything, so none is shown. The pillar findings below are still real — a single number over this little data would be a guess, not a measurement. Re-running the scan is what fills this in."
+        }
+        action={retryAction}
+      />
+    );
+  }
+
+  return (
+    <JourneyUnavailable
+      title="No readiness score yet"
+      detail={
+        concise
+          ? "The platform has no covered readiness indicator for this tenant. The pillar findings below are still real."
+          : "The platform has no covered readiness indicator for this tenant. The pillar findings below are still real — the single headline figure needs a scored check in every pillar before it means anything."
+      }
+    />
+  );
 }
 
 function OrbMark({ opacity, reduced }: { opacity: number; reduced: boolean }) {
@@ -259,6 +296,7 @@ export function RevealVerdict({
   start,
   tenantName,
   score,
+  evaluation,
   pillars,
   vw,
   vh,
@@ -271,6 +309,11 @@ export function RevealVerdict({
   tenantName: string;
   /** `null` when the platform has no covered readiness indicator. */
   score: number | null;
+  /**
+   * WHY `score` is null, straight off the wire (#517). Drives which honest
+   * no-score state renders; never consulted when there IS a score.
+   */
+  evaluation: WirePillarEvaluation;
   pillars: readonly JourneyPillarView[];
   vw: number;
   vh: number;
@@ -401,7 +444,7 @@ export function RevealVerdict({
                 <VerdictScoreUnavailable
                   payloadState={payloadState}
                   retryAction={retryAction}
-                  detail="The platform has no covered readiness indicator for this tenant. The pillar findings below are still real — the single headline figure needs a scored check in every pillar before it means anything."
+                  evaluation={evaluation}
                 />
               ) : (
                 <>
@@ -500,7 +543,8 @@ export function RevealVerdict({
                 <VerdictScoreUnavailable
                   payloadState={payloadState}
                   retryAction={retryAction}
-                  detail="The platform has no covered readiness indicator for this tenant. The pillar findings below are still real."
+                  evaluation={evaluation}
+                  concise
                 />
               ) : (
                 <>

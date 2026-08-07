@@ -370,6 +370,17 @@ export function previewJourneyView(readyDocuments = 3): JourneyView {
   return {
     tenant: PREVIEW_TENANT,
     readinessScore: PREVIEW_READINESS_SCORE,
+    // The preview is a worked example of a fully-scored tenant, so it declares
+    // itself scored (#517). `evaluableSignalCount` is 0 because the fixture has
+    // no signals — it is a design artefact, and inventing a count would put a
+    // number on screen that measures nothing, which is the exact habit #517
+    // exists to break. Nothing renders it in the scored state.
+    readinessEvaluation: {
+      status: "scored",
+      evaluableSignalCount: 0,
+      minRequiredSignals: 0,
+      reason: "design preview — a worked example, not a measured tenant",
+    },
     remediatedScore: PREVIEW_REMEDIATED_SCORE,
     // The design preview has no tenant and therefore no licence gap (#489).
     // Deliberately null rather than a fixture recommendation: a purchase link
@@ -383,7 +394,16 @@ export function previewJourneyView(readyDocuments = 3): JourneyView {
       accent: PILLARS[p.key].accent,
       score: p.score,
       headline: p.headline,
+      // Every preview pillar carries a real score and hand-written chips, so
+      // all six are `scored` with genuine chip content (#517/#503).
+      evaluation: {
+        status: "scored" as const,
+        evaluableSignalCount: 0,
+        minRequiredSignals: 0,
+        reason: "design preview — a worked example, not a measured tenant",
+      },
       chips: [...p.chips],
+      chipsAreReal: true,
       // The fixture writes its chips out by hand rather than deriving them from
       // stat rows, so there are no stat rows to carry — and the preview must
       // stay a fixture, not gain a second synthesised data surface. Every

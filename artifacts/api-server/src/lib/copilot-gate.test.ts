@@ -28,9 +28,14 @@ vi.hoisted(() => {
 import {
   COPILOT_GATE_THRESHOLD,
   copilotGate,
+  copilotGateNotEvaluated,
   copilotGateStatus,
 } from "./copilot-gate.ts";
-import { computePillarDisplayScore } from "./health-display.ts";
+import {
+  computePillarDisplayScore,
+  evaluatePillarDisplay,
+  MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+} from "./health-display.ts";
 import { buildPillarViews } from "./telemetry-comparison.ts";
 import type { HealthEngineOutput, SignalHealthImpactConfig } from "./health-engine.ts";
 
@@ -60,18 +65,35 @@ describe("the Copilot Gate threshold", () => {
   });
 
   it("wraps a score into the shape every surface renders, with provenance", () => {
-    expect(copilotGate(82)).toEqual({
+    expect(copilotGate(82)).toMatchObject({
       score: 82,
       threshold: 82,
       status: "go",
       source: "health_engine:copilot",
     });
-    expect(copilotGate(null)).toEqual({
+    expect(copilotGate(null)).toMatchObject({
       score: null,
       threshold: 82,
       status: null,
       source: "health_engine:copilot",
     });
+  });
+
+  it("carries an explicit real-coverage status, never a bare null the client must interpret (#517)", () => {
+    // The whole point of #517: a client rendering "no score" needs to know WHICH
+    // kind of nothing it is looking at. `copilotGate(null)` with no evaluation
+    // supplied is the honest floor case — not_evaluated, never "scored".
+    expect(copilotGate(null).evaluation.status).toBe("not_evaluated");
+    expect(copilotGate(82).evaluation.status).toBe("scored");
+    expect(copilotGate(null).evaluation.minRequiredSignals).toBe(MIN_EVALUABLE_SIGNALS_PER_PILLAR);
+  });
+
+  it("copilotGateNotEvaluated names the real reason rather than shrugging", () => {
+    const gate = copilotGateNotEvaluated("no completed scan for this customer yet");
+    expect(gate.score).toBeNull();
+    expect(gate.status).toBeNull();
+    expect(gate.evaluation.status).toBe("not_evaluated");
+    expect(gate.evaluation.reason).toBe("no completed scan for this customer yet");
   });
 });
 
@@ -156,5 +178,86 @@ describe("the Gate's score and the War Room's copilot card are one number", () =
     const score = computePillarDisplayScore("copilot", OUTPUT, noCopilotWeight, new Set(["sig.a"]));
     expect(score).toBeNull();
     expect(copilotGate(score).status).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #517 — a clean-looking 100 from insufficient real data
+ * ------------------------------------------------------------------ */
+
+describe("the insufficient-data gate (#517)", () => {
+  /**
+   * The exact live-reproduced shape: a run-completion record exists, but the
+   * underlying `tenant_monitor_profiles` rows are gone, so the tenant's scan
+   * scope resolves down to a SINGLE Copilot-impacting signal — which then does
+   * not fire, because there is no data for it to fire on.
+   *
+   * Before #517 that arithmetic was `100 − 0/60 × 100 = 100`: a flawless score
+   * and a "CLEARED FOR ROLLOUT" verdict, produced by measuring nothing. It is
+   * indistinguishable on screen from a genuinely verified-clean tenant, which is
+   * the whole bug.
+   */
+  const CLEAN_OUTPUT: HealthEngineOutput = {
+    score: 0,
+    breakdown: [{ pillar: "copilot", score: 0, contributions: [] }],
+  } as unknown as HealthEngineOutput;
+
+  it("withholds the score for a pillar backed by ONE evaluable signal, instead of reporting a perfect 100", () => {
+    const evaluation = evaluatePillarDisplay("copilot", CLEAN_OUTPUT, IMPACTS, new Set(["sig.a"]));
+
+    expect(evaluation.status).toBe("insufficient_data");
+    expect(evaluation.score).toBeNull();
+    expect(evaluation.evaluableSignalCount).toBe(1);
+    // The number that WOULD have been shown, proving the gate is load-bearing:
+    // theoreticalMax 60, rawScore 0 → 100.
+    expect(evaluation.theoreticalMax).toBe(60);
+  });
+
+  it("still scores the same tenant once a second real signal genuinely covers the pillar", () => {
+    const evaluation = evaluatePillarDisplay("copilot", CLEAN_OUTPUT, IMPACTS, EVALUABLE);
+
+    expect(evaluation.status).toBe("scored");
+    expect(evaluation.score).toBe(100); // genuinely clean, genuinely measured
+    expect(evaluation.evaluableSignalCount).toBe(2);
+  });
+
+  it("tells 'nothing feeds this pillar' apart from 'not enough does'", () => {
+    const nothing = evaluatePillarDisplay(
+      "copilot",
+      CLEAN_OUTPUT,
+      new Map([["sig.a", impact({ signalKey: "sig.a", governanceImpact: 40 })]]),
+      new Set(["sig.a"]),
+    );
+    expect(nothing.status).toBe("not_evaluated");
+    expect(nothing.evaluableSignalCount).toBe(0);
+
+    const notEnough = evaluatePillarDisplay("copilot", CLEAN_OUTPUT, IMPACTS, new Set(["sig.a"]));
+    expect(notEnough.status).toBe("insufficient_data");
+    // Both have a null score — which is exactly why the status has to exist.
+    expect(nothing.score).toBeNull();
+    expect(notEnough.score).toBeNull();
+  });
+
+  it("gives the Gate no verdict at all in the insufficient state — never a No-Go it did not measure", () => {
+    const evaluation = evaluatePillarDisplay("copilot", CLEAN_OUTPUT, IMPACTS, new Set(["sig.a"]));
+    const gate = copilotGate(evaluation.score, {
+      status: evaluation.status,
+      evaluableSignalCount: evaluation.evaluableSignalCount,
+      minRequiredSignals: evaluation.minRequiredSignals,
+      reason: evaluation.reason,
+    });
+
+    expect(gate.score).toBeNull();
+    expect(gate.status).toBeNull();
+    expect(gate.evaluation.status).toBe("insufficient_data");
+    expect(gate.evaluation.reason).toMatch(/1 evaluable signal/);
+  });
+
+  it("computePillarDisplayScore inherits the gate, so no existing caller can slip past it", () => {
+    // The single-signal case returns null through the OLD entry point too —
+    // deliberately, so the radar, the War Room cards and the trend replay are
+    // gated without each having to opt in.
+    expect(computePillarDisplayScore("copilot", CLEAN_OUTPUT, IMPACTS, new Set(["sig.a"]))).toBeNull();
+    expect(computePillarDisplayScore("copilot", CLEAN_OUTPUT, IMPACTS, EVALUABLE)).toBe(100);
   });
 });

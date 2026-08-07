@@ -39,7 +39,12 @@
  */
 
 import { calculateArchitectureHealthScore, getSignalHealthImpacts } from "./health-engine.ts";
-import { computePillarDisplayScore } from "./health-display.ts";
+import {
+  evaluatePillarDisplay,
+  MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+  type PillarEvaluation,
+  type PillarEvaluationStatus,
+} from "./health-display.ts";
 import { fetchTenantEvaluableSignalKeys } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { logger } from "./logger.ts";
@@ -76,8 +81,37 @@ export function copilotGateStatus(score: number | null): CopilotGateStatus | nul
   return score >= COPILOT_GATE_THRESHOLD ? "go" : "no_go";
 }
 
+/**
+ * WHY there is (or is not) a score — the explicit real-coverage status #517
+ * requires on the wire.
+ *
+ * A bare `score: null` told every client the same thing about three genuinely
+ * different tenants: one whose Copilot pillar nothing feeds, one whose scan
+ * covered a single Copilot-impacting signal, and one whose engine call failed
+ * outright. Each deserves different copy, and a client cannot write it from a
+ * null. This carries the distinction rather than making the frontend infer it.
+ *
+ * `theoreticalMax` is deliberately NOT re-exported here: it is a scoring
+ * internal, and putting a raw denominator on a customer-facing wire invites
+ * exactly the sort of derived arithmetic this file exists to centralise.
+ */
+export interface CopilotGateEvaluation {
+  readonly status: PillarEvaluationStatus;
+  /** Evaluable signals genuinely carrying a Copilot impact for this tenant. */
+  readonly evaluableSignalCount: number;
+  /** Echo of the floor, so no client hardcodes its own copy of it. */
+  readonly minRequiredSignals: number;
+  /** Short, machine-stable, safe to log and to surface as copy. */
+  readonly reason: string;
+}
+
 export interface CopilotGateResult {
-  /** The engine's Copilot pillar display score, 0-100, higher = healthier. */
+  /**
+   * The engine's Copilot pillar display score, 0-100, higher = healthier.
+   * Non-null only when `evaluation.status === "scored"` (#517) — a tenant below
+   * the real-coverage floor gets no number at all rather than the clean-looking
+   * 100 that "zero bad things found out of one thing checked" produces.
+   */
   readonly score: number | null;
   readonly threshold: number;
   readonly status: CopilotGateStatus | null;
@@ -86,16 +120,58 @@ export interface CopilotGateResult {
    * systems produced the number it is rendering.
    */
   readonly source: "health_engine:copilot";
+  /** Whether the platform is entitled to show a number here at all (#517). */
+  readonly evaluation: CopilotGateEvaluation;
 }
 
-/** Wraps a score in its Gate verdict. Pure — the shape every surface renders. */
-export function copilotGate(score: number | null): CopilotGateResult {
+/**
+ * Wraps a score in its Gate verdict. Pure — the shape every surface renders.
+ *
+ * `evaluation` is optional so the many pure call sites that only care about the
+ * verdict boundary stay one argument long. Omitting it on a null score yields
+ * `"not_evaluated"`, which is the honest reading of "somebody handed us no
+ * score and no reason" — never `"scored"`, and never a fabricated count.
+ */
+export function copilotGate(
+  score: number | null,
+  evaluation?: CopilotGateEvaluation,
+): CopilotGateResult {
   return {
     score,
     threshold: COPILOT_GATE_THRESHOLD,
     status: copilotGateStatus(score),
     source: "health_engine:copilot",
+    evaluation:
+      evaluation ??
+      (score === null
+        ? {
+            status: "not_evaluated",
+            evaluableSignalCount: 0,
+            minRequiredSignals: MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+            reason: "no Copilot pillar evaluation was performed for this tenant",
+          }
+        : {
+            status: "scored",
+            evaluableSignalCount: MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+            minRequiredSignals: MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+            reason: "scored",
+          }),
   };
+}
+
+/**
+ * The Gate for a tenant the platform has not measured yet, with the real reason
+ * why. Distinct from `copilotGate(null)` only in that the caller gets to say
+ * WHAT it could not measure — used by the status route before a completed scan
+ * exists, and by the engine-failure path below.
+ */
+export function copilotGateNotEvaluated(reason: string): CopilotGateResult {
+  return copilotGate(null, {
+    status: "not_evaluated",
+    evaluableSignalCount: 0,
+    minRequiredSignals: MIN_EVALUABLE_SIGNALS_PER_PILLAR,
+    reason,
+  });
 }
 
 /**
@@ -112,11 +188,15 @@ export function copilotGate(score: number | null): CopilotGateResult {
  * the Gate — the 82 threshold was unreachable from below and every tenant was a
  * Go by construction.
  *
- * `null` when the engine has no evaluable rule configuring a `copilotImpact`
- * (theoreticalMax 0) or no breakdown entry for the pillar — `computePillarDisplayScore`'s
- * own never-fabricate guards, not re-implemented here.
+ * Not scored when the engine has no evaluable rule configuring a `copilotImpact`
+ * (theoreticalMax 0), when there is no breakdown entry for the pillar, or —
+ * since #517 — when fewer than `MIN_EVALUABLE_SIGNALS_PER_PILLAR` evaluable
+ * signals genuinely carry one. All three are `evaluatePillarDisplay`'s own
+ * never-fabricate guards, not re-implemented here.
  */
-export async function computeCopilotPillarScore(customerId: number): Promise<number | null> {
+export async function computeCopilotPillarEvaluation(
+  customerId: number,
+): Promise<PillarEvaluation> {
   const [output, { rules, groups }] = await Promise.all([
     calculateArchitectureHealthScore(customerId),
     fetchSignalRulesAndGroups(),
@@ -125,20 +205,43 @@ export async function computeCopilotPillarScore(customerId: number): Promise<num
     firedSignalKeys: output.rawSignals,
   });
   const impacts = getSignalHealthImpacts(rules, groups);
-  return computePillarDisplayScore("copilot", output, impacts, evaluableSignalKeys);
+  return evaluatePillarDisplay("copilot", output, impacts, evaluableSignalKeys);
+}
+
+/**
+ * The score half of the above, for callers that genuinely only want the number.
+ * Kept so nothing that already reads a Copilot score has to learn a new shape.
+ */
+export async function computeCopilotPillarScore(customerId: number): Promise<number | null> {
+  return (await computeCopilotPillarEvaluation(customerId)).score;
 }
 
 /**
  * The full Gate result for one customer. Never throws: a failure to reach the
  * engine degrades to "no score", which every surface already renders honestly,
  * rather than taking down the status route that carries the scan and document
- * state alongside it.
+ * state alongside it. That degradation now says so in `evaluation.reason`
+ * instead of being indistinguishable from a tenant nothing feeds (#517).
  */
 export async function computeCopilotGate(customerId: number): Promise<CopilotGateResult> {
   try {
-    return copilotGate(await computeCopilotPillarScore(customerId));
+    const evaluation = await computeCopilotPillarEvaluation(customerId);
+    if (evaluation.status !== "scored") {
+      log.info(
+        { customerId, status: evaluation.status, evaluableSignalCount: evaluation.evaluableSignalCount },
+        "copilot-gate: withholding a Copilot score — insufficient real coverage",
+      );
+    }
+    return copilotGate(evaluation.score, {
+      status: evaluation.status,
+      evaluableSignalCount: evaluation.evaluableSignalCount,
+      minRequiredSignals: evaluation.minRequiredSignals,
+      reason: evaluation.reason,
+    });
   } catch (err) {
     log.warn({ err, customerId }, "copilot-gate: pillar score computation failed — reporting no score");
-    return copilotGate(null);
+    return copilotGateNotEvaluated(
+      "the readiness engine could not be reached for this tenant — no score was computed",
+    );
   }
 }

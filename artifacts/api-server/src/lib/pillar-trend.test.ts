@@ -173,15 +173,25 @@ describe("getPillarScoreTrends", () => {
   });
 
   it("produces a real per-day series for a pillar an evaluable rule feeds, matching hand-computed scores", async () => {
-    // threshold rule: fires when test:check-a's itemCount > 0, worth 10
-    // licensingImpact. theoreticalMax = 10 (the only evaluable signal), so a
-    // fired day displays 0 and an unfired day displays 100 — computed by the
-    // REAL computeHealthEngine/computePillarDisplayScore, not asserted by hand.
-    const rule = makeRule({
-      signalKey: "sig:test", ruleType: "threshold", sourceKey: "test:check-a",
-      compareValue: "0", licensingImpact: 10,
-    });
-    wireRules([rule], [], new Set(["sig:test"]));
+    // Two threshold rules, both firing when test:check-a's itemCount > 0, each
+    // worth 10 licensingImpact. theoreticalMax = 20, so a fired day displays 0
+    // and an unfired day displays 100 — computed by the REAL
+    // computeHealthEngine/computePillarDisplayScore, not asserted by hand.
+    //
+    // TWO rather than one because of #517: a pillar backed by a single evaluable
+    // signal is now withheld as `insufficient_data` at every checkpoint, which
+    // would make this test measure the floor instead of the replay it is about.
+    const rules = [
+      makeRule({
+        signalKey: "sig:test", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+      makeRule({
+        signalKey: "sig:test-b", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+    ];
+    wireRules(rules, [], new Set(["sig:test", "sig:test-b"]));
 
     const windowRows = [
       row({ checkKey: "test:check-a", itemCount: 0, daysAgo: 25 }), // no fire -> 100
@@ -208,11 +218,20 @@ describe("getPillarScoreTrends", () => {
   });
 
   it("stays null below PILLAR_TREND_MIN_POINTS even though every day is computable", async () => {
-    const rule = makeRule({
-      signalKey: "sig:test", ruleType: "threshold", sourceKey: "test:check-a",
-      compareValue: "0", licensingImpact: 10,
-    });
-    wireRules([rule], [], new Set(["sig:test"]));
+    // Two evaluable signals so the pillar clears #517's floor — otherwise this
+    // test would pass for the wrong reason (insufficient coverage, not too few
+    // checkpoints), which is exactly the vacuous green it exists to avoid.
+    const rules = [
+      makeRule({
+        signalKey: "sig:test", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+      makeRule({
+        signalKey: "sig:test-b", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+    ];
+    wireRules(rules, [], new Set(["sig:test", "sig:test-b"]));
 
     expect(PILLAR_TREND_MIN_POINTS).toBeGreaterThan(3);
     const windowRows = [
@@ -231,11 +250,19 @@ describe("getPillarScoreTrends", () => {
     // touched again inside the window; check-b fires the daily checkpoints.
     // If the seed did not carry forward, check-a would read as never-fired
     // (itemCount 0) and every checkpoint would show 100, not 0.
-    const rule = makeRule({
-      signalKey: "sig:seeded", ruleType: "threshold", sourceKey: "test:check-a",
-      compareValue: "0", licensingImpact: 10,
-    });
-    wireRules([rule], [], new Set(["sig:seeded"]));
+    // Two evaluable signals off the same seeded check (#517's floor); both carry
+    // forward together, so raw 20 of theoreticalMax 20 still displays 0.
+    const rules = [
+      makeRule({
+        signalKey: "sig:seeded", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+      makeRule({
+        signalKey: "sig:seeded-b", ruleType: "threshold", sourceKey: "test:check-a",
+        compareValue: "0", licensingImpact: 10,
+      }),
+    ];
+    wireRules(rules, [], new Set(["sig:seeded", "sig:seeded-b"]));
 
     const seedRows = [row({ checkKey: "test:check-a", itemCount: 5, daysAgo: 40 })];
     const windowRows = [

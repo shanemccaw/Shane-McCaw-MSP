@@ -57,7 +57,17 @@ function pillar(key: PillarKey, overrides: Partial<JourneyPillarView> = {}): Jou
     accent: PILLARS[key].accent,
     score: null,
     headline: null,
+    // #517: an unscored fixture pillar declares WHY. `not_evaluated` rather
+    // than `insufficient_data` — this helper's pillars have nothing behind them
+    // at all, and the other state is a claim about a real, too-small count.
+    evaluation: {
+      status: "not_evaluated",
+      evaluableSignalCount: 0,
+      minRequiredSignals: 2,
+      reason: "no evaluable signal configures an impact for this pillar",
+    },
     chips: [],
+    chipsAreReal: false,
     stats: [],
     findings: [],
     satelliteFinding: null,
@@ -72,6 +82,15 @@ function view(overrides: Partial<JourneyView> = {}): JourneyView {
   return {
     tenant: { name: "Contoso", seatCount: null, scannedOn: "5 August 2026" },
     readinessScore: 41,
+    // Matches `readinessScore` above: a view carrying a number declares itself
+    // scored. Tests that null the score and want the insufficient-data copy
+    // override this too — see the #517 block below.
+    readinessEvaluation: {
+      status: "scored",
+      evaluableSignalCount: 2,
+      minRequiredSignals: 2,
+      reason: "scored",
+    },
     remediatedScore: null,
     pillars: PILLAR_KEYS.map((k) => pillar(k)),
     generation: { ready: 0, total: 0, allReady: false, documents: [] },
@@ -317,13 +336,46 @@ describe("#441 — a broken registry reference never reaches the reader as their
 });
 
 describe("never fabricate: an empty tenant produces a shorter report, not an invented one", () => {
-  const empty = view({ readinessScore: null });
+  const empty = view({
+    readinessScore: null,
+    // A null score and a "scored" verdict beside it is a contradiction no real
+    // payload produces — the empty tenant says what it actually is (#517).
+    readinessEvaluation: {
+      status: "not_evaluated",
+      evaluableSignalCount: 0,
+      minRequiredSignals: 2,
+      reason: "no evaluable signal configures a copilot impact",
+    },
+  });
 
   it("asserts no verdict when nothing scored the Copilot pillar", () => {
     const report = build(empty);
     assert.equal(report.verdict.headline, "No readiness score yet");
     assert.ok(!/not flight-ready|cleared/i.test(report.verdict.headline));
     assert.match(report.verdict.sub, new RegExp(String(COPILOT_GATE_TARGET)));
+  });
+
+  it("#517: says 'too few checks' rather than 'no rule was evaluated' when that is the real reason", () => {
+    // The old single no-score branch asserted ONE reason for every null score:
+    // "has not yet evaluated a rule that feeds the Copilot pillar". For a tenant
+    // whose scan DID cover Copilot-impacting checks — just too few of them — that
+    // sentence is false, and stated with the same confidence as the number would
+    // have been. Getting the reason wrong is the same class of failure as
+    // getting the number wrong.
+    const thin = view({
+      readinessScore: null,
+      readinessEvaluation: {
+        status: "insufficient_data",
+        evaluableSignalCount: 1,
+        minRequiredSignals: 2,
+        reason: "only 1 evaluable signal carries a copilot impact (minimum 2)",
+      },
+    });
+    const report = build(thin);
+    assert.equal(report.verdict.headline, "No scan results to score");
+    assert.match(report.verdict.sub, /too few/i);
+    // Still no verdict in either direction, and still no number.
+    assert.ok(!/not flight-ready|cleared for rollout/i.test(report.verdict.sub));
   });
 
   it("drops the closing score paragraph rather than writing one with a blank in it", () => {

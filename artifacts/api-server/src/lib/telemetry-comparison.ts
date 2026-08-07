@@ -66,7 +66,11 @@ import {
   type HealthEngineOutput,
   type SignalHealthImpactConfig,
 } from "./health-engine.ts";
-import { computePillarDisplayScore, computeOverallDisplayScore } from "./health-display.ts";
+import {
+  computeOverallDisplayScore,
+  evaluatePillarDisplay,
+  type PillarEvaluation,
+} from "./health-display.ts";
 import { fetchTenantEvaluableSignalKeys, RADAR_PILLARS, PILLAR_LABELS, type RadarPillar } from "./pillar-coverage.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 
@@ -84,6 +88,14 @@ export interface TelemetryComparisonPillar {
   displayScore: number | null;
   /** The engine's own raw pillar sum (risk accumulation, higher = worse). Exposed for provenance. */
   rawRiskScore: number;
+  /**
+   * WHY `displayScore` is (or is not) a number — `evaluatePillarDisplay`'s own
+   * verdict, carried rather than re-derived (#517). `displayScore` is non-null
+   * exactly when `evaluation.status === "scored"`; the other two states are the
+   * distinction a bare null could never draw ("nothing feeds this pillar" vs
+   * "one thing does, which is not enough to score it").
+   */
+  evaluation: PillarEvaluation;
 }
 
 export interface TelemetryComparisonFinding {
@@ -142,12 +154,18 @@ export function buildPillarViews(
   impacts: Map<string, SignalHealthImpactConfig>,
   evaluableSignalKeys: ReadonlySet<string>,
 ): { pillars: TelemetryComparisonPillar[]; overall: { rawRiskScore: number; displayScore: number | null } } {
-  const pillars = RADAR_PILLARS.map((pillar) => ({
-    pillar,
-    label: PILLAR_LABELS[pillar],
-    displayScore: computePillarDisplayScore(pillar, output, impacts, evaluableSignalKeys),
-    rawRiskScore: output.breakdown.find((b) => b.pillar === pillar)?.score ?? 0,
-  }));
+  const pillars = RADAR_PILLARS.map((pillar) => {
+    // One call, not two: `displayScore` is `evaluation.score`, so the number and
+    // the reason it exists can never disagree about the same pillar (#517).
+    const evaluation = evaluatePillarDisplay(pillar, output, impacts, evaluableSignalKeys);
+    return {
+      pillar,
+      label: PILLAR_LABELS[pillar],
+      displayScore: evaluation.score,
+      rawRiskScore: output.breakdown.find((b) => b.pillar === pillar)?.score ?? 0,
+      evaluation,
+    };
+  });
 
   return {
     pillars,

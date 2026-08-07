@@ -321,10 +321,15 @@ export default function CopilotReadinessPage() {
    * payload arrived, so emptiness across all six is the only available signal
    * that nothing did.
    * ---------------------------------------------------------------- */
+  // `chipsAreReal`, NOT `chips.length` (#503/#517). Chips are never empty now —
+  // an unscored pillar carries an honest "not enough scan data" line instead of
+  // a blank wedge — so testing the array's length would answer "yes, data
+  // arrived" for a payload that never arrived at all, and the genuine error
+  // state below would be replaced by six polite notices about nothing.
   const pillarsHaveData = useMemo(
     () =>
       view.pillars.some(
-        (p) => p.score !== null || p.headline !== null || p.chips.length > 0,
+        (p) => p.score !== null || p.headline !== null || p.chipsAreReal,
       ),
     [view.pillars],
   );
@@ -701,6 +706,7 @@ export default function CopilotReadinessPage() {
         start={verdictStart}
         tenantName={view.tenant.name}
         score={view.readinessScore}
+        evaluation={view.readinessEvaluation}
         pillars={view.pillars}
         vw={metrics.vw}
         vh={metrics.vh}

@@ -81,9 +81,31 @@ export interface WirePillarStat {
   readonly checkKey: string | null;
 }
 
+/**
+ * WHY a score is (or is not) present — api-server's `evaluatePillarDisplay`
+ * verdict, carried on the wire since #517 rather than inferred here.
+ *
+ * `"scored"` is the only state with a number. The other two are the distinction
+ * a bare `null` could never draw, and drawing it is the whole of #517: a pillar
+ * nothing feeds reads differently to a customer than one where a single check
+ * came back clean and the platform declined to call that a 100.
+ */
+export interface WirePillarEvaluation {
+  readonly status: "scored" | "insufficient_data" | "not_evaluated";
+  readonly evaluableSignalCount: number;
+  readonly minRequiredSignals: number;
+  readonly reason: string;
+}
+
 export interface WirePillarCard {
   readonly pillar: string;
   readonly score: number | null;
+  /**
+   * Absent on a payload from before #517 and on the design fixture. Absent is
+   * read as the old `score !== null` signal, so an old payload degrades to
+   * exactly today's behaviour rather than to a wrong new one.
+   */
+  readonly evaluation?: WirePillarEvaluation;
   readonly stats?: readonly WirePillarStat[];
   readonly findings?: readonly WirePillarFinding[];
   readonly findingCounts?: { readonly critical: number; readonly warning: number };
@@ -165,6 +187,13 @@ export interface WireAssessmentStatus {
     readonly score: number | null;
     readonly threshold: number;
     readonly status: "go" | "no_go" | null;
+    /**
+     * The explicit real-coverage status behind `score` (#517). The server never
+     * sends a number it did not genuinely measure, and this says which kind of
+     * nothing a null is — so Scene 1 can write honest copy instead of one
+     * catch-all "no readiness score" for three different tenants.
+     */
+    readonly evaluation?: WirePillarEvaluation;
   } | null;
   readonly copilotReadiness?: {
     readonly overall?: {
@@ -214,8 +243,38 @@ export interface JourneyPillarView {
    * positive result, not the absence of one.
    */
   readonly headline: string | null;
-  /** Short findings used as radar chips — every one reappears in the pillar scene. */
+  /**
+   * WHY this pillar has (or has not) a score — normalised from the wire, never
+   * a `null` this file has to reinterpret at each render site (#517).
+   */
+  readonly evaluation: WirePillarEvaluation;
+  /**
+   * Short findings used as radar chips — every real one reappears in the pillar
+   * scene.
+   *
+   * NEVER EMPTY (#503). It used to be: `statChips.length ? statChips :
+   * ordered.slice(0,3).map(f => f.title)` had no third branch, so a pillar whose
+   * stats were all unavailable AND which had zero critical/warning findings
+   * rendered a wedge with a label and nothing under it — visually identical to
+   * "this thing is broken", whether the pillar was genuinely clean, genuinely
+   * unmeasured, or genuinely below the coverage floor. `headline` has told those
+   * apart since #399; this now gets the same treatment from the same signal, so
+   * the wedge always says something true about itself.
+   *
+   * `chipsAreReal` is what tells a caller which kind it is holding — see below.
+   */
   readonly chips: readonly string[];
+  /**
+   * Whether `chips` holds real measured readouts or the honest explanatory
+   * fallback above.
+   *
+   * Load-bearing, not decorative: the journey page decides whether ANY pillar
+   * data landed by asking whether the pillars have content, and a `chips` array
+   * that is never empty would make that question answer "yes" for a payload that
+   * never arrived — turning a real error state into a screen full of polite
+   * "not enough data" notes. Callers testing for real content must read this.
+   */
+  readonly chipsAreReal: boolean;
   /**
    * This pillar's real stat callouts, verbatim off the wire (#409).
    *
@@ -288,6 +347,16 @@ export interface JourneyView {
   readonly tenant: JourneyTenant;
   /** The headline number. `null` when the platform has no covered indicator. */
   readonly readinessScore: number | null;
+  /**
+   * WHY `readinessScore` is (or is not) a number (#517).
+   *
+   * Scene 1's verdict is the single most load-bearing claim in the whole
+   * journey — a number, a "CLEARED FOR ROLLOUT"/"NOT FLIGHT-READY" label, and a
+   * sentence built on both. None of that may be rendered from a figure the
+   * platform did not genuinely measure, and this is how the scene knows which
+   * of the three no-score states it is in so it can say so plainly.
+   */
+  readonly readinessEvaluation: WirePillarEvaluation;
   /** Mean of the six post-remediation pillar scores, or null. */
   readonly remediatedScore: number | null;
   readonly pillars: readonly JourneyPillarView[];
@@ -349,6 +418,72 @@ export function pillarTrend(card: WirePillarCard | undefined): JourneyPillarView
  * can never drift onto slightly different wording.
  */
 export const CLEAN_PILLAR_HEADLINE = "No critical or warning findings.";
+
+/**
+ * #517 / #503: what a wedge says when the platform declined to score its pillar.
+ *
+ * Two constants, not one, because they are two different facts about the tenant
+ * and Shane's rule is that the screen states the one that is true: "we looked
+ * and there was not enough to go on" is a different sentence from "this was not
+ * part of your scan". Both are preferable to the alternative these replace — a
+ * silently empty wedge, or (worse) a confident 100 computed from nothing.
+ *
+ * Kept beside `CLEAN_PILLAR_HEADLINE` so the three states that can produce an
+ * empty finding list can never drift onto slightly different wording.
+ */
+export const INSUFFICIENT_PILLAR_CHIP = "Not enough scan data to score this pillar.";
+export const UNEVALUATED_PILLAR_CHIP = "This pillar was not evaluated in your scan.";
+
+/**
+ * The wire's evaluation verdict, or the honest reconstruction of it for a
+ * payload that predates #517 (and for the design fixture, which has none).
+ *
+ * The fallback is deliberately the SAME `score !== null` signal `headline` has
+ * used since #399 — so an old payload behaves exactly as it does today rather
+ * than acquiring a new, wrong opinion about itself. It never invents
+ * `"insufficient_data"`: that state is a server measurement, and a client with
+ * no counts cannot honestly claim it.
+ */
+export function pillarEvaluation(card: WirePillarCard | undefined): WirePillarEvaluation {
+  if (card?.evaluation) return card.evaluation;
+  const scored = typeof card?.score === "number";
+  return {
+    status: scored ? "scored" : "not_evaluated",
+    evaluableSignalCount: 0,
+    minRequiredSignals: 0,
+    reason: scored ? "scored" : "no score was reported for this pillar",
+  };
+}
+
+/**
+ * The chips for one pillar: real stat readouts, else real finding titles, else
+ * an honest line saying which kind of nothing this is (#503, #517).
+ *
+ * The order of the first two branches is unchanged — stat readouts are the
+ * numbers the pillar scene will show again, so they lead. What is new is that
+ * falling off the end no longer means falling silent.
+ */
+function pillarChips(
+  statChips: readonly string[],
+  ordered: readonly WirePillarFinding[],
+  evaluation: WirePillarEvaluation,
+): { chips: readonly string[]; chipsAreReal: boolean } {
+  if (statChips.length) return { chips: statChips, chipsAreReal: true };
+
+  const findingChips = ordered.slice(0, 3).map((f) => f.title);
+  if (findingChips.length) return { chips: findingChips, chipsAreReal: true };
+
+  if (evaluation.status === "insufficient_data") {
+    return { chips: [INSUFFICIENT_PILLAR_CHIP], chipsAreReal: false };
+  }
+  if (evaluation.status === "not_evaluated") {
+    return { chips: [UNEVALUATED_PILLAR_CHIP], chipsAreReal: false };
+  }
+  // Scored, with zero stat readouts and zero critical/warning findings: the
+  // pillar genuinely was measured and genuinely came back clean. That is a real
+  // positive result, and it gets the same words `headline` already gives it.
+  return { chips: [CLEAN_PILLAR_HEADLINE], chipsAreReal: false };
+}
 
 function chipText(stat: WirePillarStat): string | null {
   if (stat.value === null || stat.unavailableReason) return null;
@@ -423,14 +558,16 @@ export function buildPillarViews(
     // #399: `ordered` only ever holds critical/warning findings — the wire
     // never sends "ok" ones — so an empty `ordered` is ambiguous by itself: it
     // means either "this pillar was never evaluated" or "it was evaluated and
-    // came back clean". `score` is the platform's own signal for which: it is
-    // `null` precisely when no evaluable rule fed this pillar (see the field's
-    // doc above), so a real score plus zero findings is a genuine clean
-    // result, not a gap. Only THAT combination gets the honest positive
-    // headline; a pillar with no score keeps the `null` that renders the
-    // scenes' existing "no finding was recorded" unavailable state.
-    const wasEvaluated = typeof card?.score === "number";
+    // came back clean". `evaluation.status` is the platform's own signal for
+    // which, carried explicitly since #517 (and reconstructed from the old
+    // `score !== null` signal for a payload that predates it), so a scored
+    // pillar with zero findings is a genuine clean result, not a gap. Only THAT
+    // combination gets the honest positive headline; an unscored pillar keeps
+    // the `null` that renders the scenes' "no finding was recorded" state.
+    const evaluation = pillarEvaluation(card);
+    const wasEvaluated = evaluation.status === "scored";
     const leadTitle = ordered[0]?.title ?? (wasEvaluated ? CLEAN_PILLAR_HEADLINE : null);
+    const { chips, chipsAreReal } = pillarChips(statChips, ordered, evaluation);
 
     return {
       key,
@@ -439,10 +576,13 @@ export function buildPillarViews(
       accent: id.accent,
       score: typeof card?.score === "number" ? card.score : null,
       headline: leadTitle,
+      evaluation,
       // Prefer real stat readouts as chips — they are the numbers the pillar
       // scene will show again. Fall back to finding titles so a pillar whose
-      // stats are all unavailable still populates its wedge.
-      chips: statChips.length ? statChips : ordered.slice(0, 3).map((f) => f.title),
+      // stats are all unavailable still populates its wedge, and to an honest
+      // explanatory line so it is never silently empty (#503).
+      chips,
+      chipsAreReal,
       stats: card?.stats ?? [],
       // `ordered`, not `findings`: criticals lead, and within a severity the
       // real signal weight ranks (#414) — the same ranking every other
@@ -598,10 +738,26 @@ export function buildJourneyView(input: {
   const gateScore = input.status?.copilotGate?.score;
   const overall =
     typeof gateScore === "number" ? gateScore : input.status?.copilotReadiness?.overall?.score;
+  const readinessScore = typeof overall === "number" ? overall : null;
+
+  // #517: prefer the server's own verdict. The fallback keeps a pre-#517 status
+  // payload behaving exactly as it does today — a number means scored, no number
+  // means nothing was evaluated — and never claims `"insufficient_data"`, which
+  // only the server can honestly report because only the server counts signals.
+  const readinessEvaluation: WirePillarEvaluation = input.status?.copilotGate?.evaluation ?? {
+    status: readinessScore === null ? "not_evaluated" : "scored",
+    evaluableSignalCount: 0,
+    minRequiredSignals: 0,
+    reason:
+      readinessScore === null
+        ? "no readiness score was reported for this tenant"
+        : "scored",
+  };
 
   return {
     tenant: input.tenant,
-    readinessScore: typeof overall === "number" ? overall : null,
+    readinessScore,
+    readinessEvaluation,
     remediatedScore: remediatedScore(pillars, input.projectedByPillar ?? {}),
     pillars,
     generation: buildGeneration(input.status),

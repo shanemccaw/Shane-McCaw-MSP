@@ -79,13 +79,15 @@ import { eq, inArray } from "drizzle-orm";
 import { LICENSE_GAP_PROFILE_FLAG_KEYS } from "./monitor-executor.ts";
 import {
   HEALTH_PILLARS,
-  PILLAR_FIELD,
   getSignalHealthImpacts,
   calculateArchitectureHealthScore,
   type HealthPillar,
-  type SignalHealthImpactConfig,
 } from "./health-engine.ts";
-import { computePillarDisplayScore } from "./health-display.ts";
+// `PILLAR_FIELD` / `SignalHealthImpactConfig` / `computePillarDisplayScore` were
+// imported for the per-pillar "has any covered signal any weight here" test this
+// module used to run inline; #517 moved that into `evaluatePillarDisplay` so
+// there is one definition of "enough coverage to score", not two.
+import { evaluatePillarDisplay } from "./health-display.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import type { SignalDerivationRule } from "./tenant-signals.ts";
 import { logger } from "./logger.ts";
@@ -579,12 +581,6 @@ export async function getPillarCoverage(
 
   const covered: PillarCoverageEntry[] = [];
   for (const pillar of RADAR_PILLARS) {
-    const field = PILLAR_FIELD[pillar] as keyof Omit<SignalHealthImpactConfig, "signalKey">;
-    const hasRealCoverage = [...coveredSignalKeys].some(
-      (signalKey) => (impacts.get(signalKey)?.[field] ?? 0) > 0,
-    );
-    if (!hasRealCoverage) continue;
-
     // Same honest display normalization for all seven pillars.
     // `healthOutput` comes from `calculateArchitectureHealthScore`, whose
     // breakdown already includes the Security Engine's real security entry —
@@ -592,10 +588,17 @@ export async function getPillarCoverage(
     // package's genuinely-fed signals (`coveredSignalKeys`) — the same set the
     // numerator's coverage decision above uses — so a rule the package can't
     // feed can't inflate this pillar's denominator either.
-    const displayScore = computePillarDisplayScore(pillar, healthOutput, impacts, coveredSignalKeys);
-    if (displayScore == null) continue; // no rules configured anywhere for this pillar — don't fabricate
+    //
+    // #517: the "does at least one covered signal weigh on this pillar" test
+    // that used to guard this loop is now inside `evaluatePillarDisplay`, as
+    // `evaluableSignalCount`, measured against a real floor rather than against
+    // one. Keeping a second copy here would have left the radar admitting a
+    // pillar on ONE signal that the scoring layer then refused to score — an
+    // axis with a permanent hole in it. One test, one place.
+    const evaluation = evaluatePillarDisplay(pillar, healthOutput, impacts, coveredSignalKeys);
+    if (evaluation.status !== "scored" || evaluation.score == null) continue; // don't fabricate
 
-    covered.push({ pillar, label: PILLAR_LABELS[pillar], score: displayScore });
+    covered.push({ pillar, label: PILLAR_LABELS[pillar], score: evaluation.score });
   }
 
   return covered;
