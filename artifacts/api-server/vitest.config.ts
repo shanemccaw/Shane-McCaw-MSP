@@ -88,6 +88,7 @@ export default defineConfig({
       "src/routes/public-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
+      "src/lib/cert-secret-expiration-541.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",
