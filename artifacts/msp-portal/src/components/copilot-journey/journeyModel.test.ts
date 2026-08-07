@@ -860,6 +860,27 @@ describe("pillar views", () => {
     assert.equal(v?.criticalCount, 2);
     assert.equal(v?.warningCount, 4);
   });
+
+  // #534: #529 removed every cap so no real finding is ever hidden. The
+  // always-visible presentation still needs one, but the underlying data must
+  // stay fully uncapped so a caller (the "+N more" expand, the pillar header's
+  // total-count badge) can recover the true count and the full list.
+  it("#534: caps the finding chips at 3 while `findings` stays fully uncapped", () => {
+    const findings: WirePillarFinding[] = Array.from({ length: 9 }, (_, i) => ({
+      severity: "critical" as const,
+      checkKey: `identity:check-${i}`,
+      title: `Finding ${i}`,
+      rankWeight: 9 - i,
+    }));
+    const payload: WirePillarStatsPayload = {
+      pillars: [{ pillar: "security", score: 22, findings }],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.equal(view?.chips.length, 3);
+    assert.deepEqual(view?.chips, ["Finding 0", "Finding 1", "Finding 2"]);
+    // The real total a badge or "+N more" affordance reads — never truncated.
+    assert.equal(view?.findings.length, 9);
+  });
 });
 
 describe("sparkline history", () => {

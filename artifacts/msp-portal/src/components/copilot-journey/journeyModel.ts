@@ -533,6 +533,13 @@ export function pillarEvaluation(card: WirePillarCard | undefined): WirePillarEv
  * hide the other, so both are concatenated — worst finding first — and a
  * caller that only has room for the first few chips sees the problem before
  * the number that accompanies it.
+ *
+ * #534: `findingChips` is capped to the worst 3, re-introducing the cap #529
+ * removed — but only here, on this *presentation* list. `ordered` itself (and
+ * `JourneyPillarView.findings`, which carries it verbatim) stays fully
+ * uncapped, so a caller that needs the true count for a "+N more" affordance
+ * or a total-findings badge reads it off `findings.length`, never off
+ * `chips.length`. Stats are untouched — the issue's own scope is findings only.
  */
 function pillarChips(
   statChips: readonly string[],
@@ -540,7 +547,7 @@ function pillarChips(
   evaluation: WirePillarEvaluation,
   stillScanning: boolean,
 ): { chips: readonly string[]; chipsAreReal: boolean } {
-  const findingChips = ordered.map((f) => f.title);
+  const findingChips = ordered.slice(0, 3).map((f) => f.title);
   const chips = [...findingChips, ...statChips];
   if (chips.length) return { chips, chipsAreReal: true };
 

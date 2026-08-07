@@ -29,7 +29,7 @@
 import { useEffect, useState } from "react";
 
 import { SCANNING_PILLAR_CHIP, type JourneyPillarView } from "./journeyModel.ts";
-import { BRAND, INK, PILLARS, PILLAR_KEYS, TABULAR } from "./journeyTokens.ts";
+import { BRAND, INK, PILLARS, PILLAR_KEYS, RADIUS, TABULAR, type PillarKey } from "./journeyTokens.ts";
 import {
   RADAR_INNER_R,
   RADAR_OUTER_R,
@@ -79,6 +79,37 @@ const SHEEN_ARC_DEG = 64;
  */
 function wedgeFill(progress: number, index: number): number {
   return clampWindow(progress, index * 0.05, index * 0.05 + 0.74);
+}
+
+/**
+ * The "+N more" / "Show fewer" trigger (#534). Deliberately muted rather than
+ * pillar-coloured like `FindingChip` — it is a control, not a finding, and
+ * must read as secondary to the real findings around it.
+ */
+function MoreChip({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        background: "rgba(15,23,42,.7)",
+        border: `1px solid ${INK.hairlineDark}`,
+        borderRadius: RADIUS.pill,
+        padding: "4px 10px",
+        fontSize: 10.5,
+        fontWeight: 600,
+        color: INK.micro,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
 }
 
 function WedgeGradient({ index, color }: { index: number; color: string }) {
@@ -165,6 +196,17 @@ export function RevealScanOverlay({
   // itself a dependency of the effect, so the very next run catches the
   // snapshot up to whatever the live props already are — no replay, no restart.
   const [paused, setPaused] = useState(false);
+  // #534: which pillars' chip clusters are showing their full finding list
+  // rather than the capped-at-3 default. Local UI state only — it never
+  // changes what data exists, only how much of it this wedge is showing.
+  const [expandedPillars, setExpandedPillars] = useState<ReadonlySet<PillarKey>>(new Set());
+  const togglePillarExpanded = (key: PillarKey) =>
+    setExpandedPillars((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const [frozen, setFrozen] = useState(() => ({
     pillars,
     progress,
@@ -474,6 +516,19 @@ export function RevealScanOverlay({
             const pillar = frozen.pillars.find((p) => p.key === key);
             const chips = pillar?.chips ?? [];
             const fill = wedgeFill(frozen.progress, i);
+
+            // #534: `chips` is `pillarChips()`'s presentation list — up to 3
+            // real finding titles (worst-first) followed by up to 3 real stat
+            // readouts. `findings` is the SAME findings, fully uncapped, so the
+            // true total and the full list for "+N more" both read off it
+            // rather than off the capped `chips` array.
+            const totalFindings = pillar?.findings.length ?? 0;
+            const visibleFindingCount = Math.min(3, totalFindings);
+            const findingChips = chips.slice(0, visibleFindingCount);
+            const statChips = chips.slice(visibleFindingCount);
+            const moreCount = totalFindings - visibleFindingCount;
+            const expanded = expandedPillars.has(key);
+
             return (
               <div
                 key={`chips-${key}`}
@@ -509,16 +564,86 @@ export function RevealScanOverlay({
                   >
                     {identity.label}
                   </span>
+                  {/* Total real finding count — never the capped chip count,
+                      so it still reads "9" while only 3 chips show. */}
+                  {totalFindings > 0 ? (
+                    <span
+                      aria-label={`${totalFindings} findings`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: 16,
+                        height: 16,
+                        padding: "0 5px",
+                        borderRadius: RADIUS.pill,
+                        background: `${identity.primary}26`,
+                        color: identity.primary,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: 0,
+                        textTransform: "none",
+                        ...TABULAR,
+                      }}
+                    >
+                      {totalFindings}
+                    </span>
+                  ) : null}
                 </div>
-                {chips.map((chip, chipIndex) => (
-                  <FindingChip
-                    key={chip}
-                    color={identity.primary}
-                    text={chip}
-                    opacity={radarChipOpacity(fill, chipIndex)}
-                    pulse={chip === SCANNING_PILLAR_CHIP}
-                  />
-                ))}
+
+                {expanded ? (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 5,
+                        width: "100%",
+                        maxHeight: 168,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {(pillar?.findings ?? []).map((finding) => (
+                        <FindingChip
+                          key={finding.checkKey}
+                          color={identity.primary}
+                          text={finding.title}
+                        />
+                      ))}
+                    </div>
+                    <MoreChip
+                      label="Show fewer"
+                      onClick={() => togglePillarExpanded(key)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {findingChips.map((chip, chipIndex) => (
+                      <FindingChip
+                        key={chip}
+                        color={identity.primary}
+                        text={chip}
+                        opacity={radarChipOpacity(fill, chipIndex)}
+                        pulse={chip === SCANNING_PILLAR_CHIP}
+                      />
+                    ))}
+                    {moreCount > 0 ? (
+                      <MoreChip
+                        label={`+${moreCount} more`}
+                        onClick={() => togglePillarExpanded(key)}
+                      />
+                    ) : null}
+                    {statChips.map((chip, chipIndex) => (
+                      <FindingChip
+                        key={chip}
+                        color={identity.primary}
+                        text={chip}
+                        opacity={radarChipOpacity(fill, visibleFindingCount + chipIndex)}
+                        pulse={chip === SCANNING_PILLAR_CHIP}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             );
           })}
