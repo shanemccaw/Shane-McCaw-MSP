@@ -226,6 +226,26 @@ export default function CopilotReadinessPage() {
   const [awaitingAutoScan, setAwaitingAutoScan] = useState(false);
   const [autoTriggerError, setAutoTriggerError] = useState<string | null>(null);
 
+  // Testbed-only, per-customer persisted pause on the auto-trigger effect below
+  // (Scene 0 debug tooling). localStorage-backed rather than component state
+  // because Shane's workflow is edit-DB -> reload page -> check, and a pause
+  // that resets on reload would defeat the purpose. `decideAutoScan` itself is
+  // untouched — this is an early return at the call site.
+  const pauseAutoScanKey = user?.customerId != null ? `debug:pauseAutoScan:${user.customerId}` : null;
+  const [pauseAutoScan, setPauseAutoScan] = useState(() => {
+    if (typeof window === "undefined" || !pauseAutoScanKey) return false;
+    return window.localStorage.getItem(pauseAutoScanKey) === "1";
+  });
+  const togglePauseAutoScan = useCallback(() => {
+    if (!pauseAutoScanKey) return;
+    setPauseAutoScan((prev) => {
+      const next = !prev;
+      if (next) window.localStorage.setItem(pauseAutoScanKey, "1");
+      else window.localStorage.removeItem(pauseAutoScanKey);
+      return next;
+    });
+  }, [pauseAutoScanKey]);
+
   useEffect(() => {
     if (isPreview) return;
     // A broken-consent tenant takes priority over the never-scanned case —
@@ -234,6 +254,7 @@ export default function CopilotReadinessPage() {
     // get its normal shot at deciding whether a scan needs triggering.
     if (reconsentKind !== null) return;
     if (autoTriggerRef.current) return;
+    if (pauseAutoScan) return;
     const decision = decideAutoScan(scanStatusData);
     if (decision.kind === "skip") return;
 
@@ -278,7 +299,7 @@ export default function CopilotReadinessPage() {
         setAwaitingAutoScan(false);
       }
     })();
-  }, [isPreview, reconsentKind, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
+  }, [isPreview, reconsentKind, pauseAutoScan, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
 
   // Lets the retry button re-run the gating decision above instead of just
   // refetching pillars/status, which would leave a tenant with a failed
@@ -408,6 +429,18 @@ export default function CopilotReadinessPage() {
   }, []);
 
   const overlayOpen = (scan.running || awaitingAutoScan || replayScene0) && !scanDismissed;
+
+  // Testbed-only override (Scene 0 debug tooling): forces `RevealScanOverlay`'s
+  // progress props to "complete" without touching the real pillar/chip data
+  // underneath, so the reveal can be reviewed without waiting out the real
+  // scan. Purely a display-timing override — `view.pillars` still flows
+  // through unchanged, real values pass through when off.
+  const [forceProgressComplete, setForceProgressComplete] = useState(false);
+  const toggleForceProgressComplete = useCallback(() => {
+    setForceProgressComplete((prev) => !prev);
+  }, []);
+  const overlayProgress = forceProgressComplete ? 1 : scan.progress;
+  const overlayChecksDone = forceProgressComplete ? scan.checksTotal : scan.checksDone;
 
   // Scene 1 plays on arrival rather than on scroll, so it starts the moment the
   // overlay releases — but not before the status payload has landed, or the
@@ -608,12 +641,54 @@ export default function CopilotReadinessPage() {
         </button>
       ) : null}
 
+      {!isPreview && scanStatusData?.isTestbed ? (
+        <button
+          onClick={toggleForceProgressComplete}
+          style={{
+            position: "fixed",
+            top: 76,
+            right: 12,
+            zIndex: 9999,
+            padding: "4px 10px",
+            fontSize: 11,
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            color: "rgba(255,255,255,0.7)",
+            cursor: "pointer",
+          }}
+        >
+          {forceProgressComplete ? "[DEBUG] Show Live Progress" : "[DEBUG] Force 100%"}
+        </button>
+      ) : null}
+
+      {!isPreview && scanStatusData?.isTestbed ? (
+        <button
+          onClick={togglePauseAutoScan}
+          style={{
+            position: "fixed",
+            top: 108,
+            right: 12,
+            zIndex: 9999,
+            padding: "4px 10px",
+            fontSize: 11,
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            color: "rgba(255,255,255,0.7)",
+            cursor: "pointer",
+          }}
+        >
+          {pauseAutoScan ? "[DEBUG] Resume Auto-Scan" : "[DEBUG] Pause Auto-Scan"}
+        </button>
+      ) : null}
+
       <RevealScanOverlay
         open={overlayOpen}
         tenantLabel={tenantStrip(view.tenant)}
         pillars={view.pillars}
-        progress={scan.progress}
-        checksDone={scan.checksDone}
+        progress={overlayProgress}
+        checksDone={overlayChecksDone}
         checksTotal={scan.checksTotal}
         currentCheckLabel={scan.currentCheckLabel}
         vw={metrics.vw}
