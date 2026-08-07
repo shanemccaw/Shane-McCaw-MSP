@@ -694,7 +694,8 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
             value={query}
             height="180px"
             theme={oneDark}
-            extensions={[editorSurfaceTheme]}
+            extensions={[editorSurfaceTheme, EditorView.lineWrapping]}
+            indentWithTab={false}
             onChange={(val) => setQuery(val)}
             basicSetup={{
               lineNumbers: true,
