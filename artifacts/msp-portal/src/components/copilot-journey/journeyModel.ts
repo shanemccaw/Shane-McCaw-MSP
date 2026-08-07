@@ -540,7 +540,7 @@ function pillarChips(
   evaluation: WirePillarEvaluation,
   stillScanning: boolean,
 ): { chips: readonly string[]; chipsAreReal: boolean } {
-  const findingChips = ordered.slice(0, 3).map((f) => f.title);
+  const findingChips = ordered.map((f) => f.title);
   const chips = [...findingChips, ...statChips];
   if (chips.length) return { chips, chipsAreReal: true };
 

@@ -472,7 +472,7 @@ export function RevealScanOverlay({
             const anchor = CHIP_ANCHORS[i];
             const identity = PILLARS[key];
             const pillar = frozen.pillars.find((p) => p.key === key);
-            const chips = (pillar?.chips ?? []).slice(0, 4);
+            const chips = pillar?.chips ?? [];
             const fill = wedgeFill(frozen.progress, i);
             return (
               <div
