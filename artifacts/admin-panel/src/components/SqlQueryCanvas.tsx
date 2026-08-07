@@ -7,6 +7,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { Play, Clock, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useModal } from "@/contexts/ModalContext";
 import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 
 // The center canvas's SQL Query editor — relocated from the right panel's SQL
@@ -69,6 +70,7 @@ interface SqlQueryCanvasProps {
 
 export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) {
   const { fetchWithAuth } = useAuth();
+  const { openModal } = useModal();
   const [query, setQuery] = useState("SELECT * FROM msps LIMIT 10;");
   const [hasSelection, setHasSelection] = useState(false);
   const [schemaMap, setSchemaMap] = useState<Record<string, { label: string; detail: string }[]> | null>(null);
@@ -128,6 +130,17 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
   };
   const handleRunClickRef = useRef(handleRunClick);
   handleRunClickRef.current = handleRunClick;
+
+  // No script loaded — nothing to update in place, so open the same "Create
+  // SQL Utility Script" modal ModalContext.tsx already defines, pre-filled
+  // with the editor's current contents, instead of duplicating its save logic.
+  const handleSaveClick = () => {
+    if (!loadedScript) {
+      openModal("new-script", { script: { query } });
+      return;
+    }
+    void handleSaveScript();
+  };
 
   // Same PUT endpoint/logic as ModalContext.tsx's ScriptEditorModal save
   // (isNew=false branch) — updates the loaded script in place with the
@@ -265,17 +278,15 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
           <Play className={`h-3 w-3 ${output.isExecuting ? "animate-spin" : ""}`} />
           {output.isExecuting ? "Running…" : hasSelection ? "Run Selection" : "Run All"}
         </button>
-        {loadedScript && (
-          <button
-            onClick={handleSaveScript}
-            disabled={isSaving}
-            className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
-            title={`Save changes to "${loadedScript.name}"`}
-          >
-            <Save className="h-3 w-3" />
-            {isSaving ? "Saving…" : "Save"}
-          </button>
-        )}
+        <button
+          onClick={handleSaveClick}
+          disabled={isSaving}
+          className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+          title={loadedScript ? `Save changes to "${loadedScript.name}"` : "Save the current query as a new script"}
+        >
+          <Save className="h-3 w-3" />
+          {isSaving ? "Saving…" : "Save"}
+        </button>
         {output.statements && output.statements.length > 0 && (
           <span className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3 text-emerald-400" />

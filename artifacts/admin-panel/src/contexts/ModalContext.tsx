@@ -594,7 +594,7 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
     } else {
       setName("");
       setCategory("QA Asserts");
-      setQuery("");
+      setQuery(modalData?.script?.query || "");
       setIsDestructive(false);
       setIsResetScript(false);
     }
