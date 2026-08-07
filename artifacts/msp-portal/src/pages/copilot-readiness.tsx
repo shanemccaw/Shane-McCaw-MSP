@@ -62,6 +62,7 @@ import {
   PREVIEW_SIGNAL_COUNT,
   previewJourneyView,
 } from "@/components/copilot-journey/journeyPreviewFixture.ts";
+import { shouldBlockNeverScanned } from "@/components/copilot-journey/neverScannedGate.ts";
 import { decideAutoScan } from "@/components/copilot-journey/revealAutoScan.ts";
 import { activeSceneIndex, sceneProgress } from "@/components/copilot-journey/revealMath.ts";
 import {
@@ -222,7 +223,12 @@ export default function CopilotReadinessPage() {
    * this fix must not do — so this mirrors war-room.tsx's own
    * `handleTriggerScan` guard rather than calling the endpoint blind.
    * ---------------------------------------------------------------- */
-  const { data: scanStatusData, reportTriggerStarted, reportTriggerError } = useScanStatus();
+  const {
+    data: scanStatusData,
+    loaded: scanStatusLoaded,
+    reportTriggerStarted,
+    reportTriggerError,
+  } = useScanStatus();
   const autoTriggerRef = useRef(false);
   const [awaitingAutoScan, setAwaitingAutoScan] = useState(false);
   const [autoTriggerError, setAutoTriggerError] = useState<string | null>(null);
@@ -544,7 +550,18 @@ export default function CopilotReadinessPage() {
   // explicitly even though the preview's synthetic `scan` always reports
   // `everScanned: true` (never triggering this on its own) — this gate must
   // never depend on that being true.
-  const neverScannedBlocked = !isPreview && !scan.everScanned && !scan.running && !awaitingAutoScan;
+  //
+  // #539 regression fix: `scanStatusLoaded` is required first (see
+  // neverScannedGate.ts). Before it flips true, this gate simply doesn't
+  // fire and the page falls through to its existing pillarState/statusState
+  // "loading" rendering below — never a new loading state invented for this.
+  const neverScannedBlocked = shouldBlockNeverScanned({
+    loaded: scanStatusLoaded,
+    isPreview,
+    everScanned: scan.everScanned,
+    running: scan.running,
+    awaitingAutoScan,
+  });
 
   // #370: a tenant whose Graph/SharePoint access is broken has nothing real
   // for the scroll experience to reveal, so it is replaced outright rather

@@ -147,6 +147,16 @@ export interface ScanCheckResult {
 
 interface ScanStatusContextValue {
   data: ScanStatusPayload | null;
+  /**
+   * True once the first /api/portal/scan-status response has landed — success
+   * or failure, either way we now know something real instead of nothing yet.
+   * `data` staying `null` is otherwise indistinguishable from "no scan exists"
+   * (#539): a caller reading `data?.everScanned === true` sees `false` for
+   * both a genuinely never-scanned tenant AND a tenant whose first poll simply
+   * hasn't returned yet. Gates that key off `everScanned` must require this
+   * first.
+   */
+  loaded: boolean;
   /** Set when the trigger request itself failed — distinct from a normal poll miss. */
   triggerError: string | null;
   /**
@@ -221,6 +231,7 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
   const { user, accessToken, fetchWithAuth } = useAuth();
   const customerId = user?.customerId ?? null;
   const [data, setData] = useState<ScanStatusPayload | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [scanCheckProgress, setScanCheckProgress] = useState<ScanCheckProgress | null>(null);
   const [scanCheckResults, setScanCheckResults] = useState<ScanCheckResult[]>([]);
@@ -273,6 +284,10 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       // best-effort — keep showing the last known state rather than clearing it
+    } finally {
+      // Flips on the FIRST response either way — a failed fetch still tells a
+      // gate downstream that "we don't know yet" is over (#539).
+      setLoaded(true);
     }
   }, [accessToken, fetchWithAuth]);
 
@@ -399,6 +414,7 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
     <ScanStatusContext.Provider
       value={{
         data,
+        loaded,
         triggerError,
         reportTriggerStarted,
         reportTriggerError,
