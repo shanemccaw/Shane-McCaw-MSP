@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-07 | ⏳ IN FLIGHT | Git #536 - Hard gate: never-scanned customer sees only Scene 0 | |
 | 2026-08-07 | ⏳ IN FLIGHT | Git #535 - Scene 1: finding count on pillar label + expand | |
 | 2026-08-07 | ✅ DONE | Git #534 - Expandable chip cap + pillar finding count badge | `e7a80fe2` |
 | 2026-08-07 | ✅ DONE | Git #529 - Remove remaining chip caps, show every finding | `8d8ef955` |
