@@ -249,8 +249,8 @@ export interface JourneyPillarView {
    */
   readonly evaluation: WirePillarEvaluation;
   /**
-   * Short findings used as radar chips — every real one reappears in the pillar
-   * scene.
+   * Short chips used on the radar wedge — up to three real finding titles,
+   * worst-first, followed by up to three real stat readouts.
    *
    * NEVER EMPTY (#503). It used to be: `statChips.length ? statChips :
    * ordered.slice(0,3).map(f => f.title)` had no third branch, so a pillar whose
@@ -260,6 +260,14 @@ export interface JourneyPillarView {
    * unmeasured, or genuinely below the coverage floor. `headline` has told those
    * apart since #399; this now gets the same treatment from the same signal, so
    * the wedge always says something true about itself.
+   *
+   * #520: findings used to be dropped entirely whenever any stat resolved — a
+   * pillar with 6 real findings (5 critical) rendered only its one "14 global
+   * administrators" stat chip, none of the findings. A stat is a number; a
+   * finding is a problem, and a problem must never be hidden by a number that
+   * happens to also be available. Findings now always lead this array when any
+   * exist, with stats filling the remaining slots — both kinds render, neither
+   * masks the other.
    *
    * `chipsAreReal` is what tells a caller which kind it is holding — see below.
    */
@@ -470,12 +478,18 @@ export function pillarEvaluation(card: WirePillarCard | undefined): WirePillarEv
 }
 
 /**
- * The chips for one pillar: real stat readouts, else real finding titles, else
- * an honest line saying which kind of nothing this is (#503, #517).
+ * The chips for one pillar: real finding titles followed by real stat
+ * readouts, else an honest line saying which kind of nothing this is (#503,
+ * #517, #520).
  *
- * The order of the first two branches is unchanged — stat readouts are the
- * numbers the pillar scene will show again, so they lead. What is new is that
- * falling off the end no longer means falling silent.
+ * Findings lead. #520: this used to be `statChips.length ? statChips :
+ * findingChips` — a stat resolving at all suppressed every finding for that
+ * pillar outright, which is how Security's 6 real findings (5 critical) ended
+ * up rendering as a single "14 global administrators" stat chip. A finding is
+ * a real problem the scan found; a stat is a number. Neither is allowed to
+ * hide the other, so both are concatenated — worst finding first — and a
+ * caller that only has room for the first few chips sees the problem before
+ * the number that accompanies it.
  */
 function pillarChips(
   statChips: readonly string[],
@@ -483,10 +497,9 @@ function pillarChips(
   evaluation: WirePillarEvaluation,
   stillScanning: boolean,
 ): { chips: readonly string[]; chipsAreReal: boolean } {
-  if (statChips.length) return { chips: statChips, chipsAreReal: true };
-
   const findingChips = ordered.slice(0, 3).map((f) => f.title);
-  if (findingChips.length) return { chips: findingChips, chipsAreReal: true };
+  const chips = [...findingChips, ...statChips];
+  if (chips.length) return { chips, chipsAreReal: true };
 
   if (evaluation.status === "insufficient_data") {
     // #518: a scan in progress hasn't finished collecting this pillar's
@@ -608,10 +621,9 @@ export function buildPillarViews(
       score: typeof card?.score === "number" ? card.score : null,
       headline: leadTitle,
       evaluation,
-      // Prefer real stat readouts as chips — they are the numbers the pillar
-      // scene will show again. Fall back to finding titles so a pillar whose
-      // stats are all unavailable still populates its wedge, and to an honest
-      // explanatory line so it is never silently empty (#503).
+      // Real finding titles lead, real stat readouts follow — a stat must never
+      // hide a real problem the scan found (#520). Falls back to an honest
+      // explanatory line so a pillar with neither is never silently empty (#503).
       chips,
       chipsAreReal,
       stats: card?.stats ?? [],

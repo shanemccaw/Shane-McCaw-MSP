@@ -325,7 +325,38 @@ describe("pillar views", () => {
       ],
     };
     const view = buildPillarViews(payload).find((v) => v.key === "security");
-    assert.deepEqual(view?.chips, ["14 accounts without mfa"]);
+    assert.deepEqual(view?.chips, ["14 accounts have no MFA", "14 accounts without mfa"]);
+    assert.equal(view?.chipsAreReal, true);
+  });
+
+  // #520: this is the confirmed live bug — a resolvable stat used to suppress
+  // every finding for its pillar outright. Security had 6 real findings (5
+  // critical) this run and rendered only its "14 global administrators" stat
+  // chip; none of the findings showed anywhere on the wedge.
+  it("#520: a critical finding is never hidden just because a stat also resolved", () => {
+    const payload: WirePillarStatsPayload = {
+      pillars: [
+        {
+          pillar: "security",
+          score: 22,
+          stats: [
+            { id: "security.globalAdmins", label: "global administrators", unit: "count", value: 14, checkKey: "identity:global-admin-count" },
+          ],
+          findings: [
+            { severity: "critical", checkKey: "identity:ca-policy-count", title: "No Conditional Access policies configured" },
+            { severity: "critical", checkKey: "identity:ca-mfa-coverage", title: "MFA not enforced by any policy" },
+            { severity: "warning", checkKey: "identity:legacy-auth", title: "Legacy authentication protocols unblocked" },
+          ],
+        },
+      ],
+    };
+    const view = buildPillarViews(payload).find((v) => v.key === "security");
+    assert.deepEqual(view?.chips, [
+      "No Conditional Access policies configured",
+      "MFA not enforced by any policy",
+      "Legacy authentication protocols unblocked",
+      "14 global administrators",
+    ]);
     assert.equal(view?.chipsAreReal, true);
   });
 
