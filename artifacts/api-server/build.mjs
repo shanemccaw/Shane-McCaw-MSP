@@ -19,6 +19,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/scripts/seed-marketing.ts"),
       path.resolve(artifactDir, "src/scripts/backfill-tenant-domain.ts"),
+      path.resolve(artifactDir, "src/scripts/diagnose-542-pillar-breakdown.ts"),
     ],
     platform: "node",
     bundle: true,
