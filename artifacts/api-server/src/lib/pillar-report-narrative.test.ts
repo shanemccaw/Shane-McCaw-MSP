@@ -143,6 +143,7 @@ function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
     activeRunId: null,
     scannedPackageKeys: ["assess:copilot-readiness"],
     scannedCheckCount: 29,
+    checkKeyPillars: {},
     generatedAt: "2026-08-06T00:00:00.000Z",
   };
 }

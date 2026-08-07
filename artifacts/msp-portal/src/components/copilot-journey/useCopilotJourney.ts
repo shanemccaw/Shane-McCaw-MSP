@@ -12,7 +12,11 @@
  *   • `GET /api/portal/assessment/status` — the overall Copilot readiness score
  *     and the nine-document generation state. Polled while anything is still
  *     generating, then left alone.
- *   • `useScanStatus()` — the live scan, for Scene 0.
+ *   • `useScanStatus()` — the live scan, for Scene 0. `scanCheckResults` (#245,
+ *     #526) also feeds `view.pillars[].chips`/`headline` directly: real
+ *     severity-matched results from THIS run stream in and surface pillar-by-
+ *     pillar well before the run's `msp_diagnostic_findings` batch write, so
+ *     the "still scanning" placeholder is now the rare case, not the common one.
  *
  * The two-phase wait is preserved deliberately and must not be collapsed: the
  * reveal fires the instant the SCAN completes and is never gated on document
@@ -224,8 +228,13 @@ export function useCopilotJourney(options?: {
         projectedByPillar: options?.projectedByPillar,
         isPreview: false,
         scanRunning,
+        // #526: this run's own live per-check severity results, streamed off
+        // the same SSE feed `scan.currentCheckLabel` below already reads —
+        // real findings can now surface pillar-by-pillar while the scan is
+        // still in flight, instead of only once its findings batch writes.
+        liveCheckResults: scanStatus.scanCheckResults,
       }),
-    [tenant, pillarStats, status, options?.projectedByPillar, scanRunning],
+    [tenant, pillarStats, status, options?.projectedByPillar, scanRunning, scanStatus.scanCheckResults],
   );
 
   const scan: JourneyScanState = useMemo(() => {

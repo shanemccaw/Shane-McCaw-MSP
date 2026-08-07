@@ -11,13 +11,19 @@
  *
  * Real sources, all already on the wire:
  *   • `GET /api/portal/assessment/war-room-pillars` → per-pillar score (0-100,
- *     higher = healthier, null when no evaluable rule feeds it) plus the real
- *     `msp_diagnostic_findings` rows for that pillar.
+ *     higher = healthier, null when no evaluable rule feeds it), the real
+ *     `msp_diagnostic_findings` rows for that pillar, and (#521/#526)
+ *     `checkKeyPillars` — a real `monitor_checks.key` → pillar table, the same
+ *     resolution the findings above were filed under.
  *   • `GET /api/portal/assessment/status` → `copilotReadiness.overall.score`
  *     (the only real overall readiness figure the platform produces),
  *     `documents{items,expected,ready,generating,total}` for generation state,
  *     and `radar.pillars` as a coverage-gated cross-check.
  *   • `useScanStatus()` + `GET /api/portal/scan-plan` → live scan progress.
+ *     `scanCheckResults` (#245/#526), joined against `checkKeyPillars` above,
+ *     lets a pillar's chips surface a real severity-matched result the instant
+ *     it streams in — see `liveFindingsByPillar`/`mergeLiveFindings` below —
+ *     rather than only once the run's findings batch writes.
  *   • `GET /api/portal/assessment/sow` + `.../sow/payment-options` → the scope
  *     and its pricing.
  */
@@ -31,6 +37,10 @@ import {
   liveDocumentFor,
   type PillarKey,
 } from "./journeyTokens.ts";
+import {
+  classifyLiveCheckSeverity,
+  type LiveCheckResult,
+} from "../copilot-assessment/telemetryComparison.ts";
 
 /* ------------------------------------------------------------------ *
  * Wire shapes — the subset of each payload this journey reads.
@@ -167,6 +177,18 @@ export interface WirePillarStatsPayload {
    * have nothing to recommend to.
    */
   readonly licenseGapPurchase?: WireLicenseGapPurchase | null;
+  /**
+   * Real `monitor_checks.key` → War Room pillar, for every real check in the
+   * catalog (#521's resolution: `signal_derivation_rules.pillar` first,
+   * `WAR_ROOM_PILLAR_CHECK_DOMAINS` fallback second — api-server's
+   * `war-room-pillar-stats.ts`, both already applied server-side). Lets a live
+   * consumer resolve a streaming `scanCheckResults` checkKey to a pillar chip
+   * using the SAME source of truth this payload's own `findings` were filed
+   * under, instead of a second client-side domain-guessing map (#526). Absent
+   * on a payload that predates this field — then live results resolve to no
+   * pillar and are simply not shown, same as an unmapped checkKey.
+   */
+  readonly checkKeyPillars?: Readonly<Record<string, string>>;
 }
 
 export interface WireDocumentItem {
@@ -596,15 +618,84 @@ export function orderPillarFindings(
   );
 }
 
+/**
+ * Real per-check results streaming off THIS run's SSE feed (#245's
+ * `scanCheckResults`), reshaped into pillar-scoped findings the same shape
+ * `war-room-pillars` findings already carry (#526).
+ *
+ * Severity is `classifyLiveCheckSeverity` verbatim — the same mirror of
+ * api-server's `classifyCheckSeverity` the telemetry panel's live
+ * discrepancies already use (`telemetryComparison.ts`) — so this never grows a
+ * second severity vocabulary that could disagree with the one the persisted
+ * finding will carry once the run completes.
+ *
+ * Pillar resolution reads `checkKeyPillars` (server-resolved, #521) only —
+ * never a client-side domain guess — so a checkKey absent from that map (an
+ * older payload, or a genuinely unmapped check) simply produces no live
+ * finding rather than an invented one. `rankWeight` is left unset: it is a
+ * server-computed #414 value this stream does not carry, and `orderPillarFindings`
+ * already treats an absent weight as the lowest tie-break, which is correct for
+ * a result that has not yet been through that resolution.
+ *
+ * Grouped by pillar (not returned as one flat list) because a caller merges
+ * each pillar's slice into that pillar's own `ordered` findings independently.
+ *
+ * Pure; exported for tests.
+ */
+export function liveFindingsByPillar(
+  liveCheckResults: readonly LiveCheckResult[],
+  checkKeyPillars: Readonly<Record<string, string>> | undefined,
+): ReadonlyMap<PillarKey, WirePillarFinding[]> {
+  const byPillar = new Map<PillarKey, WirePillarFinding[]>();
+  if (!checkKeyPillars) return byPillar;
+  for (const result of liveCheckResults) {
+    const severity = classifyLiveCheckSeverity(result);
+    if (!severity) continue;
+    const pillarValue = checkKeyPillars[result.checkKey];
+    if (!pillarValue || !isPillarKey(pillarValue)) continue;
+    const list = byPillar.get(pillarValue) ?? [];
+    list.push({ severity, checkKey: result.checkKey, title: result.checkLabel || result.checkKey });
+    byPillar.set(pillarValue, list);
+  }
+  return byPillar;
+}
+
+/**
+ * `persisted` findings with any checkKey `live` also covers dropped, then
+ * `live` prepended — this run's own results are the freshest evidence for a
+ * check either source might name, mirroring `selectDiscrepancies`'s "the
+ * stream's own view of THIS run beats a borrowed one" rule
+ * (`telemetryComparison.ts`) applied per-check rather than as an all-or-
+ * nothing switch, since `war-room-pillars` findings can be a genuinely
+ * different (older/fallback) run's while live results are always this one's.
+ *
+ * Pure; exported for tests.
+ */
+export function mergeLiveFindings(
+  persisted: readonly WirePillarFinding[],
+  live: readonly WirePillarFinding[],
+): WirePillarFinding[] {
+  if (!live.length) return [...persisted];
+  const liveKeys = new Set(live.map((f) => f.checkKey));
+  return [...live, ...persisted.filter((f) => !liveKeys.has(f.checkKey))];
+}
+
 export function buildPillarViews(
   payload: WirePillarStatsPayload | null | undefined,
   // #518: true while a scan is genuinely running right now (Scene 0). Purely
   // additive — every existing caller (tests, the design fixture) omits it and
   // gets today's behaviour unchanged.
   scanRunning = false,
+  // #526: this run's own live per-check results (`scanCheckResults` off
+  // scan-status-context), so a pillar's chips can surface a real severity-
+  // matched result the instant it streams in rather than waiting for the
+  // findings batch write at run completion. Empty whenever no run is
+  // streaming — every existing caller omits it and gets today's behaviour.
+  liveCheckResults: readonly LiveCheckResult[] = [],
 ): JourneyPillarView[] {
   const byKey = new Map<string, WirePillarCard>();
   (payload?.pillars ?? []).forEach((p) => byKey.set(p.pillar, p));
+  const liveByPillar = liveFindingsByPillar(liveCheckResults, payload?.checkKeyPillars);
 
   // #524: whether ANY run — this one, or an older one being borrowed as a
   // placeholder — has ever persisted findings for this tenant. See
@@ -618,7 +709,10 @@ export function buildPillarViews(
     const id = PILLARS[key];
     const card = byKey.get(key);
     const findings = card?.findings ?? [];
-    const ordered = orderPillarFindings(findings);
+    // #526: this run's own live results stand in ahead of whatever was
+    // persisted (a genuinely different, older/fallback run per #524) for any
+    // checkKey they cover — see `mergeLiveFindings`.
+    const ordered = orderPillarFindings(mergeLiveFindings(findings, liveByPillar.get(key) ?? []));
     const statChips = (card?.stats ?? [])
       .map(chipText)
       .filter((t): t is string => t !== null)
@@ -816,8 +910,14 @@ export function buildJourneyView(input: {
   readonly isPreview?: boolean;
   /** #518: true while a scan is genuinely running right now (Scene 0). */
   readonly scanRunning?: boolean;
+  /** #526: this run's own live per-check results, see `buildPillarViews`. */
+  readonly liveCheckResults?: readonly LiveCheckResult[];
 }): JourneyView {
-  const pillars = buildPillarViews(input.pillarStats, input.scanRunning === true);
+  const pillars = buildPillarViews(
+    input.pillarStats,
+    input.scanRunning === true,
+    input.liveCheckResults ?? [],
+  );
   // `copilotGate.score` is the canonical headline: the engine's Copilot pillar.
   // `copilotReadiness.overall.score` now carries the identical number, but it is
   // null whenever the last completed run has no tenantId (the sub-indicators

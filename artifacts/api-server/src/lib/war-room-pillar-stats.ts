@@ -954,6 +954,21 @@ export interface WarRoomPillarStatsPayload {
    */
   scannedPackageKeys: string[];
   scannedCheckCount: number;
+  /**
+   * Real `monitor_checks.key` → War Room pillar, for every real check in the
+   * catalog — resolved through `warRoomPillarForCheckKey` (#521: rule-derived
+   * `signal_derivation_rules.pillar` first, `WAR_ROOM_PILLAR_CHECK_DOMAINS`
+   * fallback second), the SAME function `findingsByPillar` above is filed with.
+   *
+   * Exists so a live consumer streaming per-check results off the diagnostics
+   * SSE feed (msp-portal's `scanCheckResults`, #245) can resolve a checkKey to
+   * a pillar chip using this exact resolution rather than a second, potentially
+   * drifting client-side domain-guessing map (#526). Already the FULL
+   * resolution — fallback included — so a client-side miss means the check
+   * genuinely maps to no pillar, not that the client needs a fallback of its
+   * own.
+   */
+  checkKeyPillars: Record<string, WarRoomPillarKey>;
   generatedAt: string;
 }
 
@@ -1134,6 +1149,18 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   // signal was reclassified to rather than its check key's domain prefix.
   const checkKeyPillars = buildCheckKeyPillarMap(rules, rankCheckDefinitions);
 
+  // #526: the FULLY resolved check→pillar table (rule-based above, falling back
+  // to `WAR_ROOM_PILLAR_CHECK_DOMAINS` via `warRoomPillarForCheckKey` itself, the
+  // exact same call `findingsByPillar` below is filed with) for every real check
+  // in the catalog — not just the subset a rule names. Sent on the wire so a live
+  // consumer never needs its own domain-guessing fallback: this one table already
+  // is the fallback, applied server-side.
+  const wireCheckKeyPillars: Record<string, WarRoomPillarKey> = {};
+  for (const def of rankCheckDefinitions) {
+    const pillar = warRoomPillarForCheckKey(def.key, checkKeyPillars);
+    if (pillar) wireCheckKeyPillars[def.key] = pillar;
+  }
+
   const { findingsByPillar, findingsRunId, findingsRunStatus, licenseGapCheckKeys } =
     await fetchPillarFindings(customerId, findingRankWeights, checkKeyPillars);
 
@@ -1301,6 +1328,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     activeRunId: activeRun?.runId ?? null,
     scannedPackageKeys: scanned.packageKeys,
     scannedCheckCount: scanned.checkKeys?.size ?? 0,
+    checkKeyPillars: wireCheckKeyPillars,
     generatedAt: new Date().toISOString(),
   };
 }

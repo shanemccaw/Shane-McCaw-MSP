@@ -19,6 +19,8 @@ import {
   gapSentence,
   INSUFFICIENT_PILLAR_CHIP,
   isGenerationUnknown,
+  liveFindingsByPillar,
+  mergeLiveFindings,
   orderPillarFindings,
   pillarTrend,
   SCANNING_PILLAR_CHIP,
@@ -479,6 +481,215 @@ describe("pillar views", () => {
     const idle = buildJourneyView({ tenant: TENANT, pillarStats: payload, status });
     const idleSecurity = idle.pillars.find((p) => p.key === "security");
     assert.equal(idleSecurity?.headline, CLEAN_PILLAR_HEADLINE);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * #526 — this run's own live scanCheckResults surface as real pillar
+   * chips/headline while the scan is still in flight, using the same
+   * checkKey -> pillar resolution (#521) the persisted findings above use.
+   * ---------------------------------------------------------------- */
+
+  it("#526: a live critical result replaces the still-scanning placeholder the instant it streams in", () => {
+    // The confirmed reproduction case: no fallback findings run exists
+    // (#524's exact gap) and the pillar's checks are still mid-run — before
+    // this fix, that combination could only ever render SCANNING_PILLAR_CHIP.
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: null,
+          evaluation: {
+            status: "insufficient_data",
+            evaluableSignalCount: 1,
+            minRequiredSignals: 2,
+            reason: "only 1 evaluable signal carries a security impact (minimum 2)",
+          },
+          stats: [],
+          findings: [],
+        },
+      ],
+      checkKeyPillars: { "identity:ca-policy-count": "security" },
+    };
+    const liveCheckResults = [
+      {
+        checkKey: "identity:ca-policy-count",
+        checkLabel: "No enabled Conditional Access policies",
+        status: "failed",
+        severityMatched: "critical",
+        index: 3,
+        total: 40,
+      },
+    ];
+    const view = buildPillarViews(payload, true, liveCheckResults).find((v) => v.key === "security");
+    assert.equal(view?.headline, "No enabled Conditional Access policies");
+    assert.deepEqual(view?.chips, ["No enabled Conditional Access policies"]);
+    assert.equal(view?.chipsAreReal, true);
+    assert.equal(view?.findings[0]?.checkKey, "identity:ca-policy-count");
+    assert.equal(view?.findings[0]?.severity, "critical");
+    // The wire's own (pre-run) evaluation verdict is untouched — only the
+    // presentation surfaces the live evidence ahead of it.
+    assert.equal(view?.evaluation.status, "insufficient_data");
+  });
+
+  it("#526: live results merge ahead of persisted findings, ranked critical-first like any other findings set", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: "run-older",
+      pillars: [
+        {
+          pillar: "security",
+          score: 55,
+          evaluation: { status: "scored", evaluableSignalCount: 4, minRequiredSignals: 2, reason: "scored" },
+          stats: [],
+          findings: [
+            { severity: "warning", checkKey: "identity:legacy-auth", title: "Legacy auth sign-ins detected" },
+          ],
+        },
+      ],
+      checkKeyPillars: {
+        "identity:ca-policy-count": "security",
+        "identity:legacy-auth": "security",
+      },
+    };
+    const liveCheckResults = [
+      {
+        checkKey: "identity:ca-policy-count",
+        checkLabel: "No enabled Conditional Access policies",
+        status: "failed",
+        severityMatched: "critical",
+        index: 3,
+        total: 40,
+      },
+    ];
+    const view = buildPillarViews(payload, true, liveCheckResults).find((v) => v.key === "security");
+    // Both findings survive — one from this run's live stream, one from the
+    // older persisted run — and criticals lead regardless of which source.
+    assert.deepEqual(
+      view?.findings.map((f) => f.checkKey),
+      ["identity:ca-policy-count", "identity:legacy-auth"],
+    );
+    assert.equal(view?.headline, "No enabled Conditional Access policies");
+  });
+
+  it("#526: a live result supersedes a persisted finding for the SAME checkKey rather than duplicating it", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: "run-older",
+      pillars: [
+        {
+          pillar: "security",
+          score: 55,
+          evaluation: { status: "scored", evaluableSignalCount: 4, minRequiredSignals: 2, reason: "scored" },
+          stats: [],
+          // The older run's title for this check — stale text a live re-run
+          // should override, not sit beside.
+          findings: [{ severity: "warning", checkKey: "identity:ca-policy-count", title: "stale title" }],
+        },
+      ],
+      checkKeyPillars: { "identity:ca-policy-count": "security" },
+    };
+    const liveCheckResults = [
+      {
+        checkKey: "identity:ca-policy-count",
+        checkLabel: "No enabled Conditional Access policies",
+        status: "failed",
+        severityMatched: "critical",
+        index: 3,
+        total: 40,
+      },
+    ];
+    const view = buildPillarViews(payload, true, liveCheckResults).find((v) => v.key === "security");
+    assert.equal(view?.findings.length, 1);
+    assert.equal(view?.findings[0]?.title, "No enabled Conditional Access policies");
+    assert.equal(view?.findings[0]?.severity, "critical");
+  });
+
+  it("#526: a live result for a checkKey absent from checkKeyPillars resolves to no pillar rather than a guessed one", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: null,
+          evaluation: { status: "insufficient_data", evaluableSignalCount: 1, minRequiredSignals: 2, reason: "x" },
+          stats: [],
+          findings: [],
+        },
+      ],
+      // No checkKeyPillars at all — an older payload, or a genuinely
+      // unresolved check. Nothing here is client-side guessed from the
+      // checkKey's own domain prefix.
+    };
+    const liveCheckResults = [
+      {
+        checkKey: "identity:ca-policy-count",
+        checkLabel: "No enabled Conditional Access policies",
+        status: "failed",
+        severityMatched: "critical",
+        index: 3,
+        total: 40,
+      },
+    ];
+    const view = buildPillarViews(payload, true, liveCheckResults).find((v) => v.key === "security");
+    assert.deepEqual(view?.findings, []);
+    assert.equal(view?.headline, SCANNING_PILLAR_CHIP);
+  });
+
+  it("#526: a live result classified as non-actionable (license_gap/error/requires_script) never becomes a chip", () => {
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "licensing",
+          score: null,
+          evaluation: { status: "insufficient_data", evaluableSignalCount: 1, minRequiredSignals: 2, reason: "x" },
+          stats: [],
+          findings: [],
+        },
+      ],
+      checkKeyPillars: { "licensing:seat-check": "licensing" },
+    };
+    const liveCheckResults = [
+      { checkKey: "licensing:seat-check", checkLabel: "Seat check", status: "license_gap", index: 1, total: 10 },
+    ];
+    const view = buildPillarViews(payload, true, liveCheckResults).find((v) => v.key === "licensing");
+    assert.deepEqual(view?.findings, []);
+    assert.equal(view?.headline, SCANNING_PILLAR_CHIP);
+  });
+
+  it("#526: buildJourneyView threads liveCheckResults through to its pillars", () => {
+    const status: WireAssessmentStatus = { copilotGate: { score: null, threshold: 82, status: null } };
+    const payload: WirePillarStatsPayload = {
+      findingsRunId: null,
+      pillars: [
+        {
+          pillar: "security",
+          score: null,
+          evaluation: { status: "insufficient_data", evaluableSignalCount: 1, minRequiredSignals: 2, reason: "x" },
+          stats: [],
+          findings: [],
+        },
+      ],
+      checkKeyPillars: { "identity:ca-policy-count": "security" },
+    };
+    const view = buildJourneyView({
+      tenant: TENANT,
+      pillarStats: payload,
+      status,
+      scanRunning: true,
+      liveCheckResults: [
+        {
+          checkKey: "identity:ca-policy-count",
+          checkLabel: "No enabled Conditional Access policies",
+          status: "failed",
+          severityMatched: "critical",
+          index: 3,
+          total: 40,
+        },
+      ],
+    });
+    const security = view.pillars.find((p) => p.key === "security");
+    assert.equal(security?.headline, "No enabled Conditional Access policies");
+    assert.equal(security?.chipsAreReal, true);
   });
 
   it("#517: real stat readouts and real findings still win over the explanatory fallback", () => {
@@ -1456,5 +1667,91 @@ describe("orderPillarFindings", () => {
       orderPillarFindings(flat).map((f) => f.title),
       ["No enabled break-glass account", "No Conditional Access policies exist"],
     );
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #526 — this run's own live scanCheckResults, reshaped into pillar-
+ * scoped findings using the server's own checkKey -> pillar resolution
+ * ------------------------------------------------------------------ */
+
+describe("liveFindingsByPillar", () => {
+  it("classifies severity exactly like the persisted findings will (mirrors classifyCheckSeverity)", () => {
+    const byPillar = liveFindingsByPillar(
+      [
+        { checkKey: "identity:ca-policy-count", checkLabel: "No CA policies", status: "failed", severityMatched: "critical", index: 1, total: 5 },
+        { checkKey: "identity:legacy-auth", checkLabel: "Legacy auth", status: "failed", severityMatched: "medium", index: 2, total: 5 },
+      ],
+      { "identity:ca-policy-count": "security", "identity:legacy-auth": "security" },
+    );
+    const security = byPillar.get("security") ?? [];
+    assert.deepEqual(
+      security.map((f) => [f.checkKey, f.severity]),
+      [
+        ["identity:ca-policy-count", "critical"],
+        ["identity:legacy-auth", "warning"],
+      ],
+    );
+  });
+
+  it("drops results that will never become a critical/warning finding — license_gap, error, requires_script, ok", () => {
+    const byPillar = liveFindingsByPillar(
+      [
+        { checkKey: "a:1", checkLabel: "a1", status: "license_gap", index: 1, total: 4 },
+        { checkKey: "a:2", checkLabel: "a2", status: "error", index: 2, total: 4 },
+        { checkKey: "a:3", checkLabel: "a3", status: "requires_script", index: 3, total: 4 },
+        { checkKey: "a:4", checkLabel: "a4", status: "ok", index: 4, total: 4 },
+      ],
+      { "a:1": "adoption", "a:2": "adoption", "a:3": "adoption", "a:4": "adoption" },
+    );
+    assert.equal(byPillar.size, 0);
+  });
+
+  it("skips a checkKey the server's own table has no pillar for, rather than guessing from its domain prefix", () => {
+    const byPillar = liveFindingsByPillar(
+      [{ checkKey: "identity:ca-policy-count", checkLabel: "No CA policies", status: "failed", severityMatched: "critical", index: 1, total: 5 }],
+      {},
+    );
+    assert.equal(byPillar.size, 0);
+  });
+
+  it("returns nothing at all when the payload predates checkKeyPillars (undefined map)", () => {
+    const byPillar = liveFindingsByPillar(
+      [{ checkKey: "identity:ca-policy-count", checkLabel: "No CA policies", status: "failed", severityMatched: "critical", index: 1, total: 5 }],
+      undefined,
+    );
+    assert.equal(byPillar.size, 0);
+  });
+
+  it("drops a checkKey resolving to `copilot` — not one of the six satellite pillars this journey renders", () => {
+    const byPillar = liveFindingsByPillar(
+      [{ checkKey: "copilot:overshare-exposure", checkLabel: "Overshare exposure", status: "failed", severityMatched: "critical", index: 1, total: 5 }],
+      { "copilot:overshare-exposure": "copilot" },
+    );
+    assert.equal(byPillar.size, 0);
+  });
+});
+
+describe("mergeLiveFindings", () => {
+  it("prepends live findings ahead of persisted ones for distinct checkKeys", () => {
+    const persisted: WirePillarFinding[] = [{ severity: "warning", checkKey: "b", title: "persisted" }];
+    const live: WirePillarFinding[] = [{ severity: "critical", checkKey: "a", title: "live" }];
+    assert.deepEqual(
+      mergeLiveFindings(persisted, live).map((f) => f.checkKey),
+      ["a", "b"],
+    );
+  });
+
+  it("a live finding for the same checkKey as a persisted one replaces it, never duplicates it", () => {
+    const persisted: WirePillarFinding[] = [{ severity: "warning", checkKey: "a", title: "stale" }];
+    const live: WirePillarFinding[] = [{ severity: "critical", checkKey: "a", title: "fresh" }];
+    const merged = mergeLiveFindings(persisted, live);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0]?.title, "fresh");
+  });
+
+  it("returns the persisted array untouched when there are no live findings", () => {
+    const persisted: WirePillarFinding[] = [{ severity: "warning", checkKey: "a", title: "persisted" }];
+    assert.deepEqual(mergeLiveFindings(persisted, []), persisted);
   });
 });
