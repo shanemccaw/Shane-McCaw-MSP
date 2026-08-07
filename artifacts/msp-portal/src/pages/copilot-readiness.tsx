@@ -39,6 +39,7 @@ import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { JourneySvgDefs, PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { RevealAdoptionScene } from "@/components/copilot-journey/RevealAdoptionScene";
 import { RevealFullPicture } from "@/components/copilot-journey/RevealFullPicture";
+import { RevealNoScanGate } from "@/components/copilot-journey/RevealNoScanGate";
 import {
   PILLAR_WIDE_MIN_PX,
   RevealPillarScene,
@@ -530,13 +531,34 @@ export default function CopilotReadinessPage() {
 
   const pillarWide = metrics.vw >= PILLAR_WIDE_MIN_PX;
 
+  // #536: a defensive backstop independent of the overlay/auto-trigger
+  // bookkeeping above. `overlayOpen` covers the expected path (a real scan
+  // is running or about to be) and locks scroll (`document.body.style.
+  // overflow = "hidden"` in RevealScanOverlay) while it does — so the actual
+  // gap this closes is narrower than "any never-scanned customer": it is the
+  // specific case where nothing is running, nothing is about to auto-trigger,
+  // and no scan has ever landed, i.e. the "real customer always has a scan in
+  // flight by now" assumption behind #367's auto-trigger effect turned out to
+  // be wrong. Scenes 1-9 must not mount in that case — they read real pillar
+  // scores and findings and have nothing to say. `isPreview` is excluded
+  // explicitly even though the preview's synthetic `scan` always reports
+  // `everScanned: true` (never triggering this on its own) — this gate must
+  // never depend on that being true.
+  const neverScannedBlocked = !isPreview && !scan.everScanned && !scan.running && !awaitingAutoScan;
+
   // #370: a tenant whose Graph/SharePoint access is broken has nothing real
   // for the scroll experience to reveal, so it is replaced outright rather
   // than rendered underneath a small nav-style nudge this no-nav page has
   // nowhere to put. All hooks above still run every render regardless — this
-  // only decides what to paint.
+  // only decides what to paint. Checked ahead of the never-scanned gate below
+  // for the same reason it is checked ahead of the auto-trigger effect: a
+  // broken-consent tenant is a different real state than a never-scanned one.
   if (reconsentKind !== null) {
     return <RevealReconsentGate kind={reconsentKind} />;
+  }
+
+  if (neverScannedBlocked) {
+    return <RevealNoScanGate message={autoTriggerError} onRetry={retryAutoTrigger} />;
   }
 
   return (
