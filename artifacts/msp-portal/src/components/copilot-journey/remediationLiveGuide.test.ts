@@ -480,13 +480,14 @@ describe("guide-level figures", () => {
     assert.ok(resolveHandoffBlurb(false, 30).includes("same 30 steps"));
   });
 
-  it("counts real findings off findingCounts, not the capped findings array", () => {
+  it("counts real findings off findingCounts, not the findings array's own length", () => {
     const pillars = [
       pillar("governance", {
         score: 40,
         criticalCount: 4,
         warningCount: 9,
-        // Three findings on the wire, thirteen real — the cap must not win.
+        // Three findings carried on this payload, thirteen real — the array's
+        // length must not silently become the total.
         findings: [finding({ title: "a" }), finding({ title: "b" }), finding({ title: "c" })],
       }),
       ...PILLAR_KEYS.filter((k) => k !== "governance").map((k) => pillar(k)),

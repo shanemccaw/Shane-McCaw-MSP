@@ -48,7 +48,6 @@ import {
   FINDING_RANK_IMPACT_FIELD,
   WAR_ROOM_ENGINE_PILLAR,
   WAR_ROOM_PILLAR_KEYS,
-  WAR_ROOM_FINDINGS_PER_PILLAR,
   type CheckRankWeights,
   type WarRoomPillarFinding,
   type WarRoomPillarKey,
@@ -451,24 +450,22 @@ describe("#414 degrades honestly rather than arbitrarily", () => {
     expect(([] as WarRoomPillarFinding[]).sort(compareRankedFindings)).toEqual([]);
   });
 
-  it("ranks AHEAD of the per-pillar cap, so the cap keeps the heaviest", () => {
-    // Why this had to be server-side: the wire only ever carries
-    // WAR_ROOM_FINDINGS_PER_PILLAR findings per pillar, so any ranking applied
-    // after the slice can only reorder an already-wrongly-chosen set.
+  it("orders every real finding by weight, not just a capped head", () => {
+    // The per-pillar display cap was removed: every real critical/warning
+    // finding now reaches the caller, so the ranking has to be right across
+    // the whole set, not just whichever three used to survive a slice.
     const four = [
       finding("identity:break-glass-health", "critical", "18"),
       finding("identity:ca-mfa-coverage", "critical", "20"),
       finding("identity:ca-policy-count", "critical", "12"),
       finding("identity:risky-users", "critical", "0"),
     ];
-    const kept = [...four].sort(compareRankedFindings).slice(0, WAR_ROOM_FINDINGS_PER_PILLAR);
-    expect(kept.map((f) => f.title)).toEqual(["20", "18", "12"]);
+    const ranked = [...four].sort(compareRankedFindings);
+    expect(ranked.map((f) => f.title)).toEqual(["20", "18", "12", "0"]);
 
-    // The old alphabetical order kept the same three here but in the wrong
-    // order; the cap's real hazard is that it is blind to weight at all.
-    const oldKept = [...four]
-      .sort((a, b) => a.checkKey.localeCompare(b.checkKey))
-      .slice(0, WAR_ROOM_FINDINGS_PER_PILLAR);
-    expect(oldKept.map((f) => f.title)).toEqual(["18", "20", "12"]);
+    // The old alphabetical order got the last one right by accident but
+    // everything else wrong — its real hazard is that it is blind to weight.
+    const alphabetical = [...four].sort((a, b) => a.checkKey.localeCompare(b.checkKey));
+    expect(alphabetical.map((f) => f.title)).toEqual(["18", "20", "12", "0"]);
   });
 });

@@ -863,9 +863,6 @@ export interface WarRoomPillarStatsPayload {
   generatedAt: string;
 }
 
-/** How many real findings a card shows on its note line. */
-export const WAR_ROOM_FINDINGS_PER_PILLAR = 3;
-
 const ACTIVE_RUN_STATUSES = ["pending", "running"] as const;
 
 // ── Assembly ──────────────────────────────────────────────────────────────────
@@ -1185,7 +1182,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       evaluation,
       rawRiskScore: view?.rawRiskScore ?? 0,
       stats,
-      findings: found.slice(0, WAR_ROOM_FINDINGS_PER_PILLAR),
+      findings: found,
       findingCounts: {
         critical: found.filter((f) => f.severity === "critical").length,
         warning: found.filter((f) => f.severity === "warning").length,
@@ -1215,12 +1212,12 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
  * own id/status so the caller never presents it as the run in flight.
  *
  * `rankWeights` (#414) orders findings WITHIN a severity tier by their real
- * signal weight. It is applied here, before the caller's
- * `WAR_ROOM_FINDINGS_PER_PILLAR` cap, and that ordering is the whole point:
- * this list used to be sorted alphabetically by `checkKey` and then truncated
- * to three, so the cap kept whichever findings sorted early in the alphabet
- * rather than whichever mattered most. Ranking after the cap — in the client,
- * say — could only ever reorder a set that was already chosen wrongly.
+ * signal weight. Every real critical/warning finding is returned — there is
+ * no per-pillar cap here or downstream — but the order still matters: it is
+ * what the radar and every other projection (headline, satellite, chips) read
+ * as "worst first". This list used to be sorted alphabetically by `checkKey`,
+ * which is how a heavily-weighted finding could lose the headline slot to one
+ * that merely sorted earlier.
  *
  * Which of a check's seven weights applies is decided HERE (corrected
  * 2026-08-06), because this is the first point at which the pillar is known:

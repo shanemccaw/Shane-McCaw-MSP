@@ -877,9 +877,8 @@ export function findingRows(findings: readonly WirePillarFinding[]): readonly Pr
  * never evaluated at all. Rendering both as "no findings" would turn an absence
  * of data into a clean bill of health.
  *
- * Note the rows are the worst-first HEAD of the pillar's findings, capped
- * server-side at `WAR_ROOM_FINDINGS_PER_PILLAR` — no caller may present them as
- * a complete set, and none of the copy passed in here does.
+ * Note the rows are every real critical/warning finding for the pillar,
+ * worst-first — there is no cap, here or server-side.
  */
 export function findingsBlocks(
   pillar: JourneyPillarView | undefined,

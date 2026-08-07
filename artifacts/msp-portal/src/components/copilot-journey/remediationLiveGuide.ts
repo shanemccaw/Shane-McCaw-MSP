@@ -100,11 +100,12 @@
  *
  * `stepEvidence()` joins a step's mapped check keys against this tenant's real
  * findings. A hit is a genuine, quotable fact: this step is on your list because
- * this check recorded this finding. A miss is NOT the opposite. The wire's
- * findings are capped SERVER-SIDE at `WAR_ROOM_FINDINGS_PER_PILLAR` (3) — the
- * worst-first head of a pillar's findings, never its complete set — so absence
- * carries no information at all and says so in words. Rendering a miss as "clean"
- * would turn a display cap into a clean bill of health.
+ * this check recorded this finding. A miss is NOT the opposite: the wire only
+ * ever carries critical/warning findings, so a check that came back clean, or
+ * was never scanned, or was scanned and simply isn't in this list yet, all look
+ * identical from here — absence carries no information at all and says so in
+ * words. Rendering a miss as "clean" would turn silence into a clean bill of
+ * health.
  *
  * ══ 5. STEPS 18 AND 28 ARE ABSENCES, NOT FAILURES ════════════════════════════
  *

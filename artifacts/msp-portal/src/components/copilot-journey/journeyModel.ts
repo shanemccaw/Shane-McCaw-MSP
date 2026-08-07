@@ -299,9 +299,9 @@ export interface JourneyPillarView {
    * Endpoint Compliance sections need all three fields per row, so the rows are
    * carried through rather than re-fetched.
    *
-   * CAPPED SERVER-SIDE at `WAR_ROOM_FINDINGS_PER_PILLAR` (3). This is the
-   * worst-first head of the pillar's findings, not its complete set, and no
-   * consumer may present it as a total.
+   * Every real critical/warning finding, worst-first — no cap, here or
+   * server-side. A tenant with a large real gap surfaces its full extent
+   * rather than an arbitrary head of it.
    *
    * Empty for a pillar the payload has no card for, AND for a pillar that was
    * genuinely evaluated clean — the two are told apart by `score`, which is
@@ -542,10 +542,11 @@ function chipText(stat: WirePillarStat): string | null {
  * `FINDING_RANK_IMPACT_FIELD` for the measured reason.
  *
  * Note this is a genuine second application of a rank the server already
- * applied, not the only one: the server ranks BEFORE its own per-pillar cap, so
- * it decides WHICH findings survive; this decides how the survivors read. Doing
- * it here too is what keeps the headline honest for any caller that assembles a
- * payload itself — the design fixture, and this file's tests.
+ * applied, not the only one: every real finding survives (there is no cap,
+ * here or server-side), so this decides only how the full set reads — which
+ * one leads. Doing it here too is what keeps the headline honest for any
+ * caller that assembles a payload itself — the design fixture, and this
+ * file's tests.
  *
  * Exported for tests.
  */
