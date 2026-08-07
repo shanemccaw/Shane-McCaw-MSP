@@ -257,6 +257,9 @@ export function PillarChapter({
               </li>
             ))}
           </ul>
+          {chapter.whatWeCheckNote && (
+            <p style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: "#64748b" }}>{chapter.whatWeCheckNote}</p>
+          )}
         </div>
 
         {chapter.costBox && (

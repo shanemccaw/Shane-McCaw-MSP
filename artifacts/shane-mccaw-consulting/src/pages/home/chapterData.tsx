@@ -32,6 +32,10 @@ export interface ChapterDatum {
   statCaption: string;
   bench: ChapterBenchmark;
   whatWeCheck: string[];
+  /** Optional qualifier rendered under the "What we check" list, for items that
+   * aren't unconditional — e.g. Compliance's DLP/label checks depend on a
+   * customer decision made during checkout (#432). */
+  whatWeCheckNote?: string;
   quote: string;
   costBox?: ChapterCostBox;
 }
@@ -106,6 +110,8 @@ export const CHAPTERS: ChapterDatum[] = [
       sparkline: "0.0,23.0 16.0,23.3 32.0,21.5 48.0,20.5 64.0,20.8 80.0,18.5 96.0,17.0 112.0,15.5",
     },
     whatWeCheck: ["Sensitivity label coverage", "DLP policy configuration"],
+    whatWeCheckNote:
+      "Label and DLP checks require Compliance Center access, which is a separate decision you make during checkout — read-only consent alone doesn't reach them.",
     quote: "“A taxonomy nobody applies is a slide deck. Auto-labelling is the only version of this that holds.”",
   },
   {
