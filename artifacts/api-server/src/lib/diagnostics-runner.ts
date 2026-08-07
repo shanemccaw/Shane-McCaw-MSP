@@ -613,6 +613,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
           requiresCustomerScript: evt.requiresCustomerScript,
           errorMessage: evt.errorMessage,
           severityMatched: evt.severityMatched,
+          severityLabel: evt.severityLabel,
         });
       },
     });

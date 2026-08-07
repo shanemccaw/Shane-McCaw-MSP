@@ -169,6 +169,10 @@ export function broadcastDiagnosticsRunProgress(runId: string, data: {
    *  live consumer classify a check's finding severity exactly as
    *  diagnostics-runner's classifyCheckSeverity will when it persists the run. */
   severityMatched?: string | null;
+  /** The matched severity rule's already-interpolated finding sentence (#528) —
+   *  carried alongside `severityMatched` so a live consumer can show the real
+   *  finding text instead of the generic static check label. */
+  severityLabel?: string | null;
 }): void {
   broadcastToHubWithReplay("engine.monitor", runId, { type: "diagnostics_progress", ...data });
 }

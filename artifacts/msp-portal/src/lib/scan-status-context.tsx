@@ -133,6 +133,13 @@ export interface ScanCheckResult {
    * doesn't send the field yet — then only failed checks can be classified.
    */
   severityMatched?: string | null;
+  /**
+   * The matched severity rule's already-interpolated finding sentence (#528),
+   * e.g. "No Conditional Access policy requires MFA" — the real text a live
+   * chip should show instead of the generic static `checkLabel`. Absent when
+   * no rule matched (falls back to `checkLabel`/`checkKey`, per #418).
+   */
+  severityLabel?: string | null;
   errorMessage?: string;
   index: number;
   total: number;
@@ -205,6 +212,7 @@ type DiagnosticsSSEEvent =
       total: number;
       errorMessage?: string;
       severityMatched?: string | null;
+      severityLabel?: string | null;
     }
   | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; findings: number }
   | { type: "diagnostics_error"; message: string };
@@ -358,6 +366,7 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
             checkLabel: parsed.checkLabel,
             status: parsed.status,
             severityMatched: parsed.severityMatched,
+            severityLabel: parsed.severityLabel,
             errorMessage: parsed.errorMessage,
             index: parsed.index,
             total: parsed.total,

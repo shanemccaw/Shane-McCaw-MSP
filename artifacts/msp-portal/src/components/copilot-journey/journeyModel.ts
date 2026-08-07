@@ -654,7 +654,11 @@ export function liveFindingsByPillar(
     const pillarValue = checkKeyPillars[result.checkKey];
     if (!pillarValue || !isPillarKey(pillarValue)) continue;
     const list = byPillar.get(pillarValue) ?? [];
-    list.push({ severity, checkKey: result.checkKey, title: result.checkLabel || result.checkKey });
+    list.push({
+      severity,
+      checkKey: result.checkKey,
+      title: result.severityLabel || result.checkLabel || result.checkKey,
+    });
     byPillar.set(pillarValue, list);
   }
   return byPillar;

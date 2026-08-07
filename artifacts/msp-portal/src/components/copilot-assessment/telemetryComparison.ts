@@ -89,6 +89,8 @@ export interface LiveCheckResult {
   checkLabel: string;
   status: string;
   severityMatched?: string | null;
+  /** The matched severity rule's already-interpolated finding sentence (#528). */
+  severityLabel?: string | null;
   errorMessage?: string;
   index: number;
   total: number;

@@ -288,6 +288,15 @@ export type ProgressCallback = (event: {
    * page's Top Discrepancies can reflect real findings AS they happen.
    */
   severityMatched?: string | null;
+  /**
+   * The matched severity rule's already-interpolated finding sentence
+   * (`classifySeverity()`'s `.label`, e.g. "No Conditional Access policy
+   * requires MFA") — carried alongside `severityMatched` so a live consumer
+   * can show the real finding text instead of the generic static check label
+   * (#528). Absent when no rule matched (a rarer case — falls back to
+   * `checkLabel`/`checkKey` downstream, per #418).
+   */
+  severityLabel?: string | null;
 }) => void;
 
 // ── Grammar: deterministic condition evaluator ────────────────────────────────
@@ -2802,6 +2811,7 @@ export async function executeMonitoringPackage(opts: {
         requiresCustomerScript: check.requiresCustomerScript,
         errorMessage: errResult.errorMessage,
         severityMatched: errResult.severityMatched,
+        severityLabel: errResult.severityLabel,
       });
       continue;
     }
@@ -2822,6 +2832,7 @@ export async function executeMonitoringPackage(opts: {
       requiresCustomerScript: check.requiresCustomerScript,
       errorMessage: result.errorMessage,
       severityMatched: result.severityMatched,
+      severityLabel: result.severityLabel,
     });
   }
 
