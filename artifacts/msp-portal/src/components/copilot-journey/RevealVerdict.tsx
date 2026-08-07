@@ -50,8 +50,10 @@ import {
   COPILOT_ORB_CONIC,
   INK,
   MOTION,
+  RADIUS,
   TABULAR,
   severityColor,
+  type PillarKey,
 } from "./journeyTokens.ts";
 import {
   clampWindow,
@@ -225,16 +227,88 @@ function OrbMark({ opacity, reduced }: { opacity: number; reduced: boolean }) {
   );
 }
 
+/**
+ * The count badge next to a pillar label (#535, mirroring #534's identical
+ * `RevealScanOverlay.tsx` badge so Scene 0 and Scene 1 never disagree about a
+ * pillar's finding count). `criticalCount + warningCount` per the issue —
+ * the same server-reported aggregate the pillar card already carries,
+ * independent of how many of those findings this scene chooses to show.
+ */
+function FindingCountBadge({ count, color }: { count: number; color: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} findings`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 16,
+        height: 16,
+        padding: "0 5px",
+        borderRadius: RADIUS.pill,
+        background: `${color}26`,
+        color,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: 0,
+        textTransform: "none",
+        ...TABULAR,
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+/**
+ * The "+N more" / "Show fewer" trigger — mirrors #534's `MoreChip` in
+ * `RevealScanOverlay.tsx` exactly (muted control, not pillar-coloured like a
+ * finding chip). Duplicated locally rather than imported since the two files
+ * don't otherwise share components and this one is a few lines.
+ */
+function MoreChip({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        background: "rgba(15,23,42,.7)",
+        border: `1px solid ${INK.hairlineDark}`,
+        borderRadius: RADIUS.pill,
+        padding: "4px 10px",
+        fontSize: 10.5,
+        fontWeight: 600,
+        color: INK.micro,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** One satellite: a pillar eyebrow over the finding it leads with. */
 function Satellite({
   pillar,
   angle,
   counterRotation,
+  expanded,
+  onToggleExpanded,
 }: {
   pillar: JourneyPillarView;
   angle: number;
   counterRotation: number;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
+  const totalFindings = pillar.criticalCount + pillar.warningCount;
+  const moreCount = pillar.findings.length - 1;
   return (
     <div
       style={{
@@ -280,17 +354,60 @@ function Satellite({
         >
           <PillarGlyph pillar={pillar.key} size={13} color="currentColor" />
           <span>{pillar.label}</span>
+          <FindingCountBadge count={totalFindings} color={pillar.primary} />
         </div>
-        {/* Same chip Scene 0's scan overlay uses for this exact finding (#412,
-            ported #417) — dark rounded-rect pill, bullet marker, real wrapping
-            bounded to the fixed LABEL_W box above. An em dash rather than an
-            invented finding: the scan genuinely returned nothing quotable for
-            this pillar. */}
-        <FindingChip
-          color={pillar.primary}
-          text={pillar.satelliteFinding ?? "—"}
-          pulse={pillar.satelliteFinding === SCANNING_PILLAR_CHIP}
-        />
+        {expanded ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 5,
+              width: "100%",
+            }}
+          >
+            {/* LABEL_H is a floor not a cap (see the header) so a satellite box
+                already grows with content — but growing to fit every finding
+                unbounded risks overlapping the orb or a neighbouring satellite
+                (#422's whole lesson), so the expanded list scrolls instead of
+                growing past a fixed height, the same trade #534 made for its
+                wider radar cluster. This scene's caption has less room, so the
+                cap is lower than #534's 168px. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 5,
+                width: "100%",
+                maxHeight: 110,
+                overflowY: "auto",
+              }}
+            >
+              {pillar.findings.map((finding) => (
+                <FindingChip key={finding.checkKey} color={pillar.primary} text={finding.title} />
+              ))}
+            </div>
+            <MoreChip label="Show fewer" onClick={onToggleExpanded} />
+          </div>
+        ) : (
+          <>
+            {/* Same chip Scene 0's scan overlay uses for this exact finding
+                (#412, ported #417) — dark rounded-rect pill, bullet marker,
+                real wrapping bounded to the fixed LABEL_W box above. An em
+                dash rather than an invented finding: the scan genuinely
+                returned nothing quotable for this pillar. */}
+            <FindingChip
+              color={pillar.primary}
+              text={pillar.satelliteFinding ?? "—"}
+              pulse={pillar.satelliteFinding === SCANNING_PILLAR_CHIP}
+            />
+            {moreCount > 0 ? (
+              <div style={{ marginTop: 5 }}>
+                <MoreChip label={`+${moreCount} more`} onClick={onToggleExpanded} />
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -340,6 +457,18 @@ export function RevealVerdict({
     }, TICK_MS);
     return () => clearInterval(timer);
   }, [start]);
+
+  // #535: which pillars are showing their full finding list instead of the
+  // single default satellite line — same `Set<PillarKey>` shape as #534's
+  // `expandedPillars` in `RevealScanOverlay.tsx`. Local UI state only.
+  const [expandedPillars, setExpandedPillars] = useState<ReadonlySet<PillarKey>>(new Set());
+  const togglePillarExpanded = (key: PillarKey) =>
+    setExpandedPillars((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const wide = vw >= WIDE_MIN_PX;
   const ringOpacity = clampWindow(t, 0.42, 1);
@@ -407,6 +536,8 @@ export function RevealVerdict({
                     pillar={pillar}
                     angle={i * 60}
                     counterRotation={counterRotation}
+                    expanded={expandedPillars.has(pillar.key)}
+                    onToggleExpanded={() => togglePillarExpanded(pillar.key)}
                   />
                 ))}
               </div>
@@ -607,46 +738,92 @@ export function RevealVerdict({
                 opacity: ringOpacity,
               }}
             >
-              {pillars.map((pillar) => (
-                <div
-                  key={pillar.key}
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    justifyContent: "space-between",
-                    gap: 14,
-                    borderTop: `1px solid ${INK.hairlineDark}`,
-                    paddingTop: 9,
-                  }}
-                >
-                  <span
+              {pillars.map((pillar) => {
+                const expanded = expandedPillars.has(pillar.key);
+                const totalFindings = pillar.criticalCount + pillar.warningCount;
+                const moreCount = pillar.findings.length - 1;
+                return (
+                  <div
+                    key={pillar.key}
                     style={{
-                      fontSize: 9,
-                      fontWeight: 600,
-                      letterSpacing: ".18em",
-                      textTransform: "uppercase",
-                      color: pillar.primary,
-                      flex: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      borderTop: `1px solid ${INK.hairlineDark}`,
+                      paddingTop: 9,
                     }}
                   >
-                    <PillarGlyph pillar={pillar.key} size={12} color="currentColor" />
-                    <span>{pillar.label}</span>
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: pillar.satelliteFinding ? "#e2e8f0" : INK.deemphasised,
-                      textAlign: "right",
-                    }}
-                  >
-                    {pillar.satelliteFinding ?? "—"}
-                  </span>
-                </div>
-              ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 14,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          letterSpacing: ".18em",
+                          textTransform: "uppercase",
+                          color: pillar.primary,
+                          flex: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
+                        <PillarGlyph pillar={pillar.key} size={12} color="currentColor" />
+                        <span>{pillar.label}</span>
+                        <FindingCountBadge count={totalFindings} color={pillar.primary} />
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: pillar.satelliteFinding ? "#e2e8f0" : INK.deemphasised,
+                          textAlign: "right",
+                        }}
+                      >
+                        {pillar.satelliteFinding ?? "—"}
+                      </span>
+                    </div>
+                    {expanded ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 4,
+                            width: "100%",
+                            maxHeight: 140,
+                            overflowY: "auto",
+                          }}
+                        >
+                          {pillar.findings.map((finding) => (
+                            <span
+                              key={finding.checkKey}
+                              style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", textAlign: "right" }}
+                            >
+                              {finding.title}
+                            </span>
+                          ))}
+                        </div>
+                        <MoreChip label="Show fewer" onClick={() => togglePillarExpanded(pillar.key)} />
+                      </div>
+                    ) : moreCount > 0 ? (
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <MoreChip
+                          label={`+${moreCount} more`}
+                          onClick={() => togglePillarExpanded(pillar.key)}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ opacity: lineOpacity }}>

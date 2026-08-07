@@ -120,7 +120,10 @@ describe("pillar views", () => {
     const view = buildPillarViews(payload).find((v) => v.key === "security");
     assert.equal(view?.score, null);
     assert.equal(view?.headline, null);
-    assert.equal(view?.satelliteFinding, null);
+    // #535: `satelliteFinding` now sources off `chips[0]`, which — unlike
+    // `headline`'s `leadTitle` — always carries pillarChips()'s own honest
+    // explanation of what's missing rather than a bare null.
+    assert.equal(view?.satelliteFinding, UNEVALUATED_PILLAR_CHIP);
   });
 
   /* ---------------------------------------------------------------- *

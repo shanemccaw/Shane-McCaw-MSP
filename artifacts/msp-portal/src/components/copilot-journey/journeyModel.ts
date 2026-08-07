@@ -779,7 +779,12 @@ export function buildPillarViews(
       // real signal weight ranks (#414) — the same ranking every other
       // projection above already reads.
       findings: ordered,
-      satelliteFinding: leadTitle,
+      // #535: `chips[0]` over `leadTitle` — `pillarChips` already falls back to
+      // a real stat readout (e.g. Licensing's paid-seat count) when a pillar is
+      // clean by findings, which `leadTitle` never did. Reusing it here means
+      // Scene 1's default satellite line and Scene 0's radar wedge can never
+      // disagree about which fact leads for the same pillar.
+      satelliteFinding: chips[0] ?? null,
       trend: pillarTrend(card),
       criticalCount: card?.findingCounts?.critical ?? 0,
       warningCount: card?.findingCounts?.warning ?? 0,
