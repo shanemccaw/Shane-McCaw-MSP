@@ -1,18 +1,25 @@
 /**
  * diagnose-542-pillar-breakdown.ts (#542)
  *
- * TEMPORARY DIAGNOSTIC — delete after use. Not a fix, not app logic: no
- * scoring/weight change is made here. #541's fix made
- * `appgov:cert-secret-expiration` fire a real finding for the first time,
- * and the architecture pillar's display score crashed to 3 immediately
- * after. That signal's own configured `architectureImpact` is 12 —
- * moderate on its own — so either most of the OTHER architecture signals
- * are also firing right now, or (per #413/#481) the real package-scoped
- * `theoreticalMax` denominator for this tenant is much smaller than the
- * full catalog sum. Guessing at the answer via hand-written SQL risks the
- * exact mistake #541 was already about (reconstructing behavior instead of
- * reading/running the real code path), so this calls the platform's own
- * real functions directly instead:
+ * KEPT DIAGNOSTIC (Shane's call, 2026-08-07) — reusable for future
+ * "why did pillar X's score move" questions, not a delete-after-use
+ * one-shot. Still not a fix and not app logic: it only reads, never
+ * writes/changes any scoring or weight config.
+ *
+ * Originally written because #541's fix made `appgov:cert-secret-expiration`
+ * fire a real finding for the first time, and the architecture pillar's
+ * display score crashed to 3 immediately after. Run against the real
+ * testbed tenant, the output confirmed this was NOT a bug: rawScore 96 /
+ * theoreticalMax 99, with 14 of the tenant's 15 evaluable architecture
+ * signals genuinely firing simultaneously (app governance, storage
+ * near-limit, license tier distribution, device encryption escrow,
+ * multi-geo) — cert-secret-expiration was simply the signal that finally
+ * saturated an already near-maxed pillar, not the cause of the crash.
+ * `100 − 96/99 × 100 = 3` is the honest number for that tenant right now.
+ *
+ * Calls the platform's own real functions directly rather than
+ * reconstructing behavior by hand (the same class of mistake #541 was
+ * already about avoiding):
  *
  *   - `calculateArchitectureHealthScore` (health-engine.ts) — the real
  *     `rawScore` + full per-signal `contributions` for every pillar.
@@ -27,14 +34,15 @@
  * first since that's the one in question.
  *
  * Run (Shane's environment only — needs a real DATABASE_URL; Claude Code's
- * sandbox here has none, per CLAUDE.md, and this script was NOT run or
- * verified against live data):
+ * sandbox here has none, per CLAUDE.md). Confirmed working end-to-end
+ * against the real testbed tenant on 2026-08-07 (see above):
  *
  *   pnpm --filter @workspace/api-server run build
  *   pnpm --filter @workspace/api-server run diagnose-542
  *
  * Required env vars: DATABASE_URL (whatever the rest of api-server already
- * needs to boot — no new config).
+ * needs to boot — no new config). CUSTOMER_ID is hardcoded to 1 (the
+ * testbed tenant) below — change it to point at a different tenant.
  */
 
 import {
