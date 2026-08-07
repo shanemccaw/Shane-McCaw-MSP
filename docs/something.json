@@ -1,155 +1,2082 @@
 [
   {
-    "statementIndex": 0,
-    "statementText": "SELECT id, key, name, category, model, prompt_Body\nFROM ai_prompts\nWHERE key LIKE 'insights-%'\nORDER BY key;",
-    "success": true,
-    "rowCount": 18,
-    "rows": [
-      {
-        "id": 32,
-        "key": "insights-consulting-consolidated_sow",
-        "name": "Insights — Consolidated Statement of Work",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.\n\nClient: {{clientName}}\nDeliverable title: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (the first Monday that is at least one full week after document generation — use this as the baseline for all delivery date calculations)\n\nEXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):\n{{existingDocs}}\n\nENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and deliverables to populate real pricing in the SOW — select only the projects relevant to this client's needs):\n{{engagementProjects}}\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography\n- Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (two-part: workstream table + adjustments summary) → Timeline (phased, with real calendar delivery dates per phase) → Acceptance Criteria\n- Do NOT include a Resource Requirements section — Shane McCaw is the sole consultant on this engagement\n- Do NOT include a Payment Terms section — payment is managed separately through the client portal\n- Do NOT include a Signature Block — document execution is handled through the portal\n- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a \"Pricing Adjustments\" summary section below it that lists ONLY the adjustments permitted for the workstreams present in this SOW (per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below), each appearing once, followed by a Grand Total row — do NOT list adjustments that are not permitted for the workstreams present\n- For the Duration (Weeks) column: assign a realistic integer number of weeks to each workstream phase based on scope (e.g. 2–16 weeks). Format as \"N weeks\" (e.g. \"4 weeks\")\n- For the Delivery Date column: compute dates cumulatively from ENGAGEMENT START DATE. Phase 1 delivery = ENGAGEMENT START DATE + Phase 1 weeks. Phase 2 delivery = Phase 1 delivery + Phase 2 weeks. Continue for all phases. Format as \"Mon DD, YYYY\" (e.g. \"Aug 4, 2026\"). These MUST be real calendar dates, not relative estimates\n- You MUST output a single fixed price per project/workstream (no ranges, no TBD, no \"depends\"); shared adjustments must NOT be added to individual workstream rows\n- You MUST select each workstream's Final Price from within its catalogue Base Ceiling range using the telemetry, pricing rules, and any pre-computed pricing-signal values provided below (never calculate priority/health/drift/forecast/CRM/MSP scores yourself — reproduce those exact values verbatim wherever referenced); each workstream row shows only its Base Ceiling and Final Price; only the adjustments permitted for the workstreams present (per the ADJUSTMENT MAP) are listed in the \"Pricing Adjustments\" summary section below the workstream table, each appearing once and never on individual rows\n- Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope\n- Each major section as <h2> with a horizontal rule separator\n- In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style=\"margin:6px 0\">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 2000-3500 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 38,
-        "key": "insights-consulting-copilot_enablement_plan",
-        "name": "Insights — Copilot Enablement Plan",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 40,
-        "key": "insights-consulting-copilot_readiness",
-        "name": "Insights — Copilot Readiness Assessment",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness (sensitivity labels, DLP, sharing policies), Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)\n\nFor the Overall Readiness Rating use these thresholds based on the Composite score:\n- Green (Ready): Composite ≥ 75 — tenant meets minimum Copilot prerequisites with minor remediation needed\n- Amber (Conditionally Ready): Composite 50–74 — key gaps exist; targeted remediation required before rollout\n- Red (Not Ready): Composite < 50 — significant blockers across multiple domains; Copilot deployment not recommended until resolved\n\nUse a clearly styled badge for the rating: green (#107C10), amber (#FF8C00), or red (#D13438) background with white text.\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words"
-      },
-      {
-        "id": 35,
-        "key": "insights-consulting-deployment_plan",
-        "name": "Insights — Deployment Plan",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 36,
-        "key": "insights-consulting-governance_framework",
-        "name": "Insights — Governance Framework",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 39,
-        "key": "insights-consulting-identity_modernization_plan",
-        "name": "Insights — Identity Modernization Plan",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 34,
-        "key": "insights-consulting-remediation_plan",
-        "name": "Insights — Remediation Plan",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n- Total length: 1000-2000 words\n\nMETRIC FORMATTING — REQUIRED (the client portal dashboard reads these exact text patterns to populate summary cards; all three must appear as visible plain text in the document body):\n1. Current security score — write exactly as: \"X/100\" in a sentence (e.g. \"current security posture of 18/100\" or \"composite score of 22/100 before remediation\")\n2. Critical findings count — write exactly as: \"X critical findings\" or \"X critical gaps\" (e.g. \"7 critical findings identified\" or \"5 critical gaps requiring immediate action\")\n3. Remediation timeline — write exactly as: \"X phases over Y weeks\" (e.g. \"3 phases over 8 weeks\" or \"4 phases over 12 weeks\")\nIf the telemetry does not supply exact values, derive reasonable estimates from the findings and scores and state them clearly using these exact phrases."
-      },
-      {
-        "id": 37,
-        "key": "insights-consulting-security_hardening_plan",
-        "name": "Insights — Security Hardening Plan",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Privileged Access Workstations, Defender Configuration, Security Monitoring, Incident Response\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 33,
-        "key": "insights-consulting-sow",
-        "name": "Insights — Statement of Work",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.\n\nClient: {{clientName}}\n{{projectDesc}}Deliverable title: {{title}}\nDate: {{date}}\n\nM365 Health Context:\n{{scores}}\n\nKey Findings: {{findings}}\nKey Recommendations: {{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates — use in your analysis):\n{{profileSample}}\n\nDocument Sections Required:\nInclude: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (use [TBD] placeholders), Acceptance Criteria, Terms & Conditions\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables\n- Each major section as <h2> with a horizontal rule separator\n- In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style=\"margin:6px 0\">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons\n- Data tables where appropriate (border-collapse, alternating rows)\n- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input\n- Professional consulting tone as Shane McCaw, first person where appropriate\n\n- Total length: 1000-2000 words\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 43,
-        "key": "insights-consulting-sow_pricing_formula",
-        "name": "Consolidated SOW — Pricing Formula",
-        "category": "insights",
-        "model": null,
-        "prompt_body": "You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.\n\nSTEP 1 — READ TENANT TIER: use the \"Computed Tenant Tier\" line from the TENANT FACTS block directly. Do NOT re-derive or override it from any other source (including user counts, company size, or catalogue prices). The tier has already been determined server-side from the live script data.\n\nSTEP 2 — BASE CEILINGS (select the row matching the detected tier):\n  Workstream        | Tier01   | Tier02   | Tier03   | Tier04\n  Governance        | $10,000  | $25,000  | $30,000  | $35,000\n  Security          | $10,000  | $28,000  | $35,000  | $42,000\n  Copilot           |  $8,000  | $30,000  | $35,000  | $42,000\n  Info Architecture | $12,000  | $25,000  | $30,000  | $42,000\n  License Optim.    |  $4,000  |  $8,000  | $12,000  | $15,000\n\n  Include only the workstreams relevant to this engagement.\n  Workstream Total = sum of all included workstream Base Ceilings.\n\nSTEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):\n\n  Adjustment amounts by tier (ONLY these four adjustment types exist — no others):\n  Adjustment             | Tier01  | Tier02   | Tier03   | Tier04\n  Tenant Size            | $2,000  |  $5,000  | $10,000  | $15,000\n  Governance Complexity  | $5,000  | $15,000  | $25,000  | $35,000\n  Security/Compliance    | $5,000  | $10,000  | $20,000  | $25,000\n  Copilot Readiness      | $5,000  | $10,000  | $20,000  | $25,000\n\n  ADJUSTMENT MAP — permitted adjustments per workstream (STRICT — only these may appear):\n    Governance Remediation  → Governance Complexity (only; always label it exactly \"Governance Complexity\")\n    Security Remediation    → Tenant Size, Security/Compliance\n    Data Protection / DLP   → Security/Compliance (only)\n    Copilot Readiness       → Copilot Readiness (only)\n    Licensing Optimization  → Tenant Size (only)\n\n  PROHIBITED adjustment types — NEVER include in any SOW regardless of workstreams:\n    Complexity, Data Sprawl, Timeline — these are not valid adjustment types in this model.\n\n  Rules — strictly enforced:\n  1. Only include an adjustment if its workstream is present in this SOW AND findings support it.\n  2. Each eligible adjustment appears AT MOST ONCE in the Pricing Adjustments table — never duplicate even when multiple workstreams permit it.\n  3. Never add adjustment amounts to individual workstream rows.\n  Adjustment Total = sum of all applicable permitted adjustments at the tier-correct dollar amount.\n\n  Criteria for applying each adjustment (only when the relevant workstream is present and findings justify it):\n  - Tenant Size (Security, Licensing): apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.\n  - Governance Complexity (Governance only): apply if governance findings show multiple critical gaps or ≥ 3 remediation domains requiring coordinated remediation.\n  - Security/Compliance (Security, DLP): apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.\n  - Copilot Readiness (Copilot only): apply based on Copilot score and blocker count; use ONLY when the Copilot workstream is in scope.\n\nSTEP 4 — TOTALS:\n  Engagement Total = Workstream Total + Adjustment Total.\n\nUse the detected tier and arithmetic INTERNALLY ONLY — do NOT render tier names, tier detection notes, step-by-step arithmetic, or formula working notes as visible text in the HTML document. Never leave pricing blank, never say TBD.\n\nOutput requirements for the Pricing section:\n- Show a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning\n  - Each row shows ONLY the workstream's own Base Ceiling and Final Price — NO per-row adjustment breakdown.\n  - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).\n- After the per-workstream table, render a second HTML <table> for the Pricing Adjustments section. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. CRITICAL for server parsing: the workstream table header MUST contain the exact text \"Base Ceiling\" and \"Final Price (USD)\"; the adjustments table header MUST contain \"Adjustment Factor\" and \"Amount (USD)\" — these keywords are required for server-side pricing validation. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row with title \"Adjustments Subtotal\" showing the sum.\n- End with a Grand Total row after both tables. Show the calculation as plain text: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[grand total]. Double-check the arithmetic before outputting.\n- Always explain the reasoning for each adjustment applied in the Pricing Adjustments table.\n- Never invent new pricing models. Never use TBD.\n- Your goal is to produce a firm, defensible, enterprise-grade project price."
-      },
-      {
-        "id": 42,
-        "key": "insights-document-style",
-        "name": "Document Style Guide",
-        "category": "insights",
-        "model": null,
-        "prompt_body": "DOCUMENT STYLE GUIDE — Shane McCaw Consulting\nThis style guide applies to ALL generated documents. Follow every rule below before applying document-specific instructions.\n\n═══ BRANDING & COLORS ═══\nUse inline CSS only — never external stylesheets or <style> blocks.\n\nPrimary colors:\n• Deep Navy #0A2540 — header bar background, footer background, dark section backgrounds\n• Electric Blue #0078D4 — H2 headings, accent borders, links\n• Bright Teal #00B4D8 — callout borders, highlight accents (use sparingly)\n• Off-White #F7F9FC — page background, alternating table rows\n• White #FFFFFF — card/body background\n• Body text: #1A1A2E; Muted text: #666666\n\n═══ TYPOGRAPHY ═══\nFont stack: font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif\n• Body: font-size: 15px; line-height: 1.7; color: #1A1A2E\n• H1: font-size: 26px; font-weight: 700; color: #0A2540\n• H2: font-size: 19px; font-weight: 600; color: #0078D4; border-bottom: 2px solid #0078D4; padding-bottom: 6px; margin-top: 32px\n• H3: font-size: 15px; font-weight: 600; color: #0A2540; margin-top: 20px\n\n═══ PAGE STRUCTURE ═══\nEvery document MUST include all three of these elements:\n\n1. HEADER BAR (full-width, flush to top):\n<div style=\"background:#0A2540;color:#ffffff;padding:20px 40px;display:flex;justify-content:space-between;align-items:center;\">\n  <div><strong style=\"font-size:18px;\">Shane McCaw Consulting</strong><br><span style=\"font-size:12px;opacity:0.8;\">Microsoft 365 Architect · 30-Year Microsoft Veteran</span></div>\n  <div style=\"text-align:right;font-size:13px;\">[DOCUMENT TITLE]<br>[DATE]</div>\n</div>\n\n2. BODY CONTENT CARD (wrapping ALL document content):\n<div style=\"max-width:900px;margin:32px auto;background:#ffffff;padding:40px 48px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.08);\">\n  [ALL DOCUMENT CONTENT HERE]\n</div>\n\n3. FOOTER BAR (full-width, flush to bottom):\n<div style=\"background:#0A2540;color:#ffffff;padding:16px 40px;text-align:center;font-size:12px;\">\n  Shane McCaw Consulting &nbsp;·&nbsp; Confidential &nbsp;·&nbsp; Not for distribution &nbsp;·&nbsp; © [YEAR]\n</div>\n\n═══ TABLES ═══\nApply to ALL tables: border-collapse:collapse; width:100%; margin:16px 0; font-size:14px\nHeader row: background:#0A2540; color:#ffffff; font-weight:600; padding:10px 14px; text-align:left\nData rows (alternating): odd #ffffff / even #F7F9FC; padding:9px 14px; border:1px solid #E0E7EF\nCurrency/number columns: text-align:right\nTotal/summary rows: font-weight:600; background:#E8F0FA; border-top:2px solid #0078D4\n\n═══ CALLOUT BOXES ═══\nStandard: border-left:4px solid #0078D4; background:#F0F7FF; padding:14px 18px; border-radius:0 6px 6px 0; margin:16px 0\nPositive/achievement: use #00B4D8 border instead\nRisk/warning: use #E8760A border instead\n\n═══ TONE & CONTENT RULES ═══\n• First person as Shane McCaw — confident, clear, enterprise-grade\n• No filler phrases: never write \"I hope this finds you well\", \"As always\", \"Please don't hesitate to reach out\", \"It goes without saying\"\n• No generic advice — every recommendation must reference the client's actual environment data and findings\n• Output is pure HTML with inline CSS only — no markdown, no code fences, no <style> blocks\n• No placeholder text — every section must contain real, client-specific content\n• All documents are marked Confidential in the footer"
-      },
-      {
-        "id": 6908,
-        "key": "insights-report-access_review_summary_report",
-        "name": "Insights — Access Review Summary Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n- Total length: 800-1500 words of body content"
-      },
-      {
-        "id": 30,
-        "key": "insights-report-data_exposure_risk_report",
-        "name": "Insights — Data Exposure Risk Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n\n- Total length: 800-1500 words of body content\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 26,
-        "key": "insights-report-executive_summary",
-        "name": "Insights — Executive Summary",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n\n- Total length: 800-1500 words of body content\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 27,
-        "key": "insights-report-full_readiness_report",
-        "name": "Insights — Full Readiness Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n\n- Total length: 800-1500 words of body content\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 29,
-        "key": "insights-report-governance_maturity_report",
-        "name": "Insights — Governance Maturity Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n\n- Total length: 800-1500 words of body content\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      },
-      {
-        "id": 31,
-        "key": "insights-report-license_optimization_report",
-        "name": "Insights — License Optimization Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\".\n- Total length: 800-1500 words of body content\n\nMETRIC FORMATTING — REQUIRED (the client portal dashboard reads these exact text patterns to populate summary cards; all four must appear as visible plain text in the document body):\n1. License utilization rate — write exactly as: \"X% utilization\" or \"Licensing Coverage X%\" (e.g. \"9% utilization\" or \"Licensing Coverage 9%\")\n2. Unlicensed user count — write exactly as: \"X unlicensed users\" (e.g. \"20 unlicensed users\" or \"2 unlicensed users found\")\n3. Unused license count — write exactly as: \"X unused licenses\" (e.g. \"20 unused licenses can be removed\" or \"removing 20 unused licenses\")\n4. Annual waste — write exactly as: \"$X per year wasted\" (e.g. \"$3,000 per year wasted in unused licenses\" or \"$18,000 per year wasted\")\nIf the telemetry does not supply exact counts, derive reasonable estimates from the findings and state them clearly using these exact phrases."
-      },
-      {
-        "id": 28,
-        "key": "insights-report-security_posture_report",
-        "name": "Insights — Security Posture Report",
-        "category": "insights",
-        "model": "claude-haiku-4-5",
-        "prompt_body": "You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.\n\nClient: {{clientName}}{{projectLine}}\nDocument title: {{title}}\nReport date: {{date}}\n\nM365 Environment Health Scores:\n{{scores}}\n\nKey Findings ({{findingsCount}} total):\n{{findings}}\n\nKey Recommendations ({{recommendationsCount}} total):\n{{recommendations}}\n\nConfiguration Telemetry Sample (from profileUpdates):\n{{profileSample}}\n\nScript analysis runs: {{runCount}} completed assessments\n\nINSTRUCTIONS:\n- Output ONLY valid HTML (no markdown, no code fences)\n- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography\n- Structure: header with \"Shane McCaw Consulting\" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name\n- Write in first person as Shane McCaw with professional consulting tone\n- Be specific and actionable — reference actual findings, not generic advice\n\n- Total length: 800-1500 words of body content\n- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. \"No findings were recorded\", \"No M365 health score data\", \"No configuration telemetry\", \"None recorded for this client\"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to \"reference actual findings\"."
-      }
-    ],
-    "error": null
+    "category": "",
+    "signal_key": "copilot:copilotSkuCount",
+    "source_key": "copilotSkuCount",
+    "severity": "medium",
+    "copilot_impact": 5,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "security:dkimConfiguredAtDefaultSelectors",
+    "source_key": "dkimConfiguredAtDefaultSelectors",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "",
+    "signal_key": "security:spfRecord",
+    "source_key": "spfRecord",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "",
+    "signal_key": "adj:copilot-readiness",
+    "source_key": "copilotLicenseCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:governance-complexity",
+    "source_key": "governanceScore",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:governance-complexity",
+    "source_key": "hasGovernanceGaps",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:security-compliance",
+    "source_key": "mfaEnforced",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:security-compliance",
+    "source_key": "conditionalAccessPolicyCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:security-compliance",
+    "source_key": "dlpPoliciesCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "adj:tenant-size",
+    "source_key": "totalUserCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "security:lacks_defender",
+    "source_key": "hasDefender",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "security:lacks_entra_premium",
+    "source_key": "hasAADP1orP2",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "",
+    "signal_key": "signal.compliance.dlp-incidents",
+    "source_key": "compliance:dlp-incidents",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 3,
+    "governance_impact": 2
+  },
+  {
+    "category": "",
+    "signal_key": "signal.compliance.label-errors",
+    "source_key": "compliance:label-errors",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 4,
+    "governance_impact": 3
+  },
+  {
+    "category": "",
+    "signal_key": "signal.compliance.missing-labels",
+    "source_key": "compliance:missing-labels",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 5,
+    "governance_impact": 3
+  },
+  {
+    "category": "",
+    "signal_key": "signal.compliance.weak-dlp-policies",
+    "source_key": "compliance:weak-dlp-policies",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 5,
+    "governance_impact": 3
+  },
+  {
+    "category": "",
+    "signal_key": "signal.governance.public-teams",
+    "source_key": "publicTeamCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 4
+  },
+  {
+    "category": "",
+    "signal_key": "security:dmarcConfigured",
+    "source_key": "dmarcConfigured",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "",
+    "signal_key": "security:spfConfigured",
+    "source_key": "spfConfigured",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.overall-active-rate",
+    "source_key": "adoption:overall-active-rate",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.email-activity-trend",
+    "source_key": "adoption:email-activity-trend",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.planner-usage",
+    "source_key": "adoption:planner-usage",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.sharepoint-onedrive-trend",
+    "source_key": "adoption:sharepoint-onedrive-trend",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.teams-activity-trend",
+    "source_key": "adoption:teams-activity-trend",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption",
+    "signal_key": "signal.adoption.viva-engage-health",
+    "source_key": "adoption:viva-engage-health",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "adoption:low_license_utilization",
+    "signal_key": "example:adoption",
+    "source_key": "licenseUtilizationPct",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.cert-secret-expiration",
+    "source_key": "appgov:cert-secret-expiration",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.consent-policy-status",
+    "source_key": "userConsentAllowed",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.stale-app-registrations",
+    "source_key": "staleAppRegistrationCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 3
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.enterprise-app-count",
+    "source_key": "appgov:enterprise-app-count",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.unreviewed-consents",
+    "source_key": "unreviewedConsentCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.workload-identity-risk",
+    "source_key": "riskyServicePrincipalCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "appgov",
+    "signal_key": "signal.appgov.risky-permission-grants",
+    "source_key": "riskyPermissionGrantCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 16,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "architecture:hybrid_exchange",
+    "signal_key": "example:architecture",
+    "source_key": "hasExchangeOnPrem",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "compliance:retention_policy_missing",
+    "signal_key": "example:compliance",
+    "source_key": "hasRetentionPolicy",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.sensitivity-labels-exist",
+    "source_key": "copilot:sensitivity-labels-exist",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 9,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.active-usage-rate",
+    "source_key": "copilot:active-usage-rate",
+    "severity": "low",
+    "copilot_impact": 2,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.readiness-prerequisite",
+    "source_key": "copilotSkuCount",
+    "severity": "low",
+    "copilot_impact": 20,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.license-vs-total-users",
+    "source_key": "copilot:license-vs-total-users",
+    "severity": "informational",
+    "copilot_impact": 8,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.usage-by-app",
+    "source_key": "copilot:usage-by-app",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot",
+    "signal_key": "signal.copilot.data-exposure-risk",
+    "source_key": "copilotExposedSiteCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "copilot:readiness_achieved",
+    "signal_key": "example:copilot",
+    "source_key": "hasCopilotLicenses",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.duplicate-assignments",
+    "source_key": "duplicateLicenseAssignmentCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.entra-license-tier-distribution",
+    "source_key": "cost:entra-license-tier-distribution",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.underutilized-premium",
+    "source_key": "underutilizedPremiumLicenseCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.utilization-by-sku",
+    "source_key": "cost:utilization-by-sku",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.group-based-licensing-adoption",
+    "source_key": "cost:group-based-licensing-adoption",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.license-count-by-sku",
+    "source_key": "cost:license-count-by-sku",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "cost",
+    "signal_key": "signal.cost.unused-unassigned-licenses",
+    "source_key": "unusedLicenseCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:appgov.risky-permission-grants",
+    "signal_key": "crm.appgov.risky-permission-grants",
+    "source_key": "appgov.risky-permission-grants",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:appgov.unreviewed-consents",
+    "signal_key": "crm.appgov.unreviewed-consents",
+    "source_key": "appgov.unreviewed-consents",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:copilot.data-exposure-risk",
+    "signal_key": "crm.copilot.data-exposure-risk",
+    "source_key": "copilot.data-exposure-risk",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:cost.underutilized-premium",
+    "signal_key": "crm.cost.underutilized-premium",
+    "source_key": "cost.underutilized-premium",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:cost.unused-unassigned-licenses",
+    "signal_key": "crm.cost.unused-unassigned-licenses",
+    "source_key": "cost.unused-unassigned-licenses",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:devices.bitlocker-key-escrow",
+    "signal_key": "crm.devices.bitlocker-key-escrow",
+    "source_key": "devices.bitlocker-key-escrow",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:devices.compliant-vs-noncompliant",
+    "signal_key": "crm.devices.compliant-vs-noncompliant",
+    "source_key": "devices.compliant-vs-noncompliant",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:devices.encryption-status",
+    "signal_key": "crm.devices.encryption-status",
+    "source_key": "devices.encryption-status",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:exchange.auto-forwarding-rules",
+    "signal_key": "crm.exchange.auto-forwarding-rules",
+    "source_key": "exchange.auto-forwarding-rules",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:exchange.dkim-spf-dmarc-status",
+    "signal_key": "crm.exchange.dkim-spf-dmarc-status",
+    "source_key": "exchange.dkim-spf-dmarc-status",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:governance.overdue-access-reviews",
+    "signal_key": "crm.governance.overdue-access-reviews",
+    "source_key": "governance.overdue-access-reviews",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:governance.ownerless-groups",
+    "signal_key": "crm.governance.ownerless-groups",
+    "source_key": "governance.ownerless-groups",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:identity.global-admin-count",
+    "signal_key": "crm.identity.global-admin-count",
+    "source_key": "identity.global-admin-count",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:identity.legacy-auth-usage",
+    "signal_key": "crm.identity.legacy-auth-usage",
+    "source_key": "identity.legacy-auth-usage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:identity.mfa-registration",
+    "signal_key": "crm.identity.mfa-registration",
+    "source_key": "identity.mfa-registration",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:identity.pim-permanent-roles",
+    "signal_key": "crm.identity.pim-permanent-roles",
+    "source_key": "identity.pim-permanent-roles",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:security.dlp-violations",
+    "signal_key": "crm.security.dlp-violations",
+    "source_key": "security.dlp-violations",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:security.open-incidents",
+    "signal_key": "crm.security.open-incidents",
+    "source_key": "security.open-incidents",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:security.secure-score",
+    "signal_key": "crm.security.secure-score",
+    "source_key": "security.secure-score",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:sharepoint.anonymous-links",
+    "signal_key": "crm.sharepoint.anonymous-links",
+    "source_key": "sharepoint.anonymous-links",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "crm:teams.ownerless-teams",
+    "signal_key": "crm.teams.ownerless-teams",
+    "source_key": "teams.ownerless-teams",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.app-protection-coverage",
+    "source_key": "devices:app-protection-coverage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.compliance-policy-coverage",
+    "source_key": "devices:compliance-policy-coverage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.autopilot-coverage",
+    "source_key": "devices:autopilot-coverage",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.update-rings-config",
+    "source_key": "devices:update-rings-config",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.enrollment-status",
+    "source_key": "devices:enrollment-status",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.bitlocker-key-escrow",
+    "source_key": "bitlockerKeysEscrowedCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 9,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.compliant-vs-noncompliant",
+    "source_key": "nonCompliantDeviceCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.os-patch-compliance",
+    "source_key": "outdatedOsDeviceCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 9,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "devices",
+    "signal_key": "signal.devices.encryption-status",
+    "source_key": "unencryptedDeviceCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 15,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "drift:adoption.email-activity-trend",
+    "signal_key": "drift.adoption.email-activity-trend",
+    "source_key": "adoption.email-activity-trend",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:adoption.overall-active-rate",
+    "signal_key": "drift.adoption.overall-active-rate",
+    "source_key": "adoption.overall-active-rate",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:adoption.planner-usage",
+    "signal_key": "drift.adoption.planner-usage",
+    "source_key": "adoption.planner-usage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:adoption.sharepoint-onedrive-trend",
+    "signal_key": "drift.adoption.sharepoint-onedrive-trend",
+    "source_key": "adoption.sharepoint-onedrive-trend",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:adoption.teams-activity-trend",
+    "signal_key": "drift.adoption.teams-activity-trend",
+    "source_key": "adoption.teams-activity-trend",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:adoption.viva-engage-health",
+    "signal_key": "drift.adoption.viva-engage-health",
+    "source_key": "adoption.viva-engage-health",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:appgov.risky-permission-grants",
+    "signal_key": "drift.appgov.risky-permission-grants",
+    "source_key": "appgov.risky-permission-grants",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:appgov.stale-app-registrations",
+    "signal_key": "drift.appgov.stale-app-registrations",
+    "source_key": "appgov.stale-app-registrations",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:appgov.unreviewed-consents",
+    "signal_key": "drift.appgov.unreviewed-consents",
+    "source_key": "appgov.unreviewed-consents",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:copilot.active-usage-rate",
+    "signal_key": "drift.copilot.active-usage-rate",
+    "source_key": "copilot.active-usage-rate",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:copilot.data-exposure-risk",
+    "signal_key": "drift.copilot.data-exposure-risk",
+    "source_key": "copilot.data-exposure-risk",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.duplicate-assignments",
+    "signal_key": "drift.cost.duplicate-assignments",
+    "source_key": "cost.duplicate-assignments",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.entra-license-tier-distribution",
+    "signal_key": "drift.cost.entra-license-tier-distribution",
+    "source_key": "cost.entra-license-tier-distribution",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.group-based-licensing-adoption",
+    "signal_key": "drift.cost.group-based-licensing-adoption",
+    "source_key": "cost.group-based-licensing-adoption",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.license-count-by-sku",
+    "signal_key": "drift.cost.license-count-by-sku",
+    "source_key": "cost.license-count-by-sku",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.underutilized-premium",
+    "signal_key": "drift.cost.underutilized-premium",
+    "source_key": "cost.underutilized-premium",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.unused-unassigned-licenses",
+    "signal_key": "drift.cost.unused-unassigned-licenses",
+    "source_key": "cost.unused-unassigned-licenses",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:cost.utilization-by-sku",
+    "signal_key": "drift.cost.utilization-by-sku",
+    "source_key": "cost.utilization-by-sku",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:devices.compliant-vs-noncompliant",
+    "signal_key": "drift.devices.compliant-vs-noncompliant",
+    "source_key": "devices.compliant-vs-noncompliant",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:exchange.mailbox-quota-utilization",
+    "signal_key": "drift.exchange.mailbox-quota-utilization",
+    "source_key": "exchange.mailbox-quota-utilization",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:governance.guest-count",
+    "signal_key": "drift.governance.guest-count",
+    "source_key": "governance.guest-count",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:governance.guest-staleness",
+    "signal_key": "drift.governance.guest-staleness",
+    "source_key": "governance.guest-staleness",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:governance.ownerless-groups",
+    "signal_key": "drift.governance.ownerless-groups",
+    "source_key": "governance.ownerless-groups",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:identity.risky-signins",
+    "signal_key": "drift.identity.risky-signins",
+    "source_key": "identity.risky-signins",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:identity.risky-users",
+    "signal_key": "drift.identity.risky-users",
+    "source_key": "identity.risky-users",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:identity.stale-accounts",
+    "signal_key": "drift.identity.stale-accounts",
+    "source_key": "identity.stale-accounts",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:onedrive.storage-utilization",
+    "signal_key": "drift.onedrive.storage-utilization",
+    "source_key": "onedrive.storage-utilization",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:security.alert-count-by-severity",
+    "signal_key": "drift.security.alert-count-by-severity",
+    "source_key": "security.alert-count-by-severity",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:security.dlp-violations",
+    "signal_key": "drift.security.dlp-violations",
+    "source_key": "security.dlp-violations",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:security.open-incidents",
+    "signal_key": "drift.security.open-incidents",
+    "source_key": "security.open-incidents",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:security.secure-score",
+    "signal_key": "drift.security.secure-score",
+    "source_key": "security.secure-score",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:sharepoint.inactive-sites",
+    "signal_key": "drift.sharepoint.inactive-sites",
+    "source_key": "sharepoint.inactive-sites",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:sharepoint.storage-near-limit",
+    "signal_key": "drift.sharepoint.storage-near-limit",
+    "source_key": "sharepoint.storage-near-limit",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:sharepoint.storage-utilization",
+    "signal_key": "drift.sharepoint.storage-utilization",
+    "source_key": "sharepoint.storage-utilization",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:teams.inactive-teams",
+    "signal_key": "drift.teams.inactive-teams",
+    "source_key": "teams.inactive-teams",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "drift:teams.ownerless-teams",
+    "signal_key": "drift.teams.ownerless-teams",
+    "source_key": "teams.ownerless-teams",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.antispam-policy-coverage",
+    "source_key": "exchange:antispam-policy-coverage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.connector-health",
+    "source_key": "connectorMisconfigurationCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.litigation-hold-coverage",
+    "source_key": "exchange:litigation-hold-coverage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 8,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.mail-flow-rule-review",
+    "source_key": "exchange:mail-flow-rule-review",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.archive-mailbox-rate",
+    "source_key": "exchange:archive-mailbox-rate",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.mailbox-quota-utilization",
+    "source_key": "exchange:mailbox-quota-utilization",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.shared-mailbox-licensing",
+    "source_key": "exchange:shared-mailbox-licensing",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.distribution-list-count",
+    "source_key": "exchange:distribution-list-count",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.transport-rule-count",
+    "source_key": "exchange:transport-rule-count",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.dkim-spf-dmarc-status",
+    "source_key": "dkimEnabledDomainCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 9,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "exchange",
+    "signal_key": "signal.exchange.auto-forwarding-rules",
+    "source_key": "externalAutoForwardCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 16,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "forecasting:growth_trend_positive",
+    "signal_key": "example:forecasting",
+    "source_key": "userGrowthRatePct",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.access-review-completion",
+    "source_key": "governance:access-review-completion__itemCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 6
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.guest-access-reviews",
+    "source_key": "guestAccessReviewExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 7
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.guest-staleness",
+    "source_key": "staleGuestCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.ownerless-groups",
+    "source_key": "ownerlessGroupCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 10
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.retention-label-adoption",
+    "source_key": "governance:retention-label-adoption",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 7,
+    "governance_impact": 7
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.sensitivity-label-adoption",
+    "source_key": "governance:sensitivity-label-adoption",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 9,
+    "governance_impact": 0
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.auto-labeling-coverage",
+    "source_key": "autoLabelingPolicyExists",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 8,
+    "governance_impact": 0
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.group-expiration-policy",
+    "source_key": "groupExpirationPolicyConfigured",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 3
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.guest-count",
+    "source_key": "guestAccountCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.dynamic-group-usage",
+    "source_key": "governance:dynamic-group-usage",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.overdue-access-reviews",
+    "source_key": "overdueAccessReviewCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 11
+  },
+  {
+    "category": "governance",
+    "signal_key": "signal.governance.retention-policy-coverage",
+    "source_key": "retentionPolicyCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 10,
+    "governance_impact": 9
+  },
+  {
+    "category": "governance:policy_gaps",
+    "signal_key": "example:governance",
+    "source_key": "hasGovernanceGaps",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.b2b-collaboration-settings",
+    "source_key": "identity:b2b-collaboration-settings",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 6
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.ca-device-compliance",
+    "source_key": "caDeviceCompliancePolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 7,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.ca-policy-count",
+    "source_key": "caPolicyCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 7,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.ca-report-only",
+    "source_key": "caReportOnlyPolicyCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.cross-tenant-access",
+    "source_key": "identity:cross-tenant-access",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 6
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.hybrid-sync-health",
+    "source_key": "hybridSyncEnabled",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.mfa-method-breakdown",
+    "source_key": "identity:mfa-method-breakdown",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.pim-groups",
+    "source_key": "identity:pim-groups",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.signin-risk-policy",
+    "source_key": "signInRiskPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 8,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.sspr-config",
+    "source_key": "ssprConfigured",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 5,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.stale-accounts",
+    "source_key": "staleAccountCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.user-risk-policy",
+    "source_key": "userRiskPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 8,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.continuous-access-evaluation",
+    "source_key": "caeEnabled",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 3,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.named-locations",
+    "source_key": "identity:named-locations",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 2,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.password-expiration-policy",
+    "source_key": "identity:password-expiration-policy",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 1
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.pim-eligible-roles",
+    "source_key": "identity:pim-eligible-roles",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 3,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.terms-of-use",
+    "source_key": "identity:terms-of-use",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 2,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.ca-legacy-auth-block",
+    "source_key": "caLegacyAuthBlockExists",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 19,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.guest-mfa-enforcement",
+    "source_key": "guestMfaPolicyExists",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.legacy-auth-usage",
+    "source_key": "legacyAuthSignInCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 17,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.pim-permanent-roles",
+    "source_key": "permanentRoleAssignmentCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 12,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.risky-signins",
+    "source_key": "riskySignInCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 11,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.risky-users",
+    "source_key": "riskyUserCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 11,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.break-glass-health",
+    "source_key": "breakGlassAccountsHealthy",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 18,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.ca-mfa-coverage",
+    "source_key": "caMfaPolicyExists",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 20,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.global-admin-count",
+    "source_key": "globalAdminCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 18,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "identity",
+    "signal_key": "signal.identity.mfa-registration",
+    "source_key": "mfaRegistrationGapCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 19,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "m365",
+    "signal_key": "signal.m365.message-center",
+    "source_key": "m365:message-center",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "m365",
+    "signal_key": "signal.m365.service-health",
+    "source_key": "m365:service-health",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "msp:multi_tenant_managed",
+    "signal_key": "example:msp",
+    "source_key": "isMspManaged",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "onedrive",
+    "signal_key": "signal.onedrive.departed-user-access",
+    "source_key": "departedUserOneDriveTransferPendingCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 9
+  },
+  {
+    "category": "onedrive",
+    "signal_key": "signal.onedrive.storage-utilization",
+    "source_key": "onedrive:storage-utilization",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "onedrive",
+    "signal_key": "signal.onedrive.external-sharing-settings",
+    "source_key": "onedrive:external-sharing-settings",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "platform",
+    "signal_key": "signal.platform.branding-config",
+    "source_key": "brandingConfigured",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 1
+  },
+  {
+    "category": "platform",
+    "signal_key": "signal.platform.tenant-password-expiration",
+    "source_key": "platform:tenant-password-expiration",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 1,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "platform",
+    "signal_key": "signal.platform.multi-geo-status",
+    "source_key": "platform:multi-geo-status",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "pricing:high_value_deal",
+    "signal_key": "example:pricing",
+    "source_key": "estimatedAnnualValue",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "priority:executive_escalation",
+    "signal_key": "example:priority",
+    "source_key": "escalationFlag",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.antiphishing-coverage",
+    "source_key": "antiPhishingPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 7,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.dlp-true-positive-rate",
+    "source_key": "security:dlp-true-positive-rate",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 4,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.password-protection-policy",
+    "source_key": "passwordProtectionPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.safe-attachments-coverage",
+    "source_key": "safeAttachmentsPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 8,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.safe-links-coverage",
+    "source_key": "safeLinksPolicyExists",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 8,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.secure-score-by-category",
+    "source_key": "security:secure-score-by-category",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 4,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.automated-investigation",
+    "source_key": "automatedInvestigationEnabled",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 3,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.alert-count-by-severity",
+    "source_key": "securityAlertCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 9,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.open-incidents",
+    "source_key": "openIncidentCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 11,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.secure-score",
+    "source_key": "secureScoreCurrent",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 10,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security",
+    "signal_key": "signal.security.dlp-violations",
+    "source_key": "dlpViolationCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 14,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "security:dlp_gap",
+    "signal_key": "example:security",
+    "source_key": "hasDLPGaps",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.site-label-coverage",
+    "source_key": "sharepoint:site-label-coverage",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 8
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.storage-near-limit",
+    "source_key": "sitesNearStorageLimitCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.inactive-sites",
+    "source_key": "inactiveSiteCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 3
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.storage-utilization",
+    "source_key": "sharepoint:storage-utilization",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.site-count",
+    "source_key": "sharepoint:site-count",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.orgwide-links",
+    "source_key": "orgWideSharingLinkCount",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 12,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.tenant-sharing-capability",
+    "source_key": "tenantSharingCapability",
+    "severity": "high",
+    "copilot_impact": 0,
+    "security_impact": 11,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "sharepoint",
+    "signal_key": "signal.sharepoint.anonymous-links",
+    "source_key": "anonymousSharingLinkCount",
+    "severity": "critical",
+    "copilot_impact": 0,
+    "security_impact": 17,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.app-permission-policy",
+    "source_key": "teams:app-permission-policy",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.external-access-settings",
+    "source_key": "teams:external-access-settings",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 6,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.guest-membership",
+    "source_key": "teams:guest-membership",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 5
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.ownerless-teams",
+    "source_key": "ownerlessTeamCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 9
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.rooms-device-health",
+    "source_key": "nonCompliantTeamsRoomsCount",
+    "severity": "medium",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.inactive-teams",
+    "source_key": "inactiveTeamCount",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.meeting-policy-coverage",
+    "source_key": "teams:meeting-policy-coverage",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.messaging-policy-coverage",
+    "source_key": "teams:messaging-policy-coverage",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 2
+  },
+  {
+    "category": "teams",
+    "signal_key": "signal.teams.team-count",
+    "source_key": "teams:team-count",
+    "severity": "informational",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
+  },
+  {
+    "category": "workflow:automation_candidate",
+    "signal_key": "example:workflow",
+    "source_key": "hasManualProcessOverhead",
+    "severity": "low",
+    "copilot_impact": 0,
+    "security_impact": 0,
+    "compliance_impact": 0,
+    "governance_impact": 0
   }
 ]
