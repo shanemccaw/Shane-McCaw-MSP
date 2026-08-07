@@ -522,21 +522,6 @@ export default function CopilotReadinessPage() {
     };
   }, [measure]);
 
-  // Re-measure once the overlay releases: the page has been unscrollable until
-  // now and no scroll event will fire until the customer moves.
-  useEffect(() => {
-    if (overlayOpen) return undefined;
-    measure();
-    return undefined;
-  }, [overlayOpen, measure]);
-
-  const sceneProgressAt = useCallback(
-    (index: number) => metrics.progress[index] ?? 0,
-    [metrics.progress],
-  );
-
-  const pillarWide = metrics.vw >= PILLAR_WIDE_MIN_PX;
-
   // #536: a defensive backstop independent of the overlay/auto-trigger
   // bookkeeping above. `overlayOpen` covers the expected path (a real scan
   // is running or about to be) and locks scroll (`document.body.style.
@@ -563,6 +548,24 @@ export default function CopilotReadinessPage() {
     awaitingAutoScan,
   });
 
+  // Re-measure once the overlay releases, or once the no-scan gate lifts and
+  // Scenes 1-9 mount for the first time (#540: they're no longer part of a
+  // fresh component tree with their own mount-time measure() call) — either
+  // way the page has been unscrollable/unmeasured until now and no scroll
+  // event will fire until the customer moves.
+  useEffect(() => {
+    if (overlayOpen || neverScannedBlocked) return undefined;
+    measure();
+    return undefined;
+  }, [overlayOpen, neverScannedBlocked, measure]);
+
+  const sceneProgressAt = useCallback(
+    (index: number) => metrics.progress[index] ?? 0,
+    [metrics.progress],
+  );
+
+  const pillarWide = metrics.vw >= PILLAR_WIDE_MIN_PX;
+
   // #370: a tenant whose Graph/SharePoint access is broken has nothing real
   // for the scroll experience to reveal, so it is replaced outright rather
   // than rendered underneath a small nav-style nudge this no-nav page has
@@ -572,10 +575,6 @@ export default function CopilotReadinessPage() {
   // broken-consent tenant is a different real state than a never-scanned one.
   if (reconsentKind !== null) {
     return <RevealReconsentGate kind={reconsentKind} />;
-  }
-
-  if (neverScannedBlocked) {
-    return <RevealNoScanGate message={autoTriggerError} onRetry={retryAutoTrigger} />;
   }
 
   return (
@@ -727,6 +726,23 @@ export default function CopilotReadinessPage() {
         </button>
       ) : null}
 
+      {/*
+        #540: the no-scan gate and the live scanner are siblings, not
+        alternate `return`s, so the handoff between them is a crossfade
+        (`useOverlayFade`, journeyMotion.ts) rather than an unmount/mount
+        swap. They're mutually exclusive in practice (`neverScannedBlocked`
+        requires `!running && !awaitingAutoScan`, which is exactly what
+        `overlayOpen` requires to be true), so only one is ever actually
+        fading in at a time — but both stay mounted through their own exit
+        fade, which is what makes the release read as one continuous reveal
+        instead of a jump cut.
+      */}
+      <RevealNoScanGate
+        open={neverScannedBlocked}
+        message={autoTriggerError}
+        onRetry={retryAutoTrigger}
+      />
+
       <RevealScanOverlay
         open={overlayOpen}
         tenantLabel={tenantStrip(view.tenant)}
@@ -741,57 +757,68 @@ export default function CopilotReadinessPage() {
         isTestbed={!isPreview && scanStatusData?.isTestbed}
       />
 
-      <RevealVerdict
-        start={verdictStart}
-        tenantName={view.tenant.name}
-        score={view.readinessScore}
-        evaluation={view.readinessEvaluation}
-        pillars={view.pillars}
-        vw={metrics.vw}
-        vh={metrics.vh}
-        reduced={reduced}
-        payloadState={statusState}
-        retryAction={retryAction}
-      />
+      {/* Scenes 1-9, gated on the same `neverScannedBlocked` decision as
+          before (#536's own rule stands: a genuinely never-scanned tenant's
+          scenes must not mount, since they'd have real pillar scores and
+          findings to narrate and none exist yet) — the difference from the
+          old `if (neverScannedBlocked) return <RevealNoScanGate/>` is only
+          that the rest of this tree (progress rail, chrome, the two overlays
+          above) no longer unmounts alongside them. */}
+      {!neverScannedBlocked && (
+        <>
+          <RevealVerdict
+            start={verdictStart}
+            tenantName={view.tenant.name}
+            score={view.readinessScore}
+            evaluation={view.readinessEvaluation}
+            pillars={view.pillars}
+            vw={metrics.vw}
+            vh={metrics.vh}
+            reduced={reduced}
+            payloadState={statusState}
+            retryAction={retryAction}
+          />
 
-      {/* Scenes 2–7. One component six times — sameness is the feature. */}
-      {view.pillars.map((pillar, i) => (
-        <RevealPillarScene
-          key={pillar.key}
-          sceneIndex={i + 2}
-          pillar={pillar}
-          projected={isPreview ? PREVIEW_PROJECTED_BY_PILLAR[pillar.key] ?? null : null}
-          // Exactly one margin note in the whole experience, on Security alone.
-          marginNote={isPreview && pillar.key === "security" ? previewMarginNote(pillar.key) : null}
-          progress={sceneProgressAt(i + 1)}
-          wide={pillarWide}
-          reduced={reduced}
-          showTenantBoundCopy={isPreview}
-          payloadState={pillarState}
-          retryAction={retryAction}
-        />
-      ))}
+          {/* Scenes 2–7. One component six times — sameness is the feature. */}
+          {view.pillars.map((pillar, i) => (
+            <RevealPillarScene
+              key={pillar.key}
+              sceneIndex={i + 2}
+              pillar={pillar}
+              projected={isPreview ? PREVIEW_PROJECTED_BY_PILLAR[pillar.key] ?? null : null}
+              // Exactly one margin note in the whole experience, on Security alone.
+              marginNote={isPreview && pillar.key === "security" ? previewMarginNote(pillar.key) : null}
+              progress={sceneProgressAt(i + 1)}
+              wide={pillarWide}
+              reduced={reduced}
+              showTenantBoundCopy={isPreview}
+              payloadState={pillarState}
+              retryAction={retryAction}
+            />
+          ))}
 
-      <RevealAdoptionScene progress={sceneProgressAt(7)} reduced={reduced} />
+          <RevealAdoptionScene progress={sceneProgressAt(7)} reduced={reduced} />
 
-      <RevealFullPicture
-        view={view}
-        progress={sceneProgressAt(8)}
-        vw={metrics.vw}
-        vh={metrics.vh}
-        reduced={reduced}
-        discussHref={DISCUSS_HREF}
-        documentsHref={DOCUMENTS_HREF}
-        onOpenDocuments={() => navigate(DOCUMENTS_HREF)}
-        payloadState={statusState}
-        retryAction={retryAction}
-      />
+          <RevealFullPicture
+            view={view}
+            progress={sceneProgressAt(8)}
+            vw={metrics.vw}
+            vh={metrics.vh}
+            reduced={reduced}
+            discussHref={DISCUSS_HREF}
+            documentsHref={DOCUMENTS_HREF}
+            onOpenDocuments={() => navigate(DOCUMENTS_HREF)}
+            payloadState={statusState}
+            retryAction={retryAction}
+          />
 
-      <div style={{ textAlign: "center", padding: "0 0 32px" }}>
-        <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.deemphasised }}>
-          v{versionInfo.display}
-        </span>
-      </div>
+          <div style={{ textAlign: "center", padding: "0 0 32px" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.deemphasised }}>
+              v{versionInfo.display}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

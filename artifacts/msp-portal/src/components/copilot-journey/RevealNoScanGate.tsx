@@ -14,17 +14,36 @@
  * second auto-trigger pathway: the retry action below re-runs the same
  * gating decision the page already makes, it never calls the trigger
  * endpoint itself.
+ *
+ * MOUNT LIFECYCLE (#540)
+ * -----------------------
+ * `copilot-readiness.tsx` renders this alongside `RevealScanOverlay` rather
+ * than swapping between the two with an `if (...) return <X/>` — both are
+ * `position:fixed; inset:0` full-bleed panels on the same `BRAND.canvas`
+ * background, so as long as they're siblings in the same tree and fade via
+ * `open` instead of mounting/unmounting outright, the handoff between "no
+ * scan yet" and the live scanner reads as one dissolve instead of a swap.
+ * `useOverlayFade` (`journeyMotion.ts`) is the same lifecycle
+ * `RevealScanOverlay` uses, so the two move at the same speed.
  */
 
+import { OVERLAY_FADE_MS, useOverlayFade } from "./journeyMotion.ts";
 import { BRAND, INK, RADIUS } from "./journeyTokens.ts";
 
 export function RevealNoScanGate({
+  open,
   message,
   onRetry,
 }: {
+  /** True while the tenant is genuinely gated on "no scan yet". False fades
+   *  the gate away without unmounting the rest of the page's chrome. */
+  open: boolean;
   message?: string | null;
   onRetry: () => void;
 }) {
+  const { mounted, visible } = useOverlayFade(open);
+  if (!mounted) return null;
+
   return (
     <div
       style={{
@@ -38,6 +57,9 @@ export function RevealNoScanGate({
         justifyContent: "center",
         padding: "5vh 5vw",
         boxSizing: "border-box",
+        transition: `opacity ${OVERLAY_FADE_MS}ms ease`,
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 520, textAlign: "center", alignItems: "center" }}>

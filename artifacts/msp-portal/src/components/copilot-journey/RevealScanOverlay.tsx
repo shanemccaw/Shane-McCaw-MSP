@@ -29,6 +29,7 @@
 import { useEffect, useState } from "react";
 
 import { SCANNING_PILLAR_CHIP, type JourneyPillarView } from "./journeyModel.ts";
+import { OVERLAY_FADE_MS, useOverlayFade } from "./journeyMotion.ts";
 import { BRAND, INK, PILLARS, PILLAR_KEYS, RADIUS, TABULAR, type PillarKey } from "./journeyTokens.ts";
 import {
   RADAR_INNER_R,
@@ -49,8 +50,10 @@ const STAGE_H = 700;
 const STAGE_CX = 500;
 const STAGE_CY = 350;
 
-/** How long the overlay stays mounted after `open` goes false, for the fade. */
-const FADE_MS = 700;
+/** How long the overlay stays mounted after `open` goes false, for the fade.
+ *  Shared with `RevealNoScanGate` (#540) so the two crossfade at the same
+ *  speed rather than one out-running the other. */
+const FADE_MS = OVERLAY_FADE_MS;
 
 /**
  * Where each pillar's chip cluster sits on the stage, in the design's own
@@ -164,17 +167,10 @@ export function RevealScanOverlay({
   isTestbed?: boolean;
 }) {
   // Kept mounted through the fade-out so the overlay does not vanish on the
-  // frame the scan completes.
-  const [mounted, setMounted] = useState(open);
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      return undefined;
-    }
-    if (!mounted) return undefined;
-    const timer = setTimeout(() => setMounted(false), FADE_MS);
-    return () => clearTimeout(timer);
-  }, [open, mounted]);
+  // frame the scan completes, and deferred one frame on the way in so it fades
+  // up from opacity 0 rather than popping straight to opaque the instant a
+  // preceding overlay (e.g. `RevealNoScanGate`, #540) hands off to it.
+  const { mounted, visible } = useOverlayFade(open);
 
   // The scroll lock. Cleanup restores whatever the body had before, so an early
   // unmount (route change, error boundary) can never strand the page unscrollable.
@@ -250,8 +246,8 @@ export function RevealScanOverlay({
         padding: "5vh 5vw",
         boxSizing: "border-box",
         transition: `opacity ${FADE_MS}ms ease`,
-        opacity: open ? 1 : 0,
-        pointerEvents: open ? "auto" : "none",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       {/* Tenant identity strip — the same one the Document Viewer's sidebar reuses. */}
