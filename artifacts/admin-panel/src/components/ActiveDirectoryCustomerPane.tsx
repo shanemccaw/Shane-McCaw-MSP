@@ -809,6 +809,21 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
         </div>
       </div>
 
+      {/* Toolbar */}
+      {tenantGuid && (
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            onClick={() => void triggerScan()}
+            disabled={triggeringScan}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {triggeringScan ? "Starting scan…" : "Start Manual Scan"}
+          </button>
+        </div>
+      )}
+      {scanError && <p className="mb-4 -mt-2 text-[11px] text-red-600 dark:text-red-400">{scanError}</p>}
+      {scanSuccess && <p className="mb-4 -mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">{scanSuccess}</p>}
+
       {/* Profile */}
       <Section title="Profile" icon={<Building2 className="h-4 w-4 text-muted-foreground" />}>
         <Field label="Status" value={customer.status} />
@@ -997,19 +1012,6 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
               </div>
               {revokeError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{revokeError}</p>}
               {revokeSuccess && <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{revokeSuccess}</p>}
-            </div>
-
-            {/* Manual scan trigger */}
-            <div>
-              <button
-                onClick={() => void triggerScan()}
-                disabled={triggeringScan}
-                className="rounded border border-border px-2 py-1 text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                {triggeringScan ? "Starting scan…" : "Trigger manual scan"}
-              </button>
-              {scanError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{scanError}</p>}
-              {scanSuccess && <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{scanSuccess}</p>}
             </div>
 
             {/* Re-consent invite link */}
