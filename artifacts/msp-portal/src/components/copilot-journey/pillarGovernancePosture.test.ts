@@ -290,8 +290,8 @@ describe("findings", () => {
     ]);
     // `rest` is provenance only — never an elaboration the platform does not hold.
     assert.deepEqual(rows.map((r) => r.rest), [
-      "Recorded by compliance:overshared-sites on this tenant's last scan.",
-      "Recorded by compliance:public-channels on this tenant's last scan.",
+      "Recorded by the Compliance check on this tenant's last scan.",
+      "Recorded by the Compliance check on this tenant's last scan.",
     ]);
     assert.deepEqual(rows.map((r) => r.severity), ["critical", "attention"]);
   });

@@ -358,9 +358,16 @@ describe("findings sections", () => {
     assert.deepEqual(rows.map((r) => r.lead), FINDINGS.map((f) => f.title));
     // `rest` is provenance only — never an elaboration the platform does not hold.
     assert.deepEqual(rows.map((r) => r.rest), [
-      "Recorded by identity:mfa-registration on this tenant's last scan.",
-      "Recorded by identity:legacy-auth-usage on this tenant's last scan.",
+      "Recorded by the Identity check on this tenant's last scan.",
+      "Recorded by the Identity check on this tenant's last scan.",
     ]);
+  });
+
+  it("never surfaces a raw check_key (colon-separated identifier) in a rendered row", () => {
+    const rows = findingRows(FINDINGS);
+    for (const row of [...rows.map((r) => r.lead), ...rows.map((r) => r.rest)]) {
+      assert.doesNotMatch(row, /\b[a-z0-9_-]+:[a-z0-9_-]+\b/i);
+    }
   });
 
   it("maps the wire's warning onto the attention band without re-grading anything", () => {

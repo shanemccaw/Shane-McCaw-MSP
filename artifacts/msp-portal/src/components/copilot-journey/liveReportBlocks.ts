@@ -847,14 +847,31 @@ export function narrativeBlocks(
  * ------------------------------------------------------------------ */
 
 /**
+ * A finding's `checkKey` (e.g. `"identity:ca-mfa-coverage"`) is an internal
+ * registry identifier and must never reach customer-facing text verbatim.
+ * This derives the one human-readable fact worth keeping from it — the
+ * domain it belongs to — deterministically, with no elaboration invented.
+ */
+function checkDomainLabel(checkKey: string): string {
+  const domain = checkKey.split(":", 1)[0] ?? checkKey;
+  return domain
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
  * Turn one pillar's real findings into rows.
  *
  * `lead` is the finding's own title verbatim — since #408 that is the
  * `severity_rules` label, which is the sentence the platform itself decided
  * describes this result. `rest` is provenance and nothing else: it names the
- * real check the finding came from. It deliberately does NOT elaborate on the
- * finding, because the platform holds no second sentence about it and writing
- * one here would be exactly the invention these reports exist to avoid.
+ * domain of the real check the finding came from — never the raw `checkKey`
+ * itself, which is an internal identifier, not customer-facing text. It
+ * deliberately does NOT elaborate on the finding, because the platform holds
+ * no second sentence about it and writing one here would be exactly the
+ * invention these reports exist to avoid.
  *
  * The wire's `warning` maps to the `attention` tone: `Severity` is the
  * three-band presentation scale (critical / attention / healthy) and `warning`
@@ -864,7 +881,7 @@ export function findingRows(findings: readonly WirePillarFinding[]): readonly Pr
   return findings.map((f) => ({
     severity: f.severity === "critical" ? ("critical" as const) : ("attention" as const),
     lead: f.title,
-    rest: `Recorded by ${f.checkKey} on this tenant's last scan.`,
+    rest: `Recorded by the ${checkDomainLabel(f.checkKey)} check on this tenant's last scan.`,
   }));
 }
 
