@@ -560,31 +560,6 @@ export function RevealScanOverlay({
                   >
                     {identity.label}
                   </span>
-                  {/* Total real finding count — never the capped chip count,
-                      so it still reads "9" while only 3 chips show. */}
-                  {totalFindings > 0 ? (
-                    <span
-                      aria-label={`${totalFindings} findings`}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        minWidth: 16,
-                        height: 16,
-                        padding: "0 5px",
-                        borderRadius: RADIUS.pill,
-                        background: `${identity.primary}26`,
-                        color: identity.primary,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: 0,
-                        textTransform: "none",
-                        ...TABULAR,
-                      }}
-                    >
-                      {totalFindings}
-                    </span>
-                  ) : null}
                 </div>
 
                 {expanded ? (

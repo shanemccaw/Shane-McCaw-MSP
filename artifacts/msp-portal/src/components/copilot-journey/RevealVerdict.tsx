@@ -228,40 +228,6 @@ function OrbMark({ opacity, reduced }: { opacity: number; reduced: boolean }) {
 }
 
 /**
- * The count badge next to a pillar label (#535, mirroring #534's identical
- * `RevealScanOverlay.tsx` badge so Scene 0 and Scene 1 never disagree about a
- * pillar's finding count). `criticalCount + warningCount` per the issue —
- * the same server-reported aggregate the pillar card already carries,
- * independent of how many of those findings this scene chooses to show.
- */
-function FindingCountBadge({ count, color }: { count: number; color: string }) {
-  if (count <= 0) return null;
-  return (
-    <span
-      aria-label={`${count} findings`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: 16,
-        height: 16,
-        padding: "0 5px",
-        borderRadius: RADIUS.pill,
-        background: `${color}26`,
-        color,
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: 0,
-        textTransform: "none",
-        ...TABULAR,
-      }}
-    >
-      {count}
-    </span>
-  );
-}
-
-/**
  * The "+N more" / "Show fewer" trigger — mirrors #534's `MoreChip` in
  * `RevealScanOverlay.tsx` exactly (muted control, not pillar-coloured like a
  * finding chip). Duplicated locally rather than imported since the two files
@@ -307,7 +273,6 @@ function Satellite({
   expanded: boolean;
   onToggleExpanded: () => void;
 }) {
-  const totalFindings = pillar.criticalCount + pillar.warningCount;
   const moreCount = pillar.findings.length - 1;
   return (
     <div
@@ -354,7 +319,6 @@ function Satellite({
         >
           <PillarGlyph pillar={pillar.key} size={13} color="currentColor" />
           <span>{pillar.label}</span>
-          <FindingCountBadge count={totalFindings} color={pillar.primary} />
         </div>
         {expanded ? (
           <div
@@ -740,7 +704,6 @@ export function RevealVerdict({
             >
               {pillars.map((pillar) => {
                 const expanded = expandedPillars.has(pillar.key);
-                const totalFindings = pillar.criticalCount + pillar.warningCount;
                 const moreCount = pillar.findings.length - 1;
                 return (
                   <div
@@ -776,7 +739,6 @@ export function RevealVerdict({
                       >
                         <PillarGlyph pillar={pillar.key} size={12} color="currentColor" />
                         <span>{pillar.label}</span>
-                        <FindingCountBadge count={totalFindings} color={pillar.primary} />
                       </span>
                       <span
                         style={{
