@@ -1,52 +1,24 @@
-Copilot licensing alignment · 8 August 2026
-What Jane Jane is paying for, and what it is using
-This report reads your tenant's own subscription data and reports what was bought, what is unassigned, and what is still held by users who are no longer active. It offers no per-department breakdown and recommends no licence tier — see the summary below for why both are deliberately absent.
+Operational health & service integrity · 8 August 2026
+The score Jane Jane earns is only ever the score it keeps
+This report evaluates the operational health of your tenant's managed endpoints — compliance against your own baseline, encryption, operating-system currency and configuration alignment. It reports no service availability or uptime figure; see the summary below for why that section is deliberately absent.
 
 Worst finding
-No critical or warning findings.
-The Licensing pillar scores 54 of 100 on this tenant's last scan. Every figure below is read from your own subscription data; nothing here is a benchmark, a projection or a quote.
-Licensing Posture Summary
-Across the paid licence estate, this tenant has provisioned 1 paid seat, and every one of those seats is currently assigned — leaving 0 unassigned. At this scale, the relationship between provisioned and assigned is essentially perfect: there is no detectable slack between what has been purchased and what is held by someone. The score of 54 out of 100 reflects the boundaries of what this scan could verify rather than evidence of a specific problem, since the checks that would reveal deeper utilisation signals — such as activity against assigned seats — were not available for this tenant's scan.
+3 expired secret(s) and 1 expired certificate(s) found on this tenant's app registrations
+The Health pillar scores 25 of 100 on this tenant's last scan. Every figure below is read directly from your own tenant's device management; nothing here is a benchmark, an availability figure or an estimate.
+Health Posture Summary
+The section an operational review would normally open with — per-workload availability, uptime over the last thirty days, and the Microsoft-side incidents behind any dip — is deliberately not here. This assessment holds no availability record for your tenant: it does not measure uptime for Exchange, SharePoint, Teams or OneDrive, it does not read your service incident history, and it does not count outages. What it reads is your tenant's configuration, which is a different question. Nothing below should be taken as saying your workloads were available or that they were not — this scan did not look, and no figure has been estimated in place of looking.
 
-Paid seats provisioned
-1 paid seats bought across priced SKUs
-Paid seats unassigned
-0 paid seats provisioned but held by nobody
-Three lines a licensing review would normally carry are deliberately not here. The first is a per-department or per-role breakdown — which teams are over-provisioned and which are short. Your subscription data is read per SKU across the whole tenant; nothing in this assessment joins a licence to a department, a job title or a role template, so no seat-drift analysis is offered and none should be inferred from the totals below. The second is persona readiness: this platform holds no persona data for your tenant, so no report here names a persona or counts the users in one. The third is a required-tier recommendation. This assessment can name the tier a specific check needs only when Microsoft's own response to that check named it, which is what the Upgrade Opportunities section below reports; it cannot work backwards from a user count to a SKU those users ought to hold, so it does not.
+Configuration Correctness
+3 expired secret(s) and 1 expired certificate(s) found on this tenant's app registrations Recorded by the Appgov check on this tenant's last scan.
 
-Cost Waste Summary
-Across the paid portion of this tenant's licensed estate, the scan counted 1 provisioned seat with 0 left unassigned — meaning every paid seat that exists is currently allocated to a holder. At that scale, there is no measurable seat-level waste to report.
+One or more Microsoft 365 services are not fully operational Recorded by the M365 check on this tenant's last scan.
 
-What the scan could not do is place a price against those seats: SKU-level pricing was not available during this assessment, so the spend behind even that single seat cannot be quantified here. That is a gap in what was measured, not a finding about the tenant's posture.
-
-Cost figures this tenant's subscription data does not carry. An absent figure here means the spend could not be priced, not that there is none:
-
-license:sku-utilization — no priced SKU to value it against
-Eligibility & Coverage Gaps
-The Licensing pillar was evaluated on this tenant's last scan and returned no critical or warning finding about seat allocation, duplication or unused entitlement. That is a real result, not an empty section.
-
-Upgrade Opportunities
-Upgrade opportunity
-These checks returned nothing because your tenant does not hold the Microsoft 365 licence tier they read from. That is not a finding about your configuration and it is not a pass — each one is a measurement this assessment could not take, and each is listed with what holding that tier would make visible. Nothing below is scored, and none of it counts against your readiness figure.
-
-identity:risky-users
-Requires Microsoft Entra ID P2. Upgrading unlocks the Microsoft Entra ID Protection risky-user list, meaning the accounts Microsoft has itself flagged as compromised or at risk — the Copilot pillar carries no risky-user figure at all today, which is an absence of data rather than a count of zero.
-
-All three of the areas above — identity & privileged access, mail security, compliance & data governance — are covered by Microsoft 365 E7, so it is named here instead of three separate add-ons. Buying it is done by your own administrator in your own Microsoft 365 admin center (admin.microsoft.com → Billing → Purchase products) — we do not resell Microsoft licensing, so this is a pointer, not an offer.
-
-Microsoft 365 E7
 Copilot Readiness Impact
-The tenant's Copilot readiness score sits at 55 out of 100, against a Gate threshold of 82 — a gap of 27 points that the tenant has not yet cleared. The licensing pillar's score of 54 reflects affordability posture rather than safety posture; with 1 paid seat provisioned and 0 unassigned, there is simply no Copilot licence present in this tenant, which is recorded as the critical finding and is the direct reason the readiness score cannot advance from its current position.
-
-Licensing's role here is narrow but consequential in one specific direction: no Copilot licence means no rollout is possible yet, regardless of how the remaining readiness pillars resolve. The warning finding compounds this — 1 of 93 scanned SharePoint sites is shared with Everyone except external users, meaning every internal user already holds standing access to that content. Because Copilot inherits permissions rather than intent and grounds its responses on whatever content a given user can already reach, any future Copilot-enabled user would be able to surface material from that site without any additional access step being taken.
-
-The practical consequence is that the data-exposure condition exists independently of licensing and will remain in place whether or not a licence is introduced — resolving the licence gap first, without also narrowing the sharing scope, does not reduce the risk the warning describes.
-
 Copilot Gate
 55 against a Gate of 82 — 27 points short
 What this means
-Licensing decides whether a Copilot rollout is affordable rather than whether it is safe. Seats nobody holds and licences on people who have gone are real spend against no return, and they are the part of this assessment you can act on without touching a single control.
+Operational health is not what clears the Copilot Gate; it is what decides whether clearing it holds. A device outside your compliance baseline, one without encryption, or one on an operating-system build you no longer support is an endpoint Copilot will happily work through, whatever the tenant-level controls say.
 
-Jane Jane's Licensing pillar scores 54 of 100 on this scan. Every seat count and every dollar figure above is read from your own subscription data across SKUs with a real price — free and trial SKUs are excluded, so these are seats somebody actually bought.
+Jane Jane's Health pillar scores 25 of 100 on this scan. Each figure above is a specific, named result from a specific device-management check — there is nothing in this report that is not read from your own tenant, and nothing in it is an availability claim.
 
-Read on 8 August 2026 through the Microsoft Graph API with read-only delegated permissions. 98 signal derivation checks across the scan packages this tenant has run. No configuration was altered during assessment.
+Read on 8 August 2026 through the Microsoft Graph API with read-only delegated permissions. No configuration was altered during assessment.
