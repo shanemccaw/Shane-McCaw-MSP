@@ -153,6 +153,45 @@ export function resolveChangeWindows(isPreview: boolean): string {
   return "2 change windows — legacy authentication retirement and device compliance enforcement, each scheduled with advance notice";
 }
 
+/**
+ * "Phases in parallel" — the design hardcoded "Phases 1–3 overlap by design"
+ * against its own fixed 6-phase structure. #590: real phases are now
+ * dynamically selected by the Sales Offer Engine per tenant, so the phase
+ * count and mix vary and no real dependency data exists yet (#593, deferred)
+ * to say which of THIS tenant's phases could run concurrently. Rather than
+ * assert a parallel structure the platform cannot back up, a live tenant gets
+ * an honest declared gap, on the same discipline `resolveNewBudget` applies.
+ */
+export function resolvePhasesInParallel(isPreview: boolean): string {
+  if (isPreview) {
+    return "Phases 1–3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites";
+  }
+  return "Not fixed to a specific phase structure — which phases in your scope can run in parallel depends on the phases actually selected.";
+}
+
+/**
+ * "Strictly sequential" — same gap as `resolvePhasesInParallel`, for the
+ * design's paired "Phases 4–6 are strictly sequential" claim.
+ */
+export function resolveStrictlySequential(isPreview: boolean): string {
+  if (isPreview) {
+    return "Phases 4–6 · enablement cannot precede validation, certification cannot precede either";
+  }
+  return "Final sequencing across your selected phases is confirmed with your assessment lead at kickoff.";
+}
+
+/**
+ * The Delivery Timeline & Deliverables intro paragraph. Paired with the two
+ * resolvers above — same #590 gap, restated for the timeline section's own
+ * copy rather than repeated verbatim.
+ */
+export function resolveTimelineIntro(isPreview: boolean): string {
+  if (isPreview) {
+    return "Phases 1 to 3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites. Phases 4 to 6 are strictly sequential. The schedule below recalculates as you set scope.";
+  }
+  return "Sequencing across the phases in your scope is confirmed with your assessment lead at kickoff. The schedule below recalculates as you set scope.";
+}
+
 /* ------------------------------------------------------------------ *
  * Section 3
  * ------------------------------------------------------------------ */
@@ -349,7 +388,7 @@ export function resolvePhaseDuration(
 ): string {
   if (!included) return "Out of scope";
   if (isPreview) return `${weeksQuoted ?? 0} ${weeksQuoted === 1 ? "week" : "weeks"}`;
-  return weeksQuoted === null ? "Not quoted" : `${weeksQuoted} ${weeksQuoted === 1 ? "week" : "weeks"}`;
+  return weeksQuoted === null ? "Duration: not quoted" : `${weeksQuoted} ${weeksQuoted === 1 ? "week" : "weeks"}`;
 }
 
 /**

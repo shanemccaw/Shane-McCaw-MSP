@@ -52,7 +52,9 @@ export interface SowRow {
     | "telemetrySource"
     | "wasteRecovered"
     | "paymentTerms"
-    | "validity";
+    | "validity"
+    | "phasesParallel"
+    | "strictlySequential";
 }
 
 export interface SowSection {
@@ -132,17 +134,8 @@ export const STATEMENT_OF_WORK = {
         "Work follows the dependency order established in the Full Remediation Guide. Identity lands before anything is exposed to Copilot; drift telemetry lands last so it baselines the remediated state rather than the starting point.",
       rows: [
         { label: "Critical path", tone: "attention", derived: "weeks" },
-        {
-          label: "Phases in parallel",
-          tone: "healthy",
-          value:
-            "Phases 1–3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites",
-        },
-        {
-          label: "Strictly sequential",
-          tone: "attention",
-          value: "Phases 4–6 · enablement cannot precede validation, certification cannot precede either",
-        },
+        { label: "Phases in parallel", tone: "healthy", derived: "phasesParallel" },
+        { label: "Strictly sequential", tone: "attention", derived: "strictlySequential" },
         { label: "Change windows", tone: "attention", derived: "changeWindows" },
         {
           label: "Change control",
@@ -234,8 +227,7 @@ export const STATEMENT_OF_WORK = {
 
   timeline: {
     heading: "Delivery Timeline & Deliverables",
-    intro:
-      "Phases 1 to 3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites. Phases 4 to 6 are strictly sequential. The schedule below recalculates as you set scope.",
+    /** Intro paragraph moved to `resolveTimelineIntro()` in sowLiveContract.ts (#590) — the design's fixed 6-phase overlap/sequential claim doesn't hold once phases are dynamically selected, so it needed an `isPreview` branch this static field couldn't carry. */
     /** Per-phase deliverables, in `PREVIEW_PHASES` order. Preview only — a live SOW workstream has a scope sentence but no per-phase deliverable list of its own. */
     deliverables: [
       "CA policy set, MFA evidence pack, guest removal log",

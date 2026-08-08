@@ -26,9 +26,12 @@ import {
   resolveObjective,
   resolvePaymentTerms,
   resolvePhaseDuration,
+  resolvePhasesInParallel,
   resolveProjected,
+  resolveStrictlySequential,
   resolveTelemetrySource,
   resolveTimeline,
+  resolveTimelineIntro,
   resolveValidity,
   resolveWasteRecovered,
   resolveWeeksRow,
@@ -370,7 +373,50 @@ describe("resolvePhaseDuration", () => {
     assert.equal(resolvePhaseDuration(false, true, 1), "1 week");
   });
   it("live: an unquoted duration is stated as unquoted, not as 0 weeks", () => {
-    assert.equal(resolvePhaseDuration(false, true, null), "Not quoted");
+    assert.equal(resolvePhaseDuration(false, true, null), "Duration: not quoted");
+  });
+});
+
+describe("resolvePhasesInParallel", () => {
+  it("preview: verbatim", () => {
+    assert.equal(
+      resolvePhasesInParallel(true),
+      "Phases 1–3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites",
+    );
+  });
+  it("live: no fixed phase-count structure asserted, no fabricated overlap claim", () => {
+    const text = resolvePhasesInParallel(false);
+    assert.doesNotMatch(text, /Phases 1|Phases 4|1–3|4–6/);
+    assert.match(text, /phases actually selected/);
+  });
+});
+
+describe("resolveStrictlySequential", () => {
+  it("preview: verbatim", () => {
+    assert.equal(
+      resolveStrictlySequential(true),
+      "Phases 4–6 · enablement cannot precede validation, certification cannot precede either",
+    );
+  });
+  it("live: states sequencing is confirmed at kickoff, not a fabricated dependency structure", () => {
+    const text = resolveStrictlySequential(false);
+    assert.doesNotMatch(text, /Phases 1|Phases 4|1–3|4–6/);
+    assert.match(text, /confirmed with your assessment lead at kickoff/);
+  });
+});
+
+describe("resolveTimelineIntro", () => {
+  it("preview: verbatim", () => {
+    assert.equal(
+      resolveTimelineIntro(true),
+      "Phases 1 to 3 overlap by design — Compliance labelling begins while Governance sharing work continues, since both touch the same sites. Phases 4 to 6 are strictly sequential. The schedule below recalculates as you set scope.",
+    );
+  });
+  it("live: no fixed phase-count structure asserted", () => {
+    const text = resolveTimelineIntro(false);
+    assert.doesNotMatch(text, /Phases 1|Phases 4|1–3|4–6/);
+    assert.match(text, /confirmed with your assessment lead at kickoff/);
+    assert.match(text, /recalculates as you set scope/);
   });
 });
 

@@ -85,6 +85,7 @@ import {
   money,
   monthlyLabel,
   phaseCountLabel,
+  pickTier,
   togglePhase,
   toggleAddon,
   type JourneyPhase,
@@ -119,9 +120,12 @@ import {
   resolveObjective,
   resolvePaymentTerms,
   resolvePhaseDuration,
+  resolvePhasesInParallel,
   resolveProjected,
+  resolveStrictlySequential,
   resolveTelemetrySource,
   resolveTimeline,
+  resolveTimelineIntro,
   resolveValidity,
   resolveWasteRecovered,
   resolveWeeksRow,
@@ -417,6 +421,14 @@ export function StatementOfWorkBody({
     [signed],
   );
 
+  const onPickTier = useCallback(
+    (addonId: string, tierId: string) => {
+      if (signed) return; // same hard lock togglePhase/toggleAddon apply — scope is fixed at signature
+      setSelection((prev) => pickTier(prev, addonId, tierId));
+    },
+    [signed],
+  );
+
   const sign = useCallback(() => {
     // The same doctrine the post-signature lock follows: the guard lives in the
     // handler, not only in whether a button was rendered.
@@ -498,6 +510,10 @@ export function StatementOfWorkBody({
           const validUntilIso = !isPreview && live ? live.built.quoteHoldIso : null;
           return resolveValidity(isPreview, validUntilIso ? formatSowDate(validUntilIso) : null);
         }
+        case "phasesParallel":
+          return resolvePhasesInParallel(isPreview);
+        case "strictlySequential":
+          return resolveStrictlySequential(isPreview);
         default:
           return row.value ?? "";
       }
@@ -688,7 +704,7 @@ export function StatementOfWorkBody({
       <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
         <h2 style={H2}>{STATEMENT_OF_WORK.timeline.heading}</h2>
         <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
-          {STATEMENT_OF_WORK.timeline.intro}
+          {resolveTimelineIntro(isPreview)}
         </p>
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
           {scope.phases.map((p, i) => {
@@ -847,37 +863,103 @@ export function StatementOfWorkBody({
         <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6 }}>
           {scope.addons.map((a) => {
             const on = Boolean(selection.addons[a.id]);
+            const selectedTierId = selection.tiers[a.id] ?? a.defaultTierId ?? "";
             return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => onToggleAddon(a.id)}
-                aria-pressed={on}
-                title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0,1fr) auto",
-                  gap: 14,
-                  alignItems: "start",
-                  textAlign: "left",
-                  padding: "14px 16px",
-                  borderRadius: 10,
-                  border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
-                  background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
-                  opacity: on ? 1 : 0.42,
-                  cursor: signed ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                  transition: "opacity 180ms, background 180ms, border-color 180ms",
-                }}
-              >
-                <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{a.title}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
-                    {a.blurb}
+              <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onToggleAddon(a.id)}
+                  aria-pressed={on}
+                  title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0,1fr) auto",
+                    gap: 14,
+                    alignItems: "start",
+                    textAlign: "left",
+                    padding: "14px 16px",
+                    borderRadius: 10,
+                    border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
+                    background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
+                    opacity: on ? 1 : 0.42,
+                    cursor: signed ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                    transition: "opacity 180ms, background 180ms, border-color 180ms",
+                  }}
+                >
+                  <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+                    <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{a.title}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
+                      {a.blurb}
+                    </span>
                   </span>
-                </span>
-                <Toggle on={on} locked={signed} />
-              </button>
+                  <Toggle on={on} locked={signed} />
+                </button>
+
+                {/* #594: real tier picker — a.tiers.length > 1 is exactly the
+                    monitoring-tier-band shape sow-monitoring-addon.ts resolves
+                    (Basic/Enhanced/Premium); a single-tier addon (Architect
+                    Retainer) has nothing to choose between and stays a plain
+                    toggle above. */}
+                {a.tiers.length > 1 ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                      gap: 8,
+                      paddingLeft: 4,
+                      opacity: on ? 1 : 0.42,
+                      transition: "opacity 180ms",
+                    }}
+                  >
+                    {a.tiers.map((t) => {
+                      const selected = on && t.id === selectedTierId;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => onPickTier(a.id, t.id)}
+                          aria-pressed={selected}
+                          title={signed ? "Scope locked at signature" : `Select ${t.label}`}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 3,
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: `1px ${signed ? "dashed" : "solid"} ${selected ? hexAlpha(BRAND.teal, 0.5) : "rgba(30,41,59,.55)"}`,
+                            background: selected ? hexAlpha(BRAND.teal, 0.1) : "rgba(15,23,42,.2)",
+                            cursor: signed ? "not-allowed" : "pointer",
+                            fontFamily: "inherit",
+                            transition: "border-color 180ms, background 180ms",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              letterSpacing: ".14em",
+                              textTransform: "uppercase",
+                              color: t.emphasis ? BRAND.teal : INK.micro,
+                            }}
+                          >
+                            {t.label}
+                            {t.emphasis === "recommended" ? " · recommended" : ""}
+                            {t.emphasis === "seat-match" ? " · your seat count" : ""}
+                          </span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>
+                            {t.monthlyUsd > 0 ? `${money(t.monthlyUsd)}/mo` : money(t.upfrontUsd)}
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.45, color: INK.bodyDark }}>
+                            {t.detail}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </div>
