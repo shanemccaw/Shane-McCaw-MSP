@@ -108,6 +108,7 @@ export function computeSalesOfferEngine(
   services: Array<{ id: number; name: string; price: string | null; basePrice: string | null }>,
   config: Pick<SalesOfferConfig, "minScore" | "maxOffersPerGenerate" | "defaultExpirationDays" | "bundlingThreshold">,
   ctx?: { evaluationTimestamp?: Date },
+  signalLabels: Map<string, string> = new Map(),
 ): SalesOfferEngineOutput {
   const firedSignalArray = [...firedSignals];
   const serviceMap = new Map(services.map(s => [s.id, s]));
@@ -181,7 +182,7 @@ export function computeSalesOfferEngine(
       serviceId,
       serviceName: service.name,
       title: `${service.name} — recommended for your environment`,
-      rationale: buildRationale(firedForService),
+      rationale: buildRationale(firedForService, signalLabels),
       firedSignalKeys: firedForService,
       bundledOfferIds,
       basePriceCents,
@@ -226,9 +227,47 @@ function buildIdempotencyKey(customerId: number | null, serviceId: number, signa
   return createHash("sha256").update(`${customerId}:${serviceId}:${sorted}`).digest("hex").slice(0, 32);
 }
 
-function buildRationale(firedSignals: string[]): string {
+/**
+ * Translates raw signal_key identifiers (e.g. "signal.governance.ownerless-groups")
+ * into human-readable text before joining into the customer-facing rationale
+ * sentence. `signalLabels` is keyed by signal_key and sourced from
+ * signal_derivation_rules.description / signal_rule_groups.label (#592) —
+ * whichever of those is populated for a given signal. Falls back to a
+ * humanized version of the key's last path segment when neither is set.
+ */
+function buildRationale(firedSignals: string[], signalLabels: Map<string, string>): string {
   if (firedSignals.length === 0) return "This offering matches your environment profile.";
-  return `Triggered by signals: ${firedSignals.join(", ")}.`;
+  const labels = firedSignals.map(key => signalLabels.get(key) || humanizeSignalKey(key));
+  return `Triggered by: ${labels.join(", ")}.`;
+}
+
+function humanizeSignalKey(signalKey: string): string {
+  const lastSegment = signalKey.split(".").pop() || signalKey;
+  return lastSegment
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * Builds a signal_key → human-readable label map from the already-loaded
+ * rule/group rows, preferring signal_derivation_rules.description and
+ * falling back to signal_rule_groups.label — same precedence as the label
+ * resolution in admin-engines.ts's portal-snapshot breakdown endpoint.
+ */
+function buildSignalLabelMap(
+  rules: Array<{ signalKey: string; description: string | null }>,
+  groups: Array<{ signalKey: string; label: string | null }>,
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const r of rules) {
+    if (r.description) labels.set(r.signalKey, r.description);
+  }
+  for (const g of groups) {
+    if (g.label && !labels.has(g.signalKey)) labels.set(g.signalKey, g.label);
+  }
+  return labels;
 }
 
 // ── Tenant-scoped runner (async, reads DB) ────────────────────────────────────
@@ -257,7 +296,9 @@ export async function runSalesOfferEngineForTenant(
     fetchedCustomerId != null && resolvedMspId != null ? { customerId: fetchedCustomerId, mspId: resolvedMspId } : undefined,
   );
 
-  return computeSalesOfferEngine(customerId, firedSignals, ruleGroups, services, config, ctx);
+  const signalLabels = buildSignalLabelMap(rules, groups);
+
+  return computeSalesOfferEngine(customerId, firedSignals, ruleGroups, services, config, ctx, signalLabels);
 }
 
 // ── Offer persistence ─────────────────────────────────────────────────────────
