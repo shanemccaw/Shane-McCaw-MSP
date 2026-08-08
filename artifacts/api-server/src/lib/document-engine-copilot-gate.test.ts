@@ -351,6 +351,31 @@ describe("generateDocument() — finding identifier honesty (#549)", () => {
   });
 });
 
+// ─── Git #554 — check key must not be used as a heading ───────────────────────
+//
+// Confirmed live: {{findings}} already carries "<label> (<checkKey>)" per
+// #549's WORDING CONTRACT (label leads, check key trails) — this was never a
+// findings-assembly bug. #549's own rule told the model to refer to a finding
+// "by the real check key ... nothing else", which is what the model then used
+// as heading/title text (e.g. rendering "appgov:cert-secret-expiration" as a
+// document header instead of the authored sentence in front of it). The rule
+// now explicitly forbids that specific misuse.
+
+describe("generateDocument() — finding check key must not become a heading (#554)", () => {
+  it("carries an explicit instruction against using the check key as a heading/title", async () => {
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+
+    expect(prompt).toContain("Do NOT use a finding's check key");
+    expect(prompt).toContain("as a heading, title, or subheading");
+    expect(prompt).toContain("appgov:cert-secret-expiration");
+  });
+
+  it("applies to every document type, not just copilot_readiness", async () => {
+    const prompt = await assembleFor("remediation_plan", "Remediation Plan");
+    expect(prompt).toContain("Do NOT use a finding's check key");
+  });
+});
+
 describe("injectCopilotGateBlock()", () => {
   it("is stable across repeated calls (the /g token regex must not carry state)", () => {
     // The token regex is module-level and /g, so `test()` advances its

@@ -411,12 +411,32 @@ function scopeProfileEntries(
  * the reason #547 already established: it then applies to every document type on
  * deploy and cannot be lost when one type's body is next republished. Individual
  * prompt bodies remain free to say more; none of them has to remember this.
+ *
+ * Git #554: the original wording above ("refer to a finding ... by the real
+ * check key shown in parentheses ... nothing else") was itself the trap. It
+ * told the model the check key IS the finding's identifier and gave no other
+ * sanctioned way to refer to one, so when the model needed heading/title text
+ * for a finding it reached for that "real" identifier — rendering raw keys
+ * like `appgov:cert-secret-expiration` as headers instead of the authored
+ * label #549 puts first in the same string. Confirmed live on tenant
+ * c4c814d4-3afe-441e-9145-62461d0a4fd3: `{{findings}}` itself already carries
+ * "<label> (<checkKey>)" per #549's WORDING CONTRACT
+ * (deriveMonitorFindingsWithKeys, tenant-signals.ts) — this is a prompt-only
+ * fix, not a findings-assembly bug. The rule now explicitly separates the two
+ * uses: headings/titles must be written in the document author's own words
+ * (or quote the finding's leading sentence), and the check key is named only
+ * as an inline citation, never as heading text.
  */
 const FINDING_IDENTIFIER_HONESTY_RULE =
   "\n\nIDENTIFIERS: Do NOT invent finding IDs, reference codes, ticket numbers, or any " +
   "numbering scheme (e.g. \"COP-006\", \"F-12\", \"SEC-3\"). No such codes exist in this " +
-  "platform's data. Refer to a finding by the real check key shown in parentheses at the " +
-  "end of its line, or by quoting its description — nothing else. The list numbers above " +
+  "platform's data. Do NOT use a finding's check key (the identifier shown in parentheses " +
+  "at the end of its line, e.g. \"appgov:cert-secret-expiration\") as a heading, title, or " +
+  "subheading anywhere in the document — it is an internal system key, not customer-facing " +
+  "text. Every heading or title for a finding must be written in your own words, or quote " +
+  "the finding's own leading sentence (the text before the trailing parenthetical). The " +
+  "check key may still be cited inline, in prose or a reference list, when you need to name " +
+  "the specific finding you mean — nothing else. The list numbers above " +
   "are presentation order only; they are NOT identifiers and must not be cited as such.";
 
 /**
