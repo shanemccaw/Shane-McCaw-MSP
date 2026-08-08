@@ -89,7 +89,10 @@ import {
 // there is one definition of "enough coverage to score", not two.
 import { evaluatePillarDisplay } from "./health-display.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
-import type { SignalDerivationRule } from "./tenant-signals.ts";
+// Bridged-key map now lives with the function that produces it
+// (`bridgeLegacyProfileKeys`), so the "MUST stay in lockstep" contract this
+// file used to restate is structural rather than aspirational.
+import { BRIDGED_KEY_PRODUCER_CHECK, type SignalDerivationRule } from "./tenant-signals.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -123,18 +126,6 @@ export interface PillarCoverageEntry {
   label: string;
   score: number;
 }
-
-/**
- * Bridged legacy profile keys and their single real producer check — MUST stay
- * in lockstep with `bridgeLegacyProfileKeys()` in tenant-signals.ts (each entry
- * there documents its code-verified Graph producer; keys with no real producer
- * are deliberately absent from both places).
- */
-const BRIDGED_KEY_PRODUCER_CHECK: Record<string, string> = {
-  conditionalAccessPolicyCount: "identity:ca-policy-count",
-  conditionalAccessPoliciesCount: "identity:ca-policy-count",
-  securityScore: "security:secure-score",
-};
 
 /** The definition subset needed to enumerate a check's producible profile keys. */
 interface CheckDefinitionRow {

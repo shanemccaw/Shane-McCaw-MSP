@@ -50,6 +50,9 @@ vi.mock("@workspace/db", () => ({
   servicesTable: { id: "id", name: "name", description: "description", slug: "slug", deliveryType: "delivery_type" },
   usersTable: {},
   aiUsageEventsTable: { generatedArtifactId: "generated_artifact_id", generatedArtifactType: "generated_artifact_type", costCents: "cost_cents" },
+  // Profile-key registry (#544) — opaque column markers; the query chain above
+  // only needs to be handed something, it never inspects them.
+  monitorChecksTable: { key: "key", mapping: "mapping", properties: "properties", status: "status" },
 }));
 
 vi.mock("../middlewares/requireAuth", () => ({
@@ -161,5 +164,94 @@ describe("GET /admin/document-generator/history", () => {
 
     const res = await auth(request(app).get("/api/admin/document-generator/history"));
     expect(res.status).toBe(500);
+  });
+});
+
+// ── Profile key registry (Git #544 companion 2) ──────────────────────────────
+//
+// Before #544 this endpoint offered `mapping[].targetField` plus the flat
+// `<key>__itemCount`, and nothing else. That made the entire raw-extraction
+// class — `monitor_checks.properties[]` → `P_count`/`P_first`/`P_values`, where
+// 87 of the catalogue's 89 colliding names live — invisible to BOTH the admin
+// picker and the AI suggest-scoping endpoint (whose allowlist filters against
+// this same list). The one surface the scoping work most needed to name was the
+// one it could not see.
+//
+// It also grouped by `row.key.split("://")[0]`. Real check keys use ":" and
+// never "://", so that split never fired: `domain` came back as the whole check
+// key and the picker rendered one group per CHECK instead of one per domain.
+
+describe("fetchProfileKeyGroups (Git #544)", () => {
+  const CHECKS = [
+    {
+      key: "teams:team-count",
+      mapping: [{ sourceField: "value", targetField: "teamCount" }],
+      properties: ["displayName", "id"],
+    },
+    {
+      key: "teams:channel-sprawl",
+      mapping: [],
+      properties: ["displayName"],
+    },
+    {
+      key: "identity:ca-policy-count",
+      mapping: [{ sourceField: "value", targetField: "conditionalAccessPoliciesCount" }],
+      properties: [],
+    },
+  ];
+
+  const groups = async () => {
+    selectResult = CHECKS;
+    const { fetchProfileKeyGroups } = await import("./admin-document-generator");
+    return fetchProfileKeyGroups();
+  };
+
+  it("emits every raw-extraction key, namespaced by the check that produces it", async () => {
+    const teams = (await groups()).find((g) => g.domain === "teams");
+    // All THREE suffixes per properties[] entry — applyMapping emits count,
+    // first AND values, so a picker offering only one of them is still blind.
+    expect(teams?.keys).toEqual(expect.arrayContaining([
+      "teams:team-count.displayName_count",
+      "teams:team-count.displayName_first",
+      "teams:team-count.displayName_values",
+      "teams:team-count.id_count",
+      "teams:channel-sprawl.displayName_count",
+    ]));
+  });
+
+  it("namespaces the two colliding checks separately, so a pattern can name one", async () => {
+    const teams = (await groups()).find((g) => g.domain === "teams");
+    // The live collision: both checks emit displayName_count with different real
+    // values (18 vs 27). The bare, unattributable name is offered to nobody.
+    expect(teams?.keys).not.toContain("displayName_count");
+    expect(teams?.keys.filter((k) => k.endsWith(".displayName_count"))).toHaveLength(2);
+  });
+
+  it("namespaces mapping targetFields and the per-check item count", async () => {
+    const all = (await groups()).flatMap((g) => g.keys);
+    expect(all).toContain("teams:team-count.teamCount");
+    expect(all).toContain("teams:team-count._itemCount");
+    // The flat threshold-rule key is not a document-scoping key.
+    expect(all).not.toContain("teams:team-count__itemCount");
+  });
+
+  it("groups by real domain — the old \"://\" split gave one group per check", async () => {
+    const result = await groups();
+    expect(new Set(result.map((g) => g.domain))).toEqual(new Set(["_profile", "identity", "teams"]));
+    const teams = result.find((g) => g.domain === "teams");
+    expect(teams?.keys.some((k) => k.startsWith("teams:channel-sprawl."))).toBe(true);
+    expect(teams?.keys.some((k) => k.startsWith("teams:team-count."))).toBe(true);
+  });
+
+  it("offers a bridged key only while its single real producer check is active", async () => {
+    const withProducer = (await groups()).find((g) => g.domain === "_profile");
+    expect(withProducer?.keys).toContain("_profile.conditionalAccessPolicyCount");
+    // security:secure-score is absent from this catalogue, so securityScore is
+    // not producible for it and must not be offered.
+    expect(withProducer?.keys).not.toContain("_profile.securityScore");
+
+    selectResult = CHECKS.filter((c) => c.key !== "identity:ca-policy-count");
+    const { fetchProfileKeyGroups } = await import("./admin-document-generator");
+    expect((await fetchProfileKeyGroups()).some((g) => g.domain === "_profile")).toBe(false);
   });
 });

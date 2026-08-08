@@ -321,6 +321,7 @@ describe("calculateArchitectureHealthScore — combines the standalone Health an
 
     vi.mocked(buildTenantProfile).mockResolvedValue({
       mergedProfile: profile,
+      mergedProfileByCheck: {},
       findings: [],
       categorizedFindings: [],
       customerId: 1,

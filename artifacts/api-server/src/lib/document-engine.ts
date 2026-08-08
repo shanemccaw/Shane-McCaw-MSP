@@ -8,7 +8,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
-import { buildTenantProfile, findReusableDocument, resolveDocumentOwnerUserId, type CategorizedFinding } from "./tenant-signals";
+import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
@@ -218,9 +218,96 @@ function findingsToAppendixInput(
   });
 }
 
-function matchesProfilePattern(key: string, pattern: string): boolean {
-  if (pattern.endsWith("*")) return key.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase());
-  return key.toLowerCase() === pattern.toLowerCase();
+// ─── Profile scoping keys (Git #544) ─────────────────────────────────────────
+//
+// `included_profile_key_patterns` is matched against the NAMESPACED profile
+// (`<checkKey>.<property>`, e.g. `devices:autopilot-coverage.displayName_count`)
+// rather than the flat `mergedProfile`, because in the flat namespace 89 of the
+// catalogue's 408 property names are produced by more than one check and the
+// alphabetically-last check silently wins. A pattern naming a bare
+// `displayName_count` cannot say which of 16 checks it meant; the namespaced
+// form can only ever name one.
+//
+// CASE HANDLING is deliberately split, and this is the whole point of the
+// design. `Object.assign` is case-SENSITIVE, so `Name_count` (4 checks) and
+// `name_count` (3 checks) — and `State_*` / `state_*` — are genuinely
+// DIFFERENT profile keys holding different values. The old matcher lower-cased
+// both sides, so a pattern of `name*` fused both groups into one bucket in the
+// prompt: a collision the merge itself never made. So:
+//
+//   • the check-key namespace (everything before the first ".") folds case —
+//     `monitor_checks.key` is a lower-case `<domain>:<name>` vocabulary, so
+//     folding it costs nothing and keeps a hand-typed pattern forgiving;
+//   • the property segment is compared VERBATIM — that is where the real
+//     case distinction lives, and fusing it is the bug.
+//
+// A pattern with no "." at all (e.g. `identity:*`) is entirely namespace and
+// folds wholly, which is the same rule stated once.
+
+/** Lower-cases only the check-key namespace segment. See the block comment above. */
+function foldProfileKeyNamespace(value: string): string {
+  const dot = value.indexOf(".");
+  return dot === -1 ? value.toLowerCase() : value.slice(0, dot).toLowerCase() + value.slice(dot);
+}
+
+export function matchesProfilePattern(key: string, pattern: string): boolean {
+  const foldedKey = foldProfileKeyNamespace(key);
+  if (pattern.endsWith("*")) return foldedKey.startsWith(foldProfileKeyNamespace(pattern.slice(0, -1)));
+  return foldedKey === foldProfileKeyNamespace(pattern);
+}
+
+/**
+ * Flattens `buildTenantProfile().mergedProfileByCheck` into the sorted
+ * `<checkKey>.<property>` entry list a document's `{{profileSample}}` and
+ * `included_profile_key_patterns` both operate on. Sorted so two generations of
+ * the same document from the same data produce a byte-identical prompt (the
+ * drift gate and the AI response cache both depend on that).
+ */
+export function namespacedProfileEntries(byCheck: MergedProfileByCheck): Array<[string, unknown]> {
+  const entries: Array<[string, unknown]> = [];
+  for (const checkKey of Object.keys(byCheck).sort()) {
+    const props = byCheck[checkKey] ?? {};
+    for (const propertyName of Object.keys(props).sort()) {
+      entries.push([namespacedProfileKey(checkKey, propertyName), props[propertyName]]);
+    }
+  }
+  return entries;
+}
+
+/**
+ * Applies a document type's patterns to the namespaced entries, and — because a
+ * pattern that silently matches nothing looks exactly like a document with no
+ * telemetry — says so out loud when one doesn't land.
+ *
+ * The two near-miss classes are named specifically, since both are what an
+ * admin will actually hit while the 9 document types get their scoping written:
+ * a legacy pattern still written against a bare flat key, and a pattern whose
+ * case is wrong for the property segment (which no longer silently fuses).
+ */
+function scopeProfileEntries(
+  entries: Array<[string, unknown]>,
+  patterns: string[],
+  logContext: Record<string, unknown>,
+): Array<[string, unknown]> {
+  if (patterns.length === 0) return entries;
+
+  const unmatched = patterns.filter((p) => !entries.some(([k]) => matchesProfilePattern(k, p)));
+  if (unmatched.length > 0) {
+    const looksLegacyFlat = unmatched.filter((p) => !p.includes(".") && !p.includes(":"));
+    const caseOnlyMisses = unmatched.filter((p) => {
+      const literal = p.endsWith("*") ? p.slice(0, -1) : p;
+      return entries.some(([k]) =>
+        p.endsWith("*")
+          ? k.toLowerCase().startsWith(literal.toLowerCase())
+          : k.toLowerCase() === literal.toLowerCase());
+    });
+    scopeLog.warn(
+      { ...logContext, unmatchedPatterns: unmatched, looksLegacyFlat, caseOnlyMisses, namespacedKeyCount: entries.length },
+      "document-engine: includedProfileKeyPatterns entries matched nothing in the namespaced profile — patterns are now <checkKey>.<property> (Git #544), and the property segment is case-sensitive",
+    );
+  }
+
+  return entries.filter(([k]) => patterns.some((p) => matchesProfilePattern(k, p)));
 }
 
 /**
@@ -261,13 +348,18 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     const { mspId, mspName, mspPrimaryColor } = await resolveMspBranding(mspCustomerId);
 
     const tenantProfile = await buildTenantProfile(mspCustomerId);
-    const mergedProfile: Record<string, unknown> = tenantProfile.mergedProfile;
+    // Namespaced, not flat (Git #544) — see the block comment on
+    // matchesProfilePattern for why {{profileSample}} no longer reads the flat
+    // mergedProfile, whose generic property names collide across 89 keys.
+    const mergedProfileByCheck: MergedProfileByCheck = tenantProfile.mergedProfileByCheck;
     const findings: string[] = tenantProfile.findings;
     const categorizedFindings: CategorizedFinding[] = tenantProfile.categorizedFindings;
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
-    const scopedProfileEntries = profilePatterns.length > 0
-      ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
-      : Object.entries(mergedProfile);
+    const scopedProfileEntries = scopeProfileEntries(
+      namespacedProfileEntries(mergedProfileByCheck),
+      profilePatterns,
+      { mspCustomerId, projectId, docTypeKey, dryRun: true },
+    );
     const scopedProfile = Object.fromEntries(scopedProfileEntries);
     const signalCategories = docTypeRow.includedSignalCategories ?? [];
     const scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
@@ -410,13 +502,16 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     // Real tenant profile + scoping
     const tenantProfile = await buildTenantProfile(mspCustomerId);
-    const mergedProfile: Record<string, unknown> = tenantProfile.mergedProfile;
+    // Namespaced, not flat (Git #544) — same reasoning as the dry-run branch.
+    const mergedProfileByCheck: MergedProfileByCheck = tenantProfile.mergedProfileByCheck;
     const findings: string[] = tenantProfile.findings;
     const categorizedFindings: CategorizedFinding[] = tenantProfile.categorizedFindings;
     const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
-    const scopedProfileEntries = profilePatterns.length > 0
-      ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
-      : Object.entries(mergedProfile);
+    const scopedProfileEntries = scopeProfileEntries(
+      namespacedProfileEntries(mergedProfileByCheck),
+      profilePatterns,
+      { mspCustomerId, projectId, docTypeKey, documentId, dryRun: false },
+    );
     const scopedProfile = Object.fromEntries(scopedProfileEntries);
     // `includedSignalCategories` is now honored (was stored-but-unused): a
     // finding is kept when the check that produced it feeds a signal rule in one

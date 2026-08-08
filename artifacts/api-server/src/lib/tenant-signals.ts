@@ -446,6 +446,20 @@ function firstNumericProp(props: Record<string, unknown>, keys: string[]): numbe
 }
 
 /**
+ * The bridged keys below and the single real producer check each is derived
+ * from. Lives here, beside the function that writes them, so the consumers that
+ * enumerate producible profile keys — `pillar-coverage.ts`'s
+ * `buildProducibleProfileKeys()` and the document scoping picker's `_profile`
+ * bucket — read this list instead of each restating it. Keys with no real
+ * producer are deliberately absent, for the reasons in the doc comment below.
+ */
+export const BRIDGED_KEY_PRODUCER_CHECK: Record<string, string> = {
+  conditionalAccessPolicyCount: "identity:ca-policy-count",
+  conditionalAccessPoliciesCount: "identity:ca-policy-count",
+  securityScore: "security:secure-score",
+};
+
+/**
  * Legacy-vocabulary bridge: derives the handful of script-era profile keys that
  * real seeded `signal_derivation_rules` reference but that the Graph pipeline
  * expresses differently. Runs AFTER the raw merge, and every derivation is
@@ -522,23 +536,160 @@ function bridgeLegacyProfileKeys(
   }
 }
 
+// ─── Namespaced companion profile (Git #544) ─────────────────────────────────
+//
+// The flat `mergedProfile` above is ONE namespace shared by every check, so a
+// property NAME used by two checks silently overwrites — and because
+// `fetchLatestMonitorProfileRows` orders by checkKey ASC, the alphabetically
+// LAST check deterministically wins, every build. Confirmed live scope
+// (2026-08-07, full catalogue): 137 active checks emit 408 distinct property
+// names, of which 89 (21.8%) collide — 87 of them from raw extraction
+// (`monitor_checks.properties[]` emits `P_count`/`P_first`/`P_values`, names
+// that carry no check identity at all), one `mapping[].targetField`
+// (`teamCount`), and bare `_itemCount` colliding across all 137 by
+// construction.
+//
+// `mergedProfileByCheck` is the additive fix (option B, signed off on the
+// issue): the SAME merge pass also records every property under its producing
+// check key, so nothing is lost. It is deliberately a COMPANION, not a
+// replacement — the flat profile keeps its exact existing contents and
+// precedence so `evaluateRule()` and all 214 `signal_derivation_rules` keep
+// behaving byte-identically (the live audit confirmed zero exposed rules read
+// any of the 89 colliding names, so there is nothing to migrate there).
+//
+// The established in-house precedent for this shape is the synthetic
+// `<checkKey>__itemCount` key stamped below, which is exactly option B applied
+// to one key and which 120 of 214 rules already consume happily.
+
+/** `checkKey → { propertyName → value }`. See the block comment above. */
+export type MergedProfileByCheck = Record<string, Record<string, unknown>>;
+
+/**
+ * Reserved bucket for the profile contributions that genuinely have no check
+ * key to be namespaced by: `client_m365_profiles.profile`,
+ * `script_run_results.profileUpdates`, and the keys `bridgeLegacyProfileKeys`
+ * derives (`securityScore`, `conditionalAccessPolicy/PoliciesCount`).
+ * `buildTenantProfile` unions three sources and only monitor rows carry a
+ * check key — pretending otherwise is what made "namespace everything before
+ * merging" unrealizable. Contains no ":", so it can never collide with a real
+ * `monitor_checks.key` (all of which are `<domain>:<name>`).
+ */
+export const NON_CHECK_PROFILE_NAMESPACE = "_profile";
+
+/**
+ * The single flat, unambiguous key a document type's
+ * `included_profile_key_patterns` is written against — `<checkKey>.<property>`,
+ * e.g. `devices:autopilot-coverage.displayName_count`. Separator is "." because
+ * check keys use ":" and property names use "_", so neither can be confused
+ * with it.
+ */
+export function namespacedProfileKey(checkKey: string, propertyName: string): string {
+  return `${checkKey}.${propertyName}`;
+}
+
+/** Value equality for collision reporting only — deep enough for the array/object
+ *  payloads raw extraction produces (`id_values` et al) without pulling in a dep. */
+function sameProfileValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/** Short, log-safe rendering of a discarded value — `id_values` can be thousands of ids. */
+function profileValuePreview(value: unknown): string {
+  let text: string;
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+}
+
+/** How many individual collisions the warn below enumerates before summarising. */
+const PROFILE_COLLISION_LOG_LIMIT = 25;
+
 /**
  * Merges the latest monitor rows into a signal-evaluation profile: full
  * extracted properties (so every DB-configured `monitor_checks.mapping`
  * targetField — e.g. mfaEnforced, globalAdminCount, dlpPoliciesCount — reaches
  * `evaluateRule()`), the synthetic `<checkKey>__itemCount` keys that
  * `threshold` rules read, and the legacy-vocabulary bridge above.
+ *
+ * `mergedProfileByCheck` (optional, Git #544) is filled in the same pass with
+ * the namespaced companion view — see the block comment above. Passing it
+ * changes NOTHING about what lands in `mergedProfile`; call sites that don't
+ * need it simply omit it.
+ *
+ * Deliberately, a check's bucket holds its extracted properties VERBATIM: the
+ * `?? 0` default the flat `<checkKey>__itemCount` key applies is a threshold-rule
+ * contract, and mirroring it here would hand a document prompt a fabricated
+ * "0 items" for a check that errored and measured nothing.
  */
 export function mergeMonitorProfileRows(
   mergedProfile: Record<string, unknown>,
   monitorRows: TenantMonitorProfileRow[],
+  mergedProfileByCheck?: MergedProfileByCheck,
 ): void {
+  // Loud-on-loss (Git #544): overwrites with an IDENTICAL value are skipped —
+  // `_licenseGap`/`_licenseGapCode` agree across every gapped check and would
+  // otherwise drown the signal. Collected and emitted as one warn per merge
+  // rather than one per key, so a 62-collision tenant stays greppable.
+  const collisions: Array<{ key: string; lostFrom: string | null; wonBy: string; lostValue: string; keptValue: string }> = [];
+  const lastWriterByKey = new Map<string, string>();
+
   for (const row of monitorRows) {
     const props = row.extractedProperties ?? {};
+    for (const [key, value] of Object.entries(props)) {
+      if (key in mergedProfile && !sameProfileValue(mergedProfile[key], value)) {
+        collisions.push({
+          key,
+          // Absent from the map = the previous value came from a non-monitor
+          // source (client_m365_profiles / script_run_results), which is worth
+          // distinguishing from a check-vs-check collision.
+          lostFrom: lastWriterByKey.get(key) ?? null,
+          wonBy: row.checkKey,
+          lostValue: profileValuePreview(mergedProfile[key]),
+          keptValue: profileValuePreview(value),
+        });
+      }
+      lastWriterByKey.set(key, row.checkKey);
+    }
     Object.assign(mergedProfile, props);
     mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+    if (mergedProfileByCheck) {
+      const bucket = (mergedProfileByCheck[row.checkKey] ??= {});
+      Object.assign(bucket, props);
+    }
   }
+
+  // The bridge derives keys from monitor rows but attributes them to no single
+  // check, so its output belongs in the reserved namespace. Add-only by
+  // construction (every branch is absent-guarded), so a key-set diff is exact.
+  const beforeBridge = mergedProfileByCheck ? new Set(Object.keys(mergedProfile)) : null;
   bridgeLegacyProfileKeys(mergedProfile, monitorRows);
+  if (mergedProfileByCheck && beforeBridge) {
+    for (const key of Object.keys(mergedProfile)) {
+      if (beforeBridge.has(key)) continue;
+      (mergedProfileByCheck[NON_CHECK_PROFILE_NAMESPACE] ??= {})[key] = mergedProfile[key];
+    }
+  }
+
+  if (collisions.length > 0) {
+    log.warn(
+      {
+        collisionCount: collisions.length,
+        collidingKeys: [...new Set(collisions.map(c => c.key))],
+        collisions: collisions.slice(0, PROFILE_COLLISION_LOG_LIMIT),
+        collisionsOmitted: Math.max(0, collisions.length - PROFILE_COLLISION_LOG_LIMIT),
+      },
+      "mergeMonitorProfileRows: flat mergedProfile key overwritten with a DIFFERENT value — the losing check's data is not in the flat profile (Git #544). Read mergedProfileByCheck for the per-check value.",
+    );
+  }
 }
 
 /**
@@ -722,6 +873,17 @@ export interface CategorizedFinding {
 
 export async function buildTenantProfile(customerId: number): Promise<{
   mergedProfile: Record<string, unknown>;
+  /**
+   * Namespaced companion to `mergedProfile` (Git #544) — `checkKey → props`,
+   * plus the reserved `NON_CHECK_PROFILE_NAMESPACE` bucket for the two sources
+   * that have no check key. ADDITIVE: `mergedProfile` above is unchanged, and
+   * every existing consumer of it (all of `evaluateRule`, every engine) keeps
+   * reading exactly what it read before. New consumers that need to know WHICH
+   * check a value came from — document generation's `{{profileSample}}` is the
+   * first — read this instead. See the block comment on
+   * `mergeMonitorProfileRows`.
+   */
+  mergedProfileByCheck: MergedProfileByCheck;
   findings: string[];
   /**
    * 1:1 with `findings` (same strings, same order, same dedupe) — an additive
@@ -764,6 +926,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
   const customerUserIds = await resolveCustomerUserIds(customerId);
 
   let mergedProfile: Record<string, unknown> = {};
+  const mergedProfileByCheck: MergedProfileByCheck = {};
   let findings: string[] = [];
   if (customerUserIds.length > 0) {
     const profileRows = await db
@@ -787,6 +950,14 @@ export async function buildTenantProfile(customerId: number): Promise<{
     for (const row of profileRows) Object.assign(mergedProfile, (row.profile as Record<string, unknown> | null) ?? {});
     for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
     findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
+
+    // Snapshot the check-key-less contributions BEFORE the monitor merge, so a
+    // monitor property that later overwrites one of them doesn't erase the
+    // record of what the script-era source actually said (Git #544). This is
+    // the only point at which the two are still distinguishable.
+    if (Object.keys(mergedProfile).length > 0) {
+      mergedProfileByCheck[NON_CHECK_PROFILE_NAMESPACE] = { ...mergedProfile };
+    }
   } else {
     log.warn(
       { customerId },
@@ -807,7 +978,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
   const monitorMetaByFindingText = new Map<string, { categories: string[]; checkKey: string; severity: string; itemCount: number | null }>();
   if (tenantId) {
     const monitorRows = await fetchLatestMonitorProfileRows(tenantId);
-    mergeMonitorProfileRows(mergedProfile, monitorRows);
+    mergeMonitorProfileRows(mergedProfile, monitorRows, mergedProfileByCheck);
     const monitorFindings = deriveMonitorFindingsWithKeys(monitorRows);
     findings = [...new Set([...findings, ...monitorFindings.map(f => f.text)])];
 
@@ -847,7 +1018,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
     };
   });
 
-  return { mergedProfile, findings, categorizedFindings, customerId, mspId, tenantId };
+  return { mergedProfile, mergedProfileByCheck, findings, categorizedFindings, customerId, mspId, tenantId };
 }
 
 // ─── Tenant health block vars (used by email templates) ──────────────────────

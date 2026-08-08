@@ -28,7 +28,7 @@ import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { resolveCustomerUserIds } from "../lib/tenant-signals";
+import { namespacedProfileKey, resolveCustomerUserIds, BRIDGED_KEY_PRODUCER_CHECK, NON_CHECK_PROFILE_NAMESPACE } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -114,13 +114,27 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
 });
 
 // ── Profile key registry ─────────────────────────────────────────────────────
-// Real, live source of every key that can land in a tenant's merged profile:
-// `monitor_checks.mapping[].targetField` across active checks, plus each
-// check's synthetic `${key}__itemCount` entry — the exact same naming
-// `mergeMonitorProfileRows` (tenant-signals.ts) stamps onto the merged
-// profile, reused here rather than reinvented. Grouped by the checkKey's
-// domain prefix (segment before "://") so the picker can render collapsible
-// groups instead of one flat 100+ key list. Single query, no N+1.
+// Real, live source of every key a document type's
+// `included_profile_key_patterns` can name, in the NAMESPACED
+// `<checkKey>.<property>` form document generation matches against
+// (Git #544 — see the block comment on `matchesProfilePattern` in
+// document-engine.ts). Three real producers, all enumerated from the live
+// `monitor_checks` catalogue:
+//
+//   • `mapping[].targetField`         → `<key>.<targetField>`
+//   • `properties[]` raw extraction   → `<key>.<prop>_count` / `_first` / `_values`
+//     (`applyMapping` in monitor-executor.ts emits all THREE per entry)
+//   • the unconditional item count    → `<key>._itemCount`
+//
+// The raw-extraction class was missing entirely before #544: 87 of the
+// catalogue's 89 colliding names live in it, so the picker and the AI-suggest
+// allowlist (which filters against this same list) were both blind to the exact
+// surface the scoping work needs to name. Grouped by the checkKey's domain
+// prefix — the segment before ":", which is what real check keys use; this
+// split was written against "://" and therefore never fired, giving one group
+// per CHECK instead of one per domain.
+//
+// Single query, no N+1.
 
 /**
  * The aggregation itself, split out from the route so the AI-suggest endpoint
@@ -129,20 +143,42 @@ router.get("/admin/document-generator/missing-types", requireAdmin, async (_req:
  */
 export async function fetchProfileKeyGroups(): Promise<{ domain: string; keys: string[] }[]> {
   const rows = await db
-    .select({ key: monitorChecksTable.key, mapping: monitorChecksTable.mapping })
+    .select({ key: monitorChecksTable.key, mapping: monitorChecksTable.mapping, properties: monitorChecksTable.properties })
     .from(monitorChecksTable)
     .where(eq(monitorChecksTable.status, "active"));
 
   const domains = new Map<string, Set<string>>();
-  for (const row of rows) {
-    const domain = row.key.split("://")[0] ?? row.key;
+  const keysFor = (domain: string): Set<string> => {
     let keys = domains.get(domain);
     if (!keys) {
       keys = new Set<string>();
       domains.set(domain, keys);
     }
-    for (const m of row.mapping) keys.add(m.targetField);
-    keys.add(`${row.key}__itemCount`);
+    return keys;
+  };
+
+  const activeCheckKeys = new Set<string>();
+  for (const row of rows) {
+    activeCheckKeys.add(row.key);
+    const keys = keysFor(row.key.split(":")[0] ?? row.key);
+    for (const m of row.mapping) keys.add(namespacedProfileKey(row.key, m.targetField));
+    for (const prop of row.properties ?? []) {
+      if (!prop) continue;
+      for (const suffix of ["_count", "_first", "_values"]) keys.add(namespacedProfileKey(row.key, `${prop}${suffix}`));
+    }
+    // `_itemCount` is stamped on every check by executeMonitorCheck, so the
+    // namespaced form is always real. (The flat `<key>__itemCount` remains the
+    // threshold-rule contract; it is not a document-scoping key.)
+    keys.add(namespacedProfileKey(row.key, "_itemCount"));
+  }
+
+  // The check-key-less bucket: keys `bridgeLegacyProfileKeys` derives, offered
+  // only when their single real producer check is active, so the picker can
+  // never present a key this tenant catalogue cannot produce.
+  for (const [bridgedKey, producerCheck] of Object.entries(BRIDGED_KEY_PRODUCER_CHECK)) {
+    if (activeCheckKeys.has(producerCheck)) {
+      keysFor(NON_CHECK_PROFILE_NAMESPACE).add(namespacedProfileKey(NON_CHECK_PROFILE_NAMESPACE, bridgedKey));
+    }
   }
 
   return Array.from(domains.entries())

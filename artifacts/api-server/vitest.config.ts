@@ -29,6 +29,10 @@ export default defineConfig({
       "src/lib/tenant-signals-stabilization.test.ts",
       "src/lib/tenant-signals-customer-bridge.test.ts",
       "src/lib/build-tenant-profile.test.ts",
+      // #544 — namespaced mergedProfileByCheck + the scoping-pattern matcher
+      // that must not re-fuse case-distinct keys the merge kept separate.
+      "src/lib/merged-profile-by-check-544.test.ts",
+      "src/lib/document-profile-scoping-544.test.ts",
       "src/lib/document-engine-signal-scoping.test.ts",
       "src/lib/document-drift-gate.test.ts",
       "src/lib/drift-engine.test.ts",

@@ -110,11 +110,15 @@ vi.mock("@workspace/integrations-anthropic-ai", async () => {
 vi.mock("./tenant-signals", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: { mfaEnabled: true },
+    // Namespaced companion (#544) — what {{profileSample}} now reads.
+    mergedProfileByCheck: { "identity:mfa-state": { mfaEnabled: true } },
     findings: ["A finding"],
     categorizedFindings: [{ text: "A finding", categories: ["identity"] }],
   }),
   findReusableDocument: async () => reusable,
   resolveDocumentOwnerUserId: async () => 11,
+  namespacedProfileKey: (checkKey: string, propertyName: string) => `${checkKey}.${propertyName}`,
+  NON_CHECK_PROFILE_NAMESPACE: "_profile",
 }));
 
 vi.mock("./prompt-loader", () => ({
