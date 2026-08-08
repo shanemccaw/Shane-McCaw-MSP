@@ -231,6 +231,11 @@ export default defineConfig({
       // (the failure that leaves the total exactly right) and runs the
       // arithmetic check anyone would reach for first, watching it pass.
       "src/lib/sow-claim-binding-560.test.ts",
+      // #559/#560 follow-up — a claim-binding audit that never answers gives up
+      // at a bounded deadline and fails OPEN, in both engines' gates. Drives the
+      // real never-resolving-promise failure, so a regression hangs the suite
+      // rather than passing it quietly.
+      "src/lib/document-claim-binding-timeout.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -41,6 +41,7 @@ import {
   CLAIM_BINDING_AUDIT_MAX_TOKENS,
   CLAIM_BINDING_AUDIT_MODEL,
   CLAIM_BINDING_AUDIT_TEMPERATURE,
+  CLAIM_BINDING_AUDIT_TIMEOUT_MS,
 } from "./document-claim-binding";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
@@ -180,6 +181,51 @@ const NARRATIVE_MAX_OUTPUT_TOKENS = 64000;
  *     no change.
  */
 const NARRATIVE_THINKING = { type: "adaptive" } as const;
+
+/**
+ * The effort level for the narrative call — the second half of the #559
+ * thinking configuration, and the half that was missing.
+ *
+ * ── Why an explicit level was needed ────────────────────────────────────────
+ * `NARRATIVE_THINKING` above turns adaptive thinking on and says nothing about
+ * how much. Effort is not unset in that state, it is DEFAULTED: omitting it is
+ * equivalent to `high`, the most expensive level available on this model. #559
+ * asked for somewhere for the reconciliation to happen; it did not ask for the
+ * deepest reasoning the model can produce on every routine document, and
+ * leaving the default in place bought exactly that on every generation.
+ *
+ * ── The parameter shape, checked rather than assumed ────────────────────────
+ * This was specified to this session as `{ type: "adaptive", effort: "medium" }`
+ * — effort as a field on the thinking object. That shape does not exist. Read
+ * against the installed SDK (`@anthropic-ai/sdk@0.78.0`) rather than from
+ * memory:
+ *
+ *   - `ThinkingConfigAdaptive` is `{ type: 'adaptive' }` and has NO other
+ *     field. An `effort` key there is a TypeScript error and an API 400.
+ *   - Effort lives one level up, in `output_config`:
+ *     `OutputConfig.effort?: 'low' | 'medium' | 'high' | 'max' | null`.
+ *   - `output_config` is on `MessageCreateParamsBase`, from which
+ *     `MessageStreamParams` derives, so it is valid on the streaming call this
+ *     engine makes and not only on `messages.create`.
+ *   - `'medium'` is in that union for this model. (`xhigh` is not — it arrived
+ *     with a later model generation and is absent from this SDK's type.)
+ *
+ * So the requested setting is applied, in the position the API actually takes
+ * it. Effort is GA on this model and needs no beta header, which is why this is
+ * a plain `messages.stream` call and not `client.beta.messages.stream`.
+ *
+ * ── Why `medium` and not something lower ────────────────────────────────────
+ * The defect #559 targets is a BINDING that has to be carried while the value
+ * is re-expressed in English. That needs the reconciliation to have somewhere
+ * to go — which is what thinking-on provides — not maximal deliberation, so the
+ * documented balanced default is the right level here and the #559 mechanism is
+ * unaffected. Lower would start trading against the thing thinking was turned
+ * on to fix.
+ *
+ * Note this does NOT change `NARRATIVE_MAX_OUTPUT_TOKENS`: 64,000 is a ceiling,
+ * output bills on what is produced, and less thinking simply uses less of it.
+ */
+const NARRATIVE_OUTPUT_CONFIG = { effort: "medium" } as const;
 
 /**
  * Applies a document type's `includedSignalCategories` scoping to the tenant's
@@ -1160,6 +1206,10 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
           // Git #559 — see NARRATIVE_THINKING for why this is on, and why
           // `temperature` is deliberately NOT set alongside it.
           thinking: NARRATIVE_THINKING,
+          // The depth that thinking runs at. Explicit because omitting it means
+          // `high`, not "unset" — see NARRATIVE_OUTPUT_CONFIG, which also
+          // records why the effort level lives HERE and not on `thinking`.
+          output_config: NARRATIVE_OUTPUT_CONFIG,
           messages: [{ role: "user", content: stylePrefix + prompt }],
         });
         const { onTextDelta } = params;
@@ -1261,12 +1311,25 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
             // verdict rather than a document. `temperature: 0` is legal here
             // precisely because this call sets no `thinking` — see that
             // constant's own note for why the narrative call cannot have both.
-            const audit = await anthropic.messages.create({
-              model: CLAIM_BINDING_AUDIT_MODEL,
-              max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
-              temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
-              messages: [{ role: "user", content: auditPrompt }],
-            });
+            //
+            // The second argument is the fix for the observed hang, and it is
+            // the INNER half of it: the SDK's own 10-minute default (x3 with
+            // default retries) is what let one of these sit for 13.7+ minutes
+            // with the document pinned at `generating`. `maxRetries: 0` because
+            // `assertClaimBindingsConsistent` races this against a hard
+            // deadline — a retry could not finish inside that window, so
+            // leaving retries on would only buy answers nobody can use, on the
+            // customer's token spend. Full derivation of both numbers is on
+            // `CLAIM_BINDING_AUDIT_TIMEOUT_MS`.
+            const audit = await anthropic.messages.create(
+              {
+                model: CLAIM_BINDING_AUDIT_MODEL,
+                max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
+                temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
+                messages: [{ role: "user", content: auditPrompt }],
+              },
+              { timeout: CLAIM_BINDING_AUDIT_TIMEOUT_MS, maxRetries: 0 },
+            );
             return firstTextBlock(audit) ?? "";
           },
         ),

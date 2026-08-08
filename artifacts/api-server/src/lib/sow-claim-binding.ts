@@ -90,6 +90,8 @@
 
 import {
   stripHtmlToText,
+  runAuditWithDeadline,
+  ClaimBindingAuditTimeoutError,
   CLAIM_BINDING_AUDIT_MAX_DOCUMENT_CHARS,
   CLAIM_BINDING_TRUNCATION_MARKER,
 } from "./document-claim-binding";
@@ -509,11 +511,27 @@ export async function assertSowClaimBindingsConsistent(
 
   let raw: string;
   try {
-    raw = await audit(prompt);
+    // Raced against the same hard deadline the standalone engine's gate uses,
+    // from the same helper: #560 inherited #559's unguarded call shape, and
+    // therefore inherited the hang it caused. See
+    // `CLAIM_BINDING_AUDIT_DEADLINE_MS` in `document-claim-binding.ts`.
+    raw = await runAuditWithDeadline(() => audit(prompt));
   } catch (err) {
     // Fail-open, loudly. The SOW is already written and paid for; losing it
     // because the auditor's own call failed would make this gate a bigger
-    // source of lost documents than the defect it exists to catch.
+    // source of lost documents than the defect it exists to catch. A timeout
+    // takes exactly this path — a hung auditor is a broken audit, never a
+    // priced-line mismatch — but is logged distinctly from a throw.
+    if (err instanceof ClaimBindingAuditTimeoutError) {
+      const verdict: SowClaimBindingVerdict = {
+        status: "inconclusive",
+        mismatches: [],
+        inconclusiveReason: `audit call timed out after ${err.deadlineMs}ms`,
+      };
+      log.warn({ ...bindings, deadlineMs: err.deadlineMs, reason: verdict.inconclusiveReason },
+        "sow-claim-binding: audit call timed out — document allowed through unaudited (not a pass)");
+      return verdict;
+    }
     log.warn({ ...bindings, err },
       "sow-claim-binding: audit call failed — document allowed through unaudited (not a pass)");
     return { status: "inconclusive", mismatches: [], inconclusiveReason: "audit call threw" };

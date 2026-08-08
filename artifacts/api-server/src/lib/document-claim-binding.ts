@@ -116,6 +116,138 @@ export const CLAIM_BINDING_AUDIT_MAX_DOCUMENT_CHARS = 80_000;
 export const CLAIM_BINDING_TRUNCATION_MARKER =
   "\n\n[... document truncated for audit — the text above is not the complete document ...]";
 
+/**
+ * How long one audit attempt is allowed to take, as an SDK per-request
+ * `timeout` — see `CLAIM_BINDING_AUDIT_DEADLINE_MS` below for the hard bound
+ * that sits outside it, and why one is not enough.
+ *
+ * ── Why the SDK default was not good enough ──────────────────────────────────
+ * Confirmed live: after #559/#560 landed, a real generation sat at
+ * `status='generating'` with zero progress for 13.7+ minutes before being
+ * cleared by hand. #559 built careful fail-open handling for an audit that
+ * ERRORS or returns unparseable output, and none of it fires for an audit that
+ * simply never comes back — a hang is not a rejected promise.
+ *
+ * Read against the installed SDK (`@anthropic-ai/sdk@0.78.0`) rather than
+ * assumed, the unguarded call was not literally unbounded, it was bounded far
+ * too high to matter:
+ *
+ *   - `Anthropic.DEFAULT_TIMEOUT` is 10 minutes, and it is a flat 10 minutes
+ *     for a non-streaming call (`calculateNonstreamingTimeout` does not scale
+ *     the ceiling UP — above ~21,333 `max_tokens` it throws and demands
+ *     streaming instead).
+ *   - `maxRetries` defaults to 2, and a timeout is a retryable condition, so
+ *     the real worst case for one audit is three 10-minute attempts plus
+ *     backoff — around half an hour of a document stuck at `generating`.
+ *
+ * 13.7 minutes with no progress is exactly what that looks like from outside:
+ * attempt one having timed out at ten minutes and a retry in flight.
+ *
+ * ── Why 120 seconds ─────────────────────────────────────────────────────────
+ * Derived from what this call actually is, not picked round. It is a single
+ * short JSON verdict capped at `CLAIM_BINDING_AUDIT_MAX_TOKENS` (4,000), with
+ * no thinking, against at most `CLAIM_BINDING_AUDIT_MAX_DOCUMENT_CHARS` (80k
+ * chars, ~20-25k tokens) of input. Input processing is seconds. A MAXIMAL
+ * verdict — the full 4,000-token cap, which in practice a handful of mismatches
+ * never approaches — at a conservative 40-60 output tokens/sec is ~65-100
+ * seconds. 120 sits above that worst case with margin, and two orders of
+ * magnitude below the half-hour the defaults allowed.
+ *
+ * The starting range suggested for this fix was 60-90s. It was raised on that
+ * derivation: at 60s a legitimately long verdict is cut off, and because this
+ * gate fails OPEN, cutting it off does not surface as an error — it silently
+ * turns a working mismatch check into an unaudited document. Being generous
+ * here costs nothing in the normal case (a real verdict returns in seconds) and
+ * avoids trading a rare hang for a routine silent hole in the gate.
+ *
+ * Paired with `maxRetries: 0` at the call sites: with a hard deadline in front
+ * of the call, an SDK retry can never finish inside the window, so leaving
+ * retries on would only spend real customer tokens on attempts whose answers
+ * are guaranteed to be thrown away. One bounded attempt, then fail open.
+ */
+export const CLAIM_BINDING_AUDIT_TIMEOUT_MS = 120_000;
+
+/**
+ * The hard deadline the audit is raced against — the actual fix for the hang.
+ *
+ * `CLAIM_BINDING_AUDIT_TIMEOUT_MS` above is handed to the SDK, which is the
+ * right place for it: the SDK aborts the underlying request, so the socket is
+ * released and the failure arrives as a normal `APIConnectionTimeoutError`
+ * straight into the fail-open `catch` #559 already wrote.
+ *
+ * That is the expected exit, and it is deliberately NOT the guarantee. The
+ * defect being fixed here is a call that does not come back, and a mechanism
+ * that depends on the SDK's own abort firing cannot be the guard against the
+ * SDK's own abort not firing. This deadline is a `Promise.race` in this module,
+ * outside the SDK entirely: whatever happens below it — an ignored abort, a
+ * promise that never settles, a stall above or below the HTTP layer — the audit
+ * gives up here and the document proceeds.
+ *
+ * Set a grace interval above the SDK timeout so the SDK's cleaner failure wins
+ * the ordinary race and this only fires when the SDK's own bound did not.
+ */
+export const CLAIM_BINDING_AUDIT_DEADLINE_MS = CLAIM_BINDING_AUDIT_TIMEOUT_MS + 5_000;
+
+/**
+ * Thrown by `runAuditWithDeadline` when the injected audit call does not settle
+ * inside `CLAIM_BINDING_AUDIT_DEADLINE_MS`.
+ *
+ * A distinct type so the fail-open handlers can log "hung" separately from
+ * "threw". Both allow the document through — the distinction is for whoever
+ * reads the logs afterwards, because "the auditor timed out" and "the auditor
+ * returned a 400" want completely different follow-up.
+ */
+export class ClaimBindingAuditTimeoutError extends Error {
+  readonly deadlineMs: number;
+
+  constructor(deadlineMs: number) {
+    super(`claim-binding audit did not respond within ${deadlineMs}ms`);
+    this.name = "ClaimBindingAuditTimeoutError";
+    this.deadlineMs = deadlineMs;
+  }
+}
+
+/**
+ * Race an injected audit call against a wall-clock deadline.
+ *
+ * Shared by both engines' gates (`assertClaimBindingsConsistent` here and
+ * `assertSowClaimBindingsConsistent` in `sow-claim-binding.ts`) so the two
+ * cannot drift, and exported so the deadline behaviour can be tested without
+ * standing up an engine.
+ *
+ * The timer is cleared on BOTH paths. An un-cleared `setTimeout` keeps the Node
+ * event loop alive for the full deadline after a perfectly successful audit,
+ * which in a test run is a two-minute hang at the end of the suite and in the
+ * API server is a pointless retained handle per document.
+ *
+ * The losing promise is left deliberately unobserved except for a swallowing
+ * `catch`: if the underlying call eventually rejects after the deadline has
+ * already fired, nobody is listening, and an unhandled rejection would take the
+ * process down over a call whose answer was correctly discarded.
+ */
+export async function runAuditWithDeadline(
+  call: () => Promise<string>,
+  deadlineMs: number = CLAIM_BINDING_AUDIT_DEADLINE_MS,
+): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new ClaimBindingAuditTimeoutError(deadlineMs)), deadlineMs);
+    // Never hold the process open on this timer alone. Present on Node's
+    // Timeout; guarded because the same code runs under test doubles.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+
+  const inFlight = call();
+  inFlight.catch(() => {});
+
+  try {
+    return await Promise.race([inFlight, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** What the audit concluded. */
 export type ClaimBindingAuditStatus =
   /** The audit ran, parsed, and found no `certain` mismatch. */
@@ -488,11 +620,28 @@ export async function assertClaimBindingsConsistent(
 
   let raw: string;
   try {
-    raw = await audit(prompt);
+    // Raced against a hard deadline, because #559's fail-open handling below
+    // only catches an audit that FAILS, and the live hang this guards against
+    // was an audit that never answered at all. See
+    // `CLAIM_BINDING_AUDIT_DEADLINE_MS`.
+    raw = await runAuditWithDeadline(() => audit(prompt));
   } catch (err) {
     // Fail-open, loudly. The narrative is already written and paid for; losing
     // it because the auditor's own call failed would make this gate a bigger
-    // source of lost documents than the defect it exists to catch.
+    // source of lost documents than the defect it exists to catch. A timeout
+    // takes exactly this path — it is a broken audit, not a mismatch, and must
+    // never be reported as one — but says so distinctly, because "hung" and
+    // "errored" want different follow-up from whoever reads the log.
+    if (err instanceof ClaimBindingAuditTimeoutError) {
+      const verdict: ClaimBindingVerdict = {
+        status: "inconclusive",
+        mismatches: [],
+        inconclusiveReason: `audit call timed out after ${err.deadlineMs}ms`,
+      };
+      log.warn({ ...bindings, deadlineMs: err.deadlineMs, reason: verdict.inconclusiveReason },
+        "document-claim-binding: audit call timed out — document allowed through unaudited (not a pass)");
+      return verdict;
+    }
     log.warn({ ...bindings, err },
       "document-claim-binding: audit call failed — document allowed through unaudited (not a pass)");
     return { status: "inconclusive", mismatches: [], inconclusiveReason: "audit call threw" };

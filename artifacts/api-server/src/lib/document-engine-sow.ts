@@ -30,6 +30,7 @@ import {
   CLAIM_BINDING_AUDIT_MAX_TOKENS,
   CLAIM_BINDING_AUDIT_MODEL,
   CLAIM_BINDING_AUDIT_TEMPERATURE,
+  CLAIM_BINDING_AUDIT_TIMEOUT_MS,
 } from "./document-claim-binding";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
@@ -671,12 +672,22 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
             // `temperature: 0` is legal here precisely because this call sets
             // no `thinking` — see SOW_NARRATIVE_THINKING for why the generation
             // call cannot have both.
-            const audit = await anthropic.messages.create({
-              model: CLAIM_BINDING_AUDIT_MODEL,
-              max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
-              temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
-              messages: [{ role: "user", content: auditPrompt }],
-            });
+            //
+            // Same bounded shape as the standalone engine's audit, from the
+            // same constants: #560 copied #559's unguarded call and inherited
+            // its hang, so it gets the identical fix rather than a parallel
+            // one. `maxRetries: 0` because `assertSowClaimBindingsConsistent`
+            // races this against a hard deadline no retry could finish inside.
+            // Derivation of both numbers: `CLAIM_BINDING_AUDIT_TIMEOUT_MS`.
+            const audit = await anthropic.messages.create(
+              {
+                model: CLAIM_BINDING_AUDIT_MODEL,
+                max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
+                temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
+                messages: [{ role: "user", content: auditPrompt }],
+              },
+              { timeout: CLAIM_BINDING_AUDIT_TIMEOUT_MS, maxRetries: 0 },
+            );
             return firstTextBlock(audit) ?? "";
           },
         ),
