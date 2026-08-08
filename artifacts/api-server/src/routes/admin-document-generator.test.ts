@@ -255,3 +255,142 @@ describe("fetchProfileKeyGroups (Git #544)", () => {
     expect((await fetchProfileKeyGroups()).some((g) => g.domain === "_profile")).toBe(false);
   });
 });
+
+// ── POST .../:key/generate — SSE streaming mode ───────────────────────────────
+// The engine streams its narrative call so an operator watches the document
+// being written; this route relays that. Two things here are load-bearing and
+// easy to break: the frames actually reaching the wire, and the plain-JSON
+// shape staying intact for SimulatorDocumentCanvas.tsx, which calls the SAME
+// route and reads `res.json()` — which is why streaming is opt-in.
+
+describe("POST /admin/document-generator/document-types/:key/generate — streaming", () => {
+  /** Parses an SSE body into its `data:` frames, in arrival order. */
+  function frames(body: string): Array<Record<string, unknown>> {
+    return body
+      .split("\n")
+      .filter((l) => l.startsWith("data: "))
+      .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
+  }
+
+  const GENERATED = {
+    documentId: 4242,
+    htmlContent: "<html><body>Hi</body></html>",
+    docTypeKey: "governance_snapshot",
+    costCents: 1337,
+    costStatus: "recorded",
+  };
+
+  beforeEach(() => {
+    selectResult = [{ pipelineCategory: "standalone", isActive: true, label: "Governance Snapshot" }];
+  });
+
+  it("relays the model's text as delta frames and finishes with the real result", async () => {
+    const { generateDocument } = await import("../lib/document-engine.ts");
+    vi.mocked(generateDocument).mockImplementation((async (params: { onTextDelta?: (t: string) => void }) => {
+      params.onTextDelta?.("<html><bo");
+      params.onTextDelta?.("dy>Hi</body></html>");
+      return GENERATED;
+    }) as never);
+
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/governance_snapshot/generate")
+        .send({ mspCustomerId: 42, projectId: 0, stream: true }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/event-stream");
+
+    const evts = frames(res.text);
+    expect(evts.filter((e) => e["type"] === "delta").map((e) => e["text"]))
+      .toEqual(["<html><bo", "dy>Hi</body></html>"]);
+    // A phase frame precedes the first delta, so the pane is never blank.
+    expect(evts[0]!["type"]).toBe("phase");
+
+    const done = evts.find((e) => e["type"] === "done");
+    // The terminal payload carries the SAME fields the JSON shape does, and
+    // carries the STORED document rather than the concatenated deltas — those
+    // omit the #493 remediation appendix, which is appended after generation.
+    expect(done?.["payload"]).toEqual(GENERATED);
+  });
+
+  it("still answers plain JSON without stream:true — SimulatorDocumentCanvas depends on it", async () => {
+    const { generateDocument } = await import("../lib/document-engine.ts");
+    let sawRelay: unknown = "unset";
+    vi.mocked(generateDocument).mockImplementation((async (params: { onTextDelta?: (t: string) => void }) => {
+      sawRelay = params.onTextDelta;
+      return { ...GENERATED, documentId: 7 };
+    }) as never);
+
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/governance_snapshot/generate")
+        .send({ mspCustomerId: 42, projectId: 0 }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.body).toEqual({ ...GENERATED, documentId: 7 });
+    // A non-streaming caller is not handed a relay tap at all.
+    expect(sawRelay).toBeUndefined();
+  });
+
+  it("a truthy-but-not-true stream flag does not switch transports", async () => {
+    const { generateDocument } = await import("../lib/document-engine.ts");
+    vi.mocked(generateDocument).mockResolvedValue(GENERATED as never);
+
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/governance_snapshot/generate")
+        .send({ mspCustomerId: 42, projectId: 0, stream: "false" }),
+    );
+
+    // Same strict `=== true` discipline `forceRegenerate` uses — a body
+    // carrying the string "false" must not buy a different response shape.
+    expect(res.headers["content-type"]).toContain("application/json");
+  });
+
+  it("reports a generation failure as an error frame, not a silently dropped stream", async () => {
+    const { generateDocument } = await import("../lib/document-engine.ts");
+    vi.mocked(generateDocument).mockRejectedValue(new Error("overloaded_error"));
+
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/governance_snapshot/generate")
+        .send({ mspCustomerId: 42, projectId: 0, stream: true }),
+    );
+
+    // Already 200 by the time generation failed — the status code is spent, so
+    // the failure has to travel in-band.
+    expect(res.status).toBe(200);
+    expect(frames(res.text).find((e) => e["type"] === "error")?.["message"]).toBe("overloaded_error");
+    // And no `done` frame, so a client cannot read the failure as a success.
+    expect(frames(res.text).some((e) => e["type"] === "done")).toBe(false);
+  });
+
+  it("rejects a bad request with a real status code even in streaming mode", async () => {
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/governance_snapshot/generate")
+        .send({ stream: true }),
+    );
+
+    // Validation runs before the headers are flushed, so this is still a 400
+    // with a JSON body — not a 200 stream whose first frame is an error.
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("mspCustomerId");
+  });
+
+  it("an unknown document type is a 404, not a stream", async () => {
+    selectResult = [];
+
+    const res = await auth(
+      request(app)
+        .post("/api/admin/document-generator/document-types/nope/generate")
+        .send({ mspCustomerId: 42, stream: true }),
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toContain("application/json");
+  });
+});

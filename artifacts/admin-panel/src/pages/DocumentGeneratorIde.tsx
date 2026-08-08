@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +44,35 @@ interface DocumentType {
   aiPromptId: number | null;
   includedProfileKeyPatterns: string[];
   includedSignalCategories: string[];
+}
+
+/**
+ * The document currently being written, as the SSE stream reports it.
+ *
+ * `text` is the running concatenation of the model's own output — commentary
+ * for the watching operator, NOT the artifact. The finished document is
+ * whatever the `done` event's `htmlContent` carries: that is built from the
+ * model's final message and additionally carries the Remediation Detail
+ * appendix (#493), which is appended server-side after generation and so never
+ * appears in the deltas. Rendering the accumulated text as the result would
+ * quietly drop it.
+ */
+interface LiveStream {
+  docTypeKey: string;
+  docTypeLabel: string;
+  /** Server-supplied phase label, e.g. "Claude is writing the document…". */
+  phase: string;
+  pct: number;
+  text: string;
+  status: "streaming" | "done" | "error";
+  message?: string;
+}
+
+/** Payload of the stream's terminal `done` event — the generation's real result. */
+interface GenerationDone {
+  documentId: number;
+  costStatus?: "recorded" | "no-ai-call" | "unknown";
+  costCents?: number | null;
 }
 
 interface TenantOption {
@@ -112,6 +141,12 @@ export default function DocumentGeneratorIde() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
+  const [liveStream, setLiveStream] = useState<LiveStream | null>(null);
+  // Pinned to the tail while the model writes, so the newest text is the text
+  // on screen — but only while the operator has not scrolled up to read
+  // something, which is the whole reason for watching a live stream.
+  const liveOutputRef = useRef<HTMLPreElement | null>(null);
+  const liveStickToBottomRef = useRef(true);
 
   const [previewData, setPreviewData] = useState<{ docTypeLabel: string; preview: any } | null>(null);
   const [previewLoadingKey, setPreviewLoadingKey] = useState<string | null>(null);
@@ -189,6 +224,15 @@ export default function DocumentGeneratorIde() {
       setLoadingMissingTypes(false);
     }
   }, [fetchWithAuth, toast]);
+
+  // Follow the tail as text arrives, unless the operator has scrolled up.
+  // useLayoutEffect so the scroll lands in the same frame the new text paints,
+  // which is what keeps a fast stream from visibly juddering.
+  useLayoutEffect(() => {
+    const el = liveOutputRef.current;
+    if (!el || !liveStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [liveStream?.text]);
 
   useEffect(() => { void loadDocTypes(); }, [loadDocTypes]);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
@@ -287,19 +331,95 @@ export default function DocumentGeneratorIde() {
       return;
     }
     setGeneratingKey(type.key);
+    liveStickToBottomRef.current = true;
+    setLiveStream({
+      docTypeKey: type.key,
+      docTypeLabel: type.label,
+      phase: "Starting generation…",
+      pct: 0,
+      text: "",
+      status: "streaming",
+    });
     try {
       const res = await fetchWithAuth(`/api/admin/document-generator/document-types/${encodeURIComponent(type.key)}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0 }),
+        // `stream: true` opts this call into the SSE relay. The endpoint still
+        // answers plain JSON without it (SimulatorDocumentCanvas relies on
+        // that), and runs the identical generation either way.
+        body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0, stream: true }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Generation failed");
-      const costLabel = formatGenerationCostLabel(data.costStatus, data.costCents);
-      toast({ title: "Document generated", description: `${type.label} — document #${data.documentId} — ${costLabel}` });
+
+      // Validation failures (bad tenant, unknown/inactive type) are rejected
+      // before the server switches to SSE, so they are still a real status code
+      // with a JSON body.
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(data.error ?? "Generation failed");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let done: GenerationDone | null = null;
+      let failure: string | null = null;
+
+      // Chunk-buffered: `data:` frames do not necessarily align with network
+      // reads, so the trailing partial line is carried into the next read.
+      outer: while (true) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          let evt: Record<string, unknown>;
+          try { evt = JSON.parse(raw) as Record<string, unknown>; } catch { continue; }
+
+          if (evt["type"] === "phase") {
+            const label = typeof evt["label"] === "string" ? evt["label"] : "";
+            const pct = typeof evt["pct"] === "number" ? evt["pct"] : 0;
+            setLiveStream(prev => (prev ? { ...prev, phase: label, pct } : prev));
+          } else if (evt["type"] === "progress") {
+            // Advances the bar within the current phase; the label stands.
+            const pct = typeof evt["pct"] === "number" ? evt["pct"] : null;
+            if (pct != null) setLiveStream(prev => (prev ? { ...prev, pct } : prev));
+          } else if (evt["type"] === "delta") {
+            const text = typeof evt["text"] === "string" ? evt["text"] : "";
+            if (!text) continue;
+            setLiveStream(prev => (prev ? { ...prev, text: prev.text + text } : prev));
+          } else if (evt["type"] === "done") {
+            done = evt["payload"] as GenerationDone;
+            break outer;
+          } else if (evt["type"] === "error") {
+            failure = typeof evt["message"] === "string" ? evt["message"] : "Generation failed";
+            break outer;
+          }
+        }
+      }
+
+      if (failure) throw new Error(failure);
+      // A stream that ends without either terminal event is a failure, not a
+      // success with no detail — reporting it as generated would tell the
+      // operator a document exists when none does.
+      if (!done) throw new Error("Stream ended before generation completed");
+
+      const costLabel = formatGenerationCostLabel(done.costStatus, done.costCents);
+      setLiveStream(prev => (prev ? {
+        ...prev,
+        status: "done",
+        pct: 100,
+        phase: `Document #${done!.documentId} — ${costLabel}`,
+      } : prev));
+      toast({ title: "Document generated", description: `${type.label} — document #${done.documentId} — ${costLabel}` });
       void loadHistory();
     } catch (err) {
-      toast({ title: "Generation failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+      const message = err instanceof Error ? err.message : String(err);
+      setLiveStream(prev => (prev ? { ...prev, status: "error", message } : prev));
+      toast({ title: "Generation failed", description: message, variant: "destructive" });
     } finally {
       setGeneratingKey(null);
     }
@@ -344,6 +464,71 @@ export default function DocumentGeneratorIde() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        {liveStream && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide flex items-center gap-1.5">
+                {liveStream.status === "streaming"
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                  : liveStream.status === "error"
+                    ? <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                    : <Sparkles className="w-3.5 h-3.5 text-emerald-400" />}
+                Live Generation — {liveStream.docTypeLabel}
+              </h2>
+              <button
+                onClick={() => setLiveStream(null)}
+                disabled={liveStream.status === "streaming"}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white disabled:opacity-40"
+                title={liveStream.status === "streaming" ? "Generation in progress" : "Dismiss"}
+              >
+                <X className="w-3.5 h-3.5" /> Dismiss
+              </button>
+            </div>
+            <div className="border border-gray-700/50 rounded-lg overflow-hidden bg-card/40">
+              <div className="px-4 py-2 border-b border-gray-700/50 flex items-center gap-3">
+                <span className={`text-xs ${liveStream.status === "error" ? "text-red-300" : "text-gray-300"}`}>
+                  {liveStream.status === "error" ? (liveStream.message ?? "Generation failed") : liveStream.phase}
+                </span>
+                <div className="flex-1 h-1 rounded-full bg-gray-700/60 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${liveStream.status === "error" ? "bg-red-500" : liveStream.status === "done" ? "bg-emerald-500" : "bg-blue-500"}`}
+                    style={{ width: `${Math.max(0, Math.min(100, liveStream.pct))}%` }}
+                  />
+                </div>
+                {/* Progress is a real measure of relayed output, so state it as one. */}
+                <span className="text-[11px] text-gray-500 tabular-nums">
+                  {liveStream.text.length.toLocaleString()} chars
+                </span>
+              </div>
+              <pre
+                ref={liveOutputRef}
+                onScroll={e => {
+                  const el = e.currentTarget;
+                  // Re-arm only at the very bottom, so scrolling up to read
+                  // stays put while text keeps arriving.
+                  liveStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+                }}
+                className="max-h-80 overflow-y-auto px-4 py-3 text-[11px] leading-relaxed text-gray-300 font-mono whitespace-pre-wrap break-words"
+              >
+                {liveStream.text || (
+                  <span className="text-gray-600">
+                    {liveStream.status === "streaming"
+                      ? "Waiting for the model's first tokens…"
+                      : "No text was streamed — this document type reused an existing document or does not stream."}
+                  </span>
+                )}
+              </pre>
+            </div>
+            {/* The streamed text is the model's narrative only; the stored
+                document additionally carries the remediation appendix (#493),
+                which is appended after generation. Say so rather than let an
+                operator read this pane as the finished artifact. */}
+            <p className="text-gray-500 text-xs mt-2">
+              Live model output. The saved document is built from the completed response — open it from Recent Generations below to see the final rendering.
+            </p>
+          </section>
+        )}
+
         {!loadingMissingTypes && missingTypes.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-3">

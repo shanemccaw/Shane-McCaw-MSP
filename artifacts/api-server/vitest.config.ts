@@ -72,6 +72,9 @@ export default defineConfig({
       "src/lib/ai-cost-anomaly.test.ts",
       "src/lib/ai-cost-capture.test.ts",
       "src/lib/document-engine-cost.test.ts",
+      // Streamed narrative call: same document as the non-streaming path, cost
+      // still captured post-stream, dry-run/reuse still calling no model at all.
+      "src/lib/document-engine-streaming.test.ts",
       "src/lib/cio-narrative-generator.test.ts",
       "src/lib/use-case-generator.test.ts",
       "src/routes/copilot-assessment-quiz-profile.test.ts",

@@ -211,6 +211,14 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
   // string "false" (or any other truthy-but-not-true value) can't accidentally
   // buy an AI call.
   const forceRegenerate = req.body?.forceRegenerate === true;
+  // Opt-in SSE relay of the model's output as it is written (see the streaming
+  // block below). Strict `=== true`, matching `forceRegenerate` above.
+  //
+  // Deliberately opt-in rather than switching this endpoint to SSE wholesale:
+  // SimulatorDocumentCanvas.tsx calls the same route and reads a plain JSON
+  // body, so an unconditional switch would silently break it. Both shapes
+  // return the same fields and run the same generation.
+  const wantsStream = req.body?.stream === true;
 
   if (isNaN(mspCustomerId)) {
     res.status(400).json({ error: "mspCustomerId is required and must be a number" });
@@ -227,7 +235,80 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
     if (!docTypeRow) { res.status(404).json({ error: `Unknown document type "${key}"` }); return; }
     if (!docTypeRow.isActive) { res.status(400).json({ error: `Document type "${key}" is not active` }); return; }
 
-    log.info({ key, mspCustomerId, projectId, forceRegenerate, actor: req.user?.email }, "admin-document-generator: generate requested");
+    log.info({ key, mspCustomerId, projectId, forceRegenerate, stream: wantsStream, actor: req.user?.email }, "admin-document-generator: generate requested");
+
+    // ── Streaming mode ───────────────────────────────────────────────────────
+    // Same generation, same result fields — only the delivery differs. Headers
+    // are flushed only after the validation above has passed, so a bad request
+    // still gets a real status code and a JSON error rather than a 200 stream
+    // whose first frame is an error.
+    if (wantsStream) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const sendSSE = (event: Record<string, unknown>): void => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+
+      sendSSE({ type: "phase", label: "Assembling prompt from tenant data…", pct: 5 });
+
+      let streamedChars = 0;
+      // Progress ramp, same shape as admin-ps-scripts.ts's: a generated
+      // document has no known length, so the bar is driven off output-so-far
+      // against a typical size and capped below 100 — it must never claim to be
+      // finished before the `done` frame actually says so.
+      const EXPECTED_CHARS = 24_000;
+      let lastEmittedPct = 20;
+      // The engine's own relay tap. Only `generateDocument` takes it; the SOW
+      // pipeline below has its own multi-call shape and is out of scope here,
+      // so it streams phases but no text.
+      const onTextDelta = (text: string): void => {
+        if (streamedChars === 0) {
+          sendSSE({ type: "phase", label: "Claude is writing the document…", pct: 20 });
+        }
+        streamedChars += text.length;
+        sendSSE({ type: "delta", text });
+        const pct = Math.min(90, Math.round(20 + (streamedChars / EXPECTED_CHARS) * 70));
+        // Throttled: one frame per 3 points, not one per token.
+        if (pct >= lastEmittedPct + 3) {
+          lastEmittedPct = pct;
+          sendSSE({ type: "progress", pct });
+        }
+      };
+
+      try {
+        const streamed = docTypeRow.pipelineCategory === "pipeline_output"
+          ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate })
+          : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate, onTextDelta });
+
+        log.info(
+          { key, mspCustomerId, documentId: streamed.documentId, costCents: streamed.costCents, costStatus: streamed.costStatus, streamedChars },
+          "admin-document-generator: generate completed (streamed)",
+        );
+        // `htmlContent` is the authority, always — it is built from the model's
+        // final message and carries the remediation appendix (#493), which is
+        // appended after generation and therefore never appears in the deltas.
+        // A client that rendered only the accumulated deltas would be showing a
+        // document that is missing its appendix.
+        sendSSE({
+          type: "done",
+          payload: {
+            documentId: streamed.documentId,
+            htmlContent: streamed.htmlContent,
+            docTypeKey: key,
+            costCents: streamed.costCents,
+            costStatus: streamed.costStatus,
+          },
+        });
+      } catch (err) {
+        log.error({ err, key, mspCustomerId }, "admin-document-generator: generate failed (streamed)");
+        sendSSE({ type: "error", message: err instanceof Error ? err.message : "Generation failed" });
+      }
+      res.end();
+      return;
+    }
 
     const result = docTypeRow.pipelineCategory === "pipeline_output"
       ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, forceRegenerate })
@@ -250,6 +331,13 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
     });
   } catch (err) {
     log.error({ err, key, mspCustomerId }, "admin-document-generator: generate failed");
+    // Once the SSE headers are out, a status code can no longer be set — trying
+    // would throw over the top of the real error and lose it.
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Generation failed" })}\n\n`);
+      res.end();
+      return;
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
   }
 });

@@ -46,6 +46,46 @@ const DOC_TYPE_ROW = {
   includedSignalCategories: [],
 };
 
+/** The complete Message the fake SDK resolves to, on either transport. */
+function generatedMessage(): Record<string, unknown> {
+  return {
+    model: "claude-sonnet-4-6",
+    content: [{ type: "text", text: "<html>generated</html>" }],
+    usage: { input_tokens: 1200, output_tokens: 800 },
+  };
+}
+
+/**
+ * Minimal stand-in for the SDK's `MessageStream`, covering the two surfaces
+ * that matter here: `on()` registers listeners without consuming, and
+ * `finalMessage()` emits the text chunks, then 'finalMessage' — which is what
+ * `meterAnthropicClient` reads real token counts off — then resolves to the
+ * complete Message.
+ *
+ * Declared as a function so the hoisted `vi.mock` factory below can reach it.
+ */
+function fakeMessageStream(chunks: string[], message: unknown): Record<string, unknown> {
+  const listeners: Record<string, Array<(arg: unknown) => void>> = {};
+  const stream: Record<string, unknown> = {
+    on(event: string, listener: (arg: unknown) => void) {
+      (listeners[event] ??= []).push(listener);
+      return stream;
+    },
+    async finalMessage() {
+      for (const chunk of chunks) {
+        // A real stream delivers across ticks; awaiting here means a listener
+        // that throws does so out of the caller's synchronous frame, exactly
+        // as it would in production.
+        await Promise.resolve();
+        for (const listener of listeners["text"] ?? []) listener(chunk);
+      }
+      for (const listener of listeners["finalMessage"] ?? []) listener(message);
+      return message;
+    },
+  };
+  return stream;
+}
+
 function chainStub(rows: unknown[]): Record<string, unknown> {
   const obj: Record<string, unknown> = {
     from: () => obj,
@@ -93,14 +133,16 @@ vi.mock("@workspace/integrations-anthropic-ai", async () => {
       messages: {
         create: (async (params: unknown) => {
           anthropicCalls.push(params);
-          return {
-            model: "claude-sonnet-4-6",
-            content: [{ type: "text", text: "<html>generated</html>" }],
-            usage: { input_tokens: 1200, output_tokens: 800 },
-          };
+          return generatedMessage();
         }) as never,
-        stream: (() => {
-          throw new Error("stream not used by document-engine");
+        // The engine streams its narrative call. The fake mirrors the SDK's
+        // `MessageStream` where the metering tap and the engine touch it: `on`
+        // registers non-consuming listeners, and `finalMessage()` both emits
+        // 'finalMessage' (the tap's usage source) and resolves to the same
+        // complete Message shape `create` returns.
+        stream: ((params: unknown) => {
+          anthropicCalls.push(params);
+          return fakeMessageStream(["<html>gen", "erated</html>"], generatedMessage());
         }) as never,
       },
     }),

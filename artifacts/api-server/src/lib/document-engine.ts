@@ -125,6 +125,25 @@ export interface GenerateDocumentParams {
    * branch below.
    */
   forceRegenerate?: boolean;
+  /**
+   * Called with each incremental chunk of narrative text as the model writes
+   * it, so a caller can relay generation to a watching operator instead of
+   * showing a blank wait for a 16k-token document.
+   *
+   * Purely an observation tap on HOW the response arrives. It does not change
+   * what is sent, how the profile/findings are scoped, or what the finished
+   * document contains: the concatenation of every chunk is exactly the text of
+   * the `finalMessage()` this function goes on to use, and the document is
+   * still assembled from that final message, never from the accumulated chunks.
+   * A type that omits this generates identically — just without the commentary.
+   *
+   * Never called on the dry-run branch (no model call happens there at all) or
+   * on a drift-gate reuse (no model call either).
+   *
+   * A throwing callback must not be able to fail a generation that the model
+   * already produced, so calls are made defensively — see the call site.
+   */
+  onTextDelta?: (text: string) => void;
 }
 
 /**
@@ -595,12 +614,46 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         generatedArtifactId: String(documentId),
         triggerSource: "document-engine",
       },
-      () =>
-        anthropic.messages.create({
+      // Streamed rather than awaited whole, so a watching operator sees the
+      // document being written instead of staring at a spinner for a 16k-token
+      // response. This is a TRANSPORT change only: identical params go out, and
+      // `finalMessage()` resolves to the same complete `Message` shape
+      // `messages.create()` returned, so `extractAiHtml()` below is unchanged
+      // and the finished document is byte-identical either way.
+      //
+      // Cost capture is unaffected and needed no rework: `meterAnthropicClient`
+      // taps the CLIENT, not this function's return value, and already meters
+      // `messages.stream` explicitly — it registers the capture slot
+      // synchronously at call time and reads real token counts off a
+      // non-consuming `finalMessage` listener. The one requirement it imposes is
+      // honoured here: the stream is awaited to completion INSIDE the capture
+      // scope, so the slot settles before `withAiUsageCapture` stops waiting on
+      // it. Returning the un-awaited stream would report the cost as
+      // `unrecorded` at the settle timeout.
+      async () => {
+        const stream = anthropic.messages.stream({
           model: "claude-sonnet-4-6",
           max_tokens: 16000,
           messages: [{ role: "user", content: stylePrefix + prompt }],
-        }),
+        });
+        const { onTextDelta } = params;
+        if (onTextDelta) {
+          stream.on("text", (text: string) => {
+            // A relay fault (a closed SSE socket, a client that hung up) must
+            // never destroy a document the model has already been paid to
+            // write. Observation only — swallow and keep streaming.
+            try {
+              onTextDelta(text);
+            } catch (err) {
+              scopeLog.warn(
+                { err, mspCustomerId, documentId, docTypeKey },
+                "document-engine: onTextDelta relay threw; generation continues (the document is built from finalMessage, not from the relayed chunks)",
+              );
+            }
+          });
+        }
+        return await stream.finalMessage();
+      },
     );
 
     const capturedCostCents = totalCapturedCostCents(costs);
