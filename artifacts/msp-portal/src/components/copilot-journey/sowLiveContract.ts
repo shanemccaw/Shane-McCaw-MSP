@@ -269,7 +269,127 @@ export function resolveProjected(
   gate: number,
 ): string {
   if (isPreview) return `41 of 100 today · ${projected} on this scope · ${gate} is safe to deploy`;
-  if (projected === null) return "No projection — no pillar in this scope has a score";
+  // The reason, restated for what actually produces a null here now. It used to
+  // read "no pillar in this scope has a score", which was written when the
+  // projection was a mean over pillar scores. It is `projectedFromPhases()`
+  // below that decides this, and what it declines on is a scope whose phases
+  // assert no score movement at all — see its own note.
+  if (projected === null) return "No projection — this scope's phases quote prices, not projected pillar scores";
   const todayClause = currentScore === null ? "unmeasured today" : `${currentScore} of 100 today`;
   return `${todayClause} · ${projected} on this scope · ${gate} is safe to deploy`;
 }
+
+/* ------------------------------------------------------------------ *
+ * The engine-sourced live scope (no stored document row)
+ * ------------------------------------------------------------------ *
+ *
+ * The resolvers below exist because `journeyScopeFromOffers()` (see
+ * `sowLiveScope.ts`) supplies a scope with no durations and no score movement,
+ * and the design's own copy assumes both. Each was previously a bare format call
+ * that turned a missing figure into a stated one:
+ *
+ *   • `weeksLabel(totals.weeks)` → "approx. 0 weeks", over a scope that quoted
+ *     no timeline at all, on a page with a price on it. `computeTotals().weeks`
+ *     sums a field flattened from `null` to `0`, so it cannot tell "runs zero
+ *     weeks" from "quoted no duration". `weeksQuoted` can, which is exactly why
+ *     `quotedWeeks()` exists on the proposal screen.
+ *   • `totals.projectedScore` → `0`, the mean of flat `scoreTo`s, which rendered
+ *     as "0 · 82 points short of the gate". That is a forecast this platform
+ *     never made. It PREDATES this change — a SOW mapped from a stored document
+ *     is flat too (`journeyScopeFromSow.toPhase()` sets both ends to 0
+ *     deliberately) — so it was already wrong for every live tenant; it is fixed
+ *     here rather than left to become the universal reading.
+ *
+ * Preview is untouched. The design's fixture quotes real per-phase weeks and
+ * real score movement, so every `isPreview` branch below returns exactly the
+ * string the design rendered before.
+ */
+
+/**
+ * Whole weeks across the phases handed in, or `null` when not one of them quoted
+ * a duration.
+ *
+ * The same rule `quotedWeeks()` applies on the proposal screen — "ANY included
+ * phase quoted a duration", not "all of them did". A scope quoting three
+ * durations out of five has a real, if partial, timeline, and the platform's own
+ * SOW selector guards the same field the same way.
+ */
+export function quotedWeeksOf(
+  phases: readonly { readonly weeksQuoted: number | null }[],
+): number | null {
+  let weeks = 0;
+  let anyQuoted = false;
+  for (const p of phases) {
+    if (typeof p.weeksQuoted !== "number") continue;
+    weeks += p.weeksQuoted;
+    anyQuoted = true;
+  }
+  return anyQuoted ? weeks : null;
+}
+
+/** The summary timeline, beside the phase count in the totals block. */
+export function resolveTimeline(isPreview: boolean, weeks: number | null): string {
+  if (isPreview) return `approx. ${weeks ?? 0} weeks`;
+  return weeks === null ? "timeline set at kickoff" : `approx. ${weeks} weeks`;
+}
+
+/** Section 3's engagement-duration row. */
+export function resolveWeeksRow(isPreview: boolean, weeks: number | null): string {
+  if (isPreview) return `approx. ${weeks ?? 0} weeks to certification`;
+  return weeks === null
+    ? "Set at kickoff — no phase on this scope quotes a duration"
+    : `approx. ${weeks} weeks to certification`;
+}
+
+/** The right-hand cell on one Delivery Timeline row. */
+export function resolvePhaseDuration(
+  isPreview: boolean,
+  included: boolean,
+  weeksQuoted: number | null,
+): string {
+  if (!included) return "Out of scope";
+  if (isPreview) return `${weeksQuoted ?? 0} ${weeksQuoted === 1 ? "week" : "weeks"}`;
+  return weeksQuoted === null ? "Not quoted" : `${weeksQuoted} ${weeksQuoted === 1 ? "week" : "weeks"}`;
+}
+
+/**
+ * The projected readiness this scope claims, or `null` when it claims none.
+ *
+ * A phase whose `scoreFrom` equals its `scoreTo` asserts no movement. Where
+ * EVERY phase is flat — which is every phase the Sales Offer Engine produces,
+ * and every phase mapped from a stored SOW's pricing lines, because neither
+ * carries a projected pillar score — the mean of those flat values is not a
+ * projection, it is arithmetic over nothing.
+ *
+ * `fallback` is `computeTotals().projectedScore`, passed rather than recomputed
+ * so the design's own fixture (which DOES quote real per-phase movement) keeps
+ * producing the identical number through the identical arithmetic.
+ */
+export function projectedFromPhases(
+  phases: readonly { readonly scoreFrom: number; readonly scoreTo: number }[],
+  fallback: number | null,
+): number | null {
+  if (phases.length === 0) return fallback;
+  return phases.some((p) => p.scoreTo !== p.scoreFrom) ? fallback : null;
+}
+
+/**
+ * The signature block's copy when the contract is readable but not signable.
+ *
+ * SIGNING IS NOT HIDDEN FOR PRESENTATION REASONS. `POST
+ * /portal/assessment/sow/checkout` writes an `assessment_sow_agreements` row
+ * whose `doc_id` is a stored `insights_generated_documents` id, and `GET
+ * .../sow/payment-options` reads its totals off that same row. With no stored
+ * document there is no agreement to record and no payment that can be taken — a
+ * sign button here would execute a contract into a checkout that cannot accept
+ * it, which is worse than not offering one.
+ *
+ * The copy says that in the customer's terms and deliberately does NOT imply a
+ * generation step they are waiting on: the scope and its prices are final and on
+ * the page above. What is outstanding is issuing it as a signable document.
+ */
+export const SOW_UNSIGNABLE = {
+  eyebrow: "Scope confirmed — not yet issued for signature",
+  blurb:
+    "Every phase and price above is your own, set against the findings your assessment actually recorded. Issuing this as a signable agreement is the last step, and your assessment lead takes it with you: they confirm the scope you have set here, and the signature and payment options follow on the agreement itself.",
+} as const;

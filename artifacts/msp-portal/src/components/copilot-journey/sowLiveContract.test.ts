@@ -25,11 +25,16 @@ import {
   resolveNewBudget,
   resolveObjective,
   resolvePaymentTerms,
+  resolvePhaseDuration,
   resolveProjected,
   resolveTelemetrySource,
+  resolveTimeline,
   resolveValidity,
   resolveWasteRecovered,
+  resolveWeeksRow,
   resolveWhyMatters,
+  projectedFromPhases,
+  quotedWeeksOf,
 } from "./sowLiveContract.ts";
 import { COPILOT_GATE_TARGET, PILLARS, PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
 import type { JourneyPillarView, WirePillarFinding } from "./journeyModel.ts";
@@ -186,7 +191,10 @@ describe("resolveProjected", () => {
     assert.equal(resolveProjected(false, null, 68, 82), "unmeasured today · 68 on this scope · 82 is safe to deploy");
   });
   it("no projection at all", () => {
-    assert.equal(resolveProjected(false, 41, null, 82), "No projection — no pillar in this scope has a score");
+    assert.equal(
+      resolveProjected(false, 41, null, 82),
+      "No projection — this scope's phases quote prices, not projected pillar scores",
+    );
   });
 });
 
@@ -301,5 +309,86 @@ describe("resolveTelemetrySource", () => {
   });
   it("live: no scan date on record", () => {
     assert.equal(resolveTelemetrySource(false, null), "Microsoft Graph API · read-only delegated permissions");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The engine-sourced live scope: durations and projections that are not
+ * quoted must read as not quoted, never as zero.
+ * ------------------------------------------------------------------ */
+
+describe("quotedWeeksOf", () => {
+  it("sums only the phases that actually quoted a duration", () => {
+    assert.equal(quotedWeeksOf([{ weeksQuoted: 3 }, { weeksQuoted: null }, { weeksQuoted: 2 }]), 5);
+  });
+  it("null when not one phase quoted a duration — the engine-sourced case", () => {
+    assert.equal(quotedWeeksOf([{ weeksQuoted: null }, { weeksQuoted: null }]), null);
+  });
+  it("null on an empty scope rather than 0", () => {
+    assert.equal(quotedWeeksOf([]), null);
+  });
+  it("a genuine zero-week phase is still a quote, not an absence", () => {
+    assert.equal(quotedWeeksOf([{ weeksQuoted: 0 }]), 0);
+  });
+});
+
+describe("resolveTimeline", () => {
+  it("preview: the design's own summary, unchanged", () => {
+    assert.equal(resolveTimeline(true, 19), "approx. 19 weeks");
+  });
+  it("live: a real quoted total", () => {
+    assert.equal(resolveTimeline(false, 12), "approx. 12 weeks");
+  });
+  it("live: never 'approx. 0 weeks' when nothing quoted one", () => {
+    assert.equal(resolveTimeline(false, null), "timeline set at kickoff");
+  });
+});
+
+describe("resolveWeeksRow", () => {
+  it("preview: verbatim", () => {
+    assert.equal(resolveWeeksRow(true, 19), "approx. 19 weeks to certification");
+  });
+  it("live: real total", () => {
+    assert.equal(resolveWeeksRow(false, 12), "approx. 12 weeks to certification");
+  });
+  it("live: honest absence", () => {
+    assert.equal(resolveWeeksRow(false, null), "Set at kickoff — no phase on this scope quotes a duration");
+  });
+});
+
+describe("resolvePhaseDuration", () => {
+  it("out of scope wins over everything, in both modes", () => {
+    assert.equal(resolvePhaseDuration(true, false, 3), "Out of scope");
+    assert.equal(resolvePhaseDuration(false, false, null), "Out of scope");
+  });
+  it("preview: the design's own per-phase weeks", () => {
+    assert.equal(resolvePhaseDuration(true, true, 3), "3 weeks");
+    assert.equal(resolvePhaseDuration(true, true, 1), "1 week");
+  });
+  it("live: a real quoted duration, singular and plural", () => {
+    assert.equal(resolvePhaseDuration(false, true, 2), "2 weeks");
+    assert.equal(resolvePhaseDuration(false, true, 1), "1 week");
+  });
+  it("live: an unquoted duration is stated as unquoted, not as 0 weeks", () => {
+    assert.equal(resolvePhaseDuration(false, true, null), "Not quoted");
+  });
+});
+
+describe("projectedFromPhases", () => {
+  it("keeps the computed projection when any phase asserts real movement", () => {
+    assert.equal(projectedFromPhases([{ scoreFrom: 44, scoreTo: 71 }, { scoreFrom: 60, scoreTo: 60 }], 68), 68);
+  });
+  it("declines to project when every phase is flat — the engine-sourced case", () => {
+    assert.equal(projectedFromPhases([{ scoreFrom: 0, scoreTo: 0 }, { scoreFrom: 0, scoreTo: 0 }], 0), null);
+  });
+  it("a flat scope never yields the 0 that used to read as '82 points short of the gate'", () => {
+    assert.equal(
+      resolveProjected(false, 41, projectedFromPhases([{ scoreFrom: 0, scoreTo: 0 }], 0), 82),
+      "No projection — this scope's phases quote prices, not projected pillar scores",
+    );
+  });
+  it("an empty phase list defers to the caller's own value rather than inventing a verdict", () => {
+    assert.equal(projectedFromPhases([], null), null);
+    assert.equal(projectedFromPhases([], 55), 55);
   });
 });

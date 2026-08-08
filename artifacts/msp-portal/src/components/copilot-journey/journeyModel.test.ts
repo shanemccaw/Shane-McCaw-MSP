@@ -32,6 +32,7 @@ import {
   verdictLabel,
   verdictSentence,
   type JourneyDocumentView,
+  type JourneyGeneration,
   type WireAssessmentStatus,
   type WirePillarFinding,
   type WirePillarStatsPayload,
@@ -41,6 +42,7 @@ import {
   JOURNEY_LIVE_DOCUMENTS,
   JOURNEY_READINESS_DOC_TYPE,
   JOURNEY_READINESS_DOCUMENT,
+  JOURNEY_SOW_DOCUMENT,
   PILLAR_KEYS,
   gateLabel,
   isLiveRenderedDocument,
@@ -48,6 +50,7 @@ import {
   severityForScore,
   severityColor,
 } from "./journeyTokens.ts";
+import { SOW_DOC_TYPE } from "./sowLiveScope.ts";
 
 const TENANT = { name: "Halden Materials", seatCount: 1240, scannedOn: "3 August 2026" };
 
@@ -928,17 +931,26 @@ describe("sparkline history", () => {
 });
 
 describe("document generation", () => {
+  /**
+   * REAL catalogue keys, not placeholders. `buildGeneration` filters both
+   * `items` and `expected` through `JOURNEY_DOCUMENT_TYPE_ALLOWLIST` before
+   * anything else touches them, so a fixture on an invented docType ("exec",
+   * "sec") is dropped on the floor and every assertion below reads zero. The
+   * titles stay deliberately unrelated to the keys: `expected[].title` is admin
+   * free text on the service and `items[].title` is the `document_types` label,
+   * and the join under test is on the KEY.
+   */
   const expected = [
-    { docType: "exec", title: "Executive Summary" },
-    { docType: "full", title: "Full Readiness Report" },
-    { docType: "sec", title: "Security Posture Report" },
+    { docType: "copilot_readiness", title: "Executive Summary" },
+    { docType: "remediation_plan", title: "Full Readiness Report" },
+    { docType: "security_posture_report", title: "Security Posture Report" },
   ];
 
   it("renders the expected spine so the list does not grow as it runs", () => {
     const status: WireAssessmentStatus = {
       documents: {
         expected,
-        items: [{ id: 1, docType: "exec", title: "Executive Summary", status: "delivered" }],
+        items: [{ id: 1, docType: "copilot_readiness", title: "Executive Summary", status: "delivered" }],
       },
     };
     const g = buildGeneration(status);
@@ -957,9 +969,9 @@ describe("document generation", () => {
     // forever and the Executive Summary CTA would never appear.
     const status: WireAssessmentStatus = {
       documents: {
-        expected: [{ docType: "exec", title: "Executive Summary" }],
+        expected: [{ docType: "copilot_readiness", title: "Executive Summary" }],
         items: [
-          { id: 9, docType: "exec", title: "Executive Summary — Copilot Readiness", status: "delivered" },
+          { id: 9, docType: "copilot_readiness", title: "Executive Summary — Copilot Readiness", status: "delivered" },
         ],
       },
     };
@@ -979,9 +991,9 @@ describe("document generation", () => {
       documents: {
         expected,
         items: [
-          { id: 1, docType: "exec", title: "Executive Summary", status: "approved" },
-          { id: 2, docType: "full", title: "Full Readiness Report", status: "draft" },
-          { id: 3, docType: "sec", title: "Security Posture Report", status: "failed" },
+          { id: 1, docType: "copilot_readiness", title: "Executive Summary", status: "approved" },
+          { id: 2, docType: "remediation_plan", title: "Full Readiness Report", status: "draft" },
+          { id: 3, docType: "security_posture_report", title: "Security Posture Report", status: "failed" },
         ],
       },
     };
@@ -997,7 +1009,7 @@ describe("document generation", () => {
     const status: WireAssessmentStatus = {
       documents: {
         expected,
-        items: [{ id: 77, docType: "exec", title: "Executive Summary", status: "delivered" }],
+        items: [{ id: 77, docType: "copilot_readiness", title: "Executive Summary", status: "delivered" }],
       },
     };
     const g = buildGeneration(status);
@@ -1021,7 +1033,7 @@ describe("document generation", () => {
   it("uses the generated rows as the spine when nothing declared an expected set", () => {
     const g = buildGeneration({
       documents: {
-        items: [{ id: 4, docType: "exec", title: "Executive Summary", status: "draft" }],
+        items: [{ id: 4, docType: "copilot_readiness", title: "Executive Summary", status: "draft" }],
       },
     });
     assert.equal(g.total, 1);
@@ -1055,14 +1067,22 @@ describe("withLiveDocuments (#424 — a live report depends on no generation row
    * behaviour under test never mentioned a count in the first place.
    */
   const LIVE = JOURNEY_LIVE_DOCUMENTS.length;
+  /**
+   * Everything `withLiveDocuments` constructs: the registry's reports, PLUS the
+   * Statement of Work. The SOW is deliberately not a registry member — it is an
+   * interactive contract rather than a `(props: { view }) => ReactElement` — but
+   * its content is computed live from the Sales Offer Engine with no stored
+   * document row either, so it is listed on exactly the same basis.
+   */
+  const CONSTRUCTED = LIVE + 1;
 
   it("constructs every live report for a tenant with ZERO document rows — the real current state", () => {
     // `buildGeneration({})` is what a tenant with no assessment service row, or
     // a failed status fetch, genuinely produces: an empty set. Before #424 that
     // left the documents the platform can always render unresolvable.
     const g = withLiveDocuments(buildGeneration({}));
-    assert.equal(g.total, LIVE);
-    assert.equal(g.ready, LIVE);
+    assert.equal(g.total, CONSTRUCTED);
+    assert.equal(g.ready, CONSTRUCTED);
     assert.equal(g.documents[0].title, JOURNEY_READINESS_DOCUMENT);
     assert.equal(g.documents[0].docType, JOURNEY_READINESS_DOC_TYPE);
     for (const doc of g.documents.slice(0, LIVE)) {
@@ -1071,37 +1091,99 @@ describe("withLiveDocuments (#424 — a live report depends on no generation row
     }
   });
 
-  it("leaves every other document exactly as the platform reported it", () => {
+  /* ---------------------------------------------------------------- *
+   * The Statement of Work — listed without any document-engine-sow.ts run
+   * ---------------------------------------------------------------- */
+
+  it("constructs the SOW for a tenant with ZERO document rows, and puts it LAST", () => {
+    const g = withLiveDocuments(buildGeneration({}));
+    const sow = g.documents[g.documents.length - 1];
+    assert.equal(sow.title, JOURNEY_SOW_DOCUMENT);
+    assert.equal(sow.docType, SOW_DOC_TYPE);
+    assert.equal(sow.status, "ready", "nothing is outstanding — its scope is computed on demand");
+    assert.equal(sow.id, null, "no insights_generated_documents row exists, so no id may be claimed");
+  });
+
+  it("the SOW closes the set even when the platform reported documents of its own", () => {
+    const g = withLiveDocuments(
+      buildGeneration({
+        documents: {
+          expected: [{ docType: "remediation_plan", title: "Full Remediation Guide" }],
+          items: [],
+        },
+      }),
+    );
+    assert.equal(g.documents[g.documents.length - 1].docType, SOW_DOC_TYPE);
+    assert.equal(g.documents.filter((d) => d.docType === SOW_DOC_TYPE).length, 1);
+  });
+
+  it("marks a listed-but-never-generated SOW row ready rather than adding a second one", () => {
+    const base = buildGeneration({
+      documents: { expected: [{ docType: SOW_DOC_TYPE, title: "Your Statement of Work" }], items: [] },
+    });
+    assert.equal(base.documents[0].status, "pending");
+    const g = withLiveDocuments(base);
+    assert.equal(g.total, CONSTRUCTED, "the existing entry is replaced, never duplicated");
+    const sow = g.documents.filter((d) => d.docType === SOW_DOC_TYPE);
+    assert.equal(sow.length, 1);
+    assert.equal(sow[0].status, "ready");
+    assert.equal(sow[0].title, "Your Statement of Work", "the platform's own title for it is kept");
+  });
+
+  it("resolves the SOW on the design's title too, so a renamed docType cannot duplicate it", () => {
+    const base = buildGeneration({
+      documents: { expected: [{ docType: "consolidated_sow", title: JOURNEY_SOW_DOCUMENT }], items: [] },
+    });
+    const g = withLiveDocuments(base);
+    assert.equal(g.documents.filter((d) => d.title === JOURNEY_SOW_DOCUMENT).length, 1);
+    assert.equal(g.total, CONSTRUCTED);
+  });
+
+  it("leaves a genuinely generated SOW row alone, so its stored HTML and PDF keep working", () => {
     const base = buildGeneration({
       documents: {
-        expected: [
-          { docType: "exec", title: "Executive Summary" },
-          { docType: "sec", title: "Security Posture Report" },
-        ],
-        items: [{ id: 1, docType: "exec", title: "Executive Summary", status: "delivered" }],
+        expected: [{ docType: SOW_DOC_TYPE, title: JOURNEY_SOW_DOCUMENT }],
+        items: [{ id: 77, docType: SOW_DOC_TYPE, title: JOURNEY_SOW_DOCUMENT, status: "delivered" }],
       },
     });
     const g = withLiveDocuments(base);
-    assert.equal(g.total, LIVE + 2);
+    const sow = g.documents.filter((d) => d.docType === SOW_DOC_TYPE);
+    assert.equal(sow.length, 1);
+    assert.equal(sow[0].id, 77, "the real row's id survives — it is what the PDF export needs");
+  });
+
+  it("leaves every other document exactly as the platform reported it", () => {
+    // `remediation_plan` is the one real allowlisted docType that is neither a
+    // registry report nor the SOW — i.e. the only genuine "some other document"
+    // left once `JOURNEY_DOCUMENT_TYPE_ALLOWLIST` filters the spine, which is
+    // why this fixture carries one rather than the two invented keys it used to.
+    const base = buildGeneration({
+      documents: {
+        expected: [{ docType: "remediation_plan", title: "Full Remediation Guide" }],
+        items: [],
+      },
+    });
+    assert.equal(base.documents.length, 1, "the fixture really does survive the allowlist");
+    const g = withLiveDocuments(base);
+    assert.equal(g.total, CONSTRUCTED + 1);
     assert.deepEqual(
       g.documents.map((d) => d.docType),
-      [...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType), "exec", "sec"],
-      "the live reports lead, in registry order; the reported set follows in its own",
+      [...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType), "remediation_plan", SOW_DOC_TYPE],
+      "the live reports lead, in registry order; the reported set follows in its own; the SOW closes it",
     );
-    // The reported two are the SAME objects, not rebuilt ones.
+    // The reported one is the SAME object, not a rebuilt one.
     assert.equal(g.documents[LIVE], base.documents[0]);
-    assert.equal(g.documents[LIVE + 1], base.documents[1]);
-    assert.equal(g.documents[LIVE + 1].status, "pending", "the un-generated report is still pending");
+    assert.equal(g.documents[LIVE].status, "pending", "the un-generated report is still pending");
   });
 
   it("recomputes ready/total off the list, so the counter cannot disagree with the rows", () => {
     const base = buildGeneration({
-      documents: { expected: [{ docType: "sec", title: "Security Posture Report" }], items: [] },
+      documents: { expected: [{ docType: "remediation_plan", title: "Full Remediation Guide" }], items: [] },
     });
     assert.equal(base.ready, 0);
     const g = withLiveDocuments(base);
-    assert.equal(g.ready, LIVE);
-    assert.equal(g.total, LIVE + 1);
+    assert.equal(g.ready, CONSTRUCTED);
+    assert.equal(g.total, CONSTRUCTED + 1);
     assert.equal(g.allReady, false);
   });
 
@@ -1114,24 +1196,31 @@ describe("withLiveDocuments (#424 — a live report depends on no generation row
     });
     assert.equal(base.documents[0].status, "pending");
     const g = withLiveDocuments(base);
-    assert.equal(g.total, LIVE, "the existing entry is replaced, never duplicated");
+    assert.equal(g.total, CONSTRUCTED, "the existing entry is replaced, never duplicated");
     const row = readiness(g.documents)[0];
     assert.equal(row.status, "ready");
     assert.equal(row.title, "Copilot Readiness Assessment", "the platform's own title for it is kept");
   });
 
   it("leaves a genuinely generated live row completely alone", () => {
-    // Every registered document has a real generated row here, so there is
-    // nothing at all to add and the input object is returned unchanged.
+    // Every constructed document has a real generated row here — the registry's
+    // reports AND the SOW — so there is nothing at all to add and the input
+    // object is returned unchanged.
     const base = buildGeneration({
       documents: {
-        expected: JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({ docType: d.docType, title: `Catalogue label ${i}` })),
-        items: JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({
-          id: 42 + i,
-          docType: d.docType,
-          title: `Catalogue label ${i}`,
-          status: "draft",
-        })),
+        expected: [
+          ...JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({ docType: d.docType, title: `Catalogue label ${i}` })),
+          { docType: SOW_DOC_TYPE, title: "Catalogue label sow" },
+        ],
+        items: [
+          ...JOURNEY_LIVE_DOCUMENTS.map((d, i) => ({
+            id: 42 + i,
+            docType: d.docType,
+            title: `Catalogue label ${i}`,
+            status: "draft",
+          })),
+          { id: 99, docType: SOW_DOC_TYPE, title: "Catalogue label sow", status: "draft" },
+        ],
       },
     });
     const g = withLiveDocuments(base);
@@ -1142,15 +1231,25 @@ describe("withLiveDocuments (#424 — a live report depends on no generation row
   it("never lists a report twice, whichever key it was matched on", () => {
     // The design's own title with a different docType — the second key
     // `liveDocumentFor` accepts.
-    const base = buildGeneration({
-      documents: {
-        expected: [{ docType: "some_other_key", title: JOURNEY_READINESS_DOCUMENT }],
-        items: [],
-      },
-    });
+    //
+    // Constructed directly rather than through `buildGeneration`, and that is
+    // the point of the note: `JOURNEY_DOCUMENT_TYPE_ALLOWLIST` filters the spine
+    // on docType BEFORE any title match happens, so a row on an unrecognised key
+    // never survives to reach `withLiveDocuments` in the first place. The
+    // title-as-second-key behaviour asserted here is real and still worth
+    // guarding — `withLiveDocuments` is fed from other places too — but it is a
+    // fact about this function, not about what the wire can deliver today.
+    const base: JourneyGeneration = {
+      ready: 0,
+      total: 1,
+      allReady: false,
+      documents: [
+        { title: JOURNEY_READINESS_DOCUMENT, docType: "some_other_key", id: null, status: "pending" },
+      ],
+    };
     const g = withLiveDocuments(base);
     assert.equal(readiness(g.documents).length, 1);
-    assert.equal(g.total, LIVE, "the title match resolved it; nothing was added for it");
+    assert.equal(g.total, CONSTRUCTED, "the title match resolved it; nothing was added for it");
     const row = readiness(g.documents)[0];
     assert.equal(row.docType, "some_other_key", "the platform's own key is kept");
     assert.equal(row.status, "ready");
@@ -1243,11 +1342,11 @@ describe("the live-document registry (#343 — the gate is general, not per-repo
 
   it("withLiveDocuments guarantees EVERY registered entry, not a named one", () => {
     const g = withLiveDocuments(buildGeneration({}));
-    assert.equal(g.total, JOURNEY_LIVE_DOCUMENTS.length);
+    assert.equal(g.total, JOURNEY_LIVE_DOCUMENTS.length + 1);
     assert.deepEqual(
       g.documents.map((d) => d.docType),
-      JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType),
-      "added entries lead, in registry order",
+      [...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType), SOW_DOC_TYPE],
+      "added entries lead, in registry order; the SOW closes the set",
     );
     assert.ok(
       g.documents.every((d) => d.status === "ready" && d.id === null),

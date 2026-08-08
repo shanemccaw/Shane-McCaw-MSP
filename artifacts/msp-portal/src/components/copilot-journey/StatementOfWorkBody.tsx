@@ -6,16 +6,34 @@
  * ------------------------------------
  * Scope and totals come from `journeyPricing.ts`. In preview that is over
  * `PREVIEW_SCOPE`, the design's worked example; on a live journey it is the
- * mapped `GET /api/portal/assessment/sow` scope — the SAME module and the same
- * `journeyScopeFromSow()` mapping the standalone proposal screen
- * (`/copilot-readiness/proposal`) uses. Nothing in this file adds up a fee.
- * Two live surfaces over one contract that each did their own maths would
- * eventually quote two different numbers to the same customer, and the one
- * place that must never happen is the page with a signature on it.
+ * Sales Offer Engine's own candidates for this tenant, mapped by
+ * `journeyScopeFromOffers()`. Nothing in this file adds up a fee. Two live
+ * surfaces over one contract that each did their own maths would eventually
+ * quote two different numbers to the same customer, and the one place that must
+ * never happen is the page with a signature on it.
  *
- * The design intends this document to supersede that screen. It is left
- * standing for now and this is additive; the header's "Ready to fix this?"
- * already lands here when the document exists.
+ * NO STORED DOCUMENT ROW, NO GENERATION STEP
+ * ------------------------------------------
+ * This document used to read `GET /api/portal/assessment/sow`, which is
+ * `loadSowDocs()` over `insights_generated_documents` — so the one report the
+ * customer acts on was the one report that could not be read until
+ * `document-engine-sow.ts` had run an AI generation and written a row, while the
+ * other eight render straight off the scan. It no longer does. The scope comes
+ * from `GET /api/portal/assessment/recommended-offers`, which runs the SAME
+ * Sales Offer Engine that document-engine-sow.ts calls "the sole authority on
+ * which projects to scope and what to charge for them", in pure-compute mode,
+ * persisting nothing. `sowLiveScope.ts` holds that mapping and the full argument
+ * for why it is the same authority rather than a stand-in for it.
+ *
+ * WHAT THAT COSTS, AND WHY IT IS THE RIGHT TRADE: this document can be READ by
+ * every tenant with a scan, and SIGNED by none of them from here. Signing writes
+ * an `assessment_sow_agreements` row FK'd to a stored document id, and
+ * `.../sow/payment-options` reads its totals off that same row, so a signature
+ * taken here with no such row would land in a checkout that cannot accept it.
+ * The signature block states that instead of offering a button that cannot work
+ * — see `SOW_UNSIGNABLE`. The standalone proposal screen
+ * (`/copilot-readiness/proposal`) still reads the stored document and is still
+ * where a generated SOW is signed; nothing about that path changed.
  *
  * SIGNING IS A HARD LOCK, NOT A DISABLED STATE
  * --------------------------------------------
@@ -24,8 +42,8 @@
  * contract. The lock lives in the handlers, not in CSS.
  *
  * WHAT THIS DOES NOT DO: it takes no payment and creates no agreement record.
- * Signing hands the agreed scope to the checkout screen, which is where the
- * platform's real Stripe path lives — the same handoff the proposal screen makes.
+ * Where signing IS offered (the design preview), it hands the agreed scope to
+ * the checkout screen, which is where the platform's real Stripe path lives.
  *
  * PREVIEW VS LIVE (#292)
  * -----------------------
@@ -34,12 +52,12 @@
  * design's own Halden Materials worked example, or pass `isPreview={false}`
  * with `live` to render a real tenant's contract. `LiveStatementOfWorkBody`
  * below is the self-fetching wrapper `DocumentBody.tsx` actually mounts on a
- * real journey — it owns the two real fetches
- * (`GET /api/portal/assessment/sow`, `.../sow/payment-options`), mirroring the
- * proposal screen's own fetch/error/loading pattern exactly, and hands the
- * resolved scope down as `live`. See `sowLiveContract.ts` for what is real,
- * what is computed, and — for the handful of rows the design's fixture can
- * state and this platform genuinely cannot — what is an honest declared gap.
+ * real journey — it owns the one real fetch
+ * (`GET /api/portal/assessment/recommended-offers`), mirroring the proposal
+ * screen's own fetch/error/loading pattern, and hands the resolved scope down as
+ * `live`. See `sowLiveContract.ts` for what is real, what is computed, and —
+ * for the handful of rows the design's fixture can state and this platform
+ * genuinely cannot — what is an honest declared gap.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -69,7 +87,6 @@ import {
   phaseCountLabel,
   togglePhase,
   toggleAddon,
-  weeksLabel,
   type JourneyPhase,
   type JourneyScopeInput,
   type JourneySelection,
@@ -90,6 +107,8 @@ import {
   buildLiveBlockers,
   buildLiveCarry,
   elapsedDaysSince,
+  projectedFromPhases,
+  quotedWeeksOf,
   resolveBasisOfScope,
   resolveChangeWindows,
   resolveElapsedDays,
@@ -99,25 +118,33 @@ import {
   resolveNewBudget,
   resolveObjective,
   resolvePaymentTerms,
+  resolvePhaseDuration,
   resolveProjected,
   resolveTelemetrySource,
+  resolveTimeline,
   resolveValidity,
   resolveWasteRecovered,
+  resolveWeeksRow,
   resolveWhyMatters,
+  SOW_UNSIGNABLE,
 } from "./sowLiveContract.ts";
 import { buildProvenance } from "./liveReportBlocks.ts";
 import {
-  journeyScopeFromSow,
   withAdjustments,
   type JourneyAdjustmentLine,
   type JourneySowScope,
-  type WireSowState,
 } from "./journeyScopeFromSow.ts";
+import { journeyScopeFromOffers, type WireRecommendedOffers } from "./sowLiveScope.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
 
-const SOW_URL = "/api/portal/assessment/sow";
-const PAYMENT_OPTIONS_URL = "/api/portal/assessment/sow/payment-options";
+/**
+ * The Sales Offer Engine, run for the caller's own tenant in pure-compute mode.
+ * Nothing is persisted and no offer state machine is touched — see
+ * `sowLiveScope.ts` for why this is the same pricing authority the stored SOW is
+ * built from rather than a second one.
+ */
+const RECOMMENDED_OFFERS_URL = "/api/portal/assessment/recommended-offers";
 const JOURNEY_CHANNEL = "engine.dashboard";
 
 const H2: React.CSSProperties = {
@@ -218,10 +245,25 @@ function identityPillarFor(
 export interface SowLiveInputs {
   readonly view: JourneyView;
   readonly built: JourneySowScope;
-  /** `payment-options`' own `phased.selfServe`, or `null` before that fetch settles. Best-effort: the contract renders fully without it. */
+  /**
+   * `payment-options`' own `phased.selfServe`, or `null` when this platform has
+   * not stated a billing arrangement for this scope. Kept on the shape — the
+   * Payment Terms row renders honestly from either value — even though the live
+   * wrapper now always passes `null`: that endpoint reads the stored SOW row,
+   * which is precisely the dependency this document no longer has.
+   */
   readonly phasedSelfServe: boolean | null;
-  /** `payment-options`' own `payInFull.active`. `false` before that fetch settles — an unconfirmed discount is never implied. */
+  /** `payment-options`' own `payInFull.active`. `false` unless a discount is confirmed — an unconfirmed one is never implied. */
   readonly payInFullActive: boolean;
+  /**
+   * Whether a signature taken here can actually be recorded.
+   *
+   * `false` for an engine-computed scope, and not as a UI preference: `POST
+   * .../sow/checkout` writes an agreement row FK'd to a stored
+   * `insights_generated_documents` id that does not exist for one. See
+   * `SOW_UNSIGNABLE`.
+   */
+  readonly signable: boolean;
 }
 
 export function StatementOfWorkBody({
@@ -277,9 +319,53 @@ export function StatementOfWorkBody({
   const credit = isPreview && allPhases ? STATEMENT_OF_WORK.fullScopeCredit.amountUsd : 0;
   const netFee = totals.upfrontUsd - credit;
 
-  const projected = totals.projectedScore;
+  /**
+   * The projection this scope actually asserts.
+   *
+   * `totals.projectedScore` is the mean of every phase's resulting score, which
+   * is `0` whenever no phase quotes a score movement — the case for every
+   * engine-derived phase and every phase mapped from a stored SOW's pricing
+   * lines alike. Printing that mean rendered "0 · 82 points short of the gate",
+   * a forecast nothing in this platform produced. `projectedFromPhases` reads
+   * the flatness and declines instead.
+   */
+  const projected = projectedFromPhases(scope.phases, totals.projectedScore);
   const clears = projected !== null && projected >= SOW_GATE_TARGET;
   const currentScore = !isPreview && live ? live.view.readinessScore : null;
+
+  /**
+   * The phases' own quoted durations, keyed by phase id.
+   *
+   * `JourneyPhase.weeks` is `weeksQuoted` with `null` flattened to `0` (it has
+   * to be a number for `computeTotals()` to sum it), so it cannot tell "runs
+   * zero weeks" from "quoted no duration" — and on a page with prices, "approx.
+   * 0 weeks" is a claim rather than a blank. This is the unflattened truth,
+   * read from the mapped scope rather than re-derived.
+   */
+  const weeksQuotedById = useMemo(() => {
+    const m = new Map<string, number | null>();
+    if (isPreview || !live) {
+      // The design's fixture quotes a real duration on every phase.
+      for (const p of scope.phases) m.set(p.id, p.weeks);
+    } else {
+      for (const p of live.built.phases) m.set(p.id, p.weeksQuoted);
+    }
+    return m;
+  }, [isPreview, live, scope]);
+
+  /** Whole weeks across the phases in scope, or `null` when none quoted one. */
+  const quotedWeeks = useMemo(
+    () =>
+      quotedWeeksOf(
+        scope.phases
+          .filter((p) => isPhaseIncluded(scope, selection, p.id))
+          .map((p) => ({ weeksQuoted: weeksQuotedById.get(p.id) ?? null })),
+      ),
+    [scope, selection, weeksQuotedById],
+  );
+
+  /** See `SowLiveInputs.signable`. Preview always signs — that is the design's own flow. */
+  const signable = isPreview || !live ? true : live.signable;
 
   /**
    * Findings closed by the phases actually in scope, from the phases' own counts
@@ -332,7 +418,9 @@ export function StatementOfWorkBody({
   );
 
   const sign = useCallback(() => {
-    if (!agreed || signed) return;
+    // The same doctrine the post-signature lock follows: the guard lives in the
+    // handler, not only in whether a button was rendered.
+    if (!signable || !agreed || signed) return;
     setSigned(true);
     const phases = scope.phases
       .map((p) => (isPhaseIncluded(scope, selection, p.id) ? "1" : "0"))
@@ -346,7 +434,7 @@ export function StatementOfWorkBody({
     // is actually seen.
     const query = new URLSearchParams({ signed: "1", phases, addons }).toString();
     window.setTimeout(() => onSigned?.(query), 1100);
-  }, [agreed, signed, selection, onSigned, scope]);
+  }, [signable, agreed, signed, selection, onSigned, scope]);
 
   /** Substitutes the figures the contract computes rather than states. */
   const resolveRow = useCallback(
@@ -361,7 +449,7 @@ export function StatementOfWorkBody({
         case "phaseCount":
           return phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount);
         case "weeks":
-          return `${weeksLabel(totals.weeks)} to certification`;
+          return resolveWeeksRow(isPreview, quotedWeeks);
         case "newBudget":
           return resolveNewBudget(isPreview);
         case "netYear":
@@ -422,6 +510,7 @@ export function StatementOfWorkBody({
       findingsInScope,
       totalFindings,
       totals,
+      quotedWeeks,
       clears,
       blockers.length,
       pillars,
@@ -636,7 +725,7 @@ export function StatementOfWorkBody({
                     ...TABULAR,
                   }}
                 >
-                  {on ? `${p.weeks} ${p.weeks === 1 ? "week" : "weeks"}` : "Out of scope"}
+                  {resolvePhaseDuration(isPreview, on, weeksQuotedById.get(p.id) ?? null)}
                 </span>
               </div>
             );
@@ -807,7 +896,7 @@ export function StatementOfWorkBody({
         >
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: INK.bodyDark }}>
-              {`${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${weeksLabel(totals.weeks)}`}
+              {`${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${resolveTimeline(isPreview, quotedWeeks)}`}
             </span>
             <span style={{ fontSize: 22, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>{money(netFee)}</span>
           </div>
@@ -862,9 +951,19 @@ export function StatementOfWorkBody({
           flexDirection: "column",
           gap: 12,
           padding: "20px 22px",
-          border: `1px solid ${signed ? hexAlpha(SEVERITY_ON_DARK.healthy, 0.4) : hexAlpha(BRAND.teal, 0.32)}`,
+          border: `1px solid ${
+            !signable
+              ? INK.hairlineDark
+              : signed
+                ? hexAlpha(SEVERITY_ON_DARK.healthy, 0.4)
+                : hexAlpha(BRAND.teal, 0.32)
+          }`,
           borderRadius: 12,
-          background: signed ? hexAlpha(SEVERITY_ON_DARK.healthy, 0.06) : hexAlpha(BRAND.teal, 0.06),
+          background: !signable
+            ? "rgba(15,23,42,.3)"
+            : signed
+              ? hexAlpha(SEVERITY_ON_DARK.healthy, 0.06)
+              : hexAlpha(BRAND.teal, 0.06),
         }}
       >
         <span
@@ -876,17 +975,27 @@ export function StatementOfWorkBody({
             fontWeight: 700,
             letterSpacing: ".18em",
             textTransform: "uppercase",
-            color: signed ? SEVERITY_ON_DARK.healthy : BRAND.teal,
+            color: !signable ? INK.micro : signed ? SEVERITY_ON_DARK.healthy : BRAND.teal,
           }}
         >
-          {signed ? <Lock size={12} strokeWidth={2.2} aria-hidden="true" /> : null}
-          {signed ? STATEMENT_OF_WORK.signature.signedEyebrow : STATEMENT_OF_WORK.signature.unsignedEyebrow}
+          {signed && signable ? <Lock size={12} strokeWidth={2.2} aria-hidden="true" /> : null}
+          {!signable
+            ? SOW_UNSIGNABLE.eyebrow
+            : signed
+              ? STATEMENT_OF_WORK.signature.signedEyebrow
+              : STATEMENT_OF_WORK.signature.unsignedEyebrow}
         </span>
         <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6 }}>
-          {signed ? STATEMENT_OF_WORK.signature.signedBlurb : STATEMENT_OF_WORK.signature.unsignedBlurb}
+          {!signable
+            ? SOW_UNSIGNABLE.blurb
+            : signed
+              ? STATEMENT_OF_WORK.signature.signedBlurb
+              : STATEMENT_OF_WORK.signature.unsignedBlurb}
         </p>
 
-        {signed ? (
+        {/* No clickwrap and no button when a signature could not be recorded —
+            an agreement that cannot be written is not one to invite. */}
+        {!signable ? null : signed ? (
           <span style={{ fontSize: 13, fontWeight: 700, color: SEVERITY_ON_DARK.healthy, ...TABULAR }}>
             {`Executed · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(netFee)}`}
           </span>
@@ -1041,16 +1150,24 @@ function formatSowDate(iso: string): string {
 type SowLoad =
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly built: JourneySowScope }
-  | { readonly status: "none"; readonly regenerating: boolean }
+  | { readonly status: "none" }
   | { readonly status: "error"; readonly message: string };
 
-/** The subset of `payment-options`' response this document reads. Every field optional — a malformed or partial payload degrades to the generic Payment Terms wording rather than failing the fetch. */
-interface WirePaymentOptions {
-  readonly ready?: boolean;
-  readonly phased?: { readonly selfServe?: boolean };
-  readonly payInFull?: { readonly active?: boolean };
-}
-
+/**
+ * ONE fetch, and it is not a document lookup.
+ *
+ * This used to be two — `GET .../assessment/sow` for the scope and
+ * `.../sow/payment-options` for the billing terms — and BOTH are
+ * `loadSowDocs()` over `insights_generated_documents`, so both returned nothing
+ * until `document-engine-sow.ts` had generated and stored a SOW for the tenant.
+ * That made the contract the only document in the set gated on a generation run.
+ *
+ * It now reads the Sales Offer Engine directly. The payment-options fetch is
+ * gone rather than kept as a best-effort extra: without a stored document it can
+ * only ever answer `{ ready: false }`, and `resolvePaymentTerms(false, null,
+ * false)` already renders that state honestly as "Confirmed at checkout for your
+ * agreed scope" — a request that cannot succeed is not worth making.
+ */
 export function LiveStatementOfWorkBody({
   view,
   onSigned,
@@ -1060,28 +1177,23 @@ export function LiveStatementOfWorkBody({
 }) {
   const { fetchWithAuth, accessToken } = useAuth();
   const [load, setLoad] = useState<SowLoad>({ status: "loading" });
-  const [payment, setPayment] = useState<WirePaymentOptions | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetchWithAuth(SOW_URL);
-        if (!res.ok) throw new Error(`sow ${res.status}`);
-        const body = (await res.json()) as WireSowState;
+        const res = await fetchWithAuth(RECOMMENDED_OFFERS_URL);
+        if (!res.ok) throw new Error(`recommended-offers ${res.status}`);
+        const body = (await res.json()) as WireRecommendedOffers;
         if (cancelled) return;
-        const built = journeyScopeFromSow(body);
-        if (!built) {
-          setLoad({ status: "none", regenerating: body.regenerating === true });
-          return;
-        }
-        setLoad({ status: "ready", built });
+        const built = journeyScopeFromOffers(body);
+        setLoad(built ? { status: "ready", built } : { status: "none" });
       } catch (e) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : String(e);
         setLoad({ status: "error", message });
         reportClientEvent(accessToken, "StatementOfWorkScopeFetchFailed", message, JOURNEY_CHANNEL, {
-          url: SOW_URL,
+          url: RECOMMENDED_OFFERS_URL,
         });
       }
     })();
@@ -1089,27 +1201,6 @@ export function LiveStatementOfWorkBody({
       cancelled = true;
     };
   }, [fetchWithAuth, accessToken]);
-
-  // Best-effort and independent of the scope fetch above: the contract's
-  // Payment Terms row degrades to generic-but-honest wording if this never
-  // lands, exactly as the rest of the document degrades when a check did not
-  // report — it never blocks the signable contract from rendering.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetchWithAuth(PAYMENT_OPTIONS_URL);
-        if (!res.ok || cancelled) return;
-        const body = (await res.json()) as WirePaymentOptions;
-        if (!cancelled) setPayment(body);
-      } catch {
-        // Non-fatal — see the comment above.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchWithAuth]);
 
   if (load.status === "ready") {
     return (
@@ -1119,8 +1210,13 @@ export function LiveStatementOfWorkBody({
         live={{
           view,
           built: load.built,
-          phasedSelfServe: payment?.phased?.selfServe ?? null,
-          payInFullActive: payment?.payInFull?.active === true,
+          // Both come off `payment-options`, which reads the stored document
+          // this scope deliberately does not have. Stated as unknown rather
+          // than guessed — see `resolvePaymentTerms`.
+          phasedSelfServe: null,
+          payInFullActive: false,
+          // See `SowLiveInputs.signable` and `SOW_UNSIGNABLE`.
+          signable: false,
         }}
       />
     );
@@ -1143,18 +1239,15 @@ export function LiveStatementOfWorkBody({
     );
   }
 
+  // The engine returned no candidates. That is a real answer about this tenant,
+  // not a document waiting to be generated, and the copy says so: nothing is in
+  // flight and there is nothing to wait for. It is deliberately NOT the old
+  // "has not been generated yet" wording, which described a pipeline this
+  // document no longer depends on.
   return (
     <JourneyUnavailable
-      title={
-        load.status === "none" && load.regenerating
-          ? "Your statement of work is being rebuilt"
-          : "Your statement of work has not been generated yet"
-      }
-      detail={
-        load.status === "none" && load.regenerating
-          ? "A new version of your scope is generating from the assessment right now. It takes a few minutes; this page will show it once it lands."
-          : "The scope is written from your assessment findings, and it has not been produced for this tenant yet. Your other reports are already available — the priced phases follow from them."
-      }
+      title="No priced remediation scope for your tenant"
+      detail="A statement of work is priced from the findings your assessment recorded, and none of them currently maps to a service we can scope and quote. Your reports are unaffected and still complete — speak to your assessment lead about what closing these findings would involve."
     />
   );
 }

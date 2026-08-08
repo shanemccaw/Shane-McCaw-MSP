@@ -32,12 +32,17 @@ import {
   COPILOT_GATE_TARGET,
   JOURNEY_DOCUMENT_TYPE_ALLOWLIST,
   JOURNEY_LIVE_DOCUMENTS,
+  JOURNEY_SOW_DOCUMENT,
   PILLAR_KEYS,
   PILLARS,
   isLiveRenderedDocument,
   liveDocumentFor,
   type PillarKey,
 } from "./journeyTokens.ts";
+// The SOW's catalogue key lives with the SOW's own live scope rather than in
+// `JOURNEY_LIVE_DOCUMENTS`, because the SOW deliberately is not a member of that
+// registry — see `withLiveDocuments` below, and `sowLiveScope.ts`'s own note.
+import { SOW_DOC_TYPE } from "./sowLiveScope.ts";
 import {
   classifyLiveCheckSeverity,
   type LiveCheckResult,
@@ -882,6 +887,7 @@ export function buildGeneration(status: WireAssessmentStatus | null | undefined)
 export function withLiveDocuments(generation: JourneyGeneration): JourneyGeneration {
   let documents = generation.documents;
   const added: JourneyDocumentView[] = [];
+  const appended: JourneyDocumentView[] = [];
 
   for (const live of JOURNEY_LIVE_DOCUMENTS) {
     const index = documents.findIndex((d) => liveDocumentFor(d)?.key === live.key);
@@ -898,12 +904,44 @@ export function withLiveDocuments(generation: JourneyGeneration): JourneyGenerat
     }
   }
 
+  /* ---------------------------------------------------------------- *
+   * The Statement of Work — constructed on exactly the same basis, and
+   * for exactly the same reason, as the reports above it.
+   * ---------------------------------------------------------------- *
+   *
+   * It is NOT in `JOURNEY_LIVE_DOCUMENTS` and must not be: every entry there is
+   * a `(props: { view }) => ReactElement` that `DocumentBody`'s `LIVE_BODY` map
+   * can hold, and the SOW is an interactive contract taking `onSigned`. That is
+   * a statement about its RENDERER, though, not about where its content comes
+   * from — and since `sowLiveScope.ts` the content comes from the Sales Offer
+   * Engine, computed for this tenant on demand, with no stored
+   * `insights_generated_documents` row and no `document-engine-sow.ts` run
+   * behind it. So the listing problem the loop above solves is its problem too:
+   * a tenant with no assessment service row, or one whose service does not name
+   * the SOW as a deliverable, could read every other document and had no way to
+   * reach the one that prices the work.
+   *
+   * APPENDED, not prepended. The reports lead a set because the roll-up is the
+   * report the others expand on; the SOW closes it — document 9 of 9, the last
+   * thing the customer reaches and the only one they act on. `DocumentBody`
+   * already renders it live off this exact title, so nothing there changes.
+   */
+  const sowIndex = documents.findIndex(
+    (d) => d.docType === SOW_DOC_TYPE || d.title === JOURNEY_SOW_DOCUMENT,
+  );
+  const sow = sowIndex >= 0 ? documents[sowIndex] : null;
+  if (sow && sow.id === null) {
+    documents = documents.map((d, i) => (i === sowIndex ? { ...d, status: "ready" } : d));
+  } else if (!sow) {
+    appended.push({ title: JOURNEY_SOW_DOCUMENT, docType: SOW_DOC_TYPE, id: null, status: "ready" });
+  }
+
   // Nothing to do — return the same object so a memoised caller sees no change.
-  if (added.length === 0 && documents === generation.documents) return generation;
+  if (added.length === 0 && appended.length === 0 && documents === generation.documents) return generation;
 
   // Added entries lead, in registry order: the roll-up is the report the others
   // expand on, and the design's own set leads with it.
-  const all = added.length ? [...added, ...documents] : documents;
+  const all = added.length || appended.length ? [...added, ...documents, ...appended] : documents;
   const ready = all.filter((d) => d.status === "ready").length;
   return { ready, total: all.length, allReady: ready === all.length, documents: all };
 }

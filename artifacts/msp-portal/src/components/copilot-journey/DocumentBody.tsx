@@ -49,6 +49,7 @@ import {
 } from "./journeyTokens.ts";
 import { LiveRemediationGuideBody, RemediationGuideBody } from "./RemediationGuideBody";
 import { LiveStatementOfWorkBody, StatementOfWorkBody } from "./StatementOfWorkBody";
+import { SOW_DOC_TYPE } from "./sowLiveScope.ts";
 import { CopilotReadinessReportBody } from "./CopilotReadinessReportBody";
 import { LiveSecurityPostureReport } from "./SecurityPostureReportBody";
 import { LiveGovernancePostureReport } from "./GovernancePostureReportBody";
@@ -523,10 +524,19 @@ export function DocumentBody({
   // interactive (phase toggles, a hard sign-lock) rather than a rendered
   // report, so it is not a `(props: {view}) => ReactElement` the registry's
   // `LIVE_BODY` shape can hold — but it is resolved live from the tenant's own
-  // scan and SOW documents exactly like the registry reports are, ahead of the
-  // old document-generation pipeline's gates below. `LiveStatementOfWorkBody`
-  // owns its own fetch of `GET .../assessment/sow` and `.../sow/payment-options`.
-  if (!isPreview && view && doc?.title === JOURNEY_SOW_DOCUMENT) {
+  // scan exactly like the registry reports are, ahead of the old
+  // document-generation pipeline's gates below. `LiveStatementOfWorkBody` owns
+  // its own fetch of `GET .../assessment/recommended-offers` — the Sales Offer
+  // Engine in pure-compute mode, with no stored document row behind it.
+  //
+  // MATCHED ON `docType` AS WELL AS TITLE, for the reason `liveDocumentFor`
+  // gives for the registry: the title is admin-editable free text on the
+  // service's `associated_documents`, so a title-only match silently stops
+  // resolving the first time somebody renames the deliverable — and since
+  // `withLiveDocuments` now lists this document whether or not it was ever
+  // generated, a renamed-and-ungenerated row would fall through every gate
+  // below to a "still generating" state over a contract that is complete.
+  if (!isPreview && view && (doc?.docType === SOW_DOC_TYPE || doc?.title === JOURNEY_SOW_DOCUMENT)) {
     return (
       <Card pillar={pillar}>
         <LiveStatementOfWorkBody view={view} onSigned={onSigned} />
