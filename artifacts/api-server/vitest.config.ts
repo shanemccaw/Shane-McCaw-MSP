@@ -105,6 +105,11 @@ export default defineConfig({
       // (activated ROLES) to the role's real members, plus the resolvePathInData
       // literal-key fix that lets @odata.type work as a mapping sourceField.
       "src/lib/global-admin-count-role-members-551.test.ts",
+      // #553 — copilot:data-exposure-risk repointed from count(id) over /sites
+      // onto #357's verified per-site broad-sharing fan-out. Drives the DEFECT
+      // first so the assertions are known to discriminate, and reads the real
+      // mapping/severity_rules out of the shipped migration file.
+      "src/lib/copilot-data-exposure-risk-553.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",
