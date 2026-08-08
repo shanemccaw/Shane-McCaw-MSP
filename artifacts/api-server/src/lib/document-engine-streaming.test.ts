@@ -197,6 +197,15 @@ vi.mock("./omg-card-generator-v2", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
+// Git #547's Copilot Gate. This file's document type is not the score report,
+// so the engine never calls it — but the import is real, and copilot-gate.ts
+// pulls the whole health-engine → priority-engine chain in at module load,
+// which this file (a transport test) has no business loading. The gate's own
+// wiring is asserted in `document-engine-copilot-gate.test.ts`.
+vi.mock("./copilot-gate", () => ({
+  computeCopilotGate: vi.fn(),
+}));
+
 vi.mock("./remediation-knowledge-base", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,

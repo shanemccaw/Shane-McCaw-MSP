@@ -176,6 +176,15 @@ vi.mock("./omg-card-generator-v2", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
+// Git #547's Copilot Gate. `DOC_TYPE_ROW` is `governance_snapshot`, so the
+// engine never calls this — but the import is real, and copilot-gate.ts pulls
+// the whole health-engine → priority-engine chain in at module load. Stubbed at
+// the boundary for the same reason the appendix below is. `document-engine-
+// copilot-gate.test.ts` is where the gate's own wiring is asserted.
+vi.mock("./copilot-gate", () => ({
+  computeCopilotGate: vi.fn(),
+}));
+
 // Git #493's remediation appendix. DOC_TYPE_ROW below leaves
 // `remediationDetailAppendix` unset, so the engine never calls this — but the
 // import is real, and the module reaches the AI generator plus two more tables.

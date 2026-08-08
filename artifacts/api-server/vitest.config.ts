@@ -75,6 +75,9 @@ export default defineConfig({
       // Streamed narrative call: same document as the non-streaming path, cost
       // still captured post-stream, dry-run/reuse still calling no model at all.
       "src/lib/document-engine-streaming.test.ts",
+      // #547 — the real Copilot Gate result reaching the score report's prompt,
+      // in both the scored and the honestly-not-evaluated case.
+      "src/lib/document-engine-copilot-gate.test.ts",
       "src/lib/cio-narrative-generator.test.ts",
       "src/lib/use-case-generator.test.ts",
       "src/routes/copilot-assessment-quiz-profile.test.ts",

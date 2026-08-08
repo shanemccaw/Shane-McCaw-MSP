@@ -11,6 +11,10 @@ import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspac
 import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
+// Git #547 — the real go-live score. `copilot-gate.ts` is the single definition
+// of the score, the 82 threshold and the go/no-go verdict; this engine reads it,
+// it does not re-derive any part of it.
+import { computeCopilotGate, type CopilotGateResult } from "./copilot-gate";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import {
@@ -330,6 +334,158 @@ function scopeProfileEntries(
 }
 
 /**
+ * The one document type whose entire premise is stating the tenant's real
+ * go-live score. Git #547: this file had ZERO references to `copilot-gate.ts`,
+ * so the score the platform had already computed never reached the model, and
+ * the prompt's (correct) anti-fabrication rule surfaced as "Score pending from
+ * the platform scan" on tenants whose scan was complete and whose score
+ * existed. The bug was never the AI's — it was handed an empty hand and
+ * answered honestly.
+ *
+ * Deliberately narrow: only this key gets the gate block. The other eight
+ * document types make no go-live claim, so injecting a score into them would be
+ * adding a number to a document that never asked for one.
+ */
+const COPILOT_GATE_DOC_TYPE_KEY = "copilot_readiness";
+
+/**
+ * The token a prompt body uses to place the gate block itself. When the live
+ * `insights-consulting-copilot_readiness` body carries it the block lands
+ * exactly where the prompt author put it; when it does not, the block is
+ * APPENDED rather than dropped — see `injectCopilotGateBlock`.
+ */
+const COPILOT_GATE_TOKEN = /\{\{copilotGate\}\}/g;
+
+/**
+ * The Copilot Gate result rendered as literal ground-truth text for the prompt.
+ *
+ * This is the SOW `pricingFormula` treatment, not the `profileSample`
+ * treatment, and that distinction is the whole point of #547: profile data is
+ * telemetry the model reads and interprets, while this is a computed platform
+ * verdict the model is only allowed to restate. So it is a directly-stated
+ * fact, labelled as one, with an explicit instruction not to re-derive it.
+ *
+ * Both real cases are spelled out rather than collapsed into one hedge:
+ *
+ *   - `scored`        the real number, the real verdict against the real
+ *                     threshold, and the real point gap.
+ *   - `not_evaluated` the REAL reason the engine withheld a score (#517's
+ *                     insufficient-coverage guard, a pillar nothing feeds, or
+ *                     an engine failure), stated as such. Explicitly NOT
+ *                     "pending", because "pending" tells a reader the scan has
+ *                     not finished when it has — the exact false statement this
+ *                     issue was filed about.
+ *
+ * Pure and exported so both generation branches and the tests share one
+ * definition of what the model is told.
+ */
+export function buildCopilotGateBlock(gate: CopilotGateResult): string {
+  const header =
+    "COPILOT GO-LIVE SCORE — PLATFORM GROUND TRUTH\n"
+    + "The lines below are the platform's own computed result for this tenant, produced by "
+    + `the health engine's Copilot pillar (source: ${gate.source}). They are established fact, `
+    + "not telemetry for you to interpret. Restate them verbatim. Do not recompute, re-derive, "
+    + "average, round, estimate, soften or hedge any value in this block, and do not contradict "
+    + "it anywhere in the document.";
+
+  if (gate.evaluation.status === "scored" && gate.score !== null && gate.status !== null) {
+    const verdict = gate.status === "go"
+      ? `GO — this tenant IS cleared to deploy Microsoft 365 Copilot (${gate.score} is at or above the Gate of ${gate.threshold}).`
+      : `NO-GO — this tenant is NOT cleared to deploy Microsoft 365 Copilot (${gate.score} is below the Gate of ${gate.threshold}).`;
+    // The gap is stated for the model rather than left to it: "82 minus 74" is
+    // exactly the arithmetic the prompt forbids it from doing.
+    const gap = gate.status === "go"
+      ? `Margin above the Gate: ${gate.score - gate.threshold} point(s).`
+      : `Points needed to clear the Gate: ${gate.threshold - gate.score}.`;
+    return [
+      header,
+      "",
+      `  Readiness score: ${gate.score} out of 100`,
+      `  Copilot Gate threshold: ${gate.threshold}`,
+      `  Verdict: ${verdict}`,
+      `  ${gap}`,
+      `  How this score was arrived at: ${gate.evaluation.reason}`,
+      "",
+      `This tenant HAS a readiness score, and it is ${gate.score}. Write that score and the `
+      + "verdict above into the document exactly as given. Never write that the score is "
+      + "pending, unavailable, or awaiting the scan — it is none of those things.",
+    ].join("\n");
+  }
+
+  // Not scored. The honest reason, never a "pending" that implies an unfinished
+  // scan. `evaluation.reason` is the engine's own machine-stable sentence, so it
+  // is quoted rather than paraphrased and the document says what the platform
+  // actually decided.
+  return [
+    header,
+    "",
+    "  Readiness score: NOT SCORED — the platform deliberately withheld a number for this tenant",
+    `  Copilot Gate threshold: ${gate.threshold}`,
+    "  Verdict: NO VERDICT ISSUED — the platform ruled this tenant neither GO nor NO-GO",
+    `  Reason no score was issued: ${gate.evaluation.reason}`,
+    `  Evaluable Copilot-impacting signals found for this tenant: ${gate.evaluation.evaluableSignalCount}`
+    + ` (minimum required to score: ${gate.evaluation.minRequiredSignals})`,
+    "",
+    "State that reason, in those terms, as the explanation for the absent score. Do NOT write "
+    + "that the score is \"pending\", \"still being calculated\", \"awaiting the scan\" or \"will "
+    + "follow once the scan completes\" — the scan is not the blocker and saying so would be "
+    + "false. The platform ran, and decided it does not have enough evaluable signal to issue a "
+    + "defensible number. Do not supply a number of your own in its place, and do not call the "
+    + "tenant a NO-GO — no verdict was issued. Name the blockers from the findings as normal.",
+  ].join("\n");
+}
+
+/**
+ * Places the gate block into an assembled prompt.
+ *
+ * Substitutes `{{copilotGate}}` where the prompt body carries it, and APPENDS
+ * the block where it does not. The append path is not a nicety: the prompt body
+ * lives in `ai_prompts`, is admin-editable, and is republished by a hand-run
+ * manual migration, so there is a real window — and a real `promptOverride`
+ * case — where the engine has the score but the live body has no slot for it.
+ * Dropping it there would silently reproduce the exact bug #547 is about, on
+ * the one document that cannot afford it.
+ */
+export function injectCopilotGateBlock(prompt: string, gate: CopilotGateResult): string {
+  const block = buildCopilotGateBlock(gate);
+  // `COPILOT_GATE_TOKEN` is /g, so `test()` advances `lastIndex` — reset around
+  // it or every second call on the same module instance answers false.
+  COPILOT_GATE_TOKEN.lastIndex = 0;
+  const hasToken = COPILOT_GATE_TOKEN.test(prompt);
+  COPILOT_GATE_TOKEN.lastIndex = 0;
+  return hasToken ? prompt.replace(COPILOT_GATE_TOKEN, block) : `${prompt}\n\n${block}`;
+}
+
+/**
+ * The gate for a `copilot_readiness` generation, or `null` for every other
+ * document type.
+ *
+ * `computeCopilotGate` never throws — an unreachable engine degrades to a
+ * `not_evaluated` result carrying that as its reason — so this needs no
+ * try/catch of its own, and a document type that is not the score report never
+ * pays for the engine call at all.
+ */
+async function resolveCopilotGateForDocType(
+  docTypeKey: string,
+  mspCustomerId: number,
+): Promise<CopilotGateResult | null> {
+  if (docTypeKey !== COPILOT_GATE_DOC_TYPE_KEY) return null;
+  const gate = await computeCopilotGate(mspCustomerId);
+  log.info(
+    {
+      mspCustomerId,
+      docTypeKey,
+      score: gate.score,
+      status: gate.status,
+      threshold: gate.threshold,
+      evaluationStatus: gate.evaluation.status,
+    },
+    "document-engine: injecting the real Copilot Gate result into the score report prompt (Git #547)",
+  );
+  return gate;
+}
+
+/**
  * Resolves the MSP branding (name + primary color) for an engine customer.
  * Shared by the dry-run and real branches so a preview can never be branded
  * differently from the document that gets generated.
@@ -415,13 +571,21 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
-    const assembledPrompt = rawTemplate
+    // Git #547 — the real go-live score, for `copilot_readiness` only. Resolved
+    // here, on the same terms as the real branch below, so the preview shows the
+    // prompt that will actually be sent rather than one missing its ground truth.
+    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId);
+
+    const substitutedTemplate = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
       .replace(/\{\{profileSample\}\}/g, profileSample)
       .replace(/\{\{findings\}\}/g, findingsBlock)
       .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
       .replace(/\{\{mspName\}\}/g, mspName ?? "Shane McCaw Consulting")
-      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8")
+      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8");
+
+    const assembledPrompt =
+      (copilotGate ? injectCopilotGateBlock(substitutedTemplate, copilotGate) : substitutedTemplate)
       // Same suffix, same condition as the real branch below — the preview must
       // show the prompt that will actually be sent, not a shorter one.
       + (wantsRemediationAppendix ? REMEDIATION_APPENDIX_PROMPT_SUFFIX : "");
@@ -579,13 +743,21 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
-    const prompt = rawTemplate
+    // Git #547 — the real go-live score, for `copilot_readiness` only. Same call
+    // and same placement as the dry-run branch, so a preview can never disagree
+    // with the document that gets generated.
+    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId);
+
+    const substitutedTemplate = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
       .replace(/\{\{profileSample\}\}/g, profileSample)
       .replace(/\{\{findings\}\}/g, findingsBlock)
       .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
       .replace(/\{\{mspName\}\}/g, mspName ?? "Shane McCaw Consulting")
-      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8")
+      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8");
+
+    const prompt =
+      (copilotGate ? injectCopilotGateBlock(substitutedTemplate, copilotGate) : substitutedTemplate)
       // Told to the model, not just to the appendix (#493): labelling the
       // appendix's AI content is worth nothing if the narrative above it is
       // free to invent its own unlabelled PowerShell in the same document.
