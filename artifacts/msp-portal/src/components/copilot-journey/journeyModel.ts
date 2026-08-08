@@ -30,6 +30,7 @@
 
 import {
   COPILOT_GATE_TARGET,
+  JOURNEY_DOCUMENT_TYPE_ALLOWLIST,
   JOURNEY_LIVE_DOCUMENTS,
   PILLAR_KEYS,
   PILLARS,
@@ -794,8 +795,15 @@ export function buildPillarViews(
 
 export function buildGeneration(status: WireAssessmentStatus | null | undefined): JourneyGeneration {
   const docs = status?.documents;
-  const items = docs?.items ?? [];
-  const expected = docs?.expected ?? [];
+  // Restricted to the real, known document types (the six pillar reports plus
+  // the remediation guide and SOW) before anything else touches this data —
+  // the wire's `status='ready'` rows are not filtered server-side, so a
+  // stray/test row from some other docType must never reach the spine below,
+  // let alone the nav it builds.
+  const items = (docs?.items ?? []).filter((i) => JOURNEY_DOCUMENT_TYPE_ALLOWLIST.has(i.docType));
+  const expected = (docs?.expected ?? []).filter((e) =>
+    JOURNEY_DOCUMENT_TYPE_ALLOWLIST.has(e.docType),
+  );
 
   // The expected set is the spine — a tenant mid-generation has fewer rows than
   // titles, and rendering only the rows would make the list grow as it runs,

@@ -560,3 +560,20 @@ export const JOURNEY_SECURITY_POSTURE_DOC_TYPE = SECURITY_POSTURE_ENTRY.docType;
 export const JOURNEY_SECURITY_POSTURE_DOCUMENT = SECURITY_POSTURE_ENTRY.title;
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;
+
+/**
+ * Every real `docType` this journey's nav is allowed to list: the six pillar
+ * reports' catalogue keys (`JOURNEY_LIVE_DOCUMENTS`) plus the two non-report
+ * documents (`remediation_plan`, `sow`).
+ *
+ * `buildGeneration` filters `documents.items`/`.expected` through this before
+ * they reach the nav, because that wire data is unfiltered by the server — any
+ * row with `status='ready'` shows regardless of what generated it, so a
+ * stray/test row on some other `docType` would otherwise appear in the reader
+ * beside the real deliverables.
+ */
+export const JOURNEY_DOCUMENT_TYPE_ALLOWLIST: ReadonlySet<string> = new Set([
+  ...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType),
+  "remediation_plan",
+  "sow",
+]);
