@@ -105,6 +105,8 @@ export interface GenerateSowParams {
 export interface GenerateSowResult extends DocumentCost {
   documentId: number;
   htmlContent: string;
+  /** Same meaning as `GenerateDocumentResult.reused` (document-engine.ts, Git #548). */
+  reused: boolean;
 }
 
 export interface DryRunSowResult extends DocumentCost {
@@ -286,7 +288,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         );
         // No AI call was made for THIS request; the reused document's own cost
         // sits in the ledger against the generation that incurred it.
-        return { documentId: reusable.documentId, htmlContent: reusable.htmlContent, ...NO_AI_CALL_COST };
+        return { documentId: reusable.documentId, htmlContent: reusable.htmlContent, ...NO_AI_CALL_COST, reused: true };
       }
     } else {
       log.info(
@@ -520,7 +522,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       log.warn({ err, documentId }, "document-engine-sow: OMG card generation failed (non-fatal)");
     });
 
-    return { documentId, htmlContent, ...cost };
+    return { documentId, htmlContent, ...cost, reused: false };
   } catch (err) {
     log.error(
       { mspCustomerId, projectId, docTypeKey, testMode, err },

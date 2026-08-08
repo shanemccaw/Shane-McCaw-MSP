@@ -300,6 +300,7 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
             docTypeKey: key,
             costCents: streamed.costCents,
             costStatus: streamed.costStatus,
+            reused: streamed.reused,
           },
         });
       } catch (err) {
@@ -328,6 +329,7 @@ router.post("/admin/document-generator/document-types/:key/generate", requireAdm
       docTypeKey: key,
       costCents: result.costCents,
       costStatus: result.costStatus,
+      reused: result.reused,
     });
   } catch (err) {
     log.error({ err, key, mspCustomerId }, "admin-document-generator: generate failed");
@@ -409,6 +411,39 @@ router.get("/admin/document-generator/history/:id/html", requireAdmin, async (re
   } catch (err) {
     log.error({ err, id }, "admin-document-generator: html view failed");
     res.status(500).json({ error: "Failed to load document" });
+  }
+});
+
+// ── Archive (Git #548) ──────────────────────────────────────────────────────
+// Sets status='archived', the same convention `findReusableDocument()` already
+// excludes (`['draft','approved','delivered']`) and the same supersede path
+// generateSowDocument()'s `supersedeMode: "archive"` uses — never a hard
+// DELETE. Archiving is also how an admin recovers from a stale reuse: an
+// archived document drops out of the drift gate's candidate set, so the next
+// plain "Generate Now" (no forceRegenerate) generates fresh instead of
+// re-serving it.
+router.post("/admin/document-generator/history/:id/archive", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  try {
+    const [doc] = await db
+      .select({ id: insightsGeneratedDocumentsTable.id, status: insightsGeneratedDocumentsTable.status })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, id))
+      .limit(1);
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+    if (doc.status === "archived") { res.status(409).json({ error: "Document is already archived" }); return; }
+
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(eq(insightsGeneratedDocumentsTable.id, id));
+
+    log.info({ id, actor: req.user?.email }, "admin-document-generator: document archived");
+    res.json({ id, status: "archived" });
+  } catch (err) {
+    log.error({ err, id }, "admin-document-generator: archive failed");
+    res.status(500).json({ error: "Failed to archive document" });
   }
 });
 

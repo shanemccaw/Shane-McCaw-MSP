@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap, Sparkles, Trash2 } from "lucide-react";
+import { FileText, Eye, Play, Loader2, RefreshCw, ExternalLink, AlertTriangle, Plus, X, Zap, Sparkles, Trash2, Archive } from "lucide-react";
 import DocumentTypePreviewDialog from "@/components/DocumentTypePreviewDialog";
 import DocumentScopingEditor from "@/components/DocumentScopingEditor";
 import { formatCents } from "@/components/ai-billing/format";
@@ -73,6 +73,8 @@ interface GenerationDone {
   documentId: number;
   costStatus?: "recorded" | "no-ai-call" | "unknown";
   costCents?: number | null;
+  /** True when the drift gate served a prior document instead of calling the model (Git #548). */
+  reused?: boolean;
 }
 
 interface TenantOption {
@@ -141,6 +143,11 @@ export default function DocumentGeneratorIde() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
+  // Explicit opt-in modifier on "Generate Now" (Git #548) — forceRegenerate
+  // bypasses the drift gate's reuse check, so it defaults off and resets
+  // after every generation rather than staying sticky, so it is never the
+  // silent default behavior for a routine click.
+  const [forceRegenerateNext, setForceRegenerateNext] = useState(false);
   const [liveStream, setLiveStream] = useState<LiveStream | null>(null);
   // Pinned to the tail while the model writes, so the newest text is the text
   // on screen — but only while the operator has not scrolled up to read
@@ -154,6 +161,7 @@ export default function DocumentGeneratorIde() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [viewingDocId, setViewingDocId] = useState<number | null>(null);
+  const [archivingDocId, setArchivingDocId] = useState<number | null>(null);
 
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [missingTypes, setMissingTypes] = useState<MissingTypeRow[]>([]);
@@ -210,6 +218,22 @@ export default function DocumentGeneratorIde() {
       setViewingDocId(null);
     }
   }, [fetchWithAuth, toast]);
+
+  const archiveDocument = useCallback(async (row: HistoryRow) => {
+    if (!confirm(`Archive "${row.docTypeLabel ?? row.docType}" (document #${row.id})? It will drop out of reuse and future document lists, but its content is kept, not deleted.`)) return;
+    setArchivingDocId(row.id);
+    try {
+      const res = await fetchWithAuth(`/api/admin/document-generator/history/${row.id}/archive`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to archive document");
+      toast({ title: "Document archived", description: `${row.docTypeLabel ?? row.docType} — document #${row.id}` });
+      void loadHistory();
+    } catch (err) {
+      toast({ title: "Archive failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setArchivingDocId(null);
+    }
+  }, [fetchWithAuth, toast, loadHistory]);
 
   const loadMissingTypes = useCallback(async () => {
     setLoadingMissingTypes(true);
@@ -331,11 +355,15 @@ export default function DocumentGeneratorIde() {
       return;
     }
     setGeneratingKey(type.key);
+    const forceRegenerate = forceRegenerateNext;
+    // Reset immediately, not in `finally` — a deliberate choice must be made
+    // fresh for every click, never carried into the next one.
+    setForceRegenerateNext(false);
     liveStickToBottomRef.current = true;
     setLiveStream({
       docTypeKey: type.key,
       docTypeLabel: type.label,
-      phase: "Starting generation…",
+      phase: forceRegenerate ? "Starting generation (forced — reuse skipped)…" : "Starting generation…",
       pct: 0,
       text: "",
       status: "streaming",
@@ -347,7 +375,7 @@ export default function DocumentGeneratorIde() {
         // `stream: true` opts this call into the SSE relay. The endpoint still
         // answers plain JSON without it (SimulatorDocumentCanvas relies on
         // that), and runs the identical generation either way.
-        body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0, stream: true }),
+        body: JSON.stringify({ mspCustomerId: selectedCustomerId, projectId: selectedProjectId ?? 0, stream: true, forceRegenerate }),
       });
 
       // Validation failures (bad tenant, unknown/inactive type) are rejected
@@ -408,13 +436,20 @@ export default function DocumentGeneratorIde() {
       if (!done) throw new Error("Stream ended before generation completed");
 
       const costLabel = formatGenerationCostLabel(done.costStatus, done.costCents);
+      const wasReused = done.reused === true;
       setLiveStream(prev => (prev ? {
         ...prev,
         status: "done",
         pct: 100,
-        phase: `Document #${done!.documentId} — ${costLabel}`,
+        phase: `Document #${done!.documentId} — ${wasReused ? "reused existing document" : "generated fresh"} — ${costLabel}`,
       } : prev));
-      toast({ title: "Document generated", description: `${type.label} — document #${done.documentId} — ${costLabel}` });
+      // Git #548 — a reuse hit and a fresh generation must read distinctly:
+      // otherwise a stale document served back by the drift gate looks
+      // identical to a real regeneration, with no indication short of logs.
+      toast({
+        title: wasReused ? "Existing document reused (no AI call)" : "Document generated",
+        description: `${type.label} — document #${done.documentId} — ${costLabel}`,
+      });
       void loadHistory();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -454,6 +489,18 @@ export default function DocumentGeneratorIde() {
               <option key={p.id} value={p.id}>{p.title}</option>
             ))}
           </select>
+          <label
+            title="Bypasses the reuse/drift gate for the next Generate Now click only — always makes a fresh AI call instead of possibly serving back an existing document."
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border cursor-pointer select-none ${forceRegenerateNext ? "bg-amber-500/15 border-amber-500/40 text-amber-300" : "border-gray-700/50 text-gray-400 hover:text-gray-200"}`}
+          >
+            <input
+              type="checkbox"
+              checked={forceRegenerateNext}
+              onChange={e => setForceRegenerateNext(e.target.checked)}
+              className="w-3.5 h-3.5"
+            />
+            Force regenerate (skip reuse)
+          </label>
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white"
@@ -606,10 +653,11 @@ export default function DocumentGeneratorIde() {
                     <button
                       onClick={() => generateNow(type)}
                       disabled={generatingKey === type.key}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+                      title={forceRegenerateNext ? "Reuse gate bypassed — this click will always call the model" : undefined}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg text-white disabled:opacity-50 ${forceRegenerateNext ? "bg-amber-600 hover:bg-amber-500" : "bg-blue-600 hover:bg-blue-500"}`}
                     >
                       {generatingKey === type.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                      Generate Now
+                      {forceRegenerateNext ? "Force Regenerate" : "Generate Now"}
                     </button>
                   </div>
                 </div>
@@ -662,15 +710,29 @@ export default function DocumentGeneratorIde() {
                       <td className="px-4 py-2 text-gray-400">{row.costCents != null ? formatCents(row.costCents) : "—"}</td>
                       <td className="px-4 py-2 text-gray-400">{new Date(row.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void viewDocument(row.id)}
-                          disabled={viewingDocId === row.id}
-                          className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
-                        >
-                          {viewingDocId === row.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
-                          View
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => void viewDocument(row.id)}
+                            disabled={viewingDocId === row.id}
+                            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                          >
+                            {viewingDocId === row.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                            View
+                          </button>
+                          {row.status !== "archived" && (
+                            <button
+                              type="button"
+                              onClick={() => void archiveDocument(row)}
+                              disabled={archivingDocId === row.id}
+                              title="Archive — removes it from reuse and future lists without deleting it"
+                              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-300 disabled:opacity-50"
+                            >
+                              {archivingDocId === row.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
+                              Archive
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

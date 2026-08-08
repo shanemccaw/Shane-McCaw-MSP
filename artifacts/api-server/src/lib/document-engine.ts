@@ -182,6 +182,14 @@ export interface GenerateDocumentResult extends DocumentCost {
   documentId: number;
   htmlContent: string;
   docTypeKey: string;
+  /**
+   * True when this result is the drift gate handing back a prior document
+   * (`findReusableDocument()` hit, no AI call made); false when this call
+   * generated a fresh document. Git #548 — without this, an admin clicking
+   * "Generate Now" after editing a prompt has no way to tell a served-stale
+   * document apart from a freshly-written one without reading logs.
+   */
+  reused: boolean;
 }
 
 export interface DryRunDocumentResult extends DocumentCost {
@@ -640,7 +648,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       // it cost nothing. The ORIGINAL document's cost is not this call's cost
       // and is deliberately not reported here — it lives in the ledger against
       // the generation that actually incurred it.
-      return { ...reusable, ...NO_AI_CALL_COST };
+      return { ...reusable, ...NO_AI_CALL_COST, reused: true };
     }
   } else {
     log.info(
@@ -935,7 +943,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       log.warn({ err, documentId }, "document-engine: OMG card generation failed (non-fatal)");
     });
 
-    return { documentId, htmlContent, docTypeKey, ...cost };
+    return { documentId, htmlContent, docTypeKey, ...cost, reused: false };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     await db.update(insightsGeneratedDocumentsTable)
