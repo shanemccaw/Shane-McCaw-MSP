@@ -171,7 +171,7 @@ describe("the approved structure", () => {
   it("renders the design's surviving sections in order", () => {
     assert.deepEqual(
       build().sections.map((s) => s.heading),
-      ["Health Posture Summary", "Configuration Correctness", "Copilot Readiness Impact"],
+      ["Health Posture Summary", "Configuration & Service Health", "Copilot Readiness Impact"],
     );
   });
 
@@ -181,7 +181,7 @@ describe("the approved structure", () => {
     // The row label deliberately reads "Configuration profile alignment", not
     // "drift": the real check counts devices away from their profile now, not
     // changes over a window.
-    assert.ok(!rowsOf(sectionNamed(report, "Configuration Correctness").blocks).some((r) => /drift/i.test(r.label)));
+    assert.ok(!rowsOf(sectionNamed(report, "Configuration & Service Health").blocks).some((r) => /drift/i.test(r.label)));
     // And no change-log claim survives anywhere.
     for (const claim of ["37 ", "90 days", "unreviewed", "none triaged", "baseline on record"]) {
       assert.ok(!JSON.stringify(report).includes(claim), `leaked the drift claim "${claim}"`);
@@ -220,7 +220,7 @@ describe("the four real health stats", () => {
       ["Device compliance", "Device encryption", "Operating system currency"],
     );
     assert.deepEqual(
-      rowsOf(sectionNamed(report, "Configuration Correctness").blocks).map((r) => r.label),
+      rowsOf(sectionNamed(report, "Configuration & Service Health").blocks).map((r) => r.label),
       ["Configuration profile alignment"],
     );
   });
@@ -273,8 +273,8 @@ describe("the four real health stats", () => {
  * ------------------------------------------------------------------ */
 
 describe("findings", () => {
-  it("renders the health pillar's real findings under Configuration Correctness", () => {
-    const rows = sectionNamed(build(REAL_TENANT()), "Configuration Correctness").blocks.flatMap((b) =>
+  it("renders the health pillar's real findings under Configuration & Service Health", () => {
+    const rows = sectionNamed(build(REAL_TENANT()), "Configuration & Service Health").blocks.flatMap((b) =>
       b.kind === "findings" ? b.rows : [],
     );
     assert.deepEqual(rows.map((r) => r.lead), [
@@ -287,11 +287,11 @@ describe("findings", () => {
   it("tells 'evaluated clean' apart from 'never evaluated' (#399)", () => {
     const clean = sectionNamed(
       build(withPillar(view(), "health", { score: 88 })),
-      "Configuration Correctness",
+      "Configuration & Service Health",
     ).blocks;
     assert.ok(clean.some((b) => b.kind === "prose" && /is a real result, not an empty section/.test(b.text)));
 
-    const unevaluated = sectionNamed(build(), "Configuration Correctness").blocks;
+    const unevaluated = sectionNamed(build(), "Configuration & Service Health").blocks;
     assert.ok(detailsOf(unevaluated).some((d) => /can be reported either way/.test(d)));
   });
 });
@@ -349,7 +349,7 @@ describe("never fabricate: an empty tenant produces a shorter report, not an inv
 
   it("claims nothing about a prose section that is still in flight", () => {
     const report = build(REAL_TENANT(), null, false);
-    for (const heading of ["Health Posture Summary", "Configuration Correctness", "Copilot Readiness Impact"]) {
+    for (const heading of ["Health Posture Summary", "Configuration & Service Health", "Copilot Readiness Impact"]) {
       const blocks = sectionNamed(report, heading).blocks;
       assert.equal(blocks.filter((b) => b.kind === "narrative").length, 0);
       assert.ok(
@@ -365,11 +365,11 @@ describe("never fabricate: an empty tenant produces a shorter report, not an inv
   it("says which kind of nothing a resolved-but-empty prose section is", () => {
     const report = build(REAL_TENANT(), {
       sections: [
-        { key: "configuration", heading: "Configuration Correctness", html: null, omittedReason: "no_real_data", factCount: 0 },
+        { key: "configuration", heading: "Configuration & Service Health", html: null, omittedReason: "no_real_data", factCount: 0 },
       ],
     });
     assert.ok(
-      detailsOf(sectionNamed(report, "Configuration Correctness").blocks).some((d) =>
+      detailsOf(sectionNamed(report, "Configuration & Service Health").blocks).some((d) =>
         /nothing real to reason from/.test(d),
       ),
     );

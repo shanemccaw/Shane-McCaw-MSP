@@ -119,8 +119,8 @@ export interface OperationalHealthReport {
 /**
  * The endpoint posture counts that describe the estate's operational state.
  *
- * `health.configDrift` is deliberately NOT here: it leads the Configuration
- * Correctness section below, where the prose that explains it lives, and the
+ * `health.configDrift` is deliberately NOT here: it leads the Configuration &
+ * Service Health section below, where the prose that explains it lives, and the
  * same number under two headings reads as two findings — the same call
  * `pillarSecurityPosture.ts` makes about its own headline device figure.
  */
@@ -217,7 +217,7 @@ export function buildVerdict(health: JourneyPillarView | undefined): Operational
 
 const SECTION_HEADINGS: Record<OperationalHealthSectionKey, string> = {
   summary: "Health Posture Summary",
-  configuration: "Configuration Correctness",
+  configuration: "Configuration & Service Health",
   copilotImpact: "Copilot Readiness Impact",
 };
 
@@ -264,7 +264,7 @@ export function buildOperationalHealthReport(input: {
     ],
   });
 
-  // ── Configuration Correctness ──────────────────────────────────────────────
+  // ── Configuration & Service Health ─────────────────────────────────────────
   const configuration = buildRows(pillars, CONFIGURATION_PICKS);
   sections.push({
     heading: SECTION_HEADINGS.configuration,
@@ -273,11 +273,11 @@ export function buildOperationalHealthReport(input: {
       ...keyValuesBlock(configuration.rows),
       ...findingsBlocks(
         health,
-        "The Health pillar was evaluated on this tenant's last scan and returned no critical or warning finding about device configuration, compliance or currency. That is a real result, not an empty section.",
-        "No rule that feeds the Health pillar was evaluated on this tenant's last scan, so no configuration or device finding can be reported either way.",
+        "The Health pillar was evaluated on this tenant's last scan and returned no critical or warning finding about device configuration, compliance, currency or service health. That is a real result, not an empty section.",
+        "No rule that feeds the Health pillar was evaluated on this tenant's last scan, so no configuration, device or service-health finding can be reported either way.",
       ),
       ...unavailableBlock(
-        "Configuration figures this tenant's scan does not carry:",
+        "Configuration and service-health figures this tenant's scan does not carry:",
         configuration.missing,
       ),
     ],
@@ -335,7 +335,7 @@ export function buildOperationalHealthReport(input: {
         ? `The score ${view.tenant.name} earns is only ever the score it keeps`
         : `Operational health for ${view.tenant.name}`,
     standfirst:
-      "This report evaluates the operational health of your tenant's managed endpoints — compliance against your own baseline, encryption, operating-system currency and configuration alignment. It reports no service availability or uptime figure; see the summary below for why that section is deliberately absent.",
+      "This report evaluates the operational health of your tenant's managed endpoints and services — device compliance against your own baseline, encryption, operating-system currency, configuration alignment and any service-health finding your scan surfaced. It reports no service availability or uptime figure; see the summary below for why that section is deliberately absent.",
     verdict: buildVerdict(health),
     sections,
     closing,
