@@ -101,6 +101,10 @@ export default defineConfig({
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
       "src/lib/cert-secret-expiration-541.test.ts",
+      // #551 — identity:global-admin-count repointed from /directoryRoles
+      // (activated ROLES) to the role's real members, plus the resolvePathInData
+      // literal-key fix that lets @odata.type work as a mapping sourceField.
+      "src/lib/global-admin-count-role-members-551.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",

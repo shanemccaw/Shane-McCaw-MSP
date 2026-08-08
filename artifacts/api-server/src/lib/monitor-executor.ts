@@ -304,7 +304,31 @@ export type ProgressCallback = (event: {
 // a standalone function so the monitor-executor has no circular dep on workflow-executor.
 
 function resolvePathInData(p: string, data: Record<string, unknown>): unknown {
-  const parts = p.replace(/^\{\{|\}\}$/g, "").trim().split(".");
+  const key = p.replace(/^\{\{|\}\}$/g, "").trim();
+
+  // LITERAL KEY FIRST, then the dot-path walk (#551).
+  //
+  // Graph's polymorphic directoryObject collections discriminate their entries
+  // with `@odata.type` ("#microsoft.graph.user" / ".group" / ".servicePrincipal")
+  // — a field name that CONTAINS A DOT but is not a path. Splitting it
+  // unconditionally asks each item for `item["@odata"]["type"]`, which is
+  // undefined on every real Graph object, so a mapping rule keyed on it silently
+  // resolved to nothing for every item. That is exactly the failure mode
+  // identity:global-admin-count needs to avoid: its whole job after the #551 fix
+  // is telling human admins apart from role-assignable groups and service
+  // principals, and `@odata.type` is the only field that reliably says which.
+  //
+  // Safe by construction rather than by luck: a literal key holding a real value
+  // is strictly more specific than a nested walk of the same string, and any key
+  // that resolved through the dot-walk before still does — `data["status.errorCode"]`
+  // is undefined for a nested {status:{errorCode}} payload, so it falls straight
+  // through to the walk below, unchanged. The check is on the VALUE, not
+  // hasOwnProperty, so a literal key explicitly set to undefined also falls
+  // through instead of shadowing a path that would have resolved.
+  const literal = data?.[key];
+  if (literal !== undefined) return literal;
+
+  const parts = key.split(".");
   let cur: unknown = data;
   for (const part of parts) {
     if (cur == null || typeof cur !== "object") return undefined;
