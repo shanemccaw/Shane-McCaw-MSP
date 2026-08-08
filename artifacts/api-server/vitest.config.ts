@@ -110,6 +110,10 @@ export default defineConfig({
       // first so the assertions are known to discriminate, and reads the real
       // mapping/severity_rules out of the shipped migration file.
       "src/lib/copilot-data-exposure-risk-553.test.ts",
+      // #551 Phase 3 — appgov:unreviewed-consents and appgov:risky-permission-grants
+      // redefined using the real consentType axis (Principal vs. AllPrincipals)
+      // instead of the identical bare count() both previously shared.
+      "src/lib/unreviewed-consents-risky-grants-551.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",
