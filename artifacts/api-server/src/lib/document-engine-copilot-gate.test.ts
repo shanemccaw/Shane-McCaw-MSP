@@ -45,6 +45,8 @@ let gateCalls: number[] = [];
 let gateResult: CopilotGateResult = scoredGate(74);
 /** The prompt body `getPrompt` returns; varied to exercise token vs. append. */
 let promptBody = "Write {{sections}} using {{profileSample}} and {{findings}}.\n\nGATE:\n{{copilotGate}}";
+/** The tenant's real findings, as `buildTenantProfile` returns them (Git #549 varies it to empty). */
+let tenantFindings: string[] = ["A finding"];
 
 /**
  * A real `scored` gate, shaped exactly as `computeCopilotGate` returns it —
@@ -158,8 +160,8 @@ vi.mock("./tenant-signals", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: { mfaEnabled: true },
     mergedProfileByCheck: { "identity:mfa-state": { mfaEnabled: true } },
-    findings: ["A finding"],
-    categorizedFindings: [{ text: "A finding", categories: ["security"] }],
+    findings: tenantFindings,
+    categorizedFindings: tenantFindings.map((text) => ({ text, categories: ["security"] })),
   }),
   findReusableDocument: async () => null,
   resolveDocumentOwnerUserId: async () => 11,
@@ -215,6 +217,7 @@ beforeEach(() => {
   gateCalls = [];
   gateResult = scoredGate(74);
   promptBody = "Write {{sections}} using {{profileSample}} and {{findings}}.\n\nGATE:\n{{copilotGate}}";
+  tenantFindings = ["A finding"];
 });
 
 describe("generateDocument() — copilot_readiness gate injection (#547)", () => {
@@ -305,6 +308,46 @@ describe("generateDocument() — copilot_readiness gate injection (#547)", () =>
     expect(prompt).not.toContain("{{copilotGate}}");
     expect(prompt.endsWith("TAIL")).toBe(true);
     expect(prompt.indexOf("Readiness score: 74 out of 100")).toBeLessThan(prompt.indexOf("TAIL"));
+  });
+});
+
+// ─── Git #549 — no invented finding identifiers ───────────────────────────────
+//
+// Observed live on a real copilot_readiness document: the model cited a finding
+// as "COP-006", a code that exists nowhere in this platform's data. The prompt
+// had nothing telling it not to, and the findings block hands it an ordinal
+// list that reads like an ID scheme. Reuses this file's existing real-engine
+// harness (assembleFor returns the fully assembled prompt) rather than a second
+// one — this is the same question, asked of the same string.
+
+describe("generateDocument() — finding identifier honesty (#549)", () => {
+  it("carries the no-invented-identifiers rule into the assembled prompt", async () => {
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+
+    expect(prompt).toContain("Do NOT invent finding IDs");
+    // The literal shape that was actually observed, named so the rule cannot be
+    // reworded into something that no longer forbids it.
+    expect(prompt).toContain("COP-006");
+    // The ordinals are the near-miss: without this the model reads "1." as an ID.
+    expect(prompt).toContain("are presentation order only");
+  });
+
+  it("applies to every document type, not just copilot_readiness", async () => {
+    // #547's gate injection is deliberately one-key-only; this rule is the
+    // opposite — every type renders {{findings}}, so every type can fabricate.
+    const prompt = await assembleFor("remediation_plan", "Remediation Plan");
+    expect(prompt).toContain("Do NOT invent finding IDs");
+  });
+
+  it("still states the rule when the tenant has no findings at all", async () => {
+    // The empty-findings branch is a different string; a zero-finding document
+    // is if anything MORE likely to reach for invented structure.
+    tenantFindings = [];
+
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+
+    expect(prompt).toContain("No findings were recorded for this client");
+    expect(prompt).toContain("Do NOT invent finding IDs");
   });
 });
 

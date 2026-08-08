@@ -98,6 +98,8 @@ interface MonitorHistoryRow {
   checkKey: string;
   status: string | null;
   severityMatched: string | null;
+  /** Git #549 — replayed alongside the band so a replayed day's finding text matches the live one. */
+  severityLabel: string | null;
   extractedProperties: Record<string, unknown> | null;
   collectedAt: Date;
 }
@@ -111,6 +113,7 @@ function toMonitorProfileRows(rows: Iterable<MonitorHistoryRow>): TenantMonitorP
     checkKey: r.checkKey,
     status: r.status,
     severityMatched: r.severityMatched,
+    severityLabel: r.severityLabel,
     extractedProperties: r.extractedProperties,
   }));
 }
@@ -154,6 +157,7 @@ export async function getPillarScoreTrends(
         checkKey: tenantMonitorProfilesTable.checkKey,
         status: tenantMonitorProfilesTable.status,
         severityMatched: tenantMonitorProfilesTable.severityMatched,
+        severityLabel: tenantMonitorProfilesTable.severityLabel,
         extractedProperties: tenantMonitorProfilesTable.extractedProperties,
         collectedAt: tenantMonitorProfilesTable.collectedAt,
       })
@@ -170,6 +174,7 @@ export async function getPillarScoreTrends(
         checkKey: tenantMonitorProfilesTable.checkKey,
         status: tenantMonitorProfilesTable.status,
         severityMatched: tenantMonitorProfilesTable.severityMatched,
+        severityLabel: tenantMonitorProfilesTable.severityLabel,
         extractedProperties: tenantMonitorProfilesTable.extractedProperties,
         collectedAt: tenantMonitorProfilesTable.collectedAt,
       })

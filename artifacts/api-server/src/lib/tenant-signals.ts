@@ -419,6 +419,16 @@ export interface TenantMonitorProfileRow {
   checkKey: string;
   status?: string | null;
   severityMatched?: string | null;
+  /**
+   * The matched `severity_rules` entry's own human-written label, already
+   * interpolated against that run's data — persisted at collection time by
+   * `persistCheckProfile()` since Git #549.
+   *
+   * Optional/nullable because it genuinely is: rows collected before #549 have
+   * none, and a rule can legitimately carry no label. Consumers must fall back
+   * rather than treat its absence as an error.
+   */
+  severityLabel?: string | null;
   extractedProperties: Record<string, unknown> | null;
 }
 
@@ -428,6 +438,7 @@ export async function fetchLatestMonitorProfileRows(tenantId: string): Promise<T
     checkKey: tenantMonitorProfilesTable.checkKey,
     status: tenantMonitorProfilesTable.status,
     severityMatched: tenantMonitorProfilesTable.severityMatched,
+    severityLabel: tenantMonitorProfilesTable.severityLabel,
     extractedProperties: tenantMonitorProfilesTable.extractedProperties,
   })
     .from(tenantMonitorProfilesTable)
@@ -704,6 +715,10 @@ export function mergeMonitorProfileRows(
  * `hasSharePointIssues` off a transient Graph error. The checkKey is included
  * in the string because it carries the real keyword surface
  * ("sharepoint:anonymous-links" → keyword "SharePoint").
+ *
+ * These strings are ALSO what feeds `{{findings}}` in every generated document,
+ * which is why Git #549 changed what leads them — see the wording contract on
+ * `deriveMonitorFindingsWithKeys()` below.
  */
 export function deriveMonitorFindings(monitorRows: TenantMonitorProfileRow[]): string[] {
   return deriveMonitorFindingsWithKeys(monitorRows).map(f => f.text);
@@ -727,12 +742,50 @@ export interface MonitorDerivedFinding {
  * The same findings `deriveMonitorFindings()` returns, each still carrying the
  * checkKey it came from. `deriveMonitorFindings()` is now a thin projection of
  * this function (`.map(f => f.text)`), so the two can never drift on wording or
- * on which rows qualify — the string contract every existing `findings_keyword`
- * rule and every current caller depends on is byte-for-byte unchanged.
+ * on which rows qualify.
  *
  * The checkKey is what makes signal-category attribution possible: it is the
  * only durable link from a finding back to the `signal_derivation_rules` rows
  * (via `source_key`) that say which signal categories the check feeds.
+ *
+ * ── WORDING CONTRACT (Git #549) ──────────────────────────────────────────────
+ *
+ * A finding whose row carries a real `severityLabel` reads as
+ *
+ *     "<the rule author's own sentence> (<checkKey>)"
+ *
+ * e.g. "No SPF record found on the domain (exchange:dkim-spf-dmarc-status)".
+ * Everything else keeps the pre-#549 generic sentence
+ * "<checkKey>: <severity> severity condition matched on latest monitoring scan
+ * (<n> items)". Two decisions worth stating, because both look arbitrary and
+ * neither is:
+ *
+ *   • THE LABEL LEADS, THE CHECK KEY TRAILS. These strings are simultaneously
+ *     the customer-facing `{{findings}}` list in every generated document AND
+ *     the substring surface `findings_keyword` rules match on — `evaluateRule`
+ *     does a case-insensitive `includes`, and `pillar-coverage.ts` reasons
+ *     about package coverage on exactly that basis. Dropping the checkKey to
+ *     get clean prose would silently stop those rules firing; keeping it in
+ *     front leaves the raw internal key as the first thing a customer reads,
+ *     which is the bug #549 was filed about. Putting the authored sentence
+ *     first and the key in trailing parentheses satisfies both: the substring
+ *     is still present, byte-identical, in every finding it was present in
+ *     before.
+ *
+ *   • NO MACHINE-APPENDED "(n items)" ON THE LABELLED PATH. The generic
+ *     sentence carries no facts, so the count was the only thing in it worth
+ *     reading. An authored label already states its own facts, and #418 gives
+ *     authors `{{token}}` interpolation to place counts exactly where the
+ *     sentence needs them — bolting "(0 items)" onto the end of a finished
+ *     sentence adds noise and, for the many checks whose `_itemCount` is 0 on
+ *     the very run that fired their rule, actively misleads. The count is not
+ *     lost: it stays on `MonitorDerivedFinding.itemCount` (and therefore on
+ *     `CategorizedFinding.itemCount`) for any consumer that wants it.
+ *
+ * The fallback is NOT a temporary shim to delete later. A rule may genuinely
+ * carry no label, and `interpolateLabel` deliberately discards a label whose
+ * tokens didn't resolve rather than print `{{expiredKeyCredentialCount}}` at a
+ * customer (#418). Both are real states with no better text available.
  */
 export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileRow[]): MonitorDerivedFinding[] {
   const findings: MonitorDerivedFinding[] = [];
@@ -742,13 +795,15 @@ export function deriveMonitorFindingsWithKeys(monitorRows: TenantMonitorProfileR
     if (!severity) continue;
     const props = row.extractedProperties ?? {};
     const itemCount = firstNumericProp(props, ["_itemCount"]);
+    const label = row.severityLabel?.trim() || null;
     findings.push({
       checkKey: row.checkKey,
       severity,
       itemCount: itemCount ?? null,
-      text:
-        `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
-        (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
+      text: label
+        ? `${label} (${row.checkKey})`
+        : `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
+          (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
     });
   }
   return findings;

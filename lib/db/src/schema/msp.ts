@@ -1815,6 +1815,34 @@ export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
   rawResponse: jsonb("raw_response").$type<Record<string, unknown>>(),
   extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
   severityMatched: text("severity_matched"),
+  /**
+   * The matched severity rule's OWN label, already interpolated against THIS
+   * run's extracted properties (Git #549) — e.g. "No sensitivity labels are
+   * configured in this tenant ...", not the band "warning".
+   *
+   * WHY THIS IS A STORED COLUMN AND NOT DERIVED AT READ TIME. Two independent
+   * reasons, either one sufficient on its own:
+   *
+   *   1. `severity_matched` cannot identify WHICH rule fired. `classifySeverity()`
+   *      returns the FIRST rule whose expression matches, and one check may
+   *      carry several rules sharing a band with different labels — real,
+   *      live example: `exchange:dkim-spf-dmarc-status` has two "warning" rules
+   *      ("No SPF record found on the domain" and "No DMARC record found at
+   *      _dmarc.<domain>"). A read-time lookup keyed on the band alone is
+   *      therefore ambiguous and can state the wrong fact.
+   *   2. Labels interpolate `{{path}}` tokens against the data of THAT run
+   *      (#418), so the sentence is run-specific ("14 expired secret(s) found
+   *      on this tenant's app registrations"). Storing a rule index or
+   *      re-running the rules later would render it against different numbers,
+   *      or against rules edited since the row was written.
+   *
+   * NULL is a real, honest state rather than a gap to paper over: the matched
+   * rule carries no label, interpolation hit an unresolved token (#418 discards
+   * the whole label rather than print a literal `{{token}}`), nothing matched
+   * at all, or the row predates this column. Every consumer falls back to
+   * generic text on NULL — it never invents one.
+   */
+  severityLabel: text("severity_label"),
   errorMessage: text("error_message"),
   itemCount: integer("item_count"),
   pageCount: integer("page_count"),

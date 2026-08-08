@@ -1676,6 +1676,7 @@ async function runPowerShellCheck(opts: {
     rawResponse: rawResponse as Record<string, unknown>,
     extractedProperties: extracted,
     severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
   });
@@ -1891,6 +1892,7 @@ async function runSharePointAdminCheck(opts: {
     rawResponse,
     extractedProperties: extracted,
     severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
   });
@@ -2046,6 +2048,7 @@ async function runDnsCheck(opts: {
     rawResponse,
     extractedProperties: extracted,
     severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     itemCount: items.length,
     pageCount,
   });
@@ -2320,6 +2323,7 @@ async function runFanOutCheck(opts: {
     rawResponse: rawResponse as Record<string, unknown>,
     extractedProperties: extracted,
     severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
     errorMessage: status === "ok"
       ? undefined
       : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
@@ -2382,6 +2386,7 @@ export async function executeMonitorCheck(opts: {
         status: tenantMonitorProfilesTable.status,
         extractedProperties: tenantMonitorProfilesTable.extractedProperties,
         severityMatched: tenantMonitorProfilesTable.severityMatched,
+        severityLabel: tenantMonitorProfilesTable.severityLabel,
         errorMessage: tenantMonitorProfilesTable.errorMessage,
         itemCount: tenantMonitorProfilesTable.itemCount,
         pageCount: tenantMonitorProfilesTable.pageCount,
@@ -2397,11 +2402,19 @@ export async function executeMonitorCheck(opts: {
         status: existing.status as CheckResult["status"],
         extractedProperties: cachedExtracted,
         severityMatched: existing.severityMatched ?? null,
-        severityLabel: labelForStoredSeverity(
-          (check.severityRules ?? []) as SeverityRule[],
-          cachedExtracted,
-          existing.severityMatched ?? null,
-        ),
+        // Git #549: the row now records the label that ACTUALLY fired, so prefer
+        // it outright — it was rendered against this very run's data and against
+        // the rules as they stood then. `labelForStoredSeverity` stays as the
+        // fallback for rows written before that column existed; it re-derives,
+        // which is the strictly weaker answer (see its own doc comment) but is
+        // still better than the generic title for a pre-#549 cache hit.
+        severityLabel:
+          existing.severityLabel ??
+          labelForStoredSeverity(
+            (check.severityRules ?? []) as SeverityRule[],
+            cachedExtracted,
+            existing.severityMatched ?? null,
+          ),
         errorMessage: existing.errorMessage ?? undefined,
         itemCount: existing.itemCount ?? 0,
         pageCount: existing.pageCount ?? 0,
@@ -2517,6 +2530,7 @@ export async function executeMonitorCheck(opts: {
       rawResponse: rawResponse as Record<string, unknown>,
       extractedProperties: extracted,
       severityMatched: severityMatch?.severity ?? null,
+      severityLabel: severityMatch?.label ?? null,
       itemCount: items.length,
       pageCount,
     });

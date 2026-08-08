@@ -349,6 +349,129 @@ describe("deriveMonitorFindings", () => {
   });
 });
 
+// ─── Git #549 — the real severity_rules label reaches the finding text ─────────
+//
+// Before #549 a finding read as the raw internal check key plus fixed
+// boilerplate, because collection time persisted only the severity BAND. The
+// authored `severity_rules[].label` — the sentence someone actually wrote —
+// existed but had no column to travel in. `tenant_monitor_profiles.severity_label`
+// is that column; these lock what the read side does with it, and what it does
+// without it.
+
+describe("deriveMonitorFindings — real severity_rules label (Git #549)", () => {
+  it("leads with the authored label and trails the checkKey, instead of the generic template", () => {
+    const [finding] = deriveMonitorFindingsWithKeys([
+      {
+        checkKey: "copilot:sensitivity-labels-exist",
+        status: "ok",
+        severityMatched: "warning",
+        severityLabel: "No sensitivity labels are configured in this tenant",
+        extractedProperties: { _itemCount: 0 },
+      },
+    ]);
+    expect(finding!.text).toBe(
+      "No sensitivity labels are configured in this tenant (copilot:sensitivity-labels-exist)",
+    );
+    // The generic boilerplate is gone entirely — that is the bug #549 was filed about.
+    expect(finding!.text).not.toContain("severity condition matched");
+  });
+
+  it("keeps the checkKey substring intact, so findings_keyword rules still fire", () => {
+    // pillar-coverage.ts reasons about package coverage on exactly this basis:
+    // evaluateRule substring-matches a keyword against the finding string, and
+    // the check key is the deterministic keyword surface a package contributes.
+    const [finding] = deriveMonitorFindingsWithKeys([
+      {
+        checkKey: "sharepoint:anonymous-links",
+        status: "ok",
+        severityMatched: "warning",
+        severityLabel: "Anonymous sharing links are enabled tenant-wide",
+        extractedProperties: { _itemCount: 7 },
+      },
+    ]);
+    expect(finding!.text.toLowerCase()).toContain("sharepoint");
+    expect(finding!.text).toContain("sharepoint:anonymous-links");
+  });
+
+  it("does not bolt a machine-generated item count onto an authored sentence", () => {
+    // _itemCount is 0 on the very run this rule fired — appending "(0 items)"
+    // to a finished sentence would read as though nothing was wrong.
+    const [finding] = deriveMonitorFindingsWithKeys([
+      {
+        checkKey: "governance:sensitivity-label-adoption",
+        status: "ok",
+        severityMatched: "warning",
+        severityLabel: "No sensitivity labels have been adopted in this tenant",
+        extractedProperties: { _itemCount: 0 },
+      },
+    ]);
+    expect(finding!.text).not.toContain("item");
+    // Not lost, just not in the prose — the structured field still carries it.
+    expect(finding!.itemCount).toBe(0);
+  });
+
+  it("gives two rules that share a severity band their own distinct labels", () => {
+    // The exact ambiguity that makes this a stored column rather than a
+    // read-time lookup: exchange:dkim-spf-dmarc-status really does carry two
+    // "warning" rules with different sentences, so the band alone cannot say
+    // which one fired.
+    const findings = deriveMonitorFindingsWithKeys([
+      {
+        checkKey: "exchange:dkim-spf-dmarc-status",
+        status: "ok",
+        severityMatched: "warning",
+        severityLabel: "No SPF record found on the domain",
+        extractedProperties: {},
+      },
+      {
+        checkKey: "exchange:dkim-spf-dmarc-status-2",
+        status: "ok",
+        severityMatched: "warning",
+        severityLabel: "No DMARC record found at _dmarc.<domain>",
+        extractedProperties: {},
+      },
+    ]);
+    expect(findings.map(f => f.text)).toEqual([
+      "No SPF record found on the domain (exchange:dkim-spf-dmarc-status)",
+      "No DMARC record found at _dmarc.<domain> (exchange:dkim-spf-dmarc-status-2)",
+    ]);
+  });
+
+  it("falls back to the pre-#549 sentence, byte-for-byte, when no label was captured", () => {
+    // Historical rows (collected before the column existed) and rules that
+    // genuinely carry no label. Both are real states, not a shim to delete.
+    const historical = deriveMonitorFindings([
+      { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 7 } },
+    ]);
+    expect(historical[0]).toBe(
+      "sharepoint:anonymous-links: warning severity condition matched on latest monitoring scan (7 items)",
+    );
+
+    const explicitNull = deriveMonitorFindings([
+      { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", severityLabel: null, extractedProperties: { _itemCount: 7 } },
+    ]);
+    expect(explicitNull).toEqual(historical);
+  });
+
+  it("treats a blank or whitespace-only label as no label at all", () => {
+    const findings = deriveMonitorFindings([
+      { checkKey: "identity:stale-guests", status: "ok", severityMatched: "high", severityLabel: "   ", extractedProperties: { _itemCount: 1 } },
+    ]);
+    expect(findings[0]).toBe(
+      "identity:stale-guests: high severity condition matched on latest monitoring scan (1 item)",
+    );
+  });
+
+  it("still yields no finding for a labelled row that did not match a severity band", () => {
+    // The qualifying rules are unchanged by #549: status must be "ok" AND a
+    // band must have matched. A stray label cannot manufacture a finding.
+    expect(deriveMonitorFindings([
+      { checkKey: "identity:global-admin-count", status: "ok", severityMatched: null, severityLabel: "leftover text", extractedProperties: {} },
+      { checkKey: "exchange:auto-forwarding-rules", status: "error", severityMatched: "critical", severityLabel: "leftover text", extractedProperties: null },
+    ])).toEqual([]);
+  });
+});
+
 // ─── categorizedFindings — additive signal-pillar annotation (Git #481) ────────
 //
 // Locks the contract document-engine.ts's includedSignalCategories filter

@@ -342,6 +342,34 @@ function scopeProfileEntries(
 }
 
 /**
+ * Anti-fabrication rule for finding IDENTIFIERS, appended to every findings
+ * block (Git #549).
+ *
+ * Observed live on a real `copilot_readiness` document: the model referred to a
+ * finding as "COP-006". No such code exists anywhere in this platform — not in
+ * `monitor_checks`, not in `severity_rules`, not in `tenant_monitor_profiles`.
+ * It was invented, and it is the most dangerous class of fabrication a document
+ * can carry: unlike a wrong number, an invented identifier LOOKS like a lookup
+ * key, so a customer or engineer will try to trace it and find nothing.
+ *
+ * The prompt was not defending against this because nothing told it not to, and
+ * the findings block hands it a numbered list — `1.`, `2.`, `3.` — which reads
+ * as an ID scheme unless the ordinals are explicitly disclaimed. Both halves are
+ * stated below.
+ *
+ * Lives in code beside the block it qualifies, not in the DB prompt bodies, for
+ * the reason #547 already established: it then applies to every document type on
+ * deploy and cannot be lost when one type's body is next republished. Individual
+ * prompt bodies remain free to say more; none of them has to remember this.
+ */
+const FINDING_IDENTIFIER_HONESTY_RULE =
+  "\n\nIDENTIFIERS: Do NOT invent finding IDs, reference codes, ticket numbers, or any " +
+  "numbering scheme (e.g. \"COP-006\", \"F-12\", \"SEC-3\"). No such codes exist in this " +
+  "platform's data. Refer to a finding by the real check key shown in parentheses at the " +
+  "end of its line, or by quoting its description — nothing else. The list numbers above " +
+  "are presentation order only; they are NOT identifiers and must not be cited as such.";
+
+/**
  * The one document type whose entire premise is stating the tenant's real
  * go-live score. Git #547: this file had ZERO references to `copilot-gate.ts`,
  * so the score the platform had already computed never reached the model, and
@@ -575,7 +603,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
-    const findingsBlock = findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+    const findingsBlock = (findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n")
+      || "No findings were recorded for this client. Do NOT invent findings.")
+      + FINDING_IDENTIFIER_HONESTY_RULE;
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
@@ -747,7 +777,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
-    const findingsBlock = findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+    const findingsBlock = (findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n")
+      || "No findings were recorded for this client. Do NOT invent findings.")
+      + FINDING_IDENTIFIER_HONESTY_RULE;
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 

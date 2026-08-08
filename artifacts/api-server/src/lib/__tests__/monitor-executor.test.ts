@@ -1790,6 +1790,97 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     expect(result.severityMatched).toBeNull();
     expect(result.severityLabel).toBeNull();
   });
+
+  // ── Git #549: the row now carries the label, so stop re-deriving it ─────────
+  //
+  // #408 above could only re-run today's rules over the row's stored data,
+  // which is right only while the rules haven't moved. `severity_label` records
+  // what ACTUALLY fired at collection time, so the cache branch prefers it and
+  // keeps the re-derivation strictly as the pre-#549 fallback.
+
+  it("prefers the row's STORED label over re-deriving it from today's rules", async () => {
+    const STORED = "Only 2 of 40 users have MFA registered";
+    const result = await withCachedRow(
+      {
+        profileId: "p-4",
+        status: "ok",
+        extractedProperties: { mfaRegistered_count: 0 },
+        severityMatched: "critical",
+        severityLabel: STORED,
+        errorMessage: null,
+        itemCount: 0,
+        pageCount: 1,
+      },
+      () => executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1" }),
+    );
+
+    // Deliberately different from LABEL, which is what re-derivation would give
+    // on this same data — so this can only pass by reading the stored column.
+    expect(result.severityLabel).toBe(STORED);
+    expect(result.severityLabel).not.toBe(LABEL);
+  });
+
+  it("still re-derives for a pre-#549 row that has no stored label", async () => {
+    const result = await withCachedRow(
+      {
+        profileId: "p-5",
+        status: "ok",
+        extractedProperties: { mfaRegistered_count: 0 },
+        severityMatched: "critical",
+        severityLabel: null,
+        errorMessage: null,
+        itemCount: 0,
+        pageCount: 1,
+      },
+      () => executeMonitorCheck({ check: labelledCheck, tenantId: "tenant1", triggerId: "run1" }),
+    );
+
+    expect(result.severityLabel).toBe(LABEL);
+  });
+
+  it("persists the matched label onto the profile row on a fresh (uncached) run", async () => {
+    // The whole point of #549: without this write, read time has nothing to say.
+    const { db } = await import("@workspace/db");
+    const { graphFetchForTenant } = await import("../graph");
+    // No users registered for MFA — the exact state labelledCheck's one rule fires on.
+    const body = { value: [] as unknown[] };
+    (graphFetchForTenant as unknown as Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+      headers: { get: () => "application/json" },
+    });
+
+    const insertedValues: Record<string, unknown>[] = [];
+    const originalInsert = (db as unknown as { insert: Mock }).insert;
+    (db as unknown as { insert: Mock }).insert = vi.fn().mockReturnValue({
+      values: vi.fn((v: Record<string, unknown>) => {
+        insertedValues.push(v);
+        return {
+          onConflictDoNothing: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ profileId: "fresh-uuid" }]),
+          }),
+        };
+      }),
+    }) as unknown as Mock;
+
+    try {
+      await executeMonitorCheck({
+        check: labelledCheck,
+        tenantId: "tenant1",
+        triggerId: "run-fresh",
+        skipIdempotency: true,
+      });
+    } finally {
+      (db as unknown as { insert: Mock }).insert = originalInsert;
+    }
+
+    const profileWrite = insertedValues.find(v => v.checkKey === "entra:mfa");
+    expect(profileWrite).toBeDefined();
+    expect(profileWrite!.severityMatched).toBe("critical");
+    expect(profileWrite!.severityLabel).toBe(LABEL);
+  });
 });
 
 // ── executeMonitoringPackage — idempotency key format ─────────────────────────
