@@ -138,12 +138,41 @@ LIMIT 40;
 
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- Q3 -- IS ANYTHING ENUMERATED TODAY? (expect: nothing)
+-- Q3 -- IS ANYTHING ENUMERATED TODAY?
 -- ══════════════════════════════════════════════════════════════════════════════
--- #551's premise is that fan_out_source is null on all four and no per-item rows
--- exist. This confirms the second half. compliance:eeeu-site-sharing is included
--- as the KNOWN-GOOD control: it should be the only key here with real rows, and
--- its shape is the target shape for all four.
+-- ANSWERED 2026-08-07, AND THE EXPECTATION WRITTEN HERE WAS WRONG. This block
+-- originally read "(expect: nothing)" and asserted "#551's premise is that
+-- fan_out_source is null on all four and no per-item rows exist." The first half
+-- is true; THE SECOND HALF IS FALSE, and the real run disproved it:
+--
+--   appgov:cert-secret-expiration    63 rows,   550 items
+--   appgov:stale-app-registrations   63 rows,   550 items
+--   appgov:unreviewed-consents       63 rows,  1887 items
+--   identity:global-admin-count      61 rows,   711 items
+--   compliance:eeeu-site-sharing     60 rows,  4410 items   (the control)
+--
+-- fan_out_source being NULL does NOT mean "no enumeration". Fan-out and item
+-- detail are INDEPENDENT mechanisms: detail:full-item-collection runs every
+-- linked check with includeItems:true and persists the raw Graph items whether
+-- or not the check fans out (item-detail-collector.ts). All four are linked to
+-- it, so all four have been writing per-item rows all along.
+--
+-- The real gap is the SHAPE of what is stored, not its absence:
+--   * the rows hold the raw, unfiltered Graph objects -- every application, not
+--     the ones with an expired credential; every grant, not the user-consented
+--     ones. Nothing tags the AFFECTED SUBSET, which is what a remediation
+--     document needs and what the EEEU normalizer produces.
+--   * identity:global-admin-count's 711 items are directoryRole objects -- the
+--     wrong entity entirely. No amount of enumeration fixes a wrong endpoint.
+--
+-- Keep compliance:eeeu-site-sharing here as the KNOWN-GOOD control: same table,
+-- but its items carry per-site identity and hasEeeu/broadAccess flags, so the
+-- affected subset is recoverable from the row. That difference is the whole ask.
+--
+-- rows_with_items_omitted came back as 1 for each of the three appgov checks
+-- with a NULL omission reason. The collector's stated contract is that a row
+-- holds the FULL list or none of it AND SAYS WHY, so a NULL items + NULL reason
+-- pair is worth a look on its own.
 
 SELECT
   d.check_key,
@@ -214,19 +243,38 @@ ORDER BY c.key;
 --                                               DERIVED FROM THE BUG and will need
 --                                               re-basing, not just the live check.
 
-SELECT 'signal_rules'            AS surface, source_key AS ref, signal_key AS detail
-FROM signal_rules
-WHERE source_key ILIKE '%global-admin%' OR source_key ILIKE '%globalAdminCount%'
-UNION ALL
-SELECT 'war_room_pillar_stat_specs', check_key, label
+-- CORRECTED 2026-08-07 after the first run. The original version of this query
+-- named a table `signal_rules` that does not exist -- the real table is
+-- `signal_derivation_rules` -- and joined all three surfaces with UNION ALL, so
+-- that one wrong name failed the ENTIRE statement and returned nothing for the
+-- two surfaces that were fine. Split into independent statements: a missing or
+-- misnamed table now costs only its own result, not the other two.
+
+-- Q5a -- signal derivation rules keyed on this check
+SELECT 'signal_derivation_rules' AS surface, source_key AS ref, signal_key, rule_type, compare_value
+FROM signal_derivation_rules
+WHERE source_key ILIKE '%global-admin%'
+   OR source_key ILIKE '%globalAdminCount%'
+ORDER BY source_key, signal_key;
+
+-- Q5b -- War Room pillar stat specs. NOTE: this table is referenced by the #357
+-- migration but may not exist on every database; if it errors, that IS the
+-- answer for this surface and Q5a/Q5c are unaffected.
+SELECT 'war_room_pillar_stat_specs' AS surface, check_key AS ref, label
 FROM war_room_pillar_stat_specs
-WHERE check_key = 'identity:global-admin-count'
-UNION ALL
-SELECT 'signal_simulation_profiles', name, profile_updates::text
+WHERE check_key = 'identity:global-admin-count';
+
+-- Q5c -- the simulation seed that HARDCODES the defective number. Expect the
+-- #413 spectrum profile, carrying "globalAdminCount": 14 and the finding string
+-- "14 Global Administrators". Both are derived from the bug and need re-basing
+-- when the check is corrected -- the live fix alone will leave the simulator
+-- asserting a fiction.
+SELECT 'signal_simulation_profiles' AS surface, name AS ref,
+       profile_updates -> 'globalAdminCount' AS seeded_value,
+       parsed_findings::text                 AS seeded_findings
 FROM signal_simulation_profiles
 WHERE profile_updates ? 'globalAdminCount'
-   OR parsed_findings::text ILIKE '%global-admin-count%'
-ORDER BY surface, ref;
+   OR parsed_findings::text ILIKE '%global-admin-count%';
 
 
 -- ══════════════════════════════════════════════════════════════════════════════
