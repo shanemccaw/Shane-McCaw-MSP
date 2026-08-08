@@ -1,79 +1,56 @@
-[
-  {
-    "key": "copilot_readiness",
-    "label": "Copilot Go-Live Score Report",
-    "category": "consulting",
-    "included_signal_categories": [],
-    "section_hints": "Include: the real Copilot go-live score (computed across governance, security, compliance, adoption, architecture, and licensing pillar data), pass/fail status against the go-live gate, and a one-line status per pillar. Follow with a single ranked list of findings ordered by point-impact to the score — not raw severity — citing the specific score increase each fix would produce. This is the front-door summary document: keep it tight and score-focused, not exhaustively detailed. Do not write runnable PowerShell or click-paths here."
-  },
-  {
-    "key": "governance_maturity_report",
-    "label": "Governance Posture Report",
-    "category": "report",
-    "included_signal_categories": [
-      "governance"
-    ],
-    "section_hints": "Include: full governance-pillar findings — access reviews, group/role hygiene, retention and sensitivity label adoption, PIM/role assignment posture. Group by governance domain; for each finding give current state, why it matters, and severity."
-  },
-  {
-    "key": "security_posture_report",
-    "label": "Security Posture Report",
-    "category": "report",
-    "included_signal_categories": [
-      "security",
-      "copilot"
-    ],
-    "section_hints": "Include: full security-pillar findings — identity, Conditional Access, PIM, risky sign-ins/users, app consent and workload identity risk, SharePoint/OneDrive external sharing, mail security — plus Copilot-specific data exposure risk findings. Group by domain; for each finding give current state, why it matters, and severity."
-  },
-  {
-    "key": "compliance_alignment_report",
-    "label": "Compliance & Regulatory Alignment Report",
-    "category": "report",
-    "included_signal_categories": [
-      "compliance"
-    ],
-    "section_hints": "Include: full compliance-pillar findings — DLP policies and violations, sensitivity/retention label coverage and errors, regulatory alignment gaps. Group by compliance domain; for each finding give current state, why it matters, and severity."
-  },
-  {
-    "key": "license_optimization_report",
-    "label": "Licensing & Cost Optimization Report",
-    "category": "report",
-    "included_signal_categories": [
-      "licensing",
-      "cost"
-    ],
-    "section_hints": "Include: full licensing- and cost-pillar findings — unused/unassigned licenses, license-gated feature requirements currently blocking Copilot readiness, cost optimization opportunities. For each finding give current state, financial/readiness impact, and recommendation."
-  },
-  {
-    "key": "operational_health_report",
-    "label": "Operational Health & Service Integrity Report",
-    "category": "report",
-    "included_signal_categories": [
-      "architecture"
-    ],
-    "section_hints": "Include: full operational-health findings — service health history, device/endpoint management posture, platform configuration drift. Group by domain; for each finding give current state and severity."
-  },
-  {
-    "key": "adoption_report",
-    "label": "Adoption & Usage Report",
-    "category": "report",
-    "included_signal_categories": [
-      "adoption"
-    ],
-    "section_hints": "Include: full adoption-pillar findings — email/Teams/SharePoint/OneDrive/Viva Engage activity trends, overall active-usage rate. Describe current usage patterns and what they mean for Copilot rollout readiness."
-  },
-  {
-    "key": "remediation_plan",
-    "label": "Remediation Plan",
-    "category": "consulting",
-    "included_signal_categories": [],
-    "section_hints": "Cross-pillar, ranked by point-impact to the go-live score — same ranking basis as the Score Report, not raw severity. For each finding: current state, point-impact if fixed, and full self-serve remediation steps (PowerShell + Admin Center UI walkthrough) drawn from the verified remediation knowledge base where available, clearly labeled AI-generated guidance otherwise."
-  },
-  {
-    "key": "sow",
-    "label": "Statement of Work",
-    "category": "consulting",
-    "included_signal_categories": [],
-    "section_hints": "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria (each criterion on its own line as <div style='margin:6px 0'>&#9744; criterion</div>), Terms & Conditions"
-  }
-]
+Compliance & regulatory alignment · 8 August 2026
+Labels are the only instruction Copilot obeys at Jane Jane
+This report evaluates your tenant's compliance posture across sensitivity labelling, retention, data-loss prevention and external access. Every finding traces to compliance telemetry surfaced in your own assessment. It does not grade your tenant against any regulatory framework — see the summary below for why that section is deliberately absent.
+
+Worst finding
+No sensitivity labels are configured in this tenant — Copilot cannot classify or protect content sensitivity without labels in place
+The Compliance pillar scores 76 of 100 on this tenant's last scan. Every figure below is read directly from your own tenant; nothing here is a benchmark, an estimate or a regulatory verdict.
+Compliance Posture Summary
+The compliance pillar scores at 76 with three warnings, all of them converging on the same structural absence: no sensitivity labels exist in this tenant. Because a sensitivity label is the only instruction Copilot can read to understand how content should be handled, that absence means Copilot currently operates without any classification signal — it cannot distinguish content that warrants caution from content that does not. Without labels configured, neither manual classification by users nor automatic classification by policy is possible, so the gap is not one of adoption lag but of missing infrastructure.
+
+This report does not grade your tenant against GDPR, SOX, HIPAA, FINRA or any other regulatory framework, and the section a compliance review would normally use to do that is deliberately absent. No check this assessment runs maps a Microsoft 365 control to a regulatory requirement, classifies your content as personal, health or financial data, or reads your audit-log retention period. The figures below are measurements of your tenant's configuration; a framework alignment verdict would be a legal judgement, and this assessment has not made one. Nothing here should be read as saying your obligations under any framework are met, or that they are not — only that this scan did not evaluate them.
+
+Data Lifecycle & Records Management
+The governance score of 56 reflects two findings that share a root cause: groups exist with no owner, and public Teams are visible and joinable without one. Without an accountable owner, there is no one to decide when a group or Team has outlived its purpose — which means content inside those spaces accumulates indefinitely rather than being reviewed, archived, or deleted.
+
+That accumulation problem connects directly to the compliance findings. No sensitivity labels are configured, none have been adopted, and no automatic classification is in place. Without labels, there is no mechanism to distinguish content that should be retained from content that should be disposed of, because retention and classification decisions typically depend on each other — you cannot reliably act on content you have not categorised.
+
+The practical consequence for Copilot is straightforward: content that nothing prompts anyone to review or dispose of stays in place, and Copilot treats what it can reach as current. In this tenant, the absence of labels and the absence of accountable owners compound each other — stale content in ungoverned spaces carries no signal that would cause it to age out of Copilot's view.
+
+No sensitivity labels are configured in this tenant — Copilot cannot classify or protect content sensitivity without labels in place Recorded by copilot:sensitivity-labels-exist on this tenant's last scan.
+
+No sensitivity labels have been adopted in this tenant — content is not being classified for governance or compliance Recorded by governance:sensitivity-label-adoption on this tenant's last scan.
+
+No sensitivity labels configured for automatic classification Recorded by governance:auto-labeling-coverage on this tenant's last scan.
+
+Upgrade Opportunities
+Upgrade opportunity
+These checks returned nothing because your tenant does not hold the Microsoft 365 licence tier they read from. That is not a finding about your configuration and it is not a pass — each one is a measurement this assessment could not take, and each is listed with what holding that tier would make visible. Nothing below is scored, and none of it counts against your readiness figure.
+
+compliance:missing-labels
+Gated behind Microsoft Purview sensitivity labels. Microsoft's response cannot separate a licensing gap from this platform not yet holding the Purview role group that exposes it, so neither is asserted here. Either way, this assessment cannot read how much of your content carries no sensitivity label — no labelling figure was read, so this report neither confirms nor disputes your labelling coverage.
+
+compliance:weak-dlp-policies
+Gated behind Microsoft Purview Data Loss Prevention (DLP). Microsoft's response cannot separate a licensing gap from this platform not yet holding the Purview role group that exposes it, so neither is asserted here. Either way, this assessment cannot read which Data Loss Prevention policies are configured too weakly to stop the leak they were written to stop — no DLP posture was read, so nothing here says your policies are sound, or that they are not.
+
+identity:risky-users
+Requires Microsoft Entra ID P2. Upgrading unlocks the Microsoft Entra ID Protection risky-user list, meaning the accounts Microsoft has itself flagged as compromised or at risk — the Copilot pillar carries no risky-user figure at all today, which is an absence of data rather than a count of zero.
+
+All three of the areas above — identity & privileged access, mail security, compliance & data governance — are covered by Microsoft 365 E7, so it is named here instead of three separate add-ons. Buying it is done by your own administrator in your own Microsoft 365 admin center (admin.microsoft.com → Billing → Purchase products) — we do not resell Microsoft licensing, so this is a pointer, not an offer.
+
+Microsoft 365 E7
+Copilot Readiness Impact
+The tenant's Copilot readiness score sits at 53% against a gate of 82 — a gap of 29 points — and the compliance posture is a direct structural contributor to why that gap exists. Copilot does not infer sensitivity; it reads a label as an instruction and treats unlabelled content as unrestricted. With no sensitivity labels configured anywhere in this tenant, every piece of content Copilot can reach is, from its perspective, unclassified and fair game — there is nothing for it to act on, restrict, or surface selectively.
+
+That matters more acutely because of the standing-access condition already recorded: 1 of 93 scanned SharePoint sites is shared with Everyone except external users. Copilot inherits permissions rather than intent, so any internal user can already reach that site's content through normal access — and Copilot will surface it through prompts with equal indifference, because there is no label present to signal otherwise.
+
+Sitting underneath both of these is the critical finding that no Microsoft 365 Copilot license has been found in this tenant. That is the prerequisite condition — without it, none of the downstream label-enforcement or access-scoping behaviour is in play at all, which is the primary reason the readiness score is where it is.
+
+Copilot Gate
+53 against a Gate of 82 — 29 points short
+What this means
+A sensitivity label is the only instruction Copilot obeys. It grounds on whatever a user can already reach and summarises it without knowing what it is, so labelling, retention and data-loss controls are not filing questions — they are the only mechanism that tells Copilot which of your content it may quote.
+
+Jane Jane's Compliance pillar scores 76 of 100 on this scan. Each finding above is a specific, named result from a specific check — there is nothing in this report that is not read from your own tenant, and nothing in it is a regulatory verdict.
+
+Read on 8 August 2026 through the Microsoft Graph API with read-only delegated permissions. 96 signal derivation checks across the scan packages this tenant has run. No configuration was altered during assessment.
