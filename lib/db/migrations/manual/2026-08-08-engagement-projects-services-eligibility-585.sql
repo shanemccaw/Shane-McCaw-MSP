@@ -1,6 +1,17 @@
 -- Git #585 - Wire the 27 already-migrated engagement_projects -> services rows
 -- into the real Sales Offer Engine via sales_offer_rule_groups eligibility.
 --
+-- FIX (2026-08-08, after live introspection): sales_offer_rule_groups.logic
+-- is actually jsonb in the live DB, not text as the Drizzle schema declares
+-- (real schema drift). Every bare 'OR' literal below is now to_jsonb('OR'::
+-- text) -- this is why every earlier run of this file failed with "invalid
+-- input syntax for type json" regardless of how required_signal_keys was
+-- written (a JSON-text cast and jsonb_build_array() were both tried and both
+-- failed identically, which is what proved the bug was in `logic`, not
+-- `required_signal_keys`). Confirmed this file never actually landed any of
+-- its 28 rows before this fix -- every earlier attempt aborted the whole
+-- transaction. Safe to re-run now; still fully idempotent.
+--
 -- WHAT THIS MIGRATION IS NOT ----------------------------------------------
 -- The row-content migration (engagement_projects -> services, serviceClass=
 -- 'project') is ALREADY DONE - confirmed live via the #585 pre-migration audit
@@ -116,141 +127,141 @@ VALUES
   ('pim-rollout-eligibility', 'PIM Rollout - Eligibility',
    'Eligible when the tenant carries permanent (non-eligible) privileged roles or a global-admin count above healthy range.',
    'eligibility', (SELECT id FROM services WHERE slug = 'pim-rollout'),
-   jsonb_build_array('signal.identity.pim-permanent-roles','signal.identity.global-admin-count'), 'OR', 0, true, 13),
+   jsonb_build_array('signal.identity.pim-permanent-roles','signal.identity.global-admin-count'), to_jsonb('OR'::text), 0, true, 13),
   ('pim-rollout-scoring', 'PIM Rollout - Scoring',
    'Relevance score contribution when the PIM/global-admin gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'pim-rollout'),
-   jsonb_build_array('signal.identity.pim-permanent-roles','signal.identity.global-admin-count'), 'OR', 60, true, 14),
+   jsonb_build_array('signal.identity.pim-permanent-roles','signal.identity.global-admin-count'), to_jsonb('OR'::text), 60, true, 14),
 
   -- engagement_projects id=5 -> services.slug='email-security-hardening'
   ('email-security-hardening-eligibility', 'Email Security Hardening - Eligibility',
    'Eligible when DKIM/SPF/DMARC or anti-spam policy coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'email-security-hardening'),
-   jsonb_build_array('signal.exchange.dkim-spf-dmarc-status','signal.exchange.antispam-policy-coverage'), 'OR', 0, true, 15),
+   jsonb_build_array('signal.exchange.dkim-spf-dmarc-status','signal.exchange.antispam-policy-coverage'), to_jsonb('OR'::text), 0, true, 15),
   ('email-security-hardening-scoring', 'Email Security Hardening - Scoring',
    'Relevance score contribution when the email-authentication/anti-spam gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'email-security-hardening'),
-   jsonb_build_array('signal.exchange.dkim-spf-dmarc-status','signal.exchange.antispam-policy-coverage'), 'OR', 60, true, 16),
+   jsonb_build_array('signal.exchange.dkim-spf-dmarc-status','signal.exchange.antispam-policy-coverage'), to_jsonb('OR'::text), 60, true, 16),
 
   -- engagement_projects id=6 -> services.slug='zero-trust-architecture-implementation'
   ('zero-trust-architecture-eligibility', 'Zero Trust Architecture Implementation - Eligibility',
    'Eligible when Conditional Access MFA/device-compliance coverage or device compliance-policy coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'zero-trust-architecture-implementation'),
-   jsonb_build_array('signal.identity.ca-mfa-coverage','signal.identity.ca-device-compliance','signal.devices.compliance-policy-coverage'), 'OR', 0, true, 17),
+   jsonb_build_array('signal.identity.ca-mfa-coverage','signal.identity.ca-device-compliance','signal.devices.compliance-policy-coverage'), to_jsonb('OR'::text), 0, true, 17),
   ('zero-trust-architecture-scoring', 'Zero Trust Architecture Implementation - Scoring',
    'Relevance score contribution when a CA/device-compliance gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'zero-trust-architecture-implementation'),
-   jsonb_build_array('signal.identity.ca-mfa-coverage','signal.identity.ca-device-compliance','signal.devices.compliance-policy-coverage'), 'OR', 60, true, 18),
+   jsonb_build_array('signal.identity.ca-mfa-coverage','signal.identity.ca-device-compliance','signal.devices.compliance-policy-coverage'), to_jsonb('OR'::text), 60, true, 18),
 
   -- engagement_projects id=7 -> services.slug='governance-remediation-architecture-hardening'
   ('governance-remediation-hardening-eligibility', 'Governance Remediation & Architecture Hardening - Eligibility',
    'Eligible when ownerless groups or overdue access reviews are genuinely present.',
    'eligibility', (SELECT id FROM services WHERE slug = 'governance-remediation-architecture-hardening'),
-   jsonb_build_array('signal.governance.ownerless-groups','signal.governance.overdue-access-reviews'), 'OR', 0, true, 19),
+   jsonb_build_array('signal.governance.ownerless-groups','signal.governance.overdue-access-reviews'), to_jsonb('OR'::text), 0, true, 19),
   ('governance-remediation-hardening-scoring', 'Governance Remediation & Architecture Hardening - Scoring',
    'Relevance score contribution when the governance-drift signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'governance-remediation-architecture-hardening'),
-   jsonb_build_array('signal.governance.ownerless-groups','signal.governance.overdue-access-reviews'), 'OR', 60, true, 20),
+   jsonb_build_array('signal.governance.ownerless-groups','signal.governance.overdue-access-reviews'), to_jsonb('OR'::text), 60, true, 20),
 
   -- engagement_projects id=8 -> services.slug='data-classification-sensitivity-label-rollout'
   ('data-classification-label-rollout-eligibility', 'Data Classification & Sensitivity Label Rollout - Eligibility',
    'Eligible when sensitivity-label adoption or auto-labeling coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'data-classification-sensitivity-label-rollout'),
-   jsonb_build_array('signal.governance.sensitivity-label-adoption','signal.governance.auto-labeling-coverage'), 'OR', 0, true, 21),
+   jsonb_build_array('signal.governance.sensitivity-label-adoption','signal.governance.auto-labeling-coverage'), to_jsonb('OR'::text), 0, true, 21),
   ('data-classification-label-rollout-scoring', 'Data Classification & Sensitivity Label Rollout - Scoring',
    'Relevance score contribution when the labeling-adoption gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'data-classification-sensitivity-label-rollout'),
-   jsonb_build_array('signal.governance.sensitivity-label-adoption','signal.governance.auto-labeling-coverage'), 'OR', 60, true, 22),
+   jsonb_build_array('signal.governance.sensitivity-label-adoption','signal.governance.auto-labeling-coverage'), to_jsonb('OR'::text), 60, true, 22),
 
   -- engagement_projects id=10 -> services.slug='retention-records-management-implementation'
   ('retention-records-management-eligibility', 'Retention & Records Management Implementation - Eligibility',
    'Eligible when retention-policy coverage or retention-label adoption is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'retention-records-management-implementation'),
-   jsonb_build_array('signal.governance.retention-policy-coverage','signal.governance.retention-label-adoption'), 'OR', 0, true, 23),
+   jsonb_build_array('signal.governance.retention-policy-coverage','signal.governance.retention-label-adoption'), to_jsonb('OR'::text), 0, true, 23),
   ('retention-records-management-scoring', 'Retention & Records Management Implementation - Scoring',
    'Relevance score contribution when the retention-coverage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'retention-records-management-implementation'),
-   jsonb_build_array('signal.governance.retention-policy-coverage','signal.governance.retention-label-adoption'), 'OR', 60, true, 24),
+   jsonb_build_array('signal.governance.retention-policy-coverage','signal.governance.retention-label-adoption'), to_jsonb('OR'::text), 60, true, 24),
 
   -- engagement_projects id=11 -> services.slug='compliance-framework-implementation'
   ('compliance-framework-implementation-eligibility', 'Compliance Framework Implementation - Eligibility',
    'Eligible when retention-policy coverage is gapped or Secure Score is genuinely low.',
    'eligibility', (SELECT id FROM services WHERE slug = 'compliance-framework-implementation'),
-   jsonb_build_array('signal.governance.retention-policy-coverage','signal.security.secure-score'), 'OR', 0, true, 25),
+   jsonb_build_array('signal.governance.retention-policy-coverage','signal.security.secure-score'), to_jsonb('OR'::text), 0, true, 25),
   ('compliance-framework-implementation-scoring', 'Compliance Framework Implementation - Scoring',
    'Relevance score contribution when the compliance-posture gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'compliance-framework-implementation'),
-   jsonb_build_array('signal.governance.retention-policy-coverage','signal.security.secure-score'), 'OR', 60, true, 26),
+   jsonb_build_array('signal.governance.retention-policy-coverage','signal.security.secure-score'), to_jsonb('OR'::text), 60, true, 26),
 
   -- engagement_projects id=12 -> services.slug='sharepoint-teams-ia-rebuild'
   ('sharepoint-teams-ia-rebuild-eligibility', 'SharePoint & Teams Information Architecture Rebuild - Eligibility',
    'Eligible when inactive SharePoint sites or ownerless Teams are genuinely present.',
    'eligibility', (SELECT id FROM services WHERE slug = 'sharepoint-teams-ia-rebuild'),
-   jsonb_build_array('signal.sharepoint.inactive-sites','signal.teams.ownerless-teams'), 'OR', 0, true, 27),
+   jsonb_build_array('signal.sharepoint.inactive-sites','signal.teams.ownerless-teams'), to_jsonb('OR'::text), 0, true, 27),
   ('sharepoint-teams-ia-rebuild-scoring', 'SharePoint & Teams Information Architecture Rebuild - Scoring',
    'Relevance score contribution when the information-architecture drift signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'sharepoint-teams-ia-rebuild'),
-   jsonb_build_array('signal.sharepoint.inactive-sites','signal.teams.ownerless-teams'), 'OR', 60, true, 28),
+   jsonb_build_array('signal.sharepoint.inactive-sites','signal.teams.ownerless-teams'), to_jsonb('OR'::text), 60, true, 28),
 
   -- engagement_projects id=16 -> services.slug='exchange-online-hygiene-modernization'
   ('exchange-online-hygiene-eligibility', 'Exchange Online Hygiene & Modernization - Eligibility',
    'Eligible when transport-rule count or mail-flow rule review is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'exchange-online-hygiene-modernization'),
-   jsonb_build_array('signal.exchange.transport-rule-count','signal.exchange.mail-flow-rule-review'), 'OR', 0, true, 29),
+   jsonb_build_array('signal.exchange.transport-rule-count','signal.exchange.mail-flow-rule-review'), to_jsonb('OR'::text), 0, true, 29),
   ('exchange-online-hygiene-scoring', 'Exchange Online Hygiene & Modernization - Scoring',
    'Relevance score contribution when the mail-flow hygiene gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'exchange-online-hygiene-modernization'),
-   jsonb_build_array('signal.exchange.transport-rule-count','signal.exchange.mail-flow-rule-review'), 'OR', 60, true, 30),
+   jsonb_build_array('signal.exchange.transport-rule-count','signal.exchange.mail-flow-rule-review'), to_jsonb('OR'::text), 60, true, 30),
 
   -- engagement_projects id=20 -> services.slug='copilot-m365-deployment-project'
   ('copilot-m365-deployment-eligibility', 'Copilot for Microsoft 365 Deployment Project - Eligibility',
    'Eligible when the Copilot readiness prerequisite check or license-vs-total-users signal genuinely fires.',
    'eligibility', (SELECT id FROM services WHERE slug = 'copilot-m365-deployment-project'),
-   jsonb_build_array('signal.copilot.readiness-prerequisite','signal.copilot.license-vs-total-users'), 'OR', 0, true, 31),
+   jsonb_build_array('signal.copilot.readiness-prerequisite','signal.copilot.license-vs-total-users'), to_jsonb('OR'::text), 0, true, 31),
   ('copilot-m365-deployment-scoring', 'Copilot for Microsoft 365 Deployment Project - Scoring',
    'Relevance score contribution when the Copilot deployment-readiness signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'copilot-m365-deployment-project'),
-   jsonb_build_array('signal.copilot.readiness-prerequisite','signal.copilot.license-vs-total-users'), 'OR', 60, true, 32),
+   jsonb_build_array('signal.copilot.readiness-prerequisite','signal.copilot.license-vs-total-users'), to_jsonb('OR'::text), 60, true, 32),
 
   -- engagement_projects id=22 -> services.slug='copilot-adoption-governance-program'
   ('copilot-adoption-governance-eligibility', 'Copilot Adoption & Governance Program - Eligibility',
    'Eligible when the Copilot active-usage-rate signal shows genuinely low adoption.',
    'eligibility', (SELECT id FROM services WHERE slug = 'copilot-adoption-governance-program'),
-   jsonb_build_array('signal.copilot.active-usage-rate'), 'OR', 0, true, 33),
+   jsonb_build_array('signal.copilot.active-usage-rate'), to_jsonb('OR'::text), 0, true, 33),
   ('copilot-adoption-governance-scoring', 'Copilot Adoption & Governance Program - Scoring',
    'Relevance score contribution when the low-adoption signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'copilot-adoption-governance-program'),
-   jsonb_build_array('signal.copilot.active-usage-rate'), 'OR', 60, true, 34),
+   jsonb_build_array('signal.copilot.active-usage-rate'), to_jsonb('OR'::text), 60, true, 34),
 
   -- engagement_projects id=25 -> services.slug='bcdr-implementation'
   ('bcdr-implementation-eligibility', 'Business Continuity / Disaster Recovery Implementation - Eligibility',
    'Eligible when litigation-hold coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'bcdr-implementation'),
-   jsonb_build_array('signal.exchange.litigation-hold-coverage'), 'OR', 0, true, 35),
+   jsonb_build_array('signal.exchange.litigation-hold-coverage'), to_jsonb('OR'::text), 0, true, 35),
   ('bcdr-implementation-scoring', 'Business Continuity / Disaster Recovery Implementation - Scoring',
    'Relevance score contribution when the litigation-hold gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'bcdr-implementation'),
-   jsonb_build_array('signal.exchange.litigation-hold-coverage'), 'OR', 60, true, 36),
+   jsonb_build_array('signal.exchange.litigation-hold-coverage'), to_jsonb('OR'::text), 60, true, 36),
 
   -- engagement_projects id=26 -> services.slug='teams-phone-license-calling-policy-config'
   ('teams-phone-config-eligibility', 'Teams Phone License & Calling Policy Configuration - Eligibility',
    'Eligible when Teams messaging-policy coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'teams-phone-license-calling-policy-config'),
-   jsonb_build_array('signal.teams.messaging-policy-coverage'), 'OR', 0, true, 37),
+   jsonb_build_array('signal.teams.messaging-policy-coverage'), to_jsonb('OR'::text), 0, true, 37),
   ('teams-phone-config-scoring', 'Teams Phone License & Calling Policy Configuration - Scoring',
    'Relevance score contribution when the messaging-policy gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'teams-phone-license-calling-policy-config'),
-   jsonb_build_array('signal.teams.messaging-policy-coverage'), 'OR', 60, true, 38),
+   jsonb_build_array('signal.teams.messaging-policy-coverage'), to_jsonb('OR'::text), 60, true, 38),
 
   -- engagement_projects id=27 -> services.slug='teams-rooms-license-policy-config'
   ('teams-rooms-config-eligibility', 'Teams Rooms License & Policy Configuration - Eligibility',
    'Eligible when Teams Rooms device-health is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'teams-rooms-license-policy-config'),
-   jsonb_build_array('signal.teams.rooms-device-health'), 'OR', 0, true, 39),
+   jsonb_build_array('signal.teams.rooms-device-health'), to_jsonb('OR'::text), 0, true, 39),
   ('teams-rooms-config-scoring', 'Teams Rooms License & Policy Configuration - Scoring',
    'Relevance score contribution when the Teams Rooms device-health gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'teams-rooms-license-policy-config'),
-   jsonb_build_array('signal.teams.rooms-device-health'), 'OR', 60, true, 40)
+   jsonb_build_array('signal.teams.rooms-device-health'), to_jsonb('OR'::text), 60, true, 40)
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO simulator_migration_runs (filename, ran_at)

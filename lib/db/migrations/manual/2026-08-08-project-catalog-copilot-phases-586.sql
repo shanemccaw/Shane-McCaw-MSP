@@ -9,6 +9,20 @@
 -- fabricated. Pricing is REAL, confirmed by Shane 2026-08-08 in #586's
 -- pinned comment, not the design fixture's placeholder numbers.
 --
+-- FIX (2026-08-08, after live introspection on the #585 sibling migration):
+-- sales_offer_rule_groups.logic is actually jsonb in the live DB, not text
+-- as the Drizzle schema declares (real schema drift) -- every bare 'OR'
+-- literal below is now to_jsonb('OR'::text). Confirmed via live query that
+-- this file's Part 3 never actually landed any of its 12 rows despite this
+-- migration being marked DONE. IMPORTANT: Part 1/2/3 are one BEGIN...COMMIT
+-- transaction, and Part 3's error aborts the whole transaction -- COMMIT on
+-- an aborted transaction is a rollback in Postgres, so Part 2's 6 services
+-- rows almost certainly did NOT land either, despite that being the initial
+-- assumption. Re-running this fixed file re-inserts all of Part 2 as well
+-- (ON CONFLICT (slug) DO NOTHING makes that safe even if some rows did
+-- somehow survive). Verify the real prior state with a live SELECT before
+-- trusting any assumption here. Safe to re-run now; still fully idempotent.
+--
 -- ── WHAT THIS MIGRATION IS NOT ──────────────────────────────────────────────
 -- It does NOT touch the 27 project services #585 already migrated/wired
 -- (services ids 34-60, their sales_offer_rule_groups rows, or
@@ -143,72 +157,72 @@ VALUES
   ('identity-access-hardening-eligibility', 'Identity & Access Hardening — Eligibility',
    'Eligible when Conditional Access/MFA coverage is genuinely gapped or stale guest accounts are present.',
    'eligibility', (SELECT id FROM services WHERE slug = 'identity-access-hardening'),
-   '["signal.identity.ca-mfa-coverage","signal.identity.mfa-registration","signal.governance.guest-staleness"]'::jsonb, 'OR', 0, true,
+   '["signal.identity.ca-mfa-coverage","signal.identity.mfa-registration","signal.governance.guest-staleness"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 1),
   ('identity-access-hardening-scoring', 'Identity & Access Hardening — Scoring',
    'Relevance score contribution when the CA/MFA/guest-staleness gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'identity-access-hardening'),
-   '["signal.identity.ca-mfa-coverage","signal.identity.mfa-registration","signal.governance.guest-staleness"]'::jsonb, 'OR', 60, true,
+   '["signal.identity.ca-mfa-coverage","signal.identity.mfa-registration","signal.governance.guest-staleness"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 2),
 
   -- Sharing Exposure Remediation
   ('sharing-exposure-remediation-eligibility', 'Sharing Exposure Remediation — Eligibility',
    'Eligible when anonymous/org-wide sharing links or ownerless groups are genuinely present.',
    'eligibility', (SELECT id FROM services WHERE slug = 'sharing-exposure-remediation'),
-   '["signal.sharepoint.anonymous-links","signal.sharepoint.orgwide-links","signal.governance.ownerless-groups"]'::jsonb, 'OR', 0, true,
+   '["signal.sharepoint.anonymous-links","signal.sharepoint.orgwide-links","signal.governance.ownerless-groups"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 3),
   ('sharing-exposure-remediation-scoring', 'Sharing Exposure Remediation — Scoring',
    'Relevance score contribution when the sharing-exposure/ownerless-group gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'sharing-exposure-remediation'),
-   '["signal.sharepoint.anonymous-links","signal.sharepoint.orgwide-links","signal.governance.ownerless-groups"]'::jsonb, 'OR', 60, true,
+   '["signal.sharepoint.anonymous-links","signal.sharepoint.orgwide-links","signal.governance.ownerless-groups"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 4),
 
   -- Data Protection Baseline
   ('data-protection-baseline-eligibility', 'Data Protection Baseline — Eligibility',
    'Eligible when sensitivity-label adoption, auto-labeling coverage, or DLP coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'data-protection-baseline'),
-   '["signal.governance.sensitivity-label-adoption","signal.governance.auto-labeling-coverage","signal.security.dlp-violations"]'::jsonb, 'OR', 0, true,
+   '["signal.governance.sensitivity-label-adoption","signal.governance.auto-labeling-coverage","signal.security.dlp-violations"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 5),
   ('data-protection-baseline-scoring', 'Data Protection Baseline — Scoring',
    'Relevance score contribution when the labeling/DLP gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'data-protection-baseline'),
-   '["signal.governance.sensitivity-label-adoption","signal.governance.auto-labeling-coverage","signal.security.dlp-violations"]'::jsonb, 'OR', 60, true,
+   '["signal.governance.sensitivity-label-adoption","signal.governance.auto-labeling-coverage","signal.security.dlp-violations"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 6),
 
   -- Licence Rationalisation
   ('licence-rationalisation-eligibility', 'Licence Rationalisation — Eligibility',
    'Eligible when unused/unassigned licenses, underutilized premium SKUs, or duplicate assignments are genuinely present.',
    'eligibility', (SELECT id FROM services WHERE slug = 'licence-rationalisation'),
-   '["signal.cost.unused-unassigned-licenses","signal.cost.underutilized-premium","signal.cost.duplicate-assignments"]'::jsonb, 'OR', 0, true,
+   '["signal.cost.unused-unassigned-licenses","signal.cost.underutilized-premium","signal.cost.duplicate-assignments"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 7),
   ('licence-rationalisation-scoring', 'Licence Rationalisation — Scoring',
    'Relevance score contribution when the license-waste gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'licence-rationalisation'),
-   '["signal.cost.unused-unassigned-licenses","signal.cost.underutilized-premium","signal.cost.duplicate-assignments"]'::jsonb, 'OR', 60, true,
+   '["signal.cost.unused-unassigned-licenses","signal.cost.underutilized-premium","signal.cost.duplicate-assignments"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 8),
 
   -- Adoption Enablement
   ('adoption-enablement-eligibility', 'Adoption Enablement — Eligibility',
    'Eligible when overall active-usage rate or Teams/email activity trend is genuinely low.',
    'eligibility', (SELECT id FROM services WHERE slug = 'adoption-enablement'),
-   '["signal.adoption.overall-active-rate","signal.adoption.teams-activity-trend","signal.adoption.email-activity-trend"]'::jsonb, 'OR', 0, true,
+   '["signal.adoption.overall-active-rate","signal.adoption.teams-activity-trend","signal.adoption.email-activity-trend"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 9),
   ('adoption-enablement-scoring', 'Adoption Enablement — Scoring',
    'Relevance score contribution when the low-adoption signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'adoption-enablement'),
-   '["signal.adoption.overall-active-rate","signal.adoption.teams-activity-trend","signal.adoption.email-activity-trend"]'::jsonb, 'OR', 60, true,
+   '["signal.adoption.overall-active-rate","signal.adoption.teams-activity-trend","signal.adoption.email-activity-trend"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 10),
 
   -- Drift Baseline & Handover
   ('drift-baseline-handover-eligibility', 'Drift Baseline & Handover — Eligibility',
    'Eligible when access-review completion or group-expiration-policy coverage is genuinely gapped.',
    'eligibility', (SELECT id FROM services WHERE slug = 'drift-baseline-handover'),
-   '["signal.governance.access-review-completion","signal.governance.group-expiration-policy"]'::jsonb, 'OR', 0, true,
+   '["signal.governance.access-review-completion","signal.governance.group-expiration-policy"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 11),
   ('drift-baseline-handover-scoring', 'Drift Baseline & Handover — Scoring',
    'Relevance score contribution when the change-control baseline gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'drift-baseline-handover'),
-   '["signal.governance.access-review-completion","signal.governance.group-expiration-policy"]'::jsonb, 'OR', 60, true,
+   '["signal.governance.access-review-completion","signal.governance.group-expiration-policy"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 12)
 ON CONFLICT (key) DO NOTHING;
 

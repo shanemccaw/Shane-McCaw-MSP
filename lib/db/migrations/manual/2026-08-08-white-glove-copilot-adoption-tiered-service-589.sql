@@ -77,6 +77,20 @@
 -- Safe to run repeatedly: services INSERT uses ON CONFLICT (slug) DO NOTHING;
 -- sales_offer_rule_groups INSERT uses ON CONFLICT (key) DO NOTHING. No
 -- UPDATE/DELETE anywhere in this file.
+--
+-- FIX (2026-08-08, after live introspection on the #585 sibling migration):
+-- sales_offer_rule_groups.logic is actually jsonb in the live DB, not text
+-- as the Drizzle schema declares (real schema drift) -- every bare 'OR'
+-- literal below is now to_jsonb('OR'::text). Confirmed via live query that
+-- Part 2 never actually landed any of its 8 rows despite this migration
+-- being marked DONE. IMPORTANT: Part 1/2 are one BEGIN...COMMIT transaction,
+-- and Part 2's error aborts the whole transaction -- COMMIT on an aborted
+-- transaction is a rollback in Postgres, so Part 1's 4 services rows almost
+-- certainly did NOT land either, despite that being the initial assumption.
+-- Re-running this fixed file re-inserts Part 1 as well (ON CONFLICT (slug)
+-- DO NOTHING makes that safe even if some rows did somehow survive). Verify
+-- the real prior state with a live SELECT before trusting any assumption
+-- here. Safe to re-run now; still fully idempotent.
 
 BEGIN;
 
@@ -171,45 +185,45 @@ VALUES
   ('white-glove-copilot-adoption-micro-eligibility', 'White-Glove Copilot Adoption (Micro) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-micro'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 1),
   ('white-glove-copilot-adoption-micro-scoring', 'White-Glove Copilot Adoption (Micro) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-micro'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 2),
 
   ('white-glove-copilot-adoption-smb-eligibility', 'White-Glove Copilot Adoption (SMB) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-smb'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 3),
   ('white-glove-copilot-adoption-smb-scoring', 'White-Glove Copilot Adoption (SMB) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-smb'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 4),
 
   ('white-glove-copilot-adoption-mid-market-eligibility', 'White-Glove Copilot Adoption (Mid-Market) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-mid-market'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 5),
   ('white-glove-copilot-adoption-mid-market-scoring', 'White-Glove Copilot Adoption (Mid-Market) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-mid-market'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 6),
 
   ('white-glove-copilot-adoption-enterprise-eligibility', 'White-Glove Copilot Adoption (Enterprise) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-enterprise'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 0, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 7),
   ('white-glove-copilot-adoption-enterprise-scoring', 'White-Glove Copilot Adoption (Enterprise) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-enterprise'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, to_jsonb('OR'::text), 60, true,
    (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 8)
 ON CONFLICT (key) DO NOTHING;
 
