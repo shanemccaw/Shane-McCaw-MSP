@@ -135,18 +135,20 @@ const REAL_TENANT = () => {
     findings: [
       { severity: "critical", checkKey: "identity:mfa-registration", title: "14 accounts complete sign-in without a second factor" },
       { severity: "warning", checkKey: "identity:legacy-auth-usage", title: "Legacy authentication remains enabled tenant-wide" },
+      { severity: "warning", checkKey: "security:antiphishing-coverage", title: "Anti-phishing policy coverage is incomplete" },
+      { severity: "critical", checkKey: "security:dlp-violations", title: "DLP policy violations detected in the last 30 days" },
+      { severity: "warning", checkKey: "appgov:consent-policy-status", title: "User consent to third-party apps is not restricted" },
+      { severity: "critical", checkKey: "appgov:workload-identity-risk", title: "A workload identity holds a high-risk application permission" },
     ],
   });
   v = withPillar(v, "health", {
     score: 57,
     stats: [
       stat({ id: "health.nonCompliantDevices", label: "non-compliant devices", value: 88, checkKey: "intune:non-compliant-devices" }),
-      stat({ id: "health.unencrypted", label: "unencrypted devices", value: 61, checkKey: "intune:unencrypted-devices" }),
-      stat({ id: "health.outdated", label: "outdated OS devices", value: 34, checkKey: "intune:outdated-devices" }),
-      stat({ id: "health.configDrift", label: "device config drift", value: 12, checkKey: "intune:config-drift" }),
     ],
     findings: [
       { severity: "warning", checkKey: "intune:non-compliant-devices", title: "88 non-compliant devices still reach cloud workloads" },
+      { severity: "warning", checkKey: "devices:enrollment-status", title: "No Intune/MDM enrollment detected for this tenant" },
     ],
   });
   v = withPillar(v, "governance", {
@@ -170,6 +172,8 @@ describe("the approved structure", () => {
       [
         "Security Posture Summary",
         "Identity & Access Risks",
+        "Mail Security",
+        "App Consent & Workload Identity",
         "Data Exposure & Blast Radius",
         "Device & Endpoint Compliance",
         "Copilot Readiness Impact",
@@ -383,7 +387,7 @@ describe("findings sections", () => {
     assert.equal(unevaluated[0].kind === "unavailable" && unevaluated[0].detail, "UNEVALUATED");
   });
 
-  it("renders the security pillar's real findings under Identity & Access Risks", () => {
+  it("renders the security pillar's real findings under Identity & Access Risks, minus mail security and app consent", () => {
     const section = sectionNamed(build(REAL_TENANT()), "Identity & Access Risks");
     const leads = section.blocks.flatMap((b) => (b.kind === "findings" ? b.rows.map((r) => r.lead) : []));
     assert.deepEqual(leads, [
@@ -392,10 +396,29 @@ describe("findings sections", () => {
     ]);
   });
 
-  it("renders the health pillar's real findings under Device & Endpoint Compliance", () => {
+  it("scopes Mail Security to its own four checks, from the same security pillar", () => {
+    const section = sectionNamed(build(REAL_TENANT()), "Mail Security");
+    const leads = section.blocks.flatMap((b) => (b.kind === "findings" ? b.rows.map((r) => r.lead) : []));
+    assert.deepEqual(leads, [
+      "Anti-phishing policy coverage is incomplete",
+      "DLP policy violations detected in the last 30 days",
+    ]);
+  });
+
+  it("scopes App Consent & Workload Identity to its own two checks, excludes the still-pending unreviewed-consents check", () => {
+    const section = sectionNamed(build(REAL_TENANT()), "App Consent & Workload Identity");
+    const leads = section.blocks.flatMap((b) => (b.kind === "findings" ? b.rows.map((r) => r.lead) : []));
+    assert.deepEqual(leads, [
+      "User consent to third-party apps is not restricted",
+      "A workload identity holds a high-risk application permission",
+    ]);
+    assert.ok(!__testables.APP_CONSENT_CHECK_KEYS.includes("appgov:unreviewed-consents"));
+  });
+
+  it("renders the health pillar's real findings under Device & Endpoint Compliance, narrowed to enrollment and update rings", () => {
     const section = sectionNamed(build(REAL_TENANT()), "Device & Endpoint Compliance");
     const leads = section.blocks.flatMap((b) => (b.kind === "findings" ? b.rows.map((r) => r.lead) : []));
-    assert.deepEqual(leads, ["88 non-compliant devices still reach cloud workloads"]);
+    assert.deepEqual(leads, ["No Intune/MDM enrollment detected for this tenant"]);
   });
 });
 
@@ -489,21 +512,45 @@ describe("never fabricate: an empty tenant produces a shorter report, not an inv
 
 describe("every pick names a real stat id", () => {
   it("uses stat ids in the `<pillar>.<name>` shape the payload actually emits", () => {
-    const picks = [...__testables.SUMMARY_PICKS, ...__testables.DEVICE_PICKS, ...__testables.COPILOT_IMPACT_PICKS];
+    const picks = [...__testables.SUMMARY_PICKS, ...__testables.COPILOT_IMPACT_PICKS];
     for (const pick of picks) {
       assert.match(pick.statId, /^[a-z]+\.[a-zA-Z]+$/, `${pick.statId} is not a stat id`);
       assert.ok(pick.statId.startsWith(`${pick.pillar}.`), `${pick.statId} is not on the ${pick.pillar} card`);
     }
   });
 
-  it("never repeats the headline device figure in two sections", () => {
-    const summary = __testables.SUMMARY_PICKS.map((p) => p.statId);
-    const devices = __testables.DEVICE_PICKS.map((p) => p.statId);
-    assert.equal(summary.filter((s) => devices.includes(s)).length, 0);
+  it("picks no copilot-card stat — this journey's view carries none", () => {
+    const all = [...__testables.SUMMARY_PICKS, ...__testables.COPILOT_IMPACT_PICKS];
+    assert.ok(all.every((p) => (PILLAR_KEYS as readonly string[]).includes(p.pillar)));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The findings-only sections' own check-key sets
+ * ------------------------------------------------------------------ */
+
+describe("Mail Security, App Consent and Device & Endpoint Compliance are check-scoped, not stat-picked", () => {
+  it("names the real security checks behind Mail Security", () => {
+    assert.deepEqual(__testables.MAIL_SECURITY_CHECK_KEYS, [
+      "security:antiphishing-coverage",
+      "security:safe-links-coverage",
+      "security:safe-attachments-coverage",
+      "security:dlp-violations",
+    ]);
   });
 
-  it("picks no copilot-card stat — this journey's view carries none", () => {
-    const all = [...__testables.SUMMARY_PICKS, ...__testables.DEVICE_PICKS, ...__testables.COPILOT_IMPACT_PICKS];
-    assert.ok(all.every((p) => (PILLAR_KEYS as readonly string[]).includes(p.pillar)));
+  it("names the real appgov checks behind App Consent & Workload Identity, and never the pending unreviewed-consents check", () => {
+    assert.deepEqual(__testables.APP_CONSENT_CHECK_KEYS, [
+      "appgov:consent-policy-status",
+      "appgov:workload-identity-risk",
+    ]);
+    assert.ok(!__testables.APP_CONSENT_CHECK_KEYS.includes("appgov:unreviewed-consents"));
+  });
+
+  it("narrows Device & Endpoint Compliance to enrollment status and update rings only", () => {
+    assert.deepEqual(__testables.DEVICE_ENDPOINT_CHECK_KEYS, [
+      "devices:enrollment-status",
+      "devices:update-rings-config",
+    ]);
   });
 });

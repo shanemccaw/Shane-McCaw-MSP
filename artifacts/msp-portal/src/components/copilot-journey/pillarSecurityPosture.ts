@@ -40,6 +40,21 @@
  * "Conditional Access scoped to privileged roles" is a row the design asks for
  * that has NO check behind it — see `CA_PRIVILEGED_ROLES_GAP` for the full
  * reasoning and for why it is stated in prose rather than as a named check key.
+ *
+ * ── MAIL SECURITY AND APP CONSENT / WORKLOAD IDENTITY ────────────────────────
+ * Neither is one of `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so both sections
+ * are findings-only — the same `severity_rules` path Identity & Access Risks
+ * already renders, scoped to a smaller check-key set via
+ * `pillarFilteredByChecks`, with those same keys excluded from Identity &
+ * Access Risks so nothing is reported twice. `appgov:unreviewed-consents` is
+ * deliberately absent from the app-consent set: its real definition is still
+ * pending Git #551, and using it now would surface the already-known-wrong
+ * count.
+ *
+ * Device & Endpoint Compliance is narrowed the same way, to exactly two
+ * checks — `devices:enrollment-status` and `devices:update-rings-config` —
+ * per Shane's direction that per-device compliance/encryption/patch/autopilot
+ * detail belongs to Operational Health, not here.
  */
 
 import type { JourneyPillarView, JourneyView, WirePillarStat } from "./journeyModel.ts";
@@ -176,21 +191,63 @@ export const CA_PRIVILEGED_ROLES_GAP =
   "One line the security review would normally carry is deliberately not here: whether any Conditional Access policy is scoped specifically to your privileged roles. No check this assessment runs reads a policy's role scope — the checks behind this report count Conditional Access policies and count their failures, and neither answers that question. Its absence is a gap in what this platform measures today, and nothing here should be read as saying such a policy does or does not exist.";
 
 /* ------------------------------------------------------------------ *
- * Section 4 — Device & Endpoint Compliance
+ * Mail security, and app consent / workload identity (findings-only)
  * ------------------------------------------------------------------ */
 
 /**
- * The endpoint posture counts, minus the one the Summary already quotes.
+ * The real checks behind "Mail Security" and "App Consent & Workload
+ * Identity". Neither is one of `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so
+ * there is no `statId` to pick — these surface only as findings, on the same
+ * `severity_rules` path `findingsBlocks` already renders for Identity &
+ * Access Risks.
  *
- * `health.nonCompliantDevices` is deliberately NOT repeated here: it is the
- * headline device figure and it leads the Summary, and the same number under
- * two headings reads as two findings.
+ * `appgov:unreviewed-consents` is deliberately NOT in `APP_CONSENT_CHECK_KEYS`
+ * — its real definition is still pending Git #551; using it now would surface
+ * the already-known-wrong count.
  */
-const DEVICE_PICKS: readonly StatPick[] = [
-  { statId: "health.unencrypted", pillar: "health", label: "Device encryption", caption: "devices with no encryption reported" },
-  { statId: "health.outdated", pillar: "health", label: "Operating system currency", caption: "devices on an outdated OS build" },
-  { statId: "health.configDrift", pillar: "health", label: "Configuration profile alignment", caption: "devices drifted from their assigned profile" },
+const MAIL_SECURITY_CHECK_KEYS: readonly string[] = [
+  "security:antiphishing-coverage",
+  "security:safe-links-coverage",
+  "security:safe-attachments-coverage",
+  "security:dlp-violations",
 ];
+
+const APP_CONSENT_CHECK_KEYS: readonly string[] = [
+  "appgov:consent-policy-status",
+  "appgov:workload-identity-risk",
+];
+
+/**
+ * Narrowed to two facts per Shane's direction: whether Intune/MDM is in use
+ * at all, and which update channel is configured, if any. Per-device
+ * compliance/encryption/patch/autopilot detail belongs to Operational
+ * Health, not here.
+ */
+const DEVICE_ENDPOINT_CHECK_KEYS: readonly string[] = [
+  "devices:enrollment-status",
+  "devices:update-rings-config",
+];
+
+/**
+ * A narrowed view of `pillar` carrying only the findings whose check is one
+ * of `checkKeys` (or, with `exclude: true`, every OTHER finding), so
+ * `findingsBlocks` can render a check-scoped section without a second
+ * finding-to-row function. `score` and everything else pass through
+ * unchanged — the #399 clean/unevaluated distinction is a fact about the
+ * whole pillar's evaluation, not about this subset of its checks.
+ */
+function pillarFilteredByChecks(
+  pillar: JourneyPillarView | undefined,
+  checkKeys: readonly string[],
+  options: { readonly exclude?: boolean } = {},
+): JourneyPillarView | undefined {
+  if (!pillar) return pillar;
+  const inSet = (checkKey: string) => checkKeys.includes(checkKey);
+  return {
+    ...pillar,
+    findings: pillar.findings.filter((f) => (options.exclude ? !inSet(f.checkKey) : inSet(f.checkKey))),
+  };
+}
 
 /* ------------------------------------------------------------------ *
  * Section 5 — Copilot Readiness Impact
@@ -315,12 +372,37 @@ export function buildSecurityPostureReport(input: {
   });
 
   // ── Identity & Access Risks (real findings) ────────────────────────────────
+  //
+  // Excludes the checks the two sections below now own, so a mail-security or
+  // app-consent finding is reported once, under its own heading, rather than
+  // here as well.
+  const identityAndAccessChecks = [...MAIL_SECURITY_CHECK_KEYS, ...APP_CONSENT_CHECK_KEYS];
   sections.push({
     heading: "Identity & Access Risks",
     blocks: findingsBlocks(
-      security,
+      pillarFilteredByChecks(security, identityAndAccessChecks, { exclude: true }),
       "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding. That is a real result, not an empty section.",
       "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no identity or access finding can be reported either way.",
+    ),
+  });
+
+  // ── Mail Security (real findings) ──────────────────────────────────────────
+  sections.push({
+    heading: "Mail Security",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(security, MAIL_SECURITY_CHECK_KEYS),
+      "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding against anti-phishing, Safe Links, Safe Attachments or DLP coverage. That is a real result, not an empty section.",
+      "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no mail security finding can be reported either way.",
+    ),
+  });
+
+  // ── App Consent & Workload Identity (real findings) ────────────────────────
+  sections.push({
+    heading: "App Consent & Workload Identity",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(security, APP_CONSENT_CHECK_KEYS),
+      "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding against app consent policy or workload identity risk. That is a real result, not an empty section.",
+      "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no app consent or workload identity finding can be reported either way.",
     ),
   });
 
@@ -344,21 +426,18 @@ export function buildSecurityPostureReport(input: {
   });
 
   // ── Device & Endpoint Compliance ───────────────────────────────────────────
-  const devices = buildRows(pillars, DEVICE_PICKS);
+  //
+  // Narrowed to two facts (per Shane's direction): whether Intune/MDM is in
+  // use at all, and which update channel is configured, if any. Per-device
+  // compliance/encryption/patch/autopilot detail belongs to Operational
+  // Health, not here.
   sections.push({
     heading: "Device & Endpoint Compliance",
-    blocks: [
-      ...keyValuesBlock(devices.rows),
-      ...findingsBlocks(
-        health,
-        "The Health pillar was evaluated on this tenant's last scan and returned no critical or warning finding against your endpoints.",
-        "No rule that feeds the Health pillar was evaluated on this tenant's last scan, so no device or endpoint finding can be reported either way.",
-      ),
-      ...unavailableBlock(
-        "Endpoint figures this tenant's scan does not carry:",
-        devices.missing,
-      ),
-    ],
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(health, DEVICE_ENDPOINT_CHECK_KEYS),
+      "The Health pillar was evaluated on this tenant's last scan and returned no critical or warning finding on whether Intune/MDM is in use or which update channel is configured.",
+      "No rule that feeds the Health pillar was evaluated on this tenant's last scan, so no device enrollment or update-ring finding can be reported either way.",
+    ),
   });
 
   // ── Upgrade Opportunities (#451) ───────────────────────────────────────────
@@ -373,7 +452,6 @@ export function buildSecurityPostureReport(input: {
     ...secureScore.missing,
     ...summary.missing,
     ...blast.missing,
-    ...devices.missing,
     ...copilotImpact.missing,
     ...(narrative?.sections ?? []).flatMap((s) => s.missingChecks ?? []),
   ] as readonly UnavailableCheck[], view.licenseGapPurchase);
@@ -437,8 +515,10 @@ export function buildSecurityPostureReport(input: {
 export const __testables = {
   SUMMARY_PICKS,
   SUMMARY_EXTRA_PICKS,
-  DEVICE_PICKS,
   COPILOT_IMPACT_PICKS,
+  MAIL_SECURITY_CHECK_KEYS,
+  APP_CONSENT_CHECK_KEYS,
+  DEVICE_ENDPOINT_CHECK_KEYS,
   SECTION_HEADINGS,
   gateRow,
 };
