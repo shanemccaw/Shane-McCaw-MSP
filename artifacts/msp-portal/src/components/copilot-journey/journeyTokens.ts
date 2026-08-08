@@ -99,7 +99,7 @@ export const PILLAR_ORDER: readonly PillarIdentity[] = PILLAR_KEYS.map((k) => PI
  */
 export const PILLAR_ICON_PATHS: Readonly<Record<PillarKey | "copilot", string>> = {
   governance:
-    "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1zM9 12l2 2 4-4",
+    "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM12 3v18M7 21h5M9 6h6M3 10h4M17 10h4",
   security:
     "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z",
   compliance:
