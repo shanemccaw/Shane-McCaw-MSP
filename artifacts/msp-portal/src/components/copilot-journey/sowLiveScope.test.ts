@@ -14,7 +14,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { journeyScopeFromOffers, pillarForOffer, SOW_DOC_TYPE, type WireRecommendedOffer } from "./sowLiveScope.ts";
+import {
+  journeyAddonsFromWire,
+  journeyScopeFromOffers,
+  pillarForOffer,
+  SOW_DOC_TYPE,
+  type WireRecommendedOffer,
+  type WireSowAddon,
+} from "./sowLiveScope.ts";
 
 const offer = (over: Partial<WireRecommendedOffer> = {}): WireRecommendedOffer => ({
   serviceId: 1,
@@ -110,10 +117,33 @@ describe("journeyScopeFromOffers", () => {
     assert.equal(built.serverSelectedTitles, null);
   });
 
-  it("invents no optional services", () => {
+  it("invents no optional services when the wire carries none", () => {
     const built = journeyScopeFromOffers({ offers: [offer()] });
     assert.ok(built);
     assert.deepEqual(built.scope.addons, []);
+  });
+
+  it("maps real add-ons carried on the same wire onto scope.addons", () => {
+    const built = journeyScopeFromOffers({
+      offers: [offer()],
+      addons: [
+        {
+          id: "tenant-monitoring",
+          title: "Tenant Monitoring",
+          blurb: "Six signal engines against your tenant every hour.",
+          defaultOn: true,
+          defaultTierId: "enhanced",
+          tiers: [
+            { id: "basic", label: "Basic", upfrontUsd: 0, monthlyUsd: 890, detail: "" },
+            { id: "enhanced", label: "Enhanced", upfrontUsd: 0, monthlyUsd: 1480, detail: "", emphasis: "recommended" },
+          ],
+        },
+      ],
+    });
+    assert.ok(built);
+    assert.equal(built.scope.addons.length, 1);
+    assert.equal(built.scope.addons[0]!.id, "tenant-monitoring");
+    assert.equal(built.scope.addons[0]!.tiers.length, 2);
   });
 
   it("no phase is locked — nothing on this wire is a mandatory workstream", () => {
@@ -178,5 +208,87 @@ describe("journeyScopeFromOffers", () => {
     const built = journeyScopeFromOffers({ offers: [offer({ rationale: null })] });
     assert.ok(built);
     assert.equal(built.phases[0]!.scope, "");
+  });
+});
+
+describe("journeyAddonsFromWire", () => {
+  const monitoringAddon = (over: Partial<WireSowAddon> = {}): WireSowAddon => ({
+    id: "tenant-monitoring",
+    title: "Tenant Monitoring",
+    blurb: "Six signal engines against your tenant every hour.",
+    defaultOn: true,
+    defaultTierId: "enhanced",
+    tiers: [
+      { id: "basic", label: "Basic", upfrontUsd: 0, monthlyUsd: 890, detail: "Baseline coverage." },
+      { id: "enhanced", label: "Enhanced", upfrontUsd: 0, monthlyUsd: 1480, detail: "Most popular.", emphasis: "recommended" },
+      { id: "premium", label: "Premium", upfrontUsd: 0, monthlyUsd: 2350, detail: "Full coverage." },
+    ],
+    ...over,
+  });
+
+  it("empty array when the wire carries no addons", () => {
+    assert.deepEqual(journeyAddonsFromWire(undefined), []);
+    assert.deepEqual(journeyAddonsFromWire([]), []);
+  });
+
+  it("maps a real addon's tiers through, preserving emphasis", () => {
+    const [addon] = journeyAddonsFromWire([monitoringAddon()]);
+    assert.ok(addon);
+    assert.equal(addon.id, "tenant-monitoring");
+    assert.equal(addon.tiers.length, 3);
+    assert.equal(addon.tiers.find((t) => t.id === "enhanced")?.emphasis, "recommended");
+    assert.equal(addon.tiers.find((t) => t.id === "basic")?.emphasis, undefined);
+  });
+
+  it("defaults to the tier the server named, and only when it actually exists among the mapped tiers", () => {
+    const [good] = journeyAddonsFromWire([monitoringAddon()]);
+    assert.equal(good?.defaultTierId, "enhanced");
+
+    const [dangling] = journeyAddonsFromWire([monitoringAddon({ defaultTierId: "does-not-exist" })]);
+    assert.equal(dangling?.defaultTierId, null);
+  });
+
+  it("drops an addon with no id or no title rather than rendering a broken card", () => {
+    assert.deepEqual(journeyAddonsFromWire([monitoringAddon({ id: "" })]), []);
+    assert.deepEqual(journeyAddonsFromWire([monitoringAddon({ title: "  " })]), []);
+  });
+
+  it("drops a tier missing an id, a label, or any positive price", () => {
+    const [addon] = journeyAddonsFromWire([
+      monitoringAddon({
+        tiers: [
+          { id: "basic", label: "Basic", upfrontUsd: 0, monthlyUsd: 890, detail: "" },
+          { id: "", label: "No id", upfrontUsd: 0, monthlyUsd: 100, detail: "" },
+          { id: "no-label", label: "", upfrontUsd: 0, monthlyUsd: 100, detail: "" },
+          { id: "free", label: "Free", upfrontUsd: 0, monthlyUsd: 0, detail: "" },
+        ],
+      }),
+    ]);
+    assert.ok(addon);
+    assert.deepEqual(addon.tiers.map((t) => t.id), ["basic"]);
+  });
+
+  it("drops the whole addon when every tier was unusable", () => {
+    assert.deepEqual(
+      journeyAddonsFromWire([monitoringAddon({ tiers: [{ id: "x", label: "X", upfrontUsd: 0, monthlyUsd: 0, detail: "" }] })]),
+      [],
+    );
+  });
+
+  it("a single-row addon (Architect Retainer) with one real tier maps through", () => {
+    const [addon] = journeyAddonsFromWire([
+      {
+        id: "architect-retainer",
+        title: "Architect Retainer",
+        blurb: "Direct access to Shane for design decisions.",
+        defaultOn: false,
+        defaultTierId: "standard",
+        tiers: [{ id: "standard", label: "Retainer", upfrontUsd: 0, monthlyUsd: 2000, detail: "" }],
+      },
+    ]);
+    assert.ok(addon);
+    assert.equal(addon.defaultOn, false);
+    assert.equal(addon.tiers.length, 1);
+    assert.equal(addon.tiers[0]!.monthlyUsd, 2000);
   });
 });

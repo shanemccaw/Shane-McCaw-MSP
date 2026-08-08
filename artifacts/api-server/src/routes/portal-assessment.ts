@@ -102,6 +102,7 @@ import type { PillarReportAttribution, PillarReportNarrativeResult } from "../li
 import { resolveMspId } from "../lib/resolve-msp-id";
 import { resolveBillingMspId } from "../lib/ai-billing";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
+import { resolveTenantMonitoringAddon, resolveArchitectRetainerAddon } from "../lib/sow-monitoring-addon.ts";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
@@ -1573,6 +1574,15 @@ router.post(
 //
 // Fetched once per page load (NOT polled — the engine walks the full tenant
 // profile, which is far too heavy for the 4s status poll).
+//
+// `addons` carries the SOW's two real optional services — Tenant Monitoring
+// (seat-priced, 3 real quality tiers) and the Architect Retainer (one real
+// row, no tiering) — resolved by sow-monitoring-addon.ts. This is a SEPARATE
+// path from the Sales Offer Engine candidates above: those are eligibility-
+// scored remediation phases, these are always-offered recurring add-ons keyed
+// off the tenant's own real seat count and the catalog's monitoring_tier /
+// copilot-governance-retainer rows. Either entry can be absent for a tenant
+// this platform cannot honestly price.
 router.get(
   "/portal/assessment/recommended-offers",
   requireRole("Assessment"),
@@ -1585,14 +1595,16 @@ router.get(
 
     try {
       const [customer] = await db
-        .select({ mspId: tenantsTable.mspId })
+        .select({ mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
-      const [engineOutput, { rules }] = await Promise.all([
+      const [engineOutput, { rules }, monitoringAddon, retainerAddon] = await Promise.all([
         runSalesOfferEngineForTenant(customerId, customer?.mspId ?? null),
         fetchSignalRulesAndGroups(customer?.mspId ?? null),
+        resolveTenantMonitoringAddon(customer?.tenantId ?? null),
+        resolveArchitectRetainerAddon(),
       ]);
 
       const pillarsBySignal = new Map<string, string>();
@@ -1613,6 +1625,12 @@ router.get(
           // Real destination: the existing customer offers page.
           link: "/customer-offers",
         })),
+        // Tenant Monitoring + Architect Retainer — real, already-priced catalog
+        // services, resolved independently of the Sales Offer Engine's
+        // eligibility-scored remediation candidates above (see
+        // sow-monitoring-addon.ts). Either can be omitted for a tenant this
+        // platform cannot honestly price (no seat count, missing catalog row).
+        addons: [monitoringAddon, retainerAddon].filter((a) => a !== null),
       });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/assessment/recommended-offers failed");

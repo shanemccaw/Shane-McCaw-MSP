@@ -73,6 +73,7 @@
 
 import { PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
 import { inferPillar, slugify, type JourneySowPhase, type JourneySowScope } from "./journeyScopeFromSow.ts";
+import type { JourneyAddon, JourneyTier } from "./journeyPricing.ts";
 
 /**
  * `document_types.key` for the Statement of Work — the real seeded catalogue key
@@ -109,8 +110,77 @@ export interface WireRecommendedOffer {
   readonly pillars?: readonly string[];
 }
 
+/**
+ * A real optional service — Tenant Monitoring or the Architect Retainer, both
+ * resolved server-side (`sow-monitoring-addon.ts`) from real catalog rows.
+ * `tiers` is Tenant Monitoring's real Basic/Enhanced/Premium quality tiers
+ * (each already priced at this tenant's real seat count), or the Architect
+ * Retainer's single real row. Never invented client-side.
+ */
+export interface WireSowAddonTier {
+  readonly id?: string;
+  readonly label?: string;
+  readonly upfrontUsd?: number;
+  readonly monthlyUsd?: number;
+  readonly detail?: string;
+  readonly emphasis?: "seat-match" | "recommended" | null;
+}
+
+export interface WireSowAddon {
+  readonly id?: string;
+  readonly title?: string;
+  readonly blurb?: string;
+  readonly defaultOn?: boolean;
+  readonly defaultTierId?: string | null;
+  readonly tiers?: readonly WireSowAddonTier[];
+}
+
 export interface WireRecommendedOffers {
   readonly offers?: readonly WireRecommendedOffer[];
+  readonly addons?: readonly WireSowAddon[];
+}
+
+/**
+ * Map the wire's add-ons onto `JourneyAddon[]` — dropping any entry missing
+ * the fields a real toggleable, priced card needs (an id, a title, at least
+ * one tier with a positive price) rather than rendering a broken card.
+ */
+export function journeyAddonsFromWire(addons: readonly WireSowAddon[] | undefined): JourneyAddon[] {
+  const out: JourneyAddon[] = [];
+  for (const a of addons ?? []) {
+    const id = (a.id ?? "").trim();
+    const title = (a.title ?? "").trim();
+    if (!id || !title) continue;
+
+    const tiers: JourneyTier[] = [];
+    for (const t of a.tiers ?? []) {
+      const tierId = (t.id ?? "").trim();
+      const label = (t.label ?? "").trim();
+      const upfrontUsd = typeof t.upfrontUsd === "number" && Number.isFinite(t.upfrontUsd) ? t.upfrontUsd : 0;
+      const monthlyUsd = typeof t.monthlyUsd === "number" && Number.isFinite(t.monthlyUsd) ? t.monthlyUsd : 0;
+      if (!tierId || !label || (upfrontUsd <= 0 && monthlyUsd <= 0)) continue;
+      tiers.push({
+        id: tierId,
+        label,
+        upfrontUsd,
+        monthlyUsd,
+        detail: t.detail ?? "",
+        emphasis: t.emphasis === "seat-match" || t.emphasis === "recommended" ? t.emphasis : undefined,
+      });
+    }
+    if (tiers.length === 0) continue;
+
+    const defaultTierId = tiers.some((t) => t.id === a.defaultTierId) ? (a.defaultTierId as string) : null;
+    out.push({
+      id,
+      title,
+      blurb: a.blurb ?? "",
+      tiers,
+      defaultOn: a.defaultOn === true,
+      defaultTierId,
+    });
+  }
+  return out;
 }
 
 const PILLAR_KEY_SET: ReadonlySet<string> = new Set<string>(PILLAR_KEYS);
@@ -202,10 +272,13 @@ export function journeyScopeFromOffers(body: WireRecommendedOffers): JourneySowS
 
   if (phases.length === 0) return null;
 
+  // Optional services — Tenant Monitoring + Architect Retainer — are real
+  // catalog rows this same endpoint now carries (`sow-monitoring-addon.ts`),
+  // not invented client-side and not a second pricing path.
+  const addons = journeyAddonsFromWire(body.addons);
+
   return {
-    // Optional services are catalogue products chosen on the proposal screen;
-    // nothing on this endpoint carries them, so the set is empty, not invented.
-    scope: { phases, addons: [] },
+    scope: { phases, addons },
     phases,
     adjustments: [],
     adjustmentsUsd: 0,
