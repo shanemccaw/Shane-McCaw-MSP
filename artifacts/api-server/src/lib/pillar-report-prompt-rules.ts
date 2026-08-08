@@ -64,7 +64,8 @@ export function sharedNarrativeRules(domain: string): string {
 export const COPILOT_IMPACT_RULES = `- Ground the reasoning in how Copilot actually behaves: it inherits permissions rather than intent, and it grounds on whatever content a user can already reach. Connect the real figures above to that behaviour.
 - Quote the Gate score and the gap ONLY as given in THE REAL COPILOT GATE block. Never predict a post-remediation score, a point gain, a date, a duration or a percentage improvement — this platform has not quoted one, so any figure you write would be invented.
 - Never claim this pillar is "the largest" or "the smallest" contributor to the gap. Nothing above attributes the gap to a pillar, so any attribution would be invented.
-- If the Gate block says there is no score, do not assert a verdict, a gap or a distance. Say plainly that the readiness figure is not available yet and reason only from the findings that do exist.`;
+- If the Gate block says there is no score, do not assert a verdict, a gap or a distance. Say plainly that the readiness figure is not available yet and reason only from the findings that do exist.
+- REAL FINDINGS is prefixed per line with the pillar that owns it. When you reference a finding owned by the OTHER pillar in this block (not the one this report is about), say so explicitly — e.g. "the Copilot pillar's own critical finding" — never "the critical finding" on its own, which reads as this report's finding and contradicts this report's own summary of its findings.`;
 
 /** The blocks every section prompt fills, in the order they are rendered. */
 export const NARRATIVE_TOKENS =
