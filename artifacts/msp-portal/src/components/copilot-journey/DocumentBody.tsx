@@ -55,6 +55,7 @@ import { LiveGovernancePostureReport } from "./GovernancePostureReportBody";
 import { LiveComplianceAlignmentReport } from "./ComplianceAlignmentReportBody";
 import { LiveLicensingAlignmentReport } from "./LicensingAlignmentReportBody";
 import { LiveOperationalHealthReport } from "./OperationalHealthReportBody";
+import { LiveAdoptionReport } from "./AdoptionReportBody";
 import { useCopilotReadinessNarrative } from "./useCopilotReadinessNarrative.ts";
 import type { JourneyDocumentView, JourneyGeneration, JourneyTenant, JourneyView } from "./journeyModel.ts";
 import { documentPillar, isGenerationUnknown } from "./journeyModel.ts";
@@ -405,6 +406,9 @@ const LIVE_BODY: Record<
   governancePosture: LiveGovernancePostureReport,
   complianceAlignment: LiveComplianceAlignmentReport,
   licensingAlignment: LiveLicensingAlignmentReport,
+  // The seventh report to be built, and the one with no measured stats at all —
+  // only a real score, real findings and three gaps declared in words.
+  adoption: LiveAdoptionReport,
   operationalHealth: LiveOperationalHealthReport,
 };
 

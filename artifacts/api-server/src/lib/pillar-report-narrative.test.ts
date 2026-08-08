@@ -3,7 +3,11 @@
  *
  * #292 — the four pillar reports' AI-written sections: Governance Posture,
  * Compliance & Regulatory Alignment, Copilot Licensing Alignment, and
- * Operational Health & Service Integrity.
+ * Operational Health & Service Integrity. Since extended by a fifth, Copilot
+ * Adoption & Usage, which is exactly the "fifth report added to the table gets
+ * the whole guarantee for free" case the header below anticipated — and the
+ * most useful one to have it, because it is the only report whose pillar card
+ * carries no measured stats at all.
  *
  * The point of this file is the same as its two predecessors': the
  * never-fabricate guarantee, tested as a GUARANTEE rather than as a prompt
@@ -114,6 +118,8 @@ const { LICENSING_ALIGNMENT_SPEC, generateLicensingAlignmentNarrative, LICENSING
   await import("./licensing-alignment-narrative-generator.ts");
 const { OPERATIONAL_HEALTH_SPEC, generateOperationalHealthNarrative, OPERATIONAL_HEALTH_NARRATIVE_SECTIONS } =
   await import("./operational-health-narrative-generator.ts");
+const { ADOPTION_SPEC, generateAdoptionNarrative, ADOPTION_NARRATIVE_SECTIONS } =
+  await import("./adoption-narrative-generator.ts");
 
 /* ------------------------------------------------------------------ *
  * Fixtures
@@ -194,6 +200,13 @@ const REPORTS = [
     sections: OPERATIONAL_HEALTH_NARRATIVE_SECTIONS,
     ownPillar: "health" as const,
   },
+  {
+    name: "copilot adoption & usage",
+    spec: ADOPTION_SPEC,
+    run: generateAdoptionNarrative,
+    sections: ADOPTION_NARRATIVE_SECTIONS,
+    ownPillar: "adoption" as const,
+  },
 ];
 
 function run(report: (typeof REPORTS)[number]) {
@@ -260,6 +273,28 @@ describe("each report declares three prose sections and grounds them honestly", 
     const bySection = Object.fromEntries(LICENSING_ALIGNMENT_SPEC.sections.map((s) => [s.key, s.pillars]));
     expect(bySection.summary).toEqual(["licensing"]);
     expect(bySection.cost).toEqual(["licensing"]);
+  });
+
+  it("scopes the adoption report's data sections to adoption alone", () => {
+    // Same reasoning as licensing's, with a sharper edge: the adoption card
+    // carries NO stats (`WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array
+    // by decision), so a borrowed pillar would put the ONLY number in a report
+    // whose whole argument is that it has none — and the report's own tables
+    // could not show it.
+    const bySection = Object.fromEntries(ADOPTION_SPEC.sections.map((s) => [s.key, s.pillars]));
+    expect(bySection.summary).toEqual(["adoption"]);
+    expect(bySection.activity).toEqual(["adoption"]);
+  });
+
+  it("forbids a usage count and a direction of travel in every adoption section", () => {
+    // The two claims that report exists to prevent, asserted as prompt text
+    // because that is where they are enforced — the code cannot stop a model
+    // inferring a percentage from a finding title, only from being handed one.
+    for (const section of ADOPTION_SPEC.sections) {
+      expect(section.promptBody).toContain("NEVER state a usage count");
+      expect(section.promptBody).toContain("NEVER state a direction of travel");
+      expect(section.promptBody).toContain("NEVER name or imply a persona");
+    }
   });
 });
 

@@ -97,6 +97,7 @@ import { generateGovernancePostureNarrative } from "../lib/governance-posture-na
 import { generateComplianceAlignmentNarrative } from "../lib/compliance-alignment-narrative-generator.ts";
 import { generateLicensingAlignmentNarrative } from "../lib/licensing-alignment-narrative-generator.ts";
 import { generateOperationalHealthNarrative } from "../lib/operational-health-narrative-generator.ts";
+import { generateAdoptionNarrative } from "../lib/adoption-narrative-generator.ts";
 import type { PillarReportAttribution, PillarReportNarrativeResult } from "../lib/pillar-report-narrative.ts";
 import { resolveMspId } from "../lib/resolve-msp-id";
 import { resolveBillingMspId } from "../lib/ai-billing";
@@ -733,18 +734,19 @@ router.get(
   },
 );
 
-// ── The four pillar reports' prose sections (#292) ────────────────────────────
+// ── The pillar reports' prose sections (#292, extended) ───────────────────────
 //
 //   GET /api/portal/assessment/governance-posture-narrative
 //   GET /api/portal/assessment/compliance-alignment-narrative
 //   GET /api/portal/assessment/licensing-alignment-narrative
 //   GET /api/portal/assessment/operational-health-narrative
+//   GET /api/portal/assessment/adoption-narrative
 //
-// Four routes with one body, registered by the helper below rather than written
-// out four times. They differ ONLY in which generator they call and what the log
+// Five routes with one body, registered by the helper below rather than written
+// out five times. They differ ONLY in which generator they call and what the log
 // line says: every one of them resolves the same customer identity from the same
 // JWT claim, reads the same `tenants.customer_name`, attributes to the same
-// billing msp, and fails the same way. Four copies of that would be four places
+// billing msp, and fails the same way. Five copies of that would be five places
 // for the 403 guard or the error handling to drift.
 //
 // Each report's OTHER content — every metric row, every finding, every declared
@@ -829,6 +831,17 @@ registerPillarReportNarrativeRoute(
   "/portal/assessment/operational-health-narrative",
   "operational-health-report",
   generateOperationalHealthNarrative,
+);
+// The seventh live-rendered report, and the only one whose pillar card carries
+// no measured stats at all — `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty
+// array by decision, not by omission. It needs nothing special here: the
+// grounding, the fact floor and the omission reasons are the same, and a
+// section that reaches the floor on the pillar score and its findings alone is
+// exactly the case `MIN_FACTS_FOR_NARRATIVE` was set to 1 for.
+registerPillarReportNarrativeRoute(
+  "/portal/assessment/adoption-narrative",
+  "adoption-report",
+  generateAdoptionNarrative,
 );
 
 // ── Shell-wide scan status (lightweight, poll every 30-60s from app-shell.tsx) ─

@@ -437,6 +437,7 @@ export type JourneyLiveDocumentKey =
   | "governancePosture"
   | "complianceAlignment"
   | "licensingAlignment"
+  | "adoption"
   | "operationalHealth";
 
 /**
@@ -504,19 +505,43 @@ export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
     docType: "license_optimization_report",
     title: "Copilot Licensing Alignment Report",
   },
+  // The Adoption report. Placed HERE rather than appended, because this list is
+  // ordered "as they lead a document set" and `JOURNEY_DESIGN_DOCUMENTS` puts
+  // Adoption between Licensing and Operational Health — appending it would have
+  // reordered a customer's document spine to match the order the reports
+  // happened to be built in.
+  //
+  // It was deliberately absent while every live report was assumed to need a
+  // stat table, because the adoption pillar carries ZERO real stats —
+  // `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array, and its own note
+  // says why: the four figures it used to claim named `usage:*` keys that #441
+  // established are not a check-key domain in this catalog at all, and the
+  // nearest real checks are per-user and per-site Graph detail endpoints that
+  // would render the licensed roster under a caption reading "active users".
+  //
+  // That gap has not closed and is not worked around. What changed is the
+  // reading of it: a report with a real score, real findings from six real
+  // `adoption:*` checks, a real Gate row and three gaps declared to the reader
+  // in words is a SHORTER report, not a fabricated one — the same trade every
+  // report in this set already makes for its own missing figures. The empty
+  // stat array is now stated to the customer rather than used as a reason to
+  // withhold the findings the platform genuinely holds. See `pillarAdoption.ts`
+  // for what it drops from the design and why.
+  //
+  // `adoption_report` is a NEW catalogue key, seeded by
+  // `lib/db/migrations/manual/2026-08-08-document-types-adoption-report.sql`,
+  // for Shane to run. Registering it here does not depend on that SQL having
+  // run: `liveDocumentFor` matches `docType` OR the design's exact title.
+  {
+    key: "adoption",
+    docType: "adoption_report",
+    title: "Copilot Adoption & Workflow Readiness Report",
+  },
   {
     key: "operationalHealth",
     docType: "operational_health_report",
     title: "Microsoft 365 Operational Health & Service Integrity Report",
   },
-  // DELIBERATELY ABSENT: "Copilot Adoption & Workflow Readiness Report". The
-  // adoption pillar carries ZERO real stats — `WAR_ROOM_PILLAR_STAT_SPECS
-  // .adoption` is an empty array, and its own note says why: the four figures it
-  // used to claim named `usage:*` keys that #441 established are not a check-key
-  // domain in this catalog at all, and the nearest real checks are per-user
-  // Graph detail endpoints that would render the licensed roster under a caption
-  // reading "active users". That is a real, documented gap rather than a wiring
-  // miss, so the report is not built on top of it.
 ];
 
 /**
