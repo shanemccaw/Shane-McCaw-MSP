@@ -1,172 +1,522 @@
 [
   {
-    "statementIndex": 0,
-    "statementText": "-- ============================================================================\n-- #551 PHASE 2 -- identity:global-admin-count counts ACTIVATED DIRECTORY ROLES,\n-- not Global Administrators. Repoint it at the role's actual members.\n-- ============================================================================\n-- Manual migration -- Shane runs this himself (no DATABASE_URL in the Claude\n-- environment, per CLAUDE.md). Idempotent: a plain UPDATE of one row by key,\n-- safe to re-run.\n--\n-- ── WHAT…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [
-      {
-        "key": "identity:global-admin-count",
-        "label": "Global Administrator Count",
-        "endpoint": "/directoryRoles",
-        "select_params": null,
-        "properties": [
-          "id",
-          "members"
-        ],
-        "mapping": [
-          {
-            "transform": "count",
-            "sourceField": "id",
-            "targetField": "globalAdminCount"
-          }
-        ],
-        "severity_rules": [
-          {
-            "label": "Far more Global Administrators than any real operational need — severe attack surface exposure",
-            "severity": "critical",
-            "expression": "globalAdminCount >= 10"
-          },
-          {
-            "label": "Global Administrator count exceeds Microsoft's own recommended threshold of fewer than 5",
-            "severity": "warning",
-            "expression": "globalAdminCount >= 5"
-          },
-          {
-            "label": "Fewer than 2 Global Administrators — single point of failure risk if that one account is lost or locked out",
-            "severity": "warning",
-            "expression": "globalAdminCount < 2"
-          }
-        ],
-        "engines": [
-          "security",
-          "priority"
-        ],
-        "schema_version": 1,
-        "status": "active"
-      }
-    ],
-    "error": null
+    "signal_key": "signal.adoption.planner-usage",
+    "source_key": "adoption:planner-usage",
+    "pillar": "adoption",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
   },
   {
-    "statementIndex": 1,
-    "statementText": "-- ══════════════════════════════════════════════════════════════════════════════\n-- PART B -- THE CORRECTION (transactioned). Review PART A output first.\n-- ══════════════════════════════════════════════════════════════════════════════\n\nBEGIN;",
-    "success": true,
-    "rowCount": 0,
-    "rows": [],
-    "error": null
+    "signal_key": "signal.adoption.viva-engage-health",
+    "source_key": "adoption:viva-engage-health",
+    "pillar": "adoption",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
   },
   {
-    "statementIndex": 2,
-    "statementText": "UPDATE monitor_checks\nSET\n  endpoint = '/directoryRoles(roleTemplateId=''62e90394-69f5-4237-9190-012177145e10'')/members',\n\n  -- Raw property extraction. applyMapping emits <prop>_count / <prop>_first /\n  -- <prop>_values for each, so displayName_values and userPrincipalName_values\n  -- become the real per-admin lists inside extracted_properties -- the aggregate\n  -- row alone now names the people, before anything reads the detail table.\n  -- \"members\" is GONE: it asked directoryRole objects for…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [
-      {
-        "key": "identity:global-admin-count",
-        "label": "Global Administrator Count",
-        "endpoint": "/directoryRoles(roleTemplateId='62e90394-69f5-4237-9190-012177145e10')/members",
-        "select_params": null,
-        "properties": [
-          "id",
-          "displayName",
-          "userPrincipalName",
-          "mail",
-          "@odata.type"
-        ],
-        "mapping": [
-          {
-            "transform": "count",
-            "sourceField": "id",
-            "targetField": "globalAdminCount"
-          },
-          {
-            "transform": "groupByCount",
-            "sourceField": "@odata.type",
-            "targetField": "globalAdminsByPrincipalType"
-          },
-          {
-            "transform": "countTruthy",
-            "sourceField": "userPrincipalName",
-            "targetField": "globalAdminUserCount"
-          },
-          {
-            "transform": "countTruthy",
-            "sourceField": "appId",
-            "targetField": "globalAdminServicePrincipalCount"
-          }
-        ],
-        "severity_rules": [
-          {
-            "label": "Far more Global Administrators than any real operational need — severe attack surface exposure",
-            "severity": "critical",
-            "expression": "globalAdminCount >= 10"
-          },
-          {
-            "label": "Global Administrator count exceeds Microsoft's own recommended threshold of fewer than 5",
-            "severity": "warning",
-            "expression": "globalAdminCount >= 5"
-          },
-          {
-            "label": "Fewer than 2 Global Administrators — single point of failure risk if that one account is lost or locked out",
-            "severity": "warning",
-            "expression": "globalAdminCount < 2"
-          }
-        ],
-        "schema_version": 2
-      }
-    ],
-    "error": null
+    "signal_key": "signal.copilot.usage-activity",
+    "source_key": "copilot:usage-activity",
+    "pillar": "adoption",
+    "severity": "informational",
+    "status": "ok",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:18.402Z",
+    "max_impact": 10
   },
   {
-    "statementIndex": 3,
-    "statementText": "-- ── RECEIPT expectations ────────────────────────────────────────────────────\n-- Exactly 1 row. endpoint now carries the parenthesised roleTemplateId form.\n-- severity_rules MUST come back UNCHANGED -- the three >= 10 / >= 5 / < 2 bands,\n-- byte for byte. They are not in the SET clause; if they differ, stop and\n-- ROLLBACK, because something else wrote this row.\n-- label ('Global Administrator Count') is intentionally untouched: it was always\n-- the correct name for this check, it simply was n…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
+    "signal_key": "signal.appgov.cert-secret-expiration",
+    "source_key": "appgov:cert-secret-expiration",
+    "pillar": "architecture",
+    "severity": "medium",
+    "status": "ok",
+    "severity_matched": "warning",
+    "collected_at": "2026-08-08T03:54:20.035Z",
+    "max_impact": 12
   },
   {
-    "statementIndex": 4,
-    "statementText": "COMMIT;",
-    "success": true,
-    "rowCount": 0,
-    "rows": [],
-    "error": null
+    "signal_key": "signal.platform.multi-geo-status",
+    "source_key": "platform:multi-geo-status",
+    "pillar": "architecture",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 8
   },
   {
-    "statementIndex": 5,
-    "statementText": "-- ══════════════════════════════════════════════════════════════════════════════\n-- PART C -- THE LIVE SMOKE TEST (do this, it is the one unproven thing)\n-- ══════════════════════════════════════════════════════════════════════════════\n-- The single quote inside roleTemplateId='...' is the only part of this change\n-- that unit tests cannot fully settle -- they prove the platform builds the URL\n-- intact, not that Graph answers it. Run the check once against the real testbed\n-- tenant (Simulator…",
-    "success": true,
-    "rowCount": 2,
-    "rows": [
-      {
-        "status": "ok",
-        "severity_matched": "critical",
-        "collected_at": "2026-08-07T23:17:37.501Z",
-        "item_count": 14,
-        "error_message": null,
-        "global_admin_count": 14,
-        "human_admins": null,
-        "app_admins": null,
-        "by_type": null,
-        "admin_names": null,
-        "admin_upns": null
-      },
-      {
-        "status": "ok",
-        "severity_matched": "critical",
-        "collected_at": "2026-08-07T23:17:28.096Z",
-        "item_count": 14,
-        "error_message": null,
-        "global_admin_count": 14,
-        "human_admins": null,
-        "app_admins": null,
-        "by_type": null,
-        "admin_names": null,
-        "admin_upns": null
-      }
-    ],
-    "error": null
+    "signal_key": "signal.onedrive.storage-utilization",
+    "source_key": "onedrive:storage-utilization",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.m365.service-health",
+    "source_key": "m365:service-health",
+    "pillar": "architecture",
+    "severity": "high",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.teams.team-count",
+    "source_key": "teams:team-count",
+    "pillar": "architecture",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.devices.autopilot-coverage",
+    "source_key": "devices:autopilot-coverage",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.devices.enrollment-status",
+    "source_key": "devices:enrollment-status",
+    "pillar": "architecture",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 15
+  },
+  {
+    "signal_key": "signal.exchange.archive-mailbox-rate",
+    "source_key": "exchange:archive-mailbox-rate",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 5
+  },
+  {
+    "signal_key": "signal.sharepoint.site-count",
+    "source_key": "sharepoint:site-count",
+    "pillar": "architecture",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.devices.update-rings-config",
+    "source_key": "devices:update-rings-config",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.exchange.transport-rule-count",
+    "source_key": "exchange:transport-rule-count",
+    "pillar": "architecture",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.exchange.mailbox-quota-utilization",
+    "source_key": "exchange:mailbox-quota-utilization",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 8
+  },
+  {
+    "signal_key": "signal.sharepoint.storage-utilization",
+    "source_key": "sharepoint:storage-utilization",
+    "pillar": "architecture",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.copilot.sensitivity-labels-exist",
+    "source_key": "copilot:sensitivity-labels-exist",
+    "pillar": "compliance",
+    "severity": "medium",
+    "status": "ok",
+    "severity_matched": "warning",
+    "collected_at": "2026-08-08T03:54:20.415Z",
+    "max_impact": 15
+  },
+  {
+    "signal_key": "signal.compliance.weak-dlp-policies",
+    "source_key": "compliance:weak-dlp-policies",
+    "pillar": "compliance",
+    "severity": "low",
+    "status": "license_gap",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:26.004Z",
+    "max_impact": 15
+  },
+  {
+    "signal_key": "signal.compliance.missing-labels",
+    "source_key": "compliance:missing-labels",
+    "pillar": "compliance",
+    "severity": "low",
+    "status": "license_gap",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:33.086Z",
+    "max_impact": 15
+  },
+  {
+    "signal_key": "signal.compliance.label-errors",
+    "source_key": "compliance:label-errors",
+    "pillar": "compliance",
+    "severity": "low",
+    "status": "license_gap",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:36.406Z",
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.exchange.litigation-hold-coverage",
+    "source_key": "exchange:litigation-hold-coverage",
+    "pillar": "compliance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 8
+  },
+  {
+    "signal_key": "signal.identity.terms-of-use",
+    "source_key": "identity:terms-of-use",
+    "pillar": "compliance",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.governance.sensitivity-label-adoption",
+    "source_key": "governance:sensitivity-label-adoption",
+    "pillar": "compliance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 15
+  },
+  {
+    "signal_key": "signal.governance.retention-label-adoption",
+    "source_key": "governance:retention-label-adoption",
+    "pillar": "compliance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.compliance.dlp-incidents",
+    "source_key": "compliance:dlp-incidents",
+    "pillar": "compliance",
+    "severity": "low",
+    "status": "license_gap",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:29.815Z",
+    "max_impact": 3
+  },
+  {
+    "signal_key": "signal.identity.b2b-collaboration-settings",
+    "source_key": "identity:b2b-collaboration-settings",
+    "pillar": "governance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
+  },
+  {
+    "signal_key": "signal.teams.messaging-policy-coverage",
+    "source_key": "teams:messaging-policy-coverage",
+    "pillar": "governance",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.governance.dynamic-group-usage",
+    "source_key": "governance:dynamic-group-usage",
+    "pillar": "governance",
+    "severity": "informational",
+    "status": "ok",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:37.860Z",
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.identity.password-expiration-policy",
+    "source_key": "identity:password-expiration-policy",
+    "pillar": "governance",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.m365.message-center",
+    "source_key": "m365:message-center",
+    "pillar": "governance",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 3
+  },
+  {
+    "signal_key": "signal.teams.guest-settings-governance",
+    "source_key": "teams:guest-settings-governance",
+    "pillar": "governance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 8
+  },
+  {
+    "signal_key": "signal.identity.cross-tenant-access",
+    "source_key": "identity:cross-tenant-access",
+    "pillar": "governance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
+  },
+  {
+    "signal_key": "signal.teams.guest-membership",
+    "source_key": "teams:guest-membership",
+    "pillar": "governance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 12
+  },
+  {
+    "signal_key": "signal.sharepoint.site-label-coverage",
+    "source_key": "sharepoint:site-label-coverage",
+    "pillar": "governance",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 12
+  },
+  {
+    "signal_key": "signal.exchange.distribution-list-count",
+    "source_key": "exchange:distribution-list-count",
+    "pillar": "governance",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.teams.meeting-policy-coverage",
+    "source_key": "teams:meeting-policy-coverage",
+    "pillar": "governance",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.license.copilot-assignment",
+    "source_key": "license:copilot-assignment",
+    "pillar": "licensing",
+    "severity": "informational",
+    "status": "ok",
+    "severity_matched": null,
+    "collected_at": "2026-08-08T03:54:17.872Z",
+    "max_impact": 10
+  },
+  {
+    "signal_key": "signal.identity.pim-groups",
+    "source_key": "identity:pim-groups",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 5
+  },
+  {
+    "signal_key": "signal.devices.compliance-policy-coverage",
+    "source_key": "devices:compliance-policy-coverage",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 12
+  },
+  {
+    "signal_key": "signal.platform.tenant-password-expiration",
+    "source_key": "platform:tenant-password-expiration",
+    "pillar": "security",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.identity.pim-eligible-roles",
+    "source_key": "identity:pim-eligible-roles",
+    "pillar": "security",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 3
+  },
+  {
+    "signal_key": "signal.identity.named-locations",
+    "source_key": "identity:named-locations",
+    "pillar": "security",
+    "severity": "low",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 2
+  },
+  {
+    "signal_key": "signal.teams.external-access-settings",
+    "source_key": "teams:external-access-settings",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
+  },
+  {
+    "signal_key": "signal.teams.app-permission-policy",
+    "source_key": "teams:app-permission-policy",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
+  },
+  {
+    "signal_key": "signal.devices.app-protection-coverage",
+    "source_key": "devices:app-protection-coverage",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 12
+  },
+  {
+    "signal_key": "signal.security.secure-score-by-category",
+    "source_key": "security:secure-score-by-category",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 4
+  },
+  {
+    "signal_key": "signal.appgov.enterprise-app-count",
+    "source_key": "appgov:enterprise-app-count",
+    "pillar": "security",
+    "severity": "informational",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 3
+  },
+  {
+    "signal_key": "signal.exchange.antispam-policy-coverage",
+    "source_key": "exchange:antispam-policy-coverage",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
+  },
+  {
+    "signal_key": "signal.exchange.mail-flow-rule-review",
+    "source_key": "exchange:mail-flow-rule-review",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 5
+  },
+  {
+    "signal_key": "signal.onedrive.external-sharing-settings",
+    "source_key": "onedrive:external-sharing-settings",
+    "pillar": "security",
+    "severity": "high",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 18
+  },
+  {
+    "signal_key": "signal.security.dlp-true-positive-rate",
+    "source_key": "security:dlp-true-positive-rate",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 5
+  },
+  {
+    "signal_key": "signal.identity.mfa-method-breakdown",
+    "source_key": "identity:mfa-method-breakdown",
+    "pillar": "security",
+    "severity": "medium",
+    "status": null,
+    "severity_matched": null,
+    "collected_at": null,
+    "max_impact": 6
   }
 ]
