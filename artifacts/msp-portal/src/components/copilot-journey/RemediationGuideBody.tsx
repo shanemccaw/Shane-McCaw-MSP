@@ -78,7 +78,7 @@ import {
   type LiveRemediationStep,
   type StepEvidence,
 } from "./remediationLiveGuide.ts";
-import { buildProvenance } from "./liveReportBlocks.ts";
+import { buildProvenance, checkDomainLabel } from "./liveReportBlocks.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
@@ -280,7 +280,7 @@ function Evidence({ evidence }: { readonly evidence: StepEvidence }) {
           {evidence.title}
         </span>{" "}
         <span style={{ color: INK.micro }}>
-          {`— recorded by ${evidence.checkKey} on this tenant's last scan.`}
+          {`— recorded by the ${checkDomainLabel(evidence.checkKey)} check on this tenant's last scan.`}
         </span>
       </Note>
     );

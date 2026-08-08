@@ -852,7 +852,7 @@ export function narrativeBlocks(
  * This derives the one human-readable fact worth keeping from it — the
  * domain it belongs to — deterministically, with no elaboration invented.
  */
-function checkDomainLabel(checkKey: string): string {
+export function checkDomainLabel(checkKey: string): string {
   const domain = checkKey.split(":", 1)[0] ?? checkKey;
   return domain
     .split("-")

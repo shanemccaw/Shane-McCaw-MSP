@@ -30,6 +30,7 @@ import { Loader2 } from "lucide-react";
 import { INK, PILLARS, hexAlpha, reportAccent } from "./journeyTokens.ts";
 import { BODY, Block, EYEBROW, H2, type FigureRenderer } from "./ReportBlocks";
 import {
+  checkDomainLabel,
   unavailableReasonText,
   type LiveReportBlock,
   type LiveReportSection,
@@ -86,7 +87,7 @@ export function UnavailableBlock({
         <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
           {checks.map((c) => (
             <li key={`${c.checkKey}:${c.reason}`} style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.5, color: INK.micro }}>
-              <code style={{ fontFamily: "ui-monospace, monospace", color: INK.bodyDark }}>{c.checkKey}</code>
+              <code style={{ fontFamily: "ui-monospace, monospace", color: INK.bodyDark }}>{checkDomainLabel(c.checkKey)}</code>
               {` — ${unavailableReasonText(c.reason)}`}
             </li>
           ))}
@@ -149,7 +150,7 @@ export function UpgradeOpportunityBlock({
             style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 11, borderTop: `1px solid ${hexAlpha(teal, 0.16)}` }}
           >
             <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: teal }}>
-              {item.checkKey}
+              {checkDomainLabel(item.checkKey)}
             </code>
             <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
               {item.disclosure}
