@@ -226,6 +226,11 @@ export default defineConfig({
       // 6339200a) through the gate, and runs the numeric spot-check #559
       // originally proposed to show it passing the bad document.
       "src/lib/document-claim-binding-559.test.ts",
+      // #560 — the SOW half of #559: a pricing line that bills a real engine
+      // price against the wrong workstream is never saved. Constructs the swap
+      // (the failure that leaves the total exactly right) and runs the
+      // arithmetic check anyone would reach for first, watching it pass.
+      "src/lib/sow-claim-binding-560.test.ts",
     ],
     coverage: {
       provider: "v8",

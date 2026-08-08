@@ -9,9 +9,28 @@ import {
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
-import { extractAiHtml } from "./sow-pricing";
+import { extractAiHtml, firstTextBlock } from "./sow-pricing";
 // Git #556 — same guard as the standalone engine. See ai-output-ceiling.ts.
 import { assertOutputNotTruncated } from "./ai-output-ceiling";
+// Git #560 — the SOW half of #559. A separate module from
+// `document-claim-binding.ts` because a SOW's claims are PRICING LINES against
+// a structured engine-authoritative table, not prose against `{{profileSample}}`;
+// see that file's header for why the question had to change with the shape.
+// Same properties as the guard above: pure, engine-free, SDK-free, injected
+// model call.
+import {
+  assertSowClaimBindingsConsistent,
+  type SowPricedLine,
+} from "./sow-claim-binding";
+// The audit call's model, ceiling and temperature are #559's constants rather
+// than new ones: both gates run the same second look on the same model for the
+// same reason, and duplicating the model string across two files is how they
+// would silently drift apart.
+import {
+  CLAIM_BINDING_AUDIT_MAX_TOKENS,
+  CLAIM_BINDING_AUDIT_MODEL,
+  CLAIM_BINDING_AUDIT_TEMPERATURE,
+} from "./document-claim-binding";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
 import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
@@ -49,8 +68,97 @@ const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" }
  * of `stop_reason`. That is fixed below regardless of the ceiling — a SOW cut
  * off before its pricing table is exactly the document that must never be
  * served as finished.
+ *
+ * ── Git #560 — 16,000 -> 21,000, and why NOT 64,000 ──────────────────────────
+ * Thinking (below) shares `max_tokens` with the response text, so turning it on
+ * required moving this ceiling exactly as it did in `document-engine.ts`. That
+ * engine went 32,000 -> 64,000. This one cannot follow it, and the limit is not
+ * a matter of taste — it is enforced client-side, before any request is sent.
+ *
+ * Reason 1 above (this call is a non-streaming `messages.create`) has a precise
+ * numeric consequence in the SDK actually installed here,
+ * `@anthropic-ai/sdk@0.78.0`. `Anthropic.calculateNonstreamingTimeout` throws
+ * `AnthropicError("Streaming is required for operations that may take longer
+ * than 10 minutes")` whenever
+ *
+ *     (60 min * max_tokens) / 128,000 > 10 min
+ *
+ * i.e. whenever `max_tokens` exceeds 128,000 / 6 = 21,333. There is no
+ * per-model override for `claude-sonnet-4-6` (`MODEL_NONSTREAMING_TOKENS` lists
+ * only the Opus 4 / 4.1 ids), so the generic bound is the binding one. A
+ * request at #559's 64,000 would not produce a slow SOW, it would produce a
+ * thrown error on every generation.
+ *
+ * 21,000 is therefore the most headroom this transport allows, taken in full
+ * with a small margin under the throw. It buys ~5,000 tokens for the reasoning
+ * that now shares the budget, on top of the document envelope 16,000 already
+ * covered. Unused ceiling costs nothing — only tokens actually produced are
+ * billed — so there is no reason to leave any of it on the table.
+ *
+ * The residual risk is stated rather than hidden: if reasoning plus a long SOW
+ * ever exceeds 21,000, the #556 guard below fails the document loudly with a
+ * specific message instead of serving a truncated pricing table. That is the
+ * designed outcome and the right one, but it is a NEW way for this path to
+ * fail, and the fix if it shows up in practice is a transport change — move
+ * this call to `anthropic.messages.stream()` as `document-engine.ts` already
+ * does, which lifts the ceiling to 128,000 — not a further bump here. That
+ * change was deliberately not made under #560, which is a settings-and-
+ * validation issue, not a rewrite of how this engine talks to the API.
  */
-const SOW_MAX_OUTPUT_TOKENS = 16000;
+const SOW_MAX_OUTPUT_TOKENS = 21000;
+
+/**
+ * Git #560 — adaptive thinking on the SOW generation call.
+ *
+ * ── The defect this targets ──────────────────────────────────────────────────
+ * #559 confirmed, at a 4-in-5 reproduction rate on one tenant and one scan,
+ * that this model generation loses a VALUE-TO-LABEL BINDING when it is made to
+ * carry that binding implicitly through an English rewrite: it keeps the right
+ * numbers and attaches them to the wrong property, then defends the result in
+ * prose. Nothing in that mechanism is specific to governance findings.
+ *
+ * A SOW is the same task with money in it. `{{candidates}}` arrives as a list
+ * of workstream-to-price pairs, and the model has to re-express those pairs as
+ * a rendered pricing table with scope narrative around each line — carrying
+ * every binding implicitly, across a document, with several similar dollar
+ * figures adjacent to each other. That is the #559 shape with a worse blast
+ * radius: a crossed binding here is a customer invoiced the wrong amount for
+ * the wrong work.
+ *
+ * Thinking gives the model somewhere other than the visible document to do the
+ * reconciliation. It does not guarantee the bindings come out right — which is
+ * why the validation pass below exists and does not trust this setting.
+ *
+ * ── Why `temperature: 0` is NOT set here ─────────────────────────────────────
+ * #560 asked for temperature 0 *and* thinking. They cannot both be set, and
+ * this was checked against the current API reference rather than inherited from
+ * #559: sampling parameters are rejected on `claude-sonnet-4-6` *while thinking
+ * is on* — "on older models, the restriction applies only while thinking is on:
+ * `temperature` and `top_k` are incompatible with thinking". (On the newer
+ * models `temperature` is rejected outright, thinking or not, so there is no
+ * model on which both could be set.) Verified that this path really is on
+ * `claude-sonnet-4-6` rather than assuming it matches the 8-document engine —
+ * it is, so #559's finding applies unchanged.
+ *
+ * Given a forced choice, thinking wins here for the same reason it won in #559:
+ * temperature 0 buys run-to-run consistency, not correctness, and on the only
+ * measured evidence anyone has for this defect the wrong binding is the
+ * DOMINANT mode. Greedy decoding selects the dominant mode, so temperature 0 is
+ * as likely to make the defect reliable as to remove it.
+ *
+ * Temperature 0 is still right for a near-deterministic comparison task, which
+ * is exactly where it went: the validation call below sets it, and can, because
+ * that call sets no `thinking`.
+ *
+ * ── Consequences that had to be handled with it ──────────────────────────────
+ * Thinking blocks come FIRST in `content`, so anything reading `content[0]`
+ * stops finding the document. Both readers on this path already select the
+ * first TEXT block — `extractAiHtml` and #556's `readCharsProduced` were moved
+ * off block zero by #559 — so no change was needed here, but the coupling is
+ * real and is why this constant and those two functions must not be edited
+ * independently of each other.
+ */
+const SOW_NARRATIVE_THINKING = { type: "adaptive" } as const;
 
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Intentionally duplicated from document-engine.ts's own local, non-exported
@@ -479,6 +587,9 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: SOW_MAX_OUTPUT_TOKENS,
+          // Git #560 — see SOW_NARRATIVE_THINKING for why this is on, and why
+          // `temperature` is deliberately NOT set alongside it.
+          thinking: SOW_NARRATIVE_THINKING,
           messages: [{ role: "user", content: stylePrefix + prompt }],
         }),
     );
@@ -499,13 +610,96 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       log,
     );
 
+    // The bytes that get audited below and the bytes that get saved are the
+    // same bytes, read once — a second `extractAiHtml(aiResponse)` at save time
+    // would mean the gate cleared something other than what the customer reads.
+    const htmlContent = extractAiHtml(aiResponse);
+
+    // ── Pricing claim/source binding validation (#560) ────────────────────────
+    // The SOW half of #559. Placed HERE, deliberately, on both sides:
+    //   - AFTER `assertOutputNotTruncated`, because there is no sense auditing
+    //     the pricing in a document already going to be rejected for being cut
+    //     off (and a half-written table would generate spurious mismatches).
+    //   - BEFORE the row is written, so a confirmed mismatch propagates to this
+    //     function's own catch and marks the row `failed` — the same
+    //     reject-before-save semantics #556 established here and #559 reused.
+    //
+    // The ground truth is the Sales Offer Engine's own records, not the
+    // rendered `{{candidates}}` text and never anything re-parsed back out of
+    // the generated HTML. `c.title` rather than `c.serviceName` on purpose:
+    // `candidatesBlock` above showed the model `c.title`, and an auditor given
+    // names the generator never saw would report mismatches on every line.
+    const auditPricedLines: SowPricedLine[] = scopedCandidates.map((c) => ({
+      title: c.title,
+      priceUsd: c.adjustedPriceCents / 100,
+    }));
+    const auditTotalUsd = auditPricedLines.reduce((sum, l) => sum + l.priceUsd, 0);
+
+    // Its own spend is captured exactly as the narrative call's is — its own
+    // `withAiUsageCapture` scope, its cost ADDED to this document's. The audit
+    // is real Anthropic spend for this customer, and a SOW whose reported cost
+    // counted the narrative but not the audit that gated it would be the same
+    // quietly-wrong figure the cost plumbing exists to eliminate.
+    const { costs: bindingCosts } = await withAiUsageCapture(
+      {
+        customerId: mspCustomerId,
+        generatedArtifactType: docTypeKey,
+        generatedArtifactName: docTypeRow.label,
+        ...(documentId != null ? { generatedArtifactId: String(documentId) } : {}),
+        triggerSource: "document-engine-sow:claim-binding-audit",
+      },
+      () =>
+        assertSowClaimBindingsConsistent(
+          {
+            documentHtml: htmlContent,
+            source: {
+              lines: auditPricedLines,
+              totalUsd: auditTotalUsd,
+              // The SAME strings the generator was given, not a re-derivation.
+              pricingFormula: pricingFormulaBlock,
+              priorFindings: priorFindingsBlock,
+            },
+            ctx: { docTypeKey, documentId, mspCustomerId, source: "document-engine-sow" },
+          },
+          // This engine's own channel, matching #556 and #559: "does this SOW
+          // bill what the engine priced?" is a generation fact.
+          log,
+          async (auditPrompt) => {
+            // Not streamed: nothing watches this, and it returns a short JSON
+            // verdict rather than a document — so it is nowhere near the
+            // non-streaming ceiling that constrains the narrative call above.
+            // `temperature: 0` is legal here precisely because this call sets
+            // no `thinking` — see SOW_NARRATIVE_THINKING for why the generation
+            // call cannot have both.
+            const audit = await anthropic.messages.create({
+              model: CLAIM_BINDING_AUDIT_MODEL,
+              max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
+              temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
+              messages: [{ role: "user", content: auditPrompt }],
+            });
+            return firstTextBlock(audit) ?? "";
+          },
+        ),
+    );
+
     const capturedCostCents = totalCapturedCostCents(costs);
-    const cost: DocumentCost = capturedCostCents == null
+    let cost: DocumentCost = capturedCostCents == null
       ? { costCents: null, costStatus: "unknown" }
       : { costCents: capturedCostCents, costStatus: "recorded" };
+    const bindingCostStatuses = bindingCosts.map((c) => c.status);
+    if (bindingCosts.length > 0) {
+      const bindingCostCents = totalCapturedCostCents(bindingCosts);
+      cost = bindingCostCents == null || cost.costCents == null
+        ? { costCents: null, costStatus: "unknown" }
+        : { costCents: cost.costCents + bindingCostCents, costStatus: "recorded" };
+    }
     if (cost.costStatus === "unknown") {
       costLog.warn(
-        { mspCustomerId, documentId, docTypeKey, callsCaptured: costs.length, statuses: costs.map((c) => c.status) },
+        {
+          mspCustomerId, documentId, docTypeKey,
+          callsCaptured: costs.length + bindingCostStatuses.length,
+          statuses: [...costs.map((c) => c.status), ...bindingCostStatuses],
+        },
         "ai-cost-governance: SOW generated but its usage row could not be read back — cost reported as unknown, not zero",
       );
     } else {
@@ -514,8 +708,6 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         "ai-cost-governance: SOW generation cost resolved from its ai_usage_events row",
       );
     }
-
-    const htmlContent = extractAiHtml(aiResponse);
 
     const sowPricingLines = scopedCandidates.map((c) => ({
       title: c.serviceName,
