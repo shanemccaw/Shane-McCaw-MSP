@@ -69,6 +69,56 @@ export function scopeFindingsBySignalCategory(
     .map((f) => f.text);
 }
 
+/**
+ * Document types whose findings block gets the Secure-first/Invest-last
+ * ordering (Git #550) — the two documents that read as an action plan
+ * ("what should I fix, in what order") rather than a pillar deep-dive. Kept as
+ * its own list, not folded into `COPILOT_GATE_DOC_TYPE_KEY`, because the two
+ * concerns (which doc gets the real score vs which doc gets ordered findings)
+ * are independent and #547 already established the one-key convention for the
+ * former.
+ */
+const SECURE_FIRST_INVEST_LAST_DOC_TYPE_KEYS: ReadonlySet<string> = new Set([
+  "copilot_readiness",
+  "remediation_plan",
+]);
+
+/**
+ * Git #550 — Secure-first, Invest-last. A real, deterministic sort, run here
+ * in code before `{{findings}}` is assembled, rather than a prompt
+ * instruction trusting the model to re-order consistently (the bug the issue
+ * was filed about: a live document ranked a paid license-purchase suggestion
+ * ahead of a free, critical "0 Conditional Access policies" fix).
+ *
+ * Two-tier, not a flat re-sort:
+ *   Tier 1 — every finding NOT classified `license_gap`. Kept in the order
+ *            `findingTexts` already arrives in (today's point-impact-derived
+ *            ranking, untouched — see `scopeFindingsBySignalCategory`).
+ *   Tier 2 — every finding classified `license_gap` (`CategorizedFinding
+ *            .isLicenseGap`, Git #484-#488/#495's classification), in the
+ *            SAME relative order among themselves. Always after every Tier 1
+ *            item, regardless of its own point value — a license_gap finding
+ *            requires a Microsoft purchase this platform does not resell, so
+ *            it is never prioritized ahead of a free fix.
+ *
+ * A stable partition, not a comparator sort: within each tier nothing is
+ * reordered relative to its neighbours, so this can never disagree with
+ * whatever ranking already produced `findingTexts`' order — it only ever
+ * moves Tier 2 items to the end.
+ */
+export function sortFindingsSecureFirstInvestLast(
+  findingTexts: string[],
+  categorizedFindings: CategorizedFinding[],
+): string[] {
+  const isLicenseGapByText = new Map(categorizedFindings.map((f) => [f.text, f.isLicenseGap]));
+  const tier1: string[] = [];
+  const tier2: string[] = [];
+  for (const text of findingTexts) {
+    (isLicenseGapByText.get(text) === true ? tier2 : tier1).push(text);
+  }
+  return tier2.length > 0 ? [...tier1, ...tier2] : findingTexts;
+}
+
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Intentionally duplicated from document-generator.ts's own local, non-exported
 // flag of the same name rather than importing it — this file is the ground-up
@@ -573,7 +623,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     );
     const scopedProfile = Object.fromEntries(scopedProfileEntries);
     const signalCategories = docTypeRow.includedSignalCategories ?? [];
-    const scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
+    let scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
     if (signalCategories.length > 0) {
       scopeLog.info(
         {
@@ -585,6 +635,11 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         },
         "document-engine: findings scoped by includedSignalCategories (uncategorizable findings excluded)",
       );
+    }
+    // Git #550 — Secure-first, Invest-last, real-code ordering, so the preview
+    // shows the exact order the real generation below will send.
+    if (SECURE_FIRST_INVEST_LAST_DOC_TYPE_KEYS.has(docTypeKey)) {
+      scopedFindings = sortFindingsSecureFirstInvestLast(scopedFindings, categorizedFindings);
     }
 
     const profileSample = scopedProfileEntries.length > 0
@@ -745,7 +800,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // buildTenantProfile()'s categorizedFindings doc comment for why that data
     // does not exist to be recovered.
     const signalCategories = docTypeRow.includedSignalCategories ?? [];
-    const scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
+    let scopedFindings = scopeFindingsBySignalCategory(categorizedFindings, findings, signalCategories);
     if (signalCategories.length > 0) {
       scopeLog.info(
         {
@@ -757,6 +812,12 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         },
         "document-engine: findings scoped by includedSignalCategories (uncategorizable findings excluded)",
       );
+    }
+    // Git #550 — Secure-first, Invest-last, same real-code ordering as the
+    // dry-run branch, so a preview can never disagree with the generated
+    // document on finding order.
+    if (SECURE_FIRST_INVEST_LAST_DOC_TYPE_KEYS.has(docTypeKey)) {
+      scopedFindings = sortFindingsSecureFirstInvestLast(scopedFindings, categorizedFindings);
     }
 
     const profileSample = scopedProfileEntries.length > 0

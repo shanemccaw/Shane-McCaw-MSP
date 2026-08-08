@@ -72,6 +72,7 @@ const MONITOR_SECURITY: CategorizedFinding = {
   checkKey: "identity:stale-guests",
   severity: "high",
   itemCount: 4,
+  isLicenseGap: false,
 };
 const MONITOR_GOVERNANCE_AND_SECURITY: CategorizedFinding = {
   text: "sharepoint:anonymous-links: warning severity condition matched on latest monitoring scan (7 items)",
@@ -79,6 +80,7 @@ const MONITOR_GOVERNANCE_AND_SECURITY: CategorizedFinding = {
   checkKey: "sharepoint:anonymous-links",
   severity: "warning",
   itemCount: 7,
+  isLicenseGap: false,
 };
 const MONITOR_ADOPTION: CategorizedFinding = {
   text: "adoption:teams-usage: medium severity condition matched on latest monitoring scan (2 items)",
@@ -86,6 +88,7 @@ const MONITOR_ADOPTION: CategorizedFinding = {
   checkKey: "adoption:teams-usage",
   severity: "medium",
   itemCount: 2,
+  isLicenseGap: false,
 };
 const SCRIPT_UNCATEGORIZABLE: CategorizedFinding = {
   text: "Legacy script finding with no checkKey",
@@ -93,6 +96,7 @@ const SCRIPT_UNCATEGORIZABLE: CategorizedFinding = {
   checkKey: null,
   severity: null,
   itemCount: null,
+  isLicenseGap: false,
 };
 
 const ALL: CategorizedFinding[] = [

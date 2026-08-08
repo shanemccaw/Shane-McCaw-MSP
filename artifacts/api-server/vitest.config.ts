@@ -78,6 +78,8 @@ export default defineConfig({
       // #547 — the real Copilot Gate result reaching the score report's prompt,
       // in both the scored and the honestly-not-evaluated case.
       "src/lib/document-engine-copilot-gate.test.ts",
+      // #550 — Secure-first, Invest-last deterministic finding ordering.
+      "src/lib/document-engine-secure-first-invest-last-550.test.ts",
       "src/lib/cio-narrative-generator.test.ts",
       "src/lib/use-case-generator.test.ts",
       "src/routes/copilot-assessment-quiz-profile.test.ts",

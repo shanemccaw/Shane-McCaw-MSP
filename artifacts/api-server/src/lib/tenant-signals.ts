@@ -924,6 +924,25 @@ export interface CategorizedFinding {
   severity: string | null;
   /** `_itemCount` for the matched check, when it emitted one. NULL otherwise. */
   itemCount: number | null;
+  /**
+   * True when `checkKey`'s LATEST `tenant_monitor_profiles` row carries
+   * `status === 'license_gap'` (Git #484-#488/#495's established
+   * classification) — i.e. the tenant lacks the M365 SKU/add-on the check
+   * needs, a known limitation rather than a fault. Git #550.
+   *
+   * ALWAYS `false` today by construction, and that is a real, deliberate
+   * invariant, not an oversight: `deriveMonitorFindingsWithKeys()` only ever
+   * turns a `status === 'ok'` row into a finding in the first place (pinned by
+   * "license_gap row is NOT a finding (status != ok)" in
+   * `build-tenant-profile.test.ts`), so a finding's own checkKey can never
+   * itself be license-gapped at the moment it becomes a finding. This field
+   * exists so a genuine license_gap-classified finding — from whatever future
+   * source eventually produces one — sorts correctly the moment it exists,
+   * without every consumer needing to learn a new signal. Every script-run
+   * finding (`checkKey: null`) is also `false`, for the same "nothing to
+   * classify it by" reason `categories: []` already documents.
+   */
+  isLicenseGap: boolean;
 }
 
 export async function buildTenantProfile(customerId: number): Promise<{
@@ -1030,12 +1049,20 @@ export async function buildTenantProfile(customerId: number): Promise<{
   // annotation survives the dedupe/reordering `findings` applies below. The
   // same map now also carries the checkKey/severity/itemCount the finding came
   // from (Git #493) — one map, so the annotation can never half-apply.
-  const monitorMetaByFindingText = new Map<string, { categories: string[]; checkKey: string; severity: string; itemCount: number | null }>();
+  const monitorMetaByFindingText = new Map<string, { categories: string[]; checkKey: string; severity: string; itemCount: number | null; isLicenseGap: boolean }>();
   if (tenantId) {
     const monitorRows = await fetchLatestMonitorProfileRows(tenantId);
     mergeMonitorProfileRows(mergedProfile, monitorRows, mergedProfileByCheck);
     const monitorFindings = deriveMonitorFindingsWithKeys(monitorRows);
     findings = [...new Set([...findings, ...monitorFindings.map(f => f.text)])];
+
+    // Git #550 — the license_gap classification (#484-#488/#495) read straight
+    // off the SAME `monitorRows` this generation already fetched, no extra
+    // query. See `CategorizedFinding.isLicenseGap`'s doc comment for why this
+    // always resolves `false` today: a finding's own checkKey's latest row is,
+    // by the pinned "license_gap row is NOT a finding" contract, never itself
+    // `license_gap` at the moment it becomes a finding.
+    const statusByCheckKey = new Map(monitorRows.map((r) => [r.checkKey, r.status]));
 
     // One batched query for the whole finding set (skipped entirely when there
     // are no monitor findings — every engine calls buildTenantProfile, so this
@@ -1048,6 +1075,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
           checkKey: finding.checkKey,
           severity: finding.severity,
           itemCount: finding.itemCount,
+          isLicenseGap: statusByCheckKey.get(finding.checkKey) === "license_gap",
         });
       }
     }
@@ -1070,6 +1098,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
       checkKey: meta?.checkKey ?? null,
       severity: meta?.severity ?? null,
       itemCount: meta?.itemCount ?? null,
+      isLicenseGap: meta?.isLicenseGap ?? false,
     };
   });
 
