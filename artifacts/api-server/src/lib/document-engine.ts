@@ -32,6 +32,13 @@ import type { PillarEvaluation } from "./health-display";
 // engine-free; see that file's header for why a truncated document is failed
 // rather than continued.
 import { assertOutputNotTruncated } from "./ai-output-ceiling";
+// Git #567 — the one definition of "the model call never came back". Same
+// shape and same reason as the guard above; see that file's header for the
+// SDK reading that shows a streaming call is bounded only up to first byte.
+import {
+  deriveGenerationDeadlineMs,
+  runGenerationWithDeadline,
+} from "./ai-generation-deadline";
 // Git #559 — the one definition of "this document contradicts the data it
 // cites". Same shape and same reason as the guard above: pure, engine-free, and
 // SDK-free, so the reject/allow decision is assertable against the real
@@ -114,6 +121,47 @@ const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" }
  * different — see its own constant.
  */
 const NARRATIVE_MAX_OUTPUT_TOKENS = 64000;
+
+/**
+ * Git #567 — the wall clock this generation is allowed, and the ONLY bound on
+ * it.
+ *
+ * ── Why the call needed one at all ───────────────────────────────────────────
+ * The paragraph directly above says the streaming transport lifts the SDK's
+ * non-streaming ceiling. What it costs, verified against `@anthropic-ai/
+ * sdk@0.78.0` rather than assumed, is every scrap of that SDK's timeout
+ * protection: `fetchWithTimeout` clears its abort timer in a `finally` around
+ * `await this.fetch(...)`, and for a streaming request that resolves when
+ * response HEADERS arrive. `MessageStream` then adds no timer of its own, so
+ * `finalMessage()` below waits on an SSE stream with no wall-clock bound
+ * whatsoever. A stalled upstream leaves this document at `status='generating'`
+ * until somebody clears the row by hand — which is what happened on
+ * 2026-08-08. Full working in `ai-generation-deadline.ts`.
+ *
+ * ── The number ──────────────────────────────────────────────────────────────
+ * Derived from this engine's own ceiling, not chosen: 64,000 output tokens at
+ * an assumed FLOOR of 40 tokens/sec is 1,600s, plus a 120s allowance for
+ * connection, prefill and time-to-first-token, plus 5s grace — about 28m45s.
+ * `deriveGenerationDeadlineMs` owns that arithmetic so the deadline tracks
+ * `NARRATIVE_MAX_OUTPUT_TOKENS` instead of being a second number to remember to
+ * raise alongside it.
+ *
+ * It is deliberately, uncomfortably generous, and the discomfort is the trade
+ * #567 asked for explicitly. This is a backstop against infinity, not a service
+ * level: with thinking sharing the 64,000-token budget, a document that
+ * genuinely runs to its ceiling can legitimately take a long time, and killing
+ * one of those destroys real work and real spend for nothing — whereas being
+ * slow to notice a stall costs only the delay before a `failed` row appears
+ * where a hung one used to sit forever.
+ *
+ * Worth naming the apparent contradiction: 60e60628 called ~30 minutes an
+ * unacceptable bound for the claim-binding audit and this lands in the same
+ * neighbourhood. The number is similar and the justification is not. There, 30
+ * minutes was three orders of magnitude of slack around a 4,000-token JSON
+ * verdict that answers in seconds. Here it is roughly what a 64,000-token
+ * document at the assumed throughput floor could actually need.
+ */
+const NARRATIVE_DEADLINE_MS = deriveGenerationDeadlineMs(NARRATIVE_MAX_OUTPUT_TOKENS);
 
 /**
  * Git #559 — adaptive thinking on the narrative generation call.
@@ -1228,7 +1276,48 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
             }
           });
         }
-        return await stream.finalMessage();
+        // Git #567 — the wall clock, and the only one this call has. The
+        // stream was created a few statements above, synchronously, so the
+        // deadline started with the request rather than after it: everything
+        // between those two points is listener wiring, no awaits.
+        //
+        // Raced INSIDE the capture scope on purpose. The metering contract
+        // noted above is that the stream is awaited to completion here, and a
+        // deadline that released the caller from outside `withAiUsageCapture`
+        // would satisfy the timeout and break that. On the timeout path
+        // `withAiUsageCapture` rejects at the `await` on its callback, before
+        // it waits on any slot, so a metering slot that can no longer settle
+        // cannot reintroduce the hang this is fixing.
+        //
+        // Consequence worth stating rather than discovering later: the
+        // metering tap settles on the stream's `finalMessage`/`error` events,
+        // and `abort()` emits neither (the SDK routes an abort to its own
+        // `abort` event), so a timed-out generation writes no `ai_usage_events`
+        // row for whatever it burned before stalling. That is not a regression
+        // — today's hang writes no row either, forever — but it is a real gap,
+        // and it belongs to the shared metering tap, not to this engine.
+        return await runGenerationWithDeadline(
+          {
+            run: () => stream.finalMessage(),
+            // With no SDK timer left to release the socket on a stream, the
+            // deadline has to do it, or a stalled generation keeps its
+            // connection and its upstream billing running after we walk away.
+            abort: () => stream.abort(),
+          },
+          {
+            docTypeKey,
+            deadlineMs: NARRATIVE_DEADLINE_MS,
+            maxTokens: NARRATIVE_MAX_OUTPUT_TOKENS,
+            documentId,
+            mspCustomerId,
+            source: "document-engine",
+          },
+          // The generation channel, same as the truncation guard below: "did
+          // this document come back at all?" is the same kind of fact as "did
+          // it come back whole?", and an operator chasing one wants the other
+          // in the same stream.
+          log,
+        );
       },
     );
 

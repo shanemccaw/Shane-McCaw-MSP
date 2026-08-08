@@ -236,6 +236,11 @@ export default defineConfig({
       // real never-resolving-promise failure, so a regression hangs the suite
       // rather than passing it quietly.
       "src/lib/document-claim-binding-timeout.test.ts",
+      // #567 — a narrative generation whose stream stalls mid-flight FAILS at a
+      // bounded wall clock with a specific error, instead of hanging with the
+      // document pinned at `generating`. Fails CLOSED, unlike the audit
+      // deadline above: there is no fallback narrative to proceed with.
+      "src/lib/ai-generation-deadline.test.ts",
     ],
     coverage: {
       provider: "v8",

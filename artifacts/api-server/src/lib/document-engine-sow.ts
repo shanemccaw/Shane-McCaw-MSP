@@ -12,6 +12,14 @@ import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./
 import { extractAiHtml, firstTextBlock } from "./sow-pricing";
 // Git #556 — same guard as the standalone engine. See ai-output-ceiling.ts.
 import { assertOutputNotTruncated } from "./ai-output-ceiling";
+// Git #567 — same guard as the standalone engine, from the same shared
+// derivation. See SOW_NARRATIVE_DEADLINE_MS below for why this engine's call
+// shape needs two layers where the streaming one can only have the outer.
+import {
+  deriveGenerationDeadlineMs,
+  deriveGenerationTimeoutMs,
+  runGenerationWithDeadline,
+} from "./ai-generation-deadline";
 // Git #560 — the SOW half of #559. A separate module from
 // `document-claim-binding.ts` because a SOW's claims are PRICING LINES against
 // a structured engine-authoritative table, not prose against `{{profileSample}}`;
@@ -107,6 +115,66 @@ const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" }
  * validation issue, not a rewrite of how this engine talks to the API.
  */
 const SOW_MAX_OUTPUT_TOKENS = 21000;
+
+/**
+ * Git #567 — how long one attempt at this call is allowed to take, handed to
+ * the SDK as a per-request `timeout`.
+ *
+ * ── This call is NOT the streaming one #567 describes ────────────────────────
+ * #567 states that the main narrative generation uses
+ * `anthropic.messages.stream(...)` "in both `document-engine.ts` and
+ * `document-engine-sow.ts`". That is true of the standalone engine and false
+ * here, and it was checked before anything was built rather than taken on
+ * trust: this engine's narrative call is `anthropic.messages.create`, exactly
+ * as the paragraph above SOW_MAX_OUTPUT_TOKENS says it deliberately is. #560
+ * declined the transport rewrite on the grounds that it was a settings-and-
+ * validation issue, and #567 is not the issue that reverses that decision
+ * either. So the protection is the same and the mechanism differs, which is
+ * what "apply it identically" has to mean when the call shapes are not
+ * identical.
+ *
+ * ── What that changes about the exposure ─────────────────────────────────────
+ * The headers-arrive-and-the-timer-is-cleared hole is specific to streaming.
+ * A non-streaming call is bounded end to end by the SDK, so this one was never
+ * literally unbounded — it was bounded exactly the way the claim-binding audit
+ * was before 60e60628, which is to say far too high to matter. Read against
+ * `@anthropic-ai/sdk@0.78.0`: the platform client sets no `timeout`, so
+ * `calculateNonstreamingTimeout(21_000)` runs, computes 590,625ms, finds it
+ * under the 10-minute limit and returns a FLAT 600,000ms — it does not scale
+ * the ceiling to the request. With `maxRetries` at its default of 2 and a
+ * timeout being retryable, one SOW could occupy roughly half an hour of
+ * `status='generating'`.
+ *
+ * ── The number ───────────────────────────────────────────────────────────────
+ * Same derivation as the standalone engine, applied to this engine's own
+ * (smaller) ceiling: 21,000 tokens at the assumed 40 tokens/sec floor is 525s,
+ * plus the 120s startup allowance — 645s, about 10m45s. Marginally above the
+ * SDK's flat default, which is the point: at the default a worst-case-but-
+ * HEALTHY SOW running to its ceiling could be aborted by the SDK at 600s with
+ * 45s of legitimate work left, and #567 is explicit that a false timeout on
+ * working generation is the worse failure. Passing it explicitly also documents
+ * the bound at the call site instead of leaving it to an SDK default that has
+ * already changed shape once.
+ *
+ * Paired with `maxRetries: 0` at the call site, for 60e60628's reason: the
+ * outer deadline below means a retry could never finish inside the window, so
+ * leaving retries on would only spend the customer's tokens on an answer
+ * guaranteed to be discarded — and unlike the audit, this call's answer is a
+ * priced SOW, so a second one is real money.
+ */
+const SOW_NARRATIVE_TIMEOUT_MS = deriveGenerationTimeoutMs(SOW_MAX_OUTPUT_TOKENS);
+
+/**
+ * Git #567 — the hard wall-clock deadline the call is raced against, outside
+ * the SDK entirely.
+ *
+ * `SOW_NARRATIVE_TIMEOUT_MS` is the expected exit and deliberately not the
+ * guarantee, for the same reason 60e60628 gave: a mechanism that depends on the
+ * SDK's own abort firing cannot be the guard against that abort not firing.
+ * Five seconds above the inner timeout, so the SDK's cleaner failure wins the
+ * ordinary race and this only fires when the SDK's bound did not.
+ */
+const SOW_NARRATIVE_DEADLINE_MS = deriveGenerationDeadlineMs(SOW_MAX_OUTPUT_TOKENS);
 
 /**
  * Git #560 — adaptive thinking on the SOW generation call.
@@ -584,15 +652,45 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
         ...(documentId != null ? { generatedArtifactId: String(documentId) } : {}),
         triggerSource: "document-engine",
       },
-      () =>
-        anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: SOW_MAX_OUTPUT_TOKENS,
-          // Git #560 — see SOW_NARRATIVE_THINKING for why this is on, and why
-          // `temperature` is deliberately NOT set alongside it.
-          thinking: SOW_NARRATIVE_THINKING,
-          messages: [{ role: "user", content: stylePrefix + prompt }],
-        }),
+      () => {
+        // Git #567 — the abort hook for the deadline below. A non-streaming
+        // call has no `.abort()` of its own, so the request is given a signal
+        // the deadline can pull, which is what releases the socket instead of
+        // leaving a stalled SOW generating upstream after we walk away.
+        const controller = new AbortController();
+        return runGenerationWithDeadline(
+          {
+            run: () =>
+              anthropic.messages.create(
+                {
+                  model: "claude-sonnet-4-6",
+                  max_tokens: SOW_MAX_OUTPUT_TOKENS,
+                  // Git #560 — see SOW_NARRATIVE_THINKING for why this is on,
+                  // and why `temperature` is deliberately NOT set alongside it.
+                  thinking: SOW_NARRATIVE_THINKING,
+                  messages: [{ role: "user", content: stylePrefix + prompt }],
+                },
+                // Git #567 — the inner half. Derivation of both numbers, and
+                // why `maxRetries: 0`, on SOW_NARRATIVE_TIMEOUT_MS.
+                {
+                  timeout: SOW_NARRATIVE_TIMEOUT_MS,
+                  maxRetries: 0,
+                  signal: controller.signal,
+                },
+              ),
+            abort: () => controller.abort(),
+          },
+          {
+            docTypeKey,
+            deadlineMs: SOW_NARRATIVE_DEADLINE_MS,
+            maxTokens: SOW_MAX_OUTPUT_TOKENS,
+            documentId,
+            mspCustomerId,
+            source: "document-engine-sow",
+          },
+          log,
+        );
+      },
     );
 
     // Git #556 — before anything reads the content, and before the pricing
