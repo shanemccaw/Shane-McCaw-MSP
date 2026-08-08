@@ -1,522 +1,189 @@
-[
-  {
-    "signal_key": "signal.adoption.planner-usage",
-    "source_key": "adoption:planner-usage",
-    "pillar": "adoption",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.adoption.viva-engage-health",
-    "source_key": "adoption:viva-engage-health",
-    "pillar": "adoption",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.copilot.usage-activity",
-    "source_key": "copilot:usage-activity",
-    "pillar": "adoption",
-    "severity": "informational",
-    "status": "ok",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:18.402Z",
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.appgov.cert-secret-expiration",
-    "source_key": "appgov:cert-secret-expiration",
-    "pillar": "architecture",
-    "severity": "medium",
-    "status": "ok",
-    "severity_matched": "warning",
-    "collected_at": "2026-08-08T03:54:20.035Z",
-    "max_impact": 12
-  },
-  {
-    "signal_key": "signal.platform.multi-geo-status",
-    "source_key": "platform:multi-geo-status",
-    "pillar": "architecture",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 8
-  },
-  {
-    "signal_key": "signal.onedrive.storage-utilization",
-    "source_key": "onedrive:storage-utilization",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.m365.service-health",
-    "source_key": "m365:service-health",
-    "pillar": "architecture",
-    "severity": "high",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.teams.team-count",
-    "source_key": "teams:team-count",
-    "pillar": "architecture",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.devices.autopilot-coverage",
-    "source_key": "devices:autopilot-coverage",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.devices.enrollment-status",
-    "source_key": "devices:enrollment-status",
-    "pillar": "architecture",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 15
-  },
-  {
-    "signal_key": "signal.exchange.archive-mailbox-rate",
-    "source_key": "exchange:archive-mailbox-rate",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 5
-  },
-  {
-    "signal_key": "signal.sharepoint.site-count",
-    "source_key": "sharepoint:site-count",
-    "pillar": "architecture",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.devices.update-rings-config",
-    "source_key": "devices:update-rings-config",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.exchange.transport-rule-count",
-    "source_key": "exchange:transport-rule-count",
-    "pillar": "architecture",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.exchange.mailbox-quota-utilization",
-    "source_key": "exchange:mailbox-quota-utilization",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 8
-  },
-  {
-    "signal_key": "signal.sharepoint.storage-utilization",
-    "source_key": "sharepoint:storage-utilization",
-    "pillar": "architecture",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.copilot.sensitivity-labels-exist",
-    "source_key": "copilot:sensitivity-labels-exist",
-    "pillar": "compliance",
-    "severity": "medium",
-    "status": "ok",
-    "severity_matched": "warning",
-    "collected_at": "2026-08-08T03:54:20.415Z",
-    "max_impact": 15
-  },
-  {
-    "signal_key": "signal.compliance.weak-dlp-policies",
-    "source_key": "compliance:weak-dlp-policies",
-    "pillar": "compliance",
-    "severity": "low",
-    "status": "license_gap",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:26.004Z",
-    "max_impact": 15
-  },
-  {
-    "signal_key": "signal.compliance.missing-labels",
-    "source_key": "compliance:missing-labels",
-    "pillar": "compliance",
-    "severity": "low",
-    "status": "license_gap",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:33.086Z",
-    "max_impact": 15
-  },
-  {
-    "signal_key": "signal.compliance.label-errors",
-    "source_key": "compliance:label-errors",
-    "pillar": "compliance",
-    "severity": "low",
-    "status": "license_gap",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:36.406Z",
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.exchange.litigation-hold-coverage",
-    "source_key": "exchange:litigation-hold-coverage",
-    "pillar": "compliance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 8
-  },
-  {
-    "signal_key": "signal.identity.terms-of-use",
-    "source_key": "identity:terms-of-use",
-    "pillar": "compliance",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.governance.sensitivity-label-adoption",
-    "source_key": "governance:sensitivity-label-adoption",
-    "pillar": "compliance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 15
-  },
-  {
-    "signal_key": "signal.governance.retention-label-adoption",
-    "source_key": "governance:retention-label-adoption",
-    "pillar": "compliance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.compliance.dlp-incidents",
-    "source_key": "compliance:dlp-incidents",
-    "pillar": "compliance",
-    "severity": "low",
-    "status": "license_gap",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:29.815Z",
-    "max_impact": 3
-  },
-  {
-    "signal_key": "signal.identity.b2b-collaboration-settings",
-    "source_key": "identity:b2b-collaboration-settings",
-    "pillar": "governance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.teams.messaging-policy-coverage",
-    "source_key": "teams:messaging-policy-coverage",
-    "pillar": "governance",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.governance.dynamic-group-usage",
-    "source_key": "governance:dynamic-group-usage",
-    "pillar": "governance",
-    "severity": "informational",
-    "status": "ok",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:37.860Z",
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.identity.password-expiration-policy",
-    "source_key": "identity:password-expiration-policy",
-    "pillar": "governance",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.m365.message-center",
-    "source_key": "m365:message-center",
-    "pillar": "governance",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 3
-  },
-  {
-    "signal_key": "signal.teams.guest-settings-governance",
-    "source_key": "teams:guest-settings-governance",
-    "pillar": "governance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 8
-  },
-  {
-    "signal_key": "signal.identity.cross-tenant-access",
-    "source_key": "identity:cross-tenant-access",
-    "pillar": "governance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.teams.guest-membership",
-    "source_key": "teams:guest-membership",
-    "pillar": "governance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 12
-  },
-  {
-    "signal_key": "signal.sharepoint.site-label-coverage",
-    "source_key": "sharepoint:site-label-coverage",
-    "pillar": "governance",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 12
-  },
-  {
-    "signal_key": "signal.exchange.distribution-list-count",
-    "source_key": "exchange:distribution-list-count",
-    "pillar": "governance",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.teams.meeting-policy-coverage",
-    "source_key": "teams:meeting-policy-coverage",
-    "pillar": "governance",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.license.copilot-assignment",
-    "source_key": "license:copilot-assignment",
-    "pillar": "licensing",
-    "severity": "informational",
-    "status": "ok",
-    "severity_matched": null,
-    "collected_at": "2026-08-08T03:54:17.872Z",
-    "max_impact": 10
-  },
-  {
-    "signal_key": "signal.identity.pim-groups",
-    "source_key": "identity:pim-groups",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 5
-  },
-  {
-    "signal_key": "signal.devices.compliance-policy-coverage",
-    "source_key": "devices:compliance-policy-coverage",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 12
-  },
-  {
-    "signal_key": "signal.platform.tenant-password-expiration",
-    "source_key": "platform:tenant-password-expiration",
-    "pillar": "security",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.identity.pim-eligible-roles",
-    "source_key": "identity:pim-eligible-roles",
-    "pillar": "security",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 3
-  },
-  {
-    "signal_key": "signal.identity.named-locations",
-    "source_key": "identity:named-locations",
-    "pillar": "security",
-    "severity": "low",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 2
-  },
-  {
-    "signal_key": "signal.teams.external-access-settings",
-    "source_key": "teams:external-access-settings",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.teams.app-permission-policy",
-    "source_key": "teams:app-permission-policy",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.devices.app-protection-coverage",
-    "source_key": "devices:app-protection-coverage",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 12
-  },
-  {
-    "signal_key": "signal.security.secure-score-by-category",
-    "source_key": "security:secure-score-by-category",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 4
-  },
-  {
-    "signal_key": "signal.appgov.enterprise-app-count",
-    "source_key": "appgov:enterprise-app-count",
-    "pillar": "security",
-    "severity": "informational",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 3
-  },
-  {
-    "signal_key": "signal.exchange.antispam-policy-coverage",
-    "source_key": "exchange:antispam-policy-coverage",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  },
-  {
-    "signal_key": "signal.exchange.mail-flow-rule-review",
-    "source_key": "exchange:mail-flow-rule-review",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 5
-  },
-  {
-    "signal_key": "signal.onedrive.external-sharing-settings",
-    "source_key": "onedrive:external-sharing-settings",
-    "pillar": "security",
-    "severity": "high",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 18
-  },
-  {
-    "signal_key": "signal.security.dlp-true-positive-rate",
-    "source_key": "security:dlp-true-positive-rate",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 5
-  },
-  {
-    "signal_key": "signal.identity.mfa-method-breakdown",
-    "source_key": "identity:mfa-method-breakdown",
-    "pillar": "security",
-    "severity": "medium",
-    "status": null,
-    "severity_matched": null,
-    "collected_at": null,
-    "max_impact": 6
-  }
-]
+Shane McCaw Consulting
+Copilot Go-Live Score Report
+TENANT
+mccawsoft2.onmicrosoft.com
+Readiness Score
+53
+out of 100
+NO-GO
+This tenant is not cleared to deploy Microsoft 365 Copilot.
+Gate Threshold
+82
+Points Needed
++29
+Signals Evaluated
+105
+Pillar Status
+FAIL
+Governance
+No sensitivity labels, no auto-labeling, no group expiration policy, and 26 ownerless groups.
+FAIL
+Security
+Zero Conditional Access policies — no MFA enforcement, no legacy auth block, no device compliance gate, and 6 permanent Global Administrators.
+FAIL
+Compliance
+DLP, sensitivity labels, and retention features are unavailable — the required Microsoft Purview licenses are not present. One SharePoint site is exposed to all authenticated users.
+FAIL
+Licensing
+No Microsoft 365 Copilot license exists in this tenant. The prerequisite SKU count is zero.
+WARN
+Adoption
+No active Copilot usage recorded — no active users in Email, Teams, or SharePoint activity windows. No Copilot license exists yet to drive adoption.
+WARN
+Health
+22 of 25 monitored services are operational. Exchange Online, Microsoft Teams, and Microsoft Entra are currently in a degraded state. 108 major change announcements are unreviewed in Message Center.
+What Is Holding the Score Down
+Free fixes precede license-gated fixes. Within each group, findings are ordered by their point impact on the readiness score.
+Available Today — No Additional License Required
+NO-GO
+No Conditional Access policy requires MFA
+There are zero Conditional Access policies in this tenant. No policy requires multi-factor authentication for any user. Any credential compromise gives an attacker unrestricted access to every account in the environment. Copilot amplifies this risk significantly — it surfaces data across the entire tenant on the authenticated user's behalf. Fix this before deploying Copilot.
+Score Recovery
++4.0
+pts
+NO-GO
+Six permanent Global Administrators — above Microsoft's threshold
+This tenant has 6 permanent Global Administrator accounts: Shane McCaw, Admin Admin, Transition Manager, Frances McCaw, and two Emergency Access Admin accounts. Microsoft's own guidance recommends fewer than 5. All 17 privileged role assignments across the tenant are permanent — none are time-bound or eligible-only. Reducing Global Admin count to within the threshold and converting permanent assignments to just-in-time eligible roles recovers these points.
+Score Recovery
++4.0
+pts
+NO-GO
+No Conditional Access policy blocks legacy authentication
+No Conditional Access policy blocks legacy authentication protocols (Basic Auth, SMTP Auth, POP, IMAP). These protocols do not support MFA, so any MFA policy deployed can be bypassed entirely by authenticating through a legacy path. Block legacy authentication as part of the same Conditional Access deployment that adds MFA coverage.
+Score Recovery
++2.7
+pts
+NO-GO
+No enabled break-glass account — real risk of total tenant lockout
+The scan found zero healthy, enabled break-glass accounts. The two accounts named Emergency Access Admin appear in the Global Admin list but are not passing the health check. A misconfigured Conditional Access policy or compromised admin credential with no emergency bypass account leaves no recovery path. Two cloud-only emergency accounts, excluded from all CA policies, with credentials stored offline, are required.
+Score Recovery
++2.7
+pts
+NO-GO
+No Conditional Access policy specifically covers guest users
+All 18 Teams workspaces have guest members. Guest invitations are permitted from anyone, including external organizations. No Conditional Access policy enforces MFA for guests, and B2B collaboration is open to everyone. Guest accounts with unconstrained access to Teams content are a direct data-exposure risk for any Copilot deployment.
+Score Recovery
++2.0
+pts
+NO-GO
+No sensitivity labels configured for automatic classification
+No auto-labeling policy exists and no sensitivity labels are defined in this tenant. Copilot uses sensitivity labels to understand what content it should and should not surface — without labels, there is no signal to govern how the AI handles sensitive data. Labels must be created and auto-labeling policies configured before Copilot deployment can be considered responsibly.
+Score Recovery
++1.3
+pts
+NO-GO
+No Conditional Access policy requires device compliance
+No policy checks that a device is managed or compliant before granting access to Microsoft 365 resources. Unmanaged, unpatched, or personal devices can access all tenant data. Adding a device-compliance Conditional Access policy addresses this gap.
+Score Recovery
++1.3
+pts
+NO-GO
+No Conditional Access policies exist — zero Zero Trust enforcement
+The CA policy count is zero. This tenant has no access controls of any kind in Conditional Access. There are no report-only policies, no named locations, and no sign-in risk policies. The four MFA-, legacy-auth-, guest-, and device-related findings above all trace back to this same root gap. Deploying a foundational Conditional Access policy set resolves all of them simultaneously.
+Score Recovery
++1.3
+pts
+WARN
+No DMARC record found for this domain
+SPF is configured for mccawsoft2.onmicrosoft.com, but DKIM is not active at the default selectors and no DMARC record is published. Without DMARC, this domain cannot instruct receiving mail servers what to do with messages that fail SPF or DKIM checks. This leaves the domain open to spoofing. Publishing a DMARC record at p=none to start monitoring is the minimum step.
+Score Recovery
++0.8
+pts
+WARN
+Groups exist with no owner — nobody is accountable for membership or lifecycle
+26 of the tenant's 104 groups have no owner. Ownerless groups accumulate stale members unchecked, which Copilot inherits when it surfaces content shared with those groups. Assign an owner to each unowned group or archive groups that are no longer needed.
+Score Recovery
++0.3
+pts
+WARN
+Expired secrets and certificate found on app registrations
+Across 11 app registrations, 3 password credentials (client secrets) and 1 key credential (certificate) have expired. Expired credentials on active app registrations indicate that rotation processes are not in place. Rotate or remove the expired credentials and establish a renewal schedule.
+Score Recovery
++0.3
+pts
+WARN
+Major service changes announced — review for action needed
+108 major change messages are present in Message Center across 440 total announcements. Major-change messages require admin review and often require action before Microsoft enforces the change. Review the Message Center for retirement notices and required configuration changes, particularly those tagged preventOrFixIssue.
+Score Recovery
++0.3
+pts
+INFO
+No sensitivity labels are configured in this tenant
+Zero sensitivity labels are defined and zero have been adopted across this tenant's content. Copilot cannot classify or protect content sensitivity without labels in place. This finding is not currently costing this tenant any readiness points, but the absence of labels is the root cause of the auto-labeling finding above and is a prerequisite for responsible Copilot deployment.
+Score Recovery
++0.0
+pts
+INFO
+No sensitivity labels have been adopted — content is not being classified
+No content across this tenant carries a sensitivity label. This follows directly from the absence of labels themselves. This finding is not currently costing this tenant any readiness points, but it confirms that content classification is completely absent. Resolving the label-configuration finding above is the prerequisite step.
+Score Recovery
++0.0
+pts
+Requires Additional Microsoft License
+NO-GO
+No Microsoft 365 Copilot license found in this tenant
+The Copilot SKU count is zero. The tenant's current license inventory is ENTERPRISEPACK (1 consumed), FLOW_FREE (2), POWER_BI_STANDARD (2), and Power_Pages_vTrial_for_Makers (1). A Microsoft 365 Copilot add-on license must be purchased and assigned before any user can access Copilot features. This is the foundational prerequisite the score is measuring against.
+Score Recovery
++3.1
+pts
+Path to Clearance
+The sequence below is the shortest path from 53 to the gate of 82, using the point values as given. Free fixes come first in every case — no license purchase is listed ahead of a fix already available to this tenant. The gate clears when the running total reaches or exceeds +29.
+Action
+Points
+Running Total
+Deploy Conditional Access: require MFA for all users
+Free — no additional license required
++4.0
+57.0
+Reduce Global Administrators to fewer than 5; convert permanent privileged assignments to eligible-only
+Free — no additional license required
++4.0
+61.0
+Add CA policy blocking legacy authentication protocols
+Free — no additional license required
++2.7
+63.7
+Create and enable two cloud-only break-glass accounts; exclude from all CA policies; store credentials offline
+Free — no additional license required
++2.7
+66.4
+Add CA policy enforcing MFA specifically for guest and external users
+Free — no additional license required
++2.0
+68.4
+Create sensitivity labels and configure auto-labeling policies
+Free — available with existing Microsoft 365 E3 licensing
++1.3
+69.7
+Add CA policy requiring device compliance for access to Microsoft 365
+Free — no additional license required
++1.3
+71.0
+Deploy a foundational Conditional Access policy set (satisfies the zero-policy-count finding)
+Free — resolved as part of steps above; counted separately by the platform
++1.3
+72.3
+Publish DMARC record; activate DKIM at default selectors
+Free — DNS change only
++0.8
+73.1
+Assign owners to all 26 ownerless groups; archive groups no longer needed
+Free — admin task
++0.3
+73.4
+Rotate or remove 3 expired client secrets and 1 expired certificate on app registrations
+Free — admin task
++0.3
+73.7
+Review Message Center major change announcements; act on items tagged preventOrFixIssue
+Free — admin review task
++0.3
+74.0
+LICENSE REQUIRED
+Purchase and assign Microsoft 365 Copilot license
+Requires Microsoft 365 Copilot add-on SKU
++3.1
+77.1
+The findings listed above account for 24.1 of the 29 points needed. The platform has identified 47.0 points recoverable in total across all scored signals, so the remaining gap is covered by additional signals not individually listed here. Completing every action above puts the tenant at 77.1 — still 4.9 points short of the gate. The additional 22.9 points recoverable (but not individually listed above) reside in other signals the platform scored across governance, compliance, adoption, and security — including the license-gated signals for Microsoft Entra ID Premium, Microsoft Purview DLP, and Microsoft Defender for Office 365, which are currently returning license-gap errors and contributing zero points. Acquiring those licenses will unlock additional scored signals and close the remaining gap.
+Shane McCaw Consulting — Copilot Go-Live Score Report
+Score: 53 / 100  ·  Gate: 82  ·  Verdict: NO-GO
