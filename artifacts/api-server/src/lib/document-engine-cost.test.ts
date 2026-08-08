@@ -163,6 +163,15 @@ vi.mock("./tenant-signals", () => ({
   NON_CHECK_PROFILE_NAMESPACE: "_profile",
 }));
 
+// Git #555 — document-engine.ts now resolves real per-finding point values, and
+// that resolver reaches the scoring engine (health-engine -> priority-engine ->
+// the DB client). Stubbed to null here, which is its own honest "no values
+// available" path: this suite's assertions predate #555 and must keep seeing the
+// findings block exactly as it was. Point values have their own two suites.
+vi.mock("./finding-point-impact", () => ({
+  computeFindingPointImpacts: async () => null,
+}));
+
 vi.mock("./prompt-loader", () => ({
   getPrompt: async () => "Write {{sections}} using {{profileSample}} and {{findings}}",
   getDocumentStylePrefix: async () => "<style></style>",

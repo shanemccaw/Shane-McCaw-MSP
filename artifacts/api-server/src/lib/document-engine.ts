@@ -15,6 +15,19 @@ import { extractAiHtml } from "./sow-pricing";
 // of the score, the 82 threshold and the go/no-go verdict; this engine reads it,
 // it does not re-derive any part of it.
 import { computeCopilotGate, type CopilotGateResult } from "./copilot-gate";
+// Git #555 — the real per-finding point value. Same rule as the gate above: this
+// engine READS the number, it does not derive any part of it. See
+// finding-point-impact.ts for why the raw `signal_derivation_rules` impact column
+// is NOT the point value and what normalization makes it one.
+import { computeFindingPointImpacts } from "./finding-point-impact";
+// Rendering comes from the engine-free sibling on purpose: `buildFindingsBlock`
+// below is pure and must stay testable without standing up the scoring graph.
+import {
+  buildFindingPointImpactPreamble,
+  formatFindingPointImpactLine,
+  type FindingPointImpactResult,
+} from "./finding-point-impact-format";
+import type { PillarEvaluation } from "./health-display";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import {
@@ -440,6 +453,62 @@ const FINDING_IDENTIFIER_HONESTY_RULE =
   "are presentation order only; they are NOT identifiers and must not be cited as such.";
 
 /**
+ * Assembles `{{findings}}` — the numbered list, the anti-fabrication rule every
+ * document type gets, and (Git #555) the real per-finding point values when the
+ * platform has them.
+ *
+ * The point value goes on its OWN indented sub-line rather than being appended to
+ * the finding's text. That placement is deliberate and coordinated with #554: the
+ * identifier rule above describes the check key as "the identifier shown in
+ * parentheses at the end of its line", and appending anything after it would make
+ * that sentence false about the very block it qualifies. A sub-line also reads
+ * unambiguously as an annotation rather than as part of the finding's own
+ * sentence, so it cannot be quoted back as though the scan had said it.
+ *
+ * `pointImpacts` is null whenever the platform is not entitled to state values
+ * (not this document type, no Copilot score, clamped score, engine unreachable) —
+ * and then this produces exactly the block it produced before #555, so the
+ * prompts' "where no point value is supplied" wording remains true rather than
+ * vestigial.
+ *
+ * Pure, and the ONE definition both generation branches call — the dry-run
+ * preview and the real generation cannot drift on what the model is handed.
+ * Exported on the same terms as this file's other pure helpers.
+ */
+export function buildFindingsBlock(
+  findingTexts: readonly string[],
+  pointImpacts: FindingPointImpactResult | null,
+): string {
+  if (findingTexts.length === 0) {
+    return "No findings were recorded for this client. Do NOT invent findings." + FINDING_IDENTIFIER_HONESTY_RULE;
+  }
+  const list = findingTexts
+    .map((f, i) => {
+      const numbered = `${i + 1}. ${f}`;
+      return pointImpacts ? `${numbered}\n${formatFindingPointImpactLine(pointImpacts.perFinding[i])}` : numbered;
+    })
+    .join("\n");
+  const body = pointImpacts ? `${buildFindingPointImpactPreamble(pointImpacts)}\n\n${list}` : list;
+  return body + FINDING_IDENTIFIER_HONESTY_RULE;
+}
+
+/**
+ * Document types that get real per-finding point values (Git #555). Deliberately
+ * the SAME two as `SECURE_FIRST_INVEST_LAST_DOC_TYPE_KEYS` and deliberately a
+ * separate constant: #550 established that these two are the only documents that
+ * rank findings by point impact toward the go-live score (the other seven rank on
+ * their own pillar-specific dimensions — exposure closed, seats recovered,
+ * disruption caused — and a Copilot point value would be a number they never
+ * asked for). The two lists agreeing today is a fact about the product, not a
+ * shared definition; folding them into one would make the next divergence a
+ * silent behaviour change in whichever feature did not intend it.
+ */
+const POINT_IMPACT_DOC_TYPE_KEYS: ReadonlySet<string> = new Set([
+  "copilot_readiness",
+  "remediation_plan",
+]);
+
+/**
  * The one document type whose entire premise is stating the tenant's real
  * go-live score. Git #547: this file had ZERO references to `copilot-gate.ts`,
  * so the score the platform had already computed never reached the model, and
@@ -570,13 +639,24 @@ export function injectCopilotGateBlock(prompt: string, gate: CopilotGateResult):
  * `not_evaluated` result carrying that as its reason — so this needs no
  * try/catch of its own, and a document type that is not the score report never
  * pays for the engine call at all.
+ *
+ * Git #555: `evaluation` is the Copilot pillar evaluation the point-impact
+ * resolver already computed for this same generation, handed straight through to
+ * `computeCopilotGate` so the whole engine chain runs ONCE per document instead
+ * of twice. It is a performance path only — and, more importantly, it is the
+ * reason a document's cited point values and its stated score can never come
+ * from two different engine runs, which is exactly the class of contradiction
+ * #358 and #547 were both filed about. Absent (the resolver returned null, i.e.
+ * there was no score to price findings against anyway) it falls back to the
+ * engine call, so the gate block's own behaviour is unchanged either way.
  */
 async function resolveCopilotGateForDocType(
   docTypeKey: string,
   mspCustomerId: number,
+  evaluation?: PillarEvaluation | null,
 ): Promise<CopilotGateResult | null> {
   if (docTypeKey !== COPILOT_GATE_DOC_TYPE_KEY) return null;
-  const gate = await computeCopilotGate(mspCustomerId);
+  const gate = await computeCopilotGate(mspCustomerId, { evaluation: evaluation ?? undefined });
   log.info(
     {
       mspCustomerId,
@@ -678,16 +758,24 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
-    const findingsBlock = (findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n")
-      || "No findings were recorded for this client. Do NOT invent findings.")
-      + FINDING_IDENTIFIER_HONESTY_RULE;
+    // Built once and shared with the remediation appendix below — it is the same
+    // 1:1 text→checkKey join both need, and resolving it twice invites the two
+    // disagreeing about which check a finding came from.
+    const findingsWithMeta = findingsToAppendixInput(categorizedFindings, findingsForPrompt);
+    // Git #555 — real per-finding point values, for the two point-ranked document
+    // types only. Never throws and returns null when the platform has no score to
+    // price against, in which case the block below is byte-identical to pre-#555.
+    const pointImpacts = POINT_IMPACT_DOC_TYPE_KEYS.has(docTypeKey)
+      ? await computeFindingPointImpacts(mspCustomerId, findingsWithMeta.map((f) => f.checkKey))
+      : null;
+    const findingsBlock = buildFindingsBlock(findingsForPrompt, pointImpacts);
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
     // Git #547 — the real go-live score, for `copilot_readiness` only. Resolved
     // here, on the same terms as the real branch below, so the preview shows the
     // prompt that will actually be sent rather than one missing its ground truth.
-    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId);
+    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId, pointImpacts?.evaluation);
 
     const substitutedTemplate = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
@@ -710,7 +798,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     // a placeholder. Still no model call, so NO_AI_CALL_COST below stays true.
     const remediationAppendixHtml = wantsRemediationAppendix
       ? (await buildRemediationAppendix({
-          findings: findingsToAppendixInput(categorizedFindings, findingsForPrompt),
+          findings: findingsWithMeta,
           mspCustomerId,
           mspId,
           docTypeKey,
@@ -858,16 +946,22 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     const rawTemplate = params.promptOverride ?? await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
 
     const findingsForPrompt = scopedFindings.slice(0, REMEDIATION_APPENDIX_MAX_FINDINGS);
-    const findingsBlock = (findingsForPrompt.map((f, i) => `${i + 1}. ${f}`).join("\n")
-      || "No findings were recorded for this client. Do NOT invent findings.")
-      + FINDING_IDENTIFIER_HONESTY_RULE;
+    // Same single join, same reason, as the dry-run branch above.
+    const findingsWithMeta = findingsToAppendixInput(categorizedFindings, findingsForPrompt);
+    // Git #555 — real per-finding point values. Same call, same placement and same
+    // null-means-unpriced contract as the dry-run branch, so a preview can never
+    // disagree with the document that gets generated.
+    const pointImpacts = POINT_IMPACT_DOC_TYPE_KEYS.has(docTypeKey)
+      ? await computeFindingPointImpacts(mspCustomerId, findingsWithMeta.map((f) => f.checkKey))
+      : null;
+    const findingsBlock = buildFindingsBlock(findingsForPrompt, pointImpacts);
 
     const wantsRemediationAppendix = docTypeRow.remediationDetailAppendix === true;
 
     // Git #547 — the real go-live score, for `copilot_readiness` only. Same call
     // and same placement as the dry-run branch, so a preview can never disagree
     // with the document that gets generated.
-    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId);
+    const copilotGate = await resolveCopilotGateForDocType(docTypeKey, mspCustomerId, pointImpacts?.evaluation);
 
     const substitutedTemplate = rawTemplate
       .replace(/\{\{sections\}\}/g, sectionText)
@@ -981,7 +1075,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         },
         () =>
           buildRemediationAppendix({
-            findings: findingsToAppendixInput(categorizedFindings, findingsForPrompt),
+            findings: findingsWithMeta,
             mspCustomerId,
             mspId,
             docTypeKey,

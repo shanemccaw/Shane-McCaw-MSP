@@ -209,6 +209,11 @@ export default defineConfig({
       "src/lib/remediation-knowledge-base.test.ts",
       "src/routes/public-assessment-rescan-addon.test.ts",
       "src/lib/license-gap-purchase-links.test.ts",
+      // #555 — the real per-finding point value: the raw signal_derivation_rules
+      // impact column normalized against the SAME theoreticalMax the live score
+      // used, and the two prompts that now carry it.
+      "src/lib/finding-point-impact-555.test.ts",
+      "src/lib/document-engine-point-impact-555.test.ts",
     ],
     coverage: {
       provider: "v8",

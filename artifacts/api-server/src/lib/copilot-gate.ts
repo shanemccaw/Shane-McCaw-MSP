@@ -222,10 +222,24 @@ export async function computeCopilotPillarScore(customerId: number): Promise<num
  * rather than taking down the status route that carries the scan and document
  * state alongside it. That degradation now says so in `evaluation.reason`
  * instead of being indistinguishable from a tenant nothing feeds (#517).
+ *
+ * `opts.evaluation` (Git #555) lets a caller that has ALREADY run this exact
+ * chain for the same customer in the same request hand the result back rather
+ * than pay for a second full engine run — document generation now resolves the
+ * Copilot pillar once for its per-finding point values and reuses it here. It is
+ * not a way to inject a score: the only thing that produces a `PillarEvaluation`
+ * is `evaluatePillarDisplay`, and every honesty guard in this file applies to it
+ * identically whether it arrived by argument or by call. Passing one also
+ * removes a real failure mode — two engine runs milliseconds apart could in
+ * principle disagree, putting a cited point value and a stated score in the same
+ * document on different footings.
  */
-export async function computeCopilotGate(customerId: number): Promise<CopilotGateResult> {
+export async function computeCopilotGate(
+  customerId: number,
+  opts?: { evaluation?: PillarEvaluation },
+): Promise<CopilotGateResult> {
   try {
-    const evaluation = await computeCopilotPillarEvaluation(customerId);
+    const evaluation = opts?.evaluation ?? (await computeCopilotPillarEvaluation(customerId));
     if (evaluation.status !== "scored") {
       log.info(
         { customerId, status: evaluation.status, evaluableSignalCount: evaluation.evaluableSignalCount },
