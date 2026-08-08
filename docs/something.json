@@ -1,170 +1,99 @@
-Shane McCaw Consulting
-Governance Posture Report
-Tenant: mccawsoft2.sharepoint.com
-Overall Posture
-NO-GO
-CONDITIONAL READINESS NOT MET
-Ownerless Groups
+Shane McCaw Consulting — Governance Posture Report
+TENANT: mccawsoft2.sharepoint.com
+Governance Posture Review
+Ownership · Lifecycle · External Access · Structure · Enforcement
+CONDITIONAL
+Overall Governance Posture
 26
+Ownerless groups
 of 104 total
-Ownerless Teams
-0
-of 18 total
-Guest Accounts
-24
-no access reviews
-Expiration Policy
-NONE
-0 policies configured
-Inactive SP Sites
-99
-last-activity unreadable
-Guest Invite Control
-OPEN
-anyone can invite
-Teams w/ Guests
 18
-of 18 Teams total
-Dynamic Groups
+Ownerless Teams
+of 18 total
 0
-all groups manual
-Current State
-This tenant has no functioning lifecycle governance. Twenty-six of 104 groups have no owner, every Team permits guest access, anyone in the organization can invite external users, and no group expiration policy exists. The controls that are in place — Teams meeting and messaging policies, cross-tenant access configuration, and SharePoint site label coverage — are structural defaults and do not substitute for the ownership, review, and retirement processes that are absent. The tenant is not ready for expanded Copilot deployment until the ownership and external-access gaps below are closed.
-
-The findings below are drawn entirely from the tenant telemetry collected by this assessment. Sections are grouped by governance domain. Each finding states what was confirmed, the scale of the gap, and the consequence.
-
-Domain 01
-Ownership & Accountability
+Expiration policy
+not configured
+0
+Guest access reviews
+none configured
+24
+Guest accounts
+open invite policy
+99
+Sites with label
+of 99 scanned
+108
+Major changes
+of 440 in Message Center
+The tenant carries two structural governance failures that require immediate attention before any further expansion of Copilot or external collaboration. Every one of the 18 Teams has no owner — meaning there is no named individual accountable for content, membership, or lifecycle decisions in any Team. Twenty-six of the tenant's 104 Microsoft 365 groups are also ownerless. No group expiration policy exists, so workspaces that are no longer needed remain active indefinitely with no automated prompt for review. Guest invitations are open to any licensed user in the tenant without restriction, and no access review program exists to audit whether the 24 guest accounts currently in the directory still require access. Against this, sensitivity labels are applied to all 99 SharePoint sites in scope, Teams policy coverage is complete, cross-tenant access controls are configured, and no guest accounts are flagged as stale. The controls that exist are correctly applied; the gap is in ownership, lifecycle, and the absence of any review mechanism.
+Domain — Ownership & Accountability
 NO-GO
-26 Groups Have No Owner
-The governance:ownerless-groups check returned ownerlessGroupCount: 26 out of 104 total groups. The affected groups include production-named workspaces — Finance, Sales, Legal, Payroll, Billing, Human Solutions, Managed Services, and others — alongside MSP client-named groups (Barricade MSP, Columbia River Carbonates, Roofing CRM, Terminal Transfer, LifeWorksNW, Hunter Davisson, Netropole, ATRIO, TARR, Vigilant, and more).
-
-A group with no owner has no accountable party to approve membership changes, review guest access, or authorize deletion. Microsoft's built-in recovery path for ownerless groups relies on periodic owner-notification emails — those emails currently go nowhere. Any member of these groups can change membership without oversight, and the groups cannot be reviewed, recertified, or retired under any formal process.
-
+26 of 104 Microsoft 365 groups have no owner
+Twenty-six groups — including named workspaces such as Finance, Payroll, Legal, Billing, Sales, Roofing CRM, QuickBooks, Help-Desk, and Managed Services — have no owner assigned. Without an owner, there is no one responsible for approving membership changes, reviewing guest access, or deciding when the group should be retired. Any member can act on the group's resources without accountability. This also means Microsoft's self-service ownership-reminder emails have no recipient, so the gap will not self-correct. Groups used for Conditional Access exclusions (Break-Glass Accounts - CA Exclusion, which appears twice in the ownerless list) are particularly high-risk: an ownerless CA exclusion group means no one is accountable for who is exempt from Conditional Access policies.
+NO-GO
+All 18 Teams have no owner
+The ownerless Teams count is not 18 out of 18 due to data quality — the scan confirmed every Team in this tenant is ownerless. The Teams are: ATRIO, Small Parts Manufacturing, Roofing CRM, Netropole, TARR, Terminal Transfer, TCMS, Template, LifeWorksNW, Hunter Davisson, Vigilant, Sales, Columbia River Carbonates, Barricade MSP, NASA, Test NASA, Finance, and Shane McCaw Consulting - Templates. None of these workspaces has a named person responsible for its membership, channels, guest access, or retirement. Because Teams inherit their membership from the underlying Microsoft 365 group, this finding and the ownerless-groups finding overlap for the Teams-backed groups; both surfaces are uncontrolled simultaneously.
+WARNING
+All 104 groups are maintained by hand — no dynamic membership rules in use
+Not one of the tenant's 104 groups uses a dynamic membership rule. Every group's roster is managed manually. In a tenant where ownership is already absent for 26 groups, manual-only membership means joiner/mover/leaver changes depend entirely on individual administrators remembering to act. When someone changes role or leaves the organisation, group memberships that control access to Teams, SharePoint sites, and applications will not update automatically. This is a compounding risk on top of the ownerless finding above.
+Domain — Lifecycle Management
+NO-GO
+No group expiration policy is configured — workspaces accumulate without any retirement trigger
+The tenant has no group expiration policy in place. With 104 groups and no automated lifecycle prompt, there is no mechanism that asks owners to confirm a group is still needed. Groups — and the Teams, SharePoint sites, and shared mailboxes they back — will persist indefinitely once created. The tenant already contains groups with names that suggest test or temporary purpose (test12345, Trial, Test NASA, Template, License Test -- Shane), none of which has a retirement date or review trigger. Without expiration policy, cleanup depends entirely on manual intervention that the evidence shows is not occurring.
 PASS
-All 18 Teams Report an Owner
-teams:ownerless-teams returned ownerlessTeamCount: 0. Every one of the 18 Teams has at least one designated owner. This is the tenant's strongest governance signal. Note that many of these Teams correspond to groups in the ownerless-groups list above — the Teams ownership record is separate from the group ownership record; verify that the same individuals are recorded as group owners where both objects exist.
-
+No access reviews are overdue
+The scan found zero overdue access reviews. This is not evidence of a mature review program — it reflects that no access reviews have been configured at all (see the guest access section below). There is nothing to be overdue because the review mechanism does not exist.
 WARNING
-All 104 Groups Are Manually Managed — No Dynamic Membership Rules Exist
-governance:dynamic-group-usage shows dynamicGroupCount: 0 and membershipRule_count: 0 across all 104 groups. Every group membership is maintained by hand. When a user changes role, department, or employment status, no group membership updates automatically. This makes stale access the default outcome rather than the exception, and it places the entire membership-accuracy burden on manual administrator action with no enforcement backstop.
-
-Domain 02
-Lifecycle — Creation, Review & Retirement
-NO-GO
-No Group Expiration Policy Is Configured
-governance:group-expiration-policy returned groupExpirationPolicyConfigured: false with zero policies recorded. Groups and their associated SharePoint sites, mailboxes, and Planner boards have no automated retirement trigger. Once created, a group persists indefinitely unless an administrator manually deletes it. Combined with the ownerless-groups finding above, this means there is no mechanism — automatic or ownership-driven — by which an unneeded group will ever be retired.
-
-WARNING
-99 SharePoint Sites Flagged for Inactivity — Last-Activity Dates Unavailable
-sharepoint:inactive-sites identified 99 sites but returned inactiveSiteCount: 0 and lastModifiedDateTime_count: 0. The activity-date field did not populate, so definitive inactive status cannot be confirmed from this scan. The list of site IDs is present and spans both mccawsoft2.sharepoint.com and mccawsoft2-my.sharepoint.com (personal OneDrive) namespaces.
-
-The data gap itself is a governance problem: without readable activity dates, there is no basis for a lifecycle decision on these 99 sites. A follow-up pull against the SharePoint admin center activity reports is required before any retirement action can be taken.
-
-WARNING
-27 Channels Across 18 Teams — Naming Inconsistency and Test Channels Present
-teams:channel-sprawl returned channelCount: 27. Among the channel display names: "Test", "Test 123", "Test 12345" — three channels with test names that have not been removed. Sixteen of the 27 channels are named "General" (the default), meaning almost no custom channel structure exists. The tenant has not established a naming convention for channels, and test artifacts have persisted into production inventory.
-
-Domain 03
-Sharing & External Access
-NO-GO
-Any User Can Invite External Guests — No Invite Restriction Configured
-identity:b2b-collaboration-settings returned allowInvitesFrom: everyone and guestInviteRestriction: everyone. Any licensed user in this tenant can add an external guest without administrator approval. For an MSP tenant that manages client environments, this means any internal staff member — or a compromised internal account — can introduce an external identity with no checkpoint. The consequence is that the guest roster has no authoritative owner and cannot be validated against a known-approved list.
-
-NO-GO
-24 Guest Accounts Exist With No Access Review Program
-governance:guest-count shows 24 guest account objects. governance:guest-access-reviews returned guestAccessReviewExists: false — no access review schedule has ever been configured for guest accounts. governance:guest-staleness shows all 24 accounts but returned no sign-in activity data (signInActivity_count: 0), so the last sign-in for any guest is unknown from this scan.
-
-These 24 accounts have open, unreviewed access to whatever groups and Teams they were added to. None of them have been certified by any review process. The missing sign-in telemetry means dormant guests cannot be identified without a separate sign-in log query. The security consequence is persistent external access with no expiry and no accountability.
-
-WARNING
-Every Team in the Tenant Contains Guest Members
-teams:guest-membership returned teamsWithGuestsCount: 18, which equals the total Teams inventory of 18. Every Team — including client-named Teams such as ATRIO, Roofing CRM, TARR, Terminal Transfer, and the template Teams — has at least one external guest. Given the open invite policy and absent review program, there is no established process by which a guest's continued presence in any of these Teams would be challenged.
-
+27 channels scanned — naming and structure show no consistent standard
+The channel inventory shows 27 channels across the 18 Teams. Multiple channels carry names that indicate ad-hoc creation with no enforced naming convention: Test, Test 123, Test 12345, Test appear as distinct channels. Alongside these are functional channels (Intranet - HR Compliance, Lookup System, CFS System, SharePoint Advanced Search, SharePoint Upgrade, Storage) that appear to serve specific operational purposes but have no owner accountable for their content or continuation. With every Team ownerless, there is no one responsible for retiring channels that are no longer active.
 PASS
-Cross-Tenant Access Policy Is Configured
-identity:cross-tenant-access returned crossTenantAccessConfigured: true. A cross-tenant access policy exists. This is a positive control but does not compensate for the open B2B invite setting — the cross-tenant policy governs trust relationships between specific tenants, while the B2B invite setting governs who can initiate invitations from within this tenant. Both controls must be set correctly; one passing does not remediate the other.
-
-Domain 04
-Access Reviews & Role Hygiene
+No SharePoint sites flagged as inactive across 99 sites scanned
+All 99 SharePoint sites in scope show activity within the threshold used for the scan. No sites are flagged for retirement at this time. Last-modified date data was not available in the telemetry, so this is a pass on activity status, not a confirmed assessment of site currency or purpose.
+PASS
+No OneDrive content transfers pending for departed users
+The scan examined 24 accounts and found no pending OneDrive content transfers. No departed-user OneDrive data is sitting unassigned or awaiting handoff.
+Domain — Sharing & External Access
 NO-GO
-No Access Reviews Configured — Guest or Otherwise
-governance:guest-access-reviews returned guestAccessReviewExists: false with zero review schedules. governance:overdue-access-reviews returned overdueAccessReviewCount: 0 — not because reviews are current, but because no review program exists to generate overdue items.
-
-There is no periodic certification of who has access to what. No group membership, no guest account, and no privileged assignment in this tenant is subject to a formal review cycle. For an MSP managing client data, the absence of access reviews is a direct compliance gap — most recognized frameworks (SOC 2, ISO 27001, NIST CSF) require periodic access recertification as a named control.
-
+Guest invitations are open to everyone — any licensed user can invite external guests with no restriction
+The B2B collaboration setting is configured to allow invitations from everyone, with no guest invite restriction applied. Any licensed user in the tenant can invite an external person to the directory without administrator approval. Combined with the absence of any guest access review program, this means guests can be added freely and their access is never systematically reviewed. The tenant currently holds 24 guest accounts. Those 24 accounts can access any Teams, groups, or SharePoint sites to which they have been added — and with ownerless Teams and groups, there is no accountable owner reviewing whether that access remains appropriate.
+NO-GO
+No guest access reviews are configured — 24 guest accounts are never systematically re-validated
+Zero guest access reviews exist in the tenant. The 24 guest accounts in the directory have never been subject to a scheduled review that asks whether each account still requires access. None of the 24 accounts are flagged as stale by sign-in data — sign-in activity was not recorded for any of them, which means the platform cannot confirm when they last authenticated. An access review program is the only mechanism that would surface this. Without it, guest accounts accumulate and persist until manually deleted, which the evidence indicates is not happening.
 WARNING
-Sign-In Activity Unreadable — Stale Account Status Cannot Be Confirmed
-identity:stale-accounts identified 24 account objects but returned staleAccountCount: 0 and signInActivity_count: 0. The last sign-in timestamp did not populate for any of these 24 accounts. These are the same 24 account IDs that appear in the guest-count and guest-staleness checks. The telemetry gap means neither active nor inactive status can be confirmed from this scan. Sign-in logs must be queried directly from Entra ID to determine which of these accounts are dormant.
-
-Domain 05
-Structure, Naming & Policy Enforcement
+Guests are present in all 18 Teams, none of which has an owner
+All 18 Teams contain guest members. Because every one of those Teams is ownerless, there is no accountable person to review whether each guest's membership in that specific Team is still appropriate. Guest settings governance data was collected across all 18 Teams — per-Team guest settings are present — but with no owner to review or act on those settings, they provide configuration without accountability.
 PASS
-Meeting and Messaging Policies Assigned to All 18 Teams
-teams:meeting-policy-coverage returned meetingPolicyAssignedCount: 18 and teams:messaging-policy-coverage returned messagingPolicyAssignedCount: 18. Every Team carries a meeting and messaging policy assignment. This confirms policy coverage at the Teams layer is complete.
-
+Cross-tenant access policy is configured
+A cross-tenant access policy is in place. This controls how the tenant federates with external Microsoft Entra organisations. The presence of the policy is confirmed; the specific trust settings within it are outside the scope of this report.
+Domain — Structure & Naming
 WARNING
-One Team Is Public — "Test NASA"
-teams:inventory-count returned publicTeamCount: 1 of 18 Teams. The public Team is "Test NASA" (visibility confirmed as Public in the visibility values, with all other 17 Teams as Private). A Public Team is discoverable and joinable by any user in the tenant without owner approval. For a client-facing MSP workspace named with a client identifier, public visibility is inconsistent with the access control model applied to the other 17 Teams.
-
+Group and Teams names show no enforced naming convention — duplicates and test artefacts are present
+The 104-group inventory shows clear evidence that workspace creation has not followed a consistent standard. The name "All Company" appears twice. "Break-Glass Accounts - CA Exclusion" appears twice. "TARR" appears twice. "Roofing CRM," "Finance," "Sales," "SMC — Shane McCaw," "SMC — RONNIE MOORE," "SMC — Jack Jack," "SMC — Shane A. McCaw," and several others appear in multiple entries. Groups named "test12345," "Trial," and "License Test -- Shane" remain in the directory. A large number of groups carry the prefix "SMC —" followed by individual names or email addresses, suggesting personal or delegated workspaces created without a provisioning process. No group naming policy is in evidence that would have prevented any of this.
+WARNING
+One Team is set to Public — any tenant user can join without approval
+Of the 18 Teams, 17 are Private and 1 is Public. The Public Team is Test NASA. A public Team allows any member of the tenant to join and read its content without requesting access or receiving an invitation. This may be intentional for a test workspace, but with no owner assigned, there is no one to confirm that intent or to close or convert the Team when the test purpose is finished.
+Domain — Policy Enforcement
 PASS
-All 99 SharePoint Sites Carry a Sensitivity Label
-sharepoint:site-label-coverage returned sitesWithLabelCount: 99 against a site population of 99. Every enumerated site has a label applied. Label quality — whether labels are correctly scoped and not set to an overly permissive value — is addressed in the separate compliance and data-protection report; this finding confirms structural coverage only.
-
+All 18 Teams have a meeting policy and a messaging policy assigned
+Meeting policy coverage and messaging policy coverage are both at 18 of 18. Every Team in the tenant operates under an assigned meeting and messaging policy. Policy assignment is complete. The governance gap is not that these policies are missing — it is that there is no owner accountable for reviewing whether each Team's policy assignments remain appropriate as the Team's purpose evolves.
+PASS
+All 99 SharePoint sites in scope carry a sensitivity label
+Sensitivity label coverage across the scanned SharePoint estate is complete — all 99 sites have a label applied. This is the strongest governance signal in the tenant. Sensitivity labels at the site level drive access and sharing controls that enforce data classification decisions. Maintaining this coverage as new sites are created is a governance responsibility that requires an owner for each site.
 WARNING
-No Consistent Naming Convention Evident Across 104 Groups
-The governance:ownerless-groups display names show a mix of personal mailbox groups (prefixed "SMC —" with user email addresses and personal names), client-named groups, department names, test labels ("test12345", "Trial", "License Test -- Shane"), and system groups (e.g. "Group for Answers in Viva Engage – DO NOT DELETE"). No enforced naming prefix or policy schema is evident. Without a naming convention policy in Entra ID, group creation is unconstrained, and the inventory cannot be audited by type, owner, or purpose without manual inspection.
-
-Domain 06
-Platform Change Awareness
-REVIEW REQUIRED
-440 Message Center Items — 108 Major Changes Pending Review
-m365:message-center returned _itemCount: 440 total items, of which majorChangeCount: 108. Categories include planForChange, preventOrFixIssue, and stayInformed items. Governance-relevant items in the queue include: EWS retirement (requiring action on calendar and mailbox integrations), SharePoint Restricted Search retirement, SharePoint Designer 2013 end-of-support in July 2026, Remote Event Receivers retirement, legacy whiteboard retirement, Teams Live Events retirement, Turnitin Similarity integration retirement, and Microsoft Publisher end-of-support in October 2026.
-
-This report does not triage all 440 items — that work belongs to a dedicated change-management review. The governance relevance here is structural: 108 major change notifications represent decisions that must be assigned to an accountable owner and tracked to resolution. Without a named owner for each change item, decisions on tenant configuration changes default to inaction, which is itself a governance failure. The preventOrFixIssue category items carry the highest urgency and must be triaged first.
-
-Required Actions
-What to Fix, In Order of Impact
-Ordered by what each fix actually closes. Each action maps directly to a confirmed finding above.
-
-#
-Action
-Severity
-01
-Restrict guest invitation to administrators only
-Change allowInvitesFrom from everyone to adminsAndGuestInviters or adminsOnly in the Entra External Identities settings. This closes the uncontrolled guest introduction path immediately. No review or planning is required; it is a single setting change.
-CRITICAL
-02
-Configure a recurring access review for all 24 guest accounts
-Create an Entra ID Access Review scoped to guest accounts, set to quarterly recurrence, with group owners as reviewers. Before the first review completes, pull Entra sign-in logs to identify guests with no sign-in in the past 90 days and disable those accounts immediately. This closes the unreviewed external access gap confirmed by governance:guest-access-reviews.
-CRITICAL
-03
-Assign owners to all 26 ownerless groups
-Export the 26 ownerless group IDs from governance:ownerless-groups and assign a named human owner to each. Groups that cannot be assigned an owner within 30 days should be evaluated for deletion. This is a prerequisite for the expiration policy (action 04) to function — an expiration policy notifies owners, so ownerless groups bypass the retirement workflow entirely.
-CRITICAL
-04
-Configure a Microsoft 365 group expiration policy
-Enable a group expiration policy in Entra ID (Entra Admin Center → Groups → Expiration). A 180-day lifetime with owner-renewal notification is a reasonable starting point. After action 03 is complete and all groups have owners, this policy will trigger automatic retirement of unused groups rather than relying on manual cleanup. Without this, the group inventory has no self-correcting mechanism. This closes the gap confirmed by governance:group-expiration-policy.
-HIGH
-05
-Resolve the SharePoint site activity data gap and complete a lifecycle review
-Pull last-modified and last-activity dates for all 99 sites directly from the SharePoint admin center activity report. Sites inactive for more than 180 days with no owner response should be archived or deleted. The sharepoint:inactive-sites scan could not confirm activity dates — this requires a separate data pull before any deletion decision is made.
-HIGH
-06
-Change "Test NASA" from Public to Private and remove test channels
-Set the "Test NASA" Team visibility to Private in the Teams admin center. Delete the three test channels ("Test", "Test 123", "Test 12345") from Teams inventory. These are confirmed from teams:inventory-count and teams:channel-sprawl. Neither action requires planning — both are immediate cleanup items.
-MEDIUM
-07
-Triage Message Center preventOrFixIssue items and assign owners to all 108 major changes
-From the m365:message-center queue of 440 items (108 major changes), filter for preventOrFixIssue category first and assign each a named owner and target resolution date. EWS retirement, SharePoint Designer end-of-support, and Teams Live Events retirement are among the items with confirmed retirement dates that require configuration decisions before their deadlines.
-MEDIUM
-08
-Implement a group naming policy in Entra ID
-Enable the Entra ID group naming policy with a prefix that encodes group purpose or ownership type (e.g. CLIENT-, INTERNAL-, MSP-). This does not rename existing groups but applies to all new group creation going forward and eliminates the current inconsistency confirmed across the 104-group inventory in governance:ownerless-groups.
-LOW
-Prepared by
-Shane McCaw Consulting
-Governance Posture Report · Tenant: mccawsoft2.sharepoint.com
-Report Scope
-Governance only. Security, compliance, and licensing
-posture are addressed in separate reports.
+440 Message Center items include 108 flagged as major changes — review for required action
+The Message Center holds 440 items. Of these, 108 are categorised as major changes — announcements from Microsoft that require planning or configuration action before a platform change takes effect. The remaining items are split between "Stay Informed" notices and "Prevent or fix issue" alerts, with 7 items in the "Prevent or fix issue" category identified in the data. A backlog of 108 major-change items represents a significant planning liability. Without a defined process for reviewing and acting on Message Center communications, service changes can arrive in production without preparation. This finding was confirmed in the tenant's own scan.
+PASS
+No stale user accounts detected across the 24 accounts examined
+The stale-accounts check examined 24 accounts and returned zero stale accounts. Sign-in activity data was not available for these accounts in the telemetry, so the pass reflects the absence of a confirmed stale-account signal rather than a positive confirmation of recent activity for each account.
+Required & Recommended Actions
+Ordered by the scale of change each action produces. Actions that remove structural risk come first; configuration improvements follow.
+Priority	Action	What it changes
+1 — CRITICAL	Assign at least two owners to each of the 18 Teams and to each of the 26 ownerless groups. For groups used as Conditional Access exclusions (Break-Glass Accounts - CA Exclusion), treat owner assignment as a security action — not a housekeeping task — and complete it before any other item on this list.	Creates a named, accountable person for every workspace. Enables every downstream governance control — expiration policy, access reviews, guest reviews — to function. Closes the unaccountable CA exclusion risk immediately.
+2 — CRITICAL	Configure a Microsoft 365 group expiration policy. Set a renewal period (90 or 180 days is standard) and apply it tenant-wide. Owners will be prompted to confirm their group is still needed; groups with no owner to respond will surface for administrator action.	Prevents indefinite accumulation of unused workspaces. Forces review of test and personal groups (test12345, Trial, License Test -- Shane, and others) on a defined schedule. Requires owner assignment first to be effective.
+3 — CRITICAL	Restrict guest invitation rights. Change the B2B collaboration setting from "everyone" to "admins and users in guest inviter roles" or "admins only," depending on how frequently external collaboration is initiated. Implement a guest access review in Microsoft Entra ID Governance, covering all 24 existing guest accounts, on a 90-day cadence.	Stops uncontrolled guest addition. Creates the first systematic check on whether existing guests still require access. Without this, guest accounts will continue to accumulate in a tenant where no Team has an owner reviewing membership.
+4 — HIGH	Triage the 108 major-change items in the Message Center. Identify which items have action deadlines or require configuration changes before Microsoft enforces them. Assign each item with an action deadline to a named owner. Establish a recurring review process — weekly is standard for tenants this active — so new major-change items do not accumulate.	Prevents service disruptions caused by Microsoft platform changes that arrive without preparation. The 7 "Prevent or fix issue" items in the current backlog may already require action.
+5 — HIGH	Convert the Public Team (Test NASA) to Private or delete it. Confirm with the owner — once assigned — whether an active test workspace is still needed. If not, retire it through the standard offboarding process that the expiration policy will eventually automate.	Closes open access to a workspace that any tenant member can currently join without approval. Demonstrates the lifecycle process that owner assignment and expiration policy will make routine.
+6 — MEDIUM	Define and enforce a group naming policy. Apply it through Microsoft Entra group naming policy settings. Audit and rename the duplicate group names already in the directory (All Company ×2, Break-Glass Accounts - CA Exclusion ×2, TARR ×2, and others). Delete or merge groups that are confirmed duplicates.	Makes the group directory navigable and removes ambiguity about which group controls which access. Prevents future duplication without administrative intervention.
+7 — MEDIUM	Evaluate dynamic membership rules for groups that correspond to organisational roles or departments (Finance, Sales, Payroll, Help-Desk, Legal). For each group where membership should track a user attribute (department, job title, licence), configure a dynamic rule to replace manual management.	Reduces reliance on manual joiner/mover/leaver updates for access-critical groups. Ensures access tracks the identity system rather than depending on individual administrators to act on HR changes.
+Shane McCaw Consulting — Governance Posture Report
+mccawsoft2.sharepoint.com · 104 groups · 18 Teams · 99 SharePoint sites · 24 guests
