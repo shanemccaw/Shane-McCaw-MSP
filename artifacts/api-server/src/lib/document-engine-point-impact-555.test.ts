@@ -272,6 +272,18 @@ describe("real per-finding point values reach {{findings}} (#555)", () => {
     expect(computeCopilotGateMock).toHaveBeenCalledTimes(1);
     expect(computeCopilotGateMock).toHaveBeenCalledWith(42, { evaluation: REAL_RESULT.evaluation });
   });
+
+  // Git #557: confirmed live, the preamble's own labels ("POINT IMPACT IF
+  // FIXED:", "PLATFORM GROUND TRUTH") were reproduced as visible annotation
+  // text. The block must still carry the real numbers (unchanged above) AND an
+  // explicit instruction that its own labels are internal-only.
+  it("marks the point-impact preamble and its labels as internal-only (#557)", async () => {
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+    expect(prompt).toContain("for your own internal calculation only");
+    expect(prompt).toContain("Never print, quote, or reproduce this block's own labels");
+    // The real values are still cited — #557 must not weaken this.
+    expect(prompt).toContain("POINT IMPACT IF FIXED: 34.6 points");
+  });
 });
 
 describe("no findings at all (#555)", () => {

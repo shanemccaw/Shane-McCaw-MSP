@@ -385,6 +385,38 @@ describe("generateDocument() — finding check key must not become a heading (#5
   });
 });
 
+// ─── Git #557 — internal provenance labels must not leak into visible text ────
+//
+// Confirmed live 2026-08-08: a generated document showed "Source:
+// health_engine:copilot" and "check: appgov:cert-secret-expiration" as visible
+// annotation text. Both strings genuinely exist in the assembled prompt (the
+// gate block's own "(internal source key: ...)" note, and the check key #549
+// puts in parentheses after each finding) — the model was treating them as
+// citable source labels rather than internal-only data. These tests assert the
+// explicit anti-reproduction instructions reach the model alongside them.
+
+describe("generateDocument() — internal provenance must not leak into document text (#557)", () => {
+  it("marks the gate block's source key as internal-only and forbids reproducing it", async () => {
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+
+    expect(prompt).toContain("internal source key: health_engine:copilot");
+    expect(prompt).toContain("for your own internal calculation only");
+    expect(prompt).toContain("Never print, quote, or cite them anywhere in the document");
+  });
+
+  it("forbids inventing a label like \"check:\" or \"Source:\" to introduce a check key", async () => {
+    const prompt = await assembleFor("copilot_readiness", "Copilot Go-Live Score Report");
+
+    expect(prompt).toContain("Do NOT invent a label to introduce it either");
+    expect(prompt).toContain("check: appgov:cert-secret-expiration");
+  });
+
+  it("applies to every document type, not just copilot_readiness", async () => {
+    const prompt = await assembleFor("remediation_plan", "Remediation Plan");
+    expect(prompt).toContain("Do NOT invent a label to introduce it either");
+  });
+});
+
 describe("injectCopilotGateBlock()", () => {
   it("is stable across repeated calls (the /g token regex must not carry state)", () => {
     // The token regex is module-level and /g, so `test()` advances its

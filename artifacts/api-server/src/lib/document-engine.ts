@@ -449,7 +449,10 @@ const FINDING_IDENTIFIER_HONESTY_RULE =
   "text. Every heading or title for a finding must be written in your own words, or quote " +
   "the finding's own leading sentence (the text before the trailing parenthetical). The " +
   "check key may still be cited inline, in prose or a reference list, when you need to name " +
-  "the specific finding you mean — nothing else. The list numbers above " +
+  "the specific finding you mean — nothing else. Do NOT invent a label to introduce it either " +
+  "(e.g. \"check: appgov:cert-secret-expiration\", \"Check Key:\", \"Source:\") — those labels " +
+  "are not this platform's data, they are internal field names you must never surface; work " +
+  "the check key into a normal sentence instead. The list numbers above " +
   "are presentation order only; they are NOT identifiers and must not be cited as such.";
 
 /**
@@ -558,10 +561,15 @@ export function buildCopilotGateBlock(gate: CopilotGateResult): string {
   const header =
     "COPILOT GO-LIVE SCORE — PLATFORM GROUND TRUTH\n"
     + "The lines below are the platform's own computed result for this tenant, produced by "
-    + `the health engine's Copilot pillar (source: ${gate.source}). They are established fact, `
-    + "not telemetry for you to interpret. Restate them verbatim. Do not recompute, re-derive, "
-    + "average, round, estimate, soften or hedge any value in this block, and do not contradict "
-    + "it anywhere in the document.";
+    + `the health engine's Copilot pillar (internal source key: ${gate.source}). They are `
+    + "established fact, not telemetry for you to interpret. Restate the score, verdict, gap "
+    + "and reasoning below in your own words. Do not recompute, re-derive, average, round, "
+    + "estimate, soften or hedge any value in this block, and do not contradict it anywhere "
+    + "in the document.\n"
+    + "This source key, and the word \"source\" as a label, are for your own internal "
+    + "calculation only — they identify where the platform got this number, not something the "
+    + "reader is meant to see. Never print, quote, or cite them anywhere in the document, in "
+    + "any form (e.g. \"Source: health_engine:copilot\", \"(source: ...)\", or similar).";
 
   if (gate.evaluation.status === "scored" && gate.score !== null && gate.status !== null) {
     const verdict = gate.status === "go"

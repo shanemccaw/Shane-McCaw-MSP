@@ -112,5 +112,12 @@ export function buildFindingPointImpactPreamble(result: FindingPointImpactResult
     "no scored signal behind that finding: say exactly that for it, and never put a",
     "number of your own in its place. A line reading 0.0 points is a real measured zero,",
     "not a missing value.",
+    "",
+    "This whole block, and the \"POINT IMPACT IF FIXED\" line under each finding, are for your",
+    "own internal calculation only — they are how you know what number to cite, not text meant",
+    "to reach the reader. Never print, quote, or reproduce this block's own labels anywhere in",
+    "the document (\"POINT IMPACT IF FIXED:\", \"PLATFORM GROUND TRUTH\", \"NOT ATTRIBUTABLE\" as",
+    "a heading, or similar). State the point values themselves, in your own sentences, exactly",
+    "as given.",
   ].join("\n");
 }
