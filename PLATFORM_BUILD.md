@@ -882,3 +882,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-08-08 | ✅ DONE | Git #588 - Wire SOW add-ons (Tenant Monitoring + Architect Retainer) to real existing services (0561807f) |
 | 2026-08-08 | IN FLIGHT | adminv2 application shell - layout, ribbon engine, tab system, Ctrl+K command palette, peek overlay, plus SHELL.md registration contracts | |
 | 2026-08-08 | ⏳ IN FLIGHT — Git #590/#591/#594 - SOW "Not quoted" duration label clarity, honest generic Approach/Sequence narrative, Tenant Monitoring 3-tier selection UI | |
+| 2026-08-08 | ⏳ IN FLIGHT — Git #592 - Sales Offer Engine rationale leaks raw signal_key to customers | |
