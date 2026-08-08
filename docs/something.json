@@ -1,111 +1,299 @@
 [
   {
     "statementIndex": 0,
-    "statementText": "BEGIN;",
+    "statementText": "SELECT s.id, s.slug, s.name, s.price, s.is_public, s.visibility, s.created_at\nFROM services s\nWHERE s.category = 'document_product'\n  AND NOT EXISTS (\n    SELECT 1 FROM document_types dt WHERE dt.key = s.slug OR dt.label = s.name\n  )\nORDER BY s.name;",
     "success": true,
-    "rowCount": 0,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 1,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"governance:overdue-access-reviews.*\", \"governance:ownerless-groups.*\", \"governance:guest-count.*\",\n  \"governance:guest-staleness.*\", \"governance:guest-access-reviews.*\", \"governance:dynamic-group-usage.*\",\n  \"governance:group-expiration-policy.*\", \"appgov:stale-app-registrations.*\",\n  \"identity:b2b-collaboration-settings.*\", \"identity:cross-tenant-access.*\", \"identity:password-expiration-policy.*\",\n  \"identity:stale-accounts.*\", \"m3…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 2,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"appgov:consent-policy-status.*\", \"appgov:enterprise-app-count.*\", \"appgov:risky-permission-grants.*\",\n  \"appgov:unreviewed-consents.*\", \"appgov:workload-identity-risk.*\", \"compliance:eeeu-site-sharing.*\",\n  \"devices:app-protection-coverage.*\", \"devices:bitlocker-key-escrow.*\", \"devices:compliance-policy-coverage.*\",\n  \"devices:compliant-vs-noncompliant.*\", \"devices:encryption-status.*\", \"devices:os-patch-compliance.*\",\n  \"exchange:a…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 3,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"compliance:dlp-incidents.*\", \"compliance:eeeu-site-sharing.*\", \"compliance:label-errors.*\",\n  \"compliance:missing-labels.*\", \"compliance:weak-dlp-policies.*\", \"copilot:sensitivity-labels-exist.*\",\n  \"exchange:litigation-hold-coverage.*\", \"governance:auto-labeling-coverage.*\",\n  \"governance:retention-label-adoption.*\", \"governance:retention-policy-coverage.*\",\n  \"governance:sensitivity-label-adoption.*\", \"identity:terms-of-use.*\"\n]':…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 4,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"copilot:licensed-but-inactive.*\", \"license:copilot-assignment.*\", \"cost:duplicate-assignments.*\",\n  \"cost:entra-license-tier-distribution.*\", \"cost:group-based-licensing-adoption.*\",\n  \"cost:underutilized-premium.*\", \"exchange:shared-mailbox-licensing.*\", \"license:sku-utilization.*\",\n  \"license:unused-assigned.*\"\n]'::jsonb, updated_at = now()\nWHERE key = 'license_optimization_report';",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 5,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"appgov:cert-secret-expiration.*\", \"devices:autopilot-coverage.*\", \"devices:enrollment-status.*\",\n  \"devices:update-rings-config.*\", \"exchange:archive-mailbox-rate.*\", \"exchange:mailbox-quota-utilization.*\",\n  \"exchange:transport-rule-count.*\", \"identity:hybrid-sync-health.*\", \"m365:service-health.*\",\n  \"onedrive:storage-utilization.*\", \"platform:multi-geo-status.*\", \"sharepoint:site-count.*\",\n  \"sharepoint:storage-near-limit.*\", \"sh…",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 6,
-    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"adoption:planner-usage.*\", \"adoption:viva-engage-health.*\", \"copilot:usage-activity.*\",\n  \"teams:inactive-teams.*\"\n]'::jsonb, updated_at = now()\nWHERE key = 'adoption_report';",
-    "success": true,
-    "rowCount": 1,
-    "rows": [],
-    "error": null
-  },
-  {
-    "statementIndex": 7,
-    "statementText": "SELECT key, jsonb_array_length(included_profile_key_patterns) AS pattern_count\nFROM document_types ORDER BY sort_order;",
-    "success": true,
-    "rowCount": 9,
+    "rowCount": 32,
     "rows": [
       {
-        "key": "copilot_readiness",
-        "pattern_count": 0
+        "id": 95,
+        "slug": "access-review-summary-report",
+        "name": "Access Review Summary Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.634Z"
       },
       {
-        "key": "governance_maturity_report",
-        "pattern_count": 25
+        "id": 100,
+        "slug": "adoption-usage-trend-report",
+        "name": "Adoption & Usage Trend Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.648Z"
       },
       {
-        "key": "security_posture_report",
-        "pattern_count": 57
+        "id": 80,
+        "slug": "board-leadership-briefing-deck",
+        "name": "Board/Leadership Briefing Deck",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.592Z"
       },
       {
-        "key": "compliance_alignment_report",
-        "pattern_count": 12
+        "id": 76,
+        "slug": "compliance-framework-mapping-report",
+        "name": "Compliance Framework Mapping Report",
+        "price": "549.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.579Z"
       },
       {
-        "key": "license_optimization_report",
-        "pattern_count": 9
+        "id": 85,
+        "slug": "ca-coverage-gap-report",
+        "name": "Conditional Access Coverage & Gap Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.606Z"
       },
       {
-        "key": "operational_health_report",
-        "pattern_count": 16
+        "id": 71,
+        "slug": "copilot-enablement-plan",
+        "name": "Copilot Enablement Plan",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.566Z"
       },
       {
-        "key": "adoption_report",
-        "pattern_count": 4
+        "id": 82,
+        "slug": "copilot-readiness-assessment-doc",
+        "name": "Copilot Readiness Assessment Doc",
+        "price": "299.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.597Z"
       },
       {
-        "key": "remediation_plan",
-        "pattern_count": 0
+        "id": 89,
+        "slug": "copilot-usage-adoption-report",
+        "name": "Copilot Usage & Adoption Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.618Z"
       },
       {
-        "key": "sow",
-        "pattern_count": 0
+        "id": 77,
+        "slug": "cyber-insurance-readiness-report",
+        "name": "Cyber Insurance Readiness Report",
+        "price": "499.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.583Z"
+      },
+      {
+        "id": 83,
+        "slug": "dlp-data-loss-incident-report",
+        "name": "DLP & Data Loss Incident Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.601Z"
+      },
+      {
+        "id": 63,
+        "slug": "data-exposure-risk-report",
+        "name": "Data Exposure Risk Report",
+        "price": "349.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.544Z"
+      },
+      {
+        "id": 68,
+        "slug": "deployment-plan",
+        "name": "Deployment Plan",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.559Z"
+      },
+      {
+        "id": 99,
+        "slug": "device-compliance-summary-report",
+        "name": "Device Compliance Summary Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.645Z"
+      },
+      {
+        "id": 81,
+        "slug": "drift-change-history-report-onetime",
+        "name": "Drift & Change History Report",
+        "price": "199.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.594Z"
+      },
+      {
+        "id": 73,
+        "slug": "execution-guide",
+        "name": "Execution Guide",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.571Z"
+      },
+      {
+        "id": 65,
+        "slug": "exec-summary-report",
+        "name": "Executive Summary Report",
+        "price": "349.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.551Z"
+      },
+      {
+        "id": 66,
+        "slug": "full-readiness-report",
+        "name": "Full Readiness Report",
+        "price": "449.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.553Z"
+      },
+      {
+        "id": 69,
+        "slug": "governance-framework-plan",
+        "name": "Governance Framework Plan",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.561Z"
+      },
+      {
+        "id": 62,
+        "slug": "governance-maturity-report",
+        "name": "Governance Maturity Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.541Z"
+      },
+      {
+        "id": 86,
+        "slug": "guest-access-governance-report",
+        "name": "Guest Access & External User Governance Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.608Z"
+      },
+      {
+        "id": 74,
+        "slug": "guide-script-per-finding",
+        "name": "Guide + Script — Per-Finding",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.573Z"
+      },
+      {
+        "id": 75,
+        "slug": "guide-script-plan-bundle",
+        "name": "Guide + Script — Plan-Level Bundle",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.575Z"
+      },
+      {
+        "id": 72,
+        "slug": "identity-modernization-plan",
+        "name": "Identity Modernization Plan",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.568Z"
+      },
+      {
+        "id": 64,
+        "slug": "license-optimization-report",
+        "name": "License Optimization Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.548Z"
+      },
+      {
+        "id": 93,
+        "slug": "m365-message-center-digest",
+        "name": "M365 Message Center Digest",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.628Z"
+      },
+      {
+        "id": 88,
+        "slug": "mfa-legacy-auth-coverage-report",
+        "name": "MFA & Legacy Auth Coverage Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.614Z"
+      },
+      {
+        "id": 78,
+        "slug": "pim-rollout-plan",
+        "name": "PIM Rollout Plan",
+        "price": "399.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.586Z"
+      },
+      {
+        "id": 96,
+        "slug": "privileged-role-activity-report",
+        "name": "Privileged Role Activity Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.637Z"
+      },
+      {
+        "id": 87,
+        "slug": "risky-users-identity-threat-report",
+        "name": "Risky Users & Identity Threat Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.612Z"
+      },
+      {
+        "id": 91,
+        "slug": "secure-score-trend-report",
+        "name": "Secure Score Trend Report",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.624Z"
+      },
+      {
+        "id": 84,
+        "slug": "security-alerts-incident-digest",
+        "name": "Security Alerts & Incident Digest",
+        "price": "249.00",
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.603Z"
+      },
+      {
+        "id": 70,
+        "slug": "security-hardening-plan",
+        "name": "Security Hardening Plan",
+        "price": null,
+        "is_public": false,
+        "visibility": "private",
+        "created_at": "2026-07-20T19:27:02.564Z"
       }
     ],
-    "error": null
-  },
-  {
-    "statementIndex": 8,
-    "statementText": "COMMIT;",
-    "success": true,
-    "rowCount": 0,
-    "rows": [],
     "error": null
   }
 ]
