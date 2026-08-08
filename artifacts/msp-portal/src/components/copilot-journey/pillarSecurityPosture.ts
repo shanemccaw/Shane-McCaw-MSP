@@ -71,11 +71,14 @@ import {
   keyValuesBlock,
   narrativeBlocks,
   pillarTone,
+  pillarVerdictSeverity,
   unavailableBlock,
   upgradeOpportunities,
   upgradeOpportunityCallToAction,
+  verdictEyebrow,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type StatPick,
   type UnavailableCheck,
   type WireNarrativePayload,
@@ -118,7 +121,7 @@ export interface SecurityPostureReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly SecurityPostureSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -294,13 +297,15 @@ export function buildVerdict(security: JourneyPillarView | undefined): SecurityP
       eyebrow: "Security posture",
       headline: "No security score yet",
       sub: "This tenant's scan has not yet evaluated a rule that feeds the Security pillar, so there is no posture score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
     };
   }
   const headline = security?.headline;
   return {
-    eyebrow: headline ? "Worst finding" : "Security posture",
+    eyebrow: verdictEyebrow("Security posture", headline),
     headline: headline ?? `Security scores ${score} of 100`,
     sub: `The Security pillar scores ${score} of 100 on this tenant's last scan. Every figure below is read directly from your own tenant; nothing here is a benchmark or an estimate.`,
+    severity: pillarVerdictSeverity(security),
   };
 }
 

@@ -27,16 +27,36 @@
 
 import { Loader2 } from "lucide-react";
 
-import { INK, PILLARS, hexAlpha, reportAccent } from "./journeyTokens.ts";
+import { INK, PILLARS, SEVERITY_ON_DARK, hexAlpha, reportAccent } from "./journeyTokens.ts";
 import { BODY, Block, EYEBROW, H2, type FigureRenderer } from "./ReportBlocks";
 import {
   checkDomainLabel,
   unavailableReasonText,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type UpgradeOpportunity,
   type UpgradeOpportunityCallToAction,
+  type VerdictSeverity,
 } from "./liveReportBlocks.ts";
+
+/**
+ * The verdict card's colour, keyed by real severity rather than pillar
+ * identity (#575). `unmeasured` — a pillar the scan never evaluated — takes a
+ * neutral slate rather than any of the three severity colours, since nothing
+ * has been claimed either way yet.
+ */
+const VERDICT_COLOUR: Readonly<Record<VerdictSeverity, string>> = {
+  critical: SEVERITY_ON_DARK.critical,
+  attention: SEVERITY_ON_DARK.attention,
+  healthy: SEVERITY_ON_DARK.healthy,
+  unmeasured: INK.bodyDark,
+};
+
+/** Built the same way `journeyTokens.ts`'s own `PILLAR_GLOWS` are — closest-side, fading to nothing. */
+function verdictGlow(colour: string): string {
+  return `radial-gradient(closest-side, ${hexAlpha(colour, 0.3)}, rgba(2,6,23,0) 100%)`;
+}
 
 /* ------------------------------------------------------------------ *
  * The three blocks the shared renderer does not know about
@@ -255,7 +275,7 @@ export interface LiveReportShellProps {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly LiveReportSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -319,133 +339,171 @@ export function LiveReportShell({
     </div>
   );
 
+  const verdictColour = VERDICT_COLOUR[verdict.severity];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    // The pillar's persistent identity cue (#575 Part B). The verdict card
+    // below carries zero pillar colour now — it exists to say how bad things
+    // are, not which pillar it is — so the document needs its own, more
+    // prominent home for "which pillar am I reading": a wash that reads as
+    // this pillar's colour no matter how far down the page you have scrolled
+    // (not just a fade at the top, which is what this replaces) and a bold
+    // border around the whole thing. Same `accent.colour` source the verdict
+    // card used to borrow.
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        border: `2px solid ${hexAlpha(accent.colour, 0.45)}`,
+        borderRadius: 14,
+        padding: "20px 22px",
+      }}
+    >
       <div
+        aria-hidden="true"
         style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          borderBottom: `1px solid ${INK.hairlineDark}`,
-          paddingBottom: 26,
+          position: "absolute",
+          inset: 0,
+          // Never fully fades: `.05` alpha at 100% height keeps the pillar's
+          // colour legible at the bottom of even a long report, with a
+          // stronger tint near the top for depth.
+          background: `linear-gradient(180deg,${hexAlpha(accent.colour, 0.16)} 0%,${hexAlpha(accent.colour, 0.05)} 42%,${hexAlpha(accent.colour, 0.05)} 100%)`,
+          pointerEvents: "none",
         }}
-      >
-        <span style={{ ...EYEBROW, color: accent.colour, display: "flex", alignItems: "center", gap: 8 }}>
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={accent.colour}
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flex: "none" }}
-            aria-hidden="true"
+      />
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            borderBottom: `1px solid ${INK.hairlineDark}`,
+            paddingBottom: 26,
+          }}
+        >
+          <span style={{ ...EYEBROW, color: accent.colour, display: "flex", alignItems: "center", gap: 8 }}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={accent.colour}
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ flex: "none" }}
+              aria-hidden="true"
+            >
+              <path d={accent.icon} />
+            </svg>
+            {/* The scan date is appended only when the platform has one — the
+                preview's eyebrow always has a fixture date to show; a real tenant
+                that has never completed a scan does not. */}
+            {scannedOn ? `${kicker} · ${scannedOn}` : kicker}
+          </span>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "clamp(26px,3vw,34px)",
+              fontWeight: 800,
+              letterSpacing: "-0.025em",
+              lineHeight: 1.18,
+              color: INK.headingDark,
+              textWrap: "pretty",
+            }}
           >
-            <path d={accent.icon} />
-          </svg>
-          {/* The scan date is appended only when the platform has one — the
-              preview's eyebrow always has a fixture date to show; a real tenant
-              that has never completed a scan does not. */}
-          {scannedOn ? `${kicker} · ${scannedOn}` : kicker}
-        </span>
-        <h1
+            {headline}
+          </h1>
+          <p style={{ ...BODY, fontSize: 16, lineHeight: 1.62 }}>{standfirst}</p>
+        </div>
+
+        {/* The verdict card (#575 Part A). Coloured entirely off real severity
+            — critical/warning findings, or a genuinely clean scored result —
+            never off the pillar's own brand colour, which carries no severity
+            meaning at all. A calm pillar colour used to be able to sit around a
+            critical result; it no longer can, because the pillar colour has
+            been removed from this card completely. */}
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            border: `1px solid ${hexAlpha(verdictColour, 0.33)}`,
+            borderRadius: 12,
+            background: `linear-gradient(135deg,${hexAlpha(verdictColour, 0.1)},rgba(2,6,23,.45))`,
+            padding: "22px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "-6%",
+              top: "-70%",
+              width: "60%",
+              height: "220%",
+              borderRadius: "50%",
+              background: verdictGlow(verdictColour),
+              pointerEvents: "none",
+            }}
+          />
+          <span
+            style={{
+              position: "relative",
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: ".2em",
+              textTransform: "uppercase",
+              color: verdictColour,
+            }}
+          >
+            {verdict.eyebrow}
+          </span>
+          <span
+            style={{
+              position: "relative",
+              fontSize: "clamp(26px,3.4vw,40px)",
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.08,
+              color: INK.headingDark,
+              textWrap: "pretty",
+            }}
+          >
+            {verdict.headline}
+          </span>
+          <span style={{ position: "relative", fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDarkStrong }}>
+            {verdict.sub}
+          </span>
+        </div>
+
+        {sections.map(renderSection)}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <h2 style={H2}>{closingHeading}</h2>
+          {closing.map((p) => (
+            <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
+              {p}
+            </p>
+          ))}
+        </div>
+
+        <p
           style={{
             margin: 0,
-            fontSize: "clamp(26px,3vw,34px)",
-            fontWeight: 800,
-            letterSpacing: "-0.025em",
-            lineHeight: 1.18,
-            color: INK.headingDark,
-            textWrap: "pretty",
+            paddingTop: 20,
+            borderTop: `1px solid ${INK.hairlineDark}`,
+            fontSize: 12.5,
+            fontWeight: 500,
+            lineHeight: 1.6,
+            color: INK.bodyDark,
           }}
         >
-          {headline}
-        </h1>
-        <p style={{ ...BODY, fontSize: 16, lineHeight: 1.62 }}>{standfirst}</p>
+          {provenance}
+        </p>
       </div>
-
-      <div
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          border: `1px solid ${hexAlpha(accent.colour, 0.33)}`,
-          borderRadius: 12,
-          background: `linear-gradient(135deg,${hexAlpha(accent.colour, 0.1)},rgba(2,6,23,.45))`,
-          padding: "22px 24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 11,
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: "-6%",
-            top: "-70%",
-            width: "60%",
-            height: "220%",
-            borderRadius: "50%",
-            background: accent.glow,
-            pointerEvents: "none",
-          }}
-        />
-        <span
-          style={{
-            position: "relative",
-            fontSize: 9.5,
-            fontWeight: 700,
-            letterSpacing: ".2em",
-            textTransform: "uppercase",
-            color: accent.colour,
-          }}
-        >
-          {verdict.eyebrow}
-        </span>
-        <span
-          style={{
-            position: "relative",
-            fontSize: "clamp(26px,3.4vw,40px)",
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            lineHeight: 1.08,
-            color: INK.headingDark,
-            textWrap: "pretty",
-          }}
-        >
-          {verdict.headline}
-        </span>
-        <span style={{ position: "relative", fontSize: 14.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDarkStrong }}>
-          {verdict.sub}
-        </span>
-      </div>
-
-      {sections.map(renderSection)}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        <h2 style={H2}>{closingHeading}</h2>
-        {closing.map((p) => (
-          <p key={p.slice(0, 40)} style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
-            {p}
-          </p>
-        ))}
-      </div>
-
-      <p
-        style={{
-          margin: 0,
-          paddingTop: 20,
-          borderTop: `1px solid ${INK.hairlineDark}`,
-          fontSize: 12.5,
-          fontWeight: 500,
-          lineHeight: 1.6,
-          color: INK.bodyDark,
-        }}
-      >
-        {provenance}
-      </p>
     </div>
   );
 }

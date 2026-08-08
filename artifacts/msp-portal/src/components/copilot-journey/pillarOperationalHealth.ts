@@ -76,11 +76,14 @@ import {
   gateRow,
   keyValuesBlock,
   narrativeBlocks,
+  pillarVerdictSeverity,
   unavailableBlock,
   upgradeOpportunities,
   upgradeOpportunityCallToAction,
+  verdictEyebrow,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type StatPick,
   type UnavailableCheck,
   type WireNarrativePayload,
@@ -106,7 +109,7 @@ export interface OperationalHealthReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly OperationalHealthSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -201,13 +204,15 @@ export function buildVerdict(health: JourneyPillarView | undefined): Operational
       eyebrow: "Operational health",
       headline: "No operational health score yet",
       sub: "This tenant's scan has not yet evaluated a rule that feeds the Health pillar, so there is no posture score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
     };
   }
   const headline = health?.headline;
   return {
-    eyebrow: headline ? "Worst finding" : "Operational health",
+    eyebrow: verdictEyebrow("Operational health", headline),
     headline: headline ?? `Operational health scores ${score} of 100`,
     sub: `The Health pillar scores ${score} of 100 on this tenant's last scan. Every figure below is read directly from your own tenant's device management; nothing here is a benchmark, an availability figure or an estimate.`,
+    severity: pillarVerdictSeverity(health),
   };
 }
 

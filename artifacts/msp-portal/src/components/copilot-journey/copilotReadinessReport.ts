@@ -54,6 +54,7 @@ import {
   type BuiltRows,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type StatPick,
   type WireNarrativePayload,
   type WireNarrativeSection,
@@ -105,7 +106,7 @@ export interface ReadinessReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly ReadinessSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -274,12 +275,14 @@ function buildVerdict(view: JourneyView, scoredPillars: number): ReadinessReport
         eyebrow: "The verdict",
         headline: "No scan results to score",
         sub: `The Copilot Gate needs ${COPILOT_GATE_TARGET}. This tenant's scan did cover Copilot-impacting checks, but too few of them for a score to mean anything — so none is stated here, in either direction. Re-running the scan against the full package is what produces one.`,
+        severity: "unmeasured",
       };
     }
     return {
       eyebrow: "The verdict",
       headline: "No readiness score yet",
       sub: `The Copilot Gate needs ${COPILOT_GATE_TARGET}. This tenant's scan has not yet evaluated a rule that feeds the Copilot pillar, so there is no score to gate on — and nothing here claims one either way.`,
+      severity: "unmeasured",
     };
   }
   const gap = COPILOT_GATE_TARGET - score;
@@ -297,6 +300,11 @@ function buildVerdict(view: JourneyView, scoredPillars: number): ReadinessReport
       gap > 0
         ? `${pillarClause}The Gate needs ${COPILOT_GATE_TARGET}, so the gap is ${gap} points. Every point of it maps to a named finding in the reports alongside this one.`
         : `${pillarClause}The Gate needs ${COPILOT_GATE_TARGET} and this tenant is at or above it. What follows is what still needs watching to keep it there.`,
+    // Real severity for the roll-up is the Gate's own Go/No-Go (#359), not
+    // `severityForScore`'s 60/50 bands — those disagree with the Gate's 82
+    // threshold and could paint this card green while the headline still says
+    // "not flight-ready".
+    severity: gap > 0 ? "critical" : "healthy",
   };
 }
 

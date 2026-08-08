@@ -955,6 +955,15 @@ export interface WarRoomPillarStatsPayload {
   scannedPackageKeys: string[];
   scannedCheckCount: number;
   /**
+   * The real `monitor_checks.key` values behind `scannedCheckCount` — the same
+   * `fetchScannedCheckKeys` set every `not_in_scan_package` reason above is
+   * refined against, just not reduced to a count. A live-rendered report that
+   * needs to know WHICH of its own checks actually ran for this tenant (#575:
+   * the Adoption report's standfirst naming a workload no check in this
+   * tenant's package reads) reads this rather than re-deriving it.
+   */
+  scannedCheckKeys: string[];
+  /**
    * Real `monitor_checks.key` → War Room pillar, for every real check in the
    * catalog — resolved through `warRoomPillarForCheckKey` (#521: rule-derived
    * `signal_derivation_rules.pillar` first, `WAR_ROOM_PILLAR_CHECK_DOMAINS`
@@ -1328,6 +1337,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     activeRunId: activeRun?.runId ?? null,
     scannedPackageKeys: scanned.packageKeys,
     scannedCheckCount: scanned.checkKeys?.size ?? 0,
+    scannedCheckKeys: scanned.checkKeys ? Array.from(scanned.checkKeys) : [],
     checkKeyPillars: wireCheckKeyPillars,
     generatedAt: new Date().toISOString(),
   };

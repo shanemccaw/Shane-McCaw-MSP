@@ -79,6 +79,12 @@ const REAL_TENANT = () =>
       { severity: "warning", checkKey: "adoption:teams-activity-trend", title: "Teams activity is below the configured floor for this window" },
       { severity: "warning", checkKey: "teams:inactive-teams", title: "Viva Engage communities are inactive" },
     ],
+    // Real wire data always keeps these in step with `findings` (#575's
+    // `pillarVerdictSeverity`/`isCleanScoredPillar` both read the counts, not
+    // the array) — set explicitly here so this fixture cannot silently drift
+    // from that invariant the way a bare `withPillar` override otherwise would.
+    criticalCount: 1,
+    warningCount: 2,
   });
 
 /* ------------------------------------------------------------------ *
@@ -300,6 +306,106 @@ describe("findings", () => {
 
     const unevaluated = sectionNamed(build(), ACTIVITY).blocks;
     assert.ok(detailsOf(unevaluated).some((d) => /can be reported either way/.test(d)));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The clean-result writeups (#575) — a genuinely clean, fully-scored
+ * pillar must never render "This section is not available" just because
+ * the AI section itself produced nothing.
+ * ------------------------------------------------------------------ */
+
+describe("clean-result writeups replace the generic disclaimer for a genuinely clean pillar (#575)", () => {
+  const OMITTED = (reason: string): WireAdoptionPayload => ({
+    sections: [
+      { key: "summary", heading: SUMMARY, html: null, omittedReason: reason, factCount: 1 },
+      { key: "activity", heading: ACTIVITY, html: null, omittedReason: reason, factCount: 1 },
+      { key: "copilotImpact", heading: IMPACT, html: null, omittedReason: reason, factCount: 1 },
+    ],
+  });
+
+  it("writes a real clean-result paragraph instead of the generic disclaimer", () => {
+    const clean = withPillar(view(), "adoption", { score: 89 });
+    const report = buildAdoptionReport({
+      view: clean,
+      narrative: OMITTED("empty_response"),
+      narrativeSettled: true,
+      scannedCheckCount: 29,
+    });
+    for (const heading of [SUMMARY, ACTIVITY, IMPACT]) {
+      const blocks = sectionNamed(report, heading).blocks;
+      assert.ok(
+        !detailsOf(blocks).some((d) => /not available|could not be written|came back empty/i.test(d)),
+        `${heading} still rendered the generic disclaimer over a clean result`,
+      );
+      assert.ok(
+        blocks.some(
+          (b) => b.kind === "prose" && /89 of 100/.test(b.text) && /critical or warning finding/i.test(b.text),
+        ),
+        `${heading} did not carry the real clean-result writeup`,
+      );
+    }
+  });
+
+  it("still writes the honest disclaimer when the pillar genuinely was never evaluated", () => {
+    const report = buildAdoptionReport({
+      view: view(),
+      narrative: OMITTED("no_real_data"),
+      narrativeSettled: true,
+      scannedCheckCount: 29,
+    });
+    assert.ok(
+      detailsOf(sectionNamed(report, SUMMARY).blocks).some((d) => /nothing real to reason from/i.test(d)),
+    );
+  });
+
+  it("still writes the honest disclaimer for a pillar with real findings whose prose failed", () => {
+    const report = buildAdoptionReport({
+      view: REAL_TENANT(),
+      narrative: OMITTED("generation_failed"),
+      narrativeSettled: true,
+      scannedCheckCount: 29,
+    });
+    assert.ok(
+      detailsOf(sectionNamed(report, SUMMARY).blocks).some((d) => /could not be written/i.test(d)),
+      "a pillar with real findings must not get the clean writeup just because its prose failed",
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The scanned workload list (#575) — the standfirst names only the
+ * workloads THIS tenant's scan package actually curates a check for.
+ * ------------------------------------------------------------------ */
+
+describe("the standfirst names only workloads this tenant's scan actually curates (#575)", () => {
+  it("names only the workloads behind a scanned check", () => {
+    const report = buildAdoptionReport({
+      view: view(),
+      narrative: {
+        sections: [],
+        scannedCheckKeys: ["adoption:teams-activity-trend", "adoption:email-activity-trend"],
+      },
+      narrativeSettled: true,
+      scannedCheckCount: 2,
+    });
+    assert.ok(report.standfirst.includes("mail and Teams"), report.standfirst);
+    assert.ok(!report.standfirst.includes("Viva Engage"));
+    assert.ok(!report.standfirst.includes("Planner"));
+    assert.ok(!report.standfirst.includes("SharePoint"));
+  });
+
+  it("names no workload before the scan set is known, without an empty clause", () => {
+    const report = buildAdoptionReport({
+      view: view(),
+      narrative: null,
+      narrativeSettled: false,
+      scannedCheckCount: 0,
+    });
+    assert.ok(
+      report.standfirst.startsWith("This report evaluates how your people are actually using Microsoft 365 and"),
+      report.standfirst,
+    );
   });
 });
 

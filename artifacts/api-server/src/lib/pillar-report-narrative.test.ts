@@ -149,6 +149,7 @@ function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
     activeRunId: null,
     scannedPackageKeys: ["assess:copilot-readiness"],
     scannedCheckCount: 29,
+    scannedCheckKeys: ["adoption:teams-activity-trend"],
     checkKeyPillars: {},
     generatedAt: "2026-08-06T00:00:00.000Z",
   };
@@ -583,6 +584,7 @@ describe("one section's failure never costs the reader the others", () => {
     const result = await run(report);
     expect(result.scannedCheckCount).toBe(29);
     expect(result.scannedPackageKeys).toEqual(["assess:copilot-readiness"]);
+    expect(result.scannedCheckKeys).toEqual(["adoption:teams-activity-trend"]);
     expect(result.generatedAt).toBe("2026-08-06T00:00:00.000Z");
   });
 });

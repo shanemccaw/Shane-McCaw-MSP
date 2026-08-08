@@ -69,11 +69,14 @@ import {
   gateRow,
   keyValuesBlock,
   narrativeBlocks,
+  pillarVerdictSeverity,
   unavailableBlock,
   upgradeOpportunities,
   upgradeOpportunityCallToAction,
+  verdictEyebrow,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type StatPick,
   type UnavailableCheck,
   type WireNarrativePayload,
@@ -98,7 +101,7 @@ export interface ComplianceAlignmentReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly ComplianceAlignmentSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -174,13 +177,15 @@ export function buildVerdict(compliance: JourneyPillarView | undefined): Complia
       eyebrow: "Compliance posture",
       headline: "No compliance score yet",
       sub: "This tenant's scan has not yet evaluated a rule that feeds the Compliance pillar, so there is no posture score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
     };
   }
   const headline = compliance?.headline;
   return {
-    eyebrow: headline ? "Worst finding" : "Compliance posture",
+    eyebrow: verdictEyebrow("Compliance posture", headline),
     headline: headline ?? `Compliance scores ${score} of 100`,
     sub: `The Compliance pillar scores ${score} of 100 on this tenant's last scan. Every figure below is read directly from your own tenant; nothing here is a benchmark, an estimate or a regulatory verdict.`,
+    severity: pillarVerdictSeverity(compliance),
   };
 }
 

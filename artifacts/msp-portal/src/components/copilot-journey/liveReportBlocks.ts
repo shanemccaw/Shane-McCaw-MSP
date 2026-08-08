@@ -51,12 +51,13 @@
  */
 
 import { COPILOT_GATE_TARGET, severityForScore, type PillarKey, type Severity } from "./journeyTokens.ts";
-import type {
-  JourneyPillarView,
-  JourneyView,
-  WireLicenseGapPurchase,
-  WirePillarFinding,
-  WirePillarStat,
+import {
+  CLEAN_PILLAR_HEADLINE,
+  type JourneyPillarView,
+  type JourneyView,
+  type WireLicenseGapPurchase,
+  type WirePillarFinding,
+  type WirePillarStat,
 } from "./journeyModel.ts";
 import type { PreviewFindingRow, PreviewKeyValueRow, ReportBlock } from "./previewDocumentBodies.ts";
 
@@ -84,6 +85,8 @@ export interface WireNarrativePayload {
   readonly gate?: { readonly score: number | null; readonly threshold: number; readonly status: string | null };
   readonly scannedCheckCount?: number;
   readonly scannedPackageKeys?: readonly string[];
+  /** The real `monitor_checks.key` values behind `scannedCheckCount` (#575). */
+  readonly scannedCheckKeys?: readonly string[];
 }
 
 /* ------------------------------------------------------------------ *
@@ -670,6 +673,53 @@ export const UPGRADE_OPPORTUNITY_DETAIL =
 /** The pillar's own severity band — see the header for why not the number's. */
 export function pillarTone(pillar: JourneyPillarView | undefined): Severity {
   return typeof pillar?.score === "number" ? severityForScore(pillar.score) : "attention";
+}
+
+/* ------------------------------------------------------------------ *
+ * The verdict card — real severity, not pillar identity (#575)
+ *
+ * `LiveReportShell`'s verdict card used to colour itself entirely off
+ * `accent.colour`, the pillar's own brand colour — which carries no severity
+ * meaning at all. A tenant with a critical Health finding and a calm green
+ * pillar colour rendered a calm-looking card around a genuinely bad result.
+ * Both helpers below give every one of the seven reports' own `buildVerdict`
+ * the same real, finding-derived severity so the card can never again
+ * disagree with what it is describing.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The verdict card's own severity band — real critical/warning finding counts,
+ * never a pillar's brand colour. `"unmeasured"` is a fourth, deliberately
+ * uncoloured state: a pillar the scan never evaluated is neither good news nor
+ * bad, and painting it red or green would state a verdict the platform has not
+ * reached.
+ */
+export type VerdictSeverity = Severity | "unmeasured";
+
+export function pillarVerdictSeverity(pillar: JourneyPillarView | undefined): VerdictSeverity {
+  if (!pillar || typeof pillar.score !== "number") return "unmeasured";
+  if (pillar.criticalCount > 0) return "critical";
+  if (pillar.warningCount > 0) return "attention";
+  return "healthy";
+}
+
+/**
+ * The verdict card's eyebrow. "Worst finding" only when `headline` names a
+ * real finding — `CLEAN_PILLAR_HEADLINE` is a real, positive result (#399) and
+ * must never be introduced under a label that says the opposite, which was
+ * the Adoption report's confirmed live bug (#575: "Worst finding" over "No
+ * critical or warning findings").
+ */
+export function verdictEyebrow(pillarLabel: string, headline: string | null | undefined): string {
+  return headline && headline !== CLEAN_PILLAR_HEADLINE ? "Worst finding" : pillarLabel;
+}
+
+/** The verdict card's full contract — every live-rendered report builds one. */
+export interface LiveReportVerdict {
+  readonly eyebrow: string;
+  readonly headline: string;
+  readonly sub: string;
+  readonly severity: VerdictSeverity;
 }
 
 export interface StatPick {

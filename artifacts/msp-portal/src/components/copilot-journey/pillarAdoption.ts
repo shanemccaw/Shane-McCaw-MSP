@@ -118,10 +118,13 @@ import {
   gateRow,
   keyValuesBlock,
   narrativeBlocks,
+  pillarVerdictSeverity,
   upgradeOpportunities,
   upgradeOpportunityCallToAction,
+  verdictEyebrow,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type UnavailableCheck,
   type WireNarrativePayload,
   type WireNarrativeSection,
@@ -145,7 +148,7 @@ export interface AdoptionReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly AdoptionSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -200,6 +203,106 @@ export const PERSONA_AND_ENABLEMENT_GAP =
   "One question this section deliberately does not answer is which of your people Copilot would serve first. This assessment builds no persona model, measures no workflow, and holds no record of training delivered or outstanding. It does not read which department a user belongs to, which of your processes still run on mail and attachments, or who has been through enablement and who has not — no check in this scan collects any of that. So nothing here names a role, a department or a team, ranks anyone by readiness, or recommends an order to enable people in. What it reasons from is your tenant's own activity findings and its real readiness score, and nothing else.";
 
 /* ------------------------------------------------------------------ *
+ * The scanned workload list (#575 Fix 1)
+ *
+ * The standfirst used to hardcode "mail, Teams, SharePoint, OneDrive, Viva
+ * Engage and Planner" for every tenant, regardless of which of the six real
+ * `adoption:*` checks that tenant's own scan package actually curates —
+ * confirmed live: a tenant without Viva Engage or Planner in its package still
+ * had this report claim both were evaluated. `scannedCheckKeys` (#575, off
+ * `fetchScannedCheckKeys` — the same real set `not_in_scan_package` is refined
+ * against) is the platform's own record of which checks this tenant's scan
+ * actually curates; the standfirst now names only the workloads behind a check
+ * present in that set.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Real `adoption:*` checks that name a specific Microsoft 365 workload, mapped
+ * to how this report names it in prose. `adoption:overall-active-rate` is
+ * deliberately absent — a tenant-wide active-rate check, not a named
+ * workload — and so is `teams:inactive-teams`, the seventh check that feeds
+ * this pillar (see the header): it is a Teams-domain finding, not a second
+ * Teams workload entry.
+ */
+const ADOPTION_WORKLOAD_CHECKS: readonly { readonly checkKey: string; readonly labels: readonly string[] }[] = [
+  { checkKey: "adoption:email-activity-trend", labels: ["mail"] },
+  { checkKey: "adoption:teams-activity-trend", labels: ["Teams"] },
+  { checkKey: "adoption:sharepoint-onedrive-trend", labels: ["SharePoint", "OneDrive"] },
+  { checkKey: "adoption:viva-engage-health", labels: ["Viva Engage"] },
+  { checkKey: "adoption:planner-usage", labels: ["Planner"] },
+];
+
+/** "a" / "a and b" / "a, b and c" — no Oxford comma, matching this report's existing prose. */
+function joinWithAnd(items: readonly string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0]!;
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/**
+ * The workloads THIS tenant's scan actually curates a check for — never the
+ * full catalogue. Empty until the narrative fetch settles and empty forever
+ * for a tenant whose scan packages curate no checks at all; both render as no
+ * workload list rather than a guessed one.
+ */
+function scannedWorkloadLabels(scannedCheckKeys: readonly string[] | undefined): readonly string[] {
+  const scanned = new Set(scannedCheckKeys ?? []);
+  return ADOPTION_WORKLOAD_CHECKS.filter((w) => scanned.has(w.checkKey)).flatMap((w) => w.labels);
+}
+
+/* ------------------------------------------------------------------ *
+ * The clean-result writeups (#575 Fix 3)
+ *
+ * `narrativeBlocks` renders "This section is not available" for every reason
+ * a section carries no AI html — including a model that produced nothing for
+ * a tenant this pillar's own real score and finding counts already show is
+ * genuinely clean. That is case (b) from the confirmed live bug: data exists,
+ * the pillar scored, checks ran, zero findings fired — a real GOOD result, not
+ * an absence of one. These three writeups are the platform's own honest
+ * substitute for that specific case, built from nothing but the real score —
+ * never grounded in the AI section that failed to produce them.
+ * ------------------------------------------------------------------ */
+
+/** A genuinely clean, fully-measured result: a real score, zero real findings. */
+function isCleanScoredPillar(pillar: JourneyPillarView | undefined): boolean {
+  return typeof pillar?.score === "number" && pillar.criticalCount === 0 && pillar.warningCount === 0;
+}
+
+function cleanSummaryWriteup(tenantName: string, score: number): string {
+  return `${tenantName}'s Adoption pillar scored ${score} of 100 on its last scan. Every rule that feeds this pillar was evaluated, and none of them raised a critical or warning finding — a real, fully-measured result, not a gap in this report. A clean result here means the scan found nothing wrong with how your people are using Microsoft 365; it does not mean usage is high, growing or complete, since this report measures no usage figure at all.`;
+}
+
+function cleanActivityWriteup(tenantName: string, score: number, workloads: readonly string[]): string {
+  const scope = workloads.length ? ` across ${joinWithAnd(workloads)}` : "";
+  return `Every activity check behind ${tenantName}'s Adoption pillar${scope} ran on its last scan, and none of them raised a critical or warning finding. The pillar scored ${score} of 100. That is a real, clean result — nothing the scan can see is wrong with how your people are collaborating in Microsoft 365 — not an absence of measurement.`;
+}
+
+function cleanCopilotImpactWriteup(tenantName: string, score: number): string {
+  return `${tenantName}'s Adoption pillar scored ${score} of 100 with no critical or warning finding. That is a real, positive signal for a Copilot rollout: Copilot grounds on and appears inside collaboration that is already happening, and this pillar's own checks found nothing wrong with that collaboration. It is the whole of what this section can honestly draw from the score alone — see below for what it deliberately does not answer.`;
+}
+
+/**
+ * A section's prose: the real AI-written HTML, or — once the fetch has
+ * settled with nothing — the real clean-result writeup when `cleanWriteup` is
+ * given (the caller has already established this pillar is genuinely clean),
+ * falling back to `narrativeBlocks`'s honest disclaimer for every other
+ * reason a section carries no html: genuinely no data at all, or a real
+ * generation failure on a pillar that is NOT clean, where the findings below
+ * already carry the real result.
+ */
+function proseOrCleanResult(
+  section: WireNarrativeSection | undefined,
+  narrativeSettled: boolean,
+  cleanWriteup: string | null,
+): AdoptionBlock[] {
+  if (section?.html) return [{ kind: "narrative", html: section.html }];
+  if (!narrativeSettled) return [];
+  if (cleanWriteup) return [{ kind: "prose", text: cleanWriteup }];
+  return narrativeBlocks(section, narrativeSettled);
+}
+
+/* ------------------------------------------------------------------ *
  * The verdict
  * ------------------------------------------------------------------ */
 
@@ -218,13 +321,15 @@ export function buildVerdict(adoption: JourneyPillarView | undefined): AdoptionR
       eyebrow: "Adoption",
       headline: "No adoption score yet",
       sub: "This tenant's scan has not yet evaluated a rule that feeds the Adoption pillar, so there is no adoption score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
     };
   }
   const headline = adoption?.headline;
   return {
-    eyebrow: headline ? "Worst finding" : "Adoption",
+    eyebrow: verdictEyebrow("Adoption", headline),
     headline: headline ?? `Adoption scores ${score} of 100`,
     sub: `The Adoption pillar scores ${score} of 100 on this tenant's last scan. Everything below is read from your own tenant's activity checks; none of it is a usage count, an activation rate, or a comparison against an earlier period.`,
+    severity: pillarVerdictSeverity(adoption),
   };
 }
 
@@ -260,8 +365,13 @@ export function buildAdoptionReport(input: {
   const narrativeByKey = new Map<string, WireNarrativeSection>(
     (narrative?.sections ?? []).map((s) => [s.key, s]),
   );
-  const prose = (key: AdoptionSectionKey): AdoptionBlock[] =>
-    narrativeBlocks(narrativeByKey.get(key), narrativeSettled);
+
+  const workloads = scannedWorkloadLabels(narrative?.scannedCheckKeys);
+  // Only the platform's own real score/finding counts decide "clean" — never
+  // the AI section's own absence, which would make a generation failure on a
+  // genuinely bad tenant read as good news (#575).
+  const clean = isCleanScoredPillar(adoption);
+  const score = adoption?.score ?? null;
 
   const sections: AdoptionSection[] = [];
 
@@ -272,7 +382,14 @@ export function buildAdoptionReport(input: {
   // explains the absence rather than papering over it.
   sections.push({
     heading: SECTION_HEADINGS.summary,
-    blocks: [...prose("summary"), ...declaredGapBlock(USAGE_FIGURE_GAP)],
+    blocks: [
+      ...proseOrCleanResult(
+        narrativeByKey.get("summary"),
+        narrativeSettled,
+        clean ? cleanSummaryWriteup(view.tenant.name, score!) : null,
+      ),
+      ...declaredGapBlock(USAGE_FIGURE_GAP),
+    ],
   });
 
   // ── Workload Activity & Usage Signals ──────────────────────────────────────
@@ -282,7 +399,11 @@ export function buildAdoptionReport(input: {
   sections.push({
     heading: SECTION_HEADINGS.activity,
     blocks: [
-      ...prose("activity"),
+      ...proseOrCleanResult(
+        narrativeByKey.get("activity"),
+        narrativeSettled,
+        clean ? cleanActivityWriteup(view.tenant.name, score!, workloads) : null,
+      ),
       ...findingsBlocks(
         adoption,
         "The Adoption pillar was evaluated on this tenant's last scan and returned no critical or warning finding about how your people are using Microsoft 365. That is a real result, not an empty section.",
@@ -319,7 +440,11 @@ export function buildAdoptionReport(input: {
   sections.push({
     heading: SECTION_HEADINGS.copilotImpact,
     blocks: [
-      ...prose("copilotImpact"),
+      ...proseOrCleanResult(
+        narrativeByKey.get("copilotImpact"),
+        narrativeSettled,
+        clean ? cleanCopilotImpactWriteup(view.tenant.name, score!) : null,
+      ),
       ...keyValuesBlock(gateRow(view)),
       ...declaredGapBlock(PERSONA_AND_ENABLEMENT_GAP),
     ],
@@ -346,8 +471,9 @@ export function buildAdoptionReport(input: {
       typeof adoption?.score === "number"
         ? "Copilot returns value only where the work already happens"
         : `Adoption and usage for ${view.tenant.name}`,
-    standfirst:
-      "This report evaluates how your people are actually using Microsoft 365 — mail, Teams, SharePoint, OneDrive, Viva Engage and Planner — and what those usage patterns mean for a Copilot rollout. It states no usage count, no activation rate and no direction of travel; the notes in each section say why every one of those is absent rather than approximated.",
+    standfirst: workloads.length
+      ? `This report evaluates how your people are actually using Microsoft 365 — ${joinWithAnd(workloads)} — and what those usage patterns mean for a Copilot rollout. It states no usage count, no activation rate and no direction of travel; the notes in each section say why every one of those is absent rather than approximated.`
+      : "This report evaluates how your people are actually using Microsoft 365 and what those usage patterns mean for a Copilot rollout. It states no usage count, no activation rate and no direction of travel; the notes in each section say why every one of those is absent rather than approximated.",
     verdict: buildVerdict(adoption),
     sections,
     closing,

@@ -80,11 +80,14 @@ import {
   gateRow,
   keyValuesBlock,
   narrativeBlocks,
+  pillarVerdictSeverity,
   unavailableBlock,
   upgradeOpportunities,
   upgradeOpportunityCallToAction,
+  verdictEyebrow,
   type LiveReportBlock,
   type LiveReportSection,
+  type LiveReportVerdict,
   type StatPick,
   type UnavailableCheck,
   type WireNarrativePayload,
@@ -109,7 +112,7 @@ export interface LicensingAlignmentReport {
   readonly kicker: string;
   readonly headline: string;
   readonly standfirst: string;
-  readonly verdict: { readonly eyebrow: string; readonly headline: string; readonly sub: string };
+  readonly verdict: LiveReportVerdict;
   readonly sections: readonly LicensingAlignmentSection[];
   readonly closing: readonly string[];
   readonly provenance: string;
@@ -186,13 +189,15 @@ export function buildVerdict(licensing: JourneyPillarView | undefined): Licensin
       eyebrow: "Licensing posture",
       headline: "No licensing score yet",
       sub: "This tenant's scan has not yet evaluated a rule that feeds the Licensing pillar, so there is no posture score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
     };
   }
   const headline = licensing?.headline;
   return {
-    eyebrow: headline ? "Worst finding" : "Licensing posture",
+    eyebrow: verdictEyebrow("Licensing posture", headline),
     headline: headline ?? `Licensing scores ${score} of 100`,
     sub: `The Licensing pillar scores ${score} of 100 on this tenant's last scan. Every figure below is read from your own subscription data; nothing here is a benchmark, a projection or a quote.`,
+    severity: pillarVerdictSeverity(licensing),
   };
 }
 

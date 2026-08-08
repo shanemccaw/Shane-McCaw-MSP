@@ -92,6 +92,8 @@ export interface PillarReportNarrativeResult {
   /** Real curated check count across every package this customer has been scanned with. */
   readonly scannedCheckCount: number;
   readonly scannedPackageKeys: readonly string[];
+  /** The real `monitor_checks.key` values behind `scannedCheckCount` (#575). */
+  readonly scannedCheckKeys: readonly string[];
   readonly generatedAt: string;
 }
 
@@ -300,6 +302,7 @@ export async function generatePillarReportNarrative(
     gate: gateView,
     scannedCheckCount: payload.scannedCheckCount,
     scannedPackageKeys: payload.scannedPackageKeys,
+    scannedCheckKeys: payload.scannedCheckKeys,
     generatedAt: payload.generatedAt,
   };
 }

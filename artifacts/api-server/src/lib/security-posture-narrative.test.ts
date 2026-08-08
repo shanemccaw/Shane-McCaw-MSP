@@ -134,6 +134,7 @@ function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
     activeRunId: null,
     scannedPackageKeys: ["core:security-baseline"],
     scannedCheckCount: 29,
+    scannedCheckKeys: [],
     checkKeyPillars: {},
     generatedAt: "2026-08-05T00:00:00.000Z",
   };
