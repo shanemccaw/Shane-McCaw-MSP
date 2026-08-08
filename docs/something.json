@@ -1,502 +1,111 @@
 [
   {
-    "pillar": "adoption",
-    "resolved_check_key": "adoption:planner-usage"
-  },
-  {
-    "pillar": "adoption",
-    "resolved_check_key": "adoption:viva-engage-health"
-  },
-  {
-    "pillar": "adoption",
-    "resolved_check_key": "copilot:usage-activity"
-  },
-  {
-    "pillar": "adoption",
-    "resolved_check_key": "teams:inactive-teams"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "appgov:cert-secret-expiration"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "devices:autopilot-coverage"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "devices:enrollment-status"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "devices:update-rings-config"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "exchange:archive-mailbox-rate"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "exchange:mailbox-quota-utilization"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "exchange:transport-rule-count"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "identity:hybrid-sync-health"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "m365:service-health"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "onedrive:storage-utilization"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "platform:multi-geo-status"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "sharepoint:site-count"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "sharepoint:storage-near-limit"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "sharepoint:storage-utilization"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "teams:rooms-device-health"
-  },
-  {
-    "pillar": "architecture",
-    "resolved_check_key": "teams:team-count"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "compliance:dlp-incidents"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "compliance:eeeu-site-sharing"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "compliance:label-errors"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "compliance:missing-labels"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "compliance:weak-dlp-policies"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "copilot:sensitivity-labels-exist"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "exchange:litigation-hold-coverage"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "governance:auto-labeling-coverage"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "governance:retention-label-adoption"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "governance:retention-policy-coverage"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "governance:sensitivity-label-adoption"
-  },
-  {
-    "pillar": "compliance",
-    "resolved_check_key": "identity:terms-of-use"
-  },
-  {
-    "pillar": "copilot",
-    "resolved_check_key": "copilot:active-usage-rate"
-  },
-  {
-    "pillar": "copilot",
-    "resolved_check_key": "copilot:data-exposure-risk"
-  },
-  {
-    "pillar": "copilot",
-    "resolved_check_key": "copilot:license-vs-total-users"
-  },
-  {
-    "pillar": "copilot",
-    "resolved_check_key": "copilot:readiness-prerequisite"
-  },
-  {
-    "pillar": "copilot",
-    "resolved_check_key": "copilot:usage-by-app"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "cost:duplicate-assignments"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "cost:entra-license-tier-distribution"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "cost:group-based-licensing-adoption"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "cost:underutilized-premium"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "exchange:shared-mailbox-licensing"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "license:sku-utilization"
-  },
-  {
-    "pillar": "cost",
-    "resolved_check_key": "license:unused-assigned"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "appgov:stale-app-registrations"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "exchange:distribution-list-count"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:dynamic-group-usage"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:group-expiration-policy"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:guest-access-reviews"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:guest-count"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:guest-staleness"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:overdue-access-reviews"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "governance:ownerless-groups"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "identity:b2b-collaboration-settings"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "identity:cross-tenant-access"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "identity:password-expiration-policy"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "identity:stale-accounts"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "m365:message-center"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "onedrive:departed-user-access"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "platform:branding-config"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "sharepoint:inactive-sites"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "sharepoint:site-label-coverage"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:channel-sprawl"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:guest-membership"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:guest-settings-governance"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:inventory-count"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:meeting-policy-coverage"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:messaging-policy-coverage"
-  },
-  {
-    "pillar": "governance",
-    "resolved_check_key": "teams:ownerless-teams"
-  },
-  {
-    "pillar": "licensing",
-    "resolved_check_key": "copilot:licensed-but-inactive"
-  },
-  {
-    "pillar": "licensing",
-    "resolved_check_key": "license:copilot-assignment"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "appgov:consent-policy-status"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "appgov:enterprise-app-count"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "appgov:risky-permission-grants"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "appgov:unreviewed-consents"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "appgov:workload-identity-risk"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "compliance:eeeu-site-sharing"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:app-protection-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:bitlocker-key-escrow"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:compliance-policy-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:compliant-vs-noncompliant"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:encryption-status"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "devices:os-patch-compliance"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "exchange:antispam-policy-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "exchange:auto-forwarding-rules"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "exchange:connector-health"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "exchange:dkim-spf-dmarc-status"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "exchange:mail-flow-rule-review"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:break-glass-health"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:ca-device-compliance"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:ca-legacy-auth-block"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:ca-mfa-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:ca-policy-count"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:ca-report-only"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:continuous-access-evaluation"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:global-admin-count"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:guest-mfa-enforcement"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:legacy-auth-usage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:mfa-method-breakdown"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:mfa-registration"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:named-locations"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:pim-eligible-roles"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:pim-groups"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:pim-permanent-roles"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:risky-signins"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:risky-users"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:signin-risk-policy"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:sspr-config"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "identity:user-risk-policy"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "onedrive:external-sharing-settings"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "platform:tenant-password-expiration"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:alert-count-by-severity"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:antiphishing-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:automated-investigation"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:dlp-true-positive-rate"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:dlp-violations"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:open-incidents"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:password-protection-policy"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:safe-attachments-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:safe-links-coverage"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:secure-score"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "security:secure-score-by-category"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "sharepoint:tenant-sharing-capability"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "teams:app-permission-policy"
-  },
-  {
-    "pillar": "security",
-    "resolved_check_key": "teams:external-access-settings"
+    "statementIndex": 0,
+    "statementText": "BEGIN;",
+    "success": true,
+    "rowCount": 0,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 1,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"governance:overdue-access-reviews.*\", \"governance:ownerless-groups.*\", \"governance:guest-count.*\",\n  \"governance:guest-staleness.*\", \"governance:guest-access-reviews.*\", \"governance:dynamic-group-usage.*\",\n  \"governance:group-expiration-policy.*\", \"appgov:stale-app-registrations.*\",\n  \"identity:b2b-collaboration-settings.*\", \"identity:cross-tenant-access.*\", \"identity:password-expiration-policy.*\",\n  \"identity:stale-accounts.*\", \"m3…",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 2,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"appgov:consent-policy-status.*\", \"appgov:enterprise-app-count.*\", \"appgov:risky-permission-grants.*\",\n  \"appgov:unreviewed-consents.*\", \"appgov:workload-identity-risk.*\", \"compliance:eeeu-site-sharing.*\",\n  \"devices:app-protection-coverage.*\", \"devices:bitlocker-key-escrow.*\", \"devices:compliance-policy-coverage.*\",\n  \"devices:compliant-vs-noncompliant.*\", \"devices:encryption-status.*\", \"devices:os-patch-compliance.*\",\n  \"exchange:a…",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 3,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"compliance:dlp-incidents.*\", \"compliance:eeeu-site-sharing.*\", \"compliance:label-errors.*\",\n  \"compliance:missing-labels.*\", \"compliance:weak-dlp-policies.*\", \"copilot:sensitivity-labels-exist.*\",\n  \"exchange:litigation-hold-coverage.*\", \"governance:auto-labeling-coverage.*\",\n  \"governance:retention-label-adoption.*\", \"governance:retention-policy-coverage.*\",\n  \"governance:sensitivity-label-adoption.*\", \"identity:terms-of-use.*\"\n]':…",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 4,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"copilot:licensed-but-inactive.*\", \"license:copilot-assignment.*\", \"cost:duplicate-assignments.*\",\n  \"cost:entra-license-tier-distribution.*\", \"cost:group-based-licensing-adoption.*\",\n  \"cost:underutilized-premium.*\", \"exchange:shared-mailbox-licensing.*\", \"license:sku-utilization.*\",\n  \"license:unused-assigned.*\"\n]'::jsonb, updated_at = now()\nWHERE key = 'license_optimization_report';",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 5,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"appgov:cert-secret-expiration.*\", \"devices:autopilot-coverage.*\", \"devices:enrollment-status.*\",\n  \"devices:update-rings-config.*\", \"exchange:archive-mailbox-rate.*\", \"exchange:mailbox-quota-utilization.*\",\n  \"exchange:transport-rule-count.*\", \"identity:hybrid-sync-health.*\", \"m365:service-health.*\",\n  \"onedrive:storage-utilization.*\", \"platform:multi-geo-status.*\", \"sharepoint:site-count.*\",\n  \"sharepoint:storage-near-limit.*\", \"sh…",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 6,
+    "statementText": "UPDATE document_types SET included_profile_key_patterns = '[\n  \"adoption:planner-usage.*\", \"adoption:viva-engage-health.*\", \"copilot:usage-activity.*\",\n  \"teams:inactive-teams.*\"\n]'::jsonb, updated_at = now()\nWHERE key = 'adoption_report';",
+    "success": true,
+    "rowCount": 1,
+    "rows": [],
+    "error": null
+  },
+  {
+    "statementIndex": 7,
+    "statementText": "SELECT key, jsonb_array_length(included_profile_key_patterns) AS pattern_count\nFROM document_types ORDER BY sort_order;",
+    "success": true,
+    "rowCount": 9,
+    "rows": [
+      {
+        "key": "copilot_readiness",
+        "pattern_count": 0
+      },
+      {
+        "key": "governance_maturity_report",
+        "pattern_count": 25
+      },
+      {
+        "key": "security_posture_report",
+        "pattern_count": 57
+      },
+      {
+        "key": "compliance_alignment_report",
+        "pattern_count": 12
+      },
+      {
+        "key": "license_optimization_report",
+        "pattern_count": 9
+      },
+      {
+        "key": "operational_health_report",
+        "pattern_count": 16
+      },
+      {
+        "key": "adoption_report",
+        "pattern_count": 4
+      },
+      {
+        "key": "remediation_plan",
+        "pattern_count": 0
+      },
+      {
+        "key": "sow",
+        "pattern_count": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "statementIndex": 8,
+    "statementText": "COMMIT;",
+    "success": true,
+    "rowCount": 0,
+    "rows": [],
+    "error": null
   }
 ]
