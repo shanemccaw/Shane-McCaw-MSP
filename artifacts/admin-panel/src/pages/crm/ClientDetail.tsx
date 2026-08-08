@@ -363,6 +363,7 @@ export default function ClientDetailPage() {
   const [m365FormData, setM365FormData] = useState<Record<string, unknown>>({});
   const [m365FormLoading, setM365FormLoading] = useState(false);
   const [m365FormSaving, setM365FormSaving] = useState(false);
+  const [m365PdfExporting, setM365PdfExporting] = useState(false);
 
   // App Registration dialog
   const [showAppRegDialog, setShowAppRegDialog] = useState(false);
@@ -682,6 +683,27 @@ export default function ClientDetailPage() {
       }
     } finally {
       setM365FormSaving(false);
+    }
+  }
+
+  async function exportM365ProfilePdf() {
+    setM365PdfExporting(true);
+    // Open the tab synchronously inside the click gesture — popup blockers
+    // reject window.open calls that happen after an await.
+    const tab = window.open("", "_blank");
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile/pdf`);
+      if (!res.ok) throw new Error("Failed to export PDF");
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (tab) tab.location.href = objectUrl;
+      else window.open(objectUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      tab?.close();
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setM365PdfExporting(false);
     }
   }
 
@@ -2914,15 +2936,15 @@ export default function ClientDetailPage() {
                   {m365FormSaving ? "Saving…" : "Save Profile"}
                 </button>
                 <button onClick={() => setShowM365Dialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-accent text-foreground transition-colors">Cancel</button>
-                <a
-                  href={`/api/admin/clients/${clientId}/m365-profile/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                <button
+                  type="button"
+                  onClick={() => void exportM365ProfilePdf()}
+                  disabled={m365PdfExporting}
+                  className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  Export PDF
-                </a>
+                  {m365PdfExporting ? "Exporting…" : "Export PDF"}
+                </button>
               </div>
             )}
           </div>

@@ -118,6 +118,7 @@ export default function DocumentGeneratorIde() {
 
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [viewingDocId, setViewingDocId] = useState<number | null>(null);
 
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [missingTypes, setMissingTypes] = useState<MissingTypeRow[]>([]);
@@ -151,6 +152,27 @@ export default function DocumentGeneratorIde() {
       toast({ title: "Failed to load generation history", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setLoadingHistory(false);
+    }
+  }, [fetchWithAuth, toast]);
+
+  const viewDocument = useCallback(async (id: number) => {
+    setViewingDocId(id);
+    // Open the tab synchronously inside the click gesture — popup blockers
+    // reject window.open calls that happen after an await.
+    const tab = window.open("", "_blank");
+    try {
+      const res = await fetchWithAuth(`/api/admin/document-generator/history/${id}/html`);
+      if (!res.ok) throw new Error("Failed to load document");
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (tab) tab.location.href = objectUrl;
+      else window.open(objectUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      tab?.close();
+      toast({ title: "Failed to open document", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setViewingDocId(null);
     }
   }, [fetchWithAuth, toast]);
 
@@ -455,14 +477,15 @@ export default function DocumentGeneratorIde() {
                       <td className="px-4 py-2 text-gray-400">{row.costCents != null ? formatCents(row.costCents) : "—"}</td>
                       <td className="px-4 py-2 text-gray-400">{new Date(row.createdAt).toLocaleString()}</td>
                       <td className="px-4 py-2 text-right">
-                        <a
-                          href={`/api/admin/document-generator/history/${row.id}/html`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                        <button
+                          type="button"
+                          onClick={() => void viewDocument(row.id)}
+                          disabled={viewingDocId === row.id}
+                          className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
                         >
-                          View <ExternalLink className="w-3 h-3" />
-                        </a>
+                          {viewingDocId === row.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
