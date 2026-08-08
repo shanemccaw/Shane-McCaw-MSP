@@ -304,7 +304,11 @@ describe("streaming transport produces the same document the non-streaming path 
     // rewrite quietly altering the model, budget, or assembled prompt.
     const params = streamCalls[0] as { model: string; max_tokens: number; messages: { role: string; content: string }[] };
     expect(params.model).toBe("claude-sonnet-4-6");
-    expect(params.max_tokens).toBe(16000);
+    // Git #556 raised this from 16000 on a derived basis (see
+    // NARRATIVE_MAX_OUTPUT_TOKENS in document-engine.ts). This assertion still
+    // guards what it was written to guard — that a transport rewrite cannot
+    // quietly alter the budget — it just guards the current number.
+    expect(params.max_tokens).toBe(32000);
     expect(params.messages).toHaveLength(1);
     expect(params.messages[0]!.role).toBe("user");
     expect(params.messages[0]!.content).toContain("<style></style>");

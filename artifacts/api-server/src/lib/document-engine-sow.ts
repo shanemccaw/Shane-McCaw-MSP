@@ -10,6 +10,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
+// Git #556 — same guard as the standalone engine. See ai-output-ceiling.ts.
+import { assertOutputNotTruncated } from "./ai-output-ceiling";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
 import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
@@ -22,6 +24,33 @@ const costLog = logger.child({ channel: "engine.ai-cost-governance" });
 
 /** A generation that made no model call — see document-engine.ts's copy. */
 const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" };
+
+/**
+ * Output-token ceiling for the SOW narrative call (Git #556).
+ *
+ * Deliberately NOT raised alongside `document-engine.ts`'s, and named here so
+ * that difference reads as a decision rather than an oversight the next person
+ * should "tidy up":
+ *
+ *   1. This call is a non-streaming `messages.create`. The SDK's own guidance is
+ *      that requests above roughly 16k output tokens must stream or they risk an
+ *      HTTP timeout on the idle connection. `document-engine.ts` already streams,
+ *      so it can go higher; this path cannot without a transport change, and a
+ *      transport change is not what #556 asked for.
+ *   2. #556 is a consequence of #555, and #555 cannot reach this engine. The SOW
+ *      prompt has no `{{findings}}` token at all — it grounds on
+ *      `{{priorFindings}}` (structured findings lifted from previously generated
+ *      documents) plus `{{candidates}}` and `{{pricingFormula}}`. The verbose
+ *      per-finding point-impact format that overflowed the score report is not
+ *      part of any SOW prompt, so the ceiling here is not under the same
+ *      pressure.
+ *
+ * What this engine WAS missing is the same thing the other one was: any reading
+ * of `stop_reason`. That is fixed below regardless of the ceiling — a SOW cut
+ * off before its pricing table is exactly the document that must never be
+ * served as finished.
+ */
+const SOW_MAX_OUTPUT_TOKENS = 16000;
 
 // ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
 // Intentionally duplicated from document-engine.ts's own local, non-exported
@@ -449,9 +478,25 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       () =>
         anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 16000,
+          max_tokens: SOW_MAX_OUTPUT_TOKENS,
           messages: [{ role: "user", content: stylePrefix + prompt }],
         }),
+    );
+
+    // Git #556 — before anything reads the content, and before the pricing
+    // parser in particular: `parseSowAllPricing` reads money out of HTML tables,
+    // and a table the model was cut off mid-row through would parse into a
+    // server-authoritative total that silently understates the engagement.
+    assertOutputNotTruncated(
+      aiResponse,
+      {
+        docTypeKey,
+        maxTokens: SOW_MAX_OUTPUT_TOKENS,
+        documentId,
+        mspCustomerId,
+        source: "document-engine-sow",
+      },
+      log,
     );
 
     const capturedCostCents = totalCapturedCostCents(costs);

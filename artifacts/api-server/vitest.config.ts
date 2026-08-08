@@ -214,6 +214,9 @@ export default defineConfig({
       // used, and the two prompts that now carry it.
       "src/lib/finding-point-impact-555.test.ts",
       "src/lib/document-engine-point-impact-555.test.ts",
+      // #556 — a `stop_reason: "max_tokens"` response is never treated as a
+      // finished document (and the shared guard document-engine-sow.ts uses).
+      "src/lib/document-engine-max-tokens-556.test.ts",
     ],
     coverage: {
       provider: "v8",

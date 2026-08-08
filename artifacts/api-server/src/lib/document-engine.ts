@@ -28,6 +28,10 @@ import {
   type FindingPointImpactResult,
 } from "./finding-point-impact-format";
 import type { PillarEvaluation } from "./health-display";
+// Git #556 — the one definition of "the model ran out of room". Pure and
+// engine-free; see that file's header for why a truncated document is failed
+// rather than continued.
+import { assertOutputNotTruncated } from "./ai-output-ceiling";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import {
@@ -52,6 +56,53 @@ const costLog = logger.child({ channel: "engine.ai-cost-governance" });
  * `costStatus` is what makes it distinguishable from an unknown figure.
  */
 const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" };
+
+/**
+ * Output-token ceiling for the standalone narrative call (Git #556).
+ *
+ * DERIVED, not rounded up from the old 16,000. The derivation, in the order it
+ * was actually done:
+ *
+ *   Measured ratio. The confirmed live truncation is the one real datapoint
+ *   this codebase has: 16,000 output tokens rendered 47,235 characters of THIS
+ *   document type's HTML. That is 2.95 characters per output token — HTML is
+ *   token-dense, and a generic "4 chars per token" rule of thumb would have
+ *   overstated the room a given ceiling buys by a third.
+ *
+ *   Structural worst case, from the real code and the real prompt bodies, in
+ *   characters of model output:
+ *     ~1,500   document scaffold the model emits (the style guide itself is
+ *              prepended, not generated)
+ *     ~1,200   section 1 Verdict — the prompt caps it: "keep this section
+ *              tight, a short paragraph"
+ *     ~2,500   section 2 Pillar status — six pillars, one line each, as HTML
+ *     39,000   section 3 — `REMEDIATION_APPENDIX_MAX_FINDINGS` (15) is the hard
+ *              cap on findings reaching the prompt, and #555 raised the per-
+ *              finding ask from one sentence to four required elements (what is
+ *              wrong, how many users/items, the cited POINT IMPACT value, what
+ *              fixing it does to the score) — ~2,600 chars each with markup
+ *     ~6,500   section 4 Path to clearance — re-walks the findings with a
+ *              running point total, so it scales with the same 15
+ *     ~8,000   the document type's own `sections` folded in on top of the four
+ *     ─────
+ *     ~58,700 chars  ->  ~19,900 output tokens at the measured ratio
+ *
+ * So 16,000 was short of the worst case by about a quarter, which is exactly
+ * the failure that was observed. 32,000 is ~1.6x the derived worst case — one
+ * further full findings section of headroom — and NOT the model's 128,000
+ * ceiling, because `max_tokens` is the only hard bound on a runaway generation
+ * and a document truncated at 96k characters is no more serviceable than one
+ * truncated at 47k. The real safety is `assertOutputNotTruncated` below; this
+ * number is a budget, not a guarantee.
+ *
+ * Two things make raising it cheap: output tokens bill on what is produced, not
+ * on the ceiling requested, so an unused ceiling costs nothing; and this call
+ * already streams (see the call site), so the SDK guidance against non-
+ * streaming requests above ~16k does not apply here. It DOES apply to
+ * `document-engine-sow.ts`, which is why that engine's ceiling is deliberately
+ * different — see its own constant.
+ */
+const NARRATIVE_MAX_OUTPUT_TOKENS = 32000;
 
 /**
  * Applies a document type's `includedSignalCategories` scoping to the tenant's
@@ -1028,7 +1079,7 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       async () => {
         const stream = anthropic.messages.stream({
           model: "claude-sonnet-4-6",
-          max_tokens: 16000,
+          max_tokens: NARRATIVE_MAX_OUTPUT_TOKENS,
           messages: [{ role: "user", content: stylePrefix + prompt }],
         });
         const { onTextDelta } = params;
@@ -1049,6 +1100,33 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         }
         return await stream.finalMessage();
       },
+    );
+
+    // Git #556 — before ANYTHING reads the content. `finalMessage()` resolves to
+    // the same complete `Message` a `create()` would have, `stop_reason` and all;
+    // streaming is a transport, not a truncation check, so this path needed the
+    // guard exactly as much as a non-streaming one would.
+    //
+    // Placed ahead of the cost plumbing and the remediation appendix on purpose:
+    // there is no reason to pay for an appendix to a document that will not be
+    // saved. The narrative's own spend is NOT lost by throwing here — the
+    // `ai_usage_events` row is written by the metering tap on the client, which
+    // has already run, so the ledger keeps the charge even though the document
+    // does not survive.
+    assertOutputNotTruncated(
+      aiResponse,
+      {
+        docTypeKey,
+        maxTokens: NARRATIVE_MAX_OUTPUT_TOKENS,
+        documentId,
+        mspCustomerId,
+        source: "document-engine",
+      },
+      // The generation pipeline's own channel, not the cost one: "did this
+      // document come back whole?" is a generation fact. `engine.ai-cost-
+      // governance` answers what it cost, which is a separate question and is
+      // still answered by the lines below on the surviving path.
+      log,
     );
 
     const capturedCostCents = totalCapturedCostCents(costs);
