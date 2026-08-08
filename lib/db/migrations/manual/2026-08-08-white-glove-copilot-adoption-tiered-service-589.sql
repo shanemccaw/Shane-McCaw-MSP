@@ -157,6 +157,13 @@ ON CONFLICT (slug) DO NOTHING;
 -- different eligibility condition. score_contribution=60 clears the default
 -- minScore=40 floor, same placeholder value #585/#582 established (no real
 -- relative-priority ranking data exists yet).
+--
+-- sort_order is computed as (SELECT MAX(sort_order)+N), not a hardcoded
+-- literal — Git #586 landed concurrently with this session (same day, same
+-- table) using this exact dynamic pattern specifically to avoid two
+-- same-day migrations racing for the same literal sort_order block
+-- regardless of which one Shane runs first. Matching it here rather than
+-- keeping the literal 41-48 this migration originally shipped with.
 
 INSERT INTO sales_offer_rule_groups
   (key, label, description, rule_type, service_id, required_signal_keys, logic, score_contribution, is_active, sort_order)
@@ -164,38 +171,46 @@ VALUES
   ('white-glove-copilot-adoption-micro-eligibility', 'White-Glove Copilot Adoption (Micro) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-micro'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true, 41),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 1),
   ('white-glove-copilot-adoption-micro-scoring', 'White-Glove Copilot Adoption (Micro) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-micro'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true, 42),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 2),
 
   ('white-glove-copilot-adoption-smb-eligibility', 'White-Glove Copilot Adoption (SMB) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-smb'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true, 43),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 3),
   ('white-glove-copilot-adoption-smb-scoring', 'White-Glove Copilot Adoption (SMB) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-smb'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true, 44),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 4),
 
   ('white-glove-copilot-adoption-mid-market-eligibility', 'White-Glove Copilot Adoption (Mid-Market) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-mid-market'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true, 45),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 5),
   ('white-glove-copilot-adoption-mid-market-scoring', 'White-Glove Copilot Adoption (Mid-Market) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-mid-market'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true, 46),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 6),
 
   ('white-glove-copilot-adoption-enterprise-eligibility', 'White-Glove Copilot Adoption (Enterprise) — Eligibility',
    'Eligible when overall M365 active-usage rate or Teams engagement is genuinely low — the same usage-data gap this engagement''s pilot cohort is measured against.',
    'eligibility', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-enterprise'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true, 47),
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 0, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 7),
   ('white-glove-copilot-adoption-enterprise-scoring', 'White-Glove Copilot Adoption (Enterprise) — Scoring',
    'Relevance score contribution when the adoption-usage gap signal fires.',
    'scoring', (SELECT id FROM services WHERE slug = 'white-glove-copilot-adoption-enterprise'),
-   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true, 48)
+   '["signal.adoption.overall-active-rate","signal.teams.inactive-teams"]'::jsonb, 'OR', 60, true,
+   (SELECT COALESCE(MAX(sort_order), 0) FROM sales_offer_rule_groups) + 8)
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO simulator_migration_runs (filename, ran_at)
