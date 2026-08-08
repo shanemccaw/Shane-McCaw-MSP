@@ -271,7 +271,10 @@ describe("a max_tokens stop_reason is never silently treated as a complete docum
     const errorMessage = String(failures[0]!.errorMessage);
     expect(errorMessage).toContain("max_tokens");
     expect(errorMessage).toContain("governance_snapshot");
-    expect(errorMessage).toContain("32000");
+    // 64,000 since #559: adaptive thinking shares `max_tokens` with the
+    // response text, so the ceiling moved with it. The guard's behaviour is
+    // unchanged — this assertion is about the message naming the REAL ceiling.
+    expect(errorMessage).toContain("64000");
     // The column is varchar(500) — an admin-facing message that gets sliced
     // mid-sentence is the same class of defect this issue is about.
     expect(errorMessage.length).toBeLessThanOrEqual(500);
@@ -293,7 +296,10 @@ describe("a max_tokens stop_reason is never silently treated as a complete docum
     expect(err).toBeInstanceOf(DocumentOutputTruncatedError);
     const truncated = err as DocumentOutputTruncatedError;
     expect(truncated.docTypeKey).toBe("governance_snapshot");
-    expect(truncated.maxTokens).toBe(32000);
+    // The engine's ceiling (raised for thinking in #559) vs the fixture's own
+    // reported usage — deliberately different numbers now, so a regression that
+    // conflated the two would be caught rather than passing by coincidence.
+    expect(truncated.maxTokens).toBe(64000);
     expect(truncated.outputTokens).toBe(32000);
     expect(truncated.charsProduced).toBe(RAW_MODEL_TEXT.length);
   });

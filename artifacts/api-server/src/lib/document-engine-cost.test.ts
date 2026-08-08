@@ -236,20 +236,30 @@ afterEach(() => {
 });
 
 describe("generateDocument() — real generation", () => {
-  it("returns the costCents the ledger recorded for its own call", async () => {
+  it("returns the costCents the ledger recorded for its own calls", async () => {
     // Not derivable from the token counts by any pricing formula — so this
-    // passes only if the engine read the persisted row back rather than
+    // passes only if the engine read the persisted rows back rather than
     // recomputing a cost of its own.
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    //
+    // Since #559 a generation makes TWO calls: the narrative, and the
+    // claim-binding audit that gates it. Both are real spend for this customer,
+    // so both belong in the figure this document reports. Distinct amounts, so
+    // a total of 1379 can only be the sum — the same number twice would pass
+    // whether the audit's cost was added, dropped, or counted twice.
+    let call = 0;
+    registerAiUsageSink((): AiUsagePersistResult => {
+      call += 1;
+      return { costCents: call === 1 ? 1337 : 42, eventId: 87 + call };
+    });
 
     const result = await generateDocument(PARAMS);
 
     expect(result.documentId).toBe(4242);
     expect(result.htmlContent).toBe("<html>generated</html>");
     expect(result.docTypeKey).toBe("governance_snapshot");
-    expect(result.costCents).toBe(1337);
+    expect(result.costCents).toBe(1379);
     expect(result.costStatus).toBe("recorded");
-    expect(anthropicCalls).toHaveLength(1);
+    expect(anthropicCalls).toHaveLength(2);
   });
 
   it("attributes the call to the customer and artifact it is generating", async () => {

@@ -221,6 +221,11 @@ export default defineConfig({
       // the shipped migration file and driven through the REAL prompt-loader
       // into every document type's assembled style prefix.
       "src/lib/document-style-identifier-hygiene-558.test.ts",
+      // #559 — a document that states the opposite of the scan data it cites is
+      // never saved. Replays the real 5-run reproduction (docs/1..5.html at
+      // 6339200a) through the gate, and runs the numeric spot-check #559
+      // originally proposed to show it passing the bad document.
+      "src/lib/document-claim-binding-559.test.ts",
     ],
     coverage: {
       provider: "v8",

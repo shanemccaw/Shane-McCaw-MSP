@@ -141,15 +141,29 @@ function readOutputTokens(response: CeilingCheckableResponse): number | null {
 /**
  * How much text the model produced, for the log line and the error.
  *
- * Deliberately measured off the raw first content block rather than off
+ * Deliberately measured off the raw first TEXT content block rather than off
  * `extractAiHtml()`: the point of the figure is "how close to the ceiling did
  * this document come", and the fence/summary stripping `extractAiHtml` does
  * would understate that. Never throws on an odd content shape — a guard that
  * can fail on the way to reporting a failure is not a guard.
+ *
+ * Git #559: selects by block TYPE, not by position. With adaptive thinking on
+ * (now the narrative engine's setting) `content[0]` is a `thinking` block with
+ * no `.text`, so position-zero reading would have reported `charsProduced: 0`
+ * on every healthy generation — quietly turning #556's headroom line, whose
+ * whole purpose is to answer "are we near the ceiling again?", into a constant
+ * zero. The number would still have been logged; it would just have been wrong.
+ * The thinking tokens themselves are NOT counted here: they are invisible to
+ * the reader and are already reported by `usage.output_tokens`.
  */
 function readCharsProduced(response: CeilingCheckableResponse): number {
-  const block = response.content?.[0] as { text?: unknown } | undefined;
-  return typeof block?.text === "string" ? block.text.length : 0;
+  for (const raw of response.content ?? []) {
+    const block = raw as { type?: unknown; text?: unknown } | undefined;
+    if (!block) continue;
+    if (block.type !== undefined && block.type !== "text") continue;
+    if (typeof block.text === "string") return block.text.length;
+  }
+  return 0;
 }
 
 /**

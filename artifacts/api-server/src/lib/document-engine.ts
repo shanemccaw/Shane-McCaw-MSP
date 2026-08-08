@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
-import { extractAiHtml } from "./sow-pricing";
+import { extractAiHtml, firstTextBlock } from "./sow-pricing";
 // Git #547 — the real go-live score. `copilot-gate.ts` is the single definition
 // of the score, the 82 threshold and the go/no-go verdict; this engine reads it,
 // it does not re-derive any part of it.
@@ -32,6 +32,16 @@ import type { PillarEvaluation } from "./health-display";
 // engine-free; see that file's header for why a truncated document is failed
 // rather than continued.
 import { assertOutputNotTruncated } from "./ai-output-ceiling";
+// Git #559 — the one definition of "this document contradicts the data it
+// cites". Same shape and same reason as the guard above: pure, engine-free, and
+// SDK-free, so the reject/allow decision is assertable against the real
+// captured documents. The model call it needs is injected below.
+import {
+  assertClaimBindingsConsistent,
+  CLAIM_BINDING_AUDIT_MAX_TOKENS,
+  CLAIM_BINDING_AUDIT_MODEL,
+  CLAIM_BINDING_AUDIT_TEMPERATURE,
+} from "./document-claim-binding";
 import { logger } from "./logger";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 import {
@@ -102,7 +112,74 @@ const NO_AI_CALL_COST: DocumentCost = { costCents: 0, costStatus: "no-ai-call" }
  * `document-engine-sow.ts`, which is why that engine's ceiling is deliberately
  * different — see its own constant.
  */
-const NARRATIVE_MAX_OUTPUT_TOKENS = 32000;
+const NARRATIVE_MAX_OUTPUT_TOKENS = 64000;
+
+/**
+ * Git #559 — adaptive thinking on the narrative generation call.
+ *
+ * ── The defect this targets ──────────────────────────────────────────────────
+ * Confirmed systematic, not flaky: five real Force-Regenerate runs of
+ * `governance_maturity_report` against one tenant and one scan, and FOUR of the
+ * five inverted the same finding — reporting "all 18 Teams have no owner" when
+ * the stored `ownerlessTeamCount` is 0. Run 5 is the clean statement of the
+ * mechanism: it prints the CORRECT raw number and then draws the opposite
+ * conclusion from it in the same sentence — "The scan recorded an ownerless
+ * Teams count of zero — meaning no Team currently has a designated owner".
+ *
+ * That is not fabrication. Every number involved is real and present in the
+ * source data. What goes wrong is the BINDING: `{{profileSample}}` holds four
+ * Teams-wide values equal to 18 and exactly one equal to 0, and since #558
+ * (correctly) banned transcribing `ownerlessTeamCount: 0` verbatim, the model
+ * has to carry that binding implicitly while re-expressing it in English. It
+ * loses it, notices the resulting tension against the 0 still visible in its
+ * input, and — with nowhere else to put the reconciliation — resolves it in the
+ * visible prose, which is how a reader ends up with a confident wrong sentence.
+ *
+ * Thinking gives that reconciliation somewhere to happen other than the
+ * document. It does not guarantee the model gets the binding right; it removes
+ * the structural reason the wrong resolution had to be written down.
+ *
+ * ── Why `temperature: 0` is NOT set here ─────────────────────────────────────
+ * #559 asked for temperature 0 alongside this. It cannot be, and on the
+ * evidence it should not be:
+ *
+ *   1. They are mutually exclusive on this model. Sampling parameters are legal
+ *      on `claude-sonnet-4-6` — but not while thinking is on: "On older models
+ *      the restriction applies only while thinking is on: `temperature` and
+ *      `top_k` are incompatible with thinking." Sending both returns 400, so
+ *      this is a choice between the two, not a pair of independent knobs. (On
+ *      the newer models `temperature` is rejected outright, thinking or not, so
+ *      there is no model on which both could be set.)
+ *
+ *   2. Temperature 0 buys consistency, not correctness, and here the two point
+ *      in opposite directions. At the default temperature the inversion rate is
+ *      4-in-5 — the wrong binding is the DOMINANT mode, not a rare excursion.
+ *      Greedy decoding selects the dominant mode. The most likely effect of
+ *      temperature 0 on this specific defect is to raise the inversion rate
+ *      from 80% to 100% and make it perfectly reproducible. It would have
+ *      turned an intermittent wrong document into a reliable one.
+ *
+ * Temperature 0 is still the right setting for a near-deterministic factual
+ * task — which is exactly why the #559 validator, whose job is mechanical
+ * comparison and which needs no thinking, does set it. See
+ * `document-claim-binding.ts`.
+ *
+ * ── Consequences that had to be handled with it ──────────────────────────────
+ * Thinking is not a free parameter; three things move when it goes on:
+ *
+ *   - Thinking blocks come FIRST in `content`, so anything reading `content[0]`
+ *     stops finding the document. `extractAiHtml` and #556's `readCharsProduced`
+ *     now select the first TEXT block instead of block zero.
+ *   - Thinking tokens count against `max_tokens` alongside the response text,
+ *     so the ceiling had to move with it: 32,000 -> 64,000. The derivation
+ *     behind 32,000 (above) is unchanged and still describes the DOCUMENT's
+ *     worst case; the extra headroom is for the reasoning that now shares the
+ *     budget. Unused ceiling costs nothing and the call already streams.
+ *   - `stream.on("text")` fires only for text deltas, so the SSE relay shows
+ *     the document, not the reasoning. That is the wanted behaviour and needed
+ *     no change.
+ */
+const NARRATIVE_THINKING = { type: "adaptive" } as const;
 
 /**
  * Applies a document type's `includedSignalCategories` scoping to the tenant's
@@ -1080,6 +1157,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
         const stream = anthropic.messages.stream({
           model: "claude-sonnet-4-6",
           max_tokens: NARRATIVE_MAX_OUTPUT_TOKENS,
+          // Git #559 — see NARRATIVE_THINKING for why this is on, and why
+          // `temperature` is deliberately NOT set alongside it.
+          thinking: NARRATIVE_THINKING,
           messages: [{ role: "user", content: stylePrefix + prompt }],
         });
         const { onTextDelta } = params;
@@ -1133,6 +1213,71 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     let cost: DocumentCost = capturedCostCents == null
       ? { costCents: null, costStatus: "unknown" }
       : { costCents: capturedCostCents, costStatus: "recorded" };
+
+    // ── Claim/source binding validation (#559) ────────────────────────────────
+    // Confirmed systematic: 4 of 5 real regenerations of the same document
+    // against the same scan inverted the same finding — stating that all 18
+    // Teams are ownerless when `ownerlessTeamCount` is 0. See
+    // document-claim-binding.ts for why this is a model call and why a numeric
+    // spot-check would have passed every one of those four documents.
+    //
+    // Placed HERE, deliberately, on both sides:
+    //   - AFTER `assertOutputNotTruncated`, because there is no sense auditing
+    //     the claims in a document that is already going to be rejected for
+    //     being cut off (and a truncated document would generate spurious
+    //     mismatches from half-written sentences).
+    //   - BEFORE the remediation appendix, for the reason #556 gave: a document
+    //     that will not be saved must not go on to buy more AI calls.
+    //
+    // Its own spend is captured exactly as the appendix's is — its own
+    // `withAiUsageCapture` scope, its cost ADDED to this document's. The audit
+    // is real Anthropic spend for this customer, and a document whose reported
+    // cost counted the narrative but not the audit that gated it would be the
+    // same quietly-wrong figure the cost plumbing exists to eliminate.
+    const narrativeHtml = extractAiHtml(aiResponse);
+    const { costs: bindingCosts } = await withAiUsageCapture(
+      {
+        customerId: mspCustomerId,
+        generatedArtifactType: docTypeKey,
+        generatedArtifactName: docTypeRow.label,
+        generatedArtifactId: String(documentId),
+        triggerSource: "document-engine:claim-binding-audit",
+      },
+      () =>
+        assertClaimBindingsConsistent(
+          {
+            documentHtml: narrativeHtml,
+            // The SAME strings the generator was given, not a re-derivation.
+            // An audit run against a second assembly of the source data would
+            // be checking the document against something the model never saw.
+            source: { profileSample, findings: findingsBlock },
+            ctx: { docTypeKey, documentId, mspCustomerId, source: "document-engine" },
+          },
+          // The generation pipeline's own channel, matching #556: "does this
+          // document agree with its data?" is a generation fact.
+          log,
+          async (auditPrompt) => {
+            // Not streamed: nothing watches this, and it returns a short JSON
+            // verdict rather than a document. `temperature: 0` is legal here
+            // precisely because this call sets no `thinking` — see that
+            // constant's own note for why the narrative call cannot have both.
+            const audit = await anthropic.messages.create({
+              model: CLAIM_BINDING_AUDIT_MODEL,
+              max_tokens: CLAIM_BINDING_AUDIT_MAX_TOKENS,
+              temperature: CLAIM_BINDING_AUDIT_TEMPERATURE,
+              messages: [{ role: "user", content: auditPrompt }],
+            });
+            return firstTextBlock(audit) ?? "";
+          },
+        ),
+    );
+    const bindingCostStatuses = bindingCosts.map((c) => c.status);
+    if (bindingCosts.length > 0) {
+      const bindingCostCents = totalCapturedCostCents(bindingCosts);
+      cost = bindingCostCents == null || cost.costCents == null
+        ? { costCents: null, costStatus: "unknown" }
+        : { costCents: cost.costCents + bindingCostCents, costStatus: "recorded" };
+    }
 
     // ── Remediation Detail appendix (#493) ────────────────────────────────────
     // Verified `remediation_knowledge_base` content per finding where it exists
@@ -1201,8 +1346,8 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
       costLog.warn(
         {
           mspCustomerId, documentId, docTypeKey,
-          callsCaptured: costs.length + appendixCostStatuses.length,
-          statuses: [...costs.map((c) => c.status), ...appendixCostStatuses],
+          callsCaptured: costs.length + bindingCostStatuses.length + appendixCostStatuses.length,
+          statuses: [...costs.map((c) => c.status), ...bindingCostStatuses, ...appendixCostStatuses],
         },
         "ai-cost-governance: document generated but its usage row could not be read back — cost reported as unknown, not zero",
       );
@@ -1215,7 +1360,9 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
 
     // The appendix is appended, never interleaved: the narrative is one AI
     // artifact with one provenance, and each appendix block states its own.
-    const htmlContent = extractAiHtml(aiResponse) + appendixHtml;
+    // `narrativeHtml` rather than a second `extractAiHtml(aiResponse)` call: the
+    // bytes that get saved must be the exact bytes the #559 audit above passed.
+    const htmlContent = narrativeHtml + appendixHtml;
 
     await db.update(insightsGeneratedDocumentsTable)
       .set({

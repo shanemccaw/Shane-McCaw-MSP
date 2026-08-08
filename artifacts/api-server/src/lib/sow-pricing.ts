@@ -137,11 +137,22 @@ export function stripTierDetectionText(html: string): string {
 /**
  * Canonical extraction point used by all document-generation routes.
  *
- * Pulls the text body from the first content block of an Anthropic message
+ * Pulls the text body from the first TEXT content block of an Anthropic message
  * response and strips any markdown code fence Claude may have wrapped around
  * its HTML output (e.g. ```html … ```).  Centralising the call here means a
  * missing or bypassed stripMarkdownFence() at a call site is immediately
  * visible in tests that import this helper.
+ *
+ * ── Why "first TEXT block" and not "block zero" (Git #559) ────────────────────
+ * This used to read `content[0]` unconditionally, which was correct only while
+ * every generation call ran with thinking OFF. #559 turns on adaptive thinking
+ * for the narrative engine, and on a thinking response the model's reasoning
+ * arrives FIRST: `content[0]` is a `thinking` block, which has no `.text` at
+ * all. Block-zero extraction would therefore have returned `""` and written an
+ * EMPTY document to `html_content` — silently, since an empty string is not a
+ * truncation and not an error. Selecting by block type instead of by position
+ * is the only form that is correct under both settings, so the two engines
+ * cannot drift apart as thinking is rolled out to one of them at a time.
  *
  * The parameter is typed as `{ content: ReadonlyArray<unknown> }` so that the
  * real Anthropic `Message` type (whose content is `ContentBlock[]`, a
@@ -151,8 +162,28 @@ export function stripTierDetectionText(html: string): string {
 export function extractAiHtml(
   response: { content: ReadonlyArray<unknown> },
 ): string {
-  const block = response.content[0] as { text?: string } | undefined;
-  return stripMarkdownFence(block?.text ?? "");
+  return stripMarkdownFence(firstTextBlock(response) ?? "");
+}
+
+/**
+ * The text of the first `type: "text"` content block, or null when the response
+ * carries none.
+ *
+ * Tolerant of a block with no `type` field on purpose: fixtures throughout this
+ * repo's suites build content blocks as bare `{ text: "..." }`, and a helper
+ * that only recognised a fully-tagged block would quietly return null for all
+ * of them — turning a green suite into a false negative rather than a failure.
+ */
+export function firstTextBlock(
+  response: { content: ReadonlyArray<unknown> },
+): string | null {
+  for (const raw of response.content ?? []) {
+    const block = raw as { type?: unknown; text?: unknown } | undefined;
+    if (!block) continue;
+    if (block.type !== undefined && block.type !== "text") continue;
+    if (typeof block.text === "string") return block.text;
+  }
+  return null;
 }
 
 /**

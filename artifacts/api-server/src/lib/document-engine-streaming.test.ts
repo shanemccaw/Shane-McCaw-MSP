@@ -291,8 +291,17 @@ describe("streaming transport produces the same document the non-streaming path 
 
     await generateDocument(PARAMS);
 
+    // The NARRATIVE is streamed exactly once and is never also fetched whole —
+    // the property this test was written for, unchanged.
     expect(streamCalls).toHaveLength(1);
-    expect(createCalls).toHaveLength(0);
+
+    // Since #559 there is one non-streamed call, and it is the claim-binding
+    // audit, not a second narrative fetch. Identified by its prompt rather than
+    // by counting, so a future regression that re-fetched the document through
+    // `create()` could not hide inside the same count.
+    expect(createCalls).toHaveLength(1);
+    const auditParams = createCalls[0] as { messages: { content: string }[] };
+    expect(auditParams.messages[0]!.content).toContain("BINDINGS, not values");
   });
 
   it("sends the same request params streaming that it sent non-streaming", async () => {
@@ -304,11 +313,18 @@ describe("streaming transport produces the same document the non-streaming path 
     // rewrite quietly altering the model, budget, or assembled prompt.
     const params = streamCalls[0] as { model: string; max_tokens: number; messages: { role: string; content: string }[] };
     expect(params.model).toBe("claude-sonnet-4-6");
-    // Git #556 raised this from 16000 on a derived basis (see
-    // NARRATIVE_MAX_OUTPUT_TOKENS in document-engine.ts). This assertion still
-    // guards what it was written to guard — that a transport rewrite cannot
-    // quietly alter the budget — it just guards the current number.
-    expect(params.max_tokens).toBe(32000);
+    // Git #556 raised this from 16000 on a derived basis, and #559 raised it
+    // again to 64000 because adaptive thinking now shares the same budget with
+    // the response text (see NARRATIVE_MAX_OUTPUT_TOKENS in
+    // document-engine.ts). This assertion still guards what it was written to
+    // guard — that a transport rewrite cannot quietly alter the budget — it
+    // just guards the current number.
+    expect(params.max_tokens).toBe(64000);
+    // #559 — thinking is ON for the narrative, and `temperature` is NOT set
+    // beside it: the two are mutually exclusive on this model, so a well-meant
+    // "let's also pin temperature" edit would 400 every generation.
+    expect((params as unknown as { thinking?: unknown }).thinking).toEqual({ type: "adaptive" });
+    expect(params).not.toHaveProperty("temperature");
     expect(params.messages).toHaveLength(1);
     expect(params.messages[0]!.role).toBe("user");
     expect(params.messages[0]!.content).toContain("<style></style>");
@@ -346,12 +362,21 @@ describe("streaming transport produces the same document the non-streaming path 
 describe("cost capture after the stream completes", () => {
   it("records the ledger's real figure, not an unsettled slot", async () => {
     // Not derivable from the token counts by any pricing formula, so this
-    // passes only by reading the persisted row back.
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    // passes only by reading the persisted rows back.
+    //
+    // Two DIFFERENT figures since #559, and deliberately co-prime-ish: the
+    // narrative's 1337 and the claim-binding audit's 42. Returning the same
+    // number for both would let a total of 1337 pass whether the audit's cost
+    // had been added, dropped, or double-counted. 1379 can only be the sum.
+    let call = 0;
+    registerAiUsageSink((): AiUsagePersistResult => {
+      call += 1;
+      return { costCents: call === 1 ? 1337 : 42, eventId: 87 + call };
+    });
 
     const result = await generateDocument(PARAMS);
 
-    expect(result.costCents).toBe(1337);
+    expect(result.costCents).toBe(1379);
     expect(result.costStatus).toBe("recorded");
     // "unknown" here would mean the capture slot never settled — the exact
     // failure mode of returning the stream instead of awaiting finalMessage()
@@ -379,19 +404,49 @@ describe("cost capture after the stream completes", () => {
   });
 
   it("still attributes the streamed call to the customer and artifact", async () => {
-    let record: AiUsageRecord | null = null;
+    // Every record, not just the last one: since #559 the last record belongs
+    // to the claim-binding audit, and a test that read `record` after the fact
+    // would silently start asserting about the wrong call.
+    const records: AiUsageRecord[] = [];
     registerAiUsageSink((r): AiUsagePersistResult => {
-      record = r;
+      records.push(r);
       return { costCents: 100, eventId: 1 };
     });
 
     await generateDocument(PARAMS);
 
-    const captured = record as unknown as AiUsageRecord;
-    expect(captured.customerId).toBe(42);
-    expect(captured.generatedArtifactType).toBe("governance_snapshot");
-    expect(captured.generatedArtifactId).toBe("4242");
-    expect(captured.triggerSource).toBe("document-engine");
+    const captured = records.find((r) => r.triggerSource === "document-engine");
+    expect(captured).toBeDefined();
+    expect(captured!.customerId).toBe(42);
+    expect(captured!.generatedArtifactType).toBe("governance_snapshot");
+    expect(captured!.generatedArtifactId).toBe("4242");
+  });
+
+  it("attributes the #559 audit to the same customer and artifact as the document it gated", async () => {
+    const records: AiUsageRecord[] = [];
+    registerAiUsageSink((r): AiUsagePersistResult => {
+      records.push(r);
+      return { costCents: 100, eventId: 1 };
+    });
+
+    await generateDocument(PARAMS);
+
+    // The audit is real spend for this customer. A second call that landed on
+    // the ledger unattached to the document would make "what did this document
+    // cost?" unanswerable after the fact — the question the cost plumbing
+    // exists to answer.
+    const audit = records.find((r) => r.triggerSource === "document-engine:claim-binding-audit");
+    const narrative = records.find((r) => r.triggerSource === "document-engine");
+    expect(audit).toBeDefined();
+    expect(narrative).toBeDefined();
+    expect(audit!.customerId).toBe(42);
+    expect(audit!.generatedArtifactType).toBe("governance_snapshot");
+    expect(audit!.generatedArtifactId).toBe("4242");
+    // Same customer, same artifact, same cost owner as the call it gated —
+    // only `triggerSource` distinguishes the two rows.
+    expect(audit!.customerId).toBe(narrative!.customerId);
+    expect(audit!.generatedArtifactId).toBe(narrative!.generatedArtifactId);
+    expect(audit!.costOwner).toBe(narrative!.costOwner);
   });
 
   it("reports unknown, never zero, when the streamed call's row could not be recorded", async () => {
