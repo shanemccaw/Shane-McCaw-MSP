@@ -217,6 +217,10 @@ export default defineConfig({
       // #556 — a `stop_reason: "max_tokens"` response is never treated as a
       // finished document (and the shared guard document-engine-sow.ts uses).
       "src/lib/document-engine-max-tokens-556.test.ts",
+      // #558 — the shared style guide's identifier-hygiene rule, read out of
+      // the shipped migration file and driven through the REAL prompt-loader
+      // into every document type's assembled style prefix.
+      "src/lib/document-style-identifier-hygiene-558.test.ts",
     ],
     coverage: {
       provider: "v8",
