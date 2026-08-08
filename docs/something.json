@@ -1,189 +1,170 @@
 Shane McCaw Consulting
-Copilot Go-Live Score Report
-TENANT
-mccawsoft2.onmicrosoft.com
-Readiness Score
-53
-out of 100
+Governance Posture Report
+Tenant: mccawsoft2.sharepoint.com
+Overall Posture
 NO-GO
-This tenant is not cleared to deploy Microsoft 365 Copilot.
-Gate Threshold
-82
-Points Needed
-+29
-Signals Evaluated
-105
-Pillar Status
-FAIL
-Governance
-No sensitivity labels, no auto-labeling, no group expiration policy, and 26 ownerless groups.
-FAIL
-Security
-Zero Conditional Access policies — no MFA enforcement, no legacy auth block, no device compliance gate, and 6 permanent Global Administrators.
-FAIL
-Compliance
-DLP, sensitivity labels, and retention features are unavailable — the required Microsoft Purview licenses are not present. One SharePoint site is exposed to all authenticated users.
-FAIL
-Licensing
-No Microsoft 365 Copilot license exists in this tenant. The prerequisite SKU count is zero.
-WARN
-Adoption
-No active Copilot usage recorded — no active users in Email, Teams, or SharePoint activity windows. No Copilot license exists yet to drive adoption.
-WARN
-Health
-22 of 25 monitored services are operational. Exchange Online, Microsoft Teams, and Microsoft Entra are currently in a degraded state. 108 major change announcements are unreviewed in Message Center.
-What Is Holding the Score Down
-Free fixes precede license-gated fixes. Within each group, findings are ordered by their point impact on the readiness score.
-Available Today — No Additional License Required
+CONDITIONAL READINESS NOT MET
+Ownerless Groups
+26
+of 104 total
+Ownerless Teams
+0
+of 18 total
+Guest Accounts
+24
+no access reviews
+Expiration Policy
+NONE
+0 policies configured
+Inactive SP Sites
+99
+last-activity unreadable
+Guest Invite Control
+OPEN
+anyone can invite
+Teams w/ Guests
+18
+of 18 Teams total
+Dynamic Groups
+0
+all groups manual
+Current State
+This tenant has no functioning lifecycle governance. Twenty-six of 104 groups have no owner, every Team permits guest access, anyone in the organization can invite external users, and no group expiration policy exists. The controls that are in place — Teams meeting and messaging policies, cross-tenant access configuration, and SharePoint site label coverage — are structural defaults and do not substitute for the ownership, review, and retirement processes that are absent. The tenant is not ready for expanded Copilot deployment until the ownership and external-access gaps below are closed.
+
+The findings below are drawn entirely from the tenant telemetry collected by this assessment. Sections are grouped by governance domain. Each finding states what was confirmed, the scale of the gap, and the consequence.
+
+Domain 01
+Ownership & Accountability
 NO-GO
-No Conditional Access policy requires MFA
-There are zero Conditional Access policies in this tenant. No policy requires multi-factor authentication for any user. Any credential compromise gives an attacker unrestricted access to every account in the environment. Copilot amplifies this risk significantly — it surfaces data across the entire tenant on the authenticated user's behalf. Fix this before deploying Copilot.
-Score Recovery
-+4.0
-pts
+26 Groups Have No Owner
+The governance:ownerless-groups check returned ownerlessGroupCount: 26 out of 104 total groups. The affected groups include production-named workspaces — Finance, Sales, Legal, Payroll, Billing, Human Solutions, Managed Services, and others — alongside MSP client-named groups (Barricade MSP, Columbia River Carbonates, Roofing CRM, Terminal Transfer, LifeWorksNW, Hunter Davisson, Netropole, ATRIO, TARR, Vigilant, and more).
+
+A group with no owner has no accountable party to approve membership changes, review guest access, or authorize deletion. Microsoft's built-in recovery path for ownerless groups relies on periodic owner-notification emails — those emails currently go nowhere. Any member of these groups can change membership without oversight, and the groups cannot be reviewed, recertified, or retired under any formal process.
+
+PASS
+All 18 Teams Report an Owner
+teams:ownerless-teams returned ownerlessTeamCount: 0. Every one of the 18 Teams has at least one designated owner. This is the tenant's strongest governance signal. Note that many of these Teams correspond to groups in the ownerless-groups list above — the Teams ownership record is separate from the group ownership record; verify that the same individuals are recorded as group owners where both objects exist.
+
+WARNING
+All 104 Groups Are Manually Managed — No Dynamic Membership Rules Exist
+governance:dynamic-group-usage shows dynamicGroupCount: 0 and membershipRule_count: 0 across all 104 groups. Every group membership is maintained by hand. When a user changes role, department, or employment status, no group membership updates automatically. This makes stale access the default outcome rather than the exception, and it places the entire membership-accuracy burden on manual administrator action with no enforcement backstop.
+
+Domain 02
+Lifecycle — Creation, Review & Retirement
 NO-GO
-Six permanent Global Administrators — above Microsoft's threshold
-This tenant has 6 permanent Global Administrator accounts: Shane McCaw, Admin Admin, Transition Manager, Frances McCaw, and two Emergency Access Admin accounts. Microsoft's own guidance recommends fewer than 5. All 17 privileged role assignments across the tenant are permanent — none are time-bound or eligible-only. Reducing Global Admin count to within the threshold and converting permanent assignments to just-in-time eligible roles recovers these points.
-Score Recovery
-+4.0
-pts
+No Group Expiration Policy Is Configured
+governance:group-expiration-policy returned groupExpirationPolicyConfigured: false with zero policies recorded. Groups and their associated SharePoint sites, mailboxes, and Planner boards have no automated retirement trigger. Once created, a group persists indefinitely unless an administrator manually deletes it. Combined with the ownerless-groups finding above, this means there is no mechanism — automatic or ownership-driven — by which an unneeded group will ever be retired.
+
+WARNING
+99 SharePoint Sites Flagged for Inactivity — Last-Activity Dates Unavailable
+sharepoint:inactive-sites identified 99 sites but returned inactiveSiteCount: 0 and lastModifiedDateTime_count: 0. The activity-date field did not populate, so definitive inactive status cannot be confirmed from this scan. The list of site IDs is present and spans both mccawsoft2.sharepoint.com and mccawsoft2-my.sharepoint.com (personal OneDrive) namespaces.
+
+The data gap itself is a governance problem: without readable activity dates, there is no basis for a lifecycle decision on these 99 sites. A follow-up pull against the SharePoint admin center activity reports is required before any retirement action can be taken.
+
+WARNING
+27 Channels Across 18 Teams — Naming Inconsistency and Test Channels Present
+teams:channel-sprawl returned channelCount: 27. Among the channel display names: "Test", "Test 123", "Test 12345" — three channels with test names that have not been removed. Sixteen of the 27 channels are named "General" (the default), meaning almost no custom channel structure exists. The tenant has not established a naming convention for channels, and test artifacts have persisted into production inventory.
+
+Domain 03
+Sharing & External Access
 NO-GO
-No Conditional Access policy blocks legacy authentication
-No Conditional Access policy blocks legacy authentication protocols (Basic Auth, SMTP Auth, POP, IMAP). These protocols do not support MFA, so any MFA policy deployed can be bypassed entirely by authenticating through a legacy path. Block legacy authentication as part of the same Conditional Access deployment that adds MFA coverage.
-Score Recovery
-+2.7
-pts
+Any User Can Invite External Guests — No Invite Restriction Configured
+identity:b2b-collaboration-settings returned allowInvitesFrom: everyone and guestInviteRestriction: everyone. Any licensed user in this tenant can add an external guest without administrator approval. For an MSP tenant that manages client environments, this means any internal staff member — or a compromised internal account — can introduce an external identity with no checkpoint. The consequence is that the guest roster has no authoritative owner and cannot be validated against a known-approved list.
+
 NO-GO
-No enabled break-glass account — real risk of total tenant lockout
-The scan found zero healthy, enabled break-glass accounts. The two accounts named Emergency Access Admin appear in the Global Admin list but are not passing the health check. A misconfigured Conditional Access policy or compromised admin credential with no emergency bypass account leaves no recovery path. Two cloud-only emergency accounts, excluded from all CA policies, with credentials stored offline, are required.
-Score Recovery
-+2.7
-pts
+24 Guest Accounts Exist With No Access Review Program
+governance:guest-count shows 24 guest account objects. governance:guest-access-reviews returned guestAccessReviewExists: false — no access review schedule has ever been configured for guest accounts. governance:guest-staleness shows all 24 accounts but returned no sign-in activity data (signInActivity_count: 0), so the last sign-in for any guest is unknown from this scan.
+
+These 24 accounts have open, unreviewed access to whatever groups and Teams they were added to. None of them have been certified by any review process. The missing sign-in telemetry means dormant guests cannot be identified without a separate sign-in log query. The security consequence is persistent external access with no expiry and no accountability.
+
+WARNING
+Every Team in the Tenant Contains Guest Members
+teams:guest-membership returned teamsWithGuestsCount: 18, which equals the total Teams inventory of 18. Every Team — including client-named Teams such as ATRIO, Roofing CRM, TARR, Terminal Transfer, and the template Teams — has at least one external guest. Given the open invite policy and absent review program, there is no established process by which a guest's continued presence in any of these Teams would be challenged.
+
+PASS
+Cross-Tenant Access Policy Is Configured
+identity:cross-tenant-access returned crossTenantAccessConfigured: true. A cross-tenant access policy exists. This is a positive control but does not compensate for the open B2B invite setting — the cross-tenant policy governs trust relationships between specific tenants, while the B2B invite setting governs who can initiate invitations from within this tenant. Both controls must be set correctly; one passing does not remediate the other.
+
+Domain 04
+Access Reviews & Role Hygiene
 NO-GO
-No Conditional Access policy specifically covers guest users
-All 18 Teams workspaces have guest members. Guest invitations are permitted from anyone, including external organizations. No Conditional Access policy enforces MFA for guests, and B2B collaboration is open to everyone. Guest accounts with unconstrained access to Teams content are a direct data-exposure risk for any Copilot deployment.
-Score Recovery
-+2.0
-pts
-NO-GO
-No sensitivity labels configured for automatic classification
-No auto-labeling policy exists and no sensitivity labels are defined in this tenant. Copilot uses sensitivity labels to understand what content it should and should not surface — without labels, there is no signal to govern how the AI handles sensitive data. Labels must be created and auto-labeling policies configured before Copilot deployment can be considered responsibly.
-Score Recovery
-+1.3
-pts
-NO-GO
-No Conditional Access policy requires device compliance
-No policy checks that a device is managed or compliant before granting access to Microsoft 365 resources. Unmanaged, unpatched, or personal devices can access all tenant data. Adding a device-compliance Conditional Access policy addresses this gap.
-Score Recovery
-+1.3
-pts
-NO-GO
-No Conditional Access policies exist — zero Zero Trust enforcement
-The CA policy count is zero. This tenant has no access controls of any kind in Conditional Access. There are no report-only policies, no named locations, and no sign-in risk policies. The four MFA-, legacy-auth-, guest-, and device-related findings above all trace back to this same root gap. Deploying a foundational Conditional Access policy set resolves all of them simultaneously.
-Score Recovery
-+1.3
-pts
-WARN
-No DMARC record found for this domain
-SPF is configured for mccawsoft2.onmicrosoft.com, but DKIM is not active at the default selectors and no DMARC record is published. Without DMARC, this domain cannot instruct receiving mail servers what to do with messages that fail SPF or DKIM checks. This leaves the domain open to spoofing. Publishing a DMARC record at p=none to start monitoring is the minimum step.
-Score Recovery
-+0.8
-pts
-WARN
-Groups exist with no owner — nobody is accountable for membership or lifecycle
-26 of the tenant's 104 groups have no owner. Ownerless groups accumulate stale members unchecked, which Copilot inherits when it surfaces content shared with those groups. Assign an owner to each unowned group or archive groups that are no longer needed.
-Score Recovery
-+0.3
-pts
-WARN
-Expired secrets and certificate found on app registrations
-Across 11 app registrations, 3 password credentials (client secrets) and 1 key credential (certificate) have expired. Expired credentials on active app registrations indicate that rotation processes are not in place. Rotate or remove the expired credentials and establish a renewal schedule.
-Score Recovery
-+0.3
-pts
-WARN
-Major service changes announced — review for action needed
-108 major change messages are present in Message Center across 440 total announcements. Major-change messages require admin review and often require action before Microsoft enforces the change. Review the Message Center for retirement notices and required configuration changes, particularly those tagged preventOrFixIssue.
-Score Recovery
-+0.3
-pts
-INFO
-No sensitivity labels are configured in this tenant
-Zero sensitivity labels are defined and zero have been adopted across this tenant's content. Copilot cannot classify or protect content sensitivity without labels in place. This finding is not currently costing this tenant any readiness points, but the absence of labels is the root cause of the auto-labeling finding above and is a prerequisite for responsible Copilot deployment.
-Score Recovery
-+0.0
-pts
-INFO
-No sensitivity labels have been adopted — content is not being classified
-No content across this tenant carries a sensitivity label. This follows directly from the absence of labels themselves. This finding is not currently costing this tenant any readiness points, but it confirms that content classification is completely absent. Resolving the label-configuration finding above is the prerequisite step.
-Score Recovery
-+0.0
-pts
-Requires Additional Microsoft License
-NO-GO
-No Microsoft 365 Copilot license found in this tenant
-The Copilot SKU count is zero. The tenant's current license inventory is ENTERPRISEPACK (1 consumed), FLOW_FREE (2), POWER_BI_STANDARD (2), and Power_Pages_vTrial_for_Makers (1). A Microsoft 365 Copilot add-on license must be purchased and assigned before any user can access Copilot features. This is the foundational prerequisite the score is measuring against.
-Score Recovery
-+3.1
-pts
-Path to Clearance
-The sequence below is the shortest path from 53 to the gate of 82, using the point values as given. Free fixes come first in every case — no license purchase is listed ahead of a fix already available to this tenant. The gate clears when the running total reaches or exceeds +29.
+No Access Reviews Configured — Guest or Otherwise
+governance:guest-access-reviews returned guestAccessReviewExists: false with zero review schedules. governance:overdue-access-reviews returned overdueAccessReviewCount: 0 — not because reviews are current, but because no review program exists to generate overdue items.
+
+There is no periodic certification of who has access to what. No group membership, no guest account, and no privileged assignment in this tenant is subject to a formal review cycle. For an MSP managing client data, the absence of access reviews is a direct compliance gap — most recognized frameworks (SOC 2, ISO 27001, NIST CSF) require periodic access recertification as a named control.
+
+WARNING
+Sign-In Activity Unreadable — Stale Account Status Cannot Be Confirmed
+identity:stale-accounts identified 24 account objects but returned staleAccountCount: 0 and signInActivity_count: 0. The last sign-in timestamp did not populate for any of these 24 accounts. These are the same 24 account IDs that appear in the guest-count and guest-staleness checks. The telemetry gap means neither active nor inactive status can be confirmed from this scan. Sign-in logs must be queried directly from Entra ID to determine which of these accounts are dormant.
+
+Domain 05
+Structure, Naming & Policy Enforcement
+PASS
+Meeting and Messaging Policies Assigned to All 18 Teams
+teams:meeting-policy-coverage returned meetingPolicyAssignedCount: 18 and teams:messaging-policy-coverage returned messagingPolicyAssignedCount: 18. Every Team carries a meeting and messaging policy assignment. This confirms policy coverage at the Teams layer is complete.
+
+WARNING
+One Team Is Public — "Test NASA"
+teams:inventory-count returned publicTeamCount: 1 of 18 Teams. The public Team is "Test NASA" (visibility confirmed as Public in the visibility values, with all other 17 Teams as Private). A Public Team is discoverable and joinable by any user in the tenant without owner approval. For a client-facing MSP workspace named with a client identifier, public visibility is inconsistent with the access control model applied to the other 17 Teams.
+
+PASS
+All 99 SharePoint Sites Carry a Sensitivity Label
+sharepoint:site-label-coverage returned sitesWithLabelCount: 99 against a site population of 99. Every enumerated site has a label applied. Label quality — whether labels are correctly scoped and not set to an overly permissive value — is addressed in the separate compliance and data-protection report; this finding confirms structural coverage only.
+
+WARNING
+No Consistent Naming Convention Evident Across 104 Groups
+The governance:ownerless-groups display names show a mix of personal mailbox groups (prefixed "SMC —" with user email addresses and personal names), client-named groups, department names, test labels ("test12345", "Trial", "License Test -- Shane"), and system groups (e.g. "Group for Answers in Viva Engage – DO NOT DELETE"). No enforced naming prefix or policy schema is evident. Without a naming convention policy in Entra ID, group creation is unconstrained, and the inventory cannot be audited by type, owner, or purpose without manual inspection.
+
+Domain 06
+Platform Change Awareness
+REVIEW REQUIRED
+440 Message Center Items — 108 Major Changes Pending Review
+m365:message-center returned _itemCount: 440 total items, of which majorChangeCount: 108. Categories include planForChange, preventOrFixIssue, and stayInformed items. Governance-relevant items in the queue include: EWS retirement (requiring action on calendar and mailbox integrations), SharePoint Restricted Search retirement, SharePoint Designer 2013 end-of-support in July 2026, Remote Event Receivers retirement, legacy whiteboard retirement, Teams Live Events retirement, Turnitin Similarity integration retirement, and Microsoft Publisher end-of-support in October 2026.
+
+This report does not triage all 440 items — that work belongs to a dedicated change-management review. The governance relevance here is structural: 108 major change notifications represent decisions that must be assigned to an accountable owner and tracked to resolution. Without a named owner for each change item, decisions on tenant configuration changes default to inaction, which is itself a governance failure. The preventOrFixIssue category items carry the highest urgency and must be triaged first.
+
+Required Actions
+What to Fix, In Order of Impact
+Ordered by what each fix actually closes. Each action maps directly to a confirmed finding above.
+
+#
 Action
-Points
-Running Total
-Deploy Conditional Access: require MFA for all users
-Free — no additional license required
-+4.0
-57.0
-Reduce Global Administrators to fewer than 5; convert permanent privileged assignments to eligible-only
-Free — no additional license required
-+4.0
-61.0
-Add CA policy blocking legacy authentication protocols
-Free — no additional license required
-+2.7
-63.7
-Create and enable two cloud-only break-glass accounts; exclude from all CA policies; store credentials offline
-Free — no additional license required
-+2.7
-66.4
-Add CA policy enforcing MFA specifically for guest and external users
-Free — no additional license required
-+2.0
-68.4
-Create sensitivity labels and configure auto-labeling policies
-Free — available with existing Microsoft 365 E3 licensing
-+1.3
-69.7
-Add CA policy requiring device compliance for access to Microsoft 365
-Free — no additional license required
-+1.3
-71.0
-Deploy a foundational Conditional Access policy set (satisfies the zero-policy-count finding)
-Free — resolved as part of steps above; counted separately by the platform
-+1.3
-72.3
-Publish DMARC record; activate DKIM at default selectors
-Free — DNS change only
-+0.8
-73.1
-Assign owners to all 26 ownerless groups; archive groups no longer needed
-Free — admin task
-+0.3
-73.4
-Rotate or remove 3 expired client secrets and 1 expired certificate on app registrations
-Free — admin task
-+0.3
-73.7
-Review Message Center major change announcements; act on items tagged preventOrFixIssue
-Free — admin review task
-+0.3
-74.0
-LICENSE REQUIRED
-Purchase and assign Microsoft 365 Copilot license
-Requires Microsoft 365 Copilot add-on SKU
-+3.1
-77.1
-The findings listed above account for 24.1 of the 29 points needed. The platform has identified 47.0 points recoverable in total across all scored signals, so the remaining gap is covered by additional signals not individually listed here. Completing every action above puts the tenant at 77.1 — still 4.9 points short of the gate. The additional 22.9 points recoverable (but not individually listed above) reside in other signals the platform scored across governance, compliance, adoption, and security — including the license-gated signals for Microsoft Entra ID Premium, Microsoft Purview DLP, and Microsoft Defender for Office 365, which are currently returning license-gap errors and contributing zero points. Acquiring those licenses will unlock additional scored signals and close the remaining gap.
-Shane McCaw Consulting — Copilot Go-Live Score Report
-Score: 53 / 100  ·  Gate: 82  ·  Verdict: NO-GO
+Severity
+01
+Restrict guest invitation to administrators only
+Change allowInvitesFrom from everyone to adminsAndGuestInviters or adminsOnly in the Entra External Identities settings. This closes the uncontrolled guest introduction path immediately. No review or planning is required; it is a single setting change.
+CRITICAL
+02
+Configure a recurring access review for all 24 guest accounts
+Create an Entra ID Access Review scoped to guest accounts, set to quarterly recurrence, with group owners as reviewers. Before the first review completes, pull Entra sign-in logs to identify guests with no sign-in in the past 90 days and disable those accounts immediately. This closes the unreviewed external access gap confirmed by governance:guest-access-reviews.
+CRITICAL
+03
+Assign owners to all 26 ownerless groups
+Export the 26 ownerless group IDs from governance:ownerless-groups and assign a named human owner to each. Groups that cannot be assigned an owner within 30 days should be evaluated for deletion. This is a prerequisite for the expiration policy (action 04) to function — an expiration policy notifies owners, so ownerless groups bypass the retirement workflow entirely.
+CRITICAL
+04
+Configure a Microsoft 365 group expiration policy
+Enable a group expiration policy in Entra ID (Entra Admin Center → Groups → Expiration). A 180-day lifetime with owner-renewal notification is a reasonable starting point. After action 03 is complete and all groups have owners, this policy will trigger automatic retirement of unused groups rather than relying on manual cleanup. Without this, the group inventory has no self-correcting mechanism. This closes the gap confirmed by governance:group-expiration-policy.
+HIGH
+05
+Resolve the SharePoint site activity data gap and complete a lifecycle review
+Pull last-modified and last-activity dates for all 99 sites directly from the SharePoint admin center activity report. Sites inactive for more than 180 days with no owner response should be archived or deleted. The sharepoint:inactive-sites scan could not confirm activity dates — this requires a separate data pull before any deletion decision is made.
+HIGH
+06
+Change "Test NASA" from Public to Private and remove test channels
+Set the "Test NASA" Team visibility to Private in the Teams admin center. Delete the three test channels ("Test", "Test 123", "Test 12345") from Teams inventory. These are confirmed from teams:inventory-count and teams:channel-sprawl. Neither action requires planning — both are immediate cleanup items.
+MEDIUM
+07
+Triage Message Center preventOrFixIssue items and assign owners to all 108 major changes
+From the m365:message-center queue of 440 items (108 major changes), filter for preventOrFixIssue category first and assign each a named owner and target resolution date. EWS retirement, SharePoint Designer end-of-support, and Teams Live Events retirement are among the items with confirmed retirement dates that require configuration decisions before their deadlines.
+MEDIUM
+08
+Implement a group naming policy in Entra ID
+Enable the Entra ID group naming policy with a prefix that encodes group purpose or ownership type (e.g. CLIENT-, INTERNAL-, MSP-). This does not rename existing groups but applies to all new group creation going forward and eliminates the current inconsistency confirmed across the 104-group inventory in governance:ownerless-groups.
+LOW
+Prepared by
+Shane McCaw Consulting
+Governance Posture Report · Tenant: mccawsoft2.sharepoint.com
+Report Scope
+Governance only. Security, compliance, and licensing
+posture are addressed in separate reports.
