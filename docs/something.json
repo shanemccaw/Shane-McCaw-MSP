@@ -17,11 +17,11 @@ That accumulation problem connects directly to the compliance findings. No sensi
 
 The practical consequence for Copilot is straightforward: content that nothing prompts anyone to review or dispose of stays in place, and Copilot treats what it can reach as current. In this tenant, the absence of labels and the absence of accountable owners compound each other — stale content in ungoverned spaces carries no signal that would cause it to age out of Copilot's view.
 
-No sensitivity labels are configured in this tenant — Copilot cannot classify or protect content sensitivity without labels in place Recorded by copilot:sensitivity-labels-exist on this tenant's last scan.
+No sensitivity labels are configured in this tenant — Copilot cannot classify or protect content sensitivity without labels in place Recorded by the Copilot check on this tenant's last scan.
 
-No sensitivity labels have been adopted in this tenant — content is not being classified for governance or compliance Recorded by governance:sensitivity-label-adoption on this tenant's last scan.
+No sensitivity labels have been adopted in this tenant — content is not being classified for governance or compliance Recorded by the Governance check on this tenant's last scan.
 
-No sensitivity labels configured for automatic classification Recorded by governance:auto-labeling-coverage on this tenant's last scan.
+No sensitivity labels configured for automatic classification Recorded by the Governance check on this tenant's last scan.
 
 Upgrade Opportunities
 Upgrade opportunity
