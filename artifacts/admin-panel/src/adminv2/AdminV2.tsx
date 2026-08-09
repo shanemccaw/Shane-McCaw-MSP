@@ -26,6 +26,7 @@ import "./screens/money";
 import "./screens/tenant-signals";
 import "./screens/observability";
 import "./screens/endpoints";
+import "./screens/sql";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -49,6 +50,10 @@ import { ObservabilityFetchBridge } from "./screens/observability/ObservabilityF
 // -tab live count and its synchronous `endpoint` peek resolver — see
 // EndpointsFetchBridge.tsx's doc comment.
 import { EndpointsFetchBridge } from "./screens/endpoints/EndpointsFetchBridge";
+// Same reasoning again, for the "run" tab's "Saved scripts" gallery and the
+// synchronous `script`/`migration` peek resolvers — see SqlFetchBridge.tsx's
+// doc comment.
+import { SqlFetchBridge } from "./screens/sql/SqlFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -96,6 +101,7 @@ function AdminV2Inner() {
       <MoneyFetchBridge />
       <ObservabilityFetchBridge />
       <EndpointsFetchBridge />
+      <SqlFetchBridge />
     </Shell>
   );
 }

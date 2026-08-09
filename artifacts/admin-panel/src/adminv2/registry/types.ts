@@ -226,6 +226,13 @@ export interface ContextualTabSpec {
  * `platform_incidents.id`, `msp_dlq_store.dlq_id`), so none of them could
  * reuse an existing kind without two records disagreeing about what an id
  * means.
+ *
+ * `migration` was added for the SQL Runner screen (`screens/sql/`) — a manual
+ * migration file (`lib/db/migrations/manual/`) is a genuinely different
+ * record shape from a saved SQL `script` (no name/category to edit, no
+ * delete, an unknown destructive risk instead of a stored flag), so it needed
+ * its own kind rather than borrowing `script` and lying about what a
+ * migration's id/edits mean.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -248,6 +255,7 @@ export const PEEK_KINDS = [
   "exception",
   "incident",
   "dlq",
+  "migration",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
