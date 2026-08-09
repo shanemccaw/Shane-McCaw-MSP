@@ -4,14 +4,6 @@ modules = ["nodejs-20", "nodejs-24", "postgresql-16", "python-3.11"]
 router = "application"
 deploymentTarget = "autoscale"
 
-[deployment.postBuild]
-args = [
-  "sh",
-  "-c",
-  "pnpm store prune && pwsh -NonInteractive -Command \"Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force -AllowClobber -Repository PSGallery\""
-]
-env = { "CI" = "true" }
-
 [workflows]
 runButton = "Project"
 
