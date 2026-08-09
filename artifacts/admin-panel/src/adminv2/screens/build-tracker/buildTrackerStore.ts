@@ -202,7 +202,11 @@ export function setTriageActive(active: boolean) {
   if (active) {
     const api = (window as any).__shellApi;
     if (api) {
-      api.dispatch({ type: "selectContextTab" });
+      if (!api.state.contextActive) {
+        api.dispatch({ type: "selectContextTab" });
+      } else if (!api.state.ribbonOpen) {
+        api.dispatch({ type: "toggleRibbon" });
+      }
     }
   }
 }

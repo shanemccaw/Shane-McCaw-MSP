@@ -70,10 +70,17 @@ registerScreen({
   route: ROUTE,
 
   render: (ctx) => {
+    const state = getSnapshot();
     // When navigated here from a peek or palette record link, select the right node.
-    if (ctx.kind === "epic" && ctx.recordId)     selectEpic(Number(ctx.recordId));
-    if (ctx.kind === "issue" && ctx.recordId)    selectIssue(Number(ctx.recordId));
-    if (ctx.kind === "chatLink" && ctx.recordId) selectChat(Number(ctx.recordId));
+    if (ctx.kind === "epic" && ctx.recordId && state.selectedEpicId !== Number(ctx.recordId)) {
+      selectEpic(Number(ctx.recordId));
+    }
+    if (ctx.kind === "issue" && ctx.recordId && state.selectedIssueId !== Number(ctx.recordId)) {
+      selectIssue(Number(ctx.recordId));
+    }
+    if (ctx.kind === "chatLink" && ctx.recordId && state.selectedChatId !== Number(ctx.recordId)) {
+      selectChat(Number(ctx.recordId));
+    }
     return <BuildTrackerBody />;
   },
 
