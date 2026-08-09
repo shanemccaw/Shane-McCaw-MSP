@@ -14,7 +14,6 @@ import {
   Search,
   ListChecks,
   PenLine,
-  ClipboardCheck,
   MessageSquare,
 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
@@ -50,17 +49,6 @@ const categoryCounts: Record<string, number> = articles.reduce(
   },
   { All: articles.length } as Record<string, number>
 );
-
-const ASSESSMENTS = [
-  { href: "/copilot-quiz", title: "Copilot Readiness" },
-  { href: "/m365-health-quiz", title: "M365 Health Check" },
-  { href: "/sharepoint-quiz", title: "SharePoint & Intranet" },
-  { href: "/power-platform-quiz", title: "Power Platform Maturity" },
-  { href: "/security-quiz", title: "Security & Compliance" },
-  { href: "/teams-quiz", title: "Teams Collaboration" },
-  { href: "/migration-quiz", title: "Migration Readiness" },
-  { href: "/governance-quiz", title: "Governance Maturity" },
-];
 
 function shareArticle(slug: string, platform: "linkedin" | "x") {
   void fetch("/api/shares", {
@@ -438,33 +426,6 @@ export default function Resources() {
                     Thanks, {leadMagnetName}! Your checklist is on its way to {leadMagnetEmail}.
                   </div>
                 )}
-              </div>
-            </GlassPanel>
-
-            {/* Assessments — compact */}
-            <GlassPanel className="p-6 md:p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-violet flex-shrink-0">
-                  <ClipboardCheck className="w-5 h-5" />
-                </div>
-                <p className="text-accent-violet text-xs font-semibold uppercase tracking-[0.1em]">Free · AI-powered · 5 minutes</p>
-              </div>
-              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Benchmark your environment</h3>
-              <p className="text-text-secondary text-sm mb-5 leading-relaxed">
-                Read something that hits close to home? Each free assessment scores your Microsoft 365
-                environment and delivers a personalized PDF report with your risks and next steps.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
-                {ASSESSMENTS.map((quiz) => (
-                  <a
-                    key={quiz.href}
-                    href={quiz.href}
-                    className="group flex items-center justify-between gap-2 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:border-accent-blue/30 px-4 py-2.5 text-sm text-text-primary font-medium transition-colors"
-                  >
-                    {quiz.title}
-                    <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent-blue transition-colors flex-shrink-0" />
-                  </a>
-                ))}
               </div>
             </GlassPanel>
           </div>

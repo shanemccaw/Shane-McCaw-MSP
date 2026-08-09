@@ -429,28 +429,6 @@ export default function ArchitectEnterprise() {
         </div>
       </section>
 
-      {/* Not sure? CTA */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <GlassPanel className="p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-accent-blue mb-1">Not sure which plan is right?</p>
-              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Find your best-fit retainer in 2 minutes</h3>
-              <p className="text-text-secondary text-sm max-w-md">
-                Answer 10 questions about your M365 environment and support needs — get an instant recommendation for Essentials, Growth, or Enterprise.
-              </p>
-            </div>
-            <Link
-              href="/retainer-quiz"
-              className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3 rounded-xl transition-opacity hover:opacity-90 whitespace-nowrap flex-shrink-0 text-sm"
-              style={GRADIENT_BG}
-            >
-              Take the Retainer Quiz <ArrowRight className="w-4 h-4" />
-            </Link>
-          </GlassPanel>
-        </div>
-      </section>
-
       <TestimonialDiscountCallout />
       {/* Bottom CTA */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">

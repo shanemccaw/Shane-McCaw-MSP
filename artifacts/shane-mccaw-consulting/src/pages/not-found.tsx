@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bot, Brain, BookOpen, MessageCircle, ArrowLeft } from "lucide-react";
+import { BookOpen, MessageCircle, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -15,20 +15,6 @@ const ACTION_CARDS: {
   chat?: boolean;
   label: string;
 }[] = [
-  {
-    icon: <Bot className="w-6 h-6 text-accent-blue" />,
-    title: "Take the Copilot Readiness Quiz",
-    desc: "Find out if your M365 tenant is actually ready for Copilot — before you buy the licenses.",
-    href: "/copilot-quiz",
-    label: "Start the quiz →",
-  },
-  {
-    icon: <Brain className="w-6 h-6 text-accent-blue" />,
-    title: "Take the Retainer Selector Quiz",
-    desc: "Not sure which retainer tier fits? Answer five questions and get a straight recommendation.",
-    href: "/retainer-quiz",
-    label: "Find my tier →",
-  },
   {
     icon: <BookOpen className="w-6 h-6 text-accent-blue" />,
     title: "Browse the Resource Library",

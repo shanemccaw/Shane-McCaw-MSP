@@ -15,17 +15,6 @@ import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
 import Login from "./pages/Login";
 
-// Legacy Quiz Pages
-import CopilotQuiz from "./pages/CopilotQuiz";
-import M365HealthQuiz from "./pages/quizzes/M365HealthQuiz";
-import MigrationQuiz from "./pages/quizzes/MigrationQuiz";
-import SecurityQuiz from "./pages/quizzes/SecurityQuiz";
-import GovernanceQuiz from "./pages/quizzes/GovernanceQuiz";
-import PowerPlatformQuiz from "./pages/quizzes/PowerPlatformQuiz";
-import SharePointQuiz from "./pages/quizzes/SharePointQuiz";
-import TeamsQuiz from "./pages/quizzes/TeamsQuiz";
-import RetainerQuiz from "./pages/retainers/RetainerQuiz";
-import RetainerQuizResults from "./pages/retainers/RetainerQuizResults";
 import QuickWinQuiz from "./pages/QuickWinQuiz";
 import QuickWinResultsPage from "./pages/QuickWinResultsPage";
 import QuizResultsPage from "./pages/QuizResultsPage";
@@ -95,16 +84,6 @@ export default function App() {
       <Route path="/micro-offers" component={RedirectToHome} />
 
       {/* Quizzes & Lead Capture */}
-      <Route path="/copilot-quiz" component={CopilotQuiz} />
-      <Route path="/m365-health-quiz" component={M365HealthQuiz} />
-      <Route path="/migration-quiz" component={MigrationQuiz} />
-      <Route path="/security-quiz" component={SecurityQuiz} />
-      <Route path="/governance-quiz" component={GovernanceQuiz} />
-      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
-      <Route path="/sharepoint-quiz" component={SharePointQuiz} />
-      <Route path="/teams-quiz" component={TeamsQuiz} />
-      <Route path="/retainer-quiz" component={RetainerQuiz} />
-      <Route path="/retainer-quiz-results" component={() => <RetainerQuizResults />} />
       <Route path="/quick-win-quiz" component={QuickWinQuiz} />
       <Route path="/quick-win-results" component={QuickWinResultsPage} />
       <Route path="/quiz-results" component={QuizResultsPage} />
