@@ -308,14 +308,23 @@ export async function deleteIssue(id: number): Promise<void> {
   }
 }
 
-// ── CHAT mutations ────────────────────────────────────────────────────────────
+export function parseClaudeConversationId(input: string): string {
+  const trimmed = input.trim();
+  // Match UUID pattern in URLs like https://claude.ai/chat/13e012ad-5aa8-401a-9905-dcb0ec545147
+  const match = trimmed.match(/\/chat\/([a-f0-9-]+)/i);
+  if (match) return match[1];
+  return trimmed;
+}
 
 export async function createChat(conversationId: string, title: string, issueId: number | null = null, epicId: number | null = null, category: string | null = null): Promise<ChatRow | null> {
   try {
+    const cleanId = parseClaudeConversationId(conversationId);
+    const cleanTitle = title === conversationId ? cleanId : title;
+
     const res = await apiFetch("/admin/build-tracker/chats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, title, issueId, epicId, category }),
+      body: JSON.stringify({ conversationId: cleanId, title: cleanTitle, issueId, epicId, category }),
     });
     if (!res.ok) {
       const err = (await res.json()) as { error?: string };

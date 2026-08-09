@@ -12,7 +12,7 @@
 import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
-  GitPullRequest, AlertCircle, CheckCircle, Clock, Archive,
+  GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import {
@@ -83,38 +83,67 @@ function ActionBtn({
 // ── Claude chat chip ──────────────────────────────────────────────────────────
 
 function ChatOpenChip({ chat }: { chat: ChatRow }) {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this chat link?")) {
+      void deleteChat(chat.id);
+    }
+  };
+
   return (
-    <a
-      href={chat.claudeUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={`Open Claude chat: ${chat.conversationId}`}
+    <div
       style={{
         display: "flex", alignItems: "center", gap: 8,
-        padding: "10px 14px", borderRadius: 8, textDecoration: "none",
+        borderRadius: 8,
         background: `${ACCENT.info}12`,
         border: `1px solid ${ACCENT.info}30`,
         transition: "background 150ms",
-        cursor: "pointer",
+        paddingRight: 6,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = `${ACCENT.info}20`; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = `${ACCENT.info}12`; }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = `${ACCENT.info}20`; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = `${ACCENT.info}12`; }}
     >
-      <MessageSquare size={16} color={ACCENT.info} style={{ flex: "none" }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {chat.title === chat.conversationId
-            ? `Chat ${chat.conversationId.slice(0, 18)}…`
-            : chat.title}
-        </p>
-        {chat.notes && (
-          <p style={{ margin: "1px 0 0", fontSize: 11, color: TEXT.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {chat.notes}
+      <a
+        href={chat.claudeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Open Claude chat: ${chat.conversationId}`}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          flex: 1, padding: "10px 10px 10px 14px", textDecoration: "none",
+          minWidth: 0,
+        }}
+      >
+        <MessageSquare size={16} color={ACCENT.info} style={{ flex: "none" }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {chat.title === chat.conversationId
+              ? `Chat ${chat.conversationId.slice(0, 18)}…`
+              : chat.title}
           </p>
-        )}
-      </div>
-      <ExternalLink size={13} color={ACCENT.info} style={{ flex: "none", opacity: 0.6 }} />
-    </a>
+          {chat.notes && (
+            <p style={{ margin: "1px 0 0", fontSize: 11, color: TEXT.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {chat.notes}
+            </p>
+          )}
+        </div>
+        <ExternalLink size={13} color={ACCENT.info} style={{ flex: "none", opacity: 0.6 }} />
+      </a>
+      <button
+        onClick={handleDelete}
+        title="Delete chat link"
+        style={{
+          background: "transparent", border: 0, padding: 8, cursor: "pointer",
+          borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+          color: TEXT.caption,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT.danger; e.currentTarget.style.background = `${ACCENT.danger}15`; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = TEXT.caption; e.currentTarget.style.background = "transparent"; }}
+      >
+        <Trash size={14} />
+      </button>
+    </div>
   );
 }
 
