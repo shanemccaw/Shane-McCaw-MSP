@@ -574,7 +574,7 @@ function TriageView() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 600, display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ padding: 24, maxWidth: 900, display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
@@ -612,131 +612,142 @@ function TriageView() {
         </div>
       </div>
 
-      {/* Current Issue Card */}
-      <div style={{
-        padding: 20, background: SURFACE.card, borderRadius: 8,
-        border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 14,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <GitPullRequest size={15} color={ISSUE_STATUS_COLOR[issue.status]} />
-          <span style={{ fontSize: 11.5, fontFamily: FONT.mono, color: TEXT.dim }}>
-            {issue.githubNumber ? `#${issue.githubNumber}` : "Local Issue"}
-          </span>
-          <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
-        </div>
-        
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT.primary }}>
-          {issue.title}
-        </h2>
+      {/* Two Column Layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "start" }}>
+        {/* Left Column: Card, Status, and Controls */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Current Issue Card */}
+          <div style={{
+            padding: 20, background: SURFACE.card, borderRadius: 8,
+            border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 14,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <GitPullRequest size={15} color={ISSUE_STATUS_COLOR[issue.status]} />
+              <span style={{ fontSize: 11.5, fontFamily: FONT.mono, color: TEXT.dim }}>
+                {issue.githubNumber ? `#${issue.githubNumber}` : "Local Issue"}
+              </span>
+              <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
+            </div>
+            
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT.primary, lineHeight: 1.4 }}>
+              {issue.title}
+            </h2>
 
-        {epic ? (
-          <p style={{ margin: 0, fontSize: 12.5, color: TEXT.quiet }}>
-            Assigned to Epic: <strong style={{ color: ACCENT.greenSoft }}>{epic.title}</strong>
-          </p>
-        ) : (
-          <p style={{ margin: 0, fontSize: 12.5, color: ACCENT.amber, fontWeight: 500 }}>
-            ⚠️ No Epic assigned
-          </p>
-        )}
-      </div>
+            {epic ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: TEXT.quiet }}>
+                Assigned to Epic: <strong style={{ color: ACCENT.greenSoft }}>{epic.title}</strong>
+              </p>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12.5, color: ACCENT.amber, fontWeight: 500 }}>
+                ⚠️ No Epic assigned
+              </p>
+            )}
+          </div>
 
-      {/* Decisions Grid */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* 1. Epic Assignment */}
-        <Section title="Assign to Epic">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+          {/* Status Actions */}
+          <Section title="Set Status & Advance">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {(["backlog", "in_progress", "done", "closed"] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => void handleSetStatus(status)}
+                  style={{
+                    padding: "10px 8px", borderRadius: 6,
+                    border: `1px solid ${issue.status === status ? ISSUE_STATUS_COLOR[status] : LINE.control}`,
+                    background: issue.status === status ? `${ISSUE_STATUS_COLOR[status]}15` : SURFACE.well,
+                    color: issue.status === status ? ISSUE_STATUS_COLOR[status] : TEXT.quiet,
+                    cursor: "pointer", fontSize: 12, fontWeight: 600,
+                    fontFamily: FONT.sans,
+                  }}
+                >
+                  {ISSUE_STATUS_LABEL[status]}
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          {/* Footer controls */}
+          <div style={{ display: "flex", gap: 10, marginTop: 12, borderTop: `1px solid ${LINE.quiet}`, paddingTop: 16 }}>
             <button
-              onClick={() => void handleAssignEpic(null)}
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              disabled={currentIndex === 0}
               style={{
-                padding: "8px 12px", borderRadius: 6,
-                border: `1px solid ${!issue.epicId ? ACCENT.amber : LINE.control}`,
-                background: !issue.epicId ? `${ACCENT.amber}12` : SURFACE.well,
-                color: !issue.epicId ? ACCENT.amber : TEXT.quiet,
-                cursor: "pointer", fontSize: 12, fontWeight: 600, textAlign: "left",
-                fontFamily: FONT.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
+                fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
+                opacity: currentIndex === 0 ? 0.4 : 1,
               }}
             >
-              No Epic
+              Previous
             </button>
-            {state.epics.filter(e => e.status !== "closed").map((e) => (
+            <button
+              onClick={() => setIndex((i) => Math.min(triagable.length - 1, i + 1))}
+              disabled={currentIndex === triagable.length - 1}
+              style={{
+                padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
+                fontFamily: FONT.sans, cursor: currentIndex === triagable.length - 1 ? "default" : "pointer",
+                opacity: currentIndex === triagable.length - 1 ? 0.4 : 1,
+                marginLeft: "auto",
+              }}
+            >
+              Skip / Next
+            </button>
+            <button
+              onClick={() => void handleDelete()}
+              style={{
+                padding: "8px 16px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
+                background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12,
+                fontFamily: FONT.sans, cursor: "pointer",
+              }}
+            >
+              Delete Issue
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Epic Assignment list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Section title="Assign to Epic">
+            <div style={{
+              display: "flex", flexDirection: "column", gap: 6,
+              maxHeight: 520, overflowY: "auto", paddingRight: 4,
+            }}>
               <button
-                key={e.id}
-                onClick={() => void handleAssignEpic(e.id)}
+                onClick={() => void handleAssignEpic(null)}
                 style={{
-                  padding: "8px 12px", borderRadius: 6,
-                  border: `1px solid ${issue.epicId === e.id ? ACCENT.greenSoft : LINE.control}`,
-                  background: issue.epicId === e.id ? `${ACCENT.greenSoft}12` : SURFACE.well,
-                  color: issue.epicId === e.id ? ACCENT.greenSoft : TEXT.quiet,
-                  cursor: "pointer", fontSize: 12, fontWeight: 600, textAlign: "left",
-                  fontFamily: FONT.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  padding: "10px 14px", borderRadius: 6,
+                  border: `1px solid ${!issue.epicId ? ACCENT.amber : LINE.control}`,
+                  background: !issue.epicId ? `${ACCENT.amber}12` : SURFACE.well,
+                  color: !issue.epicId ? ACCENT.amber : TEXT.quiet,
+                  cursor: "pointer", fontSize: 12.5, fontWeight: 600, textAlign: "left",
+                  fontFamily: FONT.sans, flexShrink: 0,
+                  textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
                 }}
               >
-                {e.title}
+                No Epic
               </button>
-            ))}
-          </div>
-        </Section>
-
-        {/* 2. Status Actions */}
-        <Section title="Set Status & Advance">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-            {(["backlog", "in_progress", "done", "closed"] as const).map((status) => (
-              <button
-                key={status}
-                onClick={() => void handleSetStatus(status)}
-                style={{
-                  padding: "8px 4px", borderRadius: 6,
-                  border: `1px solid ${issue.status === status ? ISSUE_STATUS_COLOR[status] : LINE.control}`,
-                  background: issue.status === status ? `${ISSUE_STATUS_COLOR[status]}15` : SURFACE.well,
-                  color: issue.status === status ? ISSUE_STATUS_COLOR[status] : TEXT.quiet,
-                  cursor: "pointer", fontSize: 11, fontWeight: 600,
-                  fontFamily: FONT.sans,
-                }}
-              >
-                {ISSUE_STATUS_LABEL[status]}
-              </button>
-            ))}
-          </div>
-        </Section>
-      </div>
-
-      {/* Footer controls */}
-      <div style={{ display: "flex", gap: 10, marginTop: 12, borderTop: `1px solid ${LINE.quiet}`, paddingTop: 16 }}>
-        <button
-          onClick={() => setIndex((i) => Math.max(0, i - 1))}
-          disabled={currentIndex === 0}
-          style={{
-            padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
-            background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
-            fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
-            opacity: currentIndex === 0 ? 0.4 : 1,
-          }}
-        >
-          Previous
-        </button>
-        <button
-          onClick={() => setIndex((i) => Math.min(triagable.length - 1, i + 1))}
-          disabled={currentIndex === triagable.length - 1}
-          style={{
-            padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
-            background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
-            fontFamily: FONT.sans, cursor: currentIndex === triagable.length - 1 ? "default" : "pointer",
-            opacity: currentIndex === triagable.length - 1 ? 0.4 : 1,
-            marginLeft: "auto",
-          }}
-        >
-          Skip / Next
-        </button>
-        <button
-          onClick={() => void handleDelete()}
-          style={{
-            padding: "8px 16px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
-            background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12,
-            fontFamily: FONT.sans, cursor: "pointer",
-          }}
-        >
-          Delete Issue
-        </button>
+              {state.epics.filter(e => e.status !== "closed").map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => void handleAssignEpic(e.id)}
+                  style={{
+                    padding: "10px 14px", borderRadius: 6,
+                    border: `1px solid ${issue.epicId === e.id ? ACCENT.greenSoft : LINE.control}`,
+                    background: issue.epicId === e.id ? `${ACCENT.greenSoft}12` : SURFACE.well,
+                    color: issue.epicId === e.id ? ACCENT.greenSoft : TEXT.quiet,
+                    cursor: "pointer", fontSize: 12.5, fontWeight: 600, textAlign: "left",
+                    fontFamily: FONT.sans, flexShrink: 0,
+                    textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
+                  }}
+                  title={e.title}
+                >
+                  {e.title}
+                </button>
+              ))}
+            </div>
+          </Section>
+        </div>
       </div>
     </div>
   );
