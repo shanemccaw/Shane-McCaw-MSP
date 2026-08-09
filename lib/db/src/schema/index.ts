@@ -3187,6 +3187,46 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   // creates nothing.
   rescanSubscriptionId: text("rescan_subscription_id"),
 
+  // ── Multi-item SOW cart snapshot (#598, Epic #597 stage 1) ────────────────
+  // Purely additive extension so a checkout_sessions row can hold a real SOW
+  // cart instead of the single `productSlug` this table was built for. The
+  // marketing site's assessment-purchase path (`public-assessment-payment.ts`)
+  // never reads or writes these — it stays on `productSlug` alone.
+  //
+  // Shape decision: jsonb over native Postgres array columns, matching this
+  // codebase's dominant convention for a stored list of ids/selections
+  // (`sales_offer_rule_groups.required_signal_keys`, `engagement_projects.
+  // triggeredBy`/`sowItems`, `users.pinnedNavItems`) rather than the two-off
+  // `text().array()` usage elsewhere in this file. jsonb also lets both new
+  // fields share one representation — `sowAddonSelections` needs structured
+  // objects a native array can't hold, and splitting the two into different
+  // column kinds for no reason would be its own inconsistency.
+  //
+  // `sowSelectedPhaseServiceIds` holds real `services.id` values (the FK the
+  // Sales Offer Engine's own wire already carries as `serviceId` — see
+  // `WireRecommendedOffer` in sowLiveScope.ts) for each remediation phase kept
+  // in scope, NOT the client-side display slug `JourneyPhase.id` uses for
+  // toggle/navigation identity.
+  //
+  // `sowAddonSelections` mirrors `JourneySelection`'s addon/tier shape
+  // (journeyPricing.ts): one entry per addon the customer turned on, carrying
+  // the same string `addonId`/`tierId` keys the wire and client selection
+  // state already use (e.g. `"tenant-monitoring"`/`"enhanced"`) — these are
+  // stable catalog keys, not FKs, since the real priced row behind a tier is
+  // resolved server-side from the tenant's seat count at read time
+  // (`sow-monitoring-addon.ts`), not a fixed row id.
+  //
+  // `sowCartTotalCents` is the server-computed total at snapshot time, nullable
+  // like `rescanAddonPriceCents` above until that step runs — never a client-
+  // submitted number, per the epic's explicit "never trust a client-computed
+  // total for the charge" direction.
+  sowSelectedPhaseServiceIds: jsonb("sow_selected_phase_service_ids").$type<number[]>().notNull().default([]),
+  sowAddonSelections: jsonb("sow_addon_selections")
+    .$type<Array<{ addonId: string; tierId: string }>>()
+    .notNull()
+    .default([]),
+  sowCartTotalCents: integer("sow_cart_total_cents"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
