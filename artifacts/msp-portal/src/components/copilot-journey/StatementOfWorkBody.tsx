@@ -719,6 +719,15 @@ export function StatementOfWorkBody({
     [live, scope, selection, fetchWithAuth],
   );
 
+  // Stable across renders — `SowCartPaymentPanel` depends on this identity
+  // in its own `confirmOnServer` useCallback, which its payment-intent
+  // effect depends on in turn; a fresh inline arrow here re-fired that
+  // effect on every parent render, recreating the checkout session and
+  // re-mounting Stripe Elements in a loop (Git #631).
+  const onSowPaid = useCallback((amountCents: number) => {
+    setSowPayment({ status: "paid", amountCents });
+  }, []);
+
   /**
    * `JourneySignaturePanel`'s `onSign` — the real "sign()" moment for a live
    * scope (Git #603). Replaces the plain checkbox `sign()` below for
@@ -1462,7 +1471,7 @@ export function StatementOfWorkBody({
               discount={sowPayment.discount}
               phaseCount={sowPayment.phaseCount}
               addonCount={sowPayment.addonCount}
-              onPaid={(amountCents) => setSowPayment({ status: "paid", amountCents })}
+              onPaid={onSowPaid}
             />
           ) : sowPayment.status === "error" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
