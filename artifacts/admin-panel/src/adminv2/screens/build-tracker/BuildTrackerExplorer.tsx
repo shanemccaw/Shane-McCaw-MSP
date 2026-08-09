@@ -27,6 +27,7 @@ import { getSnapshot, subscribe, selectEpic, selectIssue, selectChat, issuesForE
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import type { ChatRow, EpicRow, IssueRow } from "./buildTrackerTypes";
 import { useContextMenu, ContextMenu } from "../../shell/ContextMenu";
+import { getShellApi } from "../../shell/ShellContext";
 
 
 function useStore() {
@@ -320,16 +321,28 @@ export function BuildTrackerExplorer() {
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   function handleEpic(id: number) {
-    selectEpic(state.selectedEpicId === id ? null : id);
-    selectIssue(null);
-    selectChat(null);
+    if (state.selectedEpicId === id) {
+      selectEpic(null);
+      getShellApi()?.navigate("/build-tracker");
+    } else {
+      getShellApi()?.openDoc({ kind: "epic", id: String(id), screenId: "build-tracker" });
+    }
   }
   function handleIssue(id: number) {
-    selectIssue(state.selectedIssueId === id ? null : id);
-    selectChat(null);
+    if (state.selectedIssueId === id) {
+      selectIssue(null);
+      getShellApi()?.navigate("/build-tracker");
+    } else {
+      getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
+    }
   }
   function handleChat(id: number) {
-    selectChat(state.selectedChatId === id ? null : id);
+    if (state.selectedChatId === id) {
+      selectChat(null);
+      getShellApi()?.navigate("/build-tracker");
+    } else {
+      getShellApi()?.openDoc({ kind: "chatLink", id: String(id), screenId: "build-tracker" });
+    }
   }
 
   function onEpicContextMenu(e: React.MouseEvent, epic: EpicRow) {

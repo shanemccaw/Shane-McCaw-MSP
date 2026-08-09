@@ -339,6 +339,7 @@ export const PEEK_KINDS = [
   "trigger",
   "issue",
   "chatLink",
+  "epic",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 

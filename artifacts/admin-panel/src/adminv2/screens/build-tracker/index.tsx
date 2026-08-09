@@ -21,7 +21,7 @@
 
 import {
   BookOpen, GitBranch, GitPullRequest, MessageSquare, Plus,
-  RefreshCw, AlertCircle, ExternalLink,
+  RefreshCw, AlertCircle, ExternalLink, Trash2,
 } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
@@ -71,6 +71,7 @@ registerScreen({
 
   render: (ctx) => {
     // When navigated here from a peek or palette record link, select the right node.
+    if (ctx.kind === "epic" && ctx.recordId)     selectEpic(Number(ctx.recordId));
     if (ctx.kind === "issue" && ctx.recordId)    selectIssue(Number(ctx.recordId));
     if (ctx.kind === "chatLink" && ctx.recordId) selectChat(Number(ctx.recordId));
     return <BuildTrackerBody />;
@@ -161,62 +162,242 @@ registerScreen({
     },
   ],
 
-  // ── Contextual tab: Issue Tools ─────────────────────────────────────────────
+  // ── Contextual tab: Tools ──────────────────────────────────────────────────
   contextualTab: (ctx) => {
-    if (ctx.kind !== "issue" || !ctx.recordId) return null;
-    const issue = issueById(ctx.recordId);
-    if (!issue) return null;
-    const next = ISSUE_STATUS_NEXT[issue.status];
-    return {
-      id: "issue-tools",
-      label: "Issue Tools",
-      groups: [
-        {
-          label: "Status",
-          large: [
-            {
-              label: `→ ${ISSUE_STATUS_LABEL[next]}`,
-              icon: GitPullRequest,
-              intent: "record",
-              color: ISSUE_STATUS_COLOR[next],
-              onSelect: () => void updateIssue(issue.id, { status: next }),
-            },
-          ],
-        },
-        {
-          label: "Chat",
-          small: [
-            {
-              label: "Link a chat",
-              icon: MessageSquare,
-              intent: "record",
-              onSelect: () => {
-                const cid = window.prompt("Paste the Claude conversation ID:");
-                if (cid?.trim()) {
-                  void (async () => {
-                    const { createChat } = await import("./buildTrackerStore");
-                    await createChat(cid.trim(), cid.trim(), issue.id, null, null);
-                  })();
-                }
+    if (!ctx.kind || !ctx.recordId) return null;
+
+    if (ctx.kind === "epic") {
+      const epic = epicById(Number(ctx.recordId));
+      if (!epic) return null;
+      return {
+        id: "epic-tools",
+        label: "Epic Tools",
+        groups: [
+          {
+            label: "Actions",
+            large: [
+              {
+                label: "New issue",
+                icon: GitPullRequest,
+                intent: "record",
+                onSelect: () => {
+                  const title = window.prompt(`New issue title for Epic "${epic.title}":`);
+                  if (title?.trim()) void createIssue(title.trim(), epic.id);
+                },
               },
-            },
-          ],
-        },
-        {
-          label: "Navigate",
-          small: [
-            { label: "All issues", icon: GitBranch, intent: "open", onSelect: goto },
-            ...(issue.githubUrl
-              ? [{ label: "GitHub", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(issue.githubUrl!, "_blank") }]
-              : []),
-          ],
-        },
-      ],
-    };
+            ],
+            small: [
+              {
+                label: epic.status === "closed" ? "Mark as Open" : "Mark as Closed",
+                icon: GitBranch,
+                intent: "record",
+                onSelect: () => void updateEpic(epic.id, { status: epic.status === "closed" ? "open" : "closed" }),
+              },
+              {
+                label: "Link Claude chat",
+                icon: MessageSquare,
+                intent: "record",
+                onSelect: () => {
+                  const cid = window.prompt("Paste Claude conversation ID or URL:");
+                  if (cid?.trim()) void createChat(cid.trim(), cid.trim(), null, epic.id);
+                },
+              },
+              {
+                label: "Delete Epic",
+                icon: Trash2,
+                intent: "record",
+                color: ACCENT.danger,
+                onSelect: () => {
+                  if (window.confirm(`Delete Epic "${epic.title}"? This cannot be undone.`)) {
+                    void deleteEpic(epic.id);
+                    getShellApi()?.navigate(ROUTE);
+                  }
+                },
+              },
+            ],
+          },
+          {
+            label: "Navigate",
+            small: [
+              { label: "All epics", icon: BookOpen, intent: "open", onSelect: goto },
+              ...(epic.githubNumber
+                ? [{ label: "GitHub Milestone", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${epic.githubNumber}`, "_blank") }]
+                : []),
+            ],
+          },
+        ],
+      };
+    }
+
+    if (ctx.kind === "issue") {
+      const issue = issueById(ctx.recordId);
+      if (!issue) return null;
+      const next = ISSUE_STATUS_NEXT[issue.status];
+      return {
+        id: "issue-tools",
+        label: "Issue Tools",
+        groups: [
+          {
+            label: "Status",
+            large: [
+              {
+                label: `→ ${ISSUE_STATUS_LABEL[next]}`,
+                icon: GitPullRequest,
+                intent: "record",
+                color: ISSUE_STATUS_COLOR[next],
+                onSelect: () => void updateIssue(issue.id, { status: next }),
+              },
+            ],
+            small: [
+              {
+                label: "Set as Backlog",
+                icon: GitPullRequest,
+                intent: "record",
+                onSelect: () => void updateIssue(issue.id, { status: "backlog" }),
+              },
+              {
+                label: "Set as In Progress",
+                icon: GitPullRequest,
+                intent: "record",
+                onSelect: () => void updateIssue(issue.id, { status: "in_progress" }),
+              },
+              {
+                label: "Set as Done",
+                icon: GitPullRequest,
+                intent: "record",
+                onSelect: () => void updateIssue(issue.id, { status: "done" }),
+              },
+              {
+                label: "Set as Closed",
+                icon: GitPullRequest,
+                intent: "record",
+                onSelect: () => void updateIssue(issue.id, { status: "closed" }),
+              },
+            ],
+          },
+          {
+            label: "Chat",
+            small: [
+              {
+                label: "Link a chat",
+                icon: MessageSquare,
+                intent: "record",
+                onSelect: () => {
+                  const cid = window.prompt("Paste the Claude conversation ID:");
+                  if (cid?.trim()) {
+                    void (async () => {
+                      const { createChat } = await import("./buildTrackerStore");
+                      await createChat(cid.trim(), cid.trim(), issue.id, null, null);
+                    })();
+                  }
+                },
+              },
+              {
+                label: "Delete Issue",
+                icon: Trash2,
+                intent: "record",
+                color: ACCENT.danger,
+                onSelect: () => {
+                  if (window.confirm(`Delete Issue "${issue.title}"? This cannot be undone.`)) {
+                    void deleteIssue(issue.id);
+                    getShellApi()?.navigate(ROUTE);
+                  }
+                },
+              },
+            ],
+          },
+          {
+            label: "Navigate",
+            small: [
+              { label: "All issues", icon: BookOpen, intent: "open", onSelect: goto },
+              ...(issue.githubUrl
+                ? [{ label: "GitHub Issue", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(issue.githubUrl!, "_blank") }]
+                : []),
+            ],
+          },
+        ],
+      };
+    }
+
+    if (ctx.kind === "chatLink") {
+      const chat = chatById(ctx.recordId);
+      if (!chat) return null;
+      return {
+        id: "chat-tools",
+        label: "Chat Tools",
+        groups: [
+          {
+            label: "Chat",
+            large: [
+              {
+                label: "Open in Claude",
+                icon: ExternalLink,
+                intent: "record",
+                onSelect: () => window.open(chat.claudeUrl, "_blank"),
+              },
+            ],
+            small: [
+              {
+                label: "Rename chat",
+                icon: MessageSquare,
+                intent: "record",
+                onSelect: () => {
+                  const title = window.prompt("New chat title:", chat.title);
+                  if (title?.trim()) void updateChat(chat.id, { title: title.trim() });
+                },
+              },
+              {
+                label: "Delete chat link",
+                icon: Trash2,
+                intent: "record",
+                color: ACCENT.danger,
+                onSelect: () => {
+                  if (window.confirm("Delete this chat link?")) {
+                    void deleteChat(chat.id);
+                    getShellApi()?.navigate(ROUTE);
+                  }
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    return null;
   },
 
-  // ── Peek: issue ─────────────────────────────────────────────────────────────
+  // ── Peeks ──────────────────────────────────────────────────────────────────
   peeks: {
+    epic: (id) => {
+      const epic = epicById(Number(id));
+      if (!epic) return null;
+      return {
+        kind: "epic",
+        eyebrow: "EPIC",
+        title: epic.title,
+        sub: epic.githubNumber ? `#${epic.githubNumber} · ${EPIC_STATUS_LABEL[epic.status]}` : EPIC_STATUS_LABEL[epic.status],
+        icon: GitBranch,
+        tone: EPIC_STATUS_COLOR[epic.status],
+        tag: EPIC_STATUS_LABEL[epic.status],
+        tagTone: EPIC_STATUS_COLOR[epic.status],
+        facts: [
+          { label: "Status", value: EPIC_STATUS_LABEL[epic.status], prose: true },
+        ],
+        edits: [
+          { key: "title", label: "Title", value: epic.title, onChange: (v) => void updateEpic(epic.id, { title: v }) },
+        ],
+        open: () => {
+          selectEpic(epic.id);
+          getShellApi()?.openDoc({ kind: "epic", id: String(epic.id), screenId: "build-tracker" });
+        },
+        openLabel: "Open detail",
+        actions: [
+          { label: "Delete", tone: "danger", confirm: true, onSelect: () => void deleteEpic(epic.id) },
+        ],
+      };
+    },
+
     issue: (id) => {
       const issue = issueById(id);
       if (!issue) return null;
