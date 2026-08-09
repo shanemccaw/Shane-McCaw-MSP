@@ -7,11 +7,11 @@
  */
 
 import { useEffect } from "react";
-import { useAdminFetch } from "@/hooks/useAdminFetch";
+import { useAdminFetch } from "@/lib/useAdminFetch";
 import { loadAll, wireAdminFetch } from "./buildTrackerStore";
 
 export function BuildTrackerFetchBridge() {
-  const adminFetch = useAdminFetch();
+  const { adminFetch } = useAdminFetch();
 
   useEffect(() => {
     wireAdminFetch(adminFetch);
