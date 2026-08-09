@@ -50,6 +50,14 @@ export async function fetchDbSchema(adminFetch: AdminFetch): Promise<SchemaTable
   return data.tables ?? [];
 }
 
+/** The file's real text off the server filesystem — no execution, no DB hit. */
+export async function fetchMigrationContent(adminFetch: AdminFetch, filename: string): Promise<string> {
+  const data = await json<{ filename: string; content: string }>(
+    await adminFetch(`/api/simulator/migrations/${encodeURIComponent(filename)}/content`),
+  );
+  return data.content ?? "";
+}
+
 // ── Execution ────────────────────────────────────────────────────────────────
 
 export async function executeSql(adminFetch: AdminFetch, query: string): Promise<SqlStatementResult[]> {

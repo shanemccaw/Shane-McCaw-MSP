@@ -69,6 +69,11 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...original, default: { ...original, readdir: mockReaddir, readFile: mockReadFile } };
+});
+
 vi.mock("../lib/engine-test-log-buffer", () => ({
   pushEngineTestLog: vi.fn(),
   listEngineTestLogs: vi.fn().mockReturnValue([]),
@@ -81,8 +86,14 @@ vi.mock("./admin-signal-rules", () => ({
   saveSnapshot: vi.fn().mockResolvedValue(undefined),
 }));
 
-const { mockRunForTenant } = vi.hoisted(() => ({
+const { mockRunForTenant, mockReaddir, mockReadFile } = vi.hoisted(() => ({
   mockRunForTenant: vi.fn(),
+  // GET /simulator/migrations/:filename/content reads real files off disk
+  // (lib/db/migrations/manual/) — mocked here rather than pointed at a real
+  // fixture directory, same reasoning every other admin-engines.ts dependency
+  // in this file is mocked instead of hit for real.
+  mockReaddir: vi.fn(),
+  mockReadFile: vi.fn(),
 }));
 
 vi.mock("../lib/engine-registry", async (importOriginal) => {
@@ -347,6 +358,25 @@ describe("POST /simulator/sql/execute", () => {
     expect(res.body.statements[1].success).toBe(false);
     expect(res.body.statements[1].error).toContain("does not exist");
     expect(res.body.statements[2].success).toBe(true);
+  });
+});
+
+describe("GET /simulator/migrations/:filename/content", () => {
+  it("returns a recognized manual migration file's real text", async () => {
+    mockReaddir.mockResolvedValue([{ name: "0001_test.sql", isFile: () => true }]);
+    mockReadFile.mockResolvedValue("create table foo (id serial primary key);");
+
+    const res = await request(app).get("/simulator/migrations/0001_test.sql/content").set(authHeader);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ filename: "0001_test.sql", content: "create table foo (id serial primary key);" });
+  });
+
+  it("rejects a filename that is not in the real directory listing (allowlist, not just sanitization)", async () => {
+    mockReaddir.mockResolvedValue([{ name: "0001_test.sql", isFile: () => true }]);
+
+    const res = await request(app).get("/simulator/migrations/..%2F..%2Fetc%2Fpasswd/content").set(authHeader);
+    expect(res.status).toBe(400);
+    expect(mockReadFile).not.toHaveBeenCalled();
   });
 });
 

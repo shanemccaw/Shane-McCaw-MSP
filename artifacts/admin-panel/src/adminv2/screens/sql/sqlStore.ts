@@ -23,6 +23,7 @@ import {
   executeMigrationFile,
   executeSql,
   fetchDbSchema,
+  fetchMigrationContent,
   fetchMigrationFiles,
   fetchSqlScripts,
   updateSqlScript,
@@ -45,6 +46,9 @@ export interface SqlStoreState {
   migrations: MigrationFile[];
   migrationsLoading: boolean;
   migrationsError: string | null;
+  /** The real file text, keyed by filename — fetched on demand, once, when the editor opens one. */
+  migrationContent: Record<string, string>;
+  migrationContentLoading: Record<string, boolean>;
 
   schema: SchemaTable[];
   schemaLoading: boolean;
@@ -79,6 +83,8 @@ let state: SqlStoreState = {
   migrations: [],
   migrationsLoading: false,
   migrationsError: null,
+  migrationContent: {},
+  migrationContentLoading: {},
 
   schema: [],
   schemaLoading: false,
@@ -133,6 +139,29 @@ export async function loadMigrations(): Promise<void> {
     setState({ migrationsLoading: false, migrations });
   } catch (err) {
     setState({ migrationsLoading: false, migrationsError: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
+ * Fetches one migration file's real text, once, and caches it by filename —
+ * safe to call every time the editor opens a migration doc, since a repeat
+ * call for an already-cached (or in-flight) filename is a no-op.
+ */
+export async function loadMigrationContent(filename: string): Promise<void> {
+  if (!adminFetchRef) return;
+  if (state.migrationContent[filename] !== undefined || state.migrationContentLoading[filename]) return;
+  setState({ migrationContentLoading: { ...state.migrationContentLoading, [filename]: true } });
+  try {
+    const content = await fetchMigrationContent(adminFetchRef, filename);
+    setState({
+      migrationContentLoading: { ...state.migrationContentLoading, [filename]: false },
+      migrationContent: { ...state.migrationContent, [filename]: content },
+    });
+  } catch (err) {
+    setState({
+      migrationContentLoading: { ...state.migrationContentLoading, [filename]: false },
+      lastMessage: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -312,6 +341,8 @@ export function resetSqlStore(): void {
     migrations: [],
     migrationsLoading: false,
     migrationsError: null,
+    migrationContent: {},
+    migrationContentLoading: {},
     schema: [],
     schemaLoading: false,
     draftActive: false,

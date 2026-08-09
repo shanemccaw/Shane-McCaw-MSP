@@ -30,24 +30,32 @@ import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { AlertTriangle, Play, Save } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
-import { createScriptFromDraft, getSnapshot, patchScript, runMigrationFile, runQueryText, setDraftQuery, subscribe } from "./sqlStore";
+import { createScriptFromDraft, getSnapshot, loadMigrationContent, patchScript, runMigrationFile, runQueryText, setDraftQuery, subscribe } from "./sqlStore";
 import { containsDangerousKeyword, relativeTime } from "./sqlTypes";
 
-const editorSurfaceTheme = EditorView.theme({
-  "&": { backgroundColor: SURFACE.app, height: "100%" },
-  ".cm-scroller": { fontFamily: FONT.mono, fontSize: "12.5px" },
-  ".cm-gutters": { backgroundColor: SURFACE.app, borderRight: `1px solid ${LINE.subtle}`, color: TEXT.faintest },
-  ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
-  ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
-  ".cm-content": { caretColor: "#fff" },
-});
-
-function migrationPlaceholder(filename: string): string {
-  return `-- lib/db/migrations/manual/${filename}\n-- Executed directly from the server filesystem when you run it.\n-- Not previewable here — nothing client-side has read its contents.`;
-}
+// `oneDark` is the base palette (backgrounds, selection, syntax highlighting,
+// autocomplete popup) — without it CodeMirror falls back to its default
+// *light* theme almost everywhere, which is why the editor was rendering as
+// a bright white box against the rest of this shell's dark chrome. The
+// override on top only repaints the couple of surfaces that need to match
+// `theme.ts` tokens exactly rather than oneDark's own dark blue-grey.
+const editorSurfaceTheme = EditorView.theme(
+  {
+    "&": { backgroundColor: SURFACE.app, height: "100%" },
+    ".cm-scroller": { fontFamily: FONT.mono, fontSize: "12.5px" },
+    ".cm-content": { backgroundColor: SURFACE.app, caretColor: "#fff" },
+    ".cm-gutters": { backgroundColor: SURFACE.app, borderRight: `1px solid ${LINE.subtle}`, color: TEXT.faintest },
+    ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
+    ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
+    ".cm-tooltip, .cm-tooltip-autocomplete": { backgroundColor: SURFACE.overlay, border: `1px solid ${LINE.control}` },
+    ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: SURFACE.wellHover },
+  },
+  { dark: true },
+);
 
 interface Props {
   recordId?: string;
@@ -66,7 +74,13 @@ export function SqlEditorBody({ recordId, kind }: Props) {
   const migration = kind === "migration" && recordId ? store.migrations.find((m) => m.filename === recordId) : undefined;
   const docId = script ? `script:${script.id}` : migration ? `migration:${migration.filename}` : null;
 
-  const savedText = script ? script.query : migration ? migrationPlaceholder(migration.filename) : store.draftQuery;
+  const migrationText = migration
+    ? (store.migrationContent[migration.filename] ??
+      (store.migrationContentLoading[migration.filename]
+        ? `-- Loading lib/db/migrations/manual/${migration.filename}…`
+        : `-- lib/db/migrations/manual/${migration.filename}`))
+    : undefined;
+  const savedText = script ? script.query : migration ? migrationText! : store.draftQuery;
   const editedText = docId ? edits[docId] : undefined;
   const isReadOnly = !!migration;
   const text = isReadOnly ? savedText : (editedText ?? savedText);
@@ -81,6 +95,11 @@ export function SqlEditorBody({ recordId, kind }: Props) {
     if (docId) shell.setDocDirty(docId, dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, dirty]);
+
+  useEffect(() => {
+    if (migration) void loadMigrationContent(migration.filename);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [migration?.filename]);
 
   const schemaMap = useMemo(() => {
     const map: Record<string, { label: string; detail: string }[]> = {};
@@ -219,6 +238,7 @@ export function SqlEditorBody({ recordId, kind }: Props) {
           onChange={setText}
           onUpdate={(viewUpdate) => setHasSelection(!viewUpdate.state.selection.main.empty)}
           extensions={extensions}
+          theme={oneDark}
           height="100%"
           style={{ height: "100%", fontSize: 12.5 }}
           basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: !isReadOnly }}

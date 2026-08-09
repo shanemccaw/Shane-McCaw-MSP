@@ -1969,6 +1969,35 @@ router.post("/simulator/migrations/execute", requireAdmin, async (req: Request, 
 });
 
 /**
+ * @route GET /api/simulator/migrations/:filename/content
+ * @desc Reads one manual migration file's real text off disk, for the SQL
+ *       Runner's editor to preview before running — no execution, no DB hit.
+ *       Safe to expose: these files are already committed to the repo under
+ *       lib/db/migrations/manual/, not secret. Distinct from the run-history
+ *       row deliberately not carrying SQL text (`/migrations/execute`'s own
+ *       comment) — that is about what a *run* records, not whether the file
+ *       itself can be read.
+ */
+router.get("/simulator/migrations/:filename/content", requireAdmin, async (req: Request, res: Response) => {
+  const filename = String(req.params.filename ?? "");
+  try {
+    // Exact allowlist check against the real directory listing — not just
+    // string sanitization — so a path-traversal filename can never reach fs.readFile.
+    const realFiles = await listManualMigrationFiles();
+    if (!realFiles.includes(filename)) {
+      return res.status(400).json({ error: "Not a recognized manual migration file." });
+    }
+
+    const filePath = path.join(MANUAL_MIGRATIONS_DIR, filename);
+    const content = await fs.readFile(filePath, "utf8");
+    return res.json({ filename, content });
+  } catch (err: any) {
+    systemLog.error({ err, filename }, "Simulator migrations: failed to read file content");
+    return res.status(500).json({ error: err.message || "Failed to read migration file" });
+  }
+});
+
+/**
  * @route GET /api/simulator/sql/scripts
  * @desc Gets all saved, categorized SQL utility scripts
  */

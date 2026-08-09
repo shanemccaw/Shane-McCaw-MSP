@@ -11,7 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getScreen, resetRegistry } from "../../registry/registry";
-import { configureSqlFetch, loadMigrations, loadScripts, resetSqlStore } from "./sqlStore";
+import { configureSqlFetch, getSnapshot, loadMigrationContent, loadMigrations, loadScripts, resetSqlStore } from "./sqlStore";
 import { containsDangerousKeyword } from "./sqlTypes";
 
 const fetchWithAuth = vi.fn();
@@ -139,5 +139,30 @@ describe("registration", () => {
 
     expect(resolver({ kind: "migration", recordId: "missing.sql" })).toBeNull();
     expect(resolver({ kind: "migration", recordId: "0001_test.sql" })?.id).toBe("sql-migration-tools");
+  });
+});
+
+describe("loadMigrationContent", () => {
+  it("fetches a migration file's real text once and caches it by filename", async () => {
+    fetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => ({ filename: "0001_test.sql", content: "create table foo (id serial primary key);" }),
+    });
+
+    await loadMigrationContent("0001_test.sql");
+    expect(getSnapshot().migrationContent["0001_test.sql"]).toBe("create table foo (id serial primary key);");
+    expect(fetchWithAuth).toHaveBeenCalledWith("/api/simulator/migrations/0001_test.sql/content");
+
+    // Already cached — a second call must not re-fetch.
+    fetchWithAuth.mockClear();
+    await loadMigrationContent("0001_test.sql");
+    expect(fetchWithAuth).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a fetch failure without caching a value for that filename", async () => {
+    fetchWithAuth.mockResolvedValue({ ok: false, json: async () => ({ error: "not found" }) });
+    await loadMigrationContent("missing.sql");
+    expect(getSnapshot().migrationContent["missing.sql"]).toBeUndefined();
+    expect(getSnapshot().lastMessage).toBe("not found");
   });
 });
