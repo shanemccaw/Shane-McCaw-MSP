@@ -8,6 +8,7 @@
 import type {
   DefinitionRow,
   PendingApprovalRow,
+  RunDetail,
   RunRow,
   StoredEdge,
   StoredNode,
@@ -187,7 +188,8 @@ export async function listRuns(adminFetch: AdminFetch, opts: { definitionId?: nu
   return readJson(res, "Failed to load runs");
 }
 
-export async function getRun(adminFetch: AdminFetch, id: number): Promise<RunRow> {
+/** The full execution trace — logs, per-node outputs, branch path, graph. Heavier than `listRuns`' rows on purpose; only fetched for the one run open as a doc. */
+export async function getRunDetail(adminFetch: AdminFetch, id: number): Promise<RunDetail> {
   const res = await adminFetch(`${BASE}/runs/${id}`);
   return readJson(res, "Failed to load the run");
 }

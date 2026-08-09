@@ -39,6 +39,7 @@ import {
   whenShort,
   formatDuration,
   type DefinitionRow,
+  type RunDetail,
   type RunRow,
   type RunStatus,
   type StoredNode,
@@ -61,6 +62,7 @@ export function WorkflowProperties() {
 
   if (node && def) return <NodeView node={node} definitionId={def.id} />;
   if (def) return <DefinitionView def={def} state={state} />;
+  if (state.runDetail) return <RunView run={state.runDetail} />;
   return <Overview state={state} />;
 }
 
@@ -322,6 +324,52 @@ function RunRowView({ run }: { run: RunRow }) {
           Re-run
         </button>
       )}
+    </div>
+  );
+}
+
+// ── A run open (the `workflowRun` doc) ───────────────────────────────────────
+// Compact quick-facts + actions — the real execution trace (per-step status,
+// input/output, logs) is `RunDetailBody.tsx`'s job, in the centre panel.
+
+function RunView({ run }: { run: RunDetail }) {
+  const inFlight = run.status === "running" || run.status === "pending";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "12px 14px 20px", overflow: "auto", height: "100%" }}>
+      <Section title="This run">
+        <Fact label="Status" value={STATUS_LABEL[run.status]} color={STATUS_TONE[run.status]} />
+        <Fact label="Trigger" value={run.triggerRef ? `${run.triggerType} — ${run.triggerRef}` : run.triggerType} />
+        <Fact label="Version" value={run.versionLabel ?? "unknown"} />
+        <Fact label="Started" value={whenShort(run.startedAt ?? run.createdAt)} />
+        {run.finishedAt && <Fact label="Duration" value={formatDuration(run.durationMs)} />}
+      </Section>
+
+      {run.errorMessage && (
+        <Section title="Error">
+          <span style={{ fontSize: 11.5, lineHeight: 1.55, color: ACCENT.danger, whiteSpace: "pre-wrap" }}>{run.errorMessage}</span>
+        </Section>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {inFlight && (
+          <button onClick={() => void cancelRunNow(run.id)} style={{ padding: "5px 11px", borderRadius: 5, border: `1px solid ${ACCENT.danger}`, background: "transparent", color: ACCENT.danger, fontFamily: "inherit", fontSize: 11.5, cursor: "pointer" }}>
+            Cancel
+          </button>
+        )}
+        {!inFlight && (
+          <button onClick={() => void rerunNow(run.id)} style={{ padding: "5px 11px", borderRadius: 5, border: `1px solid ${LINE.strong}`, background: "transparent", color: TEXT.soft, fontFamily: "inherit", fontSize: 11.5, cursor: "pointer" }}>
+            Re-run
+          </button>
+        )}
+        {run.definitionId != null && (
+          <button
+            onClick={() => getShellApi()?.openDoc({ kind: "workflow", id: String(run.definitionId), screenId: "workflows" })}
+            style={{ padding: "5px 11px", borderRadius: 5, border: 0, background: PRIMARY, color: "#fff", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+          >
+            Open the workflow
+          </button>
+        )}
+      </div>
     </div>
   );
 }

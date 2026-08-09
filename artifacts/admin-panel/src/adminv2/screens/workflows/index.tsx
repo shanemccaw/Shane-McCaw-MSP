@@ -10,24 +10,34 @@
  * shell wiring around it: ribbon, peeks, palette, and a properties panel that
  * replaces the old page's giant node config panel with a plain data editor.
  *
+ * This screen owns two record kinds under one route, disambiguated by
+ * `ctx.kind` the same way `screens/ad/` splits msp/tenant/user/group/ou:
+ * `workflow` (a `wf_definitions` row) renders the canvas (`WorkflowBody.tsx`);
+ * `workflowRun` (one `wf_runs` row) renders its execution trace
+ * (`RunDetailBody.tsx`) instead — opening a run never shows the canvas.
+ *
  * ## Intent audit (`SHELL.md` section 1)
  *
  * The Home tab only opens the workflows/runs galleries or creates a new
  * workflow. The Watch tab only opens the pending-approvals gallery. Every
- * action that needs one specific definition open (run it, publish it,
- * duplicate it, add a trigger) is on the contextual tab, `intent: "record"`.
+ * action that needs one specific definition or run open (run it, publish it,
+ * duplicate it, add a trigger, cancel/re-run) is on the contextual tab,
+ * `intent: "record"`.
  */
 
 import { useEffect } from "react";
-import { AlertTriangle, Copy, Play, Plus, RefreshCw, UploadCloud, Workflow as WorkflowIcon, Zap } from "lucide-react";
+import { AlertTriangle, Copy, Play, Plus, RefreshCw, RotateCcw, UploadCloud, Workflow as WorkflowIcon, XCircle, Zap } from "lucide-react";
 import { ACCENT, ACCENT_TEXT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import type { CommandItem, GallerySpec, PeekModel } from "../../registry/types";
+import { RunDetailBody } from "./RunDetailBody";
 import { WorkflowBody } from "./WorkflowBody";
 import { WorkflowExplorer } from "./WorkflowExplorer";
 import { WorkflowProperties } from "./WorkflowProperties";
 import {
+  cancelRunNow,
+  clearRunDetail,
   decideApprovalNow,
   definitionById,
   duplicateDefinitionAndOpen,
@@ -36,11 +46,13 @@ import {
   publishCurrentVersion,
   refreshAll,
   removeDefinition,
+  rerunNow,
   runById,
   runNow,
   saveDefinitionCore,
   saveGraph,
   selectDefinition,
+  selectRunDetail,
   RIBBON_KEYS,
   createDefinitionInteractive,
 } from "./workflowStore";
@@ -63,6 +75,10 @@ function openDefinitionDoc(id: number) {
 
 function openRunPeek(id: number) {
   return () => getShellApi()?.openPeek("workflowRun", String(id));
+}
+
+function openRunDoc(id: number) {
+  return () => getShellApi()?.openDoc({ kind: "workflowRun", id: String(id), screenId: "workflows" });
 }
 
 function newWorkflow(): void {
@@ -185,8 +201,8 @@ function workflowRunPeek(id: string): PeekModel | null {
       { label: "Started", value: whenShort(run.startedAt ?? run.createdAt), prose: true },
     ],
     body: run.errorMessage ? { title: "Error", content: run.errorMessage } : undefined,
-    open: run.definitionId ? openDefinitionDoc(run.definitionId) : undefined,
-    openLabel: "Open the workflow",
+    open: openRunDoc(run.id),
+    openLabel: "Open the run",
     actions: approval
       ? [
           { label: "Approve", tone: "primary", onSelect: () => void decideApprovalNow(approval.id, "approved") },
@@ -201,12 +217,17 @@ function workflowRunPeek(id: string): PeekModel | null {
 function WorkflowScreen({ kind, recordId }: { kind?: string; recordId?: string }) {
   useEffect(() => {
     if (kind === "workflow" && recordId) {
+      clearRunDetail();
       void selectDefinition(Number(recordId));
-    } else if (kind !== "workflowRun") {
+    } else if (kind === "workflowRun" && recordId) {
       void selectDefinition(null);
+      void selectRunDetail(Number(recordId));
+    } else {
+      void selectDefinition(null);
+      clearRunDetail();
     }
   }, [kind, recordId]);
-  return <WorkflowBody />;
+  return kind === "workflowRun" ? <RunDetailBody /> : <WorkflowBody />;
 }
 
 registerScreen({
@@ -282,6 +303,24 @@ registerScreen({
               { label: "New version", icon: Plus, intent: "record", onSelect: () => void newVersion() },
               { label: "Duplicate", icon: Copy, intent: "record", onSelect: () => void duplicateDefinitionAndOpen(def.id) },
             ],
+          },
+        ],
+      };
+    }
+    if (ctx.kind === "workflowRun" && ctx.recordId) {
+      const run = runById(ctx.recordId);
+      if (!run) return null;
+      const inFlight = run.status === "running" || run.status === "pending";
+      return {
+        id: "workflow-run-tools",
+        label: "Run Tools",
+        groups: [
+          {
+            label: "This run",
+            large: inFlight
+              ? [{ label: "Cancel", icon: XCircle, intent: "record", color: ACCENT.danger, onSelect: () => void cancelRunNow(run.id) }]
+              : [{ label: "Re-run", icon: RotateCcw, intent: "record", color: ACCENT_TEXT.green, onSelect: () => void rerunNow(run.id) }],
+            small: run.definitionId != null ? [{ label: "Open the workflow", icon: WorkflowIcon, intent: "record", onSelect: openDefinitionDoc(run.definitionId) }] : [],
           },
         ],
       };

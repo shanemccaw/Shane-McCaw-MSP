@@ -22,6 +22,8 @@ import { getScreen, resetRegistry } from "../../registry/registry";
 import { getLiveRibbonEntry } from "../../shell/liveRibbon";
 import {
   addTrigger,
+  cancelRunNow,
+  clearRunDetail,
   configureWorkflowFetch,
   definitionById,
   deleteNode,
@@ -30,16 +32,18 @@ import {
   publishCurrentVersion,
   reloadDefinitions,
   removeTrigger,
+  rerunNow,
   resetWorkflowStore,
   runNow,
   saveGraph,
   selectDefinition,
+  selectRunDetail,
   setGraph,
   toggleTrigger,
   warmWorkflows,
   RIBBON_KEYS,
 } from "./workflowStore";
-import type { DefinitionRow, RunRow, TriggerRow, VersionRow } from "./workflowTypes";
+import type { DefinitionRow, RunDetail, RunRow, TriggerRow, VersionRow } from "./workflowTypes";
 
 const fetchWithAuth = vi.fn();
 
@@ -113,6 +117,18 @@ function run(overrides: Partial<RunRow> = {}): RunRow {
     durationMs: 5000,
     isSystem: false,
     createdAt: "2026-08-08T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function runDetail(overrides: Partial<RunDetail> = {}): RunDetail {
+  return {
+    ...run(),
+    graph: { nodes: [{ id: "node-1", type: "start", position: { x: 0, y: 0 }, data: { nodeType: "start", label: "Start" } }], edges: [] },
+    logs: [],
+    nodeOutputs: [],
+    nodeResultMap: {},
+    activeNodeId: null,
     ...overrides,
   };
 }
@@ -233,6 +249,16 @@ describe("peeks.workflowRun", () => {
 
     const peek = getScreen("workflows")!.peeks?.workflowRun?.("100");
     expect(peek?.actions?.map((a) => a.label)).toEqual(["Approve", "Reject"]);
+  });
+
+  it("opens the run's own detail doc, not the definition's canvas", async () => {
+    jsonOnce([]);
+    jsonOnce([]);
+    jsonOnce({ runs: [run()], total: 1 });
+    await warmWorkflows();
+
+    const peek = getScreen("workflows")!.peeks?.workflowRun?.("100");
+    expect(peek?.openLabel).toBe("Open the run");
   });
 });
 
@@ -419,5 +445,115 @@ describe("pending approvals", () => {
     jsonOnce({ runs: [], total: 0 });
     await warmWorkflows();
     expect(getLiveRibbonEntry(RIBBON_KEYS.pendingApprovalsWatch)?.label).toBe("Nothing waiting");
+  });
+});
+
+// ─── Run detail ─────────────────────────────────────────────────────────────
+
+describe("selectRunDetail", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("loads the full execution trace", async () => {
+    jsonOnce(runDetail());
+    await selectRunDetail(100);
+
+    expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/workflows/runs/100");
+    const state = getSnapshot();
+    expect(state.selectedRunId).toBe(100);
+    expect(state.runDetail?.graph?.nodes).toHaveLength(1);
+    expect(state.loadingRunDetail).toBe(false);
+  });
+
+  it("is a no-op when the same run is already open", async () => {
+    jsonOnce(runDetail());
+    await selectRunDetail(100);
+    await selectRunDetail(100);
+    expect(fetchWithAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls every 3s while the run is still running, and stops once it settles", async () => {
+    vi.useFakeTimers();
+    jsonOnce(runDetail({ status: "running" }));
+    await selectRunDetail(200);
+    expect(fetchWithAuth).toHaveBeenCalledTimes(1);
+    expect(getSnapshot().runDetail?.status).toBe("running");
+
+    // `runOnlyPendingTimersAsync` fires exactly the one timer pending right
+    // now — safe against the reschedule-a-new-timer loop this store does,
+    // unlike `runAllTimersAsync` which would spin forever on it.
+    jsonOnce(runDetail({ status: "running" }));
+    await vi.runOnlyPendingTimersAsync();
+    expect(fetchWithAuth).toHaveBeenCalledTimes(2);
+
+    jsonOnce(runDetail({ status: "completed" }));
+    await vi.runOnlyPendingTimersAsync();
+    expect(fetchWithAuth).toHaveBeenCalledTimes(3);
+    expect(getSnapshot().runDetail?.status).toBe("completed");
+
+    // Settled — no further timer was scheduled, so nothing left to run.
+    await vi.runOnlyPendingTimersAsync();
+    expect(fetchWithAuth).toHaveBeenCalledTimes(3);
+  });
+
+  it("clearRunDetail stops an in-flight poll", async () => {
+    vi.useFakeTimers();
+    jsonOnce(runDetail({ status: "pending" }));
+    await selectRunDetail(300);
+
+    clearRunDetail();
+    expect(getSnapshot().runDetail).toBeNull();
+    expect(getSnapshot().selectedRunId).toBeNull();
+
+    // The pending poll was cleared — running whatever timers remain is a no-op.
+    await vi.runOnlyPendingTimersAsync();
+    expect(fetchWithAuth).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("cancelRunNow / rerunNow", () => {
+  it("cancelRunNow refreshes the open run's own detail", async () => {
+    jsonOnce(runDetail({ status: "running" }));
+    await selectRunDetail(100);
+
+    // `Promise.all` starts `reloadRecentRuns()` before `fetchRunDetail()` —
+    // the mocks must queue in the order each call actually reaches `fetch`.
+    jsonOnce({ ok: true }); // POST cancel
+    jsonOnce({ runs: [], total: 0 }); // reloadRecentRuns
+    jsonOnce(runDetail({ status: "cancelled" })); // fetchRunDetail's refresh
+
+    await cancelRunNow(100);
+
+    expect(getSnapshot().runDetail?.status).toBe("cancelled");
+  });
+
+  it("rerunNow starts a new run without touching a different open run's detail", async () => {
+    jsonOnce(runDetail({ id: 100, status: "failed" }));
+    await selectRunDetail(100);
+
+    jsonOnce({ runId: 999 }); // POST rerun
+    jsonOnce({ runs: [], total: 0 }); // reloadRecentRuns
+
+    await rerunNow(999);
+
+    // 999 isn't the open run (100 is) — no third fetch for its detail.
+    expect(fetchWithAuth).toHaveBeenCalledTimes(3);
+    expect(getSnapshot().runDetail?.id).toBe(100);
+  });
+});
+
+describe("workflowRun contextual tab", () => {
+  it("offers Cancel while the run is in flight, Re-run once it has settled", async () => {
+    const screenModule = getScreen("workflows")!;
+    jsonOnce([]);
+    jsonOnce([]);
+    jsonOnce({ runs: [run({ status: "running" })], total: 1 });
+    await warmWorkflows();
+
+    const spec = typeof screenModule.contextualTab === "function" ? screenModule.contextualTab({ recordId: "100", kind: "workflowRun" }) : null;
+    expect(spec?.id).toBe("workflow-run-tools");
+    expect(spec?.groups.map((g) => g.label)).not.toContain("Back");
+    expect(spec?.groups[0]?.large?.[0]?.label).toBe("Cancel");
   });
 });

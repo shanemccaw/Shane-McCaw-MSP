@@ -94,6 +94,56 @@ export interface RunRow {
   createdAt: string;
 }
 
+/** `wf_run_node_logs`. One line of console-style output for one node in one run. */
+export interface RunLogEntry {
+  id: number;
+  runId: number;
+  nodeId: string;
+  level: "info" | "warn" | "error" | "progress";
+  message: string;
+  metadata: Record<string, unknown> | null;
+  timestamp: string;
+}
+
+/** `wf_run_node_outputs`. One row per node execution (more than one for a node inside a loop). */
+export interface RunNodeOutputRow {
+  id: number;
+  runId: number;
+  nodeId: string;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  durationMs: number | null;
+  status: string;
+  errorMessage: string | null;
+  timestamp: string;
+}
+
+/** The server-computed per-node summary `GET .../runs/:id` folds `nodeOutputs` + `logs` into. */
+export interface RunNodeResult {
+  status: "ok" | "error" | "skipped";
+  durationMs: number | null;
+  errorMessage: string | null;
+  logPreview: string | null;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+}
+
+/**
+ * `GET /admin/workflows/runs/:id` — a `RunRow` plus the full execution trace.
+ * Only fetched for the one run currently open as a `workflowRun` doc; the
+ * list views (`recentRuns`/`definitionRuns`) never carry this — it is a
+ * distinct, heavier fetch by design.
+ */
+export interface RunDetail extends RunRow {
+  graph: { nodes: StoredNode[]; edges: StoredEdge[] } | null;
+  logs: RunLogEntry[];
+  nodeOutputs: RunNodeOutputRow[];
+  /** Keyed by nodeId (or `nodeId[index]` for a loop iteration). */
+  nodeResultMap: Record<string, RunNodeResult>;
+  /** The node currently executing, for a `running`/`pending` run — null once settled. */
+  activeNodeId: string | null;
+}
+
 /** `pending_approvals`, joined to its run's definition name. */
 export interface PendingApprovalRow {
   id: number;
@@ -178,3 +228,38 @@ export function nextVersionLabel(versions: VersionRow[]): string {
   const max = versions.reduce((m, v) => Math.max(m, v.versionNumber), 0);
   return `v${max + 1} — Draft`;
 }
+
+/**
+ * A `branchPath`/`nodeResultMap` key for a node inside a loop is indexed —
+ * `node-104[0]`, `node-104[1]`, … — but the graph only has one `node-104`.
+ * Strip the suffix to resolve which graph node it actually is.
+ */
+export function baseNodeId(id: string): string {
+  return id.replace(/\[\d+\]$/, "");
+}
+
+/** The node's own label from the run's graph, falling back to its type, then its raw id. */
+export function nodeLabel(graph: { nodes: StoredNode[] } | null, id: string): string {
+  const node = graph?.nodes.find((n) => n.id === baseNodeId(id));
+  if (!node) return id;
+  const label = node.data?.label as string | undefined;
+  const nodeType = (node.data?.nodeType as string | undefined) ?? node.type;
+  return label || nodeType || id;
+}
+
+export function nodeType(graph: { nodes: StoredNode[] } | null, id: string): string {
+  const node = graph?.nodes.find((n) => n.id === baseNodeId(id));
+  if (!node) return "action";
+  return (node.data?.nodeType as string | undefined) ?? node.type ?? "action";
+}
+
+/** Resolves a step's result, falling back from the indexed key to the bare node id. */
+export function resultFor(detail: Pick<RunDetail, "nodeResultMap">, id: string): RunNodeResult | null {
+  return detail.nodeResultMap[id] ?? detail.nodeResultMap[baseNodeId(id)] ?? null;
+}
+
+export const RUN_NODE_STATUS_LABEL: Record<RunNodeResult["status"], string> = {
+  ok: "OK",
+  error: "Error",
+  skipped: "Skipped",
+};

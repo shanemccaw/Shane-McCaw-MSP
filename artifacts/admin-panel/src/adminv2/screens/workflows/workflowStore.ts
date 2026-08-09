@@ -26,6 +26,7 @@ import {
   deleteDefinition,
   deleteTrigger,
   duplicateDefinition,
+  getRunDetail,
   getVersion,
   listDefinitions,
   listPendingApprovals,
@@ -48,6 +49,7 @@ import {
   nextVersionLabel,
   type DefinitionRow,
   type PendingApprovalRow,
+  type RunDetail,
   type RunRow,
   type StoredEdge,
   type StoredNode,
@@ -91,6 +93,12 @@ export interface WorkflowState {
 
   pendingApprovals: PendingApprovalRow[];
 
+  /** The one run currently open as a `workflowRun` doc — its full execution trace. */
+  selectedRunId: number | null;
+  runDetail: RunDetail | null;
+  loadingRunDetail: boolean;
+  runDetailError: string | null;
+
   message: string | null;
   error: string | null;
 }
@@ -113,6 +121,10 @@ const INITIAL: WorkflowState = {
   recentRuns: [],
   loadingRuns: false,
   pendingApprovals: [],
+  selectedRunId: null,
+  runDetail: null,
+  loadingRunDetail: false,
+  runDetailError: null,
   message: null,
   error: null,
 };
@@ -299,6 +311,49 @@ export async function selectVersion(versionId: number): Promise<void> {
 
 export function selectNode(id: string | null): void {
   setState({ selectedNodeId: id });
+}
+
+// ── Run detail (the `workflowRun` doc) ────────────────────────────────────────
+// Polled while the run is still `running`/`pending`, matching the old
+// `RunDetailContent.tsx`'s own 3s `refetchInterval` — a run in flight is the
+// one place this screen shows something that changes without the user doing
+// anything, so it has to keep itself current.
+
+let runPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopRunPolling(): void {
+  if (runPollTimer) {
+    clearTimeout(runPollTimer);
+    runPollTimer = null;
+  }
+}
+
+async function fetchRunDetail(id: number): Promise<void> {
+  if (!adminFetchRef) return;
+  try {
+    const detail = await getRunDetail(adminFetchRef, id);
+    // The user may have navigated to a different run while this was in flight.
+    if (state.selectedRunId !== id) return;
+    setState({ loadingRunDetail: false, runDetail: detail, runDetailError: null });
+    if (detail.status === "running" || detail.status === "pending") {
+      runPollTimer = setTimeout(() => void fetchRunDetail(id), 3000);
+    }
+  } catch (err) {
+    setState({ loadingRunDetail: false, runDetailError: errText(err) });
+  }
+}
+
+/** Opens a run: loads its full execution trace and polls while it's still in flight. */
+export async function selectRunDetail(id: number): Promise<void> {
+  if (state.selectedRunId === id) return;
+  stopRunPolling();
+  setState({ selectedRunId: id, loadingRunDetail: true, runDetail: null, runDetailError: null });
+  await fetchRunDetail(id);
+}
+
+export function clearRunDetail(): void {
+  stopRunPolling();
+  setState({ selectedRunId: null, runDetail: null, loadingRunDetail: false, runDetailError: null });
 }
 
 // ── Canvas editing (client-side only until `saveGraph`) ─────────────────────
@@ -526,7 +581,11 @@ export async function cancelRunNow(id: number): Promise<void> {
   try {
     await cancelRun(adminFetchRef, id);
     say("Cancelled.");
-    await Promise.all([reloadRecentRuns(), state.selectedDefinitionId != null ? reloadDefinitionRuns(state.selectedDefinitionId) : Promise.resolve()]);
+    await Promise.all([
+      reloadRecentRuns(),
+      state.selectedDefinitionId != null ? reloadDefinitionRuns(state.selectedDefinitionId) : Promise.resolve(),
+      state.selectedRunId === id ? fetchRunDetail(id) : Promise.resolve(),
+    ]);
   } catch (err) {
     say(errText(err));
   }
@@ -537,7 +596,11 @@ export async function rerunNow(id: number): Promise<void> {
   try {
     const { runId } = await rerunApi(adminFetchRef, id);
     say(`Re-run started — #${runId}.`);
-    await Promise.all([reloadRecentRuns(), state.selectedDefinitionId != null ? reloadDefinitionRuns(state.selectedDefinitionId) : Promise.resolve()]);
+    await Promise.all([
+      reloadRecentRuns(),
+      state.selectedDefinitionId != null ? reloadDefinitionRuns(state.selectedDefinitionId) : Promise.resolve(),
+      state.selectedRunId === id ? fetchRunDetail(id) : Promise.resolve(),
+    ]);
   } catch (err) {
     say(errText(err));
   }
@@ -556,6 +619,7 @@ export async function decideApprovalNow(approvalId: number, decision: "approved"
 
 /** Test seam. Not used by the app. */
 export function resetWorkflowStore(): void {
+  stopRunPolling();
   adminFetchRef = null;
   warmed = false;
   state = { ...INITIAL };
