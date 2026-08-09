@@ -132,6 +132,7 @@ function TypewriterHeadline() {
     <div
       ref={boxRef}
       style={{
+        position: "relative",
         fontSize: HEADLINE_FONT_SIZE,
         width: HEADLINE_WIDTH,
         maxWidth: "100%",
