@@ -57,7 +57,11 @@ const HEADLINE_FONT_SIZE = "clamp(30px,6.4vw,52px)";
 const HEADLINE_LINE_HEIGHT = 1.06;
 const HEADLINE_LETTER_SPACING = "-.028em";
 const HEADLINE_WIDTH = 520;
-const HEADLINE_BOX_HEIGHT_EM = 3.18;
+/** #610: 3.18 clipped real admin-authored headlines even at HEADLINE_MIN_SCALE.
+ * Sized against the real long headline ("This isn't a Copilot problem...") plus
+ * a longer stress variant, verified with Playwright at 360/390/1440px widths —
+ * 7.2 leaves 24-95px of headroom in every case, none of it near-zero. */
+const HEADLINE_BOX_HEIGHT_EM = 7.2;
 const HEADLINE_MIN_SCALE = 0.42;
 
 /** Blue -> Violet primary treatment (#446/#463). #465: the animated rainbow
