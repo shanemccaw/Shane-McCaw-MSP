@@ -30,8 +30,9 @@
 
 import {
   COPILOT_GATE_TARGET,
-  JOURNEY_DOCUMENT_TYPE_ALLOWLIST,
   JOURNEY_LIVE_DOCUMENTS,
+  JOURNEY_REMEDIATION_DOC_TYPE,
+  JOURNEY_REMEDIATION_DOCUMENT,
   JOURNEY_SOW_DOCUMENT,
   PILLAR_KEYS,
   PILLARS,
@@ -197,17 +198,23 @@ export interface WirePillarStatsPayload {
   readonly checkKeyPillars?: Readonly<Record<string, string>>;
 }
 
-export interface WireDocumentItem {
-  readonly id: number;
-  readonly docType: string;
-  readonly title: string;
-  readonly status: string;
-}
-
 export interface WireAssessmentStatus {
+  /**
+   * #643. `items`/`expected` used to be read here — the abandoned Document
+   * Engine's `insightsGeneratedDocumentsTable` rows and the assessment
+   * service's declared deliverable set — and `buildGeneration` built the nav's
+   * document list from them. That was the confirmed root cause of the Full
+   * Remediation Guide (and, before it, other live-rendered reports) going
+   * missing from the real customer-facing nav: a tenant whose service never
+   * named a deliverable, or whose row predated the document's port to live
+   * rendering, got no entry for it at all. `buildGeneration` now reads no
+   * field of `documents` at all — see `JOURNEY_LIVE_DOCUMENT_SPINE` — so
+   * those two fields are deliberately not declared on this wire shape any
+   * more, even though the server may still send them for other consumers.
+   * `total`/`generating`/`allReady` below remain because `useCopilotJourney`
+   * still reads them to decide whether to keep polling this endpoint.
+   */
   readonly documents?: {
-    readonly items?: readonly WireDocumentItem[];
-    readonly expected?: readonly { readonly docType: string; readonly title: string }[];
     readonly total?: number;
     readonly generating?: number;
     readonly ready?: number;
@@ -425,8 +432,6 @@ export interface JourneyView {
 /* ------------------------------------------------------------------ *
  * Mapping
  * ------------------------------------------------------------------ */
-
-const READY_STATUSES = new Set(["approved", "delivered"]);
 
 function isPillarKey(v: string): v is PillarKey {
   return (PILLAR_KEYS as readonly string[]).includes(v);
@@ -798,59 +803,59 @@ export function buildPillarViews(
   });
 }
 
-export function buildGeneration(status: WireAssessmentStatus | null | undefined): JourneyGeneration {
-  const docs = status?.documents;
-  // Restricted to the real, known document types (the six pillar reports plus
-  // the remediation guide and SOW) before anything else touches this data —
-  // the wire's `status='ready'` rows are not filtered server-side, so a
-  // stray/test row from some other docType must never reach the spine below,
-  // let alone the nav it builds.
-  const items = (docs?.items ?? []).filter((i) => JOURNEY_DOCUMENT_TYPE_ALLOWLIST.has(i.docType));
-  const expected = (docs?.expected ?? []).filter((e) =>
-    JOURNEY_DOCUMENT_TYPE_ALLOWLIST.has(e.docType),
-  );
+/**
+ * The nine real documents' catalogue keys and design titles, hardcoded, in the
+ * design's own generation order — Git #643.
+ *
+ * The seven `JOURNEY_LIVE_DOCUMENTS` reports, then the two interactive
+ * documents `DocumentBody` resolves live on their own title (the Remediation
+ * Guide, then the SOW) — the exact order `JOURNEY_DESIGN_DOCUMENTS` writes
+ * them in for `?preview=design`, which this is deliberately built to match
+ * byte for byte. This is `buildGeneration`'s ENTIRE spine; see that function
+ * for why.
+ */
+export const JOURNEY_LIVE_DOCUMENT_SPINE: readonly { readonly docType: string; readonly title: string }[] = [
+  ...JOURNEY_LIVE_DOCUMENTS.map((d) => ({ docType: d.docType, title: d.title })),
+  { docType: JOURNEY_REMEDIATION_DOC_TYPE, title: JOURNEY_REMEDIATION_DOCUMENT },
+  { docType: SOW_DOC_TYPE, title: JOURNEY_SOW_DOCUMENT },
+];
 
-  // The expected set is the spine — a tenant mid-generation has fewer rows than
-  // titles, and rendering only the rows would make the list grow as it runs,
-  // which reads as the scope changing rather than the work progressing.
-  //
-  // There is deliberately NO fallback list. `expected` is empty on a status
-  // fetch failure and on any tenant without an assessment service row, which is
-  // precisely when a hardcoded list of nine would print deliverable names this
-  // platform cannot generate. An empty set is honest; the screens render their
-  // unavailable state from `total === 0`.
-  //
-  // Rows are joined to the expected set on `docType`, NOT on title. The two
-  // titles come from different columns — `expected[].title` is admin free text
-  // on the service's `associated_documents`, `items[].title` is
-  // `document_types.label` — so any divergence in a title would leave every
-  // document stuck on "pending" and the Executive Summary CTA would never appear.
-  const spine: { docType: string; title: string }[] = expected.length
-    ? expected.map((e) => ({ docType: e.docType, title: e.title }))
-    : items.map((i) => ({ docType: i.docType, title: i.title }));
-
-  const byDocType = new Map<string, WireDocumentItem>();
-  items.forEach((it) => byDocType.set(it.docType, it));
-
-  const documents: JourneyDocumentView[] = spine.map(({ docType, title }) => {
-    const row = byDocType.get(docType);
-    // Prefer the generated row's own title once it exists: it is the catalogue
-    // label the report itself is headed with, so the switcher and the report
-    // header cannot disagree.
-    const shown = row?.title ?? title;
-    if (!row) return { title: shown, docType, id: null, status: "pending" };
-    if (READY_STATUSES.has(row.status)) return { title: shown, docType, id: row.id, status: "ready" };
-    if (row.status === "failed") return { title: shown, docType, id: row.id, status: "failed" };
-    return { title: shown, docType, id: row.id, status: "generating" };
-  });
-
-  const ready = documents.filter((d) => d.status === "ready").length;
-  return {
-    ready,
-    total: documents.length,
-    allReady: documents.length > 0 && ready === documents.length,
-    documents,
-  };
+/**
+ * The nine real documents' generation state for the nav — Git #643.
+ *
+ * CONFIRMED ROOT CAUSE (#643): this used to build its spine from
+ * `status.documents.expected`/`.items` — the wire's own rows from
+ * `insightsGeneratedDocumentsTable`, the abandoned Document Engine's
+ * bookkeeping — falling back to a hardcoded nine-title list on purpose
+ * refused. That was the right call while these documents were genuinely
+ * generated by that pipeline. They no longer are: every one of the nine —
+ * the seven `JOURNEY_LIVE_DOCUMENTS` reports, the Remediation Guide, the SOW —
+ * now renders live from this tenant's own scan data (`DocumentBody`'s three
+ * live-render branches, none of which reads `doc.status`, `doc.id`, or any
+ * generation-pipeline bookkeeping at all). A tenant whose assessment service
+ * never named a deliverable, or who had no row at all for one still on the old
+ * spine's fallback logic, was a tenant that document silently dropped out of
+ * the nav for — the Full Remediation Guide, which had no `withLiveDocuments`-
+ * style guarantee the other eight already had, was exactly that case.
+ *
+ * The fix Shane confirmed directly (#643) is not another guarantee bolted on
+ * top of the old spine — that is the half-fix this has already had roughly
+ * four times. The spine is now `JOURNEY_LIVE_DOCUMENT_SPINE`: the same fully
+ * hardcoded nine-title list `?preview=design` already renders from
+ * `JOURNEY_DESIGN_DOCUMENTS`, matching it exactly. Nothing on `status.documents`
+ * is read here any more, for any of the nine — this function takes no
+ * argument, because there is nothing left on the wire for it to consult. Every
+ * entry is `ready` with no row `id`: there is nothing outstanding to wait for,
+ * and no stored document row backs any of them.
+ */
+export function buildGeneration(): JourneyGeneration {
+  const documents: JourneyDocumentView[] = JOURNEY_LIVE_DOCUMENT_SPINE.map(({ docType, title }) => ({
+    title,
+    docType,
+    id: null,
+    status: "ready",
+  }));
+  return { ready: documents.length, total: documents.length, allReady: true, documents };
 }
 
 /**
@@ -1010,7 +1015,7 @@ export function buildJourneyView(input: {
     readinessEvaluation,
     remediatedScore: remediatedScore(pillars, input.projectedByPillar ?? {}),
     pillars,
-    generation: buildGeneration(input.status),
+    generation: buildGeneration(),
     licenseGapPurchase: input.pillarStats?.licenseGapPurchase ?? null,
     isPreview: input.isPreview === true,
   };

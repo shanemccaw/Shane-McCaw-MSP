@@ -371,11 +371,13 @@ export const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
  * this environment), so the same caveat applies until it is. So this is
  * reference copy for the design preview only.
  *
- * It is deliberately NOT used as a live fallback. `buildGeneration()` reads the
- * tenant's real `documents.expected` set and renders an unavailable state when
- * there isn't one — printing a deliverable name the platform cannot produce
- * would be exactly the fabricated-fact failure the data contract forbids, and a
- * fetch failure is the case where a fallback list would fire.
+ * #643: this list — the titles, not this constant itself — is now also what
+ * the LIVE nav's `buildGeneration()` (`journeyModel.ts`'s
+ * `JOURNEY_LIVE_DOCUMENT_SPINE`) renders from, real docTypes attached. That
+ * used to be forbidden here on the strength of a caveat that no longer holds:
+ * every one of these nine now genuinely renders, live, from the tenant's own
+ * scan data — none of them is a name the platform cannot produce. See
+ * `buildGeneration`'s own comment for the confirmed bug this closed.
  */
 export const JOURNEY_DESIGN_DOCUMENTS = [
   "Copilot Readiness, Safety & Enablement Report",
@@ -397,6 +399,20 @@ export const JOURNEY_DESIGN_DOCUMENTS = [
 export const JOURNEY_REMEDIATION_DOCUMENT = "Full Remediation Guide — Copilot Gate Clearance Plan";
 export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearance";
 
+/**
+ * `document_types.key` for the Remediation Guide — the real seeded catalogue
+ * key (`lib/db/migrations/manual/2026-07-20-document-types.sql`, label
+ * "Remediation Plan"). Lives beside `JOURNEY_REMEDIATION_DOCUMENT` rather than
+ * in `JOURNEY_LIVE_DOCUMENTS` for the same reason `SOW_DOC_TYPE` lives in
+ * `sowLiveScope.ts` rather than that registry: the guide is interactive
+ * (tickable steps, `onOpenSow`), not a `(props: { view }) => ReactElement`
+ * the registry's `LIVE_BODY` shape can hold — see `DocumentBody`'s own
+ * title-matched branch for it (#472). #643's hardcoded spine
+ * (`journeyModel.ts`'s `JOURNEY_LIVE_DOCUMENT_SPINE`) is what actually uses
+ * this key.
+ */
+export const JOURNEY_REMEDIATION_DOC_TYPE = "remediation_plan";
+
 /* ------------------------------------------------------------------ *
  * The live-rendered documents — the "new pattern" registry (#343)
  * ------------------------------------------------------------------ */
@@ -407,11 +423,12 @@ export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearanc
  *
  * MATCHED ON `docType`, NOT TITLE. `document_types` is the real catalogue and
  * each `docType` below is a real seeded key (see
- * `lib/db/migrations/manual/2026-07-20-document-types.sql`). The title is
- * admin-editable free text on the service's `associated_documents`, so matching
- * on it would silently stop working the first time somebody renames a
- * deliverable — the same reason `buildGeneration` joins its expected set to its
- * rows on `docType` and not on title.
+ * `lib/db/migrations/manual/2026-07-20-document-types.sql`). A title alone is
+ * admin-editable free text on the service's `associated_documents` in the
+ * surfaces that still read that column, so matching on it would silently stop
+ * working the first time somebody renames a deliverable there — `docType` is
+ * the stable key `journeyModel.ts`'s `JOURNEY_LIVE_DOCUMENT_SPINE` (#643) is
+ * built from too, for the same reason.
  *
  * The design's own title is accepted as a SECOND key purely so a document set
  * that names a report the design's way still resolves. It is deliberately an
@@ -585,20 +602,3 @@ export const JOURNEY_SECURITY_POSTURE_DOC_TYPE = SECURITY_POSTURE_ENTRY.docType;
 export const JOURNEY_SECURITY_POSTURE_DOCUMENT = SECURITY_POSTURE_ENTRY.title;
 
 export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;
-
-/**
- * Every real `docType` this journey's nav is allowed to list: the six pillar
- * reports' catalogue keys (`JOURNEY_LIVE_DOCUMENTS`) plus the two non-report
- * documents (`remediation_plan`, `sow`).
- *
- * `buildGeneration` filters `documents.items`/`.expected` through this before
- * they reach the nav, because that wire data is unfiltered by the server — any
- * row with `status='ready'` shows regardless of what generated it, so a
- * stray/test row on some other `docType` would otherwise appear in the reader
- * beside the real deliverables.
- */
-export const JOURNEY_DOCUMENT_TYPE_ALLOWLIST: ReadonlySet<string> = new Set([
-  ...JOURNEY_LIVE_DOCUMENTS.map((d) => d.docType),
-  "remediation_plan",
-  "sow",
-]);
