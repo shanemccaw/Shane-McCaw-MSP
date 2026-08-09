@@ -68,7 +68,8 @@ import {
 const ASSESSMENT_DOC_WORKFLOW_NAME =
   "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
 import { eq, ne, and, desc, inArray, isNull, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, requireAdmin } from "../middlewares/requireAuth";
+import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import jwt from "jsonwebtoken";
 import { registerWorkflowRunSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
@@ -1687,6 +1688,25 @@ router.get(
 // docId flow's 72h window, because a checkout_sessions row expires in 24h
 // (see `expiresAt` below), always inside any 72h window a fresh session
 // could represent. There is no separate window state to compute here.
+/**
+ * Orders phase candidates the same way `StatementOfWorkBody.tsx`'s
+ * `buildGanttLayout` sequences the Gantt (Git #593): Foundation first,
+ * Parallel-eligible next (their real concurrent order doesn't matter for
+ * invoice numbering — each still gets its own sequential slot), unstaged/
+ * Continuous folded in after, Closeout always last. Reimplemented here rather
+ * than imported because `buildGanttLayout` is a client-only React module with
+ * no server-safe export — this ports only the bucket/concat ordering, not the
+ * pixel layout math. Git #613 (Pay-by-Phase billing) numbers "Phase 1..N"
+ * directly off this order, snapshotted once at signing.
+ */
+function orderPhasesForBilling<T extends { stage: string | null }>(phases: readonly T[]): T[] {
+  const foundation = phases.filter((p) => p.stage === "foundation");
+  const parallel = phases.filter((p) => p.stage === "parallel-eligible");
+  const closeout = phases.filter((p) => p.stage === "closeout");
+  const rest = phases.filter((p) => p.stage !== "foundation" && p.stage !== "parallel-eligible" && p.stage !== "closeout");
+  return [...foundation, ...parallel, ...rest, ...closeout];
+}
+
 const checkoutSessionSchema = z.object({
   selectedPhaseServiceIds: z.array(z.number().int().positive()).default([]),
   addonSelections: z
@@ -1694,6 +1714,10 @@ const checkoutSessionSchema = z.object({
     .default([]),
   signatureData: z.string().min(1),
   signerName: z.string().min(1),
+  // Git #613 — which plan this signature locks in. Defaults "full" so every
+  // pre-#613 caller (and any request that omits the field) behaves exactly as
+  // it did before this field existed.
+  paymentPlan: z.enum(["full", "phased"]).default("full"),
 });
 
 router.post(
@@ -1717,6 +1741,7 @@ router.post(
     // above: data:image/ prefix, non-trivial length, a real typed name.
     const signatureData = parsed.data.signatureData;
     const signerName = parsed.data.signerName.trim();
+    const paymentPlan = parsed.data.paymentPlan;
     if (!signatureData.startsWith("data:image/") || signatureData.length < 100) {
       res.status(400).json({ error: "A drawn signature is required" });
       return;
@@ -1806,10 +1831,40 @@ router.post(
       // 72h window gate that flow computes off a stored document's createdAt.
       // This cart has no "adjustments" line (journeyScopeFromOffers() never
       // produces one), so computePayInFullOffer's variant always resolves
-      // "percentage_off" here, never "adjustments_waived".
-      const coupon = await loadPayInFullCoupon();
+      // "percentage_off" here, never "adjustments_waived". Git #613: this is a
+      // pay-in-full-only incentive, never applied to a phased signature.
+      const coupon = paymentPlan === "full" ? await loadPayInFullCoupon() : null;
       const payInFullOffer = computePayInFullOffer(originalTotalCents / 100, 0, "discount", coupon);
       const totalCents = payInFullOffer.active ? payInFullOffer.discountedCents : originalTotalCents;
+
+      // Git #613 — Pay-by-Phase billing. The per-phase price/duration snapshot
+      // (`sowPhaseBreakdown`) and the deposit amount both need the real, live
+      // `PHASE_DEPOSIT_COUPON_CODE` row Shane controls (unlimited-use,
+      // percentage-off, same `coupons` mechanism PAY_IN_FULL_COUPON_CODE
+      // already uses) — refusing rather than falling back to a hardcoded 30%
+      // so the deposit percentage stays a live, Shane-editable number, never a
+      // second hardcoded figure this route would drift from. The RESULT
+      // (`depositCents`) is computed and stored here, ONCE, rather than
+      // re-derived from the coupon later — see `sowDepositCents`'s own schema
+      // comment for why re-deriving at charge/invoicing time would be wrong.
+      let phaseBreakdown: Array<{ serviceId: number; title: string; priceCents: number; stage: string | null; durationWeeks: number | null }> = [];
+      let depositCents: number | null = null;
+      if (paymentPlan === "phased") {
+        const depositCoupon = await loadPhaseDepositCoupon();
+        if (!depositCoupon) {
+          billingLog.error({ userId, customerId }, "sow/checkout-session: PHASE_DEPOSIT_COUPON_CODE coupon missing/inactive — phased plan unavailable");
+          res.status(409).json({ error: "phased_plan_unavailable" });
+          return;
+        }
+        phaseBreakdown = orderPhasesForBilling(includedPhases).map((p) => ({
+          serviceId: p.serviceId,
+          title: p.serviceName,
+          priceCents: p.adjustedPriceCents,
+          stage: p.stage,
+          durationWeeks: p.durationWeeks,
+        }));
+        depositCents = Math.round(originalTotalCents * phaseDepositFraction(depositCoupon));
+      }
 
       const [profile] = await db
         .select({ email: usersTable.email, name: usersTable.name })
@@ -1853,6 +1908,9 @@ router.post(
           sowSignatureData: signatureData,
           sowSignerName: signerName,
           sowSignatureIp: signatureIp ?? undefined,
+          sowPaymentPlan: paymentPlan,
+          sowPhaseBreakdown: phaseBreakdown,
+          sowDepositCents: depositCents ?? undefined,
           expiresAt,
         })
         .returning({ id: checkoutSessionsTable.id });
@@ -1876,19 +1934,21 @@ router.post(
           addonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
           totalCents,
           originalTotalCents,
+          paymentPlan,
           couponCode: payInFullOffer.active ? PAY_IN_FULL_COUPON_CODE : null,
           signerName,
         },
       });
 
       billingLog.info(
-        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents, discountApplied: payInFullOffer.active },
+        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents, discountApplied: payInFullOffer.active, paymentPlan },
         "sow/checkout-session: live SOW cart snapshotted",
       );
 
       res.status(201).json({
         sessionId: row.id,
         expiresAt: expiresAt.toISOString(),
+        paymentPlan,
         totalCents,
         originalTotalCents,
         discount: payInFullOffer.active
@@ -1942,6 +2002,7 @@ type SowOrder = {
   tenantId: string | null;
   /** `tenants.id` — same id space `resolveCustomerId` returns, so it doubles as the `tenantRowId` `ensureFlowStripeCustomer` needs. */
   customerId: number;
+  /** The full contract value — what "full" charges today, what "phased" ultimately collects across every phase. */
   totalCents: number;
   originalTotalCents: number;
   phaseCount: number;
@@ -1951,6 +2012,21 @@ type SowOrder = {
   signatureData: string | null;
   signerName: string | null;
   signatureIp: string | null;
+  // Git #613 — Pay-by-Phase billing.
+  paymentPlan: "full" | "phased";
+  phaseBreakdown: Array<{ serviceId: number; title: string; priceCents: number; stage: string | null; durationWeeks: number | null }>;
+  /**
+   * What today's PaymentIntent actually charges. "full" — the discounted
+   * contract total, unchanged from pre-#613 behaviour. "phased" — the 30%
+   * deposit plus Phase 1's own full price (both collected at signing, per
+   * #611's confirmed math), UNLESS there is only one phase in scope, in which
+   * case Phase 1 IS the last phase and the deposit is credited against it
+   * immediately (charge = Phase 1's price minus the deposit) rather than
+   * collecting 130% of a single-phase contract.
+   */
+  chargeCents: number;
+  /** Only set for "phased" — informational, not a separate charge. */
+  depositCents: number | null;
 };
 
 async function resolveSowOrder(
@@ -1974,6 +2050,9 @@ async function resolveSowOrder(
       sowSignatureData: checkoutSessionsTable.sowSignatureData,
       sowSignerName: checkoutSessionsTable.sowSignerName,
       sowSignatureIp: checkoutSessionsTable.sowSignatureIp,
+      sowPaymentPlan: checkoutSessionsTable.sowPaymentPlan,
+      sowPhaseBreakdown: checkoutSessionsTable.sowPhaseBreakdown,
+      sowDepositCents: checkoutSessionsTable.sowDepositCents,
       expiresAt: checkoutSessionsTable.expiresAt,
     })
     .from(checkoutSessionsTable)
@@ -2017,6 +2096,39 @@ async function resolveSowOrder(
     return null;
   }
 
+  const paymentPlan = session.sowPaymentPlan === "phased" ? "phased" : "full";
+  let chargeCents = totalCents;
+  let depositCents: number | null = null;
+
+  if (paymentPlan === "phased") {
+    const phase1 = session.sowPhaseBreakdown[0];
+    // sowDepositCents is computed and stored ONCE, at signing (#599) — never
+    // recomputed here. See that column's own schema comment for why: the
+    // final-phase square-up (the phased-invoicing node, run later) must
+    // credit the exact deposit actually collected, not whatever a since-edited
+    // coupon would compute today.
+    if (!phase1 || session.sowDepositCents == null) {
+      billingLog.error({ sessionId, customerId }, "sow cart payment: phased session carries no sowPhaseBreakdown/sowDepositCents — refusing to charge an unresolved amount");
+      res.status(409).json({ error: "price_unresolved" });
+      return null;
+    }
+    depositCents = session.sowDepositCents;
+    // Single-phase contract: Phase 1 IS the last phase, so the deposit is
+    // credited against it immediately rather than collected on top of it —
+    // see SowOrder.chargeCents's own comment.
+    chargeCents = session.sowPhaseBreakdown.length === 1
+      ? phase1.priceCents - depositCents
+      : depositCents + phase1.priceCents;
+    if (chargeCents <= 0) {
+      billingLog.error(
+        { sessionId, customerId, depositCents, phase1PriceCents: phase1.priceCents },
+        "sow cart payment: phased charge resolved to zero/negative — refusing to charge an unresolved amount",
+      );
+      res.status(409).json({ error: "price_unresolved" });
+      return null;
+    }
+  }
+
   return {
     sessionId: session.id,
     status: session.status,
@@ -2033,6 +2145,10 @@ async function resolveSowOrder(
     signatureData: session.sowSignatureData,
     signerName: session.sowSignerName,
     signatureIp: session.sowSignatureIp,
+    paymentPlan,
+    phaseBreakdown: session.sowPhaseBreakdown,
+    chargeCents,
+    depositCents,
   };
 }
 
@@ -2121,10 +2237,13 @@ router.post(
 
       const phaseLabel = `${order.phaseCount} phase${order.phaseCount === 1 ? "" : "s"}`;
       const addonLabel = order.addonCount > 0 ? `, ${order.addonCount} add-on${order.addonCount === 1 ? "" : "s"}` : "";
+      // Git #613 — a phased signature charges the deposit + Phase 1 today
+      // (order.chargeCents), not the full contract (order.totalCents).
+      const planLabel = order.paymentPlan === "phased" ? " — deposit + Phase 1" : "";
 
       const intent = await stripe.paymentIntents.create(
         {
-          amount: order.totalCents,
+          amount: order.chargeCents,
           currency: "usd",
           // Lets Stripe offer whatever in-page methods are enabled on the
           // account without a hosted page or a redirect — same as the
@@ -2132,7 +2251,7 @@ router.post(
           automatic_payment_methods: { enabled: true },
           ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
           receipt_email: order.email,
-          description: `SOW Cart${order.company ? ` — ${order.company}` : ""} (${phaseLabel}${addonLabel})`,
+          description: `SOW Cart${order.company ? ` — ${order.company}` : ""} (${phaseLabel}${addonLabel}${planLabel})`,
           metadata: {
             flow: "portal_sow_cart",
             checkoutSessionId: order.sessionId,
@@ -2140,6 +2259,8 @@ router.post(
             tenantId: order.tenantId ?? "",
             phaseCount: String(order.phaseCount),
             addonCount: String(order.addonCount),
+            paymentPlan: order.paymentPlan,
+            ...(order.paymentPlan === "phased" ? { depositCents: String(order.depositCents ?? 0), contractTotalCents: String(order.totalCents) } : {}),
           },
         },
         { idempotencyKey: `portal-sow-cart:pi:${order.sessionId}:${stripeCustomerId ? "cust" : "anon"}` },
@@ -2149,7 +2270,8 @@ router.post(
         {
           checkoutSessionId: order.sessionId,
           paymentIntentId: intent.id,
-          amountCents: order.totalCents,
+          amountCents: order.chargeCents,
+          paymentPlan: order.paymentPlan,
           status: intent.status,
           stripeCustomerId,
         },
@@ -2160,7 +2282,8 @@ router.post(
         clientSecret: intent.client_secret,
         publishableKey,
         paymentIntentId: intent.id,
-        amountCents: order.totalCents,
+        amountCents: order.chargeCents,
+        paymentPlan: order.paymentPlan,
         // A recovered, already-succeeded intent (paid, then reloaded before
         // the confirm callback landed) — the client skips straight to confirming.
         alreadyPaid: intent.status === "succeeded",
@@ -2191,9 +2314,12 @@ router.post(
 // null — this scope was never a stored document; see that table's own header
 // comment). The signature (drawn PNG + typed name) was captured back at
 // #599's `checkout-session` creation — the real "sign()" moment, when the
-// scope locked — and is only READ here, never invented. `paymentPlan` is
-// always "full": this flow's phased self-serve billing is a separate,
-// not-yet-built stage.
+// scope locked — and is only READ here, never invented. `paymentPlan` reads
+// back the session's own `sowPaymentPlan` (Git #613) — "full" charges the
+// whole contract right here; "phased" charges only the deposit + Phase 1
+// (`order.chargeCents`, see `resolveSowOrder`), and the phased-invoicing
+// workflow node (adapted #613) is what generates the remaining phases'
+// scheduled invoices later, off this same agreement row.
 const sowPaymentConfirmedSchema = z.object({
   sessionId: z.string().uuid(),
   paymentIntentId: z.string().min(1),
@@ -2271,10 +2397,11 @@ router.post(
           metadata: {
             customerId: order.customerId,
             paymentIntentId: intent.id,
-            amountCents: intent.amount_received || order.totalCents,
+            amountCents: intent.amount_received || order.chargeCents,
             tenantId: order.tenantId,
             phaseCount: order.phaseCount,
             addonCount: order.addonCount,
+            paymentPlan: order.paymentPlan,
           },
         });
 
@@ -2296,7 +2423,11 @@ router.post(
           );
         } else {
           const tenant = await resolveTenantForCustomer(order.customerId);
-          const discountApplied = order.totalCents < order.originalTotalCents;
+          // Git #613: the PAY-TODAY discount is a "full" plan incentive only —
+          // a phased signature's totalCents === originalTotalCents by
+          // construction (see the checkout-session route above), so this is
+          // never true for a phased agreement.
+          const discountApplied = order.paymentPlan === "full" && order.totalCents < order.originalTotalCents;
           try {
             await db.insert(assessmentSowAgreementsTable).values({
               checkoutSessionId: order.sessionId,
@@ -2309,7 +2440,7 @@ router.post(
               discountedTotalCents: discountApplied ? order.totalCents : undefined,
               couponCode: discountApplied ? PAY_IN_FULL_COUPON_CODE : undefined,
               windowStateAtSigning: discountApplied ? "discount" : "standard",
-              paymentPlan: "full",
+              paymentPlan: order.paymentPlan,
               signatureData: order.signatureData,
               signerName: order.signerName,
               signatureIp: order.signatureIp ?? undefined,
@@ -2331,13 +2462,71 @@ router.post(
 
       res.json({
         ok: true,
-        amountCents: intent.amount_received || order.totalCents,
+        amountCents: intent.amount_received || order.chargeCents,
+        paymentPlan: order.paymentPlan,
         email: order.email,
       });
     } catch (err) {
       billingLog.error({ err, checkoutSessionId: order.sessionId }, "sow cart payment: confirm failed");
       res.status(500).json({ error: "confirm_failed" });
     }
+  },
+);
+
+// ── POST /api/admin/checkout-sessions/:id/create-phased-invoices ────────────
+//
+// Git #613 (v1.1) manual trigger. Admin-only — Shane fires this once, by hand,
+// after confirming a checkout_sessions row is a paid Pay-by-Phase signature
+// (assessment_sow_agreements.paymentPlan="phased", status="paid" — the deposit
+// + Phase 1 charge already succeeded via the payment-confirmed route above).
+// Targeted single-entity route, same pattern as
+// `portal-delivery-kanban.ts`'s `POST .../:id/run-workflow`: resolves the
+// real, already-seeded "Pay-by-Phase: Generate Remaining Invoices" workflow
+// definition (seed-system-workflows.ts) by name and fires it with
+// `{ checkoutSessionId }` — the workflow engine runs the actual
+// `create_phased_invoices` node (adapted #613), so this route does no
+// invoicing logic of its own. Does NOT auto-charge anything and does NOT wire
+// any Zoho webhook — that automation is #611, v1.2, explicitly deferred.
+const PHASED_INVOICING_WORKFLOW_NAME = "Pay-by-Phase: Generate Remaining Invoices";
+
+router.post(
+  "/admin/checkout-sessions/:id/create-phased-invoices",
+  requireAdmin,
+  async (req: Request, res: Response): Promise<void> => {
+    const checkoutSessionId = String(req.params.id ?? "");
+    if (!checkoutSessionId) {
+      res.status(400).json({ error: "checkout session id is required" });
+      return;
+    }
+
+    const [session] = await db
+      .select({ id: checkoutSessionsTable.id, sowPaymentPlan: checkoutSessionsTable.sowPaymentPlan, status: checkoutSessionsTable.status })
+      .from(checkoutSessionsTable)
+      .where(eq(checkoutSessionsTable.id, checkoutSessionId))
+      .limit(1);
+    if (!session) { res.status(404).json({ error: "checkout session not found" }); return; }
+    if (session.sowPaymentPlan !== "phased") { res.status(409).json({ error: "not_a_phased_plan" }); return; }
+    if (session.status !== "paid") { res.status(409).json({ error: "deposit_not_paid" }); return; }
+
+    const [def] = await db
+      .select({ id: wfDefinitionsTable.id, name: wfDefinitionsTable.name })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.name, PHASED_INVOICING_WORKFLOW_NAME))
+      .limit(1);
+    if (!def) {
+      billingLog.error({ checkoutSessionId }, "create-phased-invoices: system workflow definition not found — has seedSystemWorkflows() run?");
+      res.status(503).json({ error: "workflow_not_seeded" });
+      return;
+    }
+
+    const runId = await fireWorkflowForDefinition(def.id, "manual", `admin:create-phased-invoices:${checkoutSessionId}`, { checkoutSessionId });
+    if (!runId) {
+      res.status(503).json({ error: "Workflow could not be started (no published version or concurrency limit reached)" });
+      return;
+    }
+
+    billingLog.info({ checkoutSessionId, workflowDefId: def.id, runId, actorUserId: req.user?.id }, "create-phased-invoices: admin manually fired phased-invoicing workflow");
+    res.json({ ok: true, runId });
   },
 );
 
@@ -2850,6 +3039,31 @@ async function loadPayInFullCoupon(): Promise<CouponRow | null> {
     .where(and(eq(couponsTable.code, PAY_IN_FULL_COUPON_CODE), eq(couponsTable.active, true)))
     .limit(1);
   return coupon ?? null;
+}
+
+// Git #613 (Pay-by-Phase billing) — Shane's own direction: reuse the existing
+// `coupons` mechanism rather than hardcoding a deposit percentage. An
+// unlimited-use (`max_uses` null), percentage-off, auto-applied-server-side
+// row — never customer-entered, exactly like PAY_IN_FULL_COUPON_CODE above.
+// `discountValue` is the percentage taken OFF, so a 30%-of-total deposit is
+// `discountValue = 70` (customer pays the remaining 30%) — tunable by editing
+// the coupon row alone, no code change, per Shane's explicit ask. Migration:
+// lib/db/migrations/manual/2026-08-09-phased-invoicing-checkout-sessions-613.sql.
+const PHASE_DEPOSIT_COUPON_CODE = "PHASE-DEPOSIT-30";
+
+async function loadPhaseDepositCoupon(): Promise<CouponRow | null> {
+  const [coupon] = await db
+    .select()
+    .from(couponsTable)
+    .where(and(eq(couponsTable.code, PHASE_DEPOSIT_COUPON_CODE), eq(couponsTable.active, true)))
+    .limit(1);
+  return coupon ?? null;
+}
+
+/** The deposit fraction (e.g. 0.3 for a 30% deposit) a phase-deposit coupon encodes. */
+function phaseDepositFraction(coupon: CouponRow): number {
+  const discountPct = parseFloat(String(coupon.discountValue));
+  return 1 - Math.max(0, Math.min(100, discountPct)) / 100;
 }
 
 /** Minimal Stripe-customer resolver (email match, else create) for a users.id. */

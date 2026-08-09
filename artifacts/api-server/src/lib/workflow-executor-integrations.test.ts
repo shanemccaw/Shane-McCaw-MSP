@@ -78,6 +78,7 @@ vi.mock("@workspace/db", () => {
     "workflowStepsTable", "clientPresentationsTable", "deviceTokensTable",
     "insightsGeneratedDocumentsTable", "quickWinPresentationsTable",
     "campaignAssetsTable", "couponsTable",
+    "checkoutSessionsTable", "assessmentSowAgreementsTable",
   ];
   for (const name of tableNames) {
     stub[name] = {
@@ -888,10 +889,7 @@ describe("create_phased_invoices — missing Stripe key is an error (live)", () 
   beforeEach(async () => {
     resetState({ stripeThrows: true });
     seedDb(singleNodeGraph("create_phased_invoices", {
-      projectId: "42",
-      clientEmail: "client@example.com",
-      depositSessionId: "cs_test_123",
-      phases: '[{"phaseId":"p1","phaseTitle":"Discovery","amount":5000}]',
+      checkoutSessionId: "11111111-1111-1111-1111-111111111111",
     }));
     await executeWorkflowRun(1);
   });
@@ -905,19 +903,17 @@ describe("create_phased_invoices — missing Stripe key is an error (live)", () 
   });
 });
 
-describe("create_phased_invoices — missing projectId is an error (live)", () => {
+describe("create_phased_invoices — missing checkoutSessionId is an error (live)", () => {
   beforeEach(async () => {
     resetState({ stripeThrows: false });
     seedDb(singleNodeGraph("create_phased_invoices", {
-      // projectId omitted
-      clientEmail: "client@example.com",
-      depositSessionId: "cs_test_123",
+      // checkoutSessionId omitted
     }));
     await executeWorkflowRun(1);
   });
 
-  it("output.error mentions projectId", () => {
-    expect((capturedOutput().error as string)).toContain("projectId");
+  it("output.error mentions checkoutSessionId", () => {
+    expect((capturedOutput().error as string)).toContain("checkoutSessionId");
   });
 
   it("node status is error", () => {
@@ -929,9 +925,7 @@ describe("create_phased_invoices — dry-run returns placeholder invoices", () =
   beforeEach(async () => {
     resetState();
     seedDb(singleNodeGraph("create_phased_invoices", {
-      projectId: "42",
-      clientEmail: "client@example.com",
-      depositSessionId: "cs_test_abc",
+      checkoutSessionId: "11111111-1111-1111-1111-111111111111",
     }));
     await executeWorkflowRun(1, { dryRun: true });
   });

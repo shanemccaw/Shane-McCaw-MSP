@@ -290,6 +290,8 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
     invoiceIds: ["in_sample1", "in_sample2"],
     phaseCount: 2,
     totalScheduled: 500000,
+    datesFlagged: [],
+    skippedNonPositivePhases: [],
   },
   generate_phased_invoice: {
     invoiceId: "in_sample1",

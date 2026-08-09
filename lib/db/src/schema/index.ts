@@ -3274,6 +3274,54 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   // PAY-TODAY coupon waived. `sowCartTotalCents` above is what was charged.
   sowCartOriginalTotalCents: integer("sow_cart_original_total_cents"),
 
+  // ── Pay-by-Phase billing (Git #613, v1.1 split from #611) ──────────────────
+  // Nullable/additive: rows predating #613 never set these and are always the
+  // "full" plan by omission — pay-in-full is the only plan this table's
+  // existing sowCartTotalCents/sowCartOriginalTotalCents columns ever priced.
+  //
+  // `sowPaymentPlan` names which plan #599's checkout-session route snapshotted
+  // at signing. "phased" gates the PAY-TODAY coupon OFF (that discount is a
+  // pay-in-full-only incentive) and turns on the deposit math below instead.
+  //
+  // `sowPhaseBreakdown` is the per-phase price/duration snapshot phased billing
+  // needs that the aggregate `sowSelectedPhaseTitles`/`sowCartTotalCents`
+  // columns cannot supply — same "never re-resolve after signing" doctrine
+  // `sowSelectedPhaseTitles`' own comment states, extended to price and
+  // duration: a `services` row's price or `type_attributes.durationWeeks` can
+  // change between signing and whenever the phased-invoicing node actually
+  // runs, so both are captured here at sign time. Order matters — this array
+  // is stored in the same Foundation -> Parallel-eligible -> unstaged ->
+  // Closeout sequence `StatementOfWorkBody.tsx`'s `buildGanttLayout` uses, so
+  // index 0 is "Phase 1" (charged at signing, never separately invoiced) and
+  // the phased-invoicing node numbers phases 2..N directly off array order —
+  // no re-derivation of stage-bucket order at invoicing time.
+  //
+  // `sowDepositCents` is the 30%-of-contract deposit amount, computed ONCE at
+  // signing from the live `PHASE_DEPOSIT_COUPON_CODE` coupon and never
+  // recomputed: the phased-invoicing node's final-phase square-up must credit
+  // the EXACT deposit that was actually collected at signing, not whatever
+  // the coupon happens to say by the time the node runs (Shane can retune the
+  // coupon's percentage for future signings without corrupting an
+  // already-signed agreement's math).
+  //
+  // `sowPhaseInvoicesCreatedAt` is the phased-invoicing node's own idempotency
+  // guard: set the instant it successfully creates the phases-2..N draft
+  // invoices, so an accidental second manual fire (Git #613's trigger is
+  // manual, not event-driven) refuses rather than doubling every invoice.
+  sowPaymentPlan: text("sow_payment_plan", { enum: ["full", "phased"] }),
+  sowDepositCents: integer("sow_deposit_cents"),
+  sowPhaseBreakdown: jsonb("sow_phase_breakdown")
+    .$type<Array<{
+      serviceId: number;
+      title: string;
+      priceCents: number;
+      stage: string | null;
+      durationWeeks: number | null;
+    }>>()
+    .notNull()
+    .default([]),
+  sowPhaseInvoicesCreatedAt: timestamp("sow_phase_invoices_created_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

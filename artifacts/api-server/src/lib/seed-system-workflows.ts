@@ -1099,17 +1099,27 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
+    // Git #613: `agreement_signed` is never actually fired anywhere in the
+    // backend (confirmed by grep — only referenced in admin-panel display/
+    // category lists) — this trigger has been dead since it was written. Left
+    // in place as historical record per this project's "don't clean up other
+    // sessions'/history's stale rows" convention, but its `create` node's
+    // fields are kept in sync with `create_phased_invoices`'s real current
+    // contract (checkoutSessionId, not the old projectId/quick_win_presentations
+    // shape) so the admin Workflow Builder doesn't show a node whose saved
+    // data no longer matches its own node-type definition. The real, live
+    // v1.1 trigger is the separate manual workflow below.
     name: "Agreement Signed: Phased Invoice Setup",
-    description: "Fires when a client signs the engagement agreement and initiates Stripe checkout with the phased payment plan. Creates one draft Stripe invoice per SOW phase (80% total), stores the deposit payment method as the customer default for future auto-charges, and writes the stripeInvoiceId back to each workflow step row.",
+    description: "[Legacy/unreachable — agreement_signed is never fired] Historical event-triggered graph for the old projectId/quick_win_presentations phased-invoicing path. Superseded by the manual 'Pay-by-Phase: Generate Remaining Invoices' workflow (Git #613), which fires off the live checkout_sessions cart instead.",
     triggerType: "event",
     eventName: "agreement_signed",
-    triggerEnabled: true,
+    triggerEnabled: false,
     graph: {
       nodes: [
         { id: "start", type: "start", position: { x: 400, y: 50 }, data: { nodeType: "start", label: "agreement_signed" } },
         { id: "cond1", type: "condition", position: { x: 400, y: 190 }, data: { nodeType: "condition", label: "Is Phased Plan?", expression: "paymentPlan == 'phased'" } },
-        { id: "create", type: "create_phased_invoices", position: { x: 200, y: 340 }, data: { nodeType: "create_phased_invoices", label: "Create Phased Invoices", projectId: "{{projectId}}", clientEmail: "{{clientEmail}}", clientName: "{{clientName}}", depositSessionId: "{{stripeSessionId}}" } },
-        { id: "notify", type: "create_notification", position: { x: 200, y: 480 }, data: { nodeType: "create_notification", label: "Notify: Invoices Created", title: "Phase invoices created for {{clientName}}", body: "{{phaseCount}} draft Stripe invoices created (total {{totalScheduled}} cents). They will be auto-charged when each phase is marked complete.", type: "general" } },
+        { id: "create", type: "create_phased_invoices", position: { x: 200, y: 340 }, data: { nodeType: "create_phased_invoices", label: "Create Phased Invoices", checkoutSessionId: "{{checkoutSessionId}}" } },
+        { id: "notify", type: "create_notification", position: { x: 200, y: 480 }, data: { nodeType: "create_notification", label: "Notify: Invoices Created", title: "Phase invoices created for {{clientName}}", body: "{{phaseCount}} draft Stripe invoices created (total {{totalScheduled}} cents).", type: "general" } },
         { id: "end1", type: "end", position: { x: 200, y: 620 }, data: { nodeType: "end", label: "Done" } },
         { id: "end2", type: "end", position: { x: 600, y: 340 }, data: { nodeType: "end", label: "Done (full plan — no action)" } },
       ],
@@ -1119,6 +1129,32 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         { id: "e3", source: "create", target: "notify" },
         { id: "e4", source: "notify", target: "end1" },
         { id: "e5", source: "cond1", target: "end2", sourceHandle: "no" },
+      ],
+    },
+  },
+  {
+    // Git #613 (v1.1, split from #611 — the Zoho-webhook self-serve auto-fire
+    // is #611's v1.2, explicitly out of scope here). Manual trigger only:
+    // Shane fires this once, by hand, after confirming a checkout_sessions
+    // row is a paid Pay-by-Phase signature (assessment_sow_agreements
+    // paymentPlan="phased", status="paid") — see the
+    // POST /api/admin/checkout-sessions/:id/create-phased-invoices route,
+    // which resolves this exact workflow definition by name and fires it
+    // with { checkoutSessionId } as the payload.
+    name: "Pay-by-Phase: Generate Remaining Invoices",
+    description: "Manual trigger (Git #613). Given a paid Pay-by-Phase checkout_sessions row, creates draft Stripe invoices for its remaining phases (2..N) — each phase's own full price, the final phase credited the deposit already collected at signing — and stores the deposit payment method as the customer default for future charges. Fire this once, by hand, after confirming the deposit + Phase 1 charge succeeded. Does NOT auto-charge anything (Zoho phase-completion auto-fire is Git #611, v1.2, deferred).",
+    triggerType: "manual",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 300, y: 60 }, data: { nodeType: "start", label: "Manual: Generate Phase 2+ Invoices" } },
+        { id: "create", type: "create_phased_invoices", position: { x: 300, y: 200 }, data: { nodeType: "create_phased_invoices", label: "Create Phased Invoices", checkoutSessionId: "{{checkoutSessionId}}" } },
+        { id: "notify", type: "create_notification", position: { x: 300, y: 340 }, data: { nodeType: "create_notification", label: "Notify: Invoices Created", title: "Phase invoices created", body: "{{phaseCount}} draft Stripe invoices created (total {{totalScheduled}} cents) for checkout session {{checkoutSessionId}}.", type: "general" } },
+        { id: "end1", type: "end", position: { x: 300, y: 480 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "create" },
+        { id: "e2", source: "create", target: "notify" },
+        { id: "e3", source: "notify", target: "end1" },
       ],
     },
   },

@@ -58,6 +58,8 @@ import {
   clientAppRegistrationsTable,
   servicesTable,
   documentTypesTable,
+  checkoutSessionsTable,
+  assessmentSowAgreementsTable,
   type PsScriptPermissions,
   type WfGraph,
   type WfNode,
@@ -7653,8 +7655,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
-      // ── Phased invoice creation (20%+per-phase billing) ────────────────────
-
+      // ── Phased invoice creation (Git #613 — checkout_sessions Pay-by-Phase) ──
+      //
+      // Adapted from the original projectId/quick_win_presentations node (kept
+      // available in git history, not duplicated) to the real live-scope cart
+      // (#598-#603's `checkout_sessions` + `assessment_sow_agreements`). Manual
+      // trigger only (v1.1) — Shane fires this once, after a Pay-by-Phase
+      // signature has been signed AND its deposit+Phase 1 charge has actually
+      // succeeded, to generate the phases-2..N draft invoices. The Zoho
+      // webhook auto-fire (#611, v1.2) is explicitly out of scope here.
       case "create_phased_invoices": {
         const { getStripeKey: getCpiKey } = await import("./stripe");
         let cpiStripeKey: string;
@@ -7662,166 +7671,213 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const { default: StripeCpi } = await import("stripe");
         const stripeCpi = new StripeCpi(cpiStripeKey);
 
-        const cpiProjectIdRaw = interp(node.data.projectId as string | undefined, payload);
-        const cpiProjectId = cpiProjectIdRaw ? parseInt(cpiProjectIdRaw, 10) : NaN;
-        if (isNaN(cpiProjectId)) { nodeError = true; output = { error: "create_phased_invoices: projectId is required" }; break; }
+        const cpiCheckoutSessionId = interp(node.data.checkoutSessionId as string | undefined, payload) ?? String(payload.checkoutSessionId ?? "");
+        if (!cpiCheckoutSessionId) { nodeError = true; output = { error: "create_phased_invoices: checkoutSessionId is required" }; break; }
 
-        const cpiEmail = interp(node.data.clientEmail as string | undefined, payload) ?? String(payload.clientEmail ?? "");
-        const cpiName  = interp(node.data.clientName  as string | undefined, payload) ?? String(payload.clientName  ?? "");
-        const cpiDepositSessionId = interp(node.data.depositSessionId as string | undefined, payload) ?? String(payload.stripeSessionId ?? "");
+        const [cpiSession] = await db
+          .select({
+            id: checkoutSessionsTable.id,
+            email: checkoutSessionsTable.email,
+            fullName: checkoutSessionsTable.fullName,
+            status: checkoutSessionsTable.status,
+            sowPaymentPlan: checkoutSessionsTable.sowPaymentPlan,
+            sowPhaseBreakdown: checkoutSessionsTable.sowPhaseBreakdown,
+            sowDepositCents: checkoutSessionsTable.sowDepositCents,
+            sowPhaseInvoicesCreatedAt: checkoutSessionsTable.sowPhaseInvoicesCreatedAt,
+          })
+          .from(checkoutSessionsTable)
+          .where(eq(checkoutSessionsTable.id, cpiCheckoutSessionId))
+          .limit(1);
 
-        if (!cpiEmail) { nodeError = true; output = { error: "create_phased_invoices: clientEmail is required" }; break; }
-        if (!cpiDepositSessionId) { nodeError = true; output = { error: "create_phased_invoices: depositSessionId is required" }; break; }
+        if (!cpiSession) { nodeError = true; output = { error: `create_phased_invoices: no checkout_sessions row for ${cpiCheckoutSessionId}` }; break; }
+        if (cpiSession.sowPaymentPlan !== "phased") { nodeError = true; output = { error: "create_phased_invoices: checkout session is not a phased plan" }; break; }
+        if (cpiSession.status !== "paid") { nodeError = true; output = { error: "create_phased_invoices: checkout session is not paid — deposit + Phase 1 must be collected first" }; break; }
+        // Idempotency guard — Git #613's trigger is a manual one-time fire, not
+        // an event, so an accidental second click must refuse rather than
+        // double every invoice.
+        if (cpiSession.sowPhaseInvoicesCreatedAt) { nodeError = true; output = { error: `create_phased_invoices: invoices already created for this session at ${cpiSession.sowPhaseInvoicesCreatedAt.toISOString()}` }; break; }
+        if (cpiSession.sowDepositCents == null) { nodeError = true; output = { error: "create_phased_invoices: session carries no sowDepositCents — cannot compute the final-phase square-up" }; break; }
 
-        // Retrieve the deposit checkout session to extract the confirmed payment method.
-        // This MUST succeed — the workflow is triggered from checkout.session.completed,
-        // so the payment_intent is complete and the payment_method is guaranteed to be set.
-        // Treat failure as a hard node error so the workflow log shows a clear failure
-        // rather than silently creating invoices that can never be auto-charged.
+        // The signed, paid agreement — the real "Pay-by-Phase agreement was
+        // signed" precondition #613 requires, and the source of the confirmed
+        // deposit+Phase1 PaymentIntent (not a Stripe Checkout Session — the
+        // live cart uses an embedded PaymentIntent, per #602).
+        const [cpiAgreement] = await db
+          .select({
+            id: assessmentSowAgreementsTable.id,
+            paymentPlan: assessmentSowAgreementsTable.paymentPlan,
+            status: assessmentSowAgreementsTable.status,
+            stripePaymentIntentId: assessmentSowAgreementsTable.stripePaymentIntentId,
+          })
+          .from(assessmentSowAgreementsTable)
+          .where(eq(assessmentSowAgreementsTable.checkoutSessionId, cpiCheckoutSessionId))
+          .limit(1);
+
+        if (!cpiAgreement || cpiAgreement.paymentPlan !== "phased" || cpiAgreement.status !== "paid" || !cpiAgreement.stripePaymentIntentId) {
+          nodeError = true;
+          output = { error: "create_phased_invoices: no paid phased assessment_sow_agreements row found for this checkout session — nothing signed to invoice against" };
+          break;
+        }
+
+        // Retrieve the deposit+Phase1 PaymentIntent to extract the confirmed
+        // payment method. This MUST succeed — the agreement only reaches
+        // status "paid" after the PaymentIntent itself succeeded (see
+        // portal-assessment.ts's payment-confirmed route). Treat failure as a
+        // hard node error so the workflow log shows a clear failure rather
+        // than silently creating invoices that can never be auto-charged.
         let cpiPaymentMethodId: string | null = null;
         let cpiSessionCustomerId: string | null = null;
         try {
-          const cpiSession = await stripeCpi.checkout.sessions.retrieve(cpiDepositSessionId, {
-            expand: ["payment_intent"],
+          const cpiIntent = await stripeCpi.paymentIntents.retrieve(cpiAgreement.stripePaymentIntentId, {
+            expand: ["payment_method"],
           });
-          // Prefer the customer directly on the session — it is guaranteed to own the payment method.
-          cpiSessionCustomerId = typeof cpiSession.customer === "string"
-            ? cpiSession.customer
-            : (cpiSession.customer as { id?: string } | null)?.id ?? null;
-          const pi = cpiSession.payment_intent;
-          if (pi && typeof pi === "object") {
-            cpiPaymentMethodId = typeof pi.payment_method === "string"
-              ? pi.payment_method
-              : (pi.payment_method as { id?: string } | null)?.id ?? null;
-          }
+          cpiSessionCustomerId = typeof cpiIntent.customer === "string"
+            ? cpiIntent.customer
+            : (cpiIntent.customer as { id?: string } | null)?.id ?? null;
+          cpiPaymentMethodId = typeof cpiIntent.payment_method === "string"
+            ? cpiIntent.payment_method
+            : (cpiIntent.payment_method as { id?: string } | null)?.id ?? null;
           if (!cpiPaymentMethodId) {
             nodeError = true;
-            output = { error: `create_phased_invoices: deposit session ${cpiDepositSessionId} has no confirmed payment method — invoices NOT created to prevent unchargeable drafts` };
+            output = { error: `create_phased_invoices: deposit PaymentIntent ${cpiAgreement.stripePaymentIntentId} has no confirmed payment method — invoices NOT created to prevent unchargeable drafts` };
             break;
           }
         } catch (e) {
           nodeError = true;
-          output = { error: `create_phased_invoices: failed to retrieve deposit session payment method: ${String(e)}` };
+          output = { error: `create_phased_invoices: failed to retrieve deposit PaymentIntent payment method: ${String(e)}` };
           break;
         }
 
         // Resolve the Stripe customer.
-        // Always prefer the customer that Stripe already linked to the checkout session —
-        // that customer is guaranteed to own the payment method. Falling back to an
-        // email lookup can return a different customer record, causing the subsequent
-        // `customers.update(invoice_settings.default_payment_method)` to fail because
-        // the PM is not attached to that customer.
+        // Always prefer the customer already linked to the PaymentIntent —
+        // that customer is guaranteed to own the payment method. Falling back
+        // to an email lookup can return a different customer record, causing
+        // the subsequent `customers.update(invoice_settings.default_payment_method)`
+        // to fail because the PM is not attached to that customer.
         let cpiCustomerId: string;
         if (cpiSessionCustomerId) {
           cpiCustomerId = cpiSessionCustomerId;
         } else {
-          const cpiCustomers = await stripeCpi.customers.list({ email: cpiEmail, limit: 1 });
+          const cpiCustomers = await stripeCpi.customers.list({ email: cpiSession.email, limit: 1 });
           if (cpiCustomers.data.length > 0) {
             cpiCustomerId = cpiCustomers.data[0].id;
           } else {
-            const cpiCust = await stripeCpi.customers.create({ email: cpiEmail, name: cpiName || undefined });
+            const cpiCust = await stripeCpi.customers.create({ email: cpiSession.email, name: cpiSession.fullName || undefined });
             cpiCustomerId = cpiCust.id;
           }
         }
 
         // Attach payment method as customer default so future auto-charges work.
         // Always attempt attach — Stripe only auto-attaches the PM to the customer
-        // when the session has setup_future_usage set; without it the PM is used
-        // once but never attached, causing customers.update to throw.
-        // The try/catch swallows "already attached" errors gracefully.
-        if (cpiPaymentMethodId) {
-          try {
-            await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
-          } catch { /* already attached — safe to ignore */ }
-          await stripeCpi.customers.update(cpiCustomerId, {
-            invoice_settings: { default_payment_method: cpiPaymentMethodId },
-          });
-        }
+        // when setup_future_usage is set on the original PaymentIntent; without
+        // it the PM is used once but never attached, causing customers.update
+        // to throw. The try/catch swallows "already attached" errors gracefully.
+        // (Re-checked rather than trusted: TS does not carry narrowing forward
+        // across the try/catch above, and the null branch there already exits
+        // the switch case, so this is unreachable in practice.)
+        if (!cpiPaymentMethodId) { nodeError = true; output = { error: "create_phased_invoices: payment method resolution failed unexpectedly" }; break; }
+        const cpiConfirmedPmId = cpiPaymentMethodId;
+        try {
+          await stripeCpi.paymentMethods.attach(cpiConfirmedPmId, { customer: cpiCustomerId });
+        } catch { /* already attached — safe to ignore */ }
+        await stripeCpi.customers.update(cpiCustomerId, {
+          invoice_settings: { default_payment_method: cpiConfirmedPmId },
+        });
 
-        // Retrieve the presentation for this project to get the phased payment schedule
-        const cpiPresRows = await db
-          .select({
-            id: quickWinPresentationsTable.id,
-            paymentSchedule: quickWinPresentationsTable.paymentSchedule,
-          })
-          .from(quickWinPresentationsTable)
-          .where(eq(quickWinPresentationsTable.projectId, cpiProjectId))
-          .limit(1);
-
-        type CpiPhaseEntry = { phaseId: string; phaseTitle: string; amount: number; status: string };
-        type CpiPaymentSchedule = { deposit?: number; phases?: CpiPhaseEntry[] };
-
-        const cpiSchedule = cpiPresRows[0]?.paymentSchedule as CpiPaymentSchedule | null;
-        const cpiPhases = cpiSchedule?.phases ?? [];
-
-        if (cpiPhases.length === 0) {
-          nodeError = true;
-          output = { error: "create_phased_invoices: no phased payment schedule found for project — ensure checkout was completed with paymentPlan=phased" };
-          break;
-        }
-
-        // Look up workflow_steps for this project.
-        // Phase IDs in paymentSchedule use synthetic "sow-0", "sow-1", ... identifiers
-        // (not DB primary keys) — match by title first, then by SOW index order as fallback.
-        const cpiSteps = await db
-          .select({ id: workflowStepsTable.id, title: workflowStepsTable.title, dueDate: workflowStepsTable.dueDate, order: workflowStepsTable.order })
-          .from(workflowStepsTable)
-          .where(eq(workflowStepsTable.projectId, cpiProjectId))
-          .orderBy(workflowStepsTable.order);
-
-        // Build lookup: title (normalised) → step
-        const cpiStepByTitle = new Map(cpiSteps.map(s => [s.title.trim().toLowerCase(), s]));
-        // Build lookup: sow index → step (fallback when title doesn't match)
-        const cpiStepByIndex = new Map(cpiSteps.map((s, i) => [`sow-${i}`, s]));
+        // sowPhaseBreakdown is already ordered Foundation -> Parallel-eligible
+        // -> unstaged -> Closeout (Git #593's Gantt sequence, snapshotted at
+        // signing — see the schema's own comment). Index 0 is "Phase 1",
+        // already charged at signing alongside the deposit — never invoiced
+        // again here. A single-phase contract has nothing left to invoice at
+        // all (Phase 1 WAS the last phase, and was already squared up against
+        // the deposit at signing) — a real, valid outcome, not an error.
+        const cpiPhases = cpiSession.sowPhaseBreakdown;
+        const cpiToInvoice = cpiPhases.slice(1);
 
         const cpiInvoiceIds: string[] = [];
         let cpiTotalScheduled = 0;
+        const cpiDatesFlagged: string[] = [];
+        const cpiSkippedNonPositive: string[] = [];
 
-        for (const phase of cpiPhases) {
-          const cpiAmountCents = Math.round(phase.amount * 100);
-          if (cpiAmountCents <= 0) continue;
-          // Match by title first (most reliable), fall back to sow-{index} position
-          const cpiStep =
-            cpiStepByTitle.get(phase.phaseTitle.trim().toLowerCase()) ??
-            cpiStepByIndex.get(phase.phaseId);
-          const cpiDueDate = cpiStep?.dueDate;
+        // Cumulative due dates: Phase (i+1)'s invoice is due when Phase i
+        // begins to close out, i.e. today + the sum of every prior phase's
+        // real durationWeeks. Once any prior phase has no recorded duration,
+        // every later date becomes unknowable too (there's no gap to skip
+        // over) — flagged per phase title rather than fabricated, per #613's
+        // explicit "do not fabricate a schedule" instruction.
+        const cpiNow = Date.now();
+        let cpiCumulativeWeeks = 0;
+        let cpiDatesUsable = true;
+        const cpiDueDates: Array<Date | null> = [];
+        for (let i = 0; i < cpiPhases.length - 1; i++) {
+          const dw = cpiPhases[i].durationWeeks;
+          if (dw == null || dw <= 0) cpiDatesUsable = false;
+          else cpiCumulativeWeeks += dw;
+          cpiDueDates.push(cpiDatesUsable ? new Date(cpiNow + cpiCumulativeWeeks * 7 * 24 * 60 * 60 * 1000) : null);
+        }
 
-          // Create a draft invoice (auto_advance: false = stays as draft until we finalize it)
+        for (let i = 0; i < cpiToInvoice.length; i++) {
+          const phase = cpiToInvoice[i];
+          const isLastPhase = i === cpiToInvoice.length - 1;
+          // Final phase: its own price minus the deposit already collected at
+          // signing (#611's confirmed square-up), so total collected across
+          // every phase equals exactly 100% of the contract. Every other
+          // phase invoices its own full listed price.
+          const cpiAmountCents = isLastPhase ? phase.priceCents - cpiSession.sowDepositCents : phase.priceCents;
+          if (cpiAmountCents <= 0) {
+            // A final phase priced below the deposit — a real possible
+            // scope shape (e.g. a cheap Closeout phase on a large contract).
+            // Creating a negative/zero Stripe invoice would be a refund
+            // decision, not an invoicing one — flagged for Shane, not
+            // silently issued.
+            cpiSkippedNonPositive.push(phase.title);
+            continue;
+          }
+          const cpiDueDate = cpiDueDates[i];
+          if (!cpiDueDate) cpiDatesFlagged.push(phase.title);
+
+          const phaseNumber = i + 2; // cpiToInvoice[0] is "Phase 2" (index 0 of sowPhaseBreakdown was Phase 1)
+
+          // Create a draft invoice (auto_advance: false = stays as draft until finalized)
           const cpiInvoice = await stripeCpi.invoices.create({
             customer: cpiCustomerId,
             collection_method: "charge_automatically",
             auto_advance: false,
             metadata: {
-              phaseId: phase.phaseId,
-              phaseTitle: phase.phaseTitle,
-              projectId: String(cpiProjectId),
+              serviceId: String(phase.serviceId),
+              phaseTitle: phase.title,
+              checkoutSessionId: cpiCheckoutSessionId,
+              phaseNumber: String(phaseNumber),
+              totalPhases: String(cpiPhases.length),
+              ...(isLastPhase ? { squareUp: "true", depositCreditedCents: String(cpiSession.sowDepositCents) } : {}),
               ...(cpiDueDate ? { phaseDueDate: cpiDueDate.toISOString() } : {}),
             },
           });
           await stripeCpi.invoiceItems.create({
             customer: cpiCustomerId,
             invoice: cpiInvoice.id,
-            description: `Phase: ${phase.phaseTitle}`,
+            description: isLastPhase
+              ? `Phase ${phaseNumber} of ${cpiPhases.length} (final): ${phase.title} — less ${cpiSession.sowDepositCents / 100} deposit credit`
+              : `Phase ${phaseNumber} of ${cpiPhases.length}: ${phase.title}`,
             amount: cpiAmountCents,
             currency: "usd",
           });
 
           cpiInvoiceIds.push(cpiInvoice.id);
           cpiTotalScheduled += cpiAmountCents;
-
-          // Write the stripeInvoiceId back to the matching workflow_step row
-          if (cpiStep) {
-            await db
-              .update(workflowStepsTable)
-              .set({ stripeInvoiceId: cpiInvoice.id })
-              .where(eq(workflowStepsTable.id, cpiStep.id));
-          }
         }
+
+        await db
+          .update(checkoutSessionsTable)
+          .set({ sowPhaseInvoicesCreatedAt: new Date(), updatedAt: new Date() })
+          .where(eq(checkoutSessionsTable.id, cpiCheckoutSessionId));
 
         output = {
           invoiceIds: cpiInvoiceIds,
           phaseCount: cpiInvoiceIds.length,
           totalScheduled: cpiTotalScheduled,
+          datesFlagged: cpiDatesFlagged,
+          skippedNonPositivePhases: cpiSkippedNonPositive,
         };
         break;
       }
