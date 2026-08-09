@@ -530,6 +530,7 @@ function TriageView() {
   const state = useStore();
   const triagable = state.issues.filter((i) => i.status !== "closed" && i.status !== "done");
   const [index, setIndex] = useState(0);
+  const [epicSearch, setEpicSearch] = useState("");
 
   // Clamp index to valid bounds
   const currentIndex = Math.max(0, Math.min(index, triagable.length - 1));
@@ -573,6 +574,18 @@ function TriageView() {
     }
   }
 
+  // Filter epics by search query (supports name, number, or #number)
+  const query = epicSearch.trim().toLowerCase();
+  const filteredEpics = state.epics
+    .filter(e => e.status !== "closed")
+    .filter((e) => {
+      if (!query) return true;
+      const nameMatch = e.title.toLowerCase().includes(query);
+      const numMatch = e.githubNumber ? String(e.githubNumber).includes(query) : false;
+      const hashNumMatch = e.githubNumber ? `#${e.githubNumber}`.includes(query) : false;
+      return nameMatch || numMatch || hashNumMatch;
+    });
+
   return (
     <div style={{ padding: 24, maxWidth: 900, display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header */}
@@ -614,8 +627,46 @@ function TriageView() {
 
       {/* Two Column Layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "start" }}>
-        {/* Left Column: Card, Status, and Controls */}
+        {/* Left Column: Navigation Controls at the top, Card, Status */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Navigation Controls */}
+          <div style={{ display: "flex", gap: 10, background: SURFACE.well, padding: 10, borderRadius: 6, border: `1px solid ${LINE.quiet}` }}>
+            <button
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              disabled={currentIndex === 0}
+              style={{
+                padding: "6px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.card, color: TEXT.quiet, fontSize: 12, fontWeight: 600,
+                fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
+                opacity: currentIndex === 0 ? 0.4 : 1,
+              }}
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setIndex((i) => Math.min(triagable.length - 1, i + 1))}
+              disabled={currentIndex === triagable.length - 1}
+              style={{
+                padding: "6px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.card, color: TEXT.quiet, fontSize: 12, fontWeight: 600,
+                fontFamily: FONT.sans, cursor: currentIndex === triagable.length - 1 ? "default" : "pointer",
+                opacity: currentIndex === triagable.length - 1 ? 0.4 : 1,
+              }}
+            >
+              Skip / Next
+            </button>
+            <button
+              onClick={() => void handleDelete()}
+              style={{
+                padding: "6px 12px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
+                background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12, fontWeight: 600,
+                fontFamily: FONT.sans, cursor: "pointer", marginLeft: "auto",
+              }}
+            >
+              Delete Issue
+            </button>
+          </div>
+
           {/* Current Issue Card */}
           <div style={{
             padding: 20, background: SURFACE.card, borderRadius: 8,
@@ -635,7 +686,7 @@ function TriageView() {
 
             {epic ? (
               <p style={{ margin: 0, fontSize: 12.5, color: TEXT.quiet }}>
-                Assigned to Epic: <strong style={{ color: ACCENT.greenSoft }}>{epic.title}</strong>
+                Assigned to Epic: <strong style={{ color: ACCENT.greenSoft }}>{epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}</strong>
               </p>
             ) : (
               <p style={{ margin: 0, fontSize: 12.5, color: ACCENT.amber, fontWeight: 500 }}>
@@ -665,86 +716,75 @@ function TriageView() {
               ))}
             </div>
           </Section>
-
-          {/* Footer controls */}
-          <div style={{ display: "flex", gap: 10, marginTop: 12, borderTop: `1px solid ${LINE.quiet}`, paddingTop: 16 }}>
-            <button
-              onClick={() => setIndex((i) => Math.max(0, i - 1))}
-              disabled={currentIndex === 0}
-              style={{
-                padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
-                background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
-                fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
-                opacity: currentIndex === 0 ? 0.4 : 1,
-              }}
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setIndex((i) => Math.min(triagable.length - 1, i + 1))}
-              disabled={currentIndex === triagable.length - 1}
-              style={{
-                padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
-                background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
-                fontFamily: FONT.sans, cursor: currentIndex === triagable.length - 1 ? "default" : "pointer",
-                opacity: currentIndex === triagable.length - 1 ? 0.4 : 1,
-                marginLeft: "auto",
-              }}
-            >
-              Skip / Next
-            </button>
-            <button
-              onClick={() => void handleDelete()}
-              style={{
-                padding: "8px 16px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
-                background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12,
-                fontFamily: FONT.sans, cursor: "pointer",
-              }}
-            >
-              Delete Issue
-            </button>
-          </div>
         </div>
 
-        {/* Right Column: Epic Assignment list */}
+        {/* Right Column: Epic Search & Assignment List */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Section title="Assign to Epic">
-            <div style={{
-              display: "flex", flexDirection: "column", gap: 6,
-              maxHeight: 520, overflowY: "auto", paddingRight: 4,
-            }}>
-              <button
-                onClick={() => void handleAssignEpic(null)}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input
+                type="text"
+                placeholder="Search Epics by name or #number..."
+                value={epicSearch}
+                onChange={(e) => setEpicSearch(e.target.value)}
                 style={{
-                  padding: "10px 14px", borderRadius: 6,
-                  border: `1px solid ${!issue.epicId ? ACCENT.amber : LINE.control}`,
-                  background: !issue.epicId ? `${ACCENT.amber}12` : SURFACE.well,
-                  color: !issue.epicId ? ACCENT.amber : TEXT.quiet,
-                  cursor: "pointer", fontSize: 12.5, fontWeight: 600, textAlign: "left",
-                  fontFamily: FONT.sans, flexShrink: 0,
-                  textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: `1px solid ${LINE.control}`,
+                  background: SURFACE.well,
+                  color: TEXT.primary,
+                  fontSize: 12.5,
+                  fontFamily: FONT.sans,
+                  outline: "none",
                 }}
-              >
-                No Epic
-              </button>
-              {state.epics.filter(e => e.status !== "closed").map((e) => (
+              />
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                maxHeight: 460,
+                overflowY: "auto",
+                paddingRight: 4,
+              }}>
                 <button
-                  key={e.id}
-                  onClick={() => void handleAssignEpic(e.id)}
+                  onClick={() => void handleAssignEpic(null)}
                   style={{
                     padding: "10px 14px", borderRadius: 6,
-                    border: `1px solid ${issue.epicId === e.id ? ACCENT.greenSoft : LINE.control}`,
-                    background: issue.epicId === e.id ? `${ACCENT.greenSoft}12` : SURFACE.well,
-                    color: issue.epicId === e.id ? ACCENT.greenSoft : TEXT.quiet,
+                    border: `1px solid ${!issue.epicId ? ACCENT.amber : LINE.control}`,
+                    background: !issue.epicId ? `${ACCENT.amber}12` : SURFACE.well,
+                    color: !issue.epicId ? ACCENT.amber : TEXT.quiet,
                     cursor: "pointer", fontSize: 12.5, fontWeight: 600, textAlign: "left",
                     fontFamily: FONT.sans, flexShrink: 0,
                     textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
                   }}
-                  title={e.title}
                 >
-                  {e.title}
+                  No Epic
                 </button>
-              ))}
+                {filteredEpics.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => void handleAssignEpic(e.id)}
+                    style={{
+                      padding: "10px 14px", borderRadius: 6,
+                      border: `1px solid ${issue.epicId === e.id ? ACCENT.greenSoft : LINE.control}`,
+                      background: issue.epicId === e.id ? `${ACCENT.greenSoft}12` : SURFACE.well,
+                      color: issue.epicId === e.id ? ACCENT.greenSoft : TEXT.quiet,
+                      cursor: "pointer", fontSize: 12.5, fontWeight: 600, textAlign: "left",
+                      fontFamily: FONT.sans, flexShrink: 0,
+                      textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
+                    }}
+                    title={e.githubNumber ? `#${e.githubNumber} ${e.title}` : e.title}
+                  >
+                    {e.githubNumber ? `#${e.githubNumber} ` : ""}{e.title}
+                  </button>
+                ))}
+                {filteredEpics.length === 0 && (
+                  <div style={{ padding: "12px 6px", fontSize: 12, color: TEXT.dim, textAlign: "center", fontFamily: FONT.sans }}>
+                    No matching Epics found
+                  </div>
+                )}
+              </div>
             </div>
           </Section>
         </div>
