@@ -161,7 +161,7 @@ function EpicNode({
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const issues = issuesForEpic(epic.id);
   const visibleIssues = showClosed ? issues : issues.filter((i) => i.status !== "closed");
   const directChats = chatsForEpic(epic.id).filter((c) => c.epicId === epic.id && !c.issueId);
@@ -234,7 +234,7 @@ function NoEpicNode({
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div>
@@ -286,7 +286,7 @@ function CategoryNode({
   onChat,
   onChatContextMenu,
 }: { category: string; selectedChatId: number | null; onChat: (id: number) => void; onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const chats = chatsForCategory(category);
   return (
     <div>
