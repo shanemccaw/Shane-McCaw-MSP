@@ -164,7 +164,13 @@ import {
   type JourneySowScope,
 } from "./journeyScopeFromSow.ts";
 import { journeyScopeFromOffers, type WireRecommendedOffers } from "./sowLiveScope.ts";
-import { createSowCheckoutSession, SowCartPaymentPanel } from "./sowCartPayment";
+import {
+  createSowCheckoutSession,
+  SowCartPaymentPanel,
+  SowPaymentPlanChoice,
+  type SowPaymentPlan,
+  type SowPhaseBreakdownEntry,
+} from "./sowCartPayment";
 import { JourneySignaturePanel, type JourneySignature } from "./JourneySignaturePanel";
 import type { JourneyView } from "./journeyModel.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
@@ -516,6 +522,15 @@ export function StatementOfWorkBody({
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   /**
+   * Git #630 — which plan this signature will lock in. Defaults "full",
+   * matching the platform's pre-#630 behaviour for every caller that never
+   * saw a selector at all. Locked the instant `signed` becomes true (the
+   * same hard-lock discipline every other scope control on this page
+   * follows) — the choice is carried in the very request that signs, so
+   * there is no later step where changing it would mean anything.
+   */
+  const [paymentPlan, setPaymentPlan] = useState<SowPaymentPlan>("full");
+  /**
    * Git #602 — the live sign-and-pay flow's own state, entered the moment
    * `sign()` runs for a real (`!isPreview && live`) scope. The design preview
    * never touches this: it has no real tenant to snapshot a checkout session
@@ -528,10 +543,14 @@ export function StatementOfWorkBody({
     | {
         readonly status: "ready";
         readonly sessionId: string;
+        readonly paymentPlan: SowPaymentPlan;
         readonly totalCents: number;
         readonly discount: { readonly savingsCents: number; readonly discountPct: number | null } | null;
         readonly phaseCount: number;
         readonly addonCount: number;
+        readonly phaseBreakdown: readonly SowPhaseBreakdownEntry[];
+        readonly depositCents: number | null;
+        readonly depositPct: number | null;
       }
     | { readonly status: "paid"; readonly amountCents: number }
     | { readonly status: "error"; readonly message: string }
@@ -683,6 +702,14 @@ export function StatementOfWorkBody({
     [signed],
   );
 
+  const onSetPaymentPlan = useCallback(
+    (plan: SowPaymentPlan) => {
+      if (signed) return; // same hard lock — the plan is fixed the instant a signature locks it in
+      setPaymentPlan(plan);
+    },
+    [signed],
+  );
+
   /**
    * Git #599's session snapshot, for the real scope this customer just
    * signed — and, as of #603, the exact request that carries the drawn
@@ -710,13 +737,14 @@ export function StatementOfWorkBody({
         addonSelections,
         signatureData: signature.signatureData,
         signerName: signature.signerName,
+        paymentPlan,
       })
         .then((session) => setSowPayment({ status: "ready", ...session }))
         .catch((err) =>
           setSowPayment({ status: "error", message: err instanceof Error ? err.message : "Could not start checkout." }),
         );
     },
-    [live, scope, selection, fetchWithAuth],
+    [live, scope, selection, fetchWithAuth, paymentPlan],
   );
 
   // Stable across renders — `SowCartPaymentPanel` depends on this identity
@@ -1471,6 +1499,10 @@ export function StatementOfWorkBody({
               discount={sowPayment.discount}
               phaseCount={sowPayment.phaseCount}
               addonCount={sowPayment.addonCount}
+              paymentPlan={sowPayment.paymentPlan}
+              phaseBreakdown={sowPayment.phaseBreakdown}
+              depositCents={sowPayment.depositCents}
+              depositPct={sowPayment.depositPct}
               onPaid={onSowPaid}
             />
           ) : sowPayment.status === "error" ? (
@@ -1564,11 +1596,20 @@ export function StatementOfWorkBody({
             </button>
           </>
         ) : (
-          // Git #603 — a real drawn signature + typed legal name, the same
-          // pad the proposal screen already uses, replacing the plain
-          // checkbox for a live scope. `handleLiveSign` locks the scope AND
-          // creates the checkout session in the same request.
-          <JourneySignaturePanel tenantName={tenant.name} submitting={sowPayment.status === "creating"} onSign={handleLiveSign} />
+          <>
+            {/* Git #630 — the real Pay in Full / Pay by Phase choice, missing
+                from this screen even though #613 built the deposit + phased-
+                invoicing backend for it. Rendered here, above the pad, because
+                the choice has to be made BEFORE signing — `handleLiveSign`
+                below carries it in the very request that signs. */}
+            <SowPaymentPlanChoice plan={paymentPlan} onChange={onSetPaymentPlan} disabled={sowPayment.status === "creating"} />
+            {/* Git #603 — a real drawn signature + typed legal name, the same
+                pad the proposal screen already uses, replacing the plain
+                checkbox for a live scope. `handleLiveSign` locks the scope AND
+                creates the checkout session (carrying `paymentPlan` above) in
+                the same request. */}
+            <JourneySignaturePanel tenantName={tenant.name} submitting={sowPayment.status === "creating"} onSign={handleLiveSign} />
+          </>
         )}
       </div>
 

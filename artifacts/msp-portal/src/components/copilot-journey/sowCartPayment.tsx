@@ -46,29 +46,50 @@ type FetchWithAuth = (
  * endpoints return (read from the real route source, not assumed).
  * ------------------------------------------------------------------ */
 
+/** Git #613's per-phase billing snapshot, as `checkout-session` returns it (Git #630). */
+export interface SowPhaseBreakdownEntry {
+  readonly serviceId: number;
+  readonly title: string;
+  readonly priceCents: number;
+  readonly stage: string | null;
+  readonly durationWeeks: number | null;
+}
+
 export interface SowCheckoutSessionRequest {
   readonly selectedPhaseServiceIds: readonly number[];
   readonly addonSelections: readonly { readonly addonId: string; readonly tierId: string }[];
   /** JourneySignaturePanel's drawn-PNG + typed-name capture — this request IS the "sign()" moment (Git #603). */
   readonly signatureData: string;
   readonly signerName: string;
+  /** Git #630 — which plan this signature locks in; the server defaults "full" if omitted. */
+  readonly paymentPlan: "full" | "phased";
 }
 
 export interface SowCheckoutSessionResult {
   readonly sessionId: string;
+  readonly paymentPlan: "full" | "phased";
   readonly totalCents: number;
   readonly originalTotalCents: number;
   readonly discount: { readonly couponCode: string; readonly savingsCents: number; readonly discountPct: number | null } | null;
   readonly phaseCount: number;
   readonly addonCount: number;
+  /** Git #613's billing-order phase snapshot — `[]` on a "full" signature. */
+  readonly phaseBreakdown: readonly SowPhaseBreakdownEntry[];
+  /** The 30%-style deposit this signature locks in — `null` on a "full" signature. */
+  readonly depositCents: number | null;
+  readonly depositPct: number | null;
 }
 
 interface SowCheckoutSessionResponse {
   readonly sessionId: string;
   readonly expiresAt: string;
+  readonly paymentPlan: "full" | "phased";
   readonly totalCents: number;
   readonly originalTotalCents: number;
   readonly discount: { readonly couponCode: string; readonly savingsCents: number; readonly discountPct: number | null } | null;
+  readonly phaseBreakdown: readonly SowPhaseBreakdownEntry[];
+  readonly depositCents: number | null;
+  readonly depositPct: number | null;
   readonly phases: readonly { readonly serviceId: number; readonly serviceName: string; readonly priceCents: number }[];
   readonly addons: readonly {
     readonly addonId: string;
@@ -90,6 +111,8 @@ function checkoutSessionErrorMessage(code: string): string {
   switch (code) {
     case "no_priced_scope":
       return "There is no priced remediation scope for this tenant right now.";
+    case "phased_plan_unavailable":
+      return "Pay by Phase is not available right now. Please choose Pay in Full, or contact us.";
     case "session_expired":
     case "session_not_ready":
       return "This session has expired. Please try signing again.";
@@ -118,12 +141,163 @@ export async function createSowCheckoutSession(
   const data = (await res.json()) as SowCheckoutSessionResponse;
   return {
     sessionId: data.sessionId,
+    paymentPlan: data.paymentPlan,
     totalCents: data.totalCents,
     originalTotalCents: data.originalTotalCents,
     discount: data.discount,
+    phaseBreakdown: data.phaseBreakdown,
+    depositCents: data.depositCents,
+    depositPct: data.depositPct,
     phaseCount: data.phases.length,
     addonCount: data.addons.length,
   };
+}
+
+export type SowPaymentPlan = "full" | "phased";
+
+const PLAN_CARD_BORDER_OFF = "rgba(51,65,85,.9)";
+const PLAN_CARD_BORDER_ON = hexAlpha(BRAND.teal, 0.55);
+const PLAN_CARD_BG_OFF = "rgba(15,23,42,.4)";
+const PLAN_CARD_BG_ON = hexAlpha(BRAND.teal, 0.08);
+const PLAN_RING_OFF = "rgba(71,85,105,.9)";
+
+function SowPaymentPlanCard({
+  title,
+  subtitle,
+  body,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly body: string;
+  readonly selected: boolean;
+  readonly disabled: boolean;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      disabled={disabled}
+      style={{
+        appearance: "none",
+        textAlign: "left",
+        font: "inherit",
+        color: "inherit",
+        border: `1px solid ${selected ? PLAN_CARD_BORDER_ON : PLAN_CARD_BORDER_OFF}`,
+        borderRadius: 10,
+        background: selected ? PLAN_CARD_BG_ON : PLAN_CARD_BG_OFF,
+        padding: "14px 16px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled && !selected ? 0.5 : 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        transition: "border-color 180ms, background 180ms",
+      }}
+    >
+      <span style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{title}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: INK.bodyDark }}>{subtitle}</span>
+        </span>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 17,
+            height: 17,
+            borderRadius: "50%",
+            border: `1px solid ${selected ? BRAND.teal : PLAN_RING_OFF}`,
+            flex: "none",
+            marginTop: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "border-color 180ms",
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: selected ? BRAND.teal : "transparent",
+              transition: "background 180ms",
+            }}
+          />
+        </span>
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>{body}</span>
+    </button>
+  );
+}
+
+/**
+ * Git #630 — the real Pay in Full / Pay by Phase selector the live SOW cart
+ * never had (#613 built the deposit + phased-invoicing backend; nothing on
+ * this screen let a customer choose it). Rendered ABOVE the signature pad
+ * because the choice is carried in the very request that signs — Git #603's
+ * checkout-session creation IS the sign() moment, so there is no later step
+ * to change it in.
+ *
+ * No percentage is printed here on purpose. The live pay-in-full discount
+ * and phase-deposit fraction are both `coupons` rows Shane can edit at any
+ * time, and neither is knowable until the signing request actually resolves
+ * one (`createSowCheckoutSession`'s response) — stating a number here would
+ * risk quoting a figure this signature will not actually be charged. The
+ * real deposit/discount figures appear on `SowCartPaymentPanel` below the
+ * instant they exist.
+ */
+export function SowPaymentPlanChoice({
+  plan,
+  onChange,
+  disabled,
+}: {
+  readonly plan: SowPaymentPlan;
+  readonly onChange: (plan: SowPaymentPlan) => void;
+  readonly disabled: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span
+        style={{
+          fontSize: 9.5,
+          fontWeight: 700,
+          letterSpacing: ".18em",
+          textTransform: "uppercase",
+          color: INK.micro,
+        }}
+      >
+        How you would like to pay
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="How you would like to pay"
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}
+      >
+        <SowPaymentPlanCard
+          title="Pay in Full"
+          subtitle="One charge today"
+          body="Your full contract, charged in one payment when you sign. Any active pay-in-full discount is applied automatically — you'll see the exact amount before you're charged."
+          selected={plan === "full"}
+          disabled={disabled}
+          onSelect={() => onChange("full")}
+        />
+        <SowPaymentPlanCard
+          title="Pay by Phase"
+          subtitle="Deposit + Phase 1 today"
+          body="A deposit and your first phase are charged today. Each remaining phase is invoiced as it begins, and your deposit is credited back on the final phase. You'll see the exact deposit before you're charged."
+          selected={plan === "phased"}
+          disabled={disabled}
+          onSelect={() => onChange("phased")}
+        />
+      </div>
+    </div>
+  );
 }
 
 interface SowPaymentIntentResponse {
@@ -540,15 +714,26 @@ export function SowCartPaymentPanel({
   discount,
   phaseCount,
   addonCount,
+  paymentPlan,
+  phaseBreakdown,
+  depositCents,
+  depositPct,
   onPaid,
 }: {
   readonly fetchWithAuth: FetchWithAuth;
   readonly sessionId: string;
+  /** The full contract value. On a "phased" signature this is NOT what charges today — see `depositCents`/`chargeCents`. */
   readonly totalCents: number;
-  /** The live PAY-TODAY coupon's discount, already folded into `totalCents` — shown so the saving isn't silent. */
+  /** The live PAY-TODAY coupon's discount, already folded into `totalCents` — shown so the saving isn't silent. "full" plan only. */
   readonly discount: { readonly savingsCents: number; readonly discountPct: number | null } | null;
   readonly phaseCount: number;
   readonly addonCount: number;
+  /** Git #630 — which plan this session's signature locked in. */
+  readonly paymentPlan: SowPaymentPlan;
+  /** Git #613's billing-order phase snapshot — `[]` on "full". */
+  readonly phaseBreakdown: readonly SowPhaseBreakdownEntry[];
+  readonly depositCents: number | null;
+  readonly depositPct: number | null;
   readonly onPaid: (amountCents: number) => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -561,6 +746,16 @@ export function SowCartPaymentPanel({
   const [paying, setPaying] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [intentId, setIntentId] = useState<string | null>(null);
+  /**
+   * What today's PaymentIntent actually charges — `resolveSowOrder`'s own
+   * `chargeCents` on the server (Git #613): the full `totalCents` on "full",
+   * but deposit + Phase 1 (or Phase 1 minus the deposit, single-phase) on
+   * "phased". Never recomputed here — a second arithmetic path on money is a
+   * second chance to quote a figure Stripe will not honour — so this starts
+   * `null` on a phased plan and is filled in from the payment-intent
+   * response the moment it resolves, rather than assumed from `totalCents`.
+   */
+  const [chargeCents, setChargeCents] = useState<number | null>(paymentPlan === "phased" ? null : totalCents);
 
   const confirmOnServer = useCallback(
     async (paymentIntentId: string) => {
@@ -588,6 +783,7 @@ export function SowCartPaymentPanel({
         const data = await createSowPaymentIntent(fetchWithAuth, sessionId);
         if (cancelled) return;
         setIntentId(data.paymentIntentId);
+        setChargeCents(data.amountCents);
 
         // Recovered an intent that already succeeded (paid, then reloaded
         // before the confirm callback landed) — finish rather than asking for
@@ -653,16 +849,61 @@ export function SowCartPaymentPanel({
     }
   }
 
+  const phase1 = phaseBreakdown[0] ?? null;
+  const laterPhases = phaseBreakdown.slice(1);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <p style={{ margin: 0, fontSize: 12.5, fontWeight: 500, color: INK.bodyDark }}>
-        {`${phaseCount} phase${phaseCount === 1 ? "" : "s"}${addonCount > 0 ? `, ${addonCount} add-on${addonCount === 1 ? "" : "s"}` : ""} · ${money(totalCents / 100)} due today`}
+        {`${phaseCount} phase${phaseCount === 1 ? "" : "s"}${addonCount > 0 ? `, ${addonCount} add-on${addonCount === 1 ? "" : "s"}` : ""} · `}
+        {chargeCents === null ? "confirming today's amount…" : `${money(chargeCents / 100)} due today`}
         {discount ? (
           <span style={{ color: BRAND.teal, fontWeight: 600 }}>
             {` · ${money(discount.savingsCents / 100)} pay-in-full discount applied`}
           </span>
         ) : null}
       </p>
+
+      {paymentPlan === "phased" && depositCents !== null && phase1 ? (
+        <div
+          style={{
+            border: `1px dashed ${INK.hairlineDark}`,
+            borderRadius: 10,
+            background: "rgba(15,23,42,.3)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: ".16em",
+              textTransform: "uppercase",
+              color: BRAND.teal,
+            }}
+          >
+            {`Your phase breakdown${depositPct !== null ? ` — ${depositPct}% deposit` : ""}`}
+          </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {phaseBreakdown.map((p, i) => (
+              <span key={p.serviceId} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: INK.bodyDarkStrong }}>
+                  {`Phase ${i + 1} — ${p.title}`}
+                </span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: INK.headingDark }}>{money(p.priceCents / 100)}</span>
+              </span>
+            ))}
+          </div>
+          <p style={{ margin: 0, fontSize: 11.5, fontWeight: 500, lineHeight: 1.55, color: INK.micro }}>
+            {laterPhases.length > 0
+              ? `${money(depositCents / 100)} deposit + Phase 1 (${phase1.title}) charge today. Each remaining phase is invoiced as it begins, and your deposit is credited on the final phase — you never pay more than the ${money(totalCents / 100)} contract total.`
+              : `Phase 1 (${phase1.title}) is your only phase, so your ${money(depositCents / 100)} deposit is credited against it immediately${chargeCents !== null ? ` — ${money(chargeCents / 100)} due today` : ""}. You never pay more than the ${money(totalCents / 100)} contract total.`}
+          </p>
+        </div>
+      ) : null}
 
       {initError ? (
         <div style={{ fontSize: 13.5, lineHeight: 1.55, color: DANGER }}>{initError}</div>
@@ -693,7 +934,7 @@ export function SowCartPaymentPanel({
             <button
               type="button"
               onClick={pay}
-              disabled={!ready || paying || confirming}
+              disabled={!ready || paying || confirming || chargeCents === null}
               style={{
                 width: "100%",
                 height: 38,
@@ -704,12 +945,18 @@ export function SowCartPaymentPanel({
                 fontFamily: "inherit",
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: !ready || paying || confirming ? "not-allowed" : "pointer",
-                opacity: !ready || paying || confirming ? 0.6 : 1,
+                cursor: !ready || paying || confirming || chargeCents === null ? "not-allowed" : "pointer",
+                opacity: !ready || paying || confirming || chargeCents === null ? 0.6 : 1,
                 transition: "opacity 160ms",
               }}
             >
-              {confirming ? "Confirming…" : paying ? "Processing…" : `Pay ${money(totalCents / 100)} securely`}
+              {confirming
+                ? "Confirming…"
+                : paying
+                  ? "Processing…"
+                  : chargeCents === null
+                    ? "Preparing your total…"
+                    : `Pay ${money(chargeCents / 100)} securely`}
             </button>
           </div>
         </div>

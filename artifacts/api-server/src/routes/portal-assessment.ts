@@ -1849,6 +1849,12 @@ router.post(
       // comment for why re-deriving at charge/invoicing time would be wrong.
       let phaseBreakdown: Array<{ serviceId: number; title: string; priceCents: number; stage: string | null; durationWeeks: number | null }> = [];
       let depositCents: number | null = null;
+      // Returned to the client alongside `depositCents` (Git #630) so the
+      // post-signature payment panel can state the real, live deposit
+      // percentage rather than a hardcoded guess — derived from the SAME
+      // coupon fraction `depositCents` itself came from, never a second
+      // number this route could drift from.
+      let depositPct: number | null = null;
       if (paymentPlan === "phased") {
         const depositCoupon = await loadPhaseDepositCoupon();
         if (!depositCoupon) {
@@ -1863,7 +1869,9 @@ router.post(
           stage: p.stage,
           durationWeeks: p.durationWeeks,
         }));
-        depositCents = Math.round(originalTotalCents * phaseDepositFraction(depositCoupon));
+        const depositFraction = phaseDepositFraction(depositCoupon);
+        depositCents = Math.round(originalTotalCents * depositFraction);
+        depositPct = Math.round(depositFraction * 100);
       }
 
       const [profile] = await db
@@ -1954,6 +1962,14 @@ router.post(
         discount: payInFullOffer.active
           ? { couponCode: PAY_IN_FULL_COUPON_CODE, savingsCents: payInFullOffer.savingsCents, discountPct: payInFullOffer.discountPct }
           : null,
+        // Git #630 — the real deposit + per-phase snapshot #613 already
+        // computes and stores on the row, now also returned so the
+        // customer-facing payment panel can show it rather than the
+        // aggregate-only totals above. `[]`/`null` on a "full" signature,
+        // matching the row's own pre-#613 default.
+        phaseBreakdown,
+        depositCents,
+        depositPct,
         phases: includedPhases.map((p) => ({
           serviceId: p.serviceId,
           serviceName: p.serviceName,
