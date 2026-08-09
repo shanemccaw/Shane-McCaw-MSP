@@ -90,7 +90,8 @@ export function wireAdminFetch(fn: AdminFetch) {
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   if (!adminFetchRef) throw new Error("adminFetch not wired");
-  return adminFetchRef(path, init);
+  const fullPath = path.startsWith("/api") ? path : `/api${path}`;
+  return adminFetchRef(fullPath, init);
 }
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
