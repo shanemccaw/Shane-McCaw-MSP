@@ -35,6 +35,7 @@ import "./screens/marketing";
 import "./screens/ai-prompts";
 import "./screens/shared-links";
 import "./screens/documents";
+import "./screens/workflows";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -95,6 +96,11 @@ import { SharedLinksFetchBridge } from "./screens/shared-links/SharedLinksFetchB
 // Watch tab's live "generations that failed" count and the synchronous
 // `document` peek resolver — see DocumentsFetchBridge.tsx's doc comment.
 import { DocumentsFetchBridge } from "./screens/documents/DocumentsFetchBridge";
+// Same reasoning again, for the Home tab's "Workflows"/"Recent runs"
+// galleries, the Watch tab's live "pending approvals" count and the
+// synchronous `workflow`/`workflowRun` peek resolvers — see
+// WorkflowFetchBridge.tsx's doc comment.
+import { WorkflowFetchBridge } from "./screens/workflows/WorkflowFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -151,6 +157,7 @@ function AdminV2Inner() {
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />
       <DocumentsFetchBridge />
+      <WorkflowFetchBridge />
     </Shell>
   );
 }

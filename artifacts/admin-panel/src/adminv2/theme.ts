@@ -181,6 +181,11 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // share's own engagement (views, days left) is exactly the kind of
   // needs-a-look signal the Watch tab exists for.
   share: ["#f2ca63", "SHR"],
+  // Workflow Builder. `workflow` (a definition) stays neutral like
+  // `signal`/`engine` — it's a graph you edit, not a verdict. `workflowRun`
+  // carries the amber "needs attention" tint for the same reason `delivery`
+  // does: an `awaiting_approval` run is exactly what the Watch tab exists for.
+  workflowRun: ["#f2ca63", "RUN"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

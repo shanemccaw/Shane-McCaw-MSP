@@ -274,6 +274,17 @@ export interface ContextualTabSpec {
  * stable id. It is not a `document` (the thing a share may point at, when
  * `shareKind === "document"`) and not a `customer`/`lead` (who it's shared
  * with) — it is the link itself, with its own view count and expiry.
+ *
+ * `workflowRun` was added for the Workflow Builder screen (`screens/
+ * workflows/`) — one `wf_runs` row: a single firing of a workflow
+ * definition's graph, with its status, trigger and per-node trace. The bare
+ * `workflow` kind already in this list (a `wf_definitions` row, the graph
+ * itself) cannot describe it — a definition is edited, a run is watched —
+ * and it cannot reuse the Run History screen's existing `run` kind either:
+ * that kind's id space is Deploy Console / SQL Runner executions
+ * (`screens/run-history/`'s own store), a completely different table with no
+ * relationship to `wf_runs.id`, so a numeric id collision would resolve to
+ * the wrong record's peek.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -303,6 +314,7 @@ export const PEEK_KINDS = [
   "fulfillmentType",
   "campaign",
   "share",
+  "workflowRun",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -456,6 +468,7 @@ export type CommandKind =
   | "package"
   | "lead"
   | "workflow"
+  | "workflowRun"
   | "prompt"
   | "customer"
   | "msp"
