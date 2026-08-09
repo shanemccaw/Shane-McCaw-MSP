@@ -127,6 +127,7 @@ export default defineConfig({
       "src/lib/__tests__/live-monitor-nodes.test.ts",
       "src/routes/msp-sow.test.ts",
       "src/routes/admin-observability.test.ts",
+      "src/routes/admin-deploy-console.test.ts",
       "src/routes/portal-checkout.test.ts",
       "src/routes/admin-services-catalog.test.ts",
       "src/routes/admin-services-price-cents.test.ts",

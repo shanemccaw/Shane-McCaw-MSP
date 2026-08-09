@@ -5,8 +5,8 @@
  * wrapped in the existing panel's `GlobalIDEShell`, which supplies a left tree
  * this design deliberately removed.
  *
- * No screens are registered yet. Registering one is a single `registerScreen`
- * call plus an import here; see SHELL.md.
+ * Registering a screen is a single `registerScreen` call plus an import
+ * here; see SHELL.md.
  */
 
 import { useEffect } from "react";
@@ -18,6 +18,13 @@ import { logger } from "@/lib/logger";
 
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
+// The Git screen's floating console is meant to hover over whatever you are
+// doing, not just show while `/git` itself is the active screen — so it is
+// mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
+// render. `ScreenModule` has no contract yet for "also mount this regardless
+// of route"; this is a direct, documented workaround, the same shape as
+// `getShellApi()` in `ShellContext.tsx`.
+import { FloatingDeployConsole } from "./screens/git/FloatingDeployConsole";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -56,6 +63,7 @@ function AdminV2Inner() {
       onSelectTenant={(id) => log.info({ tenant: id }, "tenant scope changed")}
     >
       <ActiveScreen />
+      <FloatingDeployConsole />
     </Shell>
   );
 }

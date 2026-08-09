@@ -2,28 +2,46 @@
  * Deploy Console — the Git tab's screen.
  *
  * Registers against the fixed "git" tab (handoff.md: Git and Run are the
- * amber developer capsule). Every ribbon button here is `intent: "open"` —
- * it only reveals the console, it never fires an operation itself. That is
- * not a design shortcut: a screen's `ribbon` array is built once, at
- * module-load time, outside any component, so its `onSelect` closures have
- * no React state to run an operation against or show a result in. The
- * actual "global" act — running git/pnpm against the live deployment — only
- * ever happens from a Run button inside the mounted screen body, where
- * `useDeployOperations` has real state to hold the result. See
- * `GitConsoleBody.tsx` for the arm-then-confirm on write/heavy operations.
+ * amber developer capsule). Sync/Build/Console/Auto-copy mirror the
+ * design's own four groups. Every button here calls straight into
+ * `deployStore` (a plain module-level store, not React state) rather than
+ * `useShell()`, because a screen's `ribbon` array is built once at
+ * `registerScreen()` module-load time, outside any component — there is no
+ * hook to call. `getShellApi()` is only reached for once case that
+ * genuinely needs navigation: "Open as a tab".
  */
 
-import { Download, Eye, GitBranch, Layers, Package, Zap } from "lucide-react";
-// Leaf imports, not the `@/adminv2` barrel: `AdminV2.tsx` imports this module
-// for its registration side effect, and the barrel re-exports `AdminV2.tsx`
-// itself — going through it here would be circular.
+import { Copy, Download, Eye, FileJson, GitBranch, Layers, Package, Terminal, Type, Zap } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import { GitConsoleBody } from "./GitConsoleBody";
+import { DEPLOY_OPERATIONS, findDeployOperation } from "./deployOperations";
+import {
+  clearTranscript,
+  closeConsole,
+  copyLastOutput,
+  getSnapshot,
+  openConsole,
+  runOperation,
+  setAutoCopy,
+  setAutoCopyFormat,
+} from "./deployStore";
 
-function openConsole() {
+function run(key: string) {
+  return () => {
+    const op = findDeployOperation(key);
+    if (op) runOperation(op);
+  };
+}
+
+function openAsTab() {
+  closeConsole();
   getShellApi()?.navigate("/git");
+}
+
+function toggleAutoCopy() {
+  setAutoCopy(!getSnapshot().autoCopy);
 }
 
 registerScreen({
@@ -43,14 +61,16 @@ registerScreen({
           {
             label: "Git pull",
             icon: Download,
-            intent: "open",
-            onSelect: openConsole,
+            intent: "global",
+            onSelect: run("git-pull"),
             color: ACCENT.info,
-            title: "Open the Deploy Console to pull, install or build",
+            title: "git pull --ff-only",
           },
         ],
         small: [
-          { label: "Git status", icon: Eye, intent: "open", onSelect: openConsole },
+          { label: "Git status", icon: Eye, intent: "global", onSelect: run("git-status") },
+          { label: "Version info", icon: Copy, intent: "global", onSelect: run("version-info") },
+          { label: "Branch", icon: GitBranch, intent: "open", onSelect: openConsole, title: "Shown in the console header" },
         ],
       },
     },
@@ -63,15 +83,56 @@ registerScreen({
           {
             label: "Full rebuild",
             icon: Zap,
-            intent: "open",
-            onSelect: openConsole,
+            intent: "global",
+            onSelect: run("full-rebuild"),
             color: ACCENT.amber,
-            title: "Open the Deploy Console to run pull, install and build",
+            title: DEPLOY_OPERATIONS.find((o) => o.key === "full-rebuild")?.command,
           },
         ],
         small: [
-          { label: "pnpm install", icon: Package, intent: "open", onSelect: openConsole },
-          { label: "pnpm build", icon: Layers, intent: "open", onSelect: openConsole },
+          { label: "pnpm install", icon: Package, intent: "global", onSelect: run("pnpm-install") },
+          { label: "pnpm build", icon: Layers, intent: "global", onSelect: run("pnpm-build") },
+          { label: "Clear console", icon: Terminal, intent: "global", onSelect: clearTranscript },
+        ],
+      },
+    },
+    {
+      tab: "git",
+      order: 30,
+      group: {
+        label: "Console",
+        large: [
+          {
+            label: "Floating console",
+            icon: Terminal,
+            intent: "open",
+            onSelect: openConsole,
+            title: "Type any command — it runs for real, the same as the buttons here",
+          },
+        ],
+        small: [
+          { label: "Open as a tab", icon: GitBranch, intent: "open", onSelect: openAsTab },
+          { label: "Copy last output", icon: Copy, intent: "global", onSelect: copyLastOutput },
+        ],
+      },
+    },
+    {
+      tab: "git",
+      order: 40,
+      group: {
+        label: "Auto copy",
+        large: [
+          {
+            label: "Auto copy",
+            icon: Copy,
+            intent: "global",
+            onSelect: toggleAutoCopy,
+            title: "Copy every result to the clipboard as it finishes",
+          },
+        ],
+        small: [
+          { label: "As JSON", icon: FileJson, intent: "global", onSelect: () => setAutoCopyFormat("json") },
+          { label: "As plain text", icon: Type, intent: "global", onSelect: () => setAutoCopyFormat("text") },
         ],
       },
     },
@@ -82,7 +143,7 @@ registerScreen({
       type: "action",
       kind: "run",
       name: "Open the Deploy Console",
-      sub: "Git pull, install, build — the real whitelisted operations",
+      sub: "A real terminal into the server — git pull, install, build, or type anything",
       area: "git",
       run: openConsole,
     },

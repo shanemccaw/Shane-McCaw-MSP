@@ -103,6 +103,46 @@ router.get("/admin/simulator/deploy/operations", requireAdmin, (_req: Request, r
   });
 });
 
+// POST /admin/simulator/deploy/console — runs one admin-typed command
+// verbatim. Unlike the whitelist below, this is genuinely free text: the
+// Deploy Console's floating console is meant to be a real terminal into this
+// server, gated by requireAdmin exactly like everything else in this file.
+// Every command is logged with the requesting admin's user id — this is
+// meant to be used, not hidden, but it has to stay attributable given what
+// it can do.
+//
+// Registered BEFORE the ":operation" wildcard route below: Express matches
+// routes in registration order, not most-specific-first, so "console" would
+// otherwise be swallowed by ":operation" as an unrecognised whitelist key
+// and never reach this handler.
+router.post("/admin/simulator/deploy/console", requireAdmin, async (req: Request, res: Response) => {
+  const command = typeof req.body?.command === "string" ? req.body.command.trim() : "";
+  if (!command) {
+    res.status(400).json({ ok: false, error: "No command given" });
+    return;
+  }
+
+  let workspaceRoot: string;
+  try {
+    workspaceRoot = getWorkspaceRoot();
+  } catch (err) {
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Deploy console workspace root resolution failed");
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+
+  log.info({ command, userId: req.user?.id }, "Deploy console free-text command starting");
+
+  const result = await runStep({ label: command, command, timeoutMs: 300_000 }, workspaceRoot);
+
+  log.info(
+    { command, userId: req.user?.id, ok: result.ok },
+    result.ok ? "Deploy console free-text command completed" : "Deploy console free-text command failed",
+  );
+
+  res.json({ ok: result.ok, command, output: result.output });
+});
+
 // POST /admin/simulator/deploy/:operation — runs one whitelisted operation.
 // :operation is validated against DEPLOY_OPERATIONS' keys and used only as a
 // lookup; the executed command string always comes from the whitelist entry.

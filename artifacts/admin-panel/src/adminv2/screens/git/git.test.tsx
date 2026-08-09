@@ -2,18 +2,34 @@
 /**
  * The Git screen's own contract + interaction coverage. `Shell.test.tsx`
  * already covers the shell-chrome integration (ribbon, palette, contextual
- * tab splicing) against a demo screen; this file only needs to prove this
- * specific screen registers legally and its console body behaves — arming
- * write/heavy operations, firing read operations immediately, and calling
- * the real whitelisted endpoint.
+ * tab splicing) against a demo screen; this file covers what's specific to
+ * this screen: registration legality, the shared `deployStore` (transcript,
+ * auto-copy, branch loading), the operation cards, and the floating console
+ * itself (open/close, typing, Enter/ArrowUp).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import { GitConsoleBody } from "./GitConsoleBody";
+import { FloatingDeployConsole } from "./FloatingDeployConsole";
+import {
+  clearTranscript,
+  closeConsole,
+  configureDeployFetch,
+  copyLastOutput,
+  getSnapshot,
+  openConsole,
+  resetDeployStore,
+  runOperation,
+  runTyped,
+  setAutoCopy,
+  setInput,
+} from "./deployStore";
+import { findDeployOperation } from "./deployOperations";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn(() => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -21,6 +37,12 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  resetDeployStore();
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -36,34 +58,14 @@ describe("registration", () => {
     const screenModule = getScreen("git");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/git");
-    // Every ribbon command on this screen is intent "open" — registerScreen
-    // would have thrown ShellContractError already if one were "record".
     const tabs = new Set(screenModule?.ribbon?.map((r) => r.tab));
     expect(tabs).toEqual(new Set(["git"]));
   });
 });
 
-function operationCard(label: string): HTMLElement {
-  const heading = screen.getByText(label);
-  // heading -> label/note/command wrapper -> icon+text row -> header row -> card root
-  return heading.parentElement!.parentElement!.parentElement!.parentElement as HTMLElement;
-}
-
-describe("GitConsoleBody", () => {
-  it("renders all six whitelisted operations with their real commands", () => {
-    render(<GitConsoleBody />);
-    expect(screen.getByText("Git status")).toBeTruthy();
-    expect(screen.getByText("Version info")).toBeTruthy();
-    expect(screen.getByText("Git pull")).toBeTruthy();
-    // "pnpm install" is both the label and the real command for that
-    // operation, so it renders twice (label heading + command line).
-    expect(screen.getAllByText("pnpm install")).toHaveLength(2);
-    expect(screen.getByText("pnpm build")).toBeTruthy();
-    expect(screen.getByText("Full rebuild")).toBeTruthy();
-    expect(screen.getByText("git pull --ff-only")).toBeTruthy();
-  });
-
-  it("fires a read-only operation on a single press and shows the result", async () => {
+describe("deployStore", () => {
+  it("runs a whitelisted operation against its own endpoint and records the result", async () => {
+    configureDeployFetch(fetchWithAuth);
     fetchWithAuth.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -72,50 +74,133 @@ describe("GitConsoleBody", () => {
         steps: [{ label: "git status", command: "git status --short --branch", ok: true, output: "## main" }],
       }),
     });
-    render(<GitConsoleBody />);
 
-    const card = operationCard("Git status");
-    fireEvent.click(within(card).getByRole("button", { name: "Run Git status" }));
+    runOperation(findDeployOperation("git-status")!);
 
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/simulator/deploy/git-status", { method: "POST" });
-    await waitFor(() => expect(within(card).getByText("Succeeded")).toBeTruthy());
-    expect(within(card).getByText("## main")).toBeTruthy();
+    await waitFor(() => expect(getSnapshot().transcript.at(-1)?.status).toBe("ok"));
+    expect(getSnapshot().open).toBe(true);
   });
 
-  it("arms a write operation on the first press and only calls the endpoint on the second", async () => {
-    fetchWithAuth.mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true, operation: "git-pull", steps: [] }),
-    });
+  it("runs typed text against the free-text endpoint, not the whitelist", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "hello" }) });
+
+    setInput("echo hello");
+    runTyped();
+
+    expect(fetchWithAuth).toHaveBeenCalledWith(
+      "/api/admin/simulator/deploy/console",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ command: "echo hello" }) }),
+    );
+    expect(getSnapshot().input).toBe("");
+    expect(getSnapshot().typedHistory[0]).toBe("echo hello");
+    await waitFor(() => expect(getSnapshot().transcript.at(-1)?.steps[0]?.output).toBe("hello"));
+  });
+
+  it("copies the result when auto-copy is on", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "copied me" }) });
+    setAutoCopy(true);
+
+    setInput("git status");
+    runTyped();
+
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith("copied me"));
+  });
+
+  it("does not copy when auto-copy is off", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "should not copy" }) });
+
+    setInput("git status");
+    runTyped();
+
+    await waitFor(() => expect(getSnapshot().transcript.length).toBe(1));
+    expect(clipboardWrite).not.toHaveBeenCalled();
+  });
+
+  it("clearTranscript empties it and copyLastOutput copies the most recent entry", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "last one" }) });
+    setInput("git status");
+    runTyped();
+    await waitFor(() => expect(getSnapshot().transcript.length).toBe(1));
+
+    copyLastOutput();
+    expect(clipboardWrite).toHaveBeenCalledWith("last one");
+
+    clearTranscript();
+    expect(getSnapshot().transcript).toHaveLength(0);
+  });
+});
+
+function operationCard(label: string): HTMLElement {
+  const heading = screen.getByText(label);
+  return heading.parentElement!.parentElement!.parentElement as HTMLElement;
+}
+
+describe("GitConsoleBody", () => {
+  it("renders all six operations and running one opens the floating console", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, operation: "git-pull", steps: [] }) });
     render(<GitConsoleBody />);
 
+    expect(screen.getByText("Full rebuild")).toBeTruthy();
     const card = operationCard("Git pull");
     fireEvent.click(within(card).getByRole("button", { name: "Run Git pull" }));
-    expect(fetchWithAuth).not.toHaveBeenCalled();
 
-    const armed = within(card).getByRole("button", { name: "Git pull — press again to run it" });
-    fireEvent.click(armed);
-    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(1));
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/simulator/deploy/git-pull", { method: "POST" });
+    expect(getSnapshot().open).toBe(true);
+  });
+});
+
+describe("FloatingDeployConsole", () => {
+  it("renders nothing while closed", () => {
+    render(<FloatingDeployConsole />);
+    expect(screen.queryByRole("dialog", { name: "Deploy Console" })).toBeNull();
   });
 
-  it("shows the server error and step output on failure", async () => {
+  it("opens, shows the transcript, and closes", async () => {
+    render(<FloatingDeployConsole />);
+    openConsole();
+    expect(await screen.findByRole("dialog", { name: "Deploy Console" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Deploy Console" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Deploy Console" })).toBeNull());
+  });
+
+  it("runs a typed command on Enter and recalls it on ArrowUp", async () => {
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "typed result" }) });
+    render(<FloatingDeployConsole />);
+    openConsole();
+
+    const input = await screen.findByLabelText("Deploy Console command");
+    fireEvent.change(input, { target: { value: "ls -la" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("typed result")).toBeTruthy());
+    expect(fetchWithAuth).toHaveBeenCalledWith(
+      "/api/admin/simulator/deploy/console",
+      expect.objectContaining({ body: JSON.stringify({ command: "ls -la" }) }),
+    );
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect((input as HTMLInputElement).value).toBe("ls -la");
+  });
+
+  it("loads the real branch from git status on mount", async () => {
     fetchWithAuth.mockResolvedValue({
-      ok: false,
+      ok: true,
       json: async () => ({
-        ok: false,
-        operation: "pnpm-build",
-        error: "pnpm run build failed",
-        steps: [{ label: "pnpm run build", command: "pnpm run build", ok: false, output: "RollupError: ..." }],
+        ok: true,
+        operation: "git-status",
+        steps: [{ label: "git status", command: "git status --short --branch", ok: true, output: "## main...origin/main" }],
       }),
     });
-    render(<GitConsoleBody />);
+    render(<FloatingDeployConsole />);
+    openConsole();
 
-    const card = operationCard("pnpm build");
-    fireEvent.click(within(card).getByRole("button", { name: "Run pnpm build" }));
-    fireEvent.click(within(card).getByRole("button", { name: "pnpm build — press again to run it" }));
-
-    await waitFor(() => expect(within(card).getByText("pnpm run build failed")).toBeTruthy());
-    expect(within(card).getByText("RollupError: ...")).toBeTruthy();
+    await screen.findByText("branch: main");
   });
 });
