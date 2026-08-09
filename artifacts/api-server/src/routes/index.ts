@@ -201,6 +201,7 @@ import mspSopsRouter from "./msp-sops";
 import mspDlqRouter from "./msp-dlq";
 import mspRbdRouter from "./msp-rbd";
 import adminNavPinsRouter from "./admin-nav-pins";
+import adminBuildTrackerRouter from "./admin-build-tracker";
 
 import pccRouter from "./pcc.js";
 
@@ -216,6 +217,7 @@ if (process.env.NODE_ENV !== "production") {
 
 router.use(healthRouter);
 router.use(versionRouter);
+router.use(adminBuildTrackerRouter);
 router.use(adminArticlesRouter);
 router.use(adminServicesRouter);
 router.use(adminWorkflowTemplatesRouter);

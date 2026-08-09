@@ -3975,4 +3975,60 @@ export const userEntitlementOverridesTable = pgTable("user_entitlement_overrides
 export type InsertUserEntitlementOverride = typeof userEntitlementOverridesTable.$inferInsert;
 export type UserEntitlementOverride = typeof userEntitlementOverridesTable.$inferSelect;
 
+// ── Build Tracker ─────────────────────────────────────────────────────────────
+//
+// Three tables that let the admin organise Claude AI chat links against GitHub
+// Epics / Issues (or free-form categories like "Marketing", "Planning").
+// See lib/db/migrations/manual/2026-08-09-build-tracker.sql for the DDL.
+
+export const btEpicsTable = pgTable("bt_epics", {
+  id:            serial("id").primaryKey(),
+  title:         text("title").notNull(),
+  description:   text("description"),
+  /** open | in_progress | closed */
+  status:        text("status").notNull().default("open"),
+  /** Non-null when the epic was imported from GitHub. */
+  githubNumber:  integer("github_number"),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertBtEpic = typeof btEpicsTable.$inferInsert;
+export type BtEpic       = typeof btEpicsTable.$inferSelect;
+
+export const btIssuesTable = pgTable("bt_issues", {
+  id:            serial("id").primaryKey(),
+  epicId:        integer("epic_id").references(() => btEpicsTable.id, { onDelete: "set null" }),
+  title:         text("title").notNull(),
+  description:   text("description"),
+  /** backlog | in_progress | done | closed */
+  status:        text("status").notNull().default("backlog"),
+  githubNumber:  integer("github_number"),
+  githubUrl:     text("github_url"),
+  labels:        text("labels").array().notNull().default(sql`'{}'::text[]`),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertBtIssue = typeof btIssuesTable.$inferInsert;
+export type BtIssue       = typeof btIssuesTable.$inferSelect;
+
+export const btChatsTable = pgTable("bt_chats", {
+  id:              serial("id").primaryKey(),
+  /** UUID from claude.ai; full URL = https://claude.ai/chat/<conversationId> */
+  conversationId:  text("conversation_id").notNull().unique(),
+  /** Human label — defaults to conversationId on ingest, editable after. */
+  title:           text("title").notNull(),
+  issueId:         integer("issue_id").references(() => btIssuesTable.id, { onDelete: "set null" }),
+  epicId:          integer("epic_id").references(() => btEpicsTable.id,   { onDelete: "set null" }),
+  /** Free-form category for chats not tied to an epic/issue (e.g. "Marketing"). */
+  category:        text("category"),
+  notes:           text("notes"),
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertBtChat = typeof btChatsTable.$inferInsert;
+export type BtChat       = typeof btChatsTable.$inferSelect;
+
 export * from "./msp";

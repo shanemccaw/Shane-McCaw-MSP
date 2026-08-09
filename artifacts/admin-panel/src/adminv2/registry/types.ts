@@ -24,7 +24,7 @@ import type { LucideIcon } from "lucide-react";
  * record-specific on its contextual tab. Adding an eighth entry here is a
  * design decision, not an implementation detail.
  */
-export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "view", "git", "run"] as const;
+export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "view", "git", "run", "build"] as const;
 export type FixedTabId = (typeof FIXED_TAB_IDS)[number];
 
 export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
@@ -36,10 +36,12 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
   view: "View",
   git: "Git",
   run: "Run",
+  /** Build Tracker — Claude chats organised against epics and issues. */
+  build: "Build",
 };
 
-/** Git and Run render inside the amber capsule that marks them as the developer set. */
-export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run"];
+/** Git, Run and Build render inside the amber capsule that marks them as the developer set. */
+export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run", "build"];
 
 /** The five ordinary tabs, in ribbon order. */
 export const MAIN_TAB_IDS: readonly FixedTabId[] = ["home", "inbox", "money", "watch", "view"];
@@ -294,6 +296,16 @@ export interface ContextualTabSpec {
  * execution a trigger produced) — a trigger outlives any single run and can
  * exist with zero runs behind it, so neither kind can honestly stand in for
  * what editing or deleting *this* record means.
+ * `issue` and `chatLink` were added for the Build Tracker screen (`screens/
+ * build-tracker/`). A `bt_issues` row — an individual issue under an epic,
+ * with a status, description and optional GitHub link — is openable, has a
+ * stable numeric id, and needs a name the tab strip and Back group can
+ * resolve. It is not `delivery` (a sold fulfilment obligation) and not
+ * `workflow` (the automation that might fire on it) — it is the planning
+ * unit itself. `chatLink` is a `bt_chats` row — a Claude conversation link
+ * tied to an issue, epic, or free-form category. It is not `document` (a
+ * generated artefact) and not `lead` (a sales contact) — it is the
+ * conversation reference that keeps build context addressable.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -325,6 +337,8 @@ export const PEEK_KINDS = [
   "share",
   "workflowRun",
   "trigger",
+  "issue",
+  "chatLink",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -494,7 +508,9 @@ export type CommandKind =
   | "fulfillmentType"
   | "campaign"
   | "share"
-  | "trigger";
+  | "trigger"
+  | "issue"
+  | "chatLink";
 
 export interface CommandItem {
   id: string;
