@@ -290,6 +290,9 @@ registerScreen({
       const issue = issueById(ctx.recordId);
       if (!issue) return null;
       const next = ISSUE_STATUS_NEXT[issue.status];
+      const state = getSnapshot();
+      const openEpics = state.epics.filter(e => e.status !== "closed");
+
       return {
         id: "issue-tools",
         label: "Issue Tools",
@@ -332,6 +335,19 @@ registerScreen({
               },
             ],
           },
+          ...(issue.epicId === null && openEpics.length > 0
+            ? [
+                {
+                  label: "Assign Epic",
+                  small: openEpics.map((e) => ({
+                    label: e.githubNumber ? `#${e.githubNumber} ${e.title}` : e.title,
+                    icon: GitBranch,
+                    intent: "record" as const,
+                    onSelect: () => void updateIssue(issue.id, { epicId: e.id }),
+                  })),
+                },
+              ]
+            : []),
           {
             label: "Chat",
             small: [
