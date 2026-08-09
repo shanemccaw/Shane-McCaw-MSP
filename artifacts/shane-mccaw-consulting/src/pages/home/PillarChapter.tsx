@@ -16,7 +16,7 @@ const WORDMARK_CSS = `
 .smc-wordmark{position:fixed;left:0;right:0;top:42%;z-index:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:clamp(10px,2.4vw,34px);pointer-events:none;transition:opacity 900ms cubic-bezier(.22,1,.36,1),transform 900ms cubic-bezier(.22,1,.36,1)}
 .smc-wordmark-text{font-size:clamp(40px,12.4vw,168px);font-weight:800;letter-spacing:-.04em;line-height:.86;white-space:nowrap;-webkit-text-fill-color:transparent;-webkit-text-stroke-color:currentColor;-webkit-text-stroke-width:clamp(1.2px,.28vw,2.6px);opacity:.28}
 .smc-wordmark-glyph{width:clamp(44px,9vw,132px);height:auto;flex:0 0 auto;opacity:.4}
-@media (max-width:640px){.smc-wordmark{top:46%;gap:8px}.smc-wordmark-text{opacity:.36;-webkit-text-stroke-width:1.4px}.smc-wordmark-glyph{opacity:.5}}
+@media (max-width:640px){.smc-wordmark{top:34%;gap:8px}.smc-wordmark-text{opacity:.2;-webkit-text-stroke-width:1.4px}.smc-wordmark-glyph{opacity:.28}}
 @media (prefers-reduced-motion:reduce){.smc-wordmark{transition:opacity 200ms linear}}
 `;
 
@@ -227,7 +227,7 @@ export function PillarChapter({
             <BenchmarkRow label="Organizations like yours" pct={chapter.bench.orgPct} color={chapter.color} track />
             <BenchmarkRow label="Top quartile" pct={chapter.bench.topPct} color={chapter.color} />
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: "14px 24px", marginTop: 10 }}>
-              <span style={{ fontSize: 11, color: "#475569", letterSpacing: ".04em" }}>{chapter.bench.metricLabel}</span>
+              <span style={{ fontSize: 11, color: "#64748b", letterSpacing: ".04em" }}>{chapter.bench.metricLabel}</span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                 <svg width="118" height="30" viewBox="0 0 118 30" style={{ display: "block" }}>
                   <polyline
@@ -241,14 +241,14 @@ export function PillarChapter({
                     style={{ filter: `drop-shadow(0 0 4px ${chapter.color}66)` }}
                   />
                 </svg>
-                <span style={{ fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "#334155" }}>Illustrative trend</span>
+                <span style={{ fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "#94a3b8" }}>Illustrative trend</span>
               </span>
             </div>
           </div>
         )}
 
         <div style={{ marginTop: 28, maxWidth: 540, borderTop: "1px solid rgba(30,41,59,.9)", paddingTop: 16 }}>
-          <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#475569" }}>What we check</span>
+          <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>What we check</span>
           <ul style={{ listStyle: "none", margin: "12px 0 0", padding: 0, display: "grid", gap: 9 }}>
             {chapter.whatWeCheck.map((item) => (
               <li key={item} style={{ display: "flex", alignItems: "baseline", gap: 10, fontSize: 13.5, lineHeight: 1.5, color: "#94a3b8" }}>
@@ -275,7 +275,7 @@ export function PillarChapter({
           >
             <span style={{ fontSize: "clamp(9.5px,2vw,10.5px)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#2dd4bf" }}>Cost recoupment</span>
             <p style={{ fontSize: 17, lineHeight: 1.55, color: "#f1f5f9", margin: "10px 0 0", fontWeight: 500 }}>{chapter.costBox.body}</p>
-            <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#475569", margin: "12px 0 0" }}>{chapter.costBox.note}</p>
+            <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#64748b", margin: "12px 0 0" }}>{chapter.costBox.note}</p>
           </div>
         )}
 
