@@ -164,6 +164,10 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   exception: ["#eda3a3", "ERR"],
   incident: ["#7fb4d8", "INC"],
   dlq: ["#f2ca63", "DLQ"],
+  // Engines. Neutral for the same reason `signal` is: an engine is a scorer,
+  // and whether the number it produced is good news depends on the engine —
+  // a high `health` is healthy, a high `security` or `drift` is not.
+  engine: ["#c3c1bf", "ENG"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

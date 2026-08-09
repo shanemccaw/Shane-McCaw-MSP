@@ -88,11 +88,28 @@ router.get("/admin/msps/:mspId/portfolio-risk", requireAdmin, async (req: Reques
 });
 
 // ── GET /api/admin/engines ──────────────────────────────────────────────────
-// Lists all seven engine definitions for the nav / picker.
+// Lists every engine definition for the nav / picker.
+//
+// `configMode` is the same three-way split GET .../configuration branches on
+// (see the "Engine Configuration data sources" note further down), returned
+// up-front so a client can group the list into "rules drive these" vs
+// "configured elsewhere" without re-deriving server knowledge — the adminv2
+// Engines screen's explorer tree and mode pill both read it, and hardcoding
+// the set client-side is exactly how it would drift out of step with the
+// switch below.
 
 router.get("/admin/engines", requireAdmin, (_req: Request, res: Response) => {
   res.json({
-    engines: ENGINE_DEFS.map(e => ({ key: e.key, label: e.label, description: e.description, categoryPrefix: e.categoryPrefix, tenantScoped: e.tenantScoped })),
+    engines: ENGINE_DEFS.map(e => ({
+      key: e.key,
+      label: e.label,
+      description: e.description,
+      categoryPrefix: e.categoryPrefix,
+      tenantScoped: e.tenantScoped,
+      dependsOn: e.dependsOn,
+      configMode: engineConfigMode(e.key),
+      backingTable: ENGINE_BACKING_TABLE[e.key] ?? null,
+    })),
   });
 });
 
@@ -833,12 +850,25 @@ router.get("/admin/engines/:key/history", requireAdmin, async (req: Request, res
   const start = req.query.start ? new Date(String(req.query.start)) : undefined;
   const end = req.query.end ? new Date(String(req.query.end)) : undefined;
   try {
-    const [series, baselineEvents, signalDeltas] = await Promise.all([
+    const [series, baselineEvents, signalDeltas, latestRows] = await Promise.all([
       getEngineHistoryMerged(customerId, String(key), start, end),
       getBaselineEvents(customerId, String(key)),
       getSignalDeltasForRange(customerId, String(key), start, end),
+      // The most recent snapshot in full, including the per-signal `breakdown`
+      // writeEngineSnapshot stored. `getEngineHistoryMerged` deliberately does
+      // not carry it — that helper also backs the customer-facing
+      // portal-engine-history route, and the breakdown is internal scoring
+      // detail. Selected here, admin-only, so the Engines screen can show how
+      // the current score was reached without re-running the engine (which
+      // would write another snapshot and move the number it is explaining).
+      db
+        .select()
+        .from(tenantEngineSnapshotsTable)
+        .where(and(eq(tenantEngineSnapshotsTable.customerId, customerId), eq(tenantEngineSnapshotsTable.engineKey, String(key))))
+        .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
+        .limit(1),
     ]);
-    res.json({ engineKey: key, customerId, series, baselineEvents, signalDeltas });
+    res.json({ engineKey: key, customerId, series, baselineEvents, signalDeltas, latest: latestRows[0] ?? null });
   } catch (err) {
     log.error({ err, engineKey: key, customerId }, "admin-engines: history failed");
     res.status(500).json({ error: "Failed to load engine history" });
@@ -891,6 +921,28 @@ router.get("/admin/engines/:key/history-customers", requireAdmin, async (req: Re
 //     health/drift/priority scores. The Configuration tab shows an explainer.
 
 interface ConfigColumn { key: string; label: string; type?: "text" | "number" | "bool" | "array" | "date"; }
+
+/**
+ * The dedicated table each non-signal-derived engine actually reads. Kept
+ * beside the loaders below so the two can never disagree; `null`/absent means
+ * the engine is signal-derived or (msp) has no configuration at all.
+ */
+const ENGINE_BACKING_TABLE: Record<string, string> = {
+  sla: "sla_policies",
+  scope_creep: "scope_creep_policies",
+  monitoring: "monitor_checks",
+  sales_offer: "sales_offer_rule_groups",
+};
+
+/**
+ * Which of the three kinds of engine this is — the same split the
+ * configuration route switches on, exposed on the engine list so a client
+ * doesn't have to keep its own copy of the set.
+ */
+export function engineConfigMode(engineKey: string): "signal-rules" | "backing-table" | "aggregator" {
+  if (engineKey === "msp") return "aggregator";
+  return ENGINE_BACKING_TABLE[engineKey] ? "backing-table" : "signal-rules";
+}
 
 /** True if this rule/group row is real configuration the given signal-derived engine sums. */
 function rowContributesToEngine(engineKey: string, row: Record<string, unknown>): boolean {

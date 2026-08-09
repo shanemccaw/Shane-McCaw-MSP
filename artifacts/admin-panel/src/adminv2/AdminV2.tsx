@@ -28,6 +28,7 @@ import "./screens/observability";
 import "./screens/endpoints";
 import "./screens/sql";
 import "./screens/packages";
+import "./screens/engines";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -59,6 +60,10 @@ import { SqlFetchBridge } from "./screens/sql/SqlFetchBridge";
 // gallery, its Watch-tab "collects nothing" count and its synchronous
 // `package` peek resolver — see PackagesFetchBridge.tsx's doc comment.
 import { PackagesFetchBridge } from "./screens/packages/PackagesFetchBridge";
+// Same reasoning again, for the Run tab's "One engine" gallery — it lists
+// the real twelve engines with the score each last recorded — and for the
+// synchronous engine peek resolver. See EnginesFetchBridge.tsx.
+import { EnginesFetchBridge } from "./screens/engines/EnginesFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -108,6 +113,7 @@ function AdminV2Inner() {
       <EndpointsFetchBridge />
       <SqlFetchBridge />
       <PackagesFetchBridge />
+      <EnginesFetchBridge />
     </Shell>
   );
 }

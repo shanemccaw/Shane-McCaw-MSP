@@ -233,6 +233,13 @@ export interface ContextualTabSpec {
  * delete, an unknown destructive risk instead of a stored flag), so it needed
  * its own kind rather than borrowing `script` and lying about what a
  * migration's id/edits mean.
+ *
+ * `engine` was added for the Engines screen (`screens/engines/`). One of the
+ * twelve intelligence engines in `lib/engine-registry.ts` is openable, keyed
+ * by a stable string, and needs a name the tab strip and the Back group can
+ * resolve — and no existing kind describes it: it is not a `package` of
+ * checks, not a `workflow`, and not a `signal` (an engine *sums* signals;
+ * it is not one).
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -256,6 +263,7 @@ export const PEEK_KINDS = [
   "incident",
   "dlq",
   "migration",
+  "engine",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -418,7 +426,8 @@ export type CommandKind =
   | "alert"
   | "exception"
   | "incident"
-  | "dlq";
+  | "dlq"
+  | "engine";
 
 export interface CommandItem {
   id: string;
