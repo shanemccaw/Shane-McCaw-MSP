@@ -11,13 +11,28 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getScreen, resetRegistry } from "../../registry/registry";
-import { configureSqlFetch, getSnapshot, loadMigrationContent, loadMigrations, loadScripts, resetSqlStore } from "./sqlStore";
+import { getLiveRibbonEntry } from "../../shell/liveRibbon";
+import {
+  configureSqlFetch,
+  getSnapshot,
+  loadMigrationContent,
+  loadMigrations,
+  loadScripts,
+  resetSqlStore,
+  runQueryText,
+  setAutoCopy,
+  setAutoCopyFormat,
+  SQL_RIBBON_KEYS,
+} from "./sqlStore";
 import { containsDangerousKeyword } from "./sqlTypes";
 
 const fetchWithAuth = vi.fn();
+const writeText = vi.fn();
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  writeText.mockReset().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
   resetSqlStore();
   configureSqlFetch(fetchWithAuth);
 });
@@ -164,5 +179,52 @@ describe("loadMigrationContent", () => {
     await loadMigrationContent("missing.sql");
     expect(getSnapshot().migrationContent["missing.sql"]).toBeUndefined();
     expect(getSnapshot().lastMessage).toBe("not found");
+  });
+});
+
+describe("Auto copy", () => {
+  const mockExecuteResponse = {
+    ok: true,
+    json: async () => ({
+      statements: [{ statementIndex: 0, statementText: "select 1;", success: true, rows: [{ x: 1 }], rowCount: 1, fields: ["x"], executionMs: 3 }],
+    }),
+  };
+
+  it("does not copy a result when off", async () => {
+    fetchWithAuth.mockResolvedValue(mockExecuteResponse);
+    await runQueryText("select 1;");
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("copies the result the moment a run finishes, in the chosen format", async () => {
+    setAutoCopyFormat("json");
+    fetchWithAuth.mockResolvedValue(mockExecuteResponse);
+    await runQueryText("select 1;");
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(writeText.mock.calls[0][0])[0]).toMatchObject({ success: true, rowCount: 1 });
+  });
+
+  it("copies as tab-separated table text when that's the chosen format", async () => {
+    setAutoCopy(true);
+    fetchWithAuth.mockResolvedValue(mockExecuteResponse);
+    await runQueryText("select 1;");
+    expect(writeText).toHaveBeenCalledWith("x\n1");
+  });
+
+  it("stays off after a run — turning it off does not silently flip back on", async () => {
+    setAutoCopy(true);
+    setAutoCopy(false);
+    fetchWithAuth.mockResolvedValue(mockExecuteResponse);
+    await runQueryText("select 1;");
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("pushes toggle/format state into the live-ribbon overlay so the button updates immediately", () => {
+    setAutoCopy(true);
+    expect(getLiveRibbonEntry(SQL_RIBBON_KEYS.autoCopyToggle)?.active).toBe(true);
+
+    setAutoCopyFormat("json");
+    expect(getLiveRibbonEntry(SQL_RIBBON_KEYS.autoCopyJson)?.active).toBe(true);
+    expect(getLiveRibbonEntry(SQL_RIBBON_KEYS.autoCopyTable)?.active).toBe(false);
   });
 });

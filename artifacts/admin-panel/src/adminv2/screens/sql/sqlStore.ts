@@ -30,6 +30,11 @@ import {
   type SqlScriptInput,
 } from "./sqlApi";
 import { EMPTY_SQL_OUTPUT, type MigrationFile, type SavedScript, type SchemaTable, type SqlOutput } from "./sqlTypes";
+// The "run" tab's Auto copy group needs its toggle/format buttons to update
+// the instant you click them, not on the next incidental ribbon re-render —
+// see that file's doc comment. `screens/money/moneyStore.ts` is the other
+// user of this same overlay.
+import { setLiveRibbonValue } from "../../shell/liveRibbon";
 // The run itself is recorded SERVER-side, by the execute routes, before they
 // answer (api-server lib/run-history.ts). This only tells the Run History
 // screen there is something new to re-read - same one-way dependency the
@@ -60,10 +65,21 @@ export interface SqlStoreState {
   output: SqlOutput;
   resultView: ResultView;
 
+  /** The "run" tab's Auto copy toggle — mirrors Deploy Console's own (`screens/git/deployStore.ts`). */
+  autoCopy: boolean;
+  autoCopyFormat: ResultView;
+
   saving: boolean;
   deletingId: number | null;
   lastMessage: string | null;
 }
+
+/** Keys this store owns in the shared live-ribbon overlay. See `screens/sql/index.tsx`'s `liveKey` usage. */
+export const SQL_RIBBON_KEYS = {
+  autoCopyToggle: "sql:auto-copy-toggle",
+  autoCopyTable: "sql:auto-copy-table",
+  autoCopyJson: "sql:auto-copy-json",
+} as const;
 
 type AdminFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type Listener = () => void;
@@ -94,6 +110,9 @@ let state: SqlStoreState = {
 
   output: EMPTY_SQL_OUTPUT,
   resultView: "table",
+
+  autoCopy: false,
+  autoCopyFormat: "table",
 
   saving: false,
   deletingId: null,
@@ -224,6 +243,12 @@ async function runStatements(run: () => Promise<import("./sqlTypes").SqlStatemen
   } finally {
     // Both paths: a failed query is still a run the server wrote a row for.
     runHistoryChanged();
+    // Auto copy fires here rather than at each call site so it covers every
+    // way a query can run — the toolbar Run button, a gutter play button, a
+    // saved script's "Run it" (Explorer/contextual tab/peek) — the same
+    // reason Run History's refresh lives in this one choke point instead of
+    // being duplicated per caller.
+    if (state.autoCopy) copyOutput(state.autoCopyFormat === "json");
   }
 }
 
@@ -241,6 +266,23 @@ export async function runMigrationFile(filename: string): Promise<void> {
 
 export function setResultView(view: ResultView): void {
   setState({ resultView: view });
+}
+
+function syncAutoCopyRibbon(): void {
+  setLiveRibbonValue(SQL_RIBBON_KEYS.autoCopyToggle, { active: state.autoCopy });
+  setLiveRibbonValue(SQL_RIBBON_KEYS.autoCopyTable, { active: state.autoCopy && state.autoCopyFormat === "table" });
+  setLiveRibbonValue(SQL_RIBBON_KEYS.autoCopyJson, { active: state.autoCopy && state.autoCopyFormat === "json" });
+}
+
+export function setAutoCopy(value: boolean): void {
+  setState({ autoCopy: value });
+  syncAutoCopyRibbon();
+}
+
+/** Picking a format turns Auto copy on — same convenience `deployStore.ts` offers. */
+export function setAutoCopyFormat(format: ResultView): void {
+  setState({ autoCopy: true, autoCopyFormat: format });
+  syncAutoCopyRibbon();
 }
 
 // ── Saved scripts CRUD ─────────────────────────────────────────────────────────
@@ -349,6 +391,8 @@ export function resetSqlStore(): void {
     draftQuery: "",
     output: EMPTY_SQL_OUTPUT,
     resultView: "table",
+    autoCopy: false,
+    autoCopyFormat: "table",
     saving: false,
     deletingId: null,
     lastMessage: null,

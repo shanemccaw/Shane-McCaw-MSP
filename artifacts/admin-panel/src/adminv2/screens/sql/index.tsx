@@ -32,7 +32,7 @@
  * past due.
  */
 
-import { AlertTriangle, Copy, Database, FileWarning, Layers, Play, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Copy, Database, FileJson, FileWarning, Layers, Play, Plus, Table2, Trash2 } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
@@ -40,8 +40,23 @@ import type { CommandItem, ContextualTabSpec, GalleryRow } from "../../registry/
 import { SqlEditorBody } from "./SqlEditorBody";
 import { SqlExplorer } from "./SqlExplorer";
 import { SqlQueryOutputPanel } from "./SqlQueryOutput";
-import { deleteScriptById, duplicateScript, getSnapshot, patchScript, runMigrationFile, runQueryText, startDraft } from "./sqlStore";
+import {
+  deleteScriptById,
+  duplicateScript,
+  getSnapshot,
+  patchScript,
+  runMigrationFile,
+  runQueryText,
+  setAutoCopy,
+  setAutoCopyFormat,
+  SQL_RIBBON_KEYS,
+  startDraft,
+} from "./sqlStore";
 import { relativeTime } from "./sqlTypes";
+
+function toggleAutoCopy() {
+  setAutoCopy(!getSnapshot().autoCopy);
+}
 
 function openSql() {
   getShellApi()?.navigate("/sql");
@@ -143,6 +158,39 @@ registerScreen({
               if (pending) openMigration(pending.filename);
               else openSql();
             },
+          },
+        ],
+      },
+    },
+    {
+      tab: "run",
+      order: 30,
+      group: {
+        label: "Auto copy",
+        large: [
+          {
+            label: "Auto copy",
+            icon: Copy,
+            intent: "global",
+            onSelect: toggleAutoCopy,
+            title: "Copy every result to the clipboard the moment a run finishes",
+            liveKey: SQL_RIBBON_KEYS.autoCopyToggle,
+          },
+        ],
+        small: [
+          {
+            label: "As table",
+            icon: Table2,
+            intent: "global",
+            onSelect: () => setAutoCopyFormat("table"),
+            liveKey: SQL_RIBBON_KEYS.autoCopyTable,
+          },
+          {
+            label: "As JSON",
+            icon: FileJson,
+            intent: "global",
+            onSelect: () => setAutoCopyFormat("json"),
+            liveKey: SQL_RIBBON_KEYS.autoCopyJson,
           },
         ],
       },

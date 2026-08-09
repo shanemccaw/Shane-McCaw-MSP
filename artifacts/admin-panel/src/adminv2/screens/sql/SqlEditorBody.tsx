@@ -32,6 +32,7 @@ import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { AlertTriangle, Play, Save } from "lucide-react";
+import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
 import { createScriptFromDraft, getSnapshot, loadMigrationContent, patchScript, runMigrationFile, runQueryText, setDraftQuery, subscribe } from "./sqlStore";
@@ -146,6 +147,20 @@ export function SqlEditorBody({ recordId, kind }: Props) {
     }
   }
 
+  /**
+   * The gutter's per-statement play button (below) — runs one chunk without
+   * selecting it first. It has no label to relabel "press again" onto, so a
+   * destructive chunk gets a one-shot `window.confirm` instead of the
+   * toolbar Run button's in-place arm; either way nothing destructive fires
+   * on a single click.
+   */
+  function runStatementText(statementText: string) {
+    const stmtDestructive = (script?.isDestructive ?? false) || containsDangerousKeyword(statementText);
+    if (stmtDestructive && !window.confirm("This statement looks like it writes or deletes data. Run just this one now?")) return;
+    shell.dispatch({ type: "setBottomTab", id: "sql-output" });
+    void runQueryText(statementText);
+  }
+
   async function handleSave() {
     if (isReadOnly) return;
     if (script) {
@@ -179,6 +194,12 @@ export function SqlEditorBody({ recordId, kind }: Props) {
       editorSurfaceTheme,
       EditorState.readOnly.of(isReadOnly),
       EditorView.editable.of(!isReadOnly),
+      // Migrations are excluded: their text is a read-only preview and Run
+      // always executes the real file off disk, never the shown text — a
+      // per-chunk play button here would silently run arbitrary SQL through
+      // /simulator/sql/execute instead of the migration it looks like it
+      // belongs to.
+      ...(isReadOnly ? [] : [sqlStatementGutter(runStatementText)]),
       Prec.highest(
         keymap.of([
           {
@@ -192,7 +213,7 @@ export function SqlEditorBody({ recordId, kind }: Props) {
       ),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schemaMap, isReadOnly, destructive, armed, docId],
+    [schemaMap, isReadOnly, destructive, armed, docId, script?.isDestructive],
   );
 
   const title = script ? script.name : migration ? migration.filename : "New query";
