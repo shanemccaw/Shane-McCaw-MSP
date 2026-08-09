@@ -129,6 +129,7 @@ export default defineConfig({
       "src/routes/admin-observability.test.ts",
       "src/routes/admin-dlq.test.ts",
       "src/routes/admin-deploy-console.test.ts",
+      "src/routes/version.test.ts",
       "src/routes/admin-money.test.ts",
       "src/routes/portal-checkout.test.ts",
       "src/routes/admin-services-catalog.test.ts",

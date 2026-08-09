@@ -1,7 +1,13 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { z } from "zod";
+import { db, deployedVersionStampTable } from "@workspace/db";
+import { desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger";
+
+const log = logger.child({ channel: "admin.deploy" });
 
 // Internal build/version stamp — distinct from the external partner
 // health check at /api/msp/v1/health, which stays unmodified.
@@ -17,6 +23,16 @@ const repoRoot = path.resolve(process.cwd(), "../..");
 // Captured once, at the moment this module first computes the version —
 // i.e. real server-process startup — not the commit's own git timestamp.
 const startedAt = new Date().toISOString();
+
+const GENERIC_FALLBACK_VERSION_INFO = {
+  major: MAJOR,
+  minor: MINOR,
+  build: 0,
+  hash: "unknown",
+  version: `${MAJOR}.${MINOR}.0`,
+  display: `${MAJOR}.${MINOR}.0 (unknown)`,
+  startedAt,
+};
 
 function computeVersionInfo() {
   try {
@@ -42,25 +58,78 @@ function computeVersionInfo() {
       startedAt,
     };
   } catch {
+    return GENERIC_FALLBACK_VERSION_INFO;
+  }
+}
+
+// Git #666: production has no .git directory, so computeVersionInfo() above
+// always falls into its catch there. Before settling for the generic
+// placeholder, check the real deployed_version_stamp table — populated once
+// per real deploy by POST /admin/version-stamp below — for the commit that
+// actually shipped. Runs once, async, right after the sync git attempt at
+// module load; harmless if a request lands before it resolves (serves the
+// generic fallback for that brief window, then the real stamp thereafter).
+async function resolveDeployedVersionStampFallback() {
+  try {
+    const [latest] = await db
+      .select()
+      .from(deployedVersionStampTable)
+      .orderBy(desc(deployedVersionStampTable.deployedAt))
+      .limit(1);
+    if (!latest) return null;
     const version = `${MAJOR}.${MINOR}.0`;
     return {
       major: MAJOR,
       minor: MINOR,
       build: 0,
-      hash: "unknown",
+      hash: latest.commitHash,
       version,
-      display: `${version} (unknown)`,
+      display: `${version} (${latest.commitHash})`,
       startedAt,
     };
+  } catch (err) {
+    log.error({ err }, "failed to read deployed_version_stamp fallback");
+    return null;
   }
 }
 
-const versionInfo = computeVersionInfo();
+let versionInfo = computeVersionInfo();
+
+if (versionInfo.hash === "unknown") {
+  void resolveDeployedVersionStampFallback().then((stamped) => {
+    if (stamped) versionInfo = stamped;
+  });
+}
 
 const router: IRouter = Router();
 
 router.get("/version", (_req, res) => {
   res.json(versionInfo);
+});
+
+const versionStampBodySchema = z.object({
+  commitHash: z.string().trim().min(1),
+  commitMessage: z.string().trim().min(1),
+});
+
+router.post("/admin/version-stamp", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = versionStampBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "commitHash and commitMessage are required", detail: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const [inserted] = await db
+      .insert(deployedVersionStampTable)
+      .values({ commitHash: parsed.data.commitHash, commitMessage: parsed.data.commitMessage })
+      .returning();
+    log.info({ commitHash: inserted.commitHash }, "deployed_version_stamp recorded");
+    res.json({ success: true, stamp: inserted });
+  } catch (err) {
+    log.error({ err }, "failed to write deployed_version_stamp");
+    res.status(500).json({ error: "Could not record deploy stamp", detail: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 router.get("/version/remote-check", (_req, res) => {

@@ -3815,6 +3815,23 @@ export const platformIncidentsTable = pgTable("platform_incidents", {
 export type InsertPlatformIncident = typeof platformIncidentsTable.$inferInsert;
 export type PlatformIncident = typeof platformIncidentsTable.$inferSelect;
 
+// ── Deployed Version Stamp (Git #666) ───────────────────────────────────────────
+// One row per real production deploy, written by POST /api/admin/version-stamp.
+// GET /api/version's computeVersionInfo() reads the most recent row here as its
+// fallback when the running process has no .git directory (every real production
+// deploy — the git rev-parse/git log shellout only ever succeeds in this dev
+// workspace). Exists so production shows the real deployed commit instead of the
+// generic {version:"1.0.0", hash:"unknown"} placeholder.
+export const deployedVersionStampTable = pgTable("deployed_version_stamp", {
+  id: serial("id").primaryKey(),
+  commitHash: text("commit_hash").notNull(),
+  commitMessage: text("commit_message").notNull(),
+  deployedAt: timestamp("deployed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertDeployedVersionStamp = typeof deployedVersionStampTable.$inferInsert;
+export type DeployedVersionStamp = typeof deployedVersionStampTable.$inferSelect;
+
 // ── Public AI Chat ─────────────────────────────────────────────────────────────
 // Every public-site chat conversation, stored in full regardless of outcome — one
 // row per browser session, the whole transcript re-upserted each turn (the client
