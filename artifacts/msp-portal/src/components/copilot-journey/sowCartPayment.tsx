@@ -1,0 +1,700 @@
+/**
+ * sowCartPayment.tsx — Git #602 (Epic #597 stage 4): the real embedded Stripe
+ * Payment Element for the live SOW cart, mounted inline in
+ * `StatementOfWorkBody.tsx`'s own signature block.
+ *
+ * PORTED, NOT REBUILT
+ * --------------------
+ * This is the marketing site's already-built and themed Payment Element
+ * (`shane-mccaw-consulting`'s `AssessmentFlow.tsx` / `PaymentStep`, #482) —
+ * same stripe.js loader (no `@stripe/*` npm package needed), the same Stripe
+ * Appearance-API allowlist, the same `redirect:"if_required"` confirm so the
+ * buyer never leaves this page for a bank redirect unless one is genuinely
+ * required. What changed crossing over: the colour tokens are this journey's
+ * own `BRAND`/`INK` (`journeyTokens.ts`) instead of the marketing site's
+ * literal hex palette, and the three endpoints it talks to are the real
+ * SOW-cart ones (#599/#600) instead of the marketing flow's single-product
+ * ones:
+ *
+ *   POST /api/portal/assessment/sow/checkout-session                    (#599)
+ *   POST /api/portal/assessment/sow/checkout-session/payment-intent     (#600)
+ *   POST /api/portal/assessment/sow/checkout-session/payment-confirmed  (#600)
+ *
+ * No redirect, no page navigation — the Element mounts in this same document
+ * view and the buyer never leaves it, matching Shane's original ask (#597).
+ *
+ * Deliberately narrower than the marketing flow it is ported from: no rescan
+ * add-on branch (that recurring add-on has no equivalent on a SOW cart — the
+ * cart's own `addonSelections` already cover Tenant Monitoring / the Architect
+ * Retainer) and no post-payment account creation (a portal customer paying for
+ * a SOW is already a signed-in account). What happens to the signed contract
+ * after payment succeeds — an agreement record of some kind — is #603's own
+ * deferred scope; this module's job ends at a server-confirmed charge.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BRAND, INK, hexAlpha } from "./journeyTokens.ts";
+import { money } from "./journeyPricing.ts";
+
+type FetchWithAuth = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  opts?: { silent?: boolean },
+) => Promise<Response>;
+
+/* ------------------------------------------------------------------ *
+ * Wire shapes — the exact contract `portal-assessment.ts`'s three
+ * endpoints return (read from the real route source, not assumed).
+ * ------------------------------------------------------------------ */
+
+export interface SowCheckoutSessionRequest {
+  readonly selectedPhaseServiceIds: readonly number[];
+  readonly addonSelections: readonly { readonly addonId: string; readonly tierId: string }[];
+}
+
+export interface SowCheckoutSessionResult {
+  readonly sessionId: string;
+  readonly totalCents: number;
+  readonly phaseCount: number;
+  readonly addonCount: number;
+}
+
+interface SowCheckoutSessionResponse {
+  readonly sessionId: string;
+  readonly expiresAt: string;
+  readonly totalCents: number;
+  readonly phases: readonly { readonly serviceId: number; readonly serviceName: string; readonly priceCents: number }[];
+  readonly addons: readonly {
+    readonly addonId: string;
+    readonly addonTitle: string;
+    readonly tierId: string;
+    readonly tierLabel: string;
+    readonly upfrontCents: number;
+    readonly monthlyCents: number;
+  }[];
+}
+
+/** `{error}` on every failure response this route set returns — read once, for a message worth showing. */
+async function readErrorCode(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  return body.error ?? String(res.status);
+}
+
+function checkoutSessionErrorMessage(code: string): string {
+  switch (code) {
+    case "no_priced_scope":
+      return "There is no priced remediation scope for this tenant right now.";
+    case "session_expired":
+    case "session_not_ready":
+      return "This session has expired. Please try signing again.";
+    default:
+      return "We could not start your checkout. Please try again.";
+  }
+}
+
+/** Git #599 — snapshots the agreed scope server-side and returns the priced session to pay against. */
+export async function createSowCheckoutSession(
+  fetchWithAuth: FetchWithAuth,
+  body: SowCheckoutSessionRequest,
+): Promise<SowCheckoutSessionResult> {
+  const res = await fetchWithAuth("/api/portal/assessment/sow/checkout-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(checkoutSessionErrorMessage(await readErrorCode(res)));
+  const data = (await res.json()) as SowCheckoutSessionResponse;
+  return {
+    sessionId: data.sessionId,
+    totalCents: data.totalCents,
+    phaseCount: data.phases.length,
+    addonCount: data.addons.length,
+  };
+}
+
+interface SowPaymentIntentResponse {
+  readonly clientSecret: string;
+  readonly publishableKey: string;
+  readonly paymentIntentId: string;
+  readonly amountCents: number;
+  readonly alreadyPaid: boolean;
+}
+
+function paymentIntentErrorMessage(code: string): string {
+  switch (code) {
+    case "payment_unavailable":
+      return "Card payment is temporarily unavailable. Please contact us and we'll take it from here.";
+    case "session_expired":
+    case "not_your_session":
+    case "price_unresolved":
+      return "This checkout session is no longer valid. Please try signing again.";
+    default:
+      return "We could not prepare the payment. Please try again shortly.";
+  }
+}
+
+/** Git #600 — creates (or recovers, via its own idempotency key) the PaymentIntent this Element confirms against. */
+async function createSowPaymentIntent(
+  fetchWithAuth: FetchWithAuth,
+  sessionId: string,
+): Promise<SowPaymentIntentResponse> {
+  const res = await fetchWithAuth("/api/portal/assessment/sow/checkout-session/payment-intent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+  if (!res.ok) throw new Error(paymentIntentErrorMessage(await readErrorCode(res)));
+  return (await res.json()) as SowPaymentIntentResponse;
+}
+
+interface SowPaymentConfirmedResponse {
+  readonly ok: true;
+  readonly amountCents: number;
+  readonly email: string;
+}
+
+/** Git #600 — the browser's success claim is not evidence; this re-reads the intent from Stripe server-side before the session is marked paid. */
+async function confirmSowPaymentOnServer(
+  fetchWithAuth: FetchWithAuth,
+  sessionId: string,
+  paymentIntentId: string,
+): Promise<SowPaymentConfirmedResponse> {
+  const res = await fetchWithAuth("/api/portal/assessment/sow/checkout-session/payment-confirmed", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, paymentIntentId }),
+  });
+  if (!res.ok) {
+    const code = await readErrorCode(res);
+    throw new Error(
+      code === "payment_not_succeeded"
+        ? "Your bank has not confirmed the payment yet. Please wait a moment and try again."
+        : "We took the payment but could not record it. Please contact us before paying again.",
+    );
+  }
+  return (await res.json()) as SowPaymentConfirmedResponse;
+}
+
+/* ------------------------------------------------------------------ *
+ * stripe.js — ported verbatim from the marketing flow's own loader.
+ * Loaded from Stripe's own domain, not bundled — required by Stripe,
+ * and the reason no `@stripe/*` npm package is needed for the Element.
+ * ------------------------------------------------------------------ */
+
+interface StripeElement {
+  mount: (target: HTMLElement) => void;
+  destroy: () => void;
+}
+interface StripeElements {
+  create: (type: "payment", options?: Record<string, unknown>) => StripeElement;
+}
+interface StripeInstance {
+  elements: (options: Record<string, unknown>) => StripeElements;
+  confirmPayment: (options: {
+    elements: StripeElements;
+    redirect: "if_required";
+    confirmParams?: Record<string, unknown>;
+  }) => Promise<{
+    error?: { message?: string };
+    paymentIntent?: { id: string; status: string };
+  }>;
+}
+declare global {
+  interface Window {
+    Stripe?: (publishableKey: string) => StripeInstance;
+  }
+}
+
+const STRIPE_JS_SRC = "https://js.stripe.com/v3/";
+
+function loadStripeJs(): Promise<void> {
+  if (window.Stripe) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${STRIPE_JS_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("stripe.js failed to load")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = STRIPE_JS_SRC;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("stripe.js failed to load"));
+    document.head.appendChild(script);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Theming — #482's pattern (every property below is on Stripe's
+ * documented Appearance allowlist; an unsupported one throws at mount
+ * and takes the whole form down), retargeted onto this journey's own
+ * `BRAND`/`INK` tokens instead of the marketing site's literal hex.
+ * ------------------------------------------------------------------ */
+
+const FIELD_BG = "rgba(2,6,23,.6)";
+const FIELD_BG_FOCUS = "rgba(2,6,23,.85)";
+const FIELD_BORDER = "rgba(51,65,85,.9)";
+const FIELD_BORDER_HOVER = "rgba(71,85,105,.95)";
+const FIELD_RADIUS = 10;
+const FIELD_PADDING = "13px 15px";
+const FIELD_FONT_SIZE = 15;
+const DANGER = "#fca5a5";
+const ACCENT = BRAND.blue;
+const ACCENT_SOFT = hexAlpha(BRAND.blue, 0.14);
+const ACCENT_EDGE = hexAlpha(BRAND.blue, 0.32);
+const FOCUS_RING = `0 0 0 3px ${hexAlpha(BRAND.blue, 0.22)}`;
+const TAB_TRANSITION = "background-color .18s ease,border-color .18s ease,box-shadow .18s ease,color .18s ease";
+
+// Named outright rather than `fontFamily:"inherit"` — the Element renders in a
+// cross-origin iframe with nothing to inherit from, which is what rendered the
+// marketing flow's own payment step in serif before #482 fixed it. `fonts`
+// below loads the same Google Fonts stylesheet the rest of this portal already
+// pulls in, into the iframe, so this is the one place that has to say so twice.
+const STRIPE_FONT_STACK = "'Inter',system-ui,-apple-system,'Segoe UI',sans-serif";
+const STRIPE_FONTS = [
+  { cssSrc: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
+] as const;
+
+const STRIPE_APPEARANCE = {
+  theme: "night",
+  labels: "above",
+  variables: {
+    fontFamily: STRIPE_FONT_STACK,
+    fontSizeBase: `${FIELD_FONT_SIZE}px`,
+    fontSizeSm: "13px",
+    fontSizeXs: "12px",
+    fontSize2Xs: "11px",
+    fontLineHeight: "1.5",
+    fontWeightNormal: "500",
+    fontWeightMedium: "600",
+    fontWeightBold: "700",
+    fontSmooth: "always",
+    spacingUnit: "4px",
+    borderRadius: `${FIELD_RADIUS}px`,
+    gridRowSpacing: "18px",
+    gridColumnSpacing: "14px",
+    tabSpacing: "10px",
+    labelSpacing: "7px",
+    colorPrimary: ACCENT,
+    colorBackground: FIELD_BG,
+    colorText: INK.headingDark,
+    colorTextSecondary: INK.micro,
+    colorTextPlaceholder: INK.micro,
+    colorDanger: DANGER,
+    colorSuccess: "#34d399",
+    colorWarning: "#fbbf24",
+    accessibleColorOnColorPrimary: "#ffffff",
+    labelColorText: INK.micro,
+    labelFontSize: "11px",
+    labelFontWeight: "600",
+    inputColorBorder: FIELD_BORDER,
+    inputFocusColorBorder: ACCENT,
+    inputBoxShadow: "none",
+    inputFocusBoxShadow: FOCUS_RING,
+    focusBoxShadow: FOCUS_RING,
+    focusOutline: "none",
+    iconColor: INK.micro,
+    iconHoverColor: INK.bodyDarkStrong,
+    iconChevronDownColor: INK.micro,
+    iconChevronDownHoverColor: INK.bodyDarkStrong,
+    iconCheckmarkColor: "#ffffff",
+    tabIconColor: INK.micro,
+    tabIconHoverColor: INK.bodyDarkStrong,
+    tabIconSelectedColor: "#93c5fd",
+    tabIconMoreColor: INK.micro,
+    tabIconMoreHoverColor: INK.bodyDarkStrong,
+  },
+  rules: {
+    ".Tab": {
+      backgroundColor: FIELD_BG,
+      border: `1px solid ${FIELD_BORDER}`,
+      borderRadius: "12px",
+      boxShadow: "none",
+      color: INK.micro,
+      padding: "12px 14px",
+      transition: TAB_TRANSITION,
+    },
+    ".Tab:hover": {
+      backgroundColor: "rgba(15,23,42,.75)",
+      borderColor: FIELD_BORDER_HOVER,
+      boxShadow: "none",
+      color: INK.bodyDarkStrong,
+    },
+    ".Tab:focus": {
+      borderColor: ACCENT,
+      boxShadow: FOCUS_RING,
+      outline: "none",
+    },
+    ".Tab--selected": {
+      backgroundColor: ACCENT_SOFT,
+      borderColor: ACCENT,
+      boxShadow: `0 0 0 1px ${ACCENT_EDGE},0 8px 20px -12px ${hexAlpha(BRAND.blue, 0.85)}`,
+      color: "#e2e8f0",
+    },
+    ".TabIcon": { transition: "fill .18s ease,color .18s ease" },
+    ".TabLabel": { fontSize: "13px", fontWeight: "600", letterSpacing: ".01em" },
+    ".Label": {
+      color: INK.micro,
+      fontSize: "11px",
+      fontWeight: "600",
+      letterSpacing: ".12em",
+      textTransform: "uppercase",
+    },
+    ".Label--invalid": { color: DANGER },
+    ".Input": {
+      backgroundColor: FIELD_BG,
+      border: `1px solid ${FIELD_BORDER}`,
+      borderRadius: `${FIELD_RADIUS}px`,
+      boxShadow: "none",
+      color: INK.headingDark,
+      fontSize: `${FIELD_FONT_SIZE}px`,
+      padding: FIELD_PADDING,
+      transition: "background-color .16s ease,border-color .16s ease,box-shadow .16s ease",
+    },
+    ".Input:hover": { borderColor: FIELD_BORDER_HOVER },
+    ".Input:focus": {
+      backgroundColor: FIELD_BG_FOCUS,
+      borderColor: ACCENT,
+      boxShadow: FOCUS_RING,
+      outline: "none",
+    },
+    ".Input--invalid": {
+      borderColor: DANGER,
+      boxShadow: "0 0 0 3px rgba(248,113,113,.16)",
+      color: "#fecaca",
+    },
+    ".Input::placeholder": { color: INK.micro },
+    ".Error": { color: DANGER, fontSize: "12.5px", marginTop: "7px" },
+    ".Block": {
+      backgroundColor: "rgba(2,6,23,.5)",
+      border: `1px solid ${INK.hairlineDark}`,
+      borderRadius: "14px",
+      boxShadow: "none",
+    },
+    ".BlockDivider": { backgroundColor: INK.hairlineDark },
+    ".AccordionItem": {
+      backgroundColor: FIELD_BG,
+      border: `1px solid ${FIELD_BORDER}`,
+      borderRadius: "12px",
+      boxShadow: "none",
+      color: INK.bodyDarkStrong,
+      padding: "14px 16px",
+    },
+    ".AccordionItem--selected": {
+      backgroundColor: ACCENT_SOFT,
+      borderColor: ACCENT,
+      color: INK.headingDark,
+    },
+    ".PickerItem": {
+      backgroundColor: FIELD_BG,
+      border: `1px solid ${FIELD_BORDER}`,
+      borderRadius: `${FIELD_RADIUS}px`,
+      boxShadow: "none",
+      color: INK.bodyDarkStrong,
+    },
+    ".PickerItem--selected": {
+      backgroundColor: ACCENT_SOFT,
+      borderColor: ACCENT,
+      color: INK.headingDark,
+    },
+    ".CheckboxInput": {
+      backgroundColor: FIELD_BG,
+      border: `1px solid ${FIELD_BORDER}`,
+      borderRadius: "5px",
+      boxShadow: "none",
+      transition: "background-color .16s ease,border-color .16s ease",
+    },
+    ".CheckboxInput--checked": { backgroundColor: ACCENT, borderColor: ACCENT },
+    ".CheckboxLabel": { color: INK.bodyDarkStrong, fontSize: "13px", lineHeight: "1.5" },
+    ".RadioIconOuter": { stroke: FIELD_BORDER, transition: "stroke .16s ease" },
+    ".RadioIconOuter--checked": { stroke: ACCENT },
+    ".RadioIconInner": { fill: ACCENT },
+    ".Menu": { padding: "6px" },
+    ".MenuAction": {
+      backgroundColor: "transparent",
+      borderRadius: "8px",
+      color: INK.bodyDarkStrong,
+      fontSize: "13.5px",
+      padding: "9px 11px",
+      transition: "background-color .14s ease,color .14s ease",
+    },
+    ".MenuAction:hover": { backgroundColor: ACCENT_SOFT, color: INK.headingDark },
+    ".Dropdown": {
+      border: `1px solid ${INK.hairlineDark}`,
+      borderRadius: "12px",
+      boxShadow: "0 18px 40px -20px rgba(2,6,23,.95)",
+    },
+    ".DropdownItem": {
+      backgroundColor: "transparent",
+      borderRadius: "8px",
+      color: INK.bodyDarkStrong,
+      fontSize: "14px",
+      padding: "9px 11px",
+    },
+    ".DropdownItem--highlight": { backgroundColor: ACCENT_SOFT, color: INK.headingDark },
+  },
+} as const;
+
+const STRIPE_PAYMENT_ELEMENT_OPTIONS = { layout: { type: "tabs" } } as const;
+
+const PAY_PANEL: React.CSSProperties = {
+  border: `1px solid ${INK.hairlineDark}`,
+  borderRadius: 12,
+  background: "rgba(2,6,23,.5)",
+  overflow: "hidden",
+};
+const PAY_PANEL_HEAD: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "14px 18px 12px",
+  borderBottom: `1px solid ${INK.hairlineDark}`,
+};
+const PAY_PANEL_FOOT: React.CSSProperties = {
+  padding: "14px 18px 16px",
+  borderTop: `1px solid ${INK.hairlineDark}`,
+};
+const SECURE_BADGE: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 11.5,
+  fontWeight: 600,
+  letterSpacing: ".04em",
+  color: INK.micro,
+};
+
+function LockIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={INK.micro}
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      <rect x="4" y="10.5" width="16" height="11" rx="2.5" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+    </svg>
+  );
+}
+
+/** Holds the panel's shape while Stripe's iframe boots — decoration only, the real loading state is the text beneath it. */
+function PaymentSkeleton() {
+  const bar = (height: number, radius: number, width: string): React.CSSProperties => ({
+    height,
+    width,
+    borderRadius: radius,
+    background: "rgba(15,23,42,.75)",
+    border: `1px solid ${INK.hairlineDark}`,
+    boxSizing: "border-box",
+  });
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <div aria-hidden="true" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        <div style={bar(42, 12, "100%")} />
+        <div style={bar(42, 12, "100%")} />
+        <div style={bar(42, 12, "100%")} />
+      </div>
+      <div aria-hidden="true" style={{ display: "grid", gap: 16 }}>
+        <div style={bar(44, FIELD_RADIUS, "100%")} />
+        <div style={bar(44, FIELD_RADIUS, "100%")} />
+      </div>
+      <p style={{ fontSize: 12, color: INK.deemphasised, margin: "14px 0 0" }}>Loading secure card fields…</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * The panel — mounted inline in the SOW's own signature block once
+ * `createSowCheckoutSession` has returned a real session to pay
+ * against. No redirect, no route change; success is reported back to
+ * the caller via `onPaid` so it can flip the block to its paid state.
+ * ------------------------------------------------------------------ */
+
+export function SowCartPaymentPanel({
+  fetchWithAuth,
+  sessionId,
+  totalCents,
+  phaseCount,
+  addonCount,
+  onPaid,
+}: {
+  readonly fetchWithAuth: FetchWithAuth;
+  readonly sessionId: string;
+  readonly totalCents: number;
+  readonly phaseCount: number;
+  readonly addonCount: number;
+  readonly onPaid: (amountCents: number) => void;
+}) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const stripeRef = useRef<StripeInstance | null>(null);
+  const elementsRef = useRef<StripeElements | null>(null);
+
+  const [ready, setReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [intentId, setIntentId] = useState<string | null>(null);
+
+  const confirmOnServer = useCallback(
+    async (paymentIntentId: string) => {
+      setConfirming(true);
+      setPayError(null);
+      try {
+        const data = await confirmSowPaymentOnServer(fetchWithAuth, sessionId, paymentIntentId);
+        onPaid(data.amountCents);
+      } catch (err) {
+        setPayError(err instanceof Error ? err.message : "We could not record the payment.");
+      } finally {
+        setConfirming(false);
+      }
+    },
+    [fetchWithAuth, sessionId, onPaid],
+  );
+
+  // Create the intent, boot stripe.js, mount the Payment Element.
+  useEffect(() => {
+    let cancelled = false;
+    let element: StripeElement | null = null;
+
+    (async () => {
+      try {
+        const data = await createSowPaymentIntent(fetchWithAuth, sessionId);
+        if (cancelled) return;
+        setIntentId(data.paymentIntentId);
+
+        // Recovered an intent that already succeeded (paid, then reloaded
+        // before the confirm callback landed) — finish rather than asking for
+        // a second card.
+        if (data.alreadyPaid) {
+          await confirmOnServer(data.paymentIntentId);
+          return;
+        }
+
+        await loadStripeJs();
+        if (cancelled || !window.Stripe || !mountRef.current) return;
+
+        const stripe = window.Stripe(data.publishableKey);
+        stripeRef.current = stripe;
+        const elements = stripe.elements({
+          clientSecret: data.clientSecret,
+          appearance: STRIPE_APPEARANCE,
+          fonts: STRIPE_FONTS,
+        });
+        elementsRef.current = elements;
+        element = elements.create("payment", STRIPE_PAYMENT_ELEMENT_OPTIONS);
+        element.mount(mountRef.current);
+        setReady(true);
+      } catch (err) {
+        if (!cancelled) setInitError(err instanceof Error ? err.message : "Could not load the payment form.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        element?.destroy();
+      } catch {
+        /* already torn down */
+      }
+    };
+  }, [sessionId, fetchWithAuth, confirmOnServer]);
+
+  async function pay() {
+    const stripe = stripeRef.current;
+    const elements = elementsRef.current;
+    if (!stripe || !elements) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      // redirect: "if_required" keeps the buyer on this page for every payment
+      // method that does not genuinely need a bank redirect.
+      const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
+      if (result.error) {
+        setPayError(result.error.message ?? "Your payment could not be completed.");
+        return;
+      }
+      const id = result.paymentIntent?.id ?? intentId;
+      if (!id || result.paymentIntent?.status !== "succeeded") {
+        setPayError("Your payment is still processing. We'll email you as soon as it clears.");
+        return;
+      }
+      await confirmOnServer(id);
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : "Something went wrong taking the payment.");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <p style={{ margin: 0, fontSize: 12.5, fontWeight: 500, color: INK.bodyDark }}>
+        {`${phaseCount} phase${phaseCount === 1 ? "" : "s"}${addonCount > 0 ? `, ${addonCount} add-on${addonCount === 1 ? "" : "s"}` : ""} · ${money(totalCents / 100)} due today`}
+      </p>
+
+      {initError ? (
+        <div style={{ fontSize: 13.5, lineHeight: 1.55, color: DANGER }}>{initError}</div>
+      ) : (
+        <div style={PAY_PANEL}>
+          <div style={PAY_PANEL_HEAD}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".12em", textTransform: "uppercase", color: INK.micro }}>
+              Pay with
+            </span>
+            <span style={SECURE_BADGE}>
+              <LockIcon />
+              Secured by Stripe
+            </span>
+          </div>
+
+          <div style={{ padding: "16px 18px 4px" }}>
+            {/* The mount point is never unmounted or moved by `ready` — the
+                skeleton overlays it instead, so Stripe's iframe is not torn
+                down underneath itself. */}
+            <div style={{ position: "relative", minHeight: 216 }}>
+              <div ref={mountRef} />
+              {!ready && <PaymentSkeleton />}
+            </div>
+          </div>
+
+          <div style={PAY_PANEL_FOOT}>
+            {payError && <p style={{ fontSize: 13.5, lineHeight: 1.5, color: DANGER, margin: "0 0 12px" }}>{payError}</p>}
+            <button
+              type="button"
+              onClick={pay}
+              disabled={!ready || paying || confirming}
+              style={{
+                width: "100%",
+                height: 38,
+                border: 0,
+                borderRadius: 6,
+                background: BRAND.blue,
+                color: BRAND.white,
+                fontFamily: "inherit",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: !ready || paying || confirming ? "not-allowed" : "pointer",
+                opacity: !ready || paying || confirming ? 0.6 : 1,
+                transition: "opacity 160ms",
+              }}
+            >
+              {confirming ? "Confirming…" : paying ? "Processing…" : `Pay ${money(totalCents / 100)} securely`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: INK.deemphasised }}>
+        Card details go straight to Stripe from your browser and never touch our servers. You stay on this page the whole way through.
+      </p>
+    </div>
+  );
+}

@@ -287,6 +287,12 @@ export function journeyScopeFromOffers(body: WireRecommendedOffers): JourneySowS
       // makes, for the same reason.
       pillar: pillarShown ?? PILLAR_KEYS[0],
       pillarShown,
+      // The real `services.id` this candidate prices against — carried through
+      // (rather than dropped, as it was before #602) so a signature on this
+      // scope can name exactly these rows in `POST .../sow/checkout-session`'s
+      // `selectedPhaseServiceIds`, the same id space that endpoint's own
+      // `candidatesById` keys on.
+      serviceId: typeof offer.serviceId === "number" ? offer.serviceId : null,
       scope: (offer.rationale ?? "").trim(),
       // `priceCents` is the platform's canonical money unit; `JourneyPhase.priceUsd`
       // is the one documented place the cents rule does not hold, so the

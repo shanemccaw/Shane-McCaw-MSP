@@ -75,6 +75,18 @@ describe("journeyScopeFromOffers", () => {
     assert.equal(built.pillarById[p.id], "security");
   });
 
+  it("Git #602: carries the real services.id through, for POST .../sow/checkout-session to name", () => {
+    const built = journeyScopeFromOffers({ offers: [offer({ serviceId: 42 })] });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.serviceId, 42);
+  });
+
+  it("Git #602: null rather than a guessed id when the wire carries none", () => {
+    const built = journeyScopeFromOffers({ offers: [offer({ serviceId: undefined })] });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.serviceId, null);
+  });
+
   it("uses serviceName, not the engine's decorated sales title", () => {
     const built = journeyScopeFromOffers({ offers: [offer()] });
     assert.ok(built);

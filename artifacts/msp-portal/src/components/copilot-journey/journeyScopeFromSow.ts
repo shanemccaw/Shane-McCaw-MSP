@@ -136,6 +136,14 @@ export interface JourneySowPhase extends JourneyPhase {
    * signs.
    */
   readonly weeksQuoted: number | null;
+  /**
+   * The real `services.id` this phase prices against — what Git #599's
+   * `selectedPhaseServiceIds` needs to snapshot a checkout session (#602). A
+   * stored SOW document's `sow_pricing_lines` has no such column at all, so
+   * `toPhase()` below always sets `null`; only `journeyScopeFromOffers()`
+   * (`sowLiveScope.ts`), reading the engine's own candidates, has a real one.
+   */
+  readonly serviceId: number | null;
 }
 
 /** A price modifier. Always included, never a workstream, never toggleable. */
@@ -185,6 +193,7 @@ function toPhase(line: WireSowLine): JourneySowPhase {
     scoreFrom: flat,
     scoreTo: flat,
     addresses: "",
+    serviceId: null,
     // Nothing on this wire is a mandatory *workstream*. The platform's only
     // "shown, never toggleable" rows are the adjustments, and those are not
     // phases at all — see the note at the top of this file.

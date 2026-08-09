@@ -25,15 +25,21 @@
  * persisting nothing. `sowLiveScope.ts` holds that mapping and the full argument
  * for why it is the same authority rather than a stand-in for it.
  *
- * WHAT THAT COSTS, AND WHY IT IS THE RIGHT TRADE: this document can be READ by
- * every tenant with a scan, and SIGNED by none of them from here. Signing writes
- * an `assessment_sow_agreements` row FK'd to a stored document id, and
- * `.../sow/payment-options` reads its totals off that same row, so a signature
- * taken here with no such row would land in a checkout that cannot accept it.
- * The signature block states that instead of offering a button that cannot work
- * — see `SOW_UNSIGNABLE`. The standalone proposal screen
+ * WHAT THAT USED TO COST, AND WHAT #599–#602 CLOSED
+ * ---------------------------------------------------
+ * This document could be READ by every tenant with a scan, but SIGNED by none
+ * of them from here: signing used to write an `assessment_sow_agreements` row
+ * FK'd to a stored document id, and `.../sow/payment-options` read its totals
+ * off that same row, so a signature taken here with no such row would land in
+ * a checkout that could not accept it (`SOW_UNSIGNABLE`). Git #599's
+ * `sow/checkout-session` endpoint closed that gap — it snapshots a real,
+ * server-priced cart with no stored document behind it at all — and #600 gave
+ * it a real PaymentIntent to charge against. `SOW_UNSIGNABLE` is kept for a
+ * caller that genuinely cannot honour a signature, but `LiveStatementOfWorkBody`
+ * no longer is one. The standalone proposal screen
  * (`/copilot-readiness/proposal`) still reads the stored document and is still
- * where a generated SOW is signed; nothing about that path changed.
+ * where a GENERATED SOW is signed and paid; nothing about that separate path
+ * changed.
  *
  * SIGNING IS A HARD LOCK, NOT A DISABLED STATE
  * --------------------------------------------
@@ -41,9 +47,20 @@
  * inactive, because a contract that is still editable after execution is not a
  * contract. The lock lives in the handlers, not in CSS.
  *
- * WHAT THIS DOES NOT DO: it takes no payment and creates no agreement record.
- * Where signing IS offered (the design preview), it hands the agreed scope to
- * the checkout screen, which is where the platform's real Stripe path lives.
+ * SIGN AND PAY, IN THIS SAME VIEW (#602)
+ * ----------------------------------------
+ * A live signature now takes payment too, right here — no redirect, no route
+ * change. `sign()` locks the scope, then hands it to #599's checkout-session
+ * endpoint; the moment that session exists, `sowCartPayment.tsx`'s embedded
+ * Stripe Payment Element (ported from the marketing site's own `AssessmentFlow.tsx`
+ * / `PaymentStep`, #482) mounts inline in the signature block below and
+ * confirms against #600's PaymentIntent. The design preview has no real
+ * tenant to snapshot a session against, so it keeps its original behaviour:
+ * signing there still just hands the agreed scope to the standalone checkout
+ * screen as a query string. WHAT THIS STILL DOES NOT DO: record a signed
+ * agreement anywhere. A confirmed Stripe charge is where this file's
+ * responsibility ends — what happens to the contract after that is #603's own
+ * deferred scope ("Reconcile post-payment agreement recording").
  *
  * PREVIEW VS LIVE (#292)
  * -----------------------
@@ -140,6 +157,7 @@ import {
   type JourneySowScope,
 } from "./journeyScopeFromSow.ts";
 import { journeyScopeFromOffers, type WireRecommendedOffers } from "./sowLiveScope.ts";
+import { createSowCheckoutSession, SowCartPaymentPanel } from "./sowCartPayment";
 import type { JourneyView } from "./journeyModel.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
 
@@ -459,10 +477,13 @@ export interface SowLiveInputs {
   /**
    * Whether a signature taken here can actually be recorded.
    *
-   * `false` for an engine-computed scope, and not as a UI preference: `POST
-   * .../sow/checkout` writes an agreement row FK'd to a stored
-   * `insights_generated_documents` id that does not exist for one. See
-   * `SOW_UNSIGNABLE`.
+   * Used to be `false` for every engine-computed scope: `POST .../sow/checkout`
+   * wrote an agreement row FK'd to a stored `insights_generated_documents` id
+   * that does not exist for one, and there was no other way to pay. Git #599's
+   * `checkout-session` + #600's PaymentIntent endpoints replace that path
+   * entirely — neither reads a stored document — so `LiveStatementOfWorkBody`
+   * now passes `true`. Left as a real prop rather than hardcoded so a caller
+   * that genuinely cannot honour a signature (see `SOW_UNSIGNABLE`) still can.
    */
   readonly signable: boolean;
 }
@@ -486,6 +507,21 @@ export function StatementOfWorkBody({
   const [selection, setSelection] = useState<JourneySelection>(() => defaultSelection(scope));
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
+  /**
+   * Git #602 — the live sign-and-pay flow's own state, entered the moment
+   * `sign()` runs for a real (`!isPreview && live`) scope. The design preview
+   * never touches this: it has no real tenant to snapshot a checkout session
+   * against, so it keeps its original `onSigned` handoff to the standalone
+   * checkout screen unchanged.
+   */
+  const [sowPayment, setSowPayment] = useState<
+    | { readonly status: "idle" }
+    | { readonly status: "creating" }
+    | { readonly status: "ready"; readonly sessionId: string; readonly totalCents: number; readonly phaseCount: number; readonly addonCount: number }
+    | { readonly status: "paid"; readonly amountCents: number }
+    | { readonly status: "error"; readonly message: string }
+  >({ status: "idle" });
+  const { fetchWithAuth } = useAuth();
 
   // A live scope can change identity between the loading state and the ready
   // one (or across a re-selected SOW version) — reset the selection to match
@@ -626,11 +662,47 @@ export function StatementOfWorkBody({
     [signed],
   );
 
+  /**
+   * Git #599's session snapshot, for the real scope this customer just
+   * signed. Split out of `sign()` so a failed session creation (network blip,
+   * a candidate that dropped out from under them) can be retried without
+   * re-running the signature itself — the scope is already locked by then.
+   */
+  const startSowCheckout = useCallback(() => {
+    if (!live) return;
+    const selectedPhaseServiceIds = live.built.phases
+      .filter((p) => isPhaseIncluded(scope, selection, p.id))
+      .map((p) => p.serviceId)
+      .filter((id): id is number => id !== null);
+    const addonSelections = scope.addons
+      .filter((a) => selection.addons[a.id])
+      .map((a) => ({ addonId: a.id, tierId: selection.tiers[a.id] ?? a.defaultTierId ?? "" }))
+      .filter((a) => a.tierId.length > 0);
+
+    setSowPayment({ status: "creating" });
+    void createSowCheckoutSession(fetchWithAuth, { selectedPhaseServiceIds, addonSelections })
+      .then((session) => setSowPayment({ status: "ready", ...session }))
+      .catch((err) =>
+        setSowPayment({ status: "error", message: err instanceof Error ? err.message : "Could not start checkout." }),
+      );
+  }, [live, scope, selection, fetchWithAuth]);
+
   const sign = useCallback(() => {
     // The same doctrine the post-signature lock follows: the guard lives in the
     // handler, not only in whether a button was rendered.
     if (!signable || !agreed || signed) return;
     setSigned(true);
+
+    // Git #602: a real, live scope creates its checkout session and pays
+    // inline, right here — no navigation. The design preview has no real
+    // tenant to snapshot a session against, so it keeps its original handoff
+    // to the standalone checkout screen (`copilot-readiness-checkout.tsx`)
+    // unchanged.
+    if (!isPreview && live) {
+      startSowCheckout();
+      return;
+    }
+
     const phases = scope.phases
       .map((p) => (isPhaseIncluded(scope, selection, p.id) ? "1" : "0"))
       .join("");
@@ -643,7 +715,7 @@ export function StatementOfWorkBody({
     // is actually seen.
     const query = new URLSearchParams({ signed: "1", phases, addons }).toString();
     window.setTimeout(() => onSigned?.(query), 1100);
-  }, [signable, agreed, signed, selection, onSigned, scope]);
+  }, [signable, agreed, signed, selection, onSigned, scope, isPreview, live, startSowCheckout]);
 
   /** Substitutes the figures the contract computes rather than states. */
   const resolveRow = useCallback(
@@ -1327,9 +1399,49 @@ export function StatementOfWorkBody({
         {/* No clickwrap and no button when a signature could not be recorded —
             an agreement that cannot be written is not one to invite. */}
         {!signable ? null : signed ? (
-          <span style={{ fontSize: 13, fontWeight: 700, color: SEVERITY_ON_DARK.healthy, ...TABULAR }}>
-            {`Executed · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(netFee)}`}
-          </span>
+          isPreview || !live ? (
+            <span style={{ fontSize: 13, fontWeight: 700, color: SEVERITY_ON_DARK.healthy, ...TABULAR }}>
+              {`Executed · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(netFee)}`}
+            </span>
+          ) : sowPayment.status === "paid" ? (
+            <span style={{ fontSize: 13, fontWeight: 700, color: SEVERITY_ON_DARK.healthy, ...TABULAR }}>
+              {`Executed & paid · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(sowPayment.amountCents / 100)}`}
+            </span>
+          ) : sowPayment.status === "ready" ? (
+            <SowCartPaymentPanel
+              fetchWithAuth={fetchWithAuth}
+              sessionId={sowPayment.sessionId}
+              totalCents={sowPayment.totalCents}
+              phaseCount={sowPayment.phaseCount}
+              addonCount={sowPayment.addonCount}
+              onPaid={(amountCents) => setSowPayment({ status: "paid", amountCents })}
+            />
+          ) : sowPayment.status === "error" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5" }}>{sowPayment.message}</span>
+              <button
+                type="button"
+                onClick={startSowCheckout}
+                style={{
+                  alignSelf: "flex-start",
+                  height: 34,
+                  padding: "0 16px",
+                  border: 0,
+                  borderRadius: 6,
+                  background: BRAND.blue,
+                  color: BRAND.white,
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: 13, fontWeight: 500, color: INK.micro }}>Starting your checkout…</span>
+          )
         ) : (
           <>
             <button
@@ -1546,8 +1658,11 @@ export function LiveStatementOfWorkBody({
           // than guessed — see `resolvePaymentTerms`.
           phasedSelfServe: null,
           payInFullActive: false,
-          // See `SowLiveInputs.signable` and `SOW_UNSIGNABLE`.
-          signable: false,
+          // Git #602: true now that signing a live scope pays it, right here,
+          // through #599/#600's checkout-session + PaymentIntent endpoints —
+          // neither depends on the stored `insights_generated_documents` row
+          // that made this `false` before. See `SowLiveInputs.signable`.
+          signable: true,
         }}
       />
     );
