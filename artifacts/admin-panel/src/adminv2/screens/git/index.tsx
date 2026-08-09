@@ -18,6 +18,9 @@ import { getShellApi } from "../../shell/ShellContext";
 import { GitConsoleBody } from "./GitConsoleBody";
 import { DEPLOY_OPERATIONS, findDeployOperation } from "./deployOperations";
 import {
+  AUTO_COPY_JSON_KEY,
+  AUTO_COPY_KEY,
+  AUTO_COPY_TEXT_KEY,
   clearTranscript,
   closeConsole,
   copyLastOutput,
@@ -128,11 +131,24 @@ registerScreen({
             intent: "global",
             onSelect: toggleAutoCopy,
             title: "Copy every result to the clipboard as it finishes",
+            liveKey: AUTO_COPY_KEY,
           },
         ],
         small: [
-          { label: "As JSON", icon: FileJson, intent: "global", onSelect: () => setAutoCopyFormat("json") },
-          { label: "As plain text", icon: Type, intent: "global", onSelect: () => setAutoCopyFormat("text") },
+          {
+            label: "As JSON",
+            icon: FileJson,
+            intent: "global",
+            onSelect: () => setAutoCopyFormat("json"),
+            liveKey: AUTO_COPY_JSON_KEY,
+          },
+          {
+            label: "As plain text",
+            icon: Type,
+            intent: "global",
+            onSelect: () => setAutoCopyFormat("text"),
+            liveKey: AUTO_COPY_TEXT_KEY,
+          },
         ],
       },
     },

@@ -14,6 +14,9 @@ import { getScreen, resetRegistry } from "../../registry/registry";
 import { GitConsoleBody } from "./GitConsoleBody";
 import { FloatingDeployConsole } from "./FloatingDeployConsole";
 import {
+  AUTO_COPY_JSON_KEY,
+  AUTO_COPY_KEY,
+  AUTO_COPY_TEXT_KEY,
   clearTranscript,
   closeConsole,
   configureDeployFetch,
@@ -24,12 +27,14 @@ import {
   runOperation,
   runTyped,
   setAutoCopy,
+  setAutoCopyFormat,
   setInput,
 } from "./deployStore";
 import { findDeployOperation } from "./deployOperations";
+import { getLiveRibbonEntry } from "../../shell/liveRibbon";
 
 const fetchWithAuth = vi.fn();
-const clipboardWrite = vi.fn(() => Promise.resolve());
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -118,6 +123,54 @@ describe("deployStore", () => {
 
     await waitFor(() => expect(getSnapshot().transcript.length).toBe(1));
     expect(clipboardWrite).not.toHaveBeenCalled();
+  });
+
+  it("highlights the Auto copy ribbon button like a checkbox — on when on, off when off", () => {
+    expect(getLiveRibbonEntry(AUTO_COPY_KEY)?.active).toBe(false);
+    setAutoCopy(true);
+    expect(getLiveRibbonEntry(AUTO_COPY_KEY)?.active).toBe(true);
+    setAutoCopy(false);
+    expect(getLiveRibbonEntry(AUTO_COPY_KEY)?.active).toBe(false);
+  });
+
+  it("highlights exactly one format button, only while auto-copy is on", () => {
+    expect(getLiveRibbonEntry(AUTO_COPY_JSON_KEY)?.active).toBe(false);
+    expect(getLiveRibbonEntry(AUTO_COPY_TEXT_KEY)?.active).toBe(false);
+
+    // Picking a format turns auto-copy on (documented side effect) and
+    // selects exactly that format.
+    setAutoCopyFormat("json");
+    expect(getSnapshot().autoCopy).toBe(true);
+    expect(getLiveRibbonEntry(AUTO_COPY_KEY)?.active).toBe(true);
+    expect(getLiveRibbonEntry(AUTO_COPY_JSON_KEY)?.active).toBe(true);
+    expect(getLiveRibbonEntry(AUTO_COPY_TEXT_KEY)?.active).toBe(false);
+
+    setAutoCopyFormat("text");
+    expect(getLiveRibbonEntry(AUTO_COPY_JSON_KEY)?.active).toBe(false);
+    expect(getLiveRibbonEntry(AUTO_COPY_TEXT_KEY)?.active).toBe(true);
+
+    // Turning auto-copy off un-highlights the selected format too — neither
+    // button should read as "selected" for a setting that isn't engaged.
+    setAutoCopy(false);
+    expect(getLiveRibbonEntry(AUTO_COPY_TEXT_KEY)?.active).toBe(false);
+  });
+
+  it("auto-copy respects the chosen format", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, operation: "git-status", steps: [{ label: "git status", command: "git status", ok: true, output: "## main" }] }),
+    });
+    setAutoCopyFormat("json");
+
+    runOperation(findDeployOperation("git-status")!);
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalled());
+    expect(clipboardWrite.mock.calls.at(-1)?.[0]).toContain('"output": "## main"');
+
+    clipboardWrite.mockClear();
+    setAutoCopyFormat("text");
+    runOperation(findDeployOperation("git-status")!);
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith("## main"));
   });
 
   it("clearTranscript empties it and copyLastOutput copies the most recent entry", async () => {

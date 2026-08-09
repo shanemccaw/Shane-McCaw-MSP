@@ -29,6 +29,18 @@ import type { DeployOperation } from "./deployOperations";
 // there is something new to re-read. One-way, as before: `screens/run-history`
 // never imports this file.
 import { runHistoryChanged } from "../run-history/runHistoryStore";
+// The "Auto copy" group's three ribbon buttons need to look like a checkbox
+// plus a two-way radio choice — highlighted when on/selected, not when off.
+// A `RibbonCommand.active` set at `registerScreen()` time is frozen forever
+// (that call happens once, at module load, outside any component), so the
+// only way for these buttons to reflect real, changing state is this
+// screen-agnostic overlay (see `shell/liveRibbon.ts`'s own doc comment —
+// the Money screen's live figures use the same mechanism).
+import { setLiveRibbonValue } from "../../shell/liveRibbon";
+
+export const AUTO_COPY_KEY = "git:auto-copy";
+export const AUTO_COPY_JSON_KEY = "git:auto-copy-json";
+export const AUTO_COPY_TEXT_KEY = "git:auto-copy-text";
 
 export interface DeployStepResult {
   label: string;
@@ -210,12 +222,28 @@ export function clearTranscript(): void {
   setState({ transcript: [] });
 }
 
+/**
+ * Pushes the current on/off + format state to the three ribbon buttons'
+ * live overlay. The format buttons only read as "selected" while auto-copy
+ * itself is on — otherwise both would sit highlighted for a setting that
+ * is not currently doing anything, which is not what a checkbox+radio pair
+ * being off looks like.
+ */
+function syncAutoCopyRibbon(): void {
+  setLiveRibbonValue(AUTO_COPY_KEY, { active: state.autoCopy });
+  setLiveRibbonValue(AUTO_COPY_JSON_KEY, { active: state.autoCopy && state.autoCopyFormat === "json" });
+  setLiveRibbonValue(AUTO_COPY_TEXT_KEY, { active: state.autoCopy && state.autoCopyFormat === "text" });
+}
+syncAutoCopyRibbon();
+
 export function setAutoCopy(value: boolean): void {
   setState({ autoCopy: value });
+  syncAutoCopyRibbon();
 }
 
 export function setAutoCopyFormat(value: AutoCopyFormat): void {
   setState({ autoCopy: true, autoCopyFormat: value });
+  syncAutoCopyRibbon();
 }
 
 function formatForClipboard(steps: DeployStepResult[]): string {
@@ -275,4 +303,8 @@ export function resetDeployStore(): void {
     branch: null,
     loadingBranch: false,
   };
+  // The live-ribbon overlay is its own module-level map (shell/liveRibbon.ts)
+  // and does not reset itself — without this, a test that left Auto copy
+  // highlighted would leak that into the next test's initial assertions.
+  syncAutoCopyRibbon();
 }
