@@ -3,16 +3,13 @@ import { ShieldCheck } from "lucide-react";
 import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 
 /**
- * The four approved links (#382) are treated as an indexed directory rather than a nav row:
+ * The approved links (#382) are treated as an indexed directory rather than a nav row:
  * each gets one of the site's six pillar colours, in the order the pillars appear on Home's
- * radar. The two omitted pillars are deliberate — Compliance's #D1D5DB reads as a disabled
- * link on charcoal, and Adoption's #fb923c is spoken for by the white-glove section above.
+ * radar. About and Contact are hidden per #633 (pre-release) — components untouched.
  */
 const FOOTER_LINKS = [
   { href: "/resources", label: "Resources", color: "#60a5fa" },
   { href: "/terms", label: "Terms & Service", color: "#a78bfa" },
-  { href: "/about", label: "About", color: "#2dd4bf" },
-  { href: "/contact", label: "Contact", color: "#4ADE80" },
 ];
 
 /** Home.tsx closes on this exact six-segment bar; the footer's top edge rhymes with it. */

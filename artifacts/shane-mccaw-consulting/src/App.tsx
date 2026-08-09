@@ -2,14 +2,12 @@ import React, { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import Home from "./pages/Home";
 import Status from "./pages/Status";
-import About from "./pages/About";
 import Resources from "./pages/Resources";
 import ArticlePage from "./pages/ArticlePage";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
 import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
-import Contact from "./pages/Contact";
 import { trackPageview } from "./lib/analytics";
 import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
@@ -69,10 +67,8 @@ export default function App() {
       {/* Primary Routes */}
       <Route path="/" component={Home} />
       <Route path="/status" component={Status} />
-      <Route path="/about" component={About} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
-      <Route path="/contact" component={Contact} />
       <Route path="/login" component={Login} />
 
       {/* Legal Routes */}
