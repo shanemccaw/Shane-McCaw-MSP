@@ -24,10 +24,11 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable } from "@workspace/db";
+import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable, servicesTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 
@@ -409,6 +410,23 @@ async function handleCheckoutCompleted(
     { mspId: msp.id, slug, subscriptionId, serviceId, agreementVersion: agreementVersion || null },
     "msp-billing-webhook: MSP provisioned successfully",
   );
+
+  try {
+    const [service] = await db
+      .select({ name: servicesTable.name })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, serviceId))
+      .limit(1);
+    const amountDollars = ((session.amount_total ?? 0) / 100).toFixed(2);
+    void sendWebPushToAdmins({
+      title: `New MSP signup — $${amountDollars}`,
+      body: `${companyName} subscribed to ${service?.name ?? "the MSP platform"}`,
+      linkPath: `/dashboard`,
+      playSound: true,
+    });
+  } catch (err) {
+    log.warn({ err, mspId: msp.id }, "msp-billing-webhook: sale push notification failed (non-fatal)");
+  }
 }
 
 /** Creates or links the MSP admin user account. Returns the userId, or null on failure. */

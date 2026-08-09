@@ -77,6 +77,7 @@ import { type OmgCard } from "../lib/omg-card-generator-v2";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { getStripeKey, getStripePublishableKey } from "../lib/stripe";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
@@ -3519,7 +3520,14 @@ router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Respo
     const agreementId = parseInt(session.metadata?.["agreementId"] ?? "", 10);
     // Match on agreementId (primary) or stripe_session_id (belt-and-suspenders).
     const [agreement] = await db
-      .select({ id: assessmentSowAgreementsTable.id, status: assessmentSowAgreementsTable.status })
+      .select({
+        id: assessmentSowAgreementsTable.id,
+        status: assessmentSowAgreementsTable.status,
+        selectedWorkstreamTitles: assessmentSowAgreementsTable.selectedWorkstreamTitles,
+        agreedTotalCents: assessmentSowAgreementsTable.agreedTotalCents,
+        discountedTotalCents: assessmentSowAgreementsTable.discountedTotalCents,
+        signerName: assessmentSowAgreementsTable.signerName,
+      })
       .from(assessmentSowAgreementsTable)
       .where(
         !isNaN(agreementId)
@@ -3537,6 +3545,18 @@ router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Respo
         .set({ status: "paid", paidAt: new Date(), stripeSessionId: session.id, updatedAt: new Date() })
         .where(eq(assessmentSowAgreementsTable.id, agreement.id));
       billingLog.info({ agreementId: agreement.id, sessionId: session.id }, "assessment-webhook: agreement marked paid");
+
+      const amountCents = session.amount_total ?? agreement.discountedTotalCents ?? agreement.agreedTotalCents ?? 0;
+      const amountDollars = (amountCents / 100).toFixed(2);
+      const productName = agreement.selectedWorkstreamTitles?.length
+        ? agreement.selectedWorkstreamTitles.join(", ")
+        : "Assessment SOW";
+      void sendWebPushToAdmins({
+        title: `New assessment sale — $${amountDollars}`,
+        body: `${agreement.signerName} — ${productName}`,
+        linkPath: `/dashboard`,
+        playSound: true,
+      });
     }
 
     // Coupon redemption — idempotent by checkout_session_id, exactly as
