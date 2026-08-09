@@ -40,6 +40,7 @@ export interface BuildTrackerState {
   message: string | null;
   savingIds: Set<string>;
   triageActive: boolean;
+  triageShowAssigned: boolean;
 }
 
 function initialState(): BuildTrackerState {
@@ -59,6 +60,7 @@ function initialState(): BuildTrackerState {
     message: null,
     savingIds: new Set(),
     triageActive: false,
+    triageShowAssigned: false,
   };
 }
 
@@ -197,6 +199,15 @@ export function selectChat(id: number | null) {
 
 export function setTriageActive(active: boolean) {
   set({ triageActive: active });
+  if (active) {
+    void import("../../shell/ShellContext").then((m) => {
+      m.getShellApi()?.dispatch({ type: "selectContextTab" });
+    });
+  }
+}
+
+export function setTriageShowAssigned(show: boolean) {
+  set({ triageShowAssigned: show });
 }
 
 function flashMessage(msg: string) {

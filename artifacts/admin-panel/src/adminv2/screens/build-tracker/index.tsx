@@ -38,7 +38,7 @@ import {
   chatsForIssue, unlinkedCount,
   updateEpic, updateIssue, updateChat,
   deleteEpic, deleteIssue, deleteChat,
-  syncFromGitHub, loadAll, setTriageActive,
+  syncFromGitHub, loadAll, setTriageActive, setTriageShowAssigned,
   WATCH_UNLINKED_KEY,
 } from "./buildTrackerStore";
 import {
@@ -164,6 +164,40 @@ registerScreen({
 
   // ── Contextual tab: Tools ──────────────────────────────────────────────────
   contextualTab: (ctx) => {
+    const state = getSnapshot();
+    if (state.triageActive) {
+      return {
+        id: "triage-tools",
+        label: "Triage Tools",
+        groups: [
+          {
+            label: "Filter",
+            large: [
+              {
+                label: state.triageShowAssigned ? "Hide Assigned" : "Show Assigned",
+                icon: BookOpen,
+                intent: "record",
+                color: state.triageShowAssigned ? ACCENT.info : undefined,
+                onSelect: () => void setTriageShowAssigned(!state.triageShowAssigned),
+                title: "Toggle showing issues that are already assigned to an Epic",
+              },
+            ],
+          },
+          {
+            label: "Actions",
+            large: [
+              {
+                label: "Exit Triage",
+                icon: RefreshCw,
+                intent: "record",
+                onSelect: () => void setTriageActive(false),
+              },
+            ],
+          },
+        ],
+      };
+    }
+
     if (!ctx.kind || !ctx.recordId) return null;
 
     if (ctx.kind === "epic") {

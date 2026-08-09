@@ -528,7 +528,11 @@ function ChatDetail({ id }: { id: number }) {
 
 function TriageView() {
   const state = useStore();
-  const triagable = state.issues.filter((i) => i.status !== "closed" && i.status !== "done");
+  const triagable = state.issues.filter((i) => {
+    if (i.status === "closed" || i.status === "done") return false;
+    if (!state.triageShowAssigned && i.epicId !== null) return false;
+    return true;
+  });
   const [index, setIndex] = useState(0);
   const [epicSearch, setEpicSearch] = useState("");
 
