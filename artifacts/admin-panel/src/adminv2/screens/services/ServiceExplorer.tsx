@@ -12,7 +12,8 @@
 import { useSyncExternalStore } from "react";
 import { ACCENT, FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { getSnapshot, setCategory, setFilter, subscribe, type ServicesState } from "./servicesStore";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { duplicateService, generatePdf, getSnapshot, openEditor, setCategory, setFilter, subscribe, type ServicesState } from "./servicesStore";
 import { BILLING_LABEL, effectivePriceCents, hasNoPrice, topCategory, usd, VISIBILITY_LABEL, type Service } from "./servicesTypes";
 
 export function ServiceExplorer() {
@@ -128,18 +129,41 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
 function Row({ service, state }: { service: Service; state: ServicesState }) {
   const on = state.openId === String(service.id);
   const noPrice = hasNoPrice(service);
+  const { menu, open, close } = useContextMenu();
+
+  function openIt(): void {
+    getShellApi()?.openDoc({ kind: "service", id: String(service.id), screenId: "services" });
+  }
 
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
-      onClick={() => getShellApi()?.openDoc({ kind: "service", id: String(service.id), screenId: "services" })}
+      onClick={openIt}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          getShellApi()?.openDoc({ kind: "service", id: String(service.id), screenId: "services" });
+          openIt();
         }
       }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Open", onSelect: openIt },
+            { label: "Edit fields", onSelect: () => openEditor(service.id) },
+            { label: "Duplicate", onSelect: () => void duplicateService(service.id) },
+            { label: service.overviewPdfKey ? "Regenerate PDF" : "Generate PDF", onSelect: () => void generatePdf(service.id) },
+            // Delete is deliberately absent — it is gated behind a press-twice
+            // arm in ServiceEditorDialog.tsx (and `confirm: true` on the
+            // peek's action), and a context menu item has no way to
+            // faithfully reproduce that arm, so it cannot go here without
+            // bypassing it.
+          ],
+          `Actions for ${service.name}`,
+        )
+      }
       style={{
         display: "block",
         padding: "7px 13px",
@@ -161,5 +185,7 @@ function Row({ service, state }: { service: Service; state: ServicesState }) {
         {noPrice ? " · no real price" : ""}
       </span>
     </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }

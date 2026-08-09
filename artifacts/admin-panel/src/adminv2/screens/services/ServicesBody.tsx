@@ -18,6 +18,7 @@ import { useSyncExternalStore } from "react";
 import { Copy, FileText, Pencil } from "lucide-react";
 import { ACCENT, LINE, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   createServiceInteractive,
   duplicateService,
@@ -103,6 +104,8 @@ function Toast({ message }: { message: string }) {
 // ── Overview (nothing open) ──────────────────────────────────────────────────
 
 function Overview({ state }: { state: ServicesState }) {
+  const { menu, open, close } = useContextMenu();
+
   if (state.loading && state.services.length === 0) {
     return <div style={{ padding: 20, fontSize: 12.5, color: TEXT.meta }}>Reading the catalog…</div>;
   }
@@ -154,6 +157,19 @@ function Overview({ state }: { state: ServicesState }) {
               role="button"
               tabIndex={0}
               onClick={() => getShellApi()?.openDoc({ kind: "service", id: String(s.id), screenId: "services" })}
+              onContextMenu={(e) =>
+                open(
+                  e,
+                  [
+                    { label: "Open", onSelect: () => getShellApi()?.openDoc({ kind: "service", id: String(s.id), screenId: "services" }) },
+                    { label: "Edit fields", onSelect: () => openEditor(s.id) },
+                    { label: "Duplicate", onSelect: () => void duplicateService(s.id) },
+                    // Delete is deliberately absent — gated behind the
+                    // press-twice arm in ServiceEditorDialog.tsx.
+                  ],
+                  `Actions for ${s.name}`,
+                )
+              }
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, cursor: "pointer" }}
             >
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
@@ -178,6 +194,7 @@ function Overview({ state }: { state: ServicesState }) {
           ))}
         </div>
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
