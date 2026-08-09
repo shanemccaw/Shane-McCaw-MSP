@@ -447,12 +447,18 @@ interface GitHubIssuePayload {
   pull_request?: unknown;
 }
 
+import fs from "node:fs/promises";
+import path from "node:path";
+
 /** POST /admin/build-tracker/github-sync */
 router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Request, res: Response) => {
   if (!process.env.GITHUB_TOKEN) {
     res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
     return;
   }
+  const debugLogPath = path.resolve(process.cwd(), "scratch-sync-debug.txt");
+  let debugLog = `Sync started at ${new Date().toISOString()}\n`;
+
   try {
     // ── 1. Fetch all issues (paginated) ──────────────────────────────────
     let page = 1;
@@ -464,6 +470,7 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       );
       if (!issuesRes.ok) {
         log.error({ status: issuesRes.status }, "GitHub issues page fetch failed");
+        debugLog += `Page ${page} fetch failed: ${issuesRes.status}\n`;
         break;
       }
       const pageIssues = (await issuesRes.json()) as GitHubIssuePayload[];
@@ -478,25 +485,33 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       page++;
     }
 
-    log.info({ count: fetchedIssues.length }, "Fetched issues from GitHub");
+    debugLog += `Fetched issues count: ${fetchedIssues.length}\n`;
 
     // ── 2. Identify parents (Epics) ──────────────────────────────────────
     const parentNumbers = new Set<number>();
+    let subIssuesSummaryFound = 0;
+    let parentIssueUrlFound = 0;
+
     for (const gh of fetchedIssues) {
       if (gh.sub_issues_summary && gh.sub_issues_summary.total > 0) {
         parentNumbers.add(gh.number);
+        subIssuesSummaryFound++;
       }
       const pNum = getParentNumber(gh.parent_issue_url);
       if (pNum !== null) {
         parentNumbers.add(pNum);
+        parentIssueUrlFound++;
       }
     }
 
-    log.info({ epicsCount: parentNumbers.size }, "Identified parent issue numbers");
+    debugLog += `sub_issues_summary found count: ${subIssuesSummaryFound}\n`;
+    debugLog += `parent_issue_url found count: ${parentIssueUrlFound}\n`;
+    debugLog += `Unique parent numbers identified: ${Array.from(parentNumbers).join(", ")}\n`;
 
     // Clear old synced records to prevent duplication or stale links
-    await db.delete(btIssuesTable).where(sql`github_number IS NOT NULL`);
-    await db.delete(btEpicsTable).where(sql`github_number IS NOT NULL`);
+    const issuesDeleted = await db.delete(btIssuesTable).where(sql`github_number IS NOT NULL`);
+    const epicsDeleted = await db.delete(btEpicsTable).where(sql`github_number IS NOT NULL`);
+    debugLog += `Clean up: deleted previous issues and epics\n`;
 
     // ── 3. Upsert Epics into bt_epics ────────────────────────────────────
     let epicsUpserted = 0;
@@ -516,6 +531,8 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       });
       epicsUpserted++;
     }
+
+    debugLog += `Epics upserted into db: ${epicsUpserted}\n`;
 
     // Load newly inserted epics to map githubNumber -> DB id
     const dbEpics = await db
@@ -548,13 +565,19 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       issuesUpserted++;
     }
 
+    debugLog += `Issues upserted into db: ${issuesUpserted}\n`;
+    await fs.writeFile(debugLogPath, debugLog, "utf-8");
+
     log.info({ epicsUpserted, issuesUpserted }, "GitHub sync complete");
     res.json({ epics: epicsUpserted, issues: issuesUpserted });
-  } catch (err) {
+  } catch (err: any) {
+    debugLog += `Sync failed with error: ${err instanceof Error ? err.stack : String(err)}\n`;
+    await fs.writeFile(debugLogPath, debugLog, "utf-8");
     log.error({ err }, "github-sync failed");
     res.status(500).json({ error: "GitHub sync failed" });
   }
 });
+
 
 export default router;
 
