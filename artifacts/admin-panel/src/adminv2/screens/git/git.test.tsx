@@ -206,6 +206,27 @@ describe("GitConsoleBody", () => {
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/simulator/deploy/git-pull", { method: "POST" });
     expect(getSnapshot().open).toBe(true);
   });
+
+  it("right-clicking a card offers Run / Copy command / Copy label", async () => {
+    configureDeployFetch(fetchWithAuth);
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, operation: "git-status", steps: [] }) });
+    render(<GitConsoleBody />);
+
+    const card = operationCard("Git status");
+    fireEvent.contextMenu(card);
+    expect(screen.getByRole("menuitem", { name: "Run" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy command" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("git status --short --branch");
+
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy label" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Git status");
+
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run" }));
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/simulator/deploy/git-status", { method: "POST" }));
+  });
 });
 
 describe("FloatingDeployConsole", () => {
@@ -255,5 +276,34 @@ describe("FloatingDeployConsole", () => {
     openConsole();
 
     await screen.findByText("branch: main");
+  });
+
+  it("right-clicking a transcript entry offers Run again / Copy command / Copy output", async () => {
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ ok: true, output: "hello there" }) });
+    render(<FloatingDeployConsole />);
+    openConsole();
+    setInput("echo hi");
+    runTyped();
+    await waitFor(() => expect(screen.getByText("hello there")).toBeTruthy());
+
+    const row = screen.getByText("echo hi").closest("div")!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy output" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("hello there");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy command" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("echo hi");
+
+    fetchWithAuth.mockClear();
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run again" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/simulator/deploy/console",
+        expect.objectContaining({ body: JSON.stringify({ command: "echo hi" }) }),
+      ),
+    );
   });
 });

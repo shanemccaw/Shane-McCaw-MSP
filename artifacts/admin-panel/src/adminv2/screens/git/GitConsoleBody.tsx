@@ -14,6 +14,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Clock, Download, Eye, Layers, Package, Play, Zap } from "lucide-react";
 import { ACCENT, LINE, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import { DEPLOY_OPERATIONS, type DeployOperation } from "./deployOperations";
 import { runOperation } from "./deployStore";
 
@@ -55,9 +56,21 @@ export function GitConsoleBody() {
 
 function OperationCard({ op }: { op: DeployOperation }) {
   const Icon = OP_ICON[op.key];
+  const { menu, open, close } = useContextMenu();
 
   return (
     <div
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Run", onSelect: () => runOperation(op) },
+            { label: "Copy command", onSelect: () => navigator.clipboard?.writeText(op.command) },
+            { label: "Copy label", onSelect: () => navigator.clipboard?.writeText(op.label) },
+          ],
+          `Actions for ${op.label}`,
+        )
+      }
       style={{
         background: SURFACE.card,
         border: `1px solid ${LINE.base}`,
@@ -69,6 +82,7 @@ function OperationCard({ op }: { op: DeployOperation }) {
         gap: 8,
       }}
     >
+      <ContextMenu menu={menu} onClose={close} />
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
         <Icon size={16} color={KIND_TONE[op.kind]} style={{ marginTop: 2, flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>

@@ -15,6 +15,7 @@ import { X } from "lucide-react";
 import { useAdminFetch } from "@/lib/useAdminFetch";
 import { ACCENT, ACCENT_TEXT, LINE, SHADOW, SURFACE, TEXT, Z } from "../../theme";
 import { ColorizedOutput } from "../../shell/colorizeOutput";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   closeConsole,
   configureDeployFetch,
@@ -188,9 +189,24 @@ export function FloatingDeployConsole() {
 function TranscriptRow({ entry }: { entry: DeployTranscriptEntry }) {
   const tone =
     entry.status === "running" ? TEXT.meta : entry.status === "ok" ? ACCENT_TEXT.green : ACCENT_TEXT.danger;
+  const { menu, open, close } = useContextMenu();
+  const output = entry.steps.map((s) => s.output).filter(Boolean).join("\n\n");
 
   return (
-    <div>
+    <div
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Run again", onSelect: () => { setInput(entry.cmd); runTyped(); } },
+            { label: "Copy command", onSelect: () => navigator.clipboard?.writeText(entry.cmd) },
+            { label: "Copy output", onSelect: () => navigator.clipboard?.writeText(output), disabled: !output },
+          ],
+          `Actions for ${entry.cmd}`,
+        )
+      }
+    >
+      <ContextMenu menu={menu} onClose={close} />
       <div
         style={{
           display: "flex",

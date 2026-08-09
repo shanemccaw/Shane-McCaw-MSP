@@ -10,9 +10,10 @@
  * tab can show means unsaved, which does.
  */
 
-import { useEffect, useState, type CSSProperties } from "react";
-import { ACCENT, FONT, LINE, METRICS, PRIMARY, SHADOW, SURFACE, TEXT, Z } from "../theme";
+import type { CSSProperties } from "react";
+import { ACCENT, FONT, LINE, METRICS, PRIMARY, SURFACE, TEXT } from "../theme";
 import type { OpenDoc } from "./shellState";
+import { ContextMenu, useContextMenu } from "./ContextMenu";
 
 export interface DocTabStripProps {
   docs: OpenDoc[];
@@ -21,12 +22,6 @@ export interface DocTabStripProps {
   onClose: (id: string) => void;
   onCloseOthers: (id: string) => void;
   onCloseAll: () => void;
-}
-
-interface MenuState {
-  docId: string;
-  x: number;
-  y: number;
 }
 
 function tabStyle(on: boolean): CSSProperties {
@@ -59,22 +54,9 @@ export function DocTabStrip({
   onCloseOthers,
   onCloseAll,
 }: DocTabStripProps) {
-  const [menu, setMenu] = useState<MenuState | null>(null);
-
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = () => setMenu(null);
-    window.addEventListener("pointerdown", dismiss);
-    window.addEventListener("resize", dismiss);
-    return () => {
-      window.removeEventListener("pointerdown", dismiss);
-      window.removeEventListener("resize", dismiss);
-    };
-  }, [menu]);
+  const { menu, open, close } = useContextMenu();
 
   if (docs.length === 0) return null;
-
-  const menuDoc = menu ? docs.find((d) => d.id === menu.docId) : null;
 
   return (
     <div
@@ -107,8 +89,20 @@ export function DocTabStrip({
               // Right-click opens a menu. It must never *be* the destructive
               // action: the gesture people make to ask what their options are
               // cannot itself close every other document with no undo.
-              event.preventDefault();
-              setMenu({ docId: doc.id, x: event.clientX, y: event.clientY });
+              open(
+                event,
+                [
+                  { label: "Close", onSelect: () => onClose(doc.id) },
+                  {
+                    label: "Close others",
+                    onSelect: () => onCloseOthers(doc.id),
+                    disabled: docs.length < 2,
+                  },
+                  { label: "Close all", onSelect: onCloseAll },
+                  { label: "Copy name", onSelect: () => navigator.clipboard?.writeText(doc.label) },
+                ],
+                `Actions for ${doc.label}`,
+              );
             }}
             title={doc.label}
             style={tabStyle(on)}
@@ -150,62 +144,7 @@ export function DocTabStrip({
         );
       })}
 
-      {menu && menuDoc && (
-        <div
-          role="menu"
-          aria-label={`Actions for ${menuDoc.label}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          style={{
-            position: "fixed",
-            left: menu.x,
-            top: menu.y,
-            minWidth: 186,
-            padding: 4,
-            background: SURFACE.overlay,
-            border: `1px solid ${LINE.hover}`,
-            borderRadius: 6,
-            boxShadow: SHADOW.popover,
-            zIndex: Z.gallery,
-          }}
-        >
-          {[
-            { label: "Close", run: () => onClose(menuDoc.id) },
-            {
-              label: "Close others",
-              run: () => onCloseOthers(menuDoc.id),
-              disabled: docs.length < 2,
-            },
-            { label: "Close all", run: onCloseAll },
-            { label: "Copy name", run: () => navigator.clipboard?.writeText(menuDoc.label) },
-          ].map((item) => (
-            <div
-              key={item.label}
-              role="menuitem"
-              tabIndex={item.disabled ? -1 : 0}
-              aria-disabled={item.disabled}
-              className={item.disabled ? undefined : "av2-row"}
-              onClick={() => {
-                if (item.disabled) return;
-                item.run();
-                setMenu(null);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: "6px 10px",
-                borderRadius: 4,
-                fontSize: 12,
-                whiteSpace: "nowrap",
-                cursor: item.disabled ? "default" : "pointer",
-                opacity: item.disabled ? 0.4 : 1,
-                color: TEXT.softer,
-              }}
-            >
-              {item.label}
-            </div>
-          ))}
-        </div>
-      )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
