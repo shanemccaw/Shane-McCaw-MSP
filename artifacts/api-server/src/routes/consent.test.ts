@@ -528,6 +528,34 @@ describe("consent route handlers", () => {
       // customer object yet, so the create path is correct here.
       expect(mockResolveOrCreateDirectTenant).toHaveBeenCalledWith("tenant-case", expect.any(String), undefined);
     });
+
+    // Git #637: the read consent grant already covers SharePoint (Sites.FullControl.All
+    // sits on this same MT_APP_CLIENT_ID registration), so the callback must stamp
+    // BOTH keys from one Microsoft grant rather than leaving `sharepoint` for a
+    // separate, redundant admin-consent round trip.
+    it("also stamps the sharepoint key granted, from the same grant, alongside graph", async () => {
+      dbSelectQueue.push([{ customerId: null, clientUserId: null }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-sp", admin_consent: "True", state: "tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+      expect(store.redirectUrl).toContain("/consent/success");
+
+      const setCalls = mockUpdateSet.mock.calls as Array<[{ consent: { args: unknown[] } }]>;
+      const consentSetCalls = setCalls.filter(([arg]) => arg?.consent?.args);
+      const keysStamped = consentSetCalls.map(([arg]) => arg.consent.args[2]);
+      expect(keysStamped).toContain("graph");
+      expect(keysStamped).toContain("sharepoint");
+
+      const sharepointCall = consentSetCalls.find(([arg]) => arg.consent.args[2] === "sharepoint")!;
+      const patch = JSON.parse(sharepointCall[0].consent.args[5] as string);
+      expect(patch.status).toBe("granted");
+      expect(patch.revokedAt).toBeNull();
+      expect(Array.isArray(patch.grants)).toBe(true);
+      expect(patch.grants.length).toBeGreaterThan(0);
+    });
   });
 
   // Regression: cross-MSP tenant boundary guard on the direct self-service

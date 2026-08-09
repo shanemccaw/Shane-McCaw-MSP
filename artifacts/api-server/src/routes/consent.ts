@@ -55,8 +55,11 @@
  *      resources — Microsoft Graph and Office 365 SharePoint Online — and as of
  *      2026-08-06 that registration declares both, so one admin-consent click
  *      covers them together. Only `writeBack` has a registration of its own
- *      (MT_APP_WRITE_CLIENT_ID). `sharepoint` remains a live KEY because
- *      existing tenant rows carry grants under it; it is no longer a live STEP.
+ *      (MT_APP_WRITE_CLIENT_ID). Since #637, the main `graph` callback below
+ *      stamps `sharepoint` granted in the same request (same registration, same
+ *      click) — `sharepoint` is a live KEY, written automatically on every new
+ *      `graph` grant, and a live STEP only for the historical case: a tenant
+ *      whose `graph` grant predates #637 shipping.
  *
  * "customerId" throughout this file is `tenants.id` — the same integer id-space
  * the old msp_customers.id occupied, which every migrated consumer
@@ -654,13 +657,14 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  // Single write, through mergeConsentKey — the writeBack/sharepoint keys in
-  // the same column are untouched. adminEmail is only known on the checkout
-  // path; omitting it leaves any previously-captured value intact rather than
+  // Single write, through mergeConsentKey — the writeBack key in the same
+  // column is untouched. adminEmail is only known on the checkout path;
+  // omitting it leaves any previously-captured value intact rather than
   // blanking it (workflow-executor reads consent.graph.adminEmail).
+  const grantedAt = new Date().toISOString();
   const consentPatch: Partial<TenantConsentRecord> = {
     status: "granted",
-    consentedAt: new Date().toISOString(),
+    consentedAt: grantedAt,
     revokedAt: null,
     grants: [...REQUIRED_MT_SCOPES],
   };
@@ -668,7 +672,27 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   await stampConsent(eq(tenantsTable.id, consentTenant.id), "graph", consentPatch);
 
-  log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
+  // ── Also stamp `sharepoint` granted (Git #637) ──────────────────────────
+  // Confirmed via Azure AD app-registration audit: Sites.FullControl.All lives
+  // on this SAME MT_APP_CLIENT_ID registration as every Graph permission above
+  // — there is only one app registration in play here (no per-tenant/per-MSP
+  // override exists anywhere in this codebase) — so the admin_consent=True
+  // Microsoft just returned already covers SharePoint too, in the same click.
+  // Stamping it here (rather than requiring the separate
+  // /admin/sharepoint-consent/callback round trip) is what makes
+  // useReconsentKind's "sharepoint" pill (reconsent-pill.tsx) stop firing for
+  // every tenant that consents from here on. The dedicated SharePoint
+  // start/callback routes stay — see their own header comment — as the only
+  // way a tenant whose `graph` grant predates this stamp (i.e. already
+  // consented before this change shipped) can pick up the SharePoint grant.
+  await stampConsent(eq(tenantsTable.id, consentTenant.id), "sharepoint", {
+    status: "granted",
+    consentedAt: grantedAt,
+    revokedAt: null,
+    grants: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+  });
+
+  log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted (graph + sharepoint, same app registration)");
 
   // ── Capture the tenant's real domain (#238) ─────────────────────────────
   // tenants.domain was never populated by this flow. Connect-IPPSSession-backed
@@ -1473,11 +1497,18 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
 // flow's SharePoint step and its /public/flow/sharepoint-consent-url route are
 // deleted; see the deletion note further down for the full keep/delete rationale.
 //
+// ⚠ #637, 2026-08-09: the main `graph` callback (GET /consent/callback above)
+// now stamps `sharepoint` granted itself, in the same request, for the same
+// reason #480 established — so the portal reconsent pill (reconsent-pill.tsx)
+// no longer nags every newly-consenting tenant into a redundant second
+// Microsoft screen for a resource their first click already covered.
+//
 // What survives here is the HISTORICAL path, kept on purpose:
-//   - 72h consent links minted before that deploy still land on this callback.
+//   - 72h consent links minted before this deploy still land on this callback.
 //   - The admin start route and the portal reconsent link below still serve
-//     tenants whose `sharepoint` grant predates the merge, and the status route
-//     is how anything reads one back.
+//     tenants whose `sharepoint` grant predates #637 (their `graph` consent
+//     happened before this file auto-stamped `sharepoint` alongside it), and
+//     the status route is how anything reads one back.
 // Nothing new should be built on it, and nothing here should be re-pointed at
 // the marketing flow.
 //
@@ -1963,8 +1994,11 @@ router.get("/public/flow/consent-status", async (req: Request, res: Response) =>
 //     keeping them is a few dead-for-new-consents lines, and the cost of guessing
 //     wrong the other way is silently blinding every one of those surfaces.
 //
-// Net effect: nothing new ever writes a separate `sharepoint` grant through the
-// public flow; everything that could already read one still can.
+// Net effect: nothing new ever writes a separate `sharepoint` grant through
+// THIS route specifically; everything that could already read one still can.
+// Since #637 the checkout-session (popup) path still gets `sharepoint`
+// granted — it just happens as a side effect of GET /consent/callback's own
+// `graph` stamp above, not through a second public route here.
 
 // ── GET /api/public/flow/write-consent-url ─────────────────────────────────────
 // Path 2 of the #432 Compliance decision: the customer lets us add the app
