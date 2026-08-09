@@ -67,6 +67,25 @@ export function getMspPortalBaseUrl(): string {
 }
 
 /**
+ * Returns the msp-portal artifact's URL WITH a trailing slash — for direct
+ * browser navigation to the portal root (window.open, <a href>, redirect
+ * Location). msp-portal's Vite dev server is configured with base="/portal/"
+ * (BASE_PATH, see artifacts/msp-portal/.replit-artifact/artifact.toml) and its
+ * base middleware only matches paths that already carry that trailing slash;
+ * a request for the bare "/portal" (no further path segment) fails
+ * `pathname.startsWith(base)` and gets Vite's own 404 ("did you mean to visit
+ * /portal/ instead?") instead of the app (Git #622).
+ *
+ * getMspPortalBaseUrl() deliberately has NO trailing slash because nearly
+ * every caller concatenates a further path (`${getMspPortalBaseUrl()}/security`),
+ * where a trailing slash here would double up. Use this function instead only
+ * when the URL itself is the final destination, with nothing appended.
+ */
+export function getMspPortalLandingUrl(): string {
+  return `${getMspPortalBaseUrl()}/`;
+}
+
+/**
  * Builds the account-setup URL that lands in the msp-portal artifact
  * (/portal/account-setup), NOT in the CRM artifact (/crm).
  *

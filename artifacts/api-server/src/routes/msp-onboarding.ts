@@ -39,7 +39,7 @@ import { eq, and, isNull, gte, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
-import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
+import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { z } from "zod";
@@ -293,18 +293,20 @@ router.post(
     if (mspUser.mspStatus === "active" || mspUser.mspStatus === "trial") {
       // Reseller MSPs redirect to their own portal domain; the direct-business
       // MSP (mspDomain typically null) falls back to the platform's canonical
-      // client-portal URL. Use getMspPortalBaseUrl() — which targets the
-      // msp-portal artifact (/portal, where client/customer users actually
+      // client-portal URL. Use getMspPortalLandingUrl() — which targets the
+      // msp-portal artifact (/portal/, where client/customer users actually
       // sign in) — NOT getPortalBaseUrl(), which targets the /crm staff artifact
       // and is a dead end for a client logging in from the public /login gate
       // (it renders no usable client login, so a valid email "goes nowhere").
-      // getMspPortalBaseUrl() also resolves REPLIT_DOMAINS when PORTAL_BASE_URL
-      // is unset, so a deployed environment still yields a real URL rather than
-      // the empty string a bare env read would produce; /portal's RootRedirect
-      // then lands the user on the login form.
+      // The landing (trailing-slash) form is required here, not the bare
+      // getMspPortalBaseUrl(): this value is consumed as a direct <a href>/
+      // redirect Location by Login.tsx/CheckoutGate.tsx with no further path
+      // appended, and msp-portal's Vite dev server (base="/portal/") 404s a
+      // bare "/portal" request with its own "did you mean /portal/?" page
+      // (Git #622) rather than serving the app.
       const portalUrl = mspUser.mspDomain
         ? `https://${mspUser.mspDomain}`
-        : getMspPortalBaseUrl();
+        : getMspPortalLandingUrl();
 
       res.json({
         action: "redirect",

@@ -83,7 +83,7 @@ import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createAuditLog } from "../lib/audit.ts";
 import { getEmailTemplateOrFallback, sendEmailOrThrow } from "../lib/mailer.ts";
-import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
+import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
 
 // Account creation, email-proof-of-control and credential storage are all `auth`
@@ -578,7 +578,7 @@ router.post("/public/flow/set-password", setPasswordLimiter, async (req: Request
     // A returning buyer. Their existing credential is not replaceable through a
     // checkout session — /auth/forgot-password is the door for that.
     log.info({ sessionId: session.id, userId: user.id }, "flow set-password: account already has a password — sign-in required");
-    res.status(409).json({ error: "already_set", portalUrl: getMspPortalBaseUrl() });
+    res.status(409).json({ error: "already_set", portalUrl: getMspPortalLandingUrl() });
     return;
   }
 
@@ -596,7 +596,7 @@ router.post("/public/flow/set-password", setPasswordLimiter, async (req: Request
   });
 
   log.info({ sessionId: session.id, userId: user.id }, "flow set-password: account completed inline");
-  res.json({ ok: true, email, portalUrl: getMspPortalBaseUrl() });
+  res.json({ ok: true, email, portalUrl: getMspPortalLandingUrl() });
 });
 
 export default router;
