@@ -3,7 +3,7 @@ import { Footer } from "@/components/Footer";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
-import { trackAssessmentStarted, trackAssessmentCompleted, identifyLead } from "@/lib/analytics";
+import { trackAssessmentStarted, trackAssessmentCompleted, identifyLead, getGa4ClientId } from "@/lib/analytics";
 import { Button, Eyebrow, Logo } from "./home/dsComponents";
 import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/quizData";
 import { CHAPTERS } from "./home/chapterData";
@@ -213,6 +213,7 @@ function LeadCaptureCard({ score, band, wedges }: { score: number; band: string;
     setError(null);
     try {
       const pillars = PILLARS.map((p, i) => ({ name: p.name, value: Math.round(wedges[i] * 100) }));
+      const ga4ClientId = await getGa4ClientId();
       const res = await fetch("/api/quiz/home-lead-capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,6 +224,7 @@ function LeadCaptureCard({ score, band, wedges }: { score: number; band: string;
           score,
           band,
           pillars,
+          ...(ga4ClientId ? { ga4ClientId } : {}),
         }),
       });
       if (!res.ok) {
