@@ -9,6 +9,7 @@
  */
 
 import { useMemo, type ReactNode } from "react";
+import { Compass, Search } from "lucide-react";
 import { useShell } from "./ShellContext";
 import { TitleBar, type TitleBarProps } from "./TitleBar";
 import { RibbonTabs } from "./RibbonTabs";
@@ -20,7 +21,10 @@ import { CommandPalette } from "./CommandPalette";
 import { Peek } from "./Peek";
 import { Gallery } from "./Gallery";
 import { StatusBar, type StatusSegment } from "./StatusBar";
-import { LINE, SURFACE, TEXT } from "../theme";
+import { ACCENT, KIND_BADGE, KIND_BADGE_FALLBACK, LINE, SURFACE, TEXT } from "../theme";
+import { getScreen, resolvePeek } from "../registry/registry";
+import { defaultKind } from "../command/paletteQuery";
+import type { TrailEntry } from "../registry/ribbonAssembly";
 import "./shell.css";
 
 export interface ShellProps extends Omit<TitleBarProps, "productName" | "mark"> {
@@ -202,29 +206,140 @@ export function Shell({
 }
 
 /**
- * What the centre column shows when the route matches no registered screen.
+ * Resolves a trail entry's icon and colour from the real record it points
+ * at — never a hand-maintained kind→icon table. A screen destination uses
+ * its own registered icon; a record reuses the exact icon and tone its own
+ * peek already declares, via `resolvePeek`, so this can never disagree with
+ * what opening the record actually shows. Falls back to a neutral compass
+ * only when the record is genuinely gone (deleted since it was opened).
+ */
+function trailGlyph(entry: TrailEntry): { icon: typeof Compass; color: string } {
+  if (entry.kind === "screen") {
+    const screen = getScreen(entry.id);
+    return { icon: screen?.icon ?? Compass, color: TEXT.dim };
+  }
+  const model = resolvePeek(entry.kind, entry.id);
+  return { icon: model?.icon ?? Compass, color: model?.tone ?? ACCENT.info };
+}
+
+const rowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
+  padding: "9px 12px",
+  borderRadius: 6,
+  border: `1px solid ${LINE.base}`,
+  background: SURFACE.card,
+  color: "inherit",
+  font: "inherit",
+  cursor: "pointer",
+  textAlign: "left" as const,
+};
+
+/**
+ * What the centre column shows when nothing is open — the bare `/adminv2`
+ * root, or after closing the last doc. handoff.md principle 3 ("a one-off
+ * task should not move you off what you were doing") is why this exists at
+ * all: coming back to nothing should not mean re-deriving where you were
+ * from memory.
  *
- * Deliberately points at Ctrl K rather than offering links: there is no left
- * navigation to fall back on, and the palette is the answer to "where is
- * everything".
+ * Two real, live sources, nothing invented: `state.trail` (already tracked
+ * for the Back group, so "Recent" costs nothing new) and the palette's own
+ * `action`-type commands, via `commandIndex()` — the same list `?`/`>` search
+ * against, so a quick-start button can never offer something the palette
+ * itself would refuse to run.
  */
 export function NoScreen() {
+  const { state, commandIndex, runCommand, openPalette } = useShell();
+  const recents = state.trail.slice(0, 6);
+  const actions = commandIndex().filter((item) => item.type === "action");
+
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        padding: 40,
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 15, fontWeight: 700, color: TEXT.primary }}>Nothing open</div>
-      <div style={{ fontSize: 12.5, color: TEXT.caption, textWrap: "pretty" }}>
-        Press Ctrl K and type what you want.
+    <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", justifyContent: "center", padding: "48px 24px" }}>
+      <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-.01em", color: TEXT.bright }}>
+            Pick up where you left off
+          </span>
+          <span style={{ fontSize: 12.5, color: TEXT.caption }}>
+            Nothing is open. Everything below opens in one click.
+          </span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: TEXT.meta }}>
+            Recent
+          </span>
+          {recents.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: TEXT.caption, padding: "9px 12px" }}>
+              Nothing yet. Press Ctrl K and type what you want.
+            </div>
+          ) : (
+            recents.map((entry) => {
+              const { icon: Icon, color } = trailGlyph(entry);
+              return (
+                <button
+                  key={`${entry.kind}:${entry.id}`}
+                  type="button"
+                  className="av2-card"
+                  onClick={entry.open}
+                  style={rowStyle}
+                >
+                  <Icon size={15} color={color} style={{ flexShrink: 0 }} />
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: 12.5,
+                      color: TEXT.body,
+                    }}
+                  >
+                    {entry.label}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: 11, color: TEXT.meta }}>{entry.kind}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: TEXT.meta }}>
+            Start something
+          </span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="av2-card"
+              onClick={() => openPalette()}
+              style={{ ...rowStyle, width: "auto", gap: 7, padding: "8px 13px" }}
+            >
+              <Search size={14} color={ACCENT.info} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: TEXT.soft, whiteSpace: "nowrap" }}>Search everything</span>
+            </button>
+            {actions.map((item) => {
+              const [color, badge] = KIND_BADGE[item.kind ?? defaultKind(item)] ?? KIND_BADGE_FALLBACK;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="av2-card"
+                  onClick={() => runCommand(item)}
+                  style={{ ...rowStyle, width: "auto", gap: 7, padding: "8px 13px" }}
+                >
+                  <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", color, fontFamily: "Menlo, Consolas, monospace" }}>
+                    {badge}
+                  </span>
+                  <span style={{ fontSize: 12, color: TEXT.soft, whiteSpace: "nowrap" }}>{item.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
