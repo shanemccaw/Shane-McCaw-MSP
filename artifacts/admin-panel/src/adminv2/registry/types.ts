@@ -261,6 +261,12 @@ export interface ContextualTabSpec {
  * is not a `delivery` (a delivery is one obligation; a type is the category
  * of obligation) and not a `workflow` (the workflow is what a type's event
  * fires, not the type itself).
+ *
+ * `campaign` was added for the Marketing screen (`screens/marketing/`). A
+ * campaign is a `campaigns` row — openable, with a stable id, a name the tab
+ * strip and Back group need to resolve. It is not a `service` (the catalog
+ * entry a campaign might promote) and not a `lead` (a person a campaign may
+ * have generated) — it is the effort that generated them.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -288,6 +294,7 @@ export const PEEK_KINDS = [
   "run",
   "delivery",
   "fulfillmentType",
+  "campaign",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -453,7 +460,8 @@ export type CommandKind =
   | "dlq"
   | "engine"
   | "delivery"
-  | "fulfillmentType";
+  | "fulfillmentType"
+  | "campaign";
 
 export interface CommandItem {
   id: string;

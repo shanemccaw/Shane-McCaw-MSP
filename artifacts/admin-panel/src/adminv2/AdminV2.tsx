@@ -31,6 +31,7 @@ import "./screens/packages";
 import "./screens/engines";
 import "./screens/run-history";
 import "./screens/fulfillment";
+import "./screens/marketing";
 import "./screens/ai-prompts";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
@@ -76,6 +77,10 @@ import { RunHistoryFetchBridge } from "./screens/run-history/RunHistoryFetchBrid
 // Watch tab's live "overdue"/"blocked" counts — see
 // FulfillmentFetchBridge.tsx's doc comment.
 import { FulfillmentFetchBridge } from "./screens/fulfillment/FulfillmentFetchBridge";
+// Same reasoning again, for the Home tab's "Browse campaigns" gallery and the
+// Watch tab's live "waiting on you" count — see MarketingFetchBridge.tsx's
+// doc comment.
+import { MarketingFetchBridge } from "./screens/marketing/MarketingFetchBridge";
 // Same reasoning again, for the Home tab's "Open a prompt"/"Drafts pending"
 // galleries and the synchronous `prompt` peek resolver — see
 // AiPromptsFetchBridge.tsx's doc comment.
@@ -132,6 +137,7 @@ function AdminV2Inner() {
       <EnginesFetchBridge />
       <RunHistoryFetchBridge />
       <FulfillmentFetchBridge />
+      <MarketingFetchBridge />
       <AiPromptsFetchBridge />
     </Shell>
   );

@@ -174,6 +174,9 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // sale, so it stays neutral like `signal`/`engine`.
   delivery: ["#f2ca63", "DLV"],
   fulfillmentType: ["#c3c1bf", "TYPE"],
+  // Marketing. Informational blue like `endpoint`/`msp` — a campaign is a
+  // record you go look at, not a verdict on anything.
+  campaign: ["#7fb4d8", "CMP"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];
