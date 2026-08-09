@@ -19,6 +19,7 @@ import {
   type ContextualTabSpec,
   type FixedTabId,
 } from "../registry/types";
+import { getLiveRibbonEntry, useLiveRibbonVersion } from "./liveRibbon";
 
 export interface RibbonTabsProps {
   activeTab: FixedTabId;
@@ -31,7 +32,7 @@ export interface RibbonTabsProps {
   onOpenPalette: () => void;
 }
 
-function tabStyle(on: boolean, ribbonOpen: boolean, context: boolean): CSSProperties {
+function tabStyle(on: boolean, ribbonOpen: boolean, context: boolean, liveColor?: string): CSSProperties {
   return {
     padding: "0 13px",
     height: "100%",
@@ -44,8 +45,8 @@ function tabStyle(on: boolean, ribbonOpen: boolean, context: boolean): CSSProper
     fontSize: 12,
     whiteSpace: "nowrap",
     flex: "none",
-    fontWeight: on ? 600 : 400,
-    color: on ? TEXT.bright : context ? ACCENT.amber : "rgba(255,255,255,.66)",
+    fontWeight: liveColor ? 700 : on ? 600 : 400,
+    color: liveColor ?? (on ? TEXT.bright : context ? ACCENT.amber : "rgba(255,255,255,.66)"),
     cursor: "pointer",
     transition: "background 150ms, color 150ms",
     boxShadow: on && ribbonOpen ? `inset 0 2px 0 ${context ? ACCENT.amber : PRIMARY}` : "none",
@@ -62,6 +63,8 @@ export function RibbonTabs({
   onToggleRibbon,
   onOpenPalette,
 }: RibbonTabsProps) {
+  useLiveRibbonVersion();
+
   return (
     <div
       style={{
@@ -90,6 +93,7 @@ export function RibbonTabs({
       >
         {MAIN_TAB_IDS.map((id) => {
           const on = !contextActive && activeTab === id;
+          const overlay = getLiveRibbonEntry(`tab:${id}`);
           return (
             <button
               key={id}
@@ -97,9 +101,9 @@ export function RibbonTabs({
               aria-selected={on}
               className="av2-tab"
               onClick={() => onSelectTab(id)}
-              style={tabStyle(on, ribbonOpen, false)}
+              style={tabStyle(on, ribbonOpen, false, overlay?.color)}
             >
-              {FIXED_TAB_LABELS[id]}
+              {overlay?.label ?? FIXED_TAB_LABELS[id]}
             </button>
           );
         })}

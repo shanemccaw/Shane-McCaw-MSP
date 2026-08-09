@@ -139,6 +139,16 @@ export interface RibbonCommand {
   live?: string | number;
   /** Marks the button as currently active/selected. */
   active?: boolean;
+  /**
+   * Opts this button into `shell/liveRibbon.ts`'s overlay: at render time,
+   * `label`/`color`/`active` above are read as defaults, then overridden by
+   * whatever the matching key currently holds (if anything). Needed because
+   * a screen's `ribbon` array is built once, at `registerScreen()`
+   * module-load time, so it cannot show a number that only exists after a
+   * real fetch resolves — the Money screen's "$770 in" button is the reason
+   * this exists. Leave unset for anything that is genuinely static.
+   */
+  liveKey?: string;
 }
 
 /** A combo picker — a labelled dropdown that sits at the left of a group. */

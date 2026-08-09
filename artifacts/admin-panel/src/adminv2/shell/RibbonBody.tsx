@@ -14,6 +14,7 @@
 import { useRef, type CSSProperties } from "react";
 import { FONT, LINE, METRICS, SURFACE, TEXT, WASH } from "../theme";
 import type { GallerySpec, RibbonCombo, RibbonCommand, RibbonGroup } from "../registry/types";
+import { getLiveRibbonEntry, useLiveRibbonVersion } from "./liveRibbon";
 
 export interface RibbonBodyProps {
   open: boolean;
@@ -72,8 +73,13 @@ function CommandButton({
   variant: "large" | "small" | "row";
   onOpenGallery?: RibbonBodyProps["onOpenGallery"];
 }) {
+  useLiveRibbonVersion();
+  const overlay = command.liveKey ? getLiveRibbonEntry(command.liveKey) : undefined;
+  const label = overlay?.label ?? command.label;
+  const color = overlay?.color ?? command.color;
+
   const Icon = command.icon;
-  const on = !!command.active;
+  const on = overlay?.active ?? !!command.active;
   const iconSize = variant === "large" ? 24 : variant === "small" ? 15 : 14;
   const strokeWidth = variant === "large" ? 1.5 : 1.7;
   const ref = useRef<HTMLButtonElement>(null);
@@ -96,7 +102,7 @@ function CommandButton({
     <button
       ref={ref}
       className="av2-cmd"
-      title={command.title ?? command.label}
+      title={command.title ?? label}
       disabled={command.disabled}
       aria-haspopup={command.gallery ? "dialog" : undefined}
       onClick={handleClick}
@@ -105,17 +111,17 @@ function CommandButton({
       <Icon
         size={iconSize}
         strokeWidth={strokeWidth}
-        color={command.color ?? TEXT.quiet}
+        color={color ?? TEXT.quiet}
         style={{ flex: "none" }}
       />
-      <span style={{ textWrap: "pretty" } as CSSProperties}>{command.label}</span>
+      <span style={{ textWrap: "pretty" } as CSSProperties}>{label}</span>
       {command.live !== undefined && command.live !== "" && (
         <span
           style={{
             fontSize: variant === "large" ? 13 : 11,
             fontWeight: 800,
             fontVariantNumeric: "tabular-nums",
-            color: command.color ?? TEXT.primary,
+            color: color ?? TEXT.primary,
           }}
         >
           {command.live}

@@ -14,11 +14,25 @@
  * `view` picks which of the three sub-views `MoneyBody` renders; all three
  * live under the one registered "money" screen/route rather than as separate
  * docs, mirroring `crmStore.ts`'s `CrmView`.
+ *
+ * `syncLiveRibbon()` pushes the screen's live figures (profit on the fixed
+ * tab, revenue/cost/sales-count on the "Where you stand" group, the current
+ * view's name on the "Go to" trigger) into `shell/liveRibbon.ts` every time
+ * this store's state changes — see that file's doc comment for why a plain
+ * `RibbonCommand.label` can't show these on its own.
  */
 
-import type { MoneyBusiness, MoneyGoals, MoneyRamp, MoneySummary } from "./moneyTypes";
+import { ACCENT } from "../../theme";
+import { setLiveRibbonValue } from "../../shell/liveRibbon";
+import { usd, type MoneyBusiness, type MoneyGoals, type MoneyRamp, type MoneySummary } from "./moneyTypes";
 
 export type MoneyView = "month" | "business" | "ramp";
+
+const VIEW_LABEL: Record<MoneyView, string> = {
+  month: "This month",
+  business: "The business",
+  ramp: "The ramp",
+};
 
 export interface MoneyStoreState {
   view: MoneyView;
@@ -35,6 +49,15 @@ export interface MoneyStoreState {
   rampLoading: boolean;
   rampError: string | null;
   rampSaving: boolean;
+
+  goalsDialogOpen: boolean;
+  goalsSaving: boolean;
+
+  logSaleDialogOpen: boolean;
+  logSaleSubmitting: boolean;
+  logSaleError: string | null;
+  /** Set briefly after a real sale is logged, so the UI can flourish honestly — it names a sale that really was just recorded. */
+  celebrateSale: { who: string; what: string; amountCents: number } | null;
 
   lastMessage: string | null;
 }
@@ -65,13 +88,57 @@ let state: MoneyStoreState = {
   rampError: null,
   rampSaving: false,
 
+  goalsDialogOpen: false,
+  goalsSaving: false,
+
+  logSaleDialogOpen: false,
+  logSaleSubmitting: false,
+  logSaleError: null,
+  celebrateSale: null,
+
   lastMessage: null,
 };
 
 const listeners = new Set<Listener>();
 
+/** Keys this store owns in the shared live-ribbon overlay. See `screens/money/index.tsx`'s `liveKey` usage. */
+const RIBBON_KEYS = {
+  tab: "tab:money",
+  goto: "money:goto",
+  gotoMonth: "money:goto-month",
+  gotoBusiness: "money:goto-business",
+  gotoRamp: "money:goto-ramp",
+  standProfit: "money:stand-profit",
+  standIn: "money:stand-in",
+  standOut: "money:stand-out",
+  standSales: "money:stand-sales",
+} as const;
+
+function syncLiveRibbon(): void {
+  const s = state.summary;
+
+  setLiveRibbonValue(RIBBON_KEYS.tab, s ? { label: usd(s.profit.cents), color: ACCENT.greenSoft } : null);
+  setLiveRibbonValue(RIBBON_KEYS.goto, { label: VIEW_LABEL[state.view] });
+  setLiveRibbonValue(RIBBON_KEYS.gotoMonth, { active: state.view === "month" });
+  setLiveRibbonValue(RIBBON_KEYS.gotoBusiness, { active: state.view === "business" });
+  setLiveRibbonValue(RIBBON_KEYS.gotoRamp, { active: state.view === "ramp" });
+
+  if (s) {
+    setLiveRibbonValue(RIBBON_KEYS.standProfit, { label: `${usd(s.profit.cents)} profit` });
+    setLiveRibbonValue(RIBBON_KEYS.standIn, { label: `${usd(s.revenue.cents)} in` });
+    setLiveRibbonValue(RIBBON_KEYS.standOut, { label: `${usd(s.cost.cents)} out` });
+    setLiveRibbonValue(RIBBON_KEYS.standSales, { label: `${s.sales.count} of ${s.sales.goal} sales` });
+  } else {
+    setLiveRibbonValue(RIBBON_KEYS.standProfit, null);
+    setLiveRibbonValue(RIBBON_KEYS.standIn, null);
+    setLiveRibbonValue(RIBBON_KEYS.standOut, null);
+    setLiveRibbonValue(RIBBON_KEYS.standSales, null);
+  }
+}
+
 function setState(patch: Partial<MoneyStoreState>): void {
   state = { ...state, ...patch };
+  syncLiveRibbon();
   for (const listener of listeners) listener();
 }
 
@@ -156,7 +223,7 @@ export function refreshAll(): void {
   if (state.ramp) void loadRamp();
 }
 
-/** The ramp view's +/- target editor writes straight through, then reloads. */
+/** The ramp view's own +/- target editor writes straight through, then reloads. */
 export async function saveRampTarget(month: string, target: number): Promise<void> {
   if (!adminFetchRef || !state.ramp) return;
   const current: MoneyGoals["ramp"] = state.ramp.rows.map((r) => ({ month: r.month, target: r.month === month ? target : r.target }));
@@ -180,25 +247,78 @@ export async function saveRampTarget(month: string, target: number): Promise<voi
   }
 }
 
-export async function saveGoalSales(goalSales: number): Promise<void> {
+// ── Set your goals dialog ───────────────────────────────────────────────────
+
+export function openGoalsDialog(): void {
+  setState({ goalsDialogOpen: true });
+}
+
+export function closeGoalsDialog(): void {
+  setState({ goalsDialogOpen: false });
+}
+
+/** "Applies as you type" (design convention) — the dialog debounces its own calls; this just writes through and reloads. */
+export async function saveGoals(patch: { goalSales?: number; mrrGoalCents?: number }): Promise<void> {
   if (!adminFetchRef) return;
-  setState({ rampSaving: true });
+  setState({ goalsSaving: true });
   try {
     const res = await adminFetchRef("/api/admin/money/goals", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goalSales }),
+      body: JSON.stringify(patch),
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      setState({ rampSaving: false, lastMessage: "Saved." });
-      void loadRamp();
+      setState({ goalsSaving: false });
       void loadSummary();
+      if (state.ramp) void loadRamp();
     } else {
-      setState({ rampSaving: false, lastMessage: data?.error ?? "Save failed." });
+      setState({ goalsSaving: false, lastMessage: data?.error ?? "Save failed." });
     }
   } catch (err) {
-    setState({ rampSaving: false, lastMessage: err instanceof Error ? err.message : String(err) });
+    setState({ goalsSaving: false, lastMessage: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// ── Log a sale ───────────────────────────────────────────────────────────────
+//
+// Real, not a fabricated celebration — see admin-money.ts's `ManualSale` doc
+// comment. A sale logged here is a genuine, disclosed record merged into the
+// same revenue/streak/trend figures everywhere else on this screen.
+
+export function openLogSaleDialog(): void {
+  setState({ logSaleDialogOpen: true, logSaleError: null });
+}
+
+export function closeLogSaleDialog(): void {
+  setState({ logSaleDialogOpen: false, logSaleError: null });
+}
+
+export async function logSale(who: string, what: string, amountCents: number): Promise<void> {
+  if (!adminFetchRef) return;
+  setState({ logSaleSubmitting: true, logSaleError: null });
+  try {
+    const res = await adminFetchRef("/api/admin/money/sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ who, what, amountCents }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      setState({
+        logSaleSubmitting: false,
+        logSaleDialogOpen: false,
+        celebrateSale: { who, what, amountCents },
+      });
+      void loadSummary();
+      if (state.ramp) void loadRamp();
+      if (state.business) void loadBusiness();
+      setTimeout(() => setState({ celebrateSale: null }), 4000);
+    } else {
+      setState({ logSaleSubmitting: false, logSaleError: data?.error ?? "Could not log the sale." });
+    }
+  } catch (err) {
+    setState({ logSaleSubmitting: false, logSaleError: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -236,6 +356,12 @@ export function resetMoneyStore(): void {
     rampLoading: false,
     rampError: null,
     rampSaving: false,
+    goalsDialogOpen: false,
+    goalsSaving: false,
+    logSaleDialogOpen: false,
+    logSaleSubmitting: false,
+    logSaleError: null,
+    celebrateSale: null,
     lastMessage: null,
   };
 }

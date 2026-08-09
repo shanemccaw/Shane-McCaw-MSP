@@ -9,7 +9,10 @@
  *   - the summary's revenue/cost/profit/MRR/streak arithmetic reconciles to
  *     the rows the mocked db hands back, so a schema-shape regression shows
  *     up as a wrong number here rather than only in production;
- *   - goals round-trip through the generic `settingsTable` upsert pattern.
+ *   - goals round-trip through the generic `settingsTable` upsert pattern;
+ *   - a manually-logged sale ("Log a sale") is validated, persisted through
+ *     the same upsert pattern, and actually folds into revenue/sales/streak
+ *     rather than living in a separate, easy-to-forget pile.
  *
  * `@workspace/db` is mocked with a generic chainable query builder (same
  * shape as admin-ai-billing-analytics.test.ts) — each `db.select()...` call
@@ -119,13 +122,19 @@ afterEach(() => {
 });
 
 describe("requireAdmin gating", () => {
-  it("rejects an unauthenticated caller on every route", async () => {
+  it("rejects an unauthenticated caller on every GET route", async () => {
     const app = buildApp();
     const paths = ["/api/admin/money/summary", "/api/admin/money/goals", "/api/admin/money/ramp", "/api/admin/money/business"];
     for (const path of paths) {
       const res = await request(app).get(path);
       expect(res.status).toBe(403);
     }
+  });
+
+  it("rejects an unauthenticated caller on Log a sale", async () => {
+    const res = await request(buildApp()).post("/api/admin/money/sales").send({ who: "x", what: "y", amountCents: 100 });
+    expect(res.status).toBe(403);
+    expect(insertCalls).toHaveLength(0);
   });
 });
 
@@ -146,6 +155,7 @@ describe("GET /admin/money/summary", () => {
       { id: 101, amountCents: 450000, chargedAt: new Date("2026-08-06T00:00:00Z"), sowTitle: "M365 Security Assessment", customerName: "Northwind Traders" },
       { id: 102, amountCents: 320000, chargedAt: new Date("2026-08-04T00:00:00Z"), sowTitle: "Copilot Readiness Assessment", customerName: "Fabrikam Inc" },
     ]);
+    selectQueue.push([]); // readManualSales — none logged
     selectQueue.push([{ cents: 8640000 }]); // lifetimeRow
     selectQueue.push([{ feature: "generate_document", cents: 118000 }]); // aiRows
     selectQueue.push([
@@ -184,6 +194,7 @@ describe("GET /admin/money/summary", () => {
   it("annualises a yearly retainer into MRR", async () => {
     selectQueue.push([{ id: 7 }]);
     selectQueue.push([]); // no sales this month
+    selectQueue.push([]); // readManualSales — none logged
     selectQueue.push([{ cents: 0 }]);
     selectQueue.push([]); // no AI usage
     selectQueue.push([{ id: 3, customerName: "Tailspin Toys", serviceName: "Retainer", priceCents: 1200000, billingInterval: "year" }]);
@@ -226,8 +237,9 @@ describe("GET /admin/money/ramp", () => {
   it("projects target months using the real trailing-average sale value", async () => {
     selectQueue.push([{ id: 7 }]); // mspId
     selectQueue.push([{ key: "admin.money.goals", value: JSON.stringify({ goalSales: 3, mrrGoalCents: 600000, ramp: [{ month: "2026-08", target: 3 }] }) }]); // goals
+    selectQueue.push([]); // readManualSales — none logged
     selectQueue.push([{ monthTrunc: "2026-08-01T00:00:00.000Z", n: 2 }]); // countRowsRaw
-    selectQueue.push([{ cents: 400000, n: 4 }]); // computeAvgSaleCents trailing-90d
+    selectQueue.push([{ cents: 1600000, n: 4 }]); // computeAvgSaleCents trailing-90d: sum/count = 400,000
 
     const res = await admin(request(buildApp()).get("/api/admin/money/ramp"));
     expect(res.status).toBe(200);
@@ -242,6 +254,7 @@ describe("GET /admin/money/business", () => {
   it("computes verdicts against the disclosed reference benchmarks", async () => {
     selectQueue.push([{ id: 7 }]); // mspId
     selectQueue.push([{ customerName: "Northwind Traders", cents: 100000 }]); // byClientRows (100% concentration)
+    selectQueue.push([]); // readManualSales — none logged
     selectQueue.push([{ id: 1, customerName: "Contoso Ltd", serviceName: "Retainer", priceCents: 500000, billingInterval: "month" }]); // retainers
     selectQueue.push([{ cents: 5000 }]); // ai cost over the window
 
@@ -253,5 +266,64 @@ describe("GET /admin/money/business", () => {
     const concentration = res.body.benchmarks.find((b: { key: string }) => b.key === "clientConcentration");
     expect(concentration.verdict).toBe("below"); // 100% >> the 20% "at most" target
     expect(res.body.benchmarkNote).toMatch(/not a live industry-benchmark feed/);
+  });
+});
+
+describe("POST /admin/money/sales — Log a sale", () => {
+  it("rejects a missing/invalid payload without writing anything", async () => {
+    selectQueue.push([{ id: 7 }]); // mspId
+    const res = await admin(request(buildApp()).post("/api/admin/money/sales").send({ who: "", what: "", amountCents: 0 }));
+    expect(res.status).toBe(400);
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("persists a real, disclosed manual sale through the settingsTable upsert", async () => {
+    selectQueue.push([{ id: 7 }]); // mspId
+    selectQueue.push([]); // readManualSales — starts empty
+    const res = await admin(
+      request(buildApp())
+        .post("/api/admin/money/sales")
+        .send({ who: "Tailspin Toys", what: "Cash deal, off-platform", amountCents: 150000 }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.sale).toMatchObject({ who: "Tailspin Toys", what: "Cash deal, off-platform", amountCents: 150000 });
+    expect(res.body.sale.id).toMatch(/^manual-/);
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0].table).toBe("settings");
+    const written = JSON.parse((insertCalls[0].values as { value: string }).value);
+    expect(written).toHaveLength(1);
+    expect(written[0].amountCents).toBe(150000);
+  });
+});
+
+describe("Manual sales merge into real figures", () => {
+  it("folds a manually-logged sale into this month's revenue, sales list and streak", async () => {
+    const thisMonthManual = { id: "manual-1", when: "2026-08-05T12:00:00.000Z", who: "Proseware", what: "Cash deal", amountCents: 200000 };
+    const lastMonthManual = { id: "manual-2", when: "2026-07-10T12:00:00.000Z", who: "Proseware", what: "Cash deal", amountCents: 100000 };
+
+    selectQueue.push([{ id: 7 }]); // mspId
+    selectQueue.push([]); // salesRows — no real Stripe charges this month
+    selectQueue.push([{ key: "admin.money.manual_sales", value: JSON.stringify([thisMonthManual, lastMonthManual]) }]); // readManualSales
+    selectQueue.push([{ cents: 0 }]); // lifetimeRow (real)
+    selectQueue.push([]); // aiRows
+    selectQueue.push([]); // retainers
+    selectQueue.push([]); // trendRowsRaw
+    // countRowsRaw: real charge count for July is 2, short of a 3-sale goal on its own —
+    // the manual sale that same month has to be what pushes it over for the streak to hold.
+    selectQueue.push([{ monthTrunc: "2026-07-01T00:00:00.000Z", n: 2 }]);
+    selectQueue.push([{ key: "admin.money.goals", value: JSON.stringify({ goalSales: 3, mrrGoalCents: 600000, ramp: [] }) }]); // readGoals
+
+    const res = await admin(request(buildApp()).get("/api/admin/money/summary"));
+    expect(res.status).toBe(200);
+    expect(res.body.revenue.cents).toBe(200000);
+    expect(res.body.lifetimeRevenue.cents).toBe(300000); // 0 real + both manual sales, ever
+    expect(res.body.sales.count).toBe(1);
+    expect(res.body.sales.items).toEqual([
+      { id: "manual-1", when: "2026-08-05T12:00:00.000Z", who: "Proseware", what: "Cash deal", amountCents: 200000, manual: true },
+    ]);
+    expect(res.body.trend[5]).toMatchObject({ month: "2026-08", cents: 200000 });
+    expect(res.body.trend[4]).toMatchObject({ month: "2026-07", cents: 100000 });
+    expect(res.body.streak).toBe(1); // 2 real + 1 manual = 3, meets July's goal
   });
 });

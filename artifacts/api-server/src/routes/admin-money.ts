@@ -111,19 +111,86 @@ function monthLabel(d: Date): string {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-async function computeAvgSaleCents(mspId: number): Promise<number> {
+/**
+ * "Log a sale" (ribbon `Do` group). Real, not a celebration mock-up: there is
+ * no backend for manually recording a sale outside the Stripe/SOW flow
+ * (`msp_charges` requires real Stripe payment-intent fields it would be
+ * dishonest to fabricate), so a manually-logged sale is its own small,
+ * disclosed record — stored the same way goals are (generic `settingsTable`,
+ * JSON-stringified) and merged into every real figure below rather than
+ * kept in a separate, easy-to-forget-about pile.
+ */
+const MANUAL_SALES_SETTINGS_KEY = "admin.money.manual_sales";
+
+interface ManualSale {
+  id: string;
+  /** ISO timestamp. */
+  when: string;
+  who: string;
+  what: string;
+  amountCents: number;
+}
+
+function isManualSale(x: unknown): x is ManualSale {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Record<string, unknown>;
+  return typeof r.id === "string" && typeof r.when === "string" && typeof r.who === "string" && typeof r.what === "string" && typeof r.amountCents === "number";
+}
+
+async function readManualSales(): Promise<ManualSale[]> {
+  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, MANUAL_SALES_SETTINGS_KEY));
+  if (!row?.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed.filter(isManualSale) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeManualSales(sales: ManualSale[]): Promise<void> {
+  const value = JSON.stringify(sales);
+  await db
+    .insert(settingsTable)
+    .values({ key: MANUAL_SALES_SETTINGS_KEY, value })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value, updatedAt: new Date() } });
+}
+
+/** Groups manual sales by month, for merging into the real per-month SQL aggregates below. */
+function bucketManualSales(sales: ManualSale[]): Map<string, { count: number; cents: number }> {
+  const map = new Map<string, { count: number; cents: number }>();
+  for (const s of sales) {
+    const key = monthKey(new Date(s.when));
+    const cur = map.get(key) ?? { count: 0, cents: 0 };
+    cur.count += 1;
+    cur.cents += s.amountCents;
+    map.set(key, cur);
+  }
+  return map;
+}
+
+/** Real trailing-90-day average sale, real charges combined with manually-logged sales in the same window. */
+async function computeAvgSaleCents(mspId: number, manualSales: ManualSale[]): Promise<number> {
   const since90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const [row90] = await db
-    .select({ cents: sql<number>`coalesce(avg(${mspChargesTable.amountCents}), 0)`, n: count() })
+    .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)`, n: count() })
     .from(mspChargesTable)
     .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, since90)));
-  if (row90 && Number(row90.n) > 0) return Math.round(Number(row90.cents));
+  const manual90 = manualSales.filter((m) => new Date(m.when).getTime() >= since90.getTime());
+  const combined90Count = Number(row90?.n ?? 0) + manual90.length;
+  if (combined90Count > 0) {
+    const combined90Cents = Number(row90?.cents ?? 0) + manual90.reduce((s, m) => s + m.amountCents, 0);
+    return Math.round(combined90Cents / combined90Count);
+  }
 
   const [rowAll] = await db
-    .select({ cents: sql<number>`coalesce(avg(${mspChargesTable.amountCents}), 0)` })
+    .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)`, n: count() })
     .from(mspChargesTable)
     .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded")));
-  return Math.round(Number(rowAll?.cents ?? 0));
+  const combinedAllCount = Number(rowAll?.n ?? 0) + manualSales.length;
+  if (combinedAllCount === 0) return 0;
+  const combinedAllCents = Number(rowAll?.cents ?? 0) + manualSales.reduce((s, m) => s + m.amountCents, 0);
+  return Math.round(combinedAllCents / combinedAllCount);
 }
 
 /** Active retainers for this MSP's own end-clients, normalised to a monthly cents figure. */
@@ -177,13 +244,20 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
       .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, thisMonthStart)))
       .orderBy(desc(mspChargesTable.chargedAt));
 
-    const revenueCents = salesRows.reduce((sum, r) => sum + (r.amountCents ?? 0), 0);
+    const manualSales = await readManualSales();
+    const manualByMonth = bucketManualSales(manualSales);
+    const thisMonthKey = monthKey(thisMonthStart);
+    const manualThisMonth = manualSales
+      .filter((m) => monthKey(new Date(m.when)) === thisMonthKey)
+      .sort((a, b) => b.when.localeCompare(a.when));
+
+    const revenueCents = salesRows.reduce((sum, r) => sum + (r.amountCents ?? 0), 0) + (manualByMonth.get(thisMonthKey)?.cents ?? 0);
 
     const [lifetimeRow] = await db
       .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)` })
       .from(mspChargesTable)
       .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded")));
-    const lifetimeCents = Number(lifetimeRow?.cents ?? 0);
+    const lifetimeCents = Number(lifetimeRow?.cents ?? 0) + manualSales.reduce((s, m) => s + m.amountCents, 0);
 
     const aiRows = await db
       .select({
@@ -213,7 +287,9 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
     const trendByKey = new Map(trendRowsRaw.map((r) => [monthKey(new Date(r.monthTrunc)), Number(r.cents)]));
     const trend = Array.from({ length: 6 }, (_, i) => 5 - i).map((i) => {
       const d = addMonths(thisMonthStart, -i);
-      return { month: monthKey(d), label: d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }), cents: trendByKey.get(monthKey(d)) ?? 0 };
+      const key = monthKey(d);
+      const cents = (trendByKey.get(key) ?? 0) + (manualByMonth.get(key)?.cents ?? 0);
+      return { month: key, label: d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }), cents };
     });
 
     // Trailing 12 months of sale counts, for the streak.
@@ -236,7 +312,8 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
       const d = addMonths(thisMonthStart, -i);
       const key = monthKey(d);
       const target = rampByMonth.get(key) ?? goals.goalSales;
-      if ((countByKey.get(key) ?? 0) >= target) streak++;
+      const actual = (countByKey.get(key) ?? 0) + (manualByMonth.get(key)?.count ?? 0);
+      if (actual >= target) streak++;
       else break;
     }
 
@@ -254,15 +331,26 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
       profit: { cents: profitCents },
       lifetimeRevenue: { cents: lifetimeCents },
       sales: {
-        count: salesRows.length,
+        count: salesRows.length + manualThisMonth.length,
         goal: goals.goalSales,
-        items: salesRows.map((r) => ({
-          id: String(r.id),
-          when: r.chargedAt ? r.chargedAt.toISOString() : null,
-          who: r.customerName ?? "Unknown",
-          what: r.sowTitle ?? "Sale",
-          amountCents: r.amountCents ?? 0,
-        })),
+        items: [
+          ...salesRows.map((r) => ({
+            id: String(r.id),
+            when: r.chargedAt ? r.chargedAt.toISOString() : null,
+            who: r.customerName ?? "Unknown",
+            what: r.sowTitle ?? "Sale",
+            amountCents: r.amountCents ?? 0,
+            manual: false,
+          })),
+          ...manualThisMonth.map((m) => ({
+            id: m.id,
+            when: m.when,
+            who: m.who,
+            what: m.what,
+            amountCents: m.amountCents,
+            manual: true,
+          })),
+        ].sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "")),
       },
       retainers,
       mrr: { cents: mrrCents, goalCents: goals.mrrGoalCents },
@@ -309,6 +397,49 @@ router.put("/admin/money/goals", requireAdmin, async (req: Request, res: Respons
   }
 });
 
+// ── POST /api/admin/money/sales — "Log a sale" ──────────────────────────────
+//
+// See the `ManualSale` doc comment above `computeAvgSaleCents`: this is a
+// real, disclosed record of a sale that did not go through Stripe/SOW, not a
+// fabricated celebration. It requires the same direct-business MSP row as
+// every other route here, purely so a caller can't log a sale before that
+// row exists (the summary/ramp/business routes would then have nowhere to
+// merge it into).
+
+router.post("/admin/money/sales", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const mspId = await getDirectBusinessMspId();
+    if (mspId == null) {
+      res.status(404).json({ ok: false, error: "No direct-business MSP row found (msps.is_direct_business)" });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const who = typeof body.who === "string" ? body.who.trim() : "";
+    const what = typeof body.what === "string" ? body.what.trim() : "";
+    const amountCents = Number.isFinite(body.amountCents) ? Math.round(Number(body.amountCents)) : NaN;
+    if (!who || !what || !Number.isFinite(amountCents) || amountCents <= 0) {
+      res.status(400).json({ ok: false, error: "who, what and a positive amountCents are required" });
+      return;
+    }
+
+    const sale: ManualSale = {
+      id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      when: new Date().toISOString(),
+      who,
+      what,
+      amountCents,
+    };
+    const current = await readManualSales();
+    await writeManualSales([sale, ...current]);
+    log.info({ userId: req.user?.id, sale }, "Manual sale logged");
+    res.json({ ok: true, sale });
+  } catch (err) {
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "Money manual sale log failed");
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // ── GET /api/admin/money/ramp — "The ramp" ──────────────────────────────────
 
 router.get("/admin/money/ramp", requireAdmin, async (_req: Request, res: Response) => {
@@ -323,6 +454,9 @@ router.get("/admin/money/ramp", requireAdmin, async (_req: Request, res: Respons
     const now = new Date();
     const thisMonthStart = monthStart(now);
 
+    const manualSales = await readManualSales();
+    const manualByMonth = bucketManualSales(manualSales);
+
     const start = addMonths(thisMonthStart, -11);
     const countRowsRaw = await db
       .select({ monthTrunc: sql<string>`date_trunc('month', ${mspChargesTable.chargedAt})`, n: count() })
@@ -331,7 +465,7 @@ router.get("/admin/money/ramp", requireAdmin, async (_req: Request, res: Respons
       .groupBy(sql`date_trunc('month', ${mspChargesTable.chargedAt})`);
     const countByKey = new Map(countRowsRaw.map((r) => [monthKey(new Date(r.monthTrunc)), Number(r.n)]));
 
-    const avgSaleCents = await computeAvgSaleCents(mspId);
+    const avgSaleCents = await computeAvgSaleCents(mspId, manualSales);
     const rampByMonth = new Map(goals.ramp.map((r) => [r.month, r.target]));
 
     // This month plus the next 5 — undefined targets default to a gentle
@@ -340,11 +474,12 @@ router.get("/admin/money/ramp", requireAdmin, async (_req: Request, res: Respons
       const d = addMonths(thisMonthStart, i);
       const key = monthKey(d);
       const target = rampByMonth.get(key) ?? goals.goalSales + i;
+      const actual = (countByKey.get(key) ?? 0) + (manualByMonth.get(key)?.count ?? 0);
       return {
         month: key,
         label: monthLabel(d),
         target,
-        actual: i === 0 ? countByKey.get(key) ?? 0 : null,
+        actual: i === 0 ? actual : null,
         worthCents: target * avgSaleCents,
       };
     });
@@ -408,8 +543,15 @@ router.get("/admin/money/business", requireAdmin, async (_req: Request, res: Res
       .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, windowStart)))
       .groupBy(tenantsTable.customerName);
 
-    const totalOneTimeCents = byClientRows.reduce((s, r) => s + Number(r.cents ?? 0), 0);
-    const topClientCents = byClientRows.reduce((m, r) => Math.max(m, Number(r.cents ?? 0)), 0);
+    // Manually-logged sales in the window, folded into the same per-client
+    // totals under "who" — a manual sale is real revenue from a real client,
+    // it just didn't come from Stripe.
+    const manualSales = (await readManualSales()).filter((m) => new Date(m.when).getTime() >= windowStart.getTime());
+    const byClientCents = new Map<string, number>(byClientRows.map((r) => [r.customerName ?? "Unknown", Number(r.cents ?? 0)]));
+    for (const m of manualSales) byClientCents.set(m.who, (byClientCents.get(m.who) ?? 0) + m.amountCents);
+
+    const totalOneTimeCents = Array.from(byClientCents.values()).reduce((s, v) => s + v, 0);
+    const topClientCents = Array.from(byClientCents.values()).reduce((m, v) => Math.max(m, v), 0);
     const clientConcentrationPct = totalOneTimeCents > 0 ? Math.round((topClientCents / totalOneTimeCents) * 1000) / 10 : 0;
 
     const retainers = await loadRetainers(mspId);

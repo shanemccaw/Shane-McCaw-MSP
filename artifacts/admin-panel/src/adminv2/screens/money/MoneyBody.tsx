@@ -27,6 +27,7 @@ import {
   type MoneyView,
 } from "./moneyStore";
 import { usd, type MoneyBenchmark } from "./moneyTypes";
+import { GoalsDialog, LogSaleDialog, SaleCelebration } from "./MoneyDialogs";
 
 const VIEWS: { key: MoneyView; label: string }[] = [
   { key: "month", label: "This month" },
@@ -45,6 +46,9 @@ export function MoneyBody() {
         {state.view === "business" && <BusinessView state={state} />}
         {state.view === "ramp" && <RampView state={state} />}
       </div>
+      {state.goalsDialogOpen && <GoalsDialog state={state} />}
+      {state.logSaleDialogOpen && <LogSaleDialog state={state} />}
+      <SaleCelebration state={state} />
     </div>
   );
 }
