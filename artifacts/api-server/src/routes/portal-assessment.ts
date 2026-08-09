@@ -55,6 +55,7 @@ import {
   wfRunsTable,
   wfDefinitionsTable,
   presentationDocViewsTable,
+  checkoutSessionsTable,
   type CopilotAssessmentStateMap,
 } from "@workspace/db";
 
@@ -107,6 +108,8 @@ import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin";
+import { createAuditLog } from "../lib/audit.ts";
+import { z } from "zod";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -1640,6 +1643,223 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/assessment/recommended-offers failed");
       res.status(500).json({ error: "Failed to compute recommended offers" });
+    }
+  },
+);
+
+// ── POST /portal/assessment/sow/checkout-session ────────────────────────────────
+//
+// Git #599 (Epic #597 stage 2). Creates a `checkout_sessions` row (#598's new
+// `sow_*` columns) snapshotting a real, live-priced SOW cart — the multi-item
+// counterpart to the marketing site's single-product `/public/checkout-session`.
+//
+// The request names WHICH phases/add-ons the customer has toggled on; it never
+// carries a price. Every dollar in the response and in the stored snapshot is
+// resolved here, server-side, from the SAME two sources
+// `/portal/assessment/recommended-offers` reads — `runSalesOfferEngineForTenant`
+// for remediation phases and `sow-monitoring-addon.ts` for the two optional
+// services — so this can never quote a different number than what the customer
+// saw on the document they are signing. A `selectedPhaseServiceIds` entry that
+// does not match a real, currently-eligible candidate (stale scope, tampered
+// request) is silently dropped rather than trusted; same for an addon/tier pair
+// that does not resolve against this tenant's real offer.
+//
+// `sowCartTotalCents` is the one-off total only (remediation phases' prices plus
+// any selected add-on's one-off `upfrontUsd`) — the figure a PaymentIntent would
+// actually charge today, mirroring `journeyPricing.ts`'s `computeTotals().
+// upfrontUsd`. A selected add-on's recurring `monthlyUsd` is snapshotted in
+// `addons` for the next epic stage (subscription creation, following the
+// `public-assessment-payment.ts` rescan-addon pattern) but deliberately excluded
+// from this total — it is not money this session's eventual PaymentIntent takes.
+//
+// Replaces no existing route: the legacy `POST .../sow/checkout` above still
+// signs/pays a STORED `insights_generated_documents` SOW; this is the new,
+// document-free path `StatementOfWorkBody`'s live scope will move to once
+// Stripe payment (stage 3) lands. No frontend calls this endpoint yet.
+const checkoutSessionSchema = z.object({
+  selectedPhaseServiceIds: z.array(z.number().int().positive()).default([]),
+  addonSelections: z
+    .array(z.object({ addonId: z.string().min(1), tierId: z.string().min(1) }))
+    .default([]),
+});
+
+router.post(
+  "/portal/assessment/sow/checkout-session",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    const customerId = resolveCustomerId(req);
+    if (userId == null || customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const parsed = checkoutSessionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "selectedPhaseServiceIds must be an array of service ids; addonSelections an array of { addonId, tierId }" });
+      return;
+    }
+
+    try {
+      const [customer] = await db
+        .select({ mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      if (!customer) {
+        res.status(404).json({ error: "No tenant record for this customer" });
+        return;
+      }
+
+      // The SAME real sources /portal/assessment/recommended-offers reads —
+      // never a second, independently-derived candidate/pricing list.
+      const [engineOutput, monitoringAddon, retainerAddon] = await Promise.all([
+        runSalesOfferEngineForTenant(customerId, customer.mspId ?? null),
+        resolveTenantMonitoringAddon(customer.tenantId ?? null),
+        resolveArchitectRetainerAddon(customer.tenantId ?? null),
+      ]);
+
+      if (engineOutput.candidates.length === 0) {
+        res.status(409).json({ error: "no_priced_scope", message: "No priced remediation scope for this tenant" });
+        return;
+      }
+
+      // Real candidates only, keyed by the same services.id the wire already
+      // carries as `serviceId` (sowLiveScope.ts's WireRecommendedOffer) — never
+      // the client-side display slug JourneyPhase.id uses.
+      const candidatesById = new Map(engineOutput.candidates.map((c) => [c.serviceId, c]));
+      const requestedPhaseIds = [...new Set(parsed.data.selectedPhaseServiceIds)];
+      const droppedPhaseIds = requestedPhaseIds.filter((id) => !candidatesById.has(id));
+      const includedPhases = requestedPhaseIds
+        .filter((id) => candidatesById.has(id))
+        .map((id) => candidatesById.get(id)!);
+
+      const realAddons = [monitoringAddon, retainerAddon].filter((a) => a !== null);
+      const addonsById = new Map(realAddons.map((a) => [a.id, a]));
+      const seenAddonIds = new Set<string>();
+      const droppedAddonSelections: Array<{ addonId: string; tierId: string }> = [];
+      const includedAddons: Array<{ addonId: string; addonTitle: string; tierId: string; tierLabel: string; upfrontCents: number; monthlyCents: number }> = [];
+      for (const sel of parsed.data.addonSelections) {
+        if (seenAddonIds.has(sel.addonId)) {
+          droppedAddonSelections.push(sel);
+          continue;
+        }
+        const addon = addonsById.get(sel.addonId);
+        const tier = addon?.tiers.find((t) => t.id === sel.tierId);
+        if (!addon || !tier) {
+          droppedAddonSelections.push(sel);
+          continue;
+        }
+        seenAddonIds.add(sel.addonId);
+        includedAddons.push({
+          addonId: addon.id,
+          addonTitle: addon.title,
+          tierId: tier.id,
+          tierLabel: tier.label,
+          upfrontCents: Math.round(tier.upfrontUsd * 100),
+          monthlyCents: Math.round(tier.monthlyUsd * 100),
+        });
+      }
+
+      if (droppedPhaseIds.length > 0 || droppedAddonSelections.length > 0) {
+        log.warn(
+          { customerId, droppedPhaseIds, droppedAddonSelections },
+          "sow/checkout-session: request named phases/add-ons not in this tenant's real current offer — dropped rather than trusted",
+        );
+      }
+
+      const phaseTotalCents = includedPhases.reduce((sum, p) => sum + p.adjustedPriceCents, 0);
+      const addonUpfrontCents = includedAddons.reduce((sum, a) => sum + a.upfrontCents, 0);
+      const totalCents = phaseTotalCents + addonUpfrontCents;
+
+      const [profile] = await db
+        .select({ email: usersTable.email, name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      const email = profile?.email ?? req.user?.email ?? "";
+      const fullName = profile?.name?.trim() || req.user?.name?.trim() || email;
+      if (!email) {
+        res.status(409).json({ error: "No email on file for this account" });
+        return;
+      }
+
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      const [row] = await db
+        .insert(checkoutSessionsTable)
+        .values({
+          // No single catalog product backs a multi-item cart — this constant
+          // marks the shape rather than naming a servicesTable.slug, matching
+          // #598's "purely additive, does not touch the single-product path"
+          // scope. Nothing resolves a service by this slug (only
+          // public-assessment-payment.ts's resolveOrder() does that, against
+          // its OWN sessions).
+          productSlug: "sow-cart",
+          fullName,
+          email,
+          tenantId: customer.tenantId ?? undefined,
+          // A portal customer reaching this endpoint already has a consented,
+          // onboarded tenant (that's how recommended-offers priced their
+          // scope) — reusing "consented" rather than "pending" keeps this row
+          // honestly aligned with what that status has always meant elsewhere
+          // on this table: a known, chargeable tenant.
+          status: "consented",
+          sowSelectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
+          sowAddonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
+          sowCartTotalCents: totalCents,
+          expiresAt,
+        })
+        .returning({ id: checkoutSessionsTable.id });
+
+      if (!row) {
+        res.status(500).json({ error: "Failed to create checkout session" });
+        return;
+      }
+
+      await createAuditLog({
+        actorUserId: userId,
+        actorName: email,
+        actorRole: "client",
+        actionType: "sow_checkout_session_created",
+        entityType: "checkout_session",
+        entityId: row.id,
+        metadata: {
+          customerId,
+          tenantId: customer.tenantId,
+          selectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
+          addonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
+          totalCents,
+        },
+      });
+
+      billingLog.info(
+        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents },
+        "sow/checkout-session: live SOW cart snapshotted",
+      );
+
+      res.status(201).json({
+        sessionId: row.id,
+        expiresAt: expiresAt.toISOString(),
+        totalCents,
+        phases: includedPhases.map((p) => ({
+          serviceId: p.serviceId,
+          serviceName: p.serviceName,
+          priceCents: p.adjustedPriceCents,
+        })),
+        addons: includedAddons.map((a) => ({
+          addonId: a.addonId,
+          addonTitle: a.addonTitle,
+          tierId: a.tierId,
+          tierLabel: a.tierLabel,
+          upfrontCents: a.upfrontCents,
+          monthlyCents: a.monthlyCents,
+        })),
+      });
+    } catch (err) {
+      billingLog.error({ err, userId, customerId }, "POST /portal/assessment/sow/checkout-session failed");
+      res.status(500).json({ error: "Failed to create checkout session" });
     }
   },
 );
