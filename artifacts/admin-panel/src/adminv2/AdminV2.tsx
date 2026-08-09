@@ -23,6 +23,7 @@ import "./screens/ad";
 import "./screens/crm";
 import "./screens/inbox";
 import "./screens/money";
+import "./screens/endpoints";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -39,6 +40,10 @@ import { AdAuthBridge } from "./screens/ad/adAuthBridge";
 // Same reasoning again, for the Money tab's own ribbon label (real profit,
 // not the word "Money") — see MoneyFetchBridge.tsx's doc comment.
 import { MoneyFetchBridge } from "./screens/money/MoneyFetchBridge";
+// Same reasoning again, for the Endpoints screen's Home-tab gallery, its Watch
+// -tab live count and its synchronous `endpoint` peek resolver — see
+// EndpointsFetchBridge.tsx's doc comment.
+import { EndpointsFetchBridge } from "./screens/endpoints/EndpointsFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -84,6 +89,7 @@ function AdminV2Inner() {
       <CrmFetchBridge />
       <AdAuthBridge />
       <MoneyFetchBridge />
+      <EndpointsFetchBridge />
     </Shell>
   );
 }
