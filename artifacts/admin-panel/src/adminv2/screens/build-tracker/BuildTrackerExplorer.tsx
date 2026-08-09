@@ -321,28 +321,13 @@ export function BuildTrackerExplorer() {
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   function handleEpic(id: number) {
-    if (state.selectedEpicId === id) {
-      selectEpic(null);
-      getShellApi()?.navigate("/build-tracker");
-    } else {
-      getShellApi()?.openDoc({ kind: "epic", id: String(id), screenId: "build-tracker" });
-    }
+    getShellApi()?.openDoc({ kind: "epic", id: String(id), screenId: "build-tracker" });
   }
   function handleIssue(id: number) {
-    if (state.selectedIssueId === id) {
-      selectIssue(null);
-      getShellApi()?.navigate("/build-tracker");
-    } else {
-      getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
-    }
+    getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
   }
   function handleChat(id: number) {
-    if (state.selectedChatId === id) {
-      selectChat(null);
-      getShellApi()?.navigate("/build-tracker");
-    } else {
-      getShellApi()?.openDoc({ kind: "chatLink", id: String(id), screenId: "build-tracker" });
-    }
+    getShellApi()?.openDoc({ kind: "chatLink", id: String(id), screenId: "build-tracker" });
   }
 
   function onEpicContextMenu(e: React.MouseEvent, epic: EpicRow) {

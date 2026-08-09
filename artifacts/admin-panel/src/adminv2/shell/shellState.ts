@@ -187,8 +187,14 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       };
     }
 
-    case "activateDoc":
-      return { ...state, activeDocId: action.id };
+    case "activateDoc": {
+      const doc = state.docs.find((d) => d.id === action.id);
+      return {
+        ...state,
+        activeDocId: action.id,
+        contextActive: doc ? doc.kind !== "screen" : state.contextActive,
+      };
+    }
 
     case "closeDoc": {
       const nextActive =
