@@ -1062,44 +1062,95 @@ export function StatementOfWorkBody({
           {scope.addons.map((a) => {
             const on = Boolean(selection.addons[a.id]);
             const selectedTierId = selection.tiers[a.id] ?? a.defaultTierId ?? "";
+            const singleTier = a.tiers.length === 1 ? a.tiers[0] : null;
+            // #594's real tier picker — a.tiers.length > 1 is exactly the
+            // Architect Retainer's seat-banded shape (Essentials/Growth/
+            // Enterprise); Tenant Monitoring resolves to one real tier
+            // (Git #609) and never reaches this branch.
+            const hasTierPicker = a.tiers.length > 1;
             return (
               <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => onToggleAddon(a.id)}
-                  aria-pressed={on}
-                  title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0,1fr) auto",
-                    gap: 14,
-                    alignItems: "start",
-                    textAlign: "left",
-                    padding: "14px 16px",
-                    borderRadius: 10,
-                    border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
-                    background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
-                    opacity: on ? 1 : 0.42,
-                    cursor: signed ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                    transition: "opacity 180ms, background 180ms, border-color 180ms",
-                  }}
-                >
-                  <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-                    <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{a.title}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
-                      {a.blurb}
+                {hasTierPicker ? (
+                  // Git #609: no outer enable/disable step for a tiered addon
+                  // — it starts active with its seat-matched tier already
+                  // selected (defaultSelection()); the customer's only
+                  // actions are picking a different tier below or removing
+                  // the add-on with this header switch.
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0,1fr) auto",
+                      gap: 14,
+                      alignItems: "start",
+                      padding: "14px 16px",
+                      borderRadius: 10,
+                      border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
+                      background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
+                      opacity: on ? 1 : 0.42,
+                      transition: "opacity 180ms, background 180ms, border-color 180ms",
+                    }}
+                  >
+                    <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{a.title}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
+                        {a.blurb}
+                      </span>
                     </span>
-                  </span>
-                  <Toggle on={on} locked={signed} />
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => onToggleAddon(a.id)}
+                      aria-pressed={on}
+                      title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        padding: 0,
+                        cursor: signed ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <Toggle on={on} locked={signed} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onToggleAddon(a.id)}
+                    aria-pressed={on}
+                    title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0,1fr) auto",
+                      gap: 14,
+                      alignItems: "start",
+                      textAlign: "left",
+                      padding: "14px 16px",
+                      borderRadius: 10,
+                      border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
+                      background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
+                      opacity: on ? 1 : 0.42,
+                      cursor: signed ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                      transition: "opacity 180ms, background 180ms, border-color 180ms",
+                    }}
+                  >
+                    <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK.headingDark }}>{a.title}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
+                        {a.blurb}
+                      </span>
+                    </span>
+                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flex: "none" }}>
+                      {singleTier ? (
+                        <span style={{ fontSize: 14, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>
+                          {singleTier.monthlyUsd > 0 ? `${money(singleTier.monthlyUsd)}/mo` : money(singleTier.upfrontUsd)}
+                        </span>
+                      ) : null}
+                      <Toggle on={on} locked={signed} />
+                    </span>
+                  </button>
+                )}
 
-                {/* #594: real tier picker — a.tiers.length > 1 is exactly the
-                    monitoring-tier-band shape sow-monitoring-addon.ts resolves
-                    (Basic/Enhanced/Premium); a single-tier addon (Architect
-                    Retainer) has nothing to choose between and stays a plain
-                    toggle above. */}
-                {a.tiers.length > 1 ? (
+                {hasTierPicker ? (
                   <div
                     style={{
                       display: "grid",

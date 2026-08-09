@@ -10,14 +10,16 @@
  * `services` carries 12 real monitoring_tier rows: 3 quality tiers (Basic /
  * Enhanced / Premium, `type_attributes.tenantTierLabel`) × 4 seat bands
  * (`type_attributes.seatMin`/`seatMax`), each per-seat priced via
- * `type_attributes.pricePerUserMonth`. Per Shane (2026-08-08): the seat count
- * decides the PRICE (which band row prices each tier at this tenant's real
- * seat count) — it does not decide which quality tier is shown or pre-picked.
- * The customer picks Basic/Enhanced/Premium; Enhanced is the recommended
- * default. This mirrors `ProposalAddonCard.tsx`'s existing `"recommended"`
- * emphasis (a quality/delivery axis), not its `"seat-match"` emphasis (a seat
- * axis) — Monitoring's real axis here is the former, not the seat-banded axis
- * the design's own preview fixture used.
+ * `type_attributes.pricePerUserMonth`.
+ *
+ * Git #609 (supersedes the prior "customer picks Basic/Enhanced/Premium"
+ * design): live-testing the 3-card picker showed all three quality tiers are
+ * the same real feature set (Live Monitor Engine) — showing them as
+ * selectable implied a choice that doesn't exist. Per Shane's 2026-08-08
+ * confirmation, this resolves each quality tier's real price at this
+ * tenant's real seat band exactly as before, then keeps only Enhanced (this
+ * platform's one designated default) as the single tier the UI renders — no
+ * band-selection UI, add/remove only.
  *
  * Reuses `resolveTypeAttributesMonthlyPriceCents` (catalog-pricing.ts) for the
  * actual per-seat arithmetic rather than re-deriving it — that is the one real
@@ -51,6 +53,13 @@
  * monthly service the customer can pick manually; there is simply no
  * seat-matched default to pre-select, so `defaultTierId` falls back to the
  * lowest band (Essentials).
+ *
+ * Git #609: `defaultOn` is now always `true` — live-testing showed the prior
+ * "enable the addon, THEN pick a tier" flow was a two-step opt-in for
+ * something already pre-quoted at a real, seat-matched price. The seat-matched
+ * tier (or the Essentials fallback with no sourced seats) starts active;
+ * `StatementOfWorkBody.tsx` no longer renders an outer enable/disable step for
+ * a tiered addon, only the tier picker plus a remove control.
  *
  * PER-TIER COPY
  * -------------
@@ -185,29 +194,37 @@ export async function resolveTenantMonitoringAddon(
     else byLabel.set(label, [row]);
   }
 
-  const tiers: ResolvedAddonTier[] = [];
+  // Every real quality tier's own real price at this tenant's real seat band
+  // — the same resolution as before Git #609, just no longer all exposed as
+  // selectable alternatives (see the class doc above).
+  const candidates: ResolvedAddonTier[] = [];
   for (const [label, group] of byLabel) {
     const row = pickBandRow(group, seats);
     if (!row) continue;
     const monthlyCents = resolveTypeAttributesMonthlyPriceCents(row, seats);
     if (monthlyCents <= 0) continue;
-    tiers.push({
+    candidates.push({
       id: slugify(label),
       label,
       upfrontUsd: 0,
       monthlyUsd: monthlyCents / 100,
       detail: (row.tagline ?? row.description ?? "").trim(),
-      emphasis: label.toLowerCase() === "enhanced" ? "recommended" : undefined,
     });
   }
 
-  if (tiers.length === 0) {
+  if (candidates.length === 0) {
     log.warn("sow-monitoring-addon: no priceable monitoring_tier rows — Tenant Monitoring add-on omitted");
     return null;
   }
 
-  tiers.sort((a, b) => (TIER_LABEL_ORDER[a.label.toLowerCase()] ?? 99) - (TIER_LABEL_ORDER[b.label.toLowerCase()] ?? 99));
-  const defaultTier = tiers.find((t) => t.emphasis === "recommended") ?? tiers[0];
+  // Git #609: keep only the one this platform actually recommends (Enhanced),
+  // falling back to whichever quality tier priced if Enhanced itself did not
+  // — never an empty addon when at least one real tier is priceable.
+  const resolved =
+    candidates.find((t) => t.label.toLowerCase() === "enhanced") ??
+    candidates.sort(
+      (a, b) => (TIER_LABEL_ORDER[a.label.toLowerCase()] ?? 99) - (TIER_LABEL_ORDER[b.label.toLowerCase()] ?? 99),
+    )[0];
 
   // Git #593 — real, not asserted: only set when at least one of this
   // tenant's actual band rows carries it (every monitoring_tier row does,
@@ -225,8 +242,8 @@ export async function resolveTenantMonitoringAddon(
     blurb:
       "Six signal engines against your tenant every hour. An assessment tells you what is wrong today; monitoring tells you the second it happens again.",
     defaultOn: true,
-    defaultTierId: defaultTier.id,
-    tiers,
+    defaultTierId: resolved.id,
+    tiers: [resolved],
     stage,
   };
 }
@@ -296,7 +313,9 @@ export async function resolveArchitectRetainerAddon(
     // own copy (the group's entry-level tier) stands in for the addon-level
     // blurb, same as Monitoring's per-tier `detail` sourcing.
     blurb: (ordered[0]?.tagline ?? ordered[0]?.description ?? "").trim(),
-    defaultOn: false,
+    // Git #609: pre-selected/active by default, not a separate opt-in step —
+    // see the function doc above.
+    defaultOn: true,
     defaultTierId: defaultTier.id,
     tiers,
   };

@@ -84,7 +84,7 @@ describe("resolveTenantMonitoringAddon", () => {
     expect(await resolveTenantMonitoringAddon("tenant-guid")).toBeNull();
   });
 
-  it("prices each real quality tier's matching seat band at this tenant's real seats", async () => {
+  it("Git #609: resolves to Enhanced's real seat-matched price ONLY — Basic/Premium are priced internally but never exposed as alternatives", async () => {
     mockSeatFigures = { provisioned: 1_200 };
     mockResultQueue = [
       [
@@ -99,29 +99,24 @@ describe("resolveTenantMonitoringAddon", () => {
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon).not.toBeNull();
     expect(addon!.id).toBe("tenant-monitoring");
-    expect(addon!.tiers.map((t) => t.label)).toEqual(["Basic", "Enhanced", "Premium"]);
-    // 1,200 seats falls in the 1001+ band for every tier.
-    expect(addon!.tiers.find((t) => t.label === "Basic")!.monthlyUsd).toBeCloseTo(1_200 * 0.6);
-    expect(addon!.tiers.find((t) => t.label === "Enhanced")!.monthlyUsd).toBeCloseTo(1_200 * 0.9);
-    expect(addon!.tiers.find((t) => t.label === "Premium")!.monthlyUsd).toBeCloseTo(1_200 * 1.4);
+    expect(addon!.tiers).toHaveLength(1);
+    expect(addon!.tiers[0]!.label).toBe("Enhanced");
+    // 1,200 seats falls in the 1001+ band.
+    expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(1_200 * 0.9);
+    expect(addon!.defaultTierId).toBe(addon!.tiers[0]!.id);
+    expect(addon!.defaultOn).toBe(true);
   });
 
-  it("marks Enhanced as the recommended default, never Basic or Premium", async () => {
+  it("falls back to whichever quality tier priced when Enhanced itself is not priceable", async () => {
     mockResultQueue = [
       [
         monitoringRow({ typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: null, pricePerUserMonth: "0.75" } }),
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: null, pricePerUserMonth: "1.10" } }),
         monitoringRow({ typeAttributes: { tenantTierLabel: "Premium", seatMin: 1, seatMax: null, pricePerUserMonth: "1.60" } }),
       ],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
-    const basic = addon!.tiers.find((t) => t.label === "Basic")!;
-    const enhanced = addon!.tiers.find((t) => t.label === "Enhanced")!;
-    const premium = addon!.tiers.find((t) => t.label === "Premium")!;
-    expect(enhanced.emphasis).toBe("recommended");
-    expect(basic.emphasis).toBeUndefined();
-    expect(premium.emphasis).toBeUndefined();
-    expect(addon!.defaultTierId).toBe(enhanced.id);
+    expect(addon!.tiers).toHaveLength(1);
+    expect(addon!.tiers[0]!.label).toBe("Basic");
   });
 
   it("falls back to the nearest band rather than leaving a real tenant unpriced", async () => {
@@ -208,7 +203,8 @@ describe("resolveArchitectRetainerAddon", () => {
     const addon = await resolveArchitectRetainerAddon(null);
     expect(addon).not.toBeNull();
     expect(addon!.id).toBe("architect-retainer");
-    expect(addon!.defaultOn).toBe(false);
+    // Git #609: pre-selected/active by default, not a separate opt-in step.
+    expect(addon!.defaultOn).toBe(true);
     expect(addon!.tiers.map((t) => t.label)).toEqual(["Essentials", "Growth", "Enterprise"]);
     expect(addon!.tiers.map((t) => t.monthlyUsd)).toEqual([1_500, 3_000, 5_500]);
   });
