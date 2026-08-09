@@ -933,7 +933,7 @@ router.post(
                 FROM unnest(tags || ${tags}::text[]) AS t
               ),
               updated_at = now()
-              WHERE id = ANY(${ids}::int[])
+              WHERE id IN (${ids})
               AND msp_id = ${mspId}`,
         );
 

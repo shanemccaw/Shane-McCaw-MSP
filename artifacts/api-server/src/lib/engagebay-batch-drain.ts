@@ -138,7 +138,7 @@ export async function handleEngageBayBatchDrain(
         await tx.execute(sql`
           UPDATE msp_job_queue
           SET status = 'running', started_at = NOW(), attempt_count = attempt_count + 1
-          WHERE id = ANY(${ids})
+          WHERE id IN (${ids})
         `);
       }
       return jobs.rows;
