@@ -13,6 +13,7 @@
  *
  *   GET    /api/admin/monitoring-packages
  *   POST   /api/admin/monitoring-packages
+ *   GET    /api/admin/monitoring-packages/usage   (real msp_diagnostic_runs evidence per package)
  *   GET    /api/admin/monitoring-packages/:key
  *   PATCH  /api/admin/monitoring-packages/:key
  *   DELETE /api/admin/monitoring-packages/:key
@@ -36,7 +37,7 @@ import {
   usersTable,
   tenantsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.monitor" });
@@ -336,6 +337,81 @@ router.get("/admin/monitoring-packages", requireAdmin, async (_req: Request, res
   } catch (err) {
     log.error({ err }, "admin-monitor-checks: list packages failed");
     res.status(500).json({ error: "Failed to list monitoring packages" });
+  }
+});
+
+/**
+ * What each package has ACTUALLY done, from `msp_diagnostic_runs` — the table
+ * `diagnostics-runner.ts` writes one row into per package run.
+ *
+ * This exists because every other number about a package is a definition
+ * ("41 checks are linked to it") and none of them is evidence. Simulator
+ * Studio's Monitoring Packages screen states "runs against N tenants" and
+ * "last run" next to the check list, and a definition-only screen would let a
+ * package that has never executed look identical to the one every tenant is
+ * scored by.
+ *
+ * Registered ABOVE `/:key` deliberately: Express matches in registration
+ * order, so declaring this after the parameterised route would make `:key`
+ * swallow "usage" and return a 404 for a package literally named usage. The
+ * `/admin/monitor-checks/profiles` route below has exactly that bug already —
+ * do not copy its placement.
+ *
+ * Read-only and aggregate-only: it never runs a package, and running one
+ * on demand from the admin panel is deliberately NOT built here (see
+ * `adminv2/SHELL.md`'s "Write endpoints do not exist" gap).
+ */
+router.get("/admin/monitoring-packages/usage", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    // Two aggregates rather than one: the totals must count every run ever
+    // recorded (a window would silently under-report a long-lived package),
+    // while the "last run" detail needs whole columns off one specific row.
+    const totals = await db.execute(sql`
+      SELECT package_key                                   AS "packageKey",
+             count(*)::int                                 AS "runs",
+             count(DISTINCT coalesce(tenant_id, customer_id::text))::int AS "tenants",
+             max(created_at)                               AS "lastRunAt"
+      FROM msp_diagnostic_runs
+      GROUP BY package_key
+    `);
+
+    const latest = await db.execute(sql`
+      SELECT DISTINCT ON (package_key)
+             package_key          AS "packageKey",
+             run_id               AS "runId",
+             status,
+             run_status           AS "runStatus",
+             checks_total::int    AS "checksTotal",
+             checks_ok::int       AS "checksOk",
+             checks_error::int    AS "checksError",
+             checks_license_gap::int AS "checksLicenseGap",
+             tenant_id            AS "tenantId",
+             completed_at         AS "completedAt",
+             created_at           AS "createdAt"
+      FROM msp_diagnostic_runs
+      ORDER BY package_key, created_at DESC
+    `);
+
+    const latestByKey = new Map(
+      (latest.rows as Array<Record<string, unknown>>).map(r => [String(r["packageKey"]), r]),
+    );
+
+    const usage = (totals.rows as Array<Record<string, unknown>>).map(t => {
+      const key = String(t["packageKey"]);
+      const last = latestByKey.get(key) ?? null;
+      return {
+        packageKey: key,
+        runs: Number(t["runs"] ?? 0),
+        tenants: Number(t["tenants"] ?? 0),
+        lastRunAt: t["lastRunAt"] ?? null,
+        lastRun: last,
+      };
+    });
+
+    res.json({ usage });
+  } catch (err) {
+    log.error({ err }, "admin-monitor-checks: package usage failed");
+    res.status(500).json({ error: "Failed to load monitoring package usage" });
   }
 });
 

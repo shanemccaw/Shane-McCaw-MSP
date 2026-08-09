@@ -184,6 +184,10 @@ export default defineConfig({
       "src/routes/msp-engine-history.test.ts",
       "src/routes/admin-monitor-check-runs.test.ts",
       "src/routes/admin-monitor-checks-crud.test.ts",
+      // The `/monitoring-packages/usage` read behind Simulator Studio's
+      // Monitoring Packages screen — including that it is matched before
+      // `/:key`, which no isolated handler test can catch.
+      "src/routes/admin-monitoring-package-usage.test.ts",
       "src/routes/admin-simulator-assessments.test.ts",
       "src/routes/portal-assessment-debug-trigger-scan.test.ts",
       "src/routes/portal-assessment-debug-reset-session.test.ts",

@@ -27,6 +27,7 @@ import "./screens/tenant-signals";
 import "./screens/observability";
 import "./screens/endpoints";
 import "./screens/sql";
+import "./screens/packages";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -54,6 +55,10 @@ import { EndpointsFetchBridge } from "./screens/endpoints/EndpointsFetchBridge";
 // synchronous `script`/`migration` peek resolvers — see SqlFetchBridge.tsx's
 // doc comment.
 import { SqlFetchBridge } from "./screens/sql/SqlFetchBridge";
+// Same reasoning again, for the Monitoring Packages screen's Home-tab package
+// gallery, its Watch-tab "collects nothing" count and its synchronous
+// `package` peek resolver — see PackagesFetchBridge.tsx's doc comment.
+import { PackagesFetchBridge } from "./screens/packages/PackagesFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -102,6 +107,7 @@ function AdminV2Inner() {
       <ObservabilityFetchBridge />
       <EndpointsFetchBridge />
       <SqlFetchBridge />
+      <PackagesFetchBridge />
     </Shell>
   );
 }
