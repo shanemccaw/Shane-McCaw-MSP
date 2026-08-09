@@ -15,7 +15,7 @@
  * the quiet "Open it properly" on the left.
  */
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY_OVERLAY, SURFACE, TEXT, Z } from "../theme";
 import type { PeekAction, PeekFact, PeekModel } from "../registry/types";
 
@@ -47,7 +47,47 @@ export function isNumericFact(fact: PeekFact): boolean {
 const alpha = (tone: string, hex: string) => `${tone}${hex}`;
 
 export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /**
+   * Local echo of what you have typed.
+   *
+   * `edits[].onChange` writes through to the record, but the record is a
+   * screen's state and the peek is rendered by the shell, so nothing guarantees
+   * the new value comes back this render. Without a local draft the input
+   * appears to revert as you type. The shell remounts this component per record
+   * (see Shell.tsx), so the drafts reset on their own.
+   */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  // aria-modal hides everything behind this from assistive tech, so focus has
+  // to come with it. Without this the first Tab lands on the title bar the
+  // screen reader can no longer see.
+  useEffect(() => {
+    if (!model) return;
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => previous?.focus?.();
+  }, [model !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!model) return null;
+
+  /** Keeps Tab inside the dialog while it owns the screen. */
+  function onDialogKeyDown(event: React.KeyboardEvent) {
+    if (event.key !== "Tab") return;
+    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable || focusable.length === 0) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   const tone = model.tone ?? ACCENT.info;
   const eyebrow = (model.eyebrow ?? model.kind).toUpperCase();
@@ -67,7 +107,10 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
         }}
       />
       <div
-        className="av2-overlay-in"
+        ref={dialogRef}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+        className="av2-overlay-centre"
         role="dialog"
         aria-modal="true"
         aria-label={`${eyebrow}: ${model.title}`}
@@ -332,7 +375,9 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
                       id={`peek-${edit.key}`}
                       onClick={() => {
                         const options = edit.options!;
-                        const next = options[(options.indexOf(edit.value) + 1) % options.length]!;
+                        const current = drafts[edit.key] ?? edit.value;
+                        const next = options[(options.indexOf(current) + 1) % options.length]!;
+                        setDrafts((d) => ({ ...d, [edit.key]: next }));
                         edit.onChange(next);
                       }}
                       title={`Cycles through: ${edit.options.join(", ")}`}
@@ -343,13 +388,13 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
                         color: ACCENT.info,
                       }}
                     >
-                      {edit.value}
+                      {drafts[edit.key] ?? edit.value}
                     </button>
                   ) : edit.area ? (
                     <textarea
                       id={`peek-${edit.key}`}
-                      value={edit.value}
-                      onChange={(event) => edit.onChange(event.target.value)}
+                      value={drafts[edit.key] ?? edit.value}
+                      onChange={(event) => { const v = event.target.value; setDrafts((d) => ({ ...d, [edit.key]: v })); edit.onChange(v); }}
                       style={{
                         ...editBase(edit.mono),
                         height: 74,
@@ -361,8 +406,8 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
                   ) : (
                     <input
                       id={`peek-${edit.key}`}
-                      value={edit.value}
-                      onChange={(event) => edit.onChange(event.target.value)}
+                      value={drafts[edit.key] ?? edit.value}
+                      onChange={(event) => { const v = event.target.value; setDrafts((d) => ({ ...d, [edit.key]: v })); edit.onChange(v); }}
                       style={editBase(edit.mono)}
                     />
                   )}
@@ -543,7 +588,11 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
         >
           {model.open && (
             <button
-              onClick={model.open}
+              onClick={() => {
+                const open = model.open;
+                onClose();
+                open?.();
+              }}
               style={{
                 flex: "none",
                 whiteSpace: "nowrap",

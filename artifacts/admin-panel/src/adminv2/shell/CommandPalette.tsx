@@ -109,7 +109,7 @@ export function CommandPalette({
         }}
       />
       <div
-        className="av2-overlay-in"
+        className="av2-overlay-centre"
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"

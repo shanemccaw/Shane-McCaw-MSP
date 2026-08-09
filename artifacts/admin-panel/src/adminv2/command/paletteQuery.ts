@@ -168,9 +168,11 @@ export function runPaletteQuery(
   let hitCount = 0;
 
   if (parsed.text) {
-    const ranked = rankResults(pool, parsed.text, ctx);
-    hitCount = ranked.length;
-    results = grouped(ranked);
+    // Count every match, not just the rendered page: rankResults truncates to
+    // RESULT_LIMIT, so using its length saturates the numerator at 40 and the
+    // counter stops moving as you narrow the query.
+    hitCount = countMatches(pool, parsed.text, ctx);
+    results = grouped(rankResults(pool, parsed.text, ctx));
   } else if (parsed.type) {
     // A bare prefix browses the whole category, recents first.
     results = grouped(browseCategory(pool, ctx));
@@ -178,7 +180,20 @@ export function runPaletteQuery(
     results = emptyStateResults(pool, ctx);
   }
 
-  return { parsed, results, count: paletteCount(parsed, pool.length, hitCount, items.length) };
+  // Denominator is the prefix-filtered pool, not the whole index: under `@` the
+  // design reads "3 of 20 destinations", never "3 of 143 things".
+  return { parsed, results, count: paletteCount(parsed, pool.length, hitCount, pool.length) };
+}
+
+/** How many commands match at all, before the render cap. */
+export function countMatches(
+  items: readonly CommandItem[],
+  text: string,
+  ctx: PaletteContext,
+): number {
+  let n = 0;
+  for (const item of items) if (cmdScore(item, text, ctx) > 0) n++;
+  return n;
 }
 
 function browseCategory(pool: readonly CommandItem[], ctx: PaletteContext): CommandItem[] {

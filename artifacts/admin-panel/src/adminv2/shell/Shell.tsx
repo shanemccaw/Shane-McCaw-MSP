@@ -50,7 +50,15 @@ export function Shell({
     peekModel,
     commandIndex,
     runCommand,
+    activateDoc,
   } = useShell();
+
+  // A record doc can be open on a screen that declares no contextual tab, and
+  // closeDoc leaves contextActive set while a screen doc remains. Passing the
+  // raw flag to the tab strip then suppresses every fixed tab (on = !contextActive)
+  // while the body still renders that fixed tab groups, so nothing looks selected.
+  // The strip and the body must agree on one value.
+  const contextSelected = state.contextActive && !!contextualTab;
 
   // Rebuilt on every open rather than memoised across opens: `?` rows carry
   // live numbers, and a cached profit figure is worse than none.
@@ -70,7 +78,7 @@ export function Shell({
 
       <RibbonTabs
         activeTab={state.activeTab}
-        contextActive={state.contextActive}
+        contextActive={contextSelected}
         ribbonOpen={state.ribbonOpen}
         contextualTab={contextualTab}
         onSelectTab={(tab) => dispatch({ type: "selectTab", tab })}
@@ -112,9 +120,10 @@ export function Shell({
           <DocTabStrip
             docs={state.docs}
             activeDocId={state.activeDocId}
-            onActivate={(id) => dispatch({ type: "activateDoc", id })}
+            onActivate={activateDoc}
             onClose={(id) => dispatch({ type: "closeDoc", id })}
             onCloseOthers={(id) => dispatch({ type: "closeOtherDocs", id })}
+            onCloseAll={() => dispatch({ type: "closeAllDocs" })}
           />
 
           <div
@@ -181,6 +190,8 @@ export function Shell({
       />
 
       <Peek
+        // Remounted per record so the edit drafts inside it reset cleanly.
+        key={state.peek ? `${state.peek.kind}:${state.peek.id}` : "none"}
         model={state.peek ? peekModel : null}
         armedActionLabel={state.peekArmedAction}
         onArm={(label) => dispatch({ type: "armPeekAction", label })}

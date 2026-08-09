@@ -109,6 +109,7 @@ export type ShellAction =
   | { type: "activateDoc"; id: string }
   | { type: "closeDoc"; id: string }
   | { type: "closeOtherDocs"; id: string }
+  | { type: "closeAllDocs" }
   | { type: "setDocDirty"; id: string; dirty: boolean }
   | { type: "togglePanel"; panel: "left" | "right" | "bottom" }
   | { type: "setPanel"; panel: "left" | "right" | "bottom"; open: boolean }
@@ -205,6 +206,9 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       const kept = state.docs.filter((d) => d.id === action.id);
       return { ...state, docs: kept, activeDocId: kept.length ? action.id : null };
     }
+
+    case "closeAllDocs":
+      return { ...state, docs: [], activeDocId: null, contextActive: false };
 
     case "setDocDirty":
       return {

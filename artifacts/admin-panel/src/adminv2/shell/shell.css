@@ -111,6 +111,17 @@
 
 /* ── Overlays ───────────────────────────────────────────────────────────── */
 
+/*
+ * Two entrance animations, because a running CSS animation outranks inline
+ * styles on the properties it animates.
+ *
+ * `av2-overlay-in` animates `transform`, so it may only be used on elements
+ * that do not set their own transform. The peek and the palette centre
+ * themselves with `translate(-50%,-50%)` / `translateX(-50%)` inline; putting
+ * this on them replaces that transform for the animation's whole duration and
+ * the overlay visibly jumps in from the top-left before snapping into place.
+ * Those use `av2-overlay-centre`, which touches opacity only.
+ */
 @keyframes av2-overlay-in {
   from {
     opacity: 0;
@@ -124,6 +135,20 @@
 
 .av2-overlay-in {
   animation: av2-overlay-in 120ms ease-out;
+}
+
+@keyframes av2-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* For overlays that position themselves with a transform. */
+.av2-overlay-centre {
+  animation: av2-fade-in 120ms ease-out;
 }
 
 @keyframes av2-scrim-in {
@@ -141,10 +166,22 @@
 
 @media (prefers-reduced-motion: reduce) {
   .av2-overlay-in,
+  .av2-overlay-centre,
   .av2-scrim-in {
     animation-duration: 0.01ms;
   }
   .av2 * {
     transition-duration: 0.01ms !important;
   }
+}
+
+/* A running operation's icon — e.g. the Deploy Console's Run button. */
+@keyframes av2-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.av2-spin {
+  animation: av2-spin 0.9s linear infinite;
 }

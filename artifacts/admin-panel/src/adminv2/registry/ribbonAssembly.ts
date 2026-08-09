@@ -32,17 +32,26 @@ export const TRAIL_MAX = 6;
  * than growing a run of the same record. Returns a new array; never mutates.
  */
 export function pushTrail(trail: readonly TrailEntry[], entry: TrailEntry): TrailEntry[] {
-  const key = `${entry.kind}:${entry.id}`;
-  const without = trail.filter((t) => `${t.kind}:${t.id}` !== key);
+  const key = trailKey(entry);
+  const without = trail.filter((t) => trailKey(t) !== key);
   return [entry, ...without].slice(0, TRAIL_MAX);
 }
 
+/** `kind:id`, the identity used to dedupe the trail and to exclude the current doc. */
+export function trailKey(entry: { kind: PeekKind | "screen"; id: string }): string {
+  return `${entry.kind}:${entry.id}`;
+}
+
 /**
- * Builds the Back group.
+ * Builds the Back group: the three most recent places that are not where you
+ * are now, then "Search everything".
  *
- * `trail[0]` is where you are now, so the large button is `trail[1]` — the
- * thing you just came from — and the two small buttons under it are the two
- * before that. "Search everything" is always last.
+ * `currentKey` is excluded explicitly rather than assumed to be `trail[0]`.
+ * That assumption held only while `openDoc` was the sole way focus moved —
+ * clicking a doc tab or closing one changes the active doc without touching
+ * the trail, and the large button would then offer to navigate to the record
+ * already on screen. The design guards it the same way, by filtering the
+ * selected doc out before taking the first entry.
  *
  * When there is nothing to go back to, the group still renders with only
  * "Search everything". Hiding it would move every other group one position
@@ -51,8 +60,9 @@ export function pushTrail(trail: readonly TrailEntry[], entry: TrailEntry): Trai
 export function backGroupFrom(
   trail: readonly TrailEntry[],
   onSearchEverything: () => void,
+  currentKey?: string,
 ): RibbonGroup {
-  const previous = trail.slice(1, 4);
+  const previous = trail.filter((entry) => trailKey(entry) !== currentKey).slice(0, 3);
   const [first, ...rest] = previous;
 
   return {
@@ -106,9 +116,10 @@ export function assembleContextualGroups(
   spec: ContextualTabSpec,
   trail: readonly TrailEntry[],
   onSearchEverything: () => void,
+  currentKey?: string,
 ): RibbonGroup[] {
   const groups = [...spec.groups];
-  const back = backGroupFrom(trail, onSearchEverything);
+  const back = backGroupFrom(trail, onSearchEverything, currentKey);
   const at = Math.min(BACK_GROUP_POSITION, groups.length);
   groups.splice(at, 0, back);
   return groups;

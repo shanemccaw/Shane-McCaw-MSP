@@ -56,23 +56,34 @@ describe("trail", () => {
 
 describe("Back group", () => {
   it("puts where you just came from on the large button", () => {
-    // trail[0] is where you ARE; the large button is trail[1].
+    // The current doc is excluded explicitly, so the large button is the most
+    // recent entry that is not it.
     const trail = [entry("here"), entry("previous", "Previous thing")];
-    const group = backGroupFrom(trail, () => {});
+    const group = backGroupFrom(trail, () => {}, "endpoint:here");
     expect(group.large?.[0]?.label).toBe("Previous thing");
   });
 
   it("puts the two before that underneath, then Search everything", () => {
     const trail = [entry("here"), entry("p1"), entry("p2"), entry("p3"), entry("p4")];
-    const group = backGroupFrom(trail, () => {});
+    const group = backGroupFrom(trail, () => {}, "endpoint:here");
     expect(group.small?.map((c) => c.label)).toEqual(["p2", "p3", "Search everything"]);
   });
 
   it("still renders with only Search everything when there is nowhere to go back to", () => {
     // Hiding it would shift every other group one position left, which is
     // exactly the instability the design exists to prevent.
-    const group = backGroupFrom([entry("here")], () => {});
+    const group = backGroupFrom([entry("here")], () => {}, "endpoint:here");
     expect(group.large).toEqual([]);
+    expect(group.small?.map((c) => c.label)).toEqual(["Search everything"]);
+  });
+
+  it("never offers the doc you are already on, however focus got there", () => {
+    // The bug this guards: clicking a doc tab moves focus without touching the
+    // trail, so the most recent entry stops being where you came from. Opening
+    // ep-1 then ep-2 then clicking back to ep-1 must offer ep-2, not ep-1.
+    const trail = [entry("ep-2"), entry("ep-1")];
+    const group = backGroupFrom(trail, () => {}, "endpoint:ep-1");
+    expect(group.large?.map((c) => c.label)).toEqual(["ep-2"]);
     expect(group.small?.map((c) => c.label)).toEqual(["Search everything"]);
   });
 

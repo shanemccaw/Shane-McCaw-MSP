@@ -21,11 +21,12 @@ import { logger } from "@/lib/logger";
 import {
   buildCommandIndex,
   docLabel,
+  getScreen,
   groupsForFixedTab,
   resolvePeek,
   screenForRoute,
 } from "../registry/registry";
-import { assembleContextualGroups, type TrailEntry } from "../registry/ribbonAssembly";
+import { assembleContextualGroups, trailKey, type TrailEntry } from "../registry/ribbonAssembly";
 import { shellGroupsForTab } from "./shellRibbon";
 import type {
   CommandItem,
@@ -69,8 +70,10 @@ export interface ShellApi {
 
   /** Navigate within adminv2. Pass a screen route like "/endpoints". */
   navigate: (route: string) => void;
-  /** Opens a doc tab, extends the trail, and focuses it. */
+  /** Opens a doc tab, extends the trail, routes to its screen, and focuses it. */
   openDoc: (input: OpenDocInput) => void;
+  /** Focuses an already-open doc, routing to its screen. */
+  activateDoc: (docId: string) => void;
   /** Opens the peek overlay over whatever you are doing. */
   openPeek: (kind: PeekKind, id: string) => void;
   closePeek: () => void;
@@ -95,6 +98,21 @@ export function useShell(): ShellApi {
   const ctx = useContext(ShellCtx);
   if (!ctx) throw new Error("useShell() must be called inside <ShellProvider>.");
   return ctx;
+}
+
+/**
+ * Escape hatch for the rare `RibbonCommand.onSelect` that only needs to
+ * navigate. A screen's `ribbon` array is built once, at `registerScreen()`
+ * module-load time — outside any component — so it cannot call `useShell()`.
+ * Populated by the mounted `ShellProvider` and read only at click time, by
+ * which point a provider always exists. Prefer `useShell()` inside a
+ * screen's own render; reach for this only from a closure that has no
+ * component of its own to hook from.
+ */
+let shellSingleton: ShellApi | null = null;
+
+export function getShellApi(): ShellApi | null {
+  return shellSingleton;
 }
 
 function readPersisted(): Partial<ShellState> {
@@ -156,6 +174,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // route changes, which would re-render every screen that memoises on it.
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const docsRef = useRef(state.docs);
+  docsRef.current = state.docs;
 
   const openDoc = useCallback((input: OpenDocInput) => {
     const screenId = input.screenId ?? (input.kind === "screen" ? input.id : undefined);
@@ -178,8 +200,34 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       open: () => openDocRef.current(input),
     };
     dispatch({ type: "openDoc", doc, trail });
-    log.debug({ doc: doc.id, label }, "doc opened");
+    // Route to the screen that owns the doc. Without this, `screenId` is stored
+    // and never acted on: the centre column keeps rendering whichever screen the
+    // URL points at and hands it a recordId belonging to a different screen.
+    routeToScreen(screenId);
+    log.debug({ doc: doc.id, label, screen: screenId }, "doc opened");
   }, []);
+
+  /** Navigates to a screen's route unless it is already the routed one. */
+  const routeToScreen = useCallback((screenId: string) => {
+    const target = getScreen(screenId);
+    if (!target) {
+      log.warn({ screen: screenId }, "doc names a screen that is not registered");
+      return;
+    }
+    if (subRoute(locationRef.current) !== target.route) navigateRef.current(target.route);
+  }, []);
+
+  /**
+   * Focuses an already-open doc, routing to its screen on the way.
+   *
+   * Clicking a tab has to move the route as well as the focus, for the same
+   * reason `openDoc` does.
+   */
+  const activateDoc = useCallback((docId: string) => {
+    dispatch({ type: "activateDoc", id: docId });
+    const doc = docsRef.current.find((d) => d.id === docId);
+    if (doc) routeToScreen(doc.screenId);
+  }, [routeToScreen]);
 
   const openDocRef = useRef(openDoc);
   openDocRef.current = openDoc;
@@ -224,8 +272,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const ribbonGroups = useMemo<RibbonGroup[]>(() => {
     if (state.contextActive && contextualTab) {
-      return assembleContextualGroups(contextualTab, state.trail, () =>
-        dispatch({ type: "openPalette" }),
+      return assembleContextualGroups(
+        contextualTab,
+        state.trail,
+        () => dispatch({ type: "openPalette" }),
+        activeDoc ? trailKey({ kind: activeDoc.kind, id: activeDoc.recordId }) : undefined,
       );
     }
     // The window's own groups sort first, then whatever screens contributed.
@@ -256,10 +307,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     activeScreen,
   ]);
 
-  const peekModel = useMemo<PeekModel | null>(
-    () => (state.peek ? resolvePeek(state.peek.kind, state.peek.id) : null),
-    [state.peek],
-  );
+  // Resolved on every render rather than memoised on the target. A memo keyed on
+  // state.peek calls the resolver exactly once per open, so a screen writing
+  // through an edit would never see its own value come back, and SHELL.md
+  // promises the opposite. resolvePeek is a cheap registry walk; caching it is
+  // not worth serving a stale record.
+  const peekModel: PeekModel | null = state.peek
+    ? resolvePeek(state.peek.kind, state.peek.id)
+    : null;
 
   const commandIndex = useCallback(
     () => buildCommandIndex((route) => navigateRef.current(route)),
@@ -268,8 +323,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   // ── Global keys ────────────────────────────────────────────────────────────
   // Ctrl/Cmd K is the primary way to move, so it wins everywhere including
-  // inside inputs. Esc unwinds one layer at a time: peek, then gallery, then
-  // palette — never all three at once.
+  // inside inputs. Esc unwinds one layer at a time, frontmost first, never all
+  // three at once. The ordering rationale is on the handler itself.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -303,6 +358,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       dispatch,
       navigate,
       openDoc,
+      activateDoc,
       openPeek,
       closePeek,
       openPalette,
@@ -318,6 +374,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       state,
       navigate,
       openDoc,
+      activateDoc,
       openPeek,
       closePeek,
       openPalette,
@@ -330,6 +387,13 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       commandIndex,
     ],
   );
+
+  useEffect(() => {
+    shellSingleton = api;
+    return () => {
+      shellSingleton = null;
+    };
+  }, [api]);
 
   return <ShellCtx.Provider value={api}>{children}</ShellCtx.Provider>;
 }
