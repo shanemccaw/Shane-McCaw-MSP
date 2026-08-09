@@ -264,7 +264,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const contextualTab = useMemo<ContextualTabSpec | null>(() => {
     const spec = activeScreen?.contextualTab;
     if (!spec) return null;
-    if (typeof spec === "function") return spec({ recordId: activeDoc?.recordId });
+    if (typeof spec === "function") {
+      return spec({
+        recordId: activeDoc?.recordId,
+        kind: activeDoc && activeDoc.kind !== "screen" ? activeDoc.kind : undefined,
+      });
+    }
     // A static contextual tab is only live once a record is actually open —
     // otherwise its record-scoped commands would have nothing to act on.
     return activeDoc && activeDoc.kind !== "screen" ? spec : null;

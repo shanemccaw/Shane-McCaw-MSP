@@ -193,7 +193,16 @@ export interface ContextualTabSpec {
 
 // ─── Peek ─────────────────────────────────────────────────────────────────────
 
-/** The record kinds the peek overlay knows how to open. */
+/**
+ * The record kinds the peek overlay knows how to open.
+ *
+ * `msp`, `user`, `group` and `ou` were added for the Active Directory screen
+ * (`screens/ad/`) — an MSP, a portal user account, an RBAC group, and an
+ * organizational-unit placeholder are each a real, openable record, the same
+ * as `customer` (which AD reuses for a tenant) already was. Unlike
+ * `FIXED_TAB_IDS`, this list is not closed: a screen introducing a genuinely
+ * new record type extends it.
+ */
 export const PEEK_KINDS = [
   "endpoint",
   "package",
@@ -206,6 +215,10 @@ export const PEEK_KINDS = [
   "service",
   "customer",
   "mail",
+  "msp",
+  "user",
+  "group",
+  "ou",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -360,7 +373,10 @@ export type CommandKind =
   | "lead"
   | "workflow"
   | "prompt"
-  | "customer";
+  | "customer"
+  | "msp"
+  | "user"
+  | "group";
 
 export interface CommandItem {
   id: string;
@@ -420,6 +436,15 @@ export interface BottomPanelTab {
 export interface ScreenRenderContext {
   /** The record id this screen was opened on, if any. */
   recordId?: string;
+  /**
+   * The record's peek kind, alongside `recordId`. Undefined for a plain
+   * screen doc (no record open) — mirrors `OpenDoc.kind` excluding
+   * `"screen"`. Needed by any screen that owns more than one record kind
+   * (e.g. Active Directory: msp/customer/user/group/ou all render through
+   * the one "ad" screen) — `recordId` alone cannot disambiguate an MSP id 5
+   * from a customer id 5.
+   */
+  kind?: PeekKind;
 }
 
 export interface ScreenModule {

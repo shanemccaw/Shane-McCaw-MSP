@@ -150,6 +150,9 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   workflow: ["#c3c1bf", "FLW"],
   prompt: ["#c3c1bf", "AI"],
   customer: ["#92d8ae", "CUS"],
+  msp: ["#7fb4d8", "MSP"],
+  user: ["#92d8ae", "USR"],
+  group: ["#c3c1bf", "RBAC"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

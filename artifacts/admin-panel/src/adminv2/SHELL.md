@@ -58,6 +58,15 @@ Then in `AdminV2.tsx`, `import "./screens/endpoints";` — importing is what
 registers it. `registerScreen` throws on a duplicate id or a contract violation,
 so a mistake is a startup failure rather than a silent no-op.
 
+`render`'s `ctx` also carries `ctx.kind` — the open doc's peek kind, alongside
+`ctx.recordId`. Most screens own one record kind and never need it (the
+example above ignores it, same as `recordId` alone always used to be enough).
+A screen that owns *more than one* record kind under a single route needs
+it to disambiguate — e.g. `screens/ad/`'s Active Directory screen renders an
+MSP, a tenant, a user, a group or an OU through the one `"ad"` screen, and an
+MSP id 5 is not the same record as a tenant id 5. `ctx.kind` is `undefined`
+when no record is open (a plain screen doc, or nothing open at all).
+
 Everything below is optional and additive.
 
 ---
@@ -197,7 +206,9 @@ A peek is how a record is handled **without leaving**. Clicking a row in any
 ribbon gallery opens one rather than navigating.
 
 Supported kinds: `endpoint` `package` `lead` `script` `document` `tenant`
-`workflow` `prompt` `service` `customer` `mail`.
+`workflow` `prompt` `service` `customer` `mail` `msp` `user` `group` `ou`.
+Unlike the seven fixed tabs, this list is not closed — a screen that owns a
+genuinely new record type extends `PEEK_KINDS` in `registry/types.ts`.
 
 ```tsx
 registerScreen({

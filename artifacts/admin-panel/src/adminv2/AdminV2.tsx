@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
 import "./screens/live-scan";
+import "./screens/ad";
 import "./screens/crm";
 import "./screens/inbox";
 import "./screens/money";
@@ -32,6 +33,9 @@ import { FloatingDeployConsole } from "./screens/git/FloatingDeployConsole";
 // Same reasoning as FloatingDeployConsole, for the CRM screen's fetch bridge
 // — see CrmFetchBridge.tsx's doc comment.
 import { CrmFetchBridge } from "./screens/crm/CrmFetchBridge";
+// Same reasoning again, for the AD screen's two Home-tab ribbon buttons
+// ("New MSP", "New organizational unit") — see adAuthBridge.tsx's doc comment.
+import { AdAuthBridge } from "./screens/ad/adAuthBridge";
 // Same reasoning again, for the Money tab's own ribbon label (real profit,
 // not the word "Money") — see MoneyFetchBridge.tsx's doc comment.
 import { MoneyFetchBridge } from "./screens/money/MoneyFetchBridge";
@@ -45,7 +49,10 @@ function ActiveScreen() {
   const activeDoc = state.docs.find((d) => d.id === state.activeDocId);
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-      {activeScreen.render({ recordId: activeDoc?.recordId })}
+      {activeScreen.render({
+        recordId: activeDoc?.recordId,
+        kind: activeDoc && activeDoc.kind !== "screen" ? activeDoc.kind : undefined,
+      })}
     </div>
   );
 }
@@ -75,6 +82,7 @@ function AdminV2Inner() {
       <ActiveScreen />
       <FloatingDeployConsole />
       <CrmFetchBridge />
+      <AdAuthBridge />
       <MoneyFetchBridge />
     </Shell>
   );
