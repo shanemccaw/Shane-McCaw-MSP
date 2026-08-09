@@ -47,20 +47,27 @@
  * inactive, because a contract that is still editable after execution is not a
  * contract. The lock lives in the handlers, not in CSS.
  *
- * SIGN AND PAY, IN THIS SAME VIEW (#602)
- * ----------------------------------------
+ * SIGN AND PAY, IN THIS SAME VIEW (#602, real signature #603)
+ * ----------------------------------------------------------------
  * A live signature now takes payment too, right here — no redirect, no route
- * change. `sign()` locks the scope, then hands it to #599's checkout-session
- * endpoint; the moment that session exists, `sowCartPayment.tsx`'s embedded
- * Stripe Payment Element (ported from the marketing site's own `AssessmentFlow.tsx`
- * / `PaymentStep`, #482) mounts inline in the signature block below and
- * confirms against #600's PaymentIntent. The design preview has no real
- * tenant to snapshot a session against, so it keeps its original behaviour:
- * signing there still just hands the agreed scope to the standalone checkout
- * screen as a query string. WHAT THIS STILL DOES NOT DO: record a signed
- * agreement anywhere. A confirmed Stripe charge is where this file's
- * responsibility ends — what happens to the contract after that is #603's own
- * deferred scope ("Reconcile post-payment agreement recording").
+ * change. The live scope's signature block renders `JourneySignaturePanel`
+ * (the platform's own drawn-PNG + typed-name pad, already used by the
+ * proposal screen) rather than a bare checkbox — `handleLiveSign()` is its
+ * `onSign` callback, and THAT is the real "sign()" moment: it hands the
+ * drawn signature straight to #599's checkout-session endpoint in the same
+ * request that locks the scope, so the signature and the snapshot it binds
+ * to are never two round-trips that could drift. The moment that session
+ * exists, `sowCartPayment.tsx`'s embedded Stripe Payment Element (ported
+ * from the marketing site's own `AssessmentFlow.tsx` / `PaymentStep`, #482)
+ * mounts inline in the signature block below and confirms against #600's
+ * PaymentIntent — #600 itself now records the resulting
+ * `assessment_sow_agreements` row (Git #603) the moment that charge is
+ * server-verified, via the `checkoutSessionId` path that table gained
+ * because this scope was never a stored document. The design preview has no
+ * real tenant to snapshot a session against, so it keeps its original
+ * behaviour unchanged: `sign()` (the plain checkbox-gated handler, still
+ * used only by the preview branch) just hands the agreed scope to the
+ * standalone checkout screen as a query string.
  *
  * PREVIEW VS LIVE (#292)
  * -----------------------
@@ -158,6 +165,7 @@ import {
 } from "./journeyScopeFromSow.ts";
 import { journeyScopeFromOffers, type WireRecommendedOffers } from "./sowLiveScope.ts";
 import { createSowCheckoutSession, SowCartPaymentPanel } from "./sowCartPayment";
+import { JourneySignaturePanel, type JourneySignature } from "./JourneySignaturePanel";
 import type { JourneyView } from "./journeyModel.ts";
 import { JourneyUnavailable } from "./JourneyPrimitives";
 
@@ -517,10 +525,23 @@ export function StatementOfWorkBody({
   const [sowPayment, setSowPayment] = useState<
     | { readonly status: "idle" }
     | { readonly status: "creating" }
-    | { readonly status: "ready"; readonly sessionId: string; readonly totalCents: number; readonly phaseCount: number; readonly addonCount: number }
+    | {
+        readonly status: "ready";
+        readonly sessionId: string;
+        readonly totalCents: number;
+        readonly discount: { readonly savingsCents: number; readonly discountPct: number | null } | null;
+        readonly phaseCount: number;
+        readonly addonCount: number;
+      }
     | { readonly status: "paid"; readonly amountCents: number }
     | { readonly status: "error"; readonly message: string }
   >({ status: "idle" });
+  /**
+   * The drawn signature `JourneySignaturePanel` captured — kept so the "Try
+   * again" retry after a failed session-creation network blip can resend the
+   * SAME signature rather than asking the customer to sign twice.
+   */
+  const [liveSignature, setLiveSignature] = useState<JourneySignature | null>(null);
   const { fetchWithAuth } = useAuth();
 
   // A live scope can change identity between the loading state and the ready
@@ -664,28 +685,55 @@ export function StatementOfWorkBody({
 
   /**
    * Git #599's session snapshot, for the real scope this customer just
-   * signed. Split out of `sign()` so a failed session creation (network blip,
-   * a candidate that dropped out from under them) can be retried without
-   * re-running the signature itself — the scope is already locked by then.
+   * signed — and, as of #603, the exact request that carries the drawn
+   * signature to the server. Split out of `handleLiveSign()` so a failed
+   * session creation (network blip, a candidate that dropped out from under
+   * them) can be retried via the SAME captured signature (`liveSignature`)
+   * without asking the customer to sign twice — the scope is already locked
+   * by then.
    */
-  const startSowCheckout = useCallback(() => {
-    if (!live) return;
-    const selectedPhaseServiceIds = live.built.phases
-      .filter((p) => isPhaseIncluded(scope, selection, p.id))
-      .map((p) => p.serviceId)
-      .filter((id): id is number => id !== null);
-    const addonSelections = scope.addons
-      .filter((a) => selection.addons[a.id])
-      .map((a) => ({ addonId: a.id, tierId: selection.tiers[a.id] ?? a.defaultTierId ?? "" }))
-      .filter((a) => a.tierId.length > 0);
+  const startSowCheckout = useCallback(
+    (signature: JourneySignature) => {
+      if (!live) return;
+      const selectedPhaseServiceIds = live.built.phases
+        .filter((p) => isPhaseIncluded(scope, selection, p.id))
+        .map((p) => p.serviceId)
+        .filter((id): id is number => id !== null);
+      const addonSelections = scope.addons
+        .filter((a) => selection.addons[a.id])
+        .map((a) => ({ addonId: a.id, tierId: selection.tiers[a.id] ?? a.defaultTierId ?? "" }))
+        .filter((a) => a.tierId.length > 0);
 
-    setSowPayment({ status: "creating" });
-    void createSowCheckoutSession(fetchWithAuth, { selectedPhaseServiceIds, addonSelections })
-      .then((session) => setSowPayment({ status: "ready", ...session }))
-      .catch((err) =>
-        setSowPayment({ status: "error", message: err instanceof Error ? err.message : "Could not start checkout." }),
-      );
-  }, [live, scope, selection, fetchWithAuth]);
+      setSowPayment({ status: "creating" });
+      void createSowCheckoutSession(fetchWithAuth, {
+        selectedPhaseServiceIds,
+        addonSelections,
+        signatureData: signature.signatureData,
+        signerName: signature.signerName,
+      })
+        .then((session) => setSowPayment({ status: "ready", ...session }))
+        .catch((err) =>
+          setSowPayment({ status: "error", message: err instanceof Error ? err.message : "Could not start checkout." }),
+        );
+    },
+    [live, scope, selection, fetchWithAuth],
+  );
+
+  /**
+   * `JourneySignaturePanel`'s `onSign` — the real "sign()" moment for a live
+   * scope (Git #603). Replaces the plain checkbox `sign()` below for
+   * `!isPreview && live`; see that handler's own comment for why the preview
+   * path is unchanged.
+   */
+  const handleLiveSign = useCallback(
+    (signature: JourneySignature) => {
+      if (!signable || signed) return;
+      setSigned(true);
+      setLiveSignature(signature);
+      startSowCheckout(signature);
+    },
+    [signable, signed, startSowCheckout],
+  );
 
   const sign = useCallback(() => {
     // The same doctrine the post-signature lock follows: the guard lives in the
@@ -693,16 +741,11 @@ export function StatementOfWorkBody({
     if (!signable || !agreed || signed) return;
     setSigned(true);
 
-    // Git #602: a real, live scope creates its checkout session and pays
-    // inline, right here — no navigation. The design preview has no real
-    // tenant to snapshot a session against, so it keeps its original handoff
-    // to the standalone checkout screen (`copilot-readiness-checkout.tsx`)
-    // unchanged.
-    if (!isPreview && live) {
-      startSowCheckout();
-      return;
-    }
-
+    // The design preview has no real tenant to snapshot a session against —
+    // it keeps its original handoff to the standalone checkout screen
+    // (`copilot-readiness-checkout.tsx`) unchanged. A real live scope signs
+    // through `handleLiveSign` (`JourneySignaturePanel`'s `onSign`) instead —
+    // this handler is only ever wired to the preview's plain checkbox now.
     const phases = scope.phases
       .map((p) => (isPhaseIncluded(scope, selection, p.id) ? "1" : "0"))
       .join("");
@@ -715,7 +758,7 @@ export function StatementOfWorkBody({
     // is actually seen.
     const query = new URLSearchParams({ signed: "1", phases, addons }).toString();
     window.setTimeout(() => onSigned?.(query), 1100);
-  }, [signable, agreed, signed, selection, onSigned, scope, isPreview, live, startSowCheckout]);
+  }, [signable, agreed, signed, selection, onSigned, scope]);
 
   /** Substitutes the figures the contract computes rather than states. */
   const resolveRow = useCallback(
@@ -1422,6 +1465,7 @@ export function StatementOfWorkBody({
               fetchWithAuth={fetchWithAuth}
               sessionId={sowPayment.sessionId}
               totalCents={sowPayment.totalCents}
+              discount={sowPayment.discount}
               phaseCount={sowPayment.phaseCount}
               addonCount={sowPayment.addonCount}
               onPaid={(amountCents) => setSowPayment({ status: "paid", amountCents })}
@@ -1431,7 +1475,7 @@ export function StatementOfWorkBody({
               <span style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5" }}>{sowPayment.message}</span>
               <button
                 type="button"
-                onClick={startSowCheckout}
+                onClick={() => liveSignature && startSowCheckout(liveSignature)}
                 style={{
                   alignSelf: "flex-start",
                   height: 34,
@@ -1452,7 +1496,7 @@ export function StatementOfWorkBody({
           ) : (
             <span style={{ fontSize: 13, fontWeight: 500, color: INK.micro }}>Starting your checkout…</span>
           )
-        ) : (
+        ) : isPreview || !live ? (
           <>
             <button
               type="button"
@@ -1516,6 +1560,12 @@ export function StatementOfWorkBody({
               {agreed ? STATEMENT_OF_WORK.signature.signedCta : STATEMENT_OF_WORK.signature.unsignedCta}
             </button>
           </>
+        ) : (
+          // Git #603 — a real drawn signature + typed legal name, the same
+          // pad the proposal screen already uses, replacing the plain
+          // checkbox for a live scope. `handleLiveSign` locks the scope AND
+          // creates the checkout session in the same request.
+          <JourneySignaturePanel tenantName={tenant.name} submitting={sowPayment.status === "creating"} onSign={handleLiveSign} />
         )}
       </div>
 

@@ -1675,13 +1675,25 @@ router.get(
 //
 // Replaces no existing route: the legacy `POST .../sow/checkout` above still
 // signs/pays a STORED `insights_generated_documents` SOW; this is the new,
-// document-free path `StatementOfWorkBody`'s live scope will move to once
-// Stripe payment (stage 3) lands. No frontend calls this endpoint yet.
+// document-free path `StatementOfWorkBody`'s live scope moves to.
+//
+// Signature + discount (Git #603, Epic #597 stage 5): this IS the "sign()"
+// moment — the scope locks the instant this request is made — so it carries
+// the same drawn-PNG + typed-name contract every signing endpoint on this
+// platform takes (JourneySignaturePanel), validated identically to the
+// docId flow's `POST .../sow/checkout` above. The pay-in-full discount
+// reuses that SAME live PAY_IN_FULL_COUPON_CODE coupon (never a second,
+// route-local number) — applied unconditionally rather than gated by the
+// docId flow's 72h window, because a checkout_sessions row expires in 24h
+// (see `expiresAt` below), always inside any 72h window a fresh session
+// could represent. There is no separate window state to compute here.
 const checkoutSessionSchema = z.object({
   selectedPhaseServiceIds: z.array(z.number().int().positive()).default([]),
   addonSelections: z
     .array(z.object({ addonId: z.string().min(1), tierId: z.string().min(1) }))
     .default([]),
+  signatureData: z.string().min(1),
+  signerName: z.string().min(1),
 });
 
 router.post(
@@ -1698,6 +1710,19 @@ router.post(
     const parsed = checkoutSessionSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "selectedPhaseServiceIds must be an array of service ids; addonSelections an array of { addonId, tierId }" });
+      return;
+    }
+
+    // Signature — same contract enforced by the docId flow's `POST .../sow/checkout`
+    // above: data:image/ prefix, non-trivial length, a real typed name.
+    const signatureData = parsed.data.signatureData;
+    const signerName = parsed.data.signerName.trim();
+    if (!signatureData.startsWith("data:image/") || signatureData.length < 100) {
+      res.status(400).json({ error: "A drawn signature is required" });
+      return;
+    }
+    if (!signerName) {
+      res.status(400).json({ error: "Your full legal name is required to sign" });
       return;
     }
 
@@ -1772,7 +1797,19 @@ router.post(
 
       const phaseTotalCents = includedPhases.reduce((sum, p) => sum + p.adjustedPriceCents, 0);
       const addonUpfrontCents = includedAddons.reduce((sum, a) => sum + a.upfrontCents, 0);
-      const totalCents = phaseTotalCents + addonUpfrontCents;
+      const originalTotalCents = phaseTotalCents + addonUpfrontCents;
+
+      // Pay-in-full discount — the SAME live PAY_IN_FULL_COUPON_CODE coupon the
+      // docId flow's payment-options/checkout routes read, applied
+      // unconditionally (windowState forced "discount"): see this route's own
+      // header comment for why a 24h-lived checkout session never needs the
+      // 72h window gate that flow computes off a stored document's createdAt.
+      // This cart has no "adjustments" line (journeyScopeFromOffers() never
+      // produces one), so computePayInFullOffer's variant always resolves
+      // "percentage_off" here, never "adjustments_waived".
+      const coupon = await loadPayInFullCoupon();
+      const payInFullOffer = computePayInFullOffer(originalTotalCents / 100, 0, "discount", coupon);
+      const totalCents = payInFullOffer.active ? payInFullOffer.discountedCents : originalTotalCents;
 
       const [profile] = await db
         .select({ email: usersTable.email, name: usersTable.name })
@@ -1787,6 +1824,7 @@ router.post(
       }
 
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const signatureIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null;
 
       const [row] = await db
         .insert(checkoutSessionsTable)
@@ -1808,8 +1846,13 @@ router.post(
           // on this table: a known, chargeable tenant.
           status: "consented",
           sowSelectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
+          sowSelectedPhaseTitles: includedPhases.map((p) => p.serviceName),
           sowAddonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
           sowCartTotalCents: totalCents,
+          sowCartOriginalTotalCents: originalTotalCents,
+          sowSignatureData: signatureData,
+          sowSignerName: signerName,
+          sowSignatureIp: signatureIp ?? undefined,
           expiresAt,
         })
         .returning({ id: checkoutSessionsTable.id });
@@ -1832,11 +1875,14 @@ router.post(
           selectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
           addonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
           totalCents,
+          originalTotalCents,
+          couponCode: payInFullOffer.active ? PAY_IN_FULL_COUPON_CODE : null,
+          signerName,
         },
       });
 
       billingLog.info(
-        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents },
+        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents, discountApplied: payInFullOffer.active },
         "sow/checkout-session: live SOW cart snapshotted",
       );
 
@@ -1844,6 +1890,10 @@ router.post(
         sessionId: row.id,
         expiresAt: expiresAt.toISOString(),
         totalCents,
+        originalTotalCents,
+        discount: payInFullOffer.active
+          ? { couponCode: PAY_IN_FULL_COUPON_CODE, savingsCents: payInFullOffer.savingsCents, discountPct: payInFullOffer.discountPct }
+          : null,
         phases: includedPhases.map((p) => ({
           serviceId: p.serviceId,
           serviceName: p.serviceName,
@@ -1893,8 +1943,14 @@ type SowOrder = {
   /** `tenants.id` — same id space `resolveCustomerId` returns, so it doubles as the `tenantRowId` `ensureFlowStripeCustomer` needs. */
   customerId: number;
   totalCents: number;
+  originalTotalCents: number;
   phaseCount: number;
   addonCount: number;
+  phaseTitles: string[];
+  /** JourneySignaturePanel's drawn-PNG + typed-name capture from #599 — required to record an agreement row on payment success. */
+  signatureData: string | null;
+  signerName: string | null;
+  signatureIp: string | null;
 };
 
 async function resolveSowOrder(
@@ -1911,8 +1967,13 @@ async function resolveSowOrder(
       company: checkoutSessionsTable.company,
       tenantId: checkoutSessionsTable.tenantId,
       sowCartTotalCents: checkoutSessionsTable.sowCartTotalCents,
+      sowCartOriginalTotalCents: checkoutSessionsTable.sowCartOriginalTotalCents,
       sowSelectedPhaseServiceIds: checkoutSessionsTable.sowSelectedPhaseServiceIds,
+      sowSelectedPhaseTitles: checkoutSessionsTable.sowSelectedPhaseTitles,
       sowAddonSelections: checkoutSessionsTable.sowAddonSelections,
+      sowSignatureData: checkoutSessionsTable.sowSignatureData,
+      sowSignerName: checkoutSessionsTable.sowSignerName,
+      sowSignatureIp: checkoutSessionsTable.sowSignatureIp,
       expiresAt: checkoutSessionsTable.expiresAt,
     })
     .from(checkoutSessionsTable)
@@ -1965,8 +2026,13 @@ async function resolveSowOrder(
     tenantId: session.tenantId,
     customerId,
     totalCents,
+    originalTotalCents: session.sowCartOriginalTotalCents ?? totalCents,
     phaseCount: session.sowSelectedPhaseServiceIds.length,
     addonCount: session.sowAddonSelections.length,
+    phaseTitles: session.sowSelectedPhaseTitles,
+    signatureData: session.sowSignatureData,
+    signerName: session.sowSignerName,
+    signatureIp: session.sowSignatureIp,
   };
 }
 
@@ -2114,14 +2180,20 @@ router.post(
 // "succeeded" AND carry this exact checkout session in its metadata before
 // the session is marked paid.
 //
-// Deliberately stops at marking the session paid + an audit log. No
-// confirmation email / CRM signal here (the marketing flow's
+// No confirmation email / CRM signal here (the marketing flow's
 // `purchaseConfirmationEmail`/`markAssessmentLeadPurchased` are shaped for a
 // single flat product and a pre-conversion marketing lead respectively —
-// neither fits a multi-item cart for an already-onboarded portal customer),
-// and no agreement recording — #603 ("Reconcile post-payment agreement
-// recording for live-scope checkout") is the epic's own explicitly deferred
-// next stage for that real decision. Not guessed at here.
+// neither fits a multi-item cart for an already-onboarded portal customer).
+//
+// Agreement recording (Git #603, Epic #597 stage 5): on the same "was not
+// already paid" transition that marks the session paid, this also writes an
+// `assessment_sow_agreements` row via the `checkoutSessionId` path (docId is
+// null — this scope was never a stored document; see that table's own header
+// comment). The signature (drawn PNG + typed name) was captured back at
+// #599's `checkout-session` creation — the real "sign()" moment, when the
+// scope locked — and is only READ here, never invented. `paymentPlan` is
+// always "full": this flow's phased self-serve billing is a separate,
+// not-yet-built stage.
 const sowPaymentConfirmedSchema = z.object({
   sessionId: z.string().uuid(),
   paymentIntentId: z.string().min(1),
@@ -2210,6 +2282,51 @@ router.post(
           { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, amountCents: intent.amount_received },
           "sow cart payment: checkout session marked paid",
         );
+
+        // Git #603 — record the signed, paid agreement. #599 requires
+        // signatureData/signerName to create the session at all, so their
+        // absence here means an older, pre-#603 session slipped through
+        // (the schema's own CHECK/NOT NULL would reject the insert regardless)
+        // — logged and skipped rather than crashing a confirm whose charge
+        // already succeeded.
+        if (!order.signatureData || !order.signerName) {
+          billingLog.error(
+            { checkoutSessionId: order.sessionId, paymentIntentId: intent.id },
+            "sow cart payment: paid, but no signature on the session — agreement NOT recorded",
+          );
+        } else {
+          const tenant = await resolveTenantForCustomer(order.customerId);
+          const discountApplied = order.totalCents < order.originalTotalCents;
+          try {
+            await db.insert(assessmentSowAgreementsTable).values({
+              checkoutSessionId: order.sessionId,
+              clientUserId: userId,
+              customerId: tenant.customerId ?? undefined,
+              mspId: tenant.mspId ?? undefined,
+              selectedWorkstreamTitles: order.phaseTitles,
+              scopeKey: normalizeSet(order.phaseTitles),
+              agreedTotalCents: order.originalTotalCents,
+              discountedTotalCents: discountApplied ? order.totalCents : undefined,
+              couponCode: discountApplied ? PAY_IN_FULL_COUPON_CODE : undefined,
+              windowStateAtSigning: discountApplied ? "discount" : "standard",
+              paymentPlan: "full",
+              signatureData: order.signatureData,
+              signerName: order.signerName,
+              signatureIp: order.signatureIp ?? undefined,
+              status: "paid",
+              stripePaymentIntentId: intent.id,
+              paidAt: new Date(),
+            });
+          } catch (agreementErr) {
+            // Same doctrine: the charge already succeeded — an agreement-row
+            // failure (e.g. a replay racing this same insert) must not turn
+            // into a customer-facing payment failure.
+            billingLog.error(
+              { err: agreementErr, checkoutSessionId: order.sessionId, paymentIntentId: intent.id },
+              "sow cart payment: paid, but agreement row insert failed",
+            );
+          }
+        }
       }
 
       res.json({

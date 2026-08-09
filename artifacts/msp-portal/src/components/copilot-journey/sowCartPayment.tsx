@@ -49,11 +49,16 @@ type FetchWithAuth = (
 export interface SowCheckoutSessionRequest {
   readonly selectedPhaseServiceIds: readonly number[];
   readonly addonSelections: readonly { readonly addonId: string; readonly tierId: string }[];
+  /** JourneySignaturePanel's drawn-PNG + typed-name capture — this request IS the "sign()" moment (Git #603). */
+  readonly signatureData: string;
+  readonly signerName: string;
 }
 
 export interface SowCheckoutSessionResult {
   readonly sessionId: string;
   readonly totalCents: number;
+  readonly originalTotalCents: number;
+  readonly discount: { readonly couponCode: string; readonly savingsCents: number; readonly discountPct: number | null } | null;
   readonly phaseCount: number;
   readonly addonCount: number;
 }
@@ -62,6 +67,8 @@ interface SowCheckoutSessionResponse {
   readonly sessionId: string;
   readonly expiresAt: string;
   readonly totalCents: number;
+  readonly originalTotalCents: number;
+  readonly discount: { readonly couponCode: string; readonly savingsCents: number; readonly discountPct: number | null } | null;
   readonly phases: readonly { readonly serviceId: number; readonly serviceName: string; readonly priceCents: number }[];
   readonly addons: readonly {
     readonly addonId: string;
@@ -86,6 +93,12 @@ function checkoutSessionErrorMessage(code: string): string {
     case "session_expired":
     case "session_not_ready":
       return "This session has expired. Please try signing again.";
+    // These two are already full, real sentences from the route (the same
+    // wording JourneySignaturePanel's own gating makes unreachable in normal
+    // use) — shown verbatim rather than flattened to the generic default.
+    case "A drawn signature is required":
+    case "Your full legal name is required to sign":
+      return code;
     default:
       return "We could not start your checkout. Please try again.";
   }
@@ -106,6 +119,8 @@ export async function createSowCheckoutSession(
   return {
     sessionId: data.sessionId,
     totalCents: data.totalCents,
+    originalTotalCents: data.originalTotalCents,
+    discount: data.discount,
     phaseCount: data.phases.length,
     addonCount: data.addons.length,
   };
@@ -522,6 +537,7 @@ export function SowCartPaymentPanel({
   fetchWithAuth,
   sessionId,
   totalCents,
+  discount,
   phaseCount,
   addonCount,
   onPaid,
@@ -529,6 +545,8 @@ export function SowCartPaymentPanel({
   readonly fetchWithAuth: FetchWithAuth;
   readonly sessionId: string;
   readonly totalCents: number;
+  /** The live PAY-TODAY coupon's discount, already folded into `totalCents` — shown so the saving isn't silent. */
+  readonly discount: { readonly savingsCents: number; readonly discountPct: number | null } | null;
   readonly phaseCount: number;
   readonly addonCount: number;
   readonly onPaid: (amountCents: number) => void;
@@ -639,6 +657,11 @@ export function SowCartPaymentPanel({
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <p style={{ margin: 0, fontSize: 12.5, fontWeight: 500, color: INK.bodyDark }}>
         {`${phaseCount} phase${phaseCount === 1 ? "" : "s"}${addonCount > 0 ? `, ${addonCount} add-on${addonCount === 1 ? "" : "s"}` : ""} · ${money(totalCents / 100)} due today`}
+        {discount ? (
+          <span style={{ color: BRAND.teal, fontWeight: 600 }}>
+            {` · ${money(discount.savingsCents / 100)} pay-in-full discount applied`}
+          </span>
+        ) : null}
       </p>
 
       {initError ? (

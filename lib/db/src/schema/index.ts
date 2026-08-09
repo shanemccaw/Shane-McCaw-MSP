@@ -2402,21 +2402,38 @@ export type InsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$
 // archives+replaces the active SOW row, so signature/payment state must not live
 // on a row that gets superseded. docId pins the exact signed version.
 //
+// docId / checkoutSessionId (Git #603, Epic #597 stage 5):
+// Exactly one of the two names what was signed. The ORIGINAL customer-sow.tsx
+// flow always has a stored `insights_generated_documents` row (docId). The
+// live-scope cart flow (#598-#602) reads the Sales Offer Engine directly —
+// `journeyScopeFromOffers()` always returns `docId: null`, there being no
+// stored document to point at — and instead names the `checkout_sessions` row
+// (#598) that snapshotted the signed scope + price. docId went nullable, and
+// checkoutSessionId was added, rather than forcing the live flow to fabricate
+// a document row, so this table can record either kind of signature honestly.
+//
 // paymentPlan:
-//   "full"   — pay-in-full; charged immediately via Assessment-scoped Stripe
-//              Checkout (real coupon discount inside the 72h window). status
-//              flows pending_payment → paid on the checkout.session webhook.
-//   "phased" — milestone billing. The platform's per-phase auto-invoicing
-//              (create_phased_invoices / edit_stripe_invoice) is bound to the CRM
-//              quick_win_presentations + projects entity space and cannot resolve
-//              an Assessment consolidated_sow, so phased is captured as a signed
-//              agreement handed to the provider (status awaiting_provider_setup),
-//              NOT a self-serve Stripe charge. See portal-assessment.ts Task-5
-//              section for the full blocker write-up.
+//   "full"   — pay-in-full; charged immediately (real coupon discount, either
+//              via Assessment-scoped Stripe Checkout for the docId flow, or
+//              inline via the checkout-session PaymentIntent for the
+//              checkoutSessionId flow). status flows pending_payment → paid.
+//   "phased" — milestone billing. On the docId flow, the platform's per-phase
+//              auto-invoicing (create_phased_invoices / edit_stripe_invoice) is
+//              bound to the CRM quick_win_presentations + projects entity space
+//              and cannot resolve an Assessment consolidated_sow, so phased is
+//              captured as a signed agreement handed to the provider (status
+//              awaiting_provider_setup), NOT a self-serve Stripe charge. See
+//              portal-assessment.ts Task-5 section for the full blocker
+//              write-up. The checkoutSessionId flow's own self-serve phased
+//              billing is a separate, not-yet-built stage (split out of #603).
 export const assessmentSowAgreementsTable = pgTable("assessment_sow_agreements", {
   id: serial("id").primaryKey(),
   // The exact signed consolidated_sow version (insights_generated_documents.id).
-  docId: integer("doc_id").notNull().references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
+  // Nullable — see the docId / checkoutSessionId note above.
+  docId: integer("doc_id").references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
+  // The exact signed checkout_sessions row (#598), for the live-scope cart
+  // flow. Nullable — see the docId / checkoutSessionId note above.
+  checkoutSessionId: uuid("checkout_session_id").references(() => checkoutSessionsTable.id, { onDelete: "cascade" }),
   // The Assessment customer (users.id — same id space as insights_generated_documents.customer_id).
   clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   // msp_customers.id + msp.id for tenant scoping / telemetry (nullable — resolved from JWT claims).
@@ -2441,7 +2458,11 @@ export const assessmentSowAgreementsTable = pgTable("assessment_sow_agreements",
   status: text("status", {
     enum: ["pending_payment", "paid", "awaiting_provider_setup", "free_activated"],
   }).notNull().default("pending_payment"),
+  // Hosted Stripe Checkout Session id — the docId flow's own charge (`cs_…`).
   stripeSessionId: text("stripe_session_id"),
+  // Embedded Stripe PaymentIntent id — the checkoutSessionId flow's own charge
+  // (`pi_…`), a different Stripe object than stripeSessionId above.
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2449,6 +2470,11 @@ export const assessmentSowAgreementsTable = pgTable("assessment_sow_agreements",
   index("asa_doc_idx").on(t.docId),
   index("asa_client_user_idx").on(t.clientUserId),
   uniqueIndex("asa_stripe_session_uidx").on(t.stripeSessionId).where(sql`stripe_session_id IS NOT NULL`),
+  uniqueIndex("asa_stripe_payment_intent_uidx").on(t.stripePaymentIntentId).where(sql`stripe_payment_intent_id IS NOT NULL`),
+  // One agreement per checkout session — guards the same "don't record it
+  // twice" doctrine the docId flow enforces in application code.
+  uniqueIndex("asa_checkout_session_uidx").on(t.checkoutSessionId).where(sql`checkout_session_id IS NOT NULL`),
+  check("asa_doc_or_session_check", sql`${t.docId} IS NOT NULL OR ${t.checkoutSessionId} IS NOT NULL`),
 ]);
 
 export type InsertAssessmentSowAgreement = typeof assessmentSowAgreementsTable.$inferInsert;
@@ -3225,7 +3251,28 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
     .$type<Array<{ addonId: string; tierId: string }>>()
     .notNull()
     .default([]),
+  // The amount actually charged — post pay-in-full coupon, applied
+  // unconditionally by the checkout-session route (see that route's own
+  // comment: a session expires in 24h, always inside the 72h pay-today
+  // window a stored-SOW signature would otherwise gate on, so there is no
+  // separate window state to compute here the way payment-options does).
   sowCartTotalCents: integer("sow_cart_total_cents"),
+
+  // ── Live-scope signature + agreement snapshot (Git #603, Epic #597 stage 5) ─
+  // Captured at `sign()` time (POST .../sow/checkout-session) — same drawn-PNG
+  // + typed-name wire contract every signing endpoint on this platform takes
+  // (JourneySignaturePanel). Nullable/additive: rows predating #603 and the
+  // marketing site's single-product path never set these.
+  sowSignatureData: text("sow_signature_data"),
+  sowSignerName: text("sow_signer_name"),
+  sowSignatureIp: text("sow_signature_ip"),
+  // The phases' own titles at snapshot time — `services.name` can change
+  // later, so the agreement's `selectedWorkstreamTitles` reads this rather
+  // than re-resolving titles from `sowSelectedPhaseServiceIds` after the fact.
+  sowSelectedPhaseTitles: jsonb("sow_selected_phase_titles").$type<string[]>().notNull().default([]),
+  // Pre-coupon total, kept only so the agreement record can show what the
+  // PAY-TODAY coupon waived. `sowCartTotalCents` above is what was charged.
+  sowCartOriginalTotalCents: integer("sow_cart_original_total_cents"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
