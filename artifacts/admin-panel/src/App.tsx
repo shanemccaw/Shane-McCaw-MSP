@@ -33,6 +33,9 @@ import MspReportsPage from "@/pages/MspReports";
 // ─── Labs (experimental spikes, full-bleed, no IDE shell) ─────────────────────
 import FactoryFloorLab from "@/pages/labs/FactoryFloorLab";
 
+// ─── adminv2 (Simulator Studio shell — brings its own chrome) ─────────────────
+import AdminV2 from "@/adminv2/AdminV2";
+
 // ─── Standalone pages (remain at legacy paths, tree leaves in the IDE shell) ─
 import DocumentsPage from "@/pages/crm/Documents";
 import StatusReportsPage from "@/pages/crm/StatusReports";
@@ -319,6 +322,17 @@ function Router() {
       <Route path="/inbox"><Redirect to="/system/inbox" /></Route>
       <Route path="/security"><Redirect to="/system/security" /></Route>
       <Route path="/crm/quiz-pain-config"><Redirect to="/system/signal-mappings" /></Route>
+
+      {/* ── adminv2 ──
+          Deliberately NOT wrapped in AdminRoute: GlobalIDEShell supplies the
+          left tree that this design removed on purpose (handoff.md section 1).
+          RequireAdmin still applies — the auth choke point is not optional. */}
+      <Route path="/adminv2">
+        <RequireAdmin><AdminV2 /></RequireAdmin>
+      </Route>
+      <Route path="/adminv2/*">
+        <RequireAdmin><AdminV2 /></RequireAdmin>
+      </Route>
 
       {/* ── Labs (experimental spikes, full-bleed) ── */}
       <Route path="/labs/factory-floor">

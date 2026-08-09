@@ -1,0 +1,81 @@
+/**
+ * adminv2 entry point.
+ *
+ * Mounted full-bleed at /adminv2 — it brings its own chrome and must not be
+ * wrapped in the existing panel's `GlobalIDEShell`, which supplies a left tree
+ * this design deliberately removed.
+ *
+ * No screens are registered yet. Registering one is a single `registerScreen`
+ * call plus an import here; see SHELL.md.
+ */
+
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { Redo2, RefreshCw, Save, Undo2 } from "lucide-react";
+import { ShellProvider, subRoute, useShell } from "./shell/ShellContext";
+import { Shell, NoScreen } from "./shell/Shell";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ channel: "admin.shell" });
+
+function ActiveScreen() {
+  const { activeScreen, state } = useShell();
+  if (!activeScreen) return <NoScreen />;
+
+  const activeDoc = state.docs.find((d) => d.id === state.activeDocId);
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      {activeScreen.render({ recordId: activeDoc?.recordId })}
+    </div>
+  );
+}
+
+function AdminV2Inner() {
+  const [location] = useLocation();
+  const { openPalette } = useShell();
+
+  return (
+    <Shell
+      productName="Simulator Studio"
+      mark="SM"
+      quickActions={[
+        { id: "save", label: "Save", icon: Save, onSelect: () => log.debug({ location }, "save") },
+        { id: "undo", label: "Undo", icon: Undo2, onSelect: () => log.debug("undo") },
+        { id: "redo", label: "Redo", icon: Redo2, onSelect: () => log.debug("redo") },
+        {
+          id: "refresh",
+          label: "Refresh",
+          icon: RefreshCw,
+          onSelect: () => log.debug("refresh"),
+        },
+      ]}
+      userInitials="SM"
+      onSelectTenant={(id) => log.info({ tenant: id }, "tenant scope changed")}
+    >
+      <ActiveScreen />
+    </Shell>
+  );
+}
+
+export default function AdminV2() {
+  // wouter's location already has the app's BASE_URL stripped; window.location
+  // does not, and subRoute only knows how to remove the /adminv2 segment.
+  const [location] = useLocation();
+
+  // In an effect, not in render: a render-time log fires on every re-render
+  // (twice per render under StrictMode) and would flood the console ring buffer
+  // that the shell's own log panel reads from.
+  useEffect(() => {
+    log.debug({ route: subRoute(location) }, "adminv2 mounted");
+    // Mount only — the route is captured for context, not watched.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <ShellProvider>
+      <AdminV2Inner />
+    </ShellProvider>
+  );
+}
+
+/** Re-exported so `openPalette` stays reachable from the entry module. */
+export { useShell };

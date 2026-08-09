@@ -1,0 +1,451 @@
+/**
+ * adminv2 registration contracts.
+ *
+ * Every screen is a `ScreenModule`. A screen never renders chrome: it declares
+ * what it contributes (ribbon groups, a contextual tab, peeks, palette entries,
+ * panel content) and the shell assembles all of it. That indirection is the
+ * whole point — handoff.md's second principle is "the same thing should always
+ * be in the same place", and position only stays stable if screens cannot
+ * choose their own placement.
+ *
+ * See SHELL.md for the narrative version of all of this.
+ */
+
+import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
+
+// ─── Ribbon ───────────────────────────────────────────────────────────────────
+
+/**
+ * The seven fixed tabs. Home · Inbox · Money · Watch · View | Git · Run.
+ *
+ * This list is closed. A new screen does not get a new fixed tab — it
+ * contributes groups to the tabs that already exist, and puts anything
+ * record-specific on its contextual tab. Adding an eighth entry here is a
+ * design decision, not an implementation detail.
+ */
+export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "view", "git", "run"] as const;
+export type FixedTabId = (typeof FIXED_TAB_IDS)[number];
+
+export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
+  home: "Home",
+  inbox: "Inbox",
+  money: "Money",
+  /** The "what needs me" tab: exceptions, alerts, dead letters, unrun migrations, overdue invoices. */
+  watch: "Watch",
+  view: "View",
+  git: "Git",
+  run: "Run",
+};
+
+/** Git and Run render inside the amber capsule that marks them as the developer set. */
+export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run"];
+
+/** The five ordinary tabs, in ribbon order. */
+export const MAIN_TAB_IDS: readonly FixedTabId[] = ["home", "inbox", "money", "watch", "view"];
+
+/**
+ * What a ribbon command does. This is the type-level form of the rule in
+ * handoff.md section 3, which was arrived at by audit rather than by taste:
+ *
+ *   A fixed tab may only *open* something, *create* something, or act
+ *   *across everything*. Anything requiring a specific record open belongs
+ *   in a contextual tab.
+ *
+ * Endpoints, Money, SQL, Documents, Services and Marketing all violated this
+ * and were stripped. `registerScreen` re-runs that audit at registration time,
+ * so the violation is a startup error rather than a slow drift back.
+ */
+export type CommandIntent =
+  /** Navigates to or reveals something. Legal on a fixed tab. */
+  | "open"
+  /** Makes a new thing. Legal on a fixed tab. */
+  | "create"
+  /** Acts across every record at once (publish all, run all, sync all). Legal on a fixed tab. */
+  | "global"
+  /** Needs a specific record open. **Contextual tabs only.** */
+  | "record";
+
+/** Intents a fixed tab is allowed to carry. */
+export const FIXED_TAB_INTENTS: readonly CommandIntent[] = ["open", "create", "global"];
+
+/**
+ * One row in a ribbon gallery.
+ *
+ * Rows carry real data, not labels — a package shows its check count and what
+ * the last run found; a script states destructive vs read-only. That is what
+ * makes a 24-item list pickable without opening each one. A row whose `detail`
+ * just restates its `name` is a row that should not exist.
+ */
+export interface GalleryRow {
+  id: string;
+  /**
+   * The preview tile: two or three monospace characters carrying the row's most
+   * useful number or code — a check count, a weight, a status letter. Not an
+   * icon; the design uses text here because a number is more use than a glyph.
+   */
+  tile?: string;
+  name: string;
+  /** Short pill beside the name: a state, a type, a count. */
+  head?: string;
+  /** The real fact, underneath. */
+  sub?: string;
+  /** Marks the row as the current selection — tints the tile and shows a tick. */
+  on?: boolean;
+  /** Band this row sorts under. Rows sharing a value render under one header. */
+  group?: string;
+  /**
+   * What clicking does. Almost always `openPeek` — handoff.md section 5: a
+   * gallery row opens a peek rather than navigating.
+   */
+  onSelect: () => void;
+}
+
+export interface GallerySpec {
+  id: string;
+  /** Panel title. */
+  title: string;
+  rows: GalleryRow[];
+  /** Adds the filter box and grows the panel from 428px to 520px. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  /** The one action at the bottom, e.g. "New package". */
+  footer?: { label: string; onSelect: () => void };
+}
+
+export interface RibbonCommand {
+  /** Shown under (large) or beside (small/row) the icon. Keep it short — it wraps at 68px. */
+  label: string;
+  icon: LucideIcon;
+  intent: CommandIntent;
+  /** Ignored when `gallery` is set — the button opens the gallery instead. */
+  onSelect: () => void;
+  /** Turns this button into a gallery dropdown. */
+  gallery?: GallerySpec;
+  /**
+   * Icon stroke colour. Defaults to the neutral text ramp. Use ACCENT.* to mean
+   * something — amber for needs-attention, danger for destructive. Never blue:
+   * blue is the primary action colour and nothing else.
+   */
+  color?: string;
+  disabled?: boolean;
+  /** Tooltip. Defaults to `label`. */
+  title?: string;
+  /**
+   * A live count rendered on the button. Only set this where the number means
+   * you must act (handoff.md section 8: no badge counts otherwise). The Watch
+   * tab's large button is the canonical user.
+   */
+  live?: string | number;
+  /** Marks the button as currently active/selected. */
+  active?: boolean;
+}
+
+/** A combo picker — a labelled dropdown that sits at the left of a group. */
+export interface RibbonCombo {
+  label: string;
+  value: string;
+  onSelect: () => void;
+  title?: string;
+}
+
+/**
+ * Group anatomy, per handoff.md section 3. A group may carry any combination of
+ * a combo picker, one large button, a stack of small commands, and a row.
+ *
+ * When a group has both a combo and a row, the combo sits left and the row
+ * stacks vertically beside it — that layout is handled by the shell, not here.
+ */
+export interface RibbonGroup {
+  /** The caption under the group. 17px of vertical budget; one short line. */
+  label: string;
+  combos?: RibbonCombo[];
+  large?: RibbonCommand[];
+  small?: RibbonCommand[];
+  row?: RibbonCommand[];
+}
+
+/** A screen's contribution of one group to one fixed tab. */
+export interface RibbonContribution {
+  tab: FixedTabId;
+  group: RibbonGroup;
+  /** Lower sorts left. Defaults to 100. Ties break on registration order. */
+  order?: number;
+}
+
+/**
+ * A contextual tab. Appears to the right of the fixed tabs, separated by a
+ * rule, whenever `isActive` says the screen's record is open.
+ *
+ * Do **not** hand-author a Back group here. `assembleContextualGroups` splices
+ * one in at position 2 for every contextual tab in the app, so the trail is in
+ * the same place on Endpoint Tools, Script Tools, Pipeline Tools and everything
+ * else. handoff.md calls this the single highest-value consistency decision in
+ * the design.
+ */
+export interface ContextualTabSpec {
+  id: string;
+  /** e.g. "Endpoint Tools". */
+  label: string;
+  /** Groups excluding Back — the shell injects that. */
+  groups: RibbonGroup[];
+}
+
+// ─── Peek ─────────────────────────────────────────────────────────────────────
+
+/** The record kinds the peek overlay knows how to open. */
+export const PEEK_KINDS = [
+  "endpoint",
+  "package",
+  "lead",
+  "script",
+  "document",
+  "tenant",
+  "workflow",
+  "prompt",
+  "service",
+  "customer",
+] as const;
+export type PeekKind = (typeof PEEK_KINDS)[number];
+
+/**
+ * One cell of the peek fact row.
+ *
+ * The row is **size-aware** and that is not cosmetic: short numeric values
+ * render large and hug their width, prose values drop smaller and wrap to two
+ * lines. Forcing one treatment clips. The shell decides which by measuring
+ * `value` (see `isNumericFact`); `prose: true` overrides when a short value is
+ * really prose.
+ */
+export interface PeekFact {
+  label: string;
+  value: string;
+  prose?: boolean;
+  /** Tints the value. Use for verdicts (fires / quiet / cannot read). */
+  color?: string;
+}
+
+/**
+ * An editable field. Writes go straight through to the record — no save step.
+ *
+ * Supplying `options` turns it into a cycle button that steps through them on
+ * click, which is how the design handles small enums without a dropdown.
+ */
+export interface PeekEdit {
+  key: string;
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  /** Renders a cycle button instead of an input. */
+  options?: string[];
+  /** Renders a 74px textarea instead of an input. */
+  area?: boolean;
+  /** Monospace the value — paths, keys, JSON. */
+  mono?: boolean;
+}
+
+/** A row in the peek's list section. Can drill to another peek. */
+export interface PeekListRow {
+  id: string;
+  /** Left badge: a short uppercase state, e.g. "FIRES", "QUIET", "NO READ". */
+  mark?: string;
+  /** Tints the badge. */
+  tone?: string;
+  name: string;
+  sub?: string;
+  /** Right-aligned monospace value. */
+  right?: string;
+  /** Opening another peek from here replaces the current one and extends the trail. */
+  onSelect?: () => void;
+}
+
+export interface PeekAction {
+  label: string;
+  onSelect: () => void;
+  /** `primary` is the filled blue button; `danger` is the destructive outline. */
+  tone?: "primary" | "danger";
+  /**
+   * Arms in place instead of firing: the first press relabels the button to
+   * `${label} — press again` and only the second press calls `onSelect`.
+   *
+   * This is how Delete works, and there is deliberately no confirm dialog
+   * behind it — the user explicitly does not want to be taken away from what
+   * they were doing for a one-off. Set it on anything irreversible.
+   */
+  confirm?: boolean;
+}
+
+/**
+ * What a peek renders. Every kind produces this same shape, which is what makes
+ * ten different record types feel like one control.
+ */
+export interface PeekModel {
+  kind: PeekKind;
+  /** Uppercase eyebrow naming the type, e.g. "ENDPOINT". Defaults to `kind`. */
+  eyebrow?: string;
+  title: string;
+  sub?: string;
+  icon: LucideIcon;
+  /**
+   * The record's colour. Drives the hero gradient, the icon tile and the
+   * eyebrow together, so one value tints the whole header. Defaults to the
+   * informational accent.
+   */
+  tone?: string;
+  /** Pill at the top right. */
+  tag?: string;
+  tagTone?: string;
+  /**
+   * A transient confirmation line under the hero ("Saved", "Queued for the next
+   * Zoho sync"). Green. Clear it when it stops being true.
+   */
+  note?: string;
+  facts?: PeekFact[];
+  /** "Edit it here" — real fields, written through. */
+  edits?: PeekEdit[];
+  /** Code, prompt text, or mapped JSON. Rendered monospace. */
+  body?: { title: string; content: string };
+  /** Checks, rules, sections, deliverables. */
+  list?: { title: string; rows: PeekListRow[] };
+  /** "Open it properly" — the quiet underlined escape hatch, bottom left. */
+  open?: () => void;
+  openLabel?: string;
+  /**
+   * Footer buttons, left to right after the spacer. Convention from the design:
+   * the primary sits before the destructive one, and Delete is last.
+   */
+  actions?: PeekAction[];
+}
+
+/** Resolves a record id of one kind into a peek. */
+export type PeekResolver = (id: string) => PeekModel | null;
+
+// ─── Command palette ──────────────────────────────────────────────────────────
+
+/**
+ * Palette row types, which map onto the four prefixes:
+ *   `@` destination · `>` action · `#` record · `?` answer
+ *
+ * The prefixes exist because the user cannot always remember what a thing is
+ * called; they let you browse a category without knowing any names.
+ */
+export type CommandType = "destination" | "action" | "record" | "answer";
+
+export const COMMAND_PREFIX: Record<string, CommandType> = {
+  "@": "destination",
+  ">": "action",
+  "#": "record",
+  "?": "answer",
+};
+
+/**
+ * Badge codes the palette draws in each row's left gutter. Keys of `KIND_BADGE`
+ * in theme.ts — `endpoint` renders `API`, `package` renders `PKG`, and so on.
+ *
+ * The badge is not decoration: it is what lets you scan 143 rows by shape
+ * before reading a single name.
+ */
+export type CommandKind =
+  | "run"
+  | "answer"
+  | "mail"
+  | "go"
+  | "tenant"
+  | "endpoint"
+  | "service"
+  | "document"
+  | "script"
+  | "package"
+  | "lead"
+  | "workflow"
+  | "prompt"
+  | "customer";
+
+export interface CommandItem {
+  id: string;
+  type: CommandType;
+  /** Drives the left badge. Defaults from `type` when omitted. */
+  kind?: CommandKind;
+  /** What the user types toward. Matched by cmdScore. */
+  name: string;
+  /** Second line under the name: the parent, the path, what it does. */
+  sub?: string;
+  /** Small uppercase pill beside the name. */
+  tag?: string;
+  /**
+   * Band this row sorts under. Defaults from `type` — "Go to", "Do",
+   * "Answers", or the record's kind.
+   */
+  group?: string;
+  /**
+   * Area this belongs to, matched against the area you are currently in for a
+   * +60 boost. Use the owning screen's `area`.
+   */
+  area?: string;
+  /**
+   * A live number, rendered large and monospace on the right. This is what
+   * makes `?` rows answers rather than links — the number is the point, and
+   * selecting the row is optional.
+   */
+  live?: string;
+  run: () => void;
+}
+
+/** A screen's palette contribution. Rebuilt on every open, so it can be live. */
+export type CommandSource = () => CommandItem[];
+
+// ─── Panels ───────────────────────────────────────────────────────────────────
+
+/**
+ * Content for one of the three docked panels. A screen supplies the body; the
+ * shell owns the header, the collapse rail, the splitter and the persisted size.
+ */
+export interface PanelSpec {
+  /** Overrides the default caption ("Explorer" / "Properties"). */
+  title?: string;
+  render: () => ReactNode;
+}
+
+export interface BottomPanelTab {
+  id: string;
+  label: string;
+  /** Only set where the number means you must act. */
+  count?: number;
+  render: () => ReactNode;
+}
+
+// ─── Screens ──────────────────────────────────────────────────────────────────
+
+export interface ScreenRenderContext {
+  /** The record id this screen was opened on, if any. */
+  recordId?: string;
+}
+
+export interface ScreenModule {
+  /** Stable id, kebab-case. Used in routes and as the trail key. */
+  id: string;
+  /** Human name. This is what the Back group's large button says. */
+  title: string;
+  /**
+   * Coarse grouping used for the palette's +60 same-area boost, e.g.
+   * "endpoints", "money", "content". Screens that belong together share one.
+   */
+  area: string;
+  icon: LucideIcon;
+  /** Path under /adminv2, e.g. "/endpoints". */
+  route: string;
+  render: (ctx: ScreenRenderContext) => ReactNode;
+
+  /** Groups this screen adds to the fixed tabs. Audited against the intent rule. */
+  ribbon?: RibbonContribution[];
+  /** The contextual tab, and when it is live. */
+  contextualTab?: ContextualTabSpec | ((ctx: ScreenRenderContext) => ContextualTabSpec | null);
+  /** Peek resolvers this screen owns, by kind. */
+  peeks?: Partial<Record<PeekKind, PeekResolver>>;
+  /** Palette entries. Called on every palette open. */
+  commands?: CommandSource;
+
+  left?: PanelSpec;
+  right?: PanelSpec;
+  bottom?: BottomPanelTab[];
+}
