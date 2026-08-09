@@ -20,6 +20,7 @@ import { resetLiveScanData, setLastProfiles, type ScanProfileRow } from "./liveS
 
 const fetchWithAuth = vi.fn();
 const openPeek = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth, accessToken: "test-token" }),
@@ -53,6 +54,11 @@ const sampleRow: ScanProfileRow = {
 beforeEach(() => {
   fetchWithAuth.mockReset().mockResolvedValue({ ok: true, json: async () => ({ profiles: [] }) });
   openPeek.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
   liveFrames = [];
   liveConnected = true;
   resetLiveScanData();
@@ -130,5 +136,29 @@ describe("LiveScanBody", () => {
     fetchWithAuth.mockResolvedValue({ ok: false, json: async () => ({ error: "nope" }) });
     render(<LiveScanBody />);
     expect(await screen.findByText("nope")).toBeTruthy();
+  });
+
+  it("right-clicking a recent-result row offers Open tenant / Copy tenant ID / Copy check key / Copy company", async () => {
+    fetchWithAuth.mockResolvedValue({ ok: true, json: async () => ({ profiles: [sampleRow] }) });
+    render(<LiveScanBody />);
+
+    const row = await screen.findByText("Acme Corp");
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu", { name: "Actions for Acme Corp" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy tenant ID" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("tenant-1");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy check key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("identity:mfa-registration");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy company" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Acme Corp");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open tenant" }));
+    expect(openPeek).toHaveBeenCalledWith("tenant", "tenant-1");
   });
 });

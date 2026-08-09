@@ -12,11 +12,13 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import type { ScreenModule } from "../../registry/types";
+import { ShellProvider } from "../../shell/ShellContext";
 import { InboxFolderPane } from "./InboxFolderPane";
-import { flagMessage, listMessages, sendNew } from "./inboxApi";
+import { InboxBody } from "./InboxBody";
+import { flagMessage, listMessages, sendNew, type InboxMessage } from "./inboxApi";
 import {
   cacheMailSummary,
   clearFilters,
@@ -32,6 +34,7 @@ import {
 } from "./inboxStore";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -56,6 +59,11 @@ beforeAll(async () => {
 beforeEach(() => {
   fetchWithAuth.mockReset();
   resetInboxStore();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -192,5 +200,145 @@ describe("InboxFolderPane", () => {
     render(<InboxFolderPane />);
     fireEvent.click(screen.getByText("New message"));
     expect(getSnapshot().compose).toEqual({ mode: "new" });
+  });
+
+  it("right-clicking a folder row offers Open / Copy folder name, reusing the same select handler as a click", () => {
+    render(<InboxFolderPane />);
+
+    const sentRow = screen.getByText("Sent").closest("button")!;
+    fireEvent.contextMenu(sentRow);
+    expect(screen.getByRole("menu", { name: "Actions for Sent" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().selectedFolder).toBe("sent");
+
+    fireEvent.contextMenu(sentRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy folder name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Sent");
+  });
+});
+
+// ─── InboxBody message row context menu ────────────────────────────────────────
+
+function sampleMessage(overrides: Partial<InboxMessage> = {}): InboxMessage {
+  return {
+    id: "m1",
+    subject: "Re: MFA rollout",
+    bodyPreview: "Finance is asking…",
+    receivedDateTime: "2026-08-08T09:38:00Z",
+    sentDateTime: null,
+    isRead: true,
+    isDraft: false,
+    importance: "normal",
+    flag: { flagStatus: "notFlagged" },
+    from: { emailAddress: { name: "Dana Whitfield", address: "dana@contoso.com" } },
+    toRecipients: [],
+    hasAttachments: false,
+    conversationId: null,
+    ...overrides,
+  };
+}
+
+function mockInboxFetches(messages: InboxMessage[]) {
+  fetchWithAuth.mockImplementation((path: string) => {
+    if (path.startsWith("/api/inbox/status")) return Promise.resolve(jsonResponse({ graphAvailable: true, mailUserId: "u1" }));
+    if (path.startsWith("/api/inbox/messages?")) return Promise.resolve(jsonResponse({ messages, nextLink: null }));
+    if (/\/api\/inbox\/messages\/[^/]+\/flag$/.test(path)) return Promise.resolve(jsonResponse({ ok: true }));
+    if (/\/api\/inbox\/messages\/[^/]+\/read$/.test(path)) return Promise.resolve(jsonResponse({ ok: true }));
+    if (/\/api\/inbox\/messages\/[^/]+\/move$/.test(path)) return Promise.resolve(jsonResponse({ ok: true }));
+    return Promise.resolve(jsonResponse({}, false));
+  });
+}
+
+async function renderRowWithMenu(msg: InboxMessage) {
+  mockInboxFetches([msg]);
+  render(
+    <ShellProvider>
+      <InboxBody />
+    </ShellProvider>,
+  );
+  const row = (await screen.findByText(msg.subject!)).closest("button")!;
+  return row;
+}
+
+describe("InboxBody message row context menu", () => {
+  it("right-clicking a message offers Open/Reply/Reply all/Forward, reusing the exact compose flow the reading pane and Message Tools tab use", async () => {
+    const msg = sampleMessage();
+    const row = await renderRowWithMenu(msg);
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu", { name: "Actions for Re: MFA rollout" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Reply" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Reply all" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Forward" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reply" }));
+    // Same helper `openCompose({ mode: "reply", sourceMessageId })` the ribbon's
+    // Message Tools tab and the reading pane's own Reply button call.
+    expect(getSnapshot().compose).toEqual({ mode: "reply", sourceMessageId: "m1" });
+  });
+
+  it("Flag toggles through the real flagMessage endpoint, matching the ribbon's Toggle flag command", async () => {
+    const msg = sampleMessage({ flag: { flagStatus: "notFlagged" } });
+    const row = await renderRowWithMenu(msg);
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Flag" }));
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/inbox/messages/m1/flag",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ flagStatus: "flagged" }) }),
+      ),
+    );
+  });
+
+  it("Mark as unread calls the real markRead endpoint with isRead:false", async () => {
+    const msg = sampleMessage({ isRead: true });
+    const row = await renderRowWithMenu(msg);
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Mark as unread" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as unread" }));
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/inbox/messages/m1/read",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: false }) }),
+      ),
+    );
+  });
+
+  it("Archive calls the real moveMessage(archive) endpoint, the same helper the ribbon and reading pane use", async () => {
+    const msg = sampleMessage();
+    const row = await renderRowWithMenu(msg);
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/inbox/messages/m1/move",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ folder: "archive" }) }),
+      ),
+    );
+  });
+
+  it("Delete calls the real moveMessage(deleted) endpoint directly — this screen has no confirm gate on delete to bypass", async () => {
+    const msg = sampleMessage();
+    const row = await renderRowWithMenu(msg);
+
+    fireEvent.contextMenu(row);
+    const deleteItem = screen.getByRole("menuitem", { name: "Delete" });
+    expect(deleteItem).toBeTruthy();
+    fireEvent.click(deleteItem);
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/inbox/messages/m1/move",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ folder: "deleted" }) }),
+      ),
+    );
   });
 });

@@ -9,6 +9,7 @@ import { useSyncExternalStore } from "react";
 import { Archive, Briefcase, Inbox as InboxIcon, Pencil, Send, Trash2, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ACCENT, LINE, TEXT, WASH } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   clearFilters,
   getSnapshot,
@@ -68,31 +69,46 @@ function FolderRow({
   active: boolean;
   onSelect: () => void;
 }) {
+  const { menu, open, close } = useContextMenu();
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        padding: "6px 10px",
-        margin: "0 6px",
-        width: "calc(100% - 12px)",
-        borderRadius: 5,
-        border: "none",
-        background: active ? WASH.selected : "transparent",
-        color: active ? TEXT.bright : TEXT.soft,
-        fontSize: 12.5,
-        fontWeight: active ? 600 : 500,
-        fontFamily: "inherit",
-        cursor: "pointer",
-        textAlign: "left",
-      }}
-    >
-      <Icon size={14} color={active ? ACCENT.info : TEXT.dim} style={{ flexShrink: 0 }} />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onSelect}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect },
+              { label: "Copy folder name", onSelect: () => navigator.clipboard?.writeText(label) },
+            ],
+            `Actions for ${label}`,
+          )
+        }
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          padding: "6px 10px",
+          margin: "0 6px",
+          width: "calc(100% - 12px)",
+          borderRadius: 5,
+          border: "none",
+          background: active ? WASH.selected : "transparent",
+          color: active ? TEXT.bright : TEXT.soft,
+          fontSize: 12.5,
+          fontWeight: active ? 600 : 500,
+          fontFamily: "inherit",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <Icon size={14} color={active ? ACCENT.info : TEXT.dim} style={{ flexShrink: 0 }} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

@@ -9,7 +9,7 @@
  * screen opened "properly" rather than a quick peek.
  */
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY_OVERLAY, SURFACE, TEXT } from "../../theme";
 
 // ── Section ────────────────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ export function AdListRow({
   dot,
   labelAccent,
   onClick,
+  onContextMenu,
   actions,
 }: {
   label: string;
@@ -135,11 +136,13 @@ export function AdListRow({
   dot?: string;
   labelAccent?: string;
   onClick?: () => void;
+  onContextMenu?: (event: ReactMouseEvent) => void;
   actions?: ReactNode;
 }) {
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={onClick ? "av2-row" : undefined}
       style={{
         display: "flex",

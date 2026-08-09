@@ -11,12 +11,15 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { useShell } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import { ACCENT, ACCENT_TEXT, LINE, PRIMARY, PRIMARY_OVERLAY, SURFACE, TEXT } from "../../theme";
 import {
   closeNewLeadForm,
+  convertLead,
   createLead,
   getSnapshot,
   openNewLeadForm,
+  refreshLead,
   selectDeal,
   setView,
   subscribe,
@@ -33,6 +36,13 @@ import {
   type ZohoRecord,
 } from "./zohoTypes";
 import { LeadRecordBody } from "./LeadRecordBody";
+
+function copyToClipboard(text: string): void {
+  if (!text || typeof navigator === "undefined" || !navigator.clipboard) return;
+  void navigator.clipboard.writeText(text).catch(() => {
+    /* clipboard access denied — not worth surfacing an error for */
+  });
+}
 
 export function CrmBody({ recordId }: { recordId?: string }) {
   const state = useSyncExternalStore(subscribe, getSnapshot);
@@ -130,32 +140,50 @@ function PipelineView({ state }: { state: CrmStoreState }) {
 }
 
 function DealCard({ deal, selected }: { deal: ZohoRecord; selected: boolean }) {
+  const { menu, open, close } = useContextMenu();
+  const id = String(deal.id ?? "");
+  const name = dealName(deal);
+
   return (
-    <button
-      onClick={() => selectDeal(String(deal.id))}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: 11,
-        borderRadius: 7,
-        border: `1px solid ${selected ? PRIMARY : LINE.base}`,
-        background: selected ? "rgba(15,108,189,.1)" : SURFACE.card,
-        cursor: "pointer",
-        textAlign: "left",
-      }}
-    >
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: TEXT.primary }}>{dealName(deal)}</span>
-      <span style={{ fontSize: 11.5, color: TEXT.meta }}>
-        {typeof deal.Account_Name === "object" && deal.Account_Name
-          ? String((deal.Account_Name as { name?: unknown }).name ?? "No account")
-          : String(deal.Account_Name ?? "No account")}
-      </span>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: ACCENT_TEXT.green }}>{formatUsd(deal.Amount)}</span>
-        <span style={{ fontSize: 10.5, color: TEXT.faint }}>{formatShortDate(deal.Closing_Date)}</span>
-      </div>
-    </button>
+    <>
+      <button
+        onClick={() => selectDeal(id)}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open in Properties panel", onSelect: () => selectDeal(id) },
+              { label: "Copy deal name", onSelect: () => copyToClipboard(name) },
+              { label: "Copy amount", onSelect: () => copyToClipboard(formatUsd(deal.Amount)) },
+            ],
+            `Actions for ${name}`,
+          )
+        }
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          padding: 11,
+          borderRadius: 7,
+          border: `1px solid ${selected ? PRIMARY : LINE.base}`,
+          background: selected ? "rgba(15,108,189,.1)" : SURFACE.card,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: TEXT.primary }}>{name}</span>
+        <span style={{ fontSize: 11.5, color: TEXT.meta }}>
+          {typeof deal.Account_Name === "object" && deal.Account_Name
+            ? String((deal.Account_Name as { name?: unknown }).name ?? "No account")
+            : String(deal.Account_Name ?? "No account")}
+        </span>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: ACCENT_TEXT.green }}>{formatUsd(deal.Amount)}</span>
+          <span style={{ fontSize: 10.5, color: TEXT.faint }}>{formatShortDate(deal.Closing_Date)}</span>
+        </div>
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 
@@ -205,37 +233,61 @@ function LeadsView({ state }: { state: CrmStoreState }) {
 }
 
 function LeadRow({ lead, onOpen }: { lead: ZohoRecord; onOpen: () => void }) {
+  const { menu, open, close } = useContextMenu();
+  const id = String(lead.id ?? "");
+  const company = leadCompany(lead);
+  const email = String(lead.Email ?? "");
+
   return (
-    <button
-      className="av2-row"
-      onClick={onOpen}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        width: "100%",
-        padding: "10px 12px",
-        border: 0,
-        borderBottom: `1px solid ${LINE.subtle}`,
-        background: "transparent",
-        cursor: "pointer",
-        textAlign: "left",
-      }}
-    >
-      <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {leadCompany(lead)}
+    <>
+      <button
+        className="av2-row"
+        onClick={onOpen}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open lead", onSelect: onOpen },
+              {
+                label: "Convert to deal",
+                onSelect: () => void convertLead(id),
+                disabled: !id,
+              },
+              { label: "Refresh from Zoho", onSelect: () => void refreshLead(id), disabled: !id },
+              { label: "Copy email", onSelect: () => copyToClipboard(email), disabled: !email },
+            ],
+            `Actions for ${company}`,
+          )
+        }
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          width: "100%",
+          padding: "10px 12px",
+          border: 0,
+          borderBottom: `1px solid ${LINE.subtle}`,
+          background: "transparent",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {company}
+          </span>
+          <span style={{ fontSize: 11.5, color: TEXT.meta, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {leadDisplayName(lead)} · {email || "no email"}
+          </span>
+        </div>
+        <span style={{ flex: "0 0 130px", fontSize: 11.5, color: TEXT.meta }}>{String(lead.Lead_Status ?? "—")}</span>
+        <span style={{ flex: "0 0 150px", fontSize: 11.5, color: TEXT.faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {String(lead.Lead_Source ?? "—")}
         </span>
-        <span style={{ fontSize: 11.5, color: TEXT.meta, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {leadDisplayName(lead)} · {String(lead.Email ?? "no email")}
-        </span>
-      </div>
-      <span style={{ flex: "0 0 130px", fontSize: 11.5, color: TEXT.meta }}>{String(lead.Lead_Status ?? "—")}</span>
-      <span style={{ flex: "0 0 150px", fontSize: 11.5, color: TEXT.faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {String(lead.Lead_Source ?? "—")}
-      </span>
-      <span style={{ flex: "0 0 110px", fontSize: 11, color: TEXT.faint }}>{zohoOwnerName(lead)}</span>
-    </button>
+        <span style={{ flex: "0 0 110px", fontSize: 11, color: TEXT.faint }}>{zohoOwnerName(lead)}</span>
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

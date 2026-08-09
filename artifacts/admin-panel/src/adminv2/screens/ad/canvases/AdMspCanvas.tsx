@@ -12,6 +12,7 @@ import { Briefcase } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import { fetchAdMsp, reactivateAdMsp, suspendAdMsp } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
@@ -52,6 +53,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,6 +206,16 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                   detail={c.domain ?? undefined}
                   meta={c.status}
                   onClick={() => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "ad", label: c.name })}
+                  onContextMenu={(e) =>
+                    openMenu(
+                      e,
+                      [
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "ad", label: c.name }) },
+                        { label: "Copy name", onSelect: () => void navigator.clipboard.writeText(c.name).catch(() => {}) },
+                      ],
+                      `Actions for ${c.name}`,
+                    )
+                  }
                 />
               ))
             )}
@@ -224,6 +236,16 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                   metaAccent={u.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={u.isActive ? "#6ccb96" : "#e57a7a"}
                   onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email })}
+                  onContextMenu={(e) =>
+                    openMenu(
+                      e,
+                      [
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email }) },
+                        { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(u.email).catch(() => {}) },
+                      ],
+                      `Actions for ${u.name || u.email}`,
+                    )
+                  }
                 />
               ))
             )}
@@ -242,6 +264,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
           </AdListRowGroup>
         </AdSection>
       </AdCanvasBody>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </AdCanvasColumn>
   );
 }

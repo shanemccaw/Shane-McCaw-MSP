@@ -9,6 +9,7 @@ import { ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import { fetchAdGroup } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import type { AdGroupDetail, DirectoryGroupRole } from "../adTypes";
@@ -28,6 +29,7 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const debounceRef = useRef<number | null>(null);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(
     async (query: string) => {
@@ -110,12 +112,23 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
                   metaAccent={m.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={m.isActive ? "#6ccb96" : "#e57a7a"}
                   onClick={() => shell.openDoc({ kind: "user", id: String(m.id), screenId: "ad", label: m.name || m.email })}
+                  onContextMenu={(e) =>
+                    openMenu(
+                      e,
+                      [
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(m.id), screenId: "ad", label: m.name || m.email }) },
+                        { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(m.email).catch(() => {}) },
+                      ],
+                      `Actions for ${m.name || m.email}`,
+                    )
+                  }
                 />
               ))
             )}
           </AdListRowGroup>
         </AdSection>
       </AdCanvasBody>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </AdCanvasColumn>
   );
 }

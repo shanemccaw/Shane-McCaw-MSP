@@ -14,6 +14,7 @@ import { Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
   createAdConsentInviteLink,
   fetchAdCustomer,
@@ -72,6 +73,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -302,6 +304,16 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                   metaAccent={u.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={u.isActive ? "#6ccb96" : "#e57a7a"}
                   onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email })}
+                  onContextMenu={(e) =>
+                    openMenu(
+                      e,
+                      [
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email }) },
+                        { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(u.email).catch(() => {}) },
+                      ],
+                      `Actions for ${u.name || u.email}`,
+                    )
+                  }
                 />
               ))
             )}
@@ -347,6 +359,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
           )}
         </AdSection>
       </AdCanvasBody>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </AdCanvasColumn>
   );
 }

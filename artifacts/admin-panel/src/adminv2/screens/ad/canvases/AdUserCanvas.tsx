@@ -14,6 +14,7 @@ import { UserCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
   fetchAdUser,
   fetchAdUserEntitlements,
@@ -70,6 +71,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,6 +317,19 @@ export function AdUserCanvas({ userId }: { userId: number }) {
                       <AdButton label="Clear" onClick={() => void toggleEntitlement(o.capabilityKey, null)} />
                     </>
                   }
+                  onContextMenu={(e) =>
+                    openMenu(
+                      e,
+                      [
+                        {
+                          label: o.enabled ? "Withhold" : "Grant",
+                          onSelect: () => void toggleEntitlement(o.capabilityKey, !o.enabled),
+                        },
+                        { label: "Clear override", onSelect: () => void toggleEntitlement(o.capabilityKey, null) },
+                      ],
+                      `Actions for ${o.capabilityKey}`,
+                    )
+                  }
                 />
               ))
             )}
@@ -386,6 +401,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
           )}
         </AdSection>
       </AdCanvasBody>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </AdCanvasColumn>
   );
 }

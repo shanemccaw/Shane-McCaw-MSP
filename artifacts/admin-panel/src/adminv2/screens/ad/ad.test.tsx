@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { auditFixedTabIntents, getScreen, resetRegistry } from "../../registry/registry";
 import { AdCanvas } from "./AdCanvas";
 import { AdExplorerTree } from "./AdExplorerTree";
@@ -19,6 +19,7 @@ import type { AdTree } from "./adTypes";
 
 const fetchWithAuth = vi.fn();
 const openDoc = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -56,6 +57,11 @@ const sampleTree: AdTree = {
 beforeEach(() => {
   fetchWithAuth.mockReset().mockResolvedValue({ ok: true, json: async () => sampleTree });
   openDoc.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
   resetAdNameCacheForTest();
 });
 
@@ -129,6 +135,80 @@ describe("AdExplorerTree", () => {
 
     expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "ad", label: "Northline IT" });
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/active-directory/tree");
+  });
+
+  it("right-clicking an MSP row offers Open / Copy name / Copy slug, replacing the browser menu", async () => {
+    render(<AdExplorerTree />);
+    const row = await screen.findByText("Northline IT");
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu", { name: "Actions for Northline IT" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy name" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy slug" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("northline-it");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "ad", label: "Northline IT" });
+  });
+
+  it("right-clicking a nested customer/user row offers Open + copy, reached by expanding the MSP branch", async () => {
+    render(<AdExplorerTree />);
+    const mspRow = await screen.findByText("Northline IT");
+    // The chevron toggle is the row's first child span, separate from the
+    // name span (which opens the record instead) — same row, two onClicks.
+    const chevron = mspRow.closest("div")!.parentElement!.querySelector("span")!;
+    fireEvent.click(chevron);
+
+    const customerRow = await screen.findByText("Contoso Ltd");
+    fireEvent.contextMenu(customerRow);
+    expect(screen.getByRole("menu", { name: "Actions for Contoso Ltd" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Contoso Ltd");
+
+    // Expand the customer branch to reach its nested user row.
+    const customerChevron = customerRow.closest("div")!.parentElement!.querySelector("span")!;
+    fireEvent.click(customerChevron);
+
+    const userRow = await screen.findByText("Jordan Doe");
+    fireEvent.contextMenu(userRow);
+    expect(screen.getByRole("menu", { name: "Actions for Jordan Doe" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy email" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("jordan@contoso.com");
+  });
+
+  it("right-clicking a Group row offers Open / Copy role name", async () => {
+    render(<AdExplorerTree />);
+    fireEvent.click(await screen.findByText("Groups"));
+
+    const groupRow = await screen.findByText("PlatformAdmin");
+    fireEvent.contextMenu(groupRow);
+    expect(screen.getByRole("menu", { name: "Actions for PlatformAdmin" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy role name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("PlatformAdmin");
+  });
+
+  it("right-clicking an OU row offers Open / Rename / Delete, reusing the same handlers as the row's own icon buttons", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fetchWithAuth.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/ou/5")) return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+      return Promise.resolve({ ok: true, json: async () => sampleTree });
+    });
+    render(<AdExplorerTree />);
+    fireEvent.click(await screen.findByText("OU=Placeholders"));
+
+    const ouRow = await screen.findByText("OU=Managed Service Providers");
+    fireEvent.contextMenu(ouRow);
+    expect(screen.getByRole("menu", { name: "Actions for OU=Managed Service Providers" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/active-directory/ou/5", { method: "DELETE" }),
+    );
   });
 });
 

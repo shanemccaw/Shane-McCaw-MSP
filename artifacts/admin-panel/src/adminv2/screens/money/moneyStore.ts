@@ -340,6 +340,16 @@ export function copyFigures(): void {
   setState({ lastMessage: "Copied." });
 }
 
+/**
+ * Row-level copy for the sales/retainers/clients/ramp right-click menus —
+ * same clipboard mechanism as `copyFigures`, just scoped to one row's real
+ * text instead of the whole loaded payload.
+ */
+export function copyMoneyRow(text: string): void {
+  copyToClipboard(text);
+  setState({ lastMessage: "Copied." });
+}
+
 /** Test seam. Not used by the app. */
 export function resetMoneyStore(): void {
   adminFetchRef = null;

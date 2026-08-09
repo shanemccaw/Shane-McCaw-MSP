@@ -14,7 +14,9 @@
 
 import { useSyncExternalStore, useState } from "react";
 import { ACCENT, LINE, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
+  copyMoneyRow,
   getSnapshot,
   loadBusiness,
   loadRamp,
@@ -160,12 +162,15 @@ function SectionLabel({ children, color }: { children: React.ReactNode; color?: 
 // ── This month ───────────────────────────────────────────────────────────────
 
 function MonthView({ state }: { state: MoneyStoreState }) {
+  const { menu, open, close } = useContextMenu();
+
   if (!state.summary) return <EmptyOrError loading={state.summaryLoading} error={state.summaryError} onRetry={loadSummary} />;
   const s = state.summary;
   const profitPositive = s.profit.cents >= 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <ContextMenu menu={menu} onClose={close} />
       {/* Hero */}
       <div
         style={{
@@ -240,6 +245,22 @@ function MonthView({ state }: { state: MoneyStoreState }) {
         {s.sales.items.map((sale) => (
           <div
             key={sale.id}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [
+                  { label: "Copy amount", onSelect: () => copyMoneyRow(usd(sale.amountCents)) },
+                  {
+                    label: "Copy sale details",
+                    onSelect: () =>
+                      copyMoneyRow(
+                        `${sale.who} — ${sale.what} — ${usd(sale.amountCents)}${sale.when ? ` — ${new Date(sale.when).toLocaleDateString()}` : ""}`,
+                      ),
+                  },
+                ],
+                `Sale from ${sale.who}`,
+              )
+            }
             style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "12px 15px", borderRadius: 8, border: `1px solid ${LINE.base}`, background: SURFACE.card }}
           >
             <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.025em", color: ACCENT.green }}>{usd(sale.amountCents)}</span>
@@ -258,7 +279,13 @@ function MonthView({ state }: { state: MoneyStoreState }) {
           <SectionLabel color={ACCENT.red}>Money out</SectionLabel>
           {s.cost.byFeature.length === 0 && <span style={{ fontSize: 12.5, color: TEXT.meta }}>No AI usage cost this month.</span>}
           {s.cost.byFeature.map((c) => (
-            <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
+            <div
+              key={c.label}
+              onContextMenu={(e) =>
+                open(e, [{ label: "Copy amount", onSelect: () => copyMoneyRow(`${c.label}: ${usd(c.cents)}`) }], `Cost line for ${c.label}`)
+              }
+              style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}
+            >
               <span style={{ flex: "1 1 130px", minWidth: 0, fontSize: 12.5, color: TEXT.body }}>{c.label}</span>
               <span style={{ fontSize: 14, fontWeight: 700, color: ACCENT.red }}>{usd(c.cents)}</span>
             </div>
@@ -268,7 +295,17 @@ function MonthView({ state }: { state: MoneyStoreState }) {
           <SectionLabel>Retainers</SectionLabel>
           {s.retainers.length === 0 && <span style={{ fontSize: 12.5, color: TEXT.meta }}>No active retainers.</span>}
           {s.retainers.map((r) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
+            <div
+              key={r.id}
+              onContextMenu={(e) =>
+                open(
+                  e,
+                  [{ label: "Copy retainer details", onSelect: () => copyMoneyRow(`${r.who} — ${r.what} — ${usd(r.monthlyCents)}/mo`) }],
+                  `Retainer for ${r.who}`,
+                )
+              }
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}
+            >
               <span style={{ flex: "1 1 130px", minWidth: 0, fontSize: 12.5, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.who}</span>
               <span style={{ flex: "0 1 auto", minWidth: 0, fontSize: 11.5, color: TEXT.meta, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.what}</span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: ACCENT.greenSoft }}>{usd(r.monthlyCents)}/mo</span>
@@ -300,6 +337,8 @@ function MonthView({ state }: { state: MoneyStoreState }) {
 // ── The business ─────────────────────────────────────────────────────────────
 
 function BusinessView({ state }: { state: MoneyStoreState }) {
+  const { menu, open, close } = useContextMenu();
+
   if (!state.business) {
     if (!state.businessLoading && !state.businessError) void loadBusiness();
     return <EmptyOrError loading={state.businessLoading} error={state.businessError} onRetry={loadBusiness} />;
@@ -308,6 +347,7 @@ function BusinessView({ state }: { state: MoneyStoreState }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <ContextMenu menu={menu} onClose={close} />
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
         <Card>
           <CardLabel>Recurring share of revenue</CardLabel>
@@ -335,7 +375,17 @@ function BusinessView({ state }: { state: MoneyStoreState }) {
         <SectionLabel>Who pays you</SectionLabel>
         {b.clients.length === 0 && <span style={{ fontSize: 12.5, color: TEXT.meta }}>No active retainers.</span>}
         {b.clients.map((c) => (
-          <div key={c.who} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
+          <div
+            key={c.who}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [{ label: "Copy client details", onSelect: () => copyMoneyRow(`${c.who} — ${usd(c.mrrCents)}/mo — ${c.sharePct}% of revenue`) }],
+                `Client ${c.who}`,
+              )
+            }
+            style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card }}
+          >
             <span style={{ fontSize: 15, fontWeight: 700, color: ACCENT.greenSoft }}>{usd(c.mrrCents)}</span>
             <span style={{ flex: "1 1 180px", minWidth: 0, fontSize: 12.5, color: TEXT.strong }}>{c.who}</span>
             <div style={{ flex: "1 1 90px", minWidth: 50, height: 7, borderRadius: 4, background: SURFACE.well, overflow: "hidden" }}>
@@ -370,6 +420,8 @@ function BenchmarkRow({ bm }: { bm: MoneyBenchmark }) {
 // ── The ramp ──────────────────────────────────────────────────────────────────
 
 function RampView({ state }: { state: MoneyStoreState }) {
+  const { menu, open, close } = useContextMenu();
+
   if (!state.ramp) {
     if (!state.rampLoading && !state.rampError) void loadRamp();
     return <EmptyOrError loading={state.rampLoading} error={state.rampError} onRetry={loadRamp} />;
@@ -379,6 +431,7 @@ function RampView({ state }: { state: MoneyStoreState }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <ContextMenu menu={menu} onClose={close} />
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
         <Card>
           <CardLabel>Average real sale</CardLabel>
@@ -398,7 +451,7 @@ function RampView({ state }: { state: MoneyStoreState }) {
           <span style={{ fontSize: 11.5, color: TEXT.faint }}>This month's target adjusts here and saves immediately.</span>
         </div>
         {r.rows.map((row) => (
-          <RampRow key={row.month} row={row} saving={state.rampSaving} />
+          <RampRow key={row.month} row={row} saving={state.rampSaving} onContextMenu={open} />
         ))}
       </div>
 
@@ -418,7 +471,15 @@ function RampView({ state }: { state: MoneyStoreState }) {
   );
 }
 
-function RampRow({ row, saving }: { row: { month: string; label: string; target: number; actual: number | null; worthCents: number }; saving: boolean }) {
+function RampRow({
+  row,
+  saving,
+  onContextMenu,
+}: {
+  row: { month: string; label: string; target: number; actual: number | null; worthCents: number };
+  saving: boolean;
+  onContextMenu: ReturnType<typeof useContextMenu>["open"];
+}) {
   const [pending, setPending] = useState<number | null>(null);
   const target = pending ?? row.target;
 
@@ -429,7 +490,24 @@ function RampRow({ row, saving }: { row: { month: string; label: string; target:
   }
 
   return (
-    <div style={{ padding: "12px 14px", borderRadius: 8, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
+    <div
+      onContextMenu={(e) =>
+        onContextMenu(
+          e,
+          [
+            {
+              label: "Copy this row",
+              onSelect: () =>
+                copyMoneyRow(
+                  `${row.label}: target ${target}, projected ${usd(row.worthCents)}${row.actual !== null ? `, ${row.actual} so far` : ""}`,
+                ),
+            },
+          ],
+          `${row.label} ramp row`,
+        )
+      }
+      style={{ padding: "12px 14px", borderRadius: 8, border: `1px solid ${LINE.base}`, background: SURFACE.card }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span style={{ flex: "1 1 130px", minWidth: 0, fontSize: 13, fontWeight: 600, color: TEXT.primary }}>{row.label}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

@@ -18,6 +18,7 @@ import { Archive, Flag, Forward, Paperclip, Reply, Search, Send, Sparkles, Trash
 import { useAdminFetch } from "@/lib/useAdminFetch";
 import { useShell } from "../../shell/ShellContext";
 import { ACCENT, ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   getMessage,
   getStatus,
@@ -77,13 +78,67 @@ function summaryOf(m: InboxMessage): MailSummary {
 
 // ─── Message list ───────────────────────────────────────────────────────────────
 
-function MessageRow({ msg, active, onSelect }: { msg: InboxMessage; active: boolean; onSelect: () => void }) {
+function MessageRow({
+  msg,
+  active,
+  onSelect,
+  onReply,
+  onReplyAll,
+  onForward,
+}: {
+  msg: InboxMessage;
+  active: boolean;
+  onSelect: () => void;
+  onReply: () => void;
+  onReplyAll: () => void;
+  onForward: () => void;
+}) {
+  const shell = useShell();
+  const { menu, open, close } = useContextMenu();
   const senderName = msg.from?.emailAddress.name || msg.from?.emailAddress.address || "Unknown";
   const flagged = msg.flag?.flagStatus === "flagged";
+
+  function closeIfOpen() {
+    shell.dispatch({ type: "closeDoc", id: `mail:${msg.id}` });
+  }
+
   return (
+    <>
     <button
       type="button"
       onClick={onSelect}
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Open", onSelect },
+            { label: "Reply", onSelect: onReply },
+            { label: "Reply all", onSelect: onReplyAll },
+            { label: "Forward", onSelect: onForward },
+            { label: flagged ? "Unflag" : "Flag", onSelect: () => void toggleFlagAction(msg.id, flagged) },
+            {
+              label: msg.isRead ? "Mark as unread" : "Mark as read",
+              onSelect: () => void markReadAction(msg.id, !msg.isRead),
+            },
+            {
+              label: "Archive",
+              onSelect: () => {
+                void archiveMessageAction(msg.id);
+                closeIfOpen();
+              },
+            },
+            {
+              label: "Delete",
+              danger: true,
+              onSelect: () => {
+                void deleteMessageAction(msg.id);
+                closeIfOpen();
+              },
+            },
+          ],
+          `Actions for ${msg.subject || "message"}`,
+        )
+      }
       style={{
         display: "block",
         width: "100%",
@@ -143,6 +198,8 @@ function MessageRow({ msg, active, onSelect }: { msg: InboxMessage; active: bool
         {msg.bodyPreview ?? ""}
       </div>
     </button>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 
@@ -582,6 +639,14 @@ export function InboxBody({ recordId }: { recordId?: string }) {
     if (!m.isRead) void markReadAction(m.id, true);
   }
 
+  // Opens the message (so the reading pane is mounted to host the compose
+  // panel) then starts the same compose flow the reading pane's own Reply/Reply
+  // all/Forward buttons and the Message Tools contextual tab use.
+  function replyToMessage(m: InboxMessage, mode: "reply" | "replyAll" | "forward") {
+    selectMessage(m);
+    openCompose({ mode, sourceMessageId: m.id });
+  }
+
   const rows = searchResults ?? messages;
   const activeDoc = shell.state.docs.find((d) => d.id === shell.state.activeDocId);
   const openMessageId = activeDoc?.kind === "mail" ? activeDoc.recordId : undefined;
@@ -637,7 +702,17 @@ export function InboxBody({ recordId }: { recordId?: string }) {
               {searchResults !== null ? "No messages match your search." : "No messages in this view."}
             </div>
           ) : (
-            rows.map((m) => <MessageRow key={m.id} msg={m} active={m.id === openMessageId} onSelect={() => selectMessage(m)} />)
+            rows.map((m) => (
+              <MessageRow
+                key={m.id}
+                msg={m}
+                active={m.id === openMessageId}
+                onSelect={() => selectMessage(m)}
+                onReply={() => replyToMessage(m, "reply")}
+                onReplyAll={() => replyToMessage(m, "replyAll")}
+                onForward={() => replyToMessage(m, "forward")}
+              />
+            ))
           )}
         </div>
       </div>

@@ -7,10 +7,12 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import type { ScreenModule } from "../../registry/types";
+import { ShellProvider, useShell } from "../../shell/ShellContext";
 import { CrmBody } from "./CrmBody";
+import { CrmExplorerPanel } from "./CrmExplorerPanel";
 import {
   configureCrmFetch,
   convertLead,
@@ -26,6 +28,7 @@ import {
 } from "./crmStore";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -50,8 +53,13 @@ beforeAll(async () => {
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
   resetCrmStore();
   configureCrmFetch(fetchWithAuth);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -244,5 +252,165 @@ describe("job polling", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     expect(getSnapshot().recentWrites[0]?.state).toBe("synced");
     vi.useRealTimers();
+  });
+});
+
+describe("context menus", () => {
+  it("right-clicking a deal card offers Open in Properties panel / Copy deal name / Copy amount", async () => {
+    fetchWithAuth.mockImplementation((path: string) => {
+      if (path.startsWith("/api/zoho/crm/deals")) {
+        return Promise.resolve(
+          jsonResponse({
+            module: "Deals",
+            records: [{ id: "d1", Deal_Name: "Tailspin renewal", Stage: "Qualification", Amount: 4500 }],
+            page: 1,
+            perPage: 50,
+            more: false,
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ module: "Leads", records: [], page: 1, perPage: 50, more: false }));
+    });
+
+    setView("pipeline");
+    await loadDeals();
+    render(<CrmBody />);
+
+    const card = (await screen.findByText("Tailspin renewal")).closest("button")!;
+
+    fireEvent.contextMenu(card);
+    expect(screen.getByRole("menuitem", { name: "Open in Properties panel" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy deal name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Tailspin renewal");
+
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy amount" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("$4,500");
+
+    expect(getSnapshot().selectedDealId).toBeNull();
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Properties panel" }));
+    expect(getSnapshot().selectedDealId).toBe("d1");
+  });
+
+  it("right-clicking a lead row offers Open lead / Convert to deal / Refresh from Zoho / Copy email, each wired to the real store actions", async () => {
+    fetchWithAuth.mockImplementation((path: string) => {
+      if (path.startsWith("/api/zoho/crm/leads/l1/convert")) {
+        return Promise.resolve(
+          jsonResponse({ queued: true, jobId: "job-9", jobType: "zoho_convert_lead", action: "convert Lead", message: "Queued." }),
+        );
+      }
+      if (path === "/api/zoho/crm/leads/l1") {
+        return Promise.resolve(
+          jsonResponse({ record: { id: "l1", Company: "Tailspin Toys", Email: "marcus@tailspin.example", First_Name: "Marcus", Last_Name: "Feld", Lead_Status: "Qualified" } }),
+        );
+      }
+      if (path.startsWith("/api/zoho/crm/leads")) {
+        return Promise.resolve(
+          jsonResponse({
+            module: "Leads",
+            records: [{ id: "l1", Company: "Tailspin Toys", Email: "marcus@tailspin.example", First_Name: "Marcus", Last_Name: "Feld", Lead_Status: "Qualified" }],
+            page: 1,
+            perPage: 50,
+            more: false,
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ module: "Deals", records: [], page: 1, perPage: 50, more: false }));
+    });
+
+    function LeadsHarness() {
+      const { state } = useShell();
+      return (
+        <div>
+          <div data-testid="peek-state">{state.peek ? `${state.peek.kind}:${state.peek.id}` : "none"}</div>
+          <CrmBody />
+        </div>
+      );
+    }
+
+    window.history.pushState({}, "", "/adminv2/crm");
+    setView("leads");
+    await loadLeads();
+    render(
+      <ShellProvider>
+        <LeadsHarness />
+      </ShellProvider>,
+    );
+
+    const row = (await screen.findByText("Tailspin Toys")).closest("button")!;
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open lead" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Convert to deal" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Refresh from Zoho" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy email" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("marcus@tailspin.example");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Convert to deal" }));
+    await screen.findByText("Queued.");
+    expect(fetchWithAuth).toHaveBeenCalledWith(
+      "/api/zoho/crm/leads/l1/convert",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh from Zoho" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchWithAuth).toHaveBeenCalledWith("/api/zoho/crm/leads/l1");
+
+    expect(screen.getByTestId("peek-state").textContent).toBe("none");
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open lead" }));
+    expect(screen.getByTestId("peek-state").textContent).toBe("lead:l1");
+  });
+
+  it("right-clicking a nav row or a stage row in the Explorer panel offers real view/copy actions", async () => {
+    fetchWithAuth.mockImplementation((path: string) => {
+      if (path.startsWith("/api/zoho/crm/deals")) {
+        return Promise.resolve(
+          jsonResponse({
+            module: "Deals",
+            records: [{ id: "d1", Deal_Name: "Tailspin renewal", Stage: "Qualification", Amount: 4500 }],
+            page: 1,
+            perPage: 50,
+            more: false,
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ module: "Leads", records: [], page: 1, perPage: 50, more: false }));
+    });
+
+    setView("leads");
+    await loadDeals();
+    render(<CrmExplorerPanel />);
+
+    const navRow = screen.getByText("Pipeline").closest("button")!;
+    fireEvent.contextMenu(navRow);
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy count" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("1");
+
+    expect(getSnapshot().view).toBe("leads");
+    fireEvent.contextMenu(navRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().view).toBe("pipeline");
+
+    setView("leads");
+    const stageRow = screen.getByText("Qualification").closest("div")!.parentElement as HTMLElement;
+    fireEvent.contextMenu(stageRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy stage name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Qualification");
+
+    fireEvent.contextMenu(stageRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy total value" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("$4,500");
+
+    fireEvent.contextMenu(stageRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "View in Pipeline" }));
+    expect(getSnapshot().view).toBe("pipeline");
   });
 });

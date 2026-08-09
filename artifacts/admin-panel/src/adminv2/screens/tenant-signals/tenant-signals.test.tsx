@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { auditFixedTabIntents, getScreen, resetRegistry } from "../../registry/registry";
 import { TenantSignalsBody } from "./TenantSignalsBody";
+import { SignalsExplorerPanel } from "./SignalsExplorerPanel";
 import {
   configureSignalsFetch,
   getSnapshot,
@@ -32,6 +33,7 @@ import { conditionText, ruleFaults, totalImpact, type SignalRule } from "./signa
 const fetchWithAuth = vi.fn();
 const openDoc = vi.fn();
 const openPeek = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth, accessToken: "test-token" }),
@@ -126,6 +128,11 @@ beforeEach(() => {
   fetchWithAuth.mockReset();
   openDoc.mockReset();
   openPeek.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
   resetSignalsStore();
   mockCatalog();
 });
@@ -385,5 +392,163 @@ describe("TenantSignalsBody", () => {
     expect(getSnapshot().draft).toBeTruthy();
     selectSignal("adj:seat-drift");
     expect(getSnapshot().draft).toBeNull();
+  });
+});
+
+// ─── Context menus ───────────────────────────────────────────────────────────
+
+describe("context menus", () => {
+  beforeEach(async () => {
+    configureSignalsFetch(fetchWithAuth as never);
+    await loadAll();
+  });
+
+  it("right-clicking a signal row in the Explorer offers Open and copy actions, reusing the real click behaviour", async () => {
+    render(<SignalsExplorerPanel />);
+    const row = await screen.findByTitle("guest_sprawl");
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy signal key" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy label" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy signal key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("guest_sprawl");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy label" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Guest access sprawl");
+
+    // "Open" reuses the same selectSignal + openDoc the click handler uses.
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().selectedKey).toBe("guest_sprawl");
+    expect(openDoc).toHaveBeenCalledWith({ kind: "signal", id: "guest_sprawl", screenId: "tenant-signals" });
+  });
+
+  it("right-clicking a rule row offers to copy its real condition and description", async () => {
+    render(<TenantSignalsBody />);
+    await screen.findByText("Guest access sprawl");
+
+    const ruleRow = screen.getByText("More than 10 guests with no expiry").closest("button")!;
+    fireEvent.contextMenu(ruleRow);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy condition" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("guests.noExpiry is more than 10");
+
+    fireEvent.contextMenu(ruleRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy description" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("More than 10 guests with no expiry");
+  });
+
+  it("does not offer to copy a rule's description when it has none", async () => {
+    mockCatalog({ rules: [rule({ description: null, sourceKey: "guests.total" })] });
+    await loadAll();
+    render(<TenantSignalsBody />);
+    await waitFor(() => expect(screen.getAllByText("guests.total is more than 10").length).toBeGreaterThan(0));
+
+    const ruleRow = screen.getAllByText("guests.total is more than 10")[0]!.closest("button")!;
+    fireEvent.contextMenu(ruleRow);
+    expect(screen.getByRole("menuitem", { name: "Copy description" }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("right-clicking a fired signal in the test results opens its rules the same way a click does", async () => {
+    fetchWithAuth.mockImplementation((path: string) => {
+      const body = (data: unknown) => Promise.resolve({ ok: true, json: async () => data });
+      if (path === "/api/admin/engagement-projects/signals") return body(PROJECT_SIGNALS);
+      if (path === "/api/admin/signal-rules/adjustment-signals") return body(ADJUSTMENT_SIGNALS);
+      if (path === "/api/admin/signal-rules") {
+        return body({ bySignal: { guest_sprawl: { rules: [rule()], groups: [] } }, rules: [rule()], groups: [] });
+      }
+      if (path === "/api/admin/signal-rules/conflicts") return body({ conflicts: [], count: 0 });
+      if (path === "/api/admin/signal-rules/health") return body({});
+      if (path === "/api/admin/signal-rules/simulation-profiles") {
+        return body([{ id: 1, name: "Test profile", description: null, profileUpdates: {}, parsedFindings: [], tags: [], lastRunAt: null }]);
+      }
+      if (path === "/api/admin/signal-rules/clients-with-runs") return body([]);
+      if (path === "/api/admin/signal-rules/simulation-profiles/1/run") {
+        return body({
+          firedSignals: [{ key: "guest_sprawl", label: "Guest access sprawl", expectedImpact: "Unlocks a project" }],
+          ruleTrace: [],
+          includedProjects: [],
+          excludedProjects: [],
+        });
+      }
+      return body({});
+    });
+    await loadAll();
+    render(<TenantSignalsBody />);
+    await screen.findByText("Guest access sprawl");
+
+    fireEvent.click(screen.getByText("Test it"));
+    await screen.findByText("Test profile");
+    fireEvent.click(screen.getByText("Run the test"));
+
+    const firedRow = (await screen.findByText("Unlocks a project")).closest("div") as HTMLElement;
+    fireEvent.contextMenu(firedRow);
+    expect(screen.getByRole("menuitem", { name: "Open its rules" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy signal key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("guest_sprawl");
+
+    fireEvent.contextMenu(firedRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open its rules" }));
+    expect(getSnapshot().selectedKey).toBe("guest_sprawl");
+    expect(getSnapshot().view).toBe("rules");
+  });
+
+  it("right-clicking a live client row offers the same import/dry-run actions as its buttons, plus copying the tenant id", async () => {
+    fetchWithAuth.mockImplementation((path: string) => {
+      const body = (data: unknown) => Promise.resolve({ ok: true, json: async () => data });
+      if (path === "/api/admin/engagement-projects/signals") return body(PROJECT_SIGNALS);
+      if (path === "/api/admin/signal-rules/adjustment-signals") return body(ADJUSTMENT_SIGNALS);
+      if (path === "/api/admin/signal-rules") return body({ bySignal: { guest_sprawl: { rules: [rule()], groups: [] } }, rules: [rule()], groups: [] });
+      if (path === "/api/admin/signal-rules/conflicts") return body({ conflicts: [], count: 0 });
+      if (path === "/api/admin/signal-rules/health") return body({});
+      if (path === "/api/admin/signal-rules/simulation-profiles") return body([]);
+      if (path === "/api/admin/signal-rules/clients-with-runs") {
+        return body([{ id: 9, name: "Acme Corp", tenantId: "tid-acme", isTestbed: false, consentStatus: "consented" }]);
+      }
+      if (path === "/api/admin/signal-rules/simulation-profiles/from-client") {
+        return body({ id: 5, name: "Acme Corp", description: null, profileUpdates: {}, parsedFindings: [], tags: [], lastRunAt: null });
+      }
+      return body({});
+    });
+    await loadAll();
+    render(<TenantSignalsBody />);
+    await screen.findByText("Guest access sprawl");
+    fireEvent.click(screen.getByText("Test it"));
+
+    const clientRow = (await screen.findByText("Acme Corp")).closest("div")!.parentElement as HTMLElement;
+    fireEvent.contextMenu(clientRow);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy tenant ID" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("tid-acme");
+
+    fireEvent.contextMenu(clientRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Import as a profile" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/signal-rules/simulation-profiles/from-client",
+        expect.objectContaining({ body: JSON.stringify({ customerId: 9 }) }),
+      ),
+    );
+  });
+
+  it("right-clicking an inert-rule item in Conflicts offers the same Open the row's click does", async () => {
+    mockCatalog({ rules: [rule({ sourceKey: "" })] });
+    await loadAll();
+    render(<TenantSignalsBody />);
+    await screen.findByText("Guest access sprawl");
+    fireEvent.click(screen.getByText("Conflicts"));
+
+    const text = await screen.findByText(/no condition — it can never fire/);
+    const row = text.closest("div")!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open" }).getAttribute("aria-disabled")).not.toBe("true");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().selectedKey).toBe("guest_sprawl");
+    expect(getSnapshot().view).toBe("rules");
   });
 });

@@ -27,6 +27,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useAdminFetch } from "@/lib/useAdminFetch";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   cancelDraft,
   commitDraft,
@@ -65,6 +66,7 @@ import {
   ruleFaults,
   ruleTypeMeta,
   totalImpact,
+  type ClientWithRuns,
   type ImpactField,
   type SignalRule,
 } from "./signalsTypes";
@@ -320,71 +322,7 @@ function RulesView({ state }: { state: SignalsStoreState }) {
             const cond = conditionText(r);
             const group = groups.find((g) => g.id === r.groupId);
             return (
-              <button
-                key={r.id}
-                onClick={() => selectRule(r.id)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "9px 13px",
-                  border: "none",
-                  borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
-                  background: on ? "rgba(255,255,255,.07)" : "transparent",
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      color: TEXT.primary,
-                    }}
-                  >
-                    {r.description || cond || `Rule ${r.id}`}
-                  </span>
-                  <span
-                    style={{
-                      flex: "none",
-                      whiteSpace: "nowrap",
-                      padding: "1px 8px",
-                      borderRadius: 9,
-                      fontSize: 9.5,
-                      fontWeight: 700,
-                      letterSpacing: ".05em",
-                      textTransform: "uppercase",
-                      background: `${SEVERITY_TONE[r.severity] ?? TEXT.meta}22`,
-                      border: `1px solid ${SEVERITY_TONE[r.severity] ?? TEXT.meta}55`,
-                      color: SEVERITY_TONE[r.severity] ?? TEXT.meta,
-                    }}
-                  >
-                    {r.severity}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontFamily: FONT.mono,
-                    fontSize: 11,
-                    color: cond ? TEXT.dim : ACCENT_TEXT.danger,
-                  }}
-                >
-                  {cond || "no condition — it can never fire"}
-                </span>
-                <span style={{ display: "block", marginTop: 3, fontSize: 10.5, color: faults.length ? ACCENT.amberDim : TEXT.meta }}>
-                  {faults.length
-                    ? faults.join(" · ")
-                    : `weight ${r.weight} · ${group?.label ?? (r.groupId ? `group ${r.groupId}` : "no group")} · ${totalImpact(r)} impact`}
-                </span>
-              </button>
+              <RuleRow key={r.id} rule={r} on={on} faults={faults} cond={cond} group={group} />
             );
           })}
           {rules.length === 0 && !state.draft && (
@@ -410,6 +348,106 @@ function RulesView({ state }: { state: SignalsStoreState }) {
         )}
       </div>
     </div>
+  );
+}
+
+function RuleRow({
+  rule: r,
+  on,
+  faults,
+  cond,
+  group,
+}: {
+  rule: SignalRule;
+  on: boolean;
+  faults: string[];
+  cond: string;
+  group: { label: string | null } | undefined;
+}) {
+  const { menu, open, close } = useContextMenu();
+  return (
+    <>
+      <button
+        onClick={() => selectRule(r.id)}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: () => selectRule(r.id) },
+              { label: "Copy condition", onSelect: () => navigator.clipboard?.writeText(cond), disabled: !cond },
+              {
+                label: "Copy description",
+                onSelect: () => navigator.clipboard?.writeText(r.description ?? ""),
+                disabled: !r.description,
+              },
+            ],
+            `Actions for ${r.description || cond || `Rule ${r.id}`}`,
+          )
+        }
+        style={{
+          display: "block",
+          width: "100%",
+          padding: "9px 13px",
+          border: "none",
+          borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
+          background: on ? "rgba(255,255,255,.07)" : "transparent",
+          fontFamily: "inherit",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: TEXT.primary,
+            }}
+          >
+            {r.description || cond || `Rule ${r.id}`}
+          </span>
+          <span
+            style={{
+              flex: "none",
+              whiteSpace: "nowrap",
+              padding: "1px 8px",
+              borderRadius: 9,
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: ".05em",
+              textTransform: "uppercase",
+              background: `${SEVERITY_TONE[r.severity] ?? TEXT.meta}22`,
+              border: `1px solid ${SEVERITY_TONE[r.severity] ?? TEXT.meta}55`,
+              color: SEVERITY_TONE[r.severity] ?? TEXT.meta,
+            }}
+          >
+            {r.severity}
+          </span>
+        </div>
+        <span
+          style={{
+            display: "block",
+            marginTop: 4,
+            fontFamily: FONT.mono,
+            fontSize: 11,
+            color: cond ? TEXT.dim : ACCENT_TEXT.danger,
+          }}
+        >
+          {cond || "no condition — it can never fire"}
+        </span>
+        <span style={{ display: "block", marginTop: 3, fontSize: 10.5, color: faults.length ? ACCENT.amberDim : TEXT.meta }}>
+          {faults.length
+            ? faults.join(" · ")
+            : `weight ${r.weight} · ${group?.label ?? (r.groupId ? `group ${r.groupId}` : "no group")} · ${totalImpact(r)} impact`}
+        </span>
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 
@@ -658,6 +696,51 @@ const stepStyle: React.CSSProperties = {
 
 // ─── Test view ───────────────────────────────────────────────────────────────
 
+function FiredSignalRow({ label, signalKey, expectedImpact }: { label: string; signalKey: string; expectedImpact: string }) {
+  const { menu, open, close } = useContextMenu();
+  const openSignal = () => {
+    selectSignal(signalKey);
+    setView("rules");
+  };
+
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 12px",
+          borderRadius: 7,
+          border: `1px solid ${LINE.base}`,
+          background: SURFACE.card,
+          cursor: "pointer",
+        }}
+        onClick={openSignal}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open its rules", onSelect: openSignal },
+              { label: "Copy signal key", onSelect: () => navigator.clipboard?.writeText(signalKey) },
+            ],
+            `Actions for ${label}`,
+          )
+        }
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: TEXT.primary }}>{label}</span>
+          <span style={{ display: "block", marginTop: 2, fontFamily: FONT.mono, fontSize: 11, color: TEXT.meta }}>{signalKey}</span>
+        </div>
+        <span style={{ flex: "none", maxWidth: 300, fontSize: 11, color: TEXT.dim, textAlign: "right" }}>
+          {expectedImpact || "scores only"}
+        </span>
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
+  );
+}
+
 function TestView({ state }: { state: SignalsStoreState }) {
   const run = state.run;
   const hasProfile = state.selectedProfileId != null;
@@ -734,31 +817,7 @@ function TestView({ state }: { state: SignalsStoreState }) {
               <SectionLabel>What fired against {run.profileName}</SectionLabel>
               {run.firedSignals.length === 0 && <Note>Nothing fired. Every rule read its field and came back false.</Note>}
               {run.firedSignals.map((f) => (
-                <div
-                  key={f.key}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "9px 12px",
-                    borderRadius: 7,
-                    border: `1px solid ${LINE.base}`,
-                    background: SURFACE.card,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    selectSignal(f.key);
-                    setView("rules");
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: TEXT.primary }}>{f.label}</span>
-                    <span style={{ display: "block", marginTop: 2, fontFamily: FONT.mono, fontSize: 11, color: TEXT.meta }}>{f.key}</span>
-                  </div>
-                  <span style={{ flex: "none", maxWidth: 300, fontSize: 11, color: TEXT.dim, textAlign: "right" }}>
-                    {f.expectedImpact || "scores only"}
-                  </span>
-                </div>
+                <FiredSignalRow key={f.key} label={f.label} signalKey={f.key} expectedImpact={f.expectedImpact} />
               ))}
             </div>
 
@@ -818,6 +877,68 @@ function TestView({ state }: { state: SignalsStoreState }) {
   );
 }
 
+function LiveClientRow({ client: c, busy }: { client: ClientWithRuns; busy: boolean }) {
+  const { menu, open, close } = useContextMenu();
+
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          padding: "8px 12px",
+          borderRadius: 7,
+          border: `1px solid ${LINE.base}`,
+          background: SURFACE.card,
+        }}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Import as a profile", onSelect: () => void importClientProfile(c.id, c.name), disabled: busy },
+              { label: "Dry-run the SOW", onSelect: () => void dryRunSow(c.id, c.name), disabled: busy },
+              {
+                label: "Copy tenant ID",
+                onSelect: () => navigator.clipboard?.writeText(c.tenantId ?? ""),
+                disabled: !c.tenantId,
+              },
+            ],
+            `Actions for ${c.name}`,
+          )
+        }
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 12.5, color: TEXT.primary }}>
+            {c.name}
+            {c.isTestbed ? " · testbed" : ""}
+          </span>
+          <span style={{ display: "block", marginTop: 2, fontFamily: FONT.mono, fontSize: 10.5, color: TEXT.meta }}>
+            {c.tenantId ?? "no tenant id"}
+          </span>
+        </div>
+        <button
+          onClick={() => void importClientProfile(c.id, c.name)}
+          disabled={busy}
+          title="Reads the tenant and saves what it found as a new simulation profile"
+          style={ghostButton(busy)}
+        >
+          Import as a profile
+        </button>
+        <button
+          onClick={() => void dryRunSow(c.id, c.name)}
+          disabled={busy}
+          title="Reads this client's completed script runs only — a tenant whose data arrives through Graph monitor checks will come back empty"
+          style={ghostButton(busy)}
+        >
+          Dry-run the SOW
+        </button>
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
+  );
+}
+
 /**
  * The two things on this screen that reach a real tenant, kept together and
  * labelled with what each one actually does. Importing writes a profile row;
@@ -833,44 +954,7 @@ function LiveClients({ state }: { state: SignalsStoreState }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {state.clients.slice(0, 12).map((c) => (
-            <div
-              key={c.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "8px 12px",
-                borderRadius: 7,
-                border: `1px solid ${LINE.base}`,
-                background: SURFACE.card,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, color: TEXT.primary }}>
-                  {c.name}
-                  {c.isTestbed ? " · testbed" : ""}
-                </span>
-                <span style={{ display: "block", marginTop: 2, fontFamily: FONT.mono, fontSize: 10.5, color: TEXT.meta }}>
-                  {c.tenantId ?? "no tenant id"}
-                </span>
-              </div>
-              <button
-                onClick={() => void importClientProfile(c.id, c.name)}
-                disabled={state.busy != null}
-                title="Reads the tenant and saves what it found as a new simulation profile"
-                style={ghostButton(state.busy != null)}
-              >
-                Import as a profile
-              </button>
-              <button
-                onClick={() => void dryRunSow(c.id, c.name)}
-                disabled={state.busy != null}
-                title="Reads this client's completed script runs only — a tenant whose data arrives through Graph monitor checks will come back empty"
-                style={ghostButton(state.busy != null)}
-              >
-                Dry-run the SOW
-              </button>
-            </div>
+            <LiveClientRow key={c.id} client={c} busy={state.busy != null} />
           ))}
         </div>
       )}
@@ -974,32 +1058,46 @@ function ConflictRow({
   fix: string;
   onSelect?: () => void;
 }) {
+  const { menu, open, close } = useContextMenu();
   return (
-    <div
-      onClick={onSelect}
-      style={{
-        padding: "10px 13px",
-        borderRadius: 7,
-        cursor: onSelect ? "pointer" : "default",
-        border: `1px solid ${tone === "bad" ? "rgba(229,122,122,.32)" : LINE.base}`,
-        background: SURFACE.card,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <span
-          style={{
-            flex: "none",
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            marginTop: 5,
-            background: tone === "bad" ? ACCENT.danger : ACCENT.amberDim,
-          }}
-        />
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT.soft, textWrap: "pretty" }}>{text}</span>
+    <>
+      <div
+        onClick={onSelect}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: onSelect ?? (() => {}), disabled: !onSelect },
+              { label: "Copy note", onSelect: () => navigator.clipboard?.writeText(text) },
+            ],
+            "Actions for this item",
+          )
+        }
+        style={{
+          padding: "10px 13px",
+          borderRadius: 7,
+          cursor: onSelect ? "pointer" : "default",
+          border: `1px solid ${tone === "bad" ? "rgba(229,122,122,.32)" : LINE.base}`,
+          background: SURFACE.card,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <span
+            style={{
+              flex: "none",
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              marginTop: 5,
+              background: tone === "bad" ? ACCENT.danger : ACCENT.amberDim,
+            }}
+          />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT.soft, textWrap: "pretty" }}>{text}</span>
+        </div>
+        <span style={{ display: "block", marginTop: 4, marginLeft: 15, fontSize: 11.5, color: TEXT.meta }}>{fix}</span>
       </div>
-      <span style={{ display: "block", marginTop: 4, marginLeft: 15, fontSize: 11.5, color: TEXT.meta }}>{fix}</span>
-    </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

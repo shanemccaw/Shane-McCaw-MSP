@@ -33,10 +33,21 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "../../shell/ContextMenu";
 import { createAdOu, deleteAdOu, fetchAdTree, renameAdOu, searchAdDirectory } from "./adApi";
 import { primeAdNameCacheFromTree } from "./adNameCache";
 import type { AdSearchResult, AdTree, AdTreeCustomer, AdTreeMsp, AdTreeOu, DirectoryGroupRole } from "./adTypes";
 import { AD_TREE_REFRESH_EVENT } from "./adEvents";
+
+type OpenMenu = (event: React.MouseEvent, items: ContextMenuItem[], ariaLabel: string) => void;
+
+async function copyText(value: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    // Clipboard access can be denied by the browser — nothing useful to do about it here.
+  }
+}
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -81,6 +92,7 @@ export function AdExplorerTree() {
   const [ousOpen, setOusOpen] = useState(false);
   const [expandedMsp, setExpandedMsp] = useState<Set<number>>(new Set());
   const [expandedCustomer, setExpandedCustomer] = useState<Set<number>>(new Set());
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const loadTree = async () => {
     setLoading(true);
@@ -235,14 +247,49 @@ export function AdExplorerTree() {
               {results.msps.length > 0 && (
                 <SearchGroup label="MSPs">
                   {results.msps.map((m) => (
-                    <SearchRow key={`msp-${m.id}`} icon={<Building2 size={13} />} label={m.name} sub={m.slug} on={activeKind === "msp" && activeId === String(m.id)} onClick={() => open("msp", m.id, m.name)} />
+                    <SearchRow
+                      key={`msp-${m.id}`}
+                      icon={<Building2 size={13} />}
+                      label={m.name}
+                      sub={m.slug}
+                      on={activeKind === "msp" && activeId === String(m.id)}
+                      onClick={() => open("msp", m.id, m.name)}
+                      onContextMenu={(e) =>
+                        openMenu(
+                          e,
+                          [
+                            { label: "Open", onSelect: () => open("msp", m.id, m.name) },
+                            { label: "Copy name", onSelect: () => void copyText(m.name) },
+                            { label: "Copy slug", onSelect: () => void copyText(m.slug) },
+                          ],
+                          `Actions for ${m.name}`,
+                        )
+                      }
+                    />
                   ))}
                 </SearchGroup>
               )}
               {results.customers.length > 0 && (
                 <SearchGroup label="Tenants">
                   {results.customers.map((c) => (
-                    <SearchRow key={`customer-${c.id}`} icon={<Users size={13} />} label={c.name} sub={c.mspName ?? undefined} on={activeKind === "customer" && activeId === String(c.id)} onClick={() => open("customer", c.id, c.name)} />
+                    <SearchRow
+                      key={`customer-${c.id}`}
+                      icon={<Users size={13} />}
+                      label={c.name}
+                      sub={c.mspName ?? undefined}
+                      on={activeKind === "customer" && activeId === String(c.id)}
+                      onClick={() => open("customer", c.id, c.name)}
+                      onContextMenu={(e) =>
+                        openMenu(
+                          e,
+                          [
+                            { label: "Open", onSelect: () => open("customer", c.id, c.name) },
+                            { label: "Copy name", onSelect: () => void copyText(c.name) },
+                          ],
+                          `Actions for ${c.name}`,
+                        )
+                      }
+                    />
                   ))}
                 </SearchGroup>
               )}
@@ -256,6 +303,17 @@ export function AdExplorerTree() {
                       sub={`${u.mspRole}${u.mspName ? ` · ${u.mspName}` : ""}`}
                       on={activeKind === "user" && activeId === String(u.id)}
                       onClick={() => open("user", u.id, u.name || u.email)}
+                      onContextMenu={(e) =>
+                        openMenu(
+                          e,
+                          [
+                            { label: "Open", onSelect: () => open("user", u.id, u.name || u.email) },
+                            { label: "Copy name", onSelect: () => void copyText(u.name || u.email), disabled: !u.name },
+                            { label: "Copy email", onSelect: () => void copyText(u.email) },
+                          ],
+                          `Actions for ${u.name || u.email}`,
+                        )
+                      }
                     />
                   ))}
                 </SearchGroup>
@@ -263,7 +321,23 @@ export function AdExplorerTree() {
               {results.roles.length > 0 && (
                 <SearchGroup label="Roles">
                   {results.roles.map((role) => (
-                    <SearchRow key={`role-${role}`} icon={<ShieldCheck size={13} />} label={role} on={activeKind === "group" && activeId === role} onClick={() => open("group", role, role)} />
+                    <SearchRow
+                      key={`role-${role}`}
+                      icon={<ShieldCheck size={13} />}
+                      label={role}
+                      on={activeKind === "group" && activeId === role}
+                      onClick={() => open("group", role, role)}
+                      onContextMenu={(e) =>
+                        openMenu(
+                          e,
+                          [
+                            { label: "Open", onSelect: () => open("group", role, role) },
+                            { label: "Copy role name", onSelect: () => void copyText(role) },
+                          ],
+                          `Actions for ${role}`,
+                        )
+                      }
+                    />
                   ))}
                 </SearchGroup>
               )}
@@ -306,6 +380,7 @@ export function AdExplorerTree() {
                       activeKind={activeKind}
                       activeId={activeId}
                       onOpen={open}
+                      openMenu={openMenu}
                     />
                   ))
                 )}
@@ -325,6 +400,16 @@ export function AdExplorerTree() {
                   <div
                     key={g.role}
                     onClick={() => open("group", g.role, g.role)}
+                    onContextMenu={(e) =>
+                      openMenu(
+                        e,
+                        [
+                          { label: "Open", onSelect: () => open("group", g.role, g.role) },
+                          { label: "Copy role name", onSelect: () => void copyText(g.role) },
+                        ],
+                        `Actions for ${g.role}`,
+                      )
+                    }
                     style={rowBase(2, activeKind === "group" && activeId === g.role)}
                   >
                     <ShieldCheck size={12} />
@@ -336,7 +421,12 @@ export function AdExplorerTree() {
             )}
 
             {/* OU=Placeholders */}
-            <div style={sectionRowStyle()}>
+            <div
+              style={sectionRowStyle()}
+              onContextMenu={(e) =>
+                openMenu(e, [{ label: "New organizational unit", onSelect: () => void onCreateOu() }], "Actions for OU=Placeholders")
+              }
+            >
               <span onClick={() => setOusOpen((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                 {ousOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 <FolderCog size={13} />
@@ -364,6 +454,17 @@ export function AdExplorerTree() {
                       key={ou.id}
                       className="av2-row"
                       onClick={() => open("ou", ou.id, ou.name)}
+                      onContextMenu={(e) =>
+                        openMenu(
+                          e,
+                          [
+                            { label: "Open", onSelect: () => open("ou", ou.id, ou.name) },
+                            { label: "Rename", onSelect: () => void onRenameOu(ou) },
+                            { label: "Delete", danger: true, onSelect: () => void onDeleteOu(ou) },
+                          ],
+                          `Actions for OU=${ou.name}`,
+                        )
+                      }
                       style={{ ...rowBase(2, activeKind === "ou" && activeId === String(ou.id)), fontFamily: "monospace" }}
                     >
                       <FolderCog size={12} />
@@ -396,6 +497,7 @@ export function AdExplorerTree() {
           </div>
         )}
       </div>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   );
 }
@@ -409,6 +511,7 @@ function MspBranch({
   activeKind,
   activeId,
   onOpen,
+  openMenu,
 }: {
   msp: AdTreeMsp;
   expanded: boolean;
@@ -418,10 +521,24 @@ function MspBranch({
   activeKind: string | null;
   activeId: string | undefined;
   onOpen: (kind: "msp" | "customer" | "user" | "group" | "ou", id: string | number, label: string) => void;
+  openMenu: OpenMenu;
 }) {
   return (
     <div>
-      <div style={rowBase(1, activeKind === "msp" && activeId === String(msp.id))}>
+      <div
+        style={rowBase(1, activeKind === "msp" && activeId === String(msp.id))}
+        onContextMenu={(e) =>
+          openMenu(
+            e,
+            [
+              { label: "Open", onSelect: () => onOpen("msp", msp.id, msp.name) },
+              { label: "Copy name", onSelect: () => void copyText(msp.name) },
+              { label: "Copy slug", onSelect: () => void copyText(msp.slug) },
+            ],
+            `Actions for ${msp.name}`,
+          )
+        }
+      >
         <span onClick={onToggle} style={{ display: "flex" }}>
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
@@ -449,6 +566,7 @@ function MspBranch({
               activeKind={activeKind}
               activeId={activeId}
               onOpen={onOpen}
+              openMenu={openMenu}
             />
           ))
         ))}
@@ -463,6 +581,7 @@ function CustomerBranch({
   activeKind,
   activeId,
   onOpen,
+  openMenu,
 }: {
   customer: AdTreeCustomer;
   expanded: boolean;
@@ -470,10 +589,23 @@ function CustomerBranch({
   activeKind: string | null;
   activeId: string | undefined;
   onOpen: (kind: "msp" | "customer" | "user" | "group" | "ou", id: string | number, label: string) => void;
+  openMenu: OpenMenu;
 }) {
   return (
     <div>
-      <div style={rowBase(2, activeKind === "customer" && activeId === String(customer.id))}>
+      <div
+        style={rowBase(2, activeKind === "customer" && activeId === String(customer.id))}
+        onContextMenu={(e) =>
+          openMenu(
+            e,
+            [
+              { label: "Open", onSelect: () => onOpen("customer", customer.id, customer.name) },
+              { label: "Copy name", onSelect: () => void copyText(customer.name) },
+            ],
+            `Actions for ${customer.name}`,
+          )
+        }
+      >
         <span onClick={onToggle} style={{ display: "flex" }}>
           {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         </span>
@@ -496,6 +628,17 @@ function CustomerBranch({
             <div
               key={user.id}
               onClick={() => onOpen("user", user.id, user.name || user.email)}
+              onContextMenu={(e) =>
+                openMenu(
+                  e,
+                  [
+                    { label: "Open", onSelect: () => onOpen("user", user.id, user.name || user.email) },
+                    { label: "Copy name", onSelect: () => void copyText(user.name || user.email), disabled: !user.name },
+                    { label: "Copy email", onSelect: () => void copyText(user.email) },
+                  ],
+                  `Actions for ${user.name || user.email}`,
+                )
+              }
               style={{ ...rowBase(4, activeKind === "user" && activeId === String(user.id)), opacity: user.isActive ? 1 : 0.6 }}
             >
               <UserCircle size={12} />
@@ -535,15 +678,17 @@ function SearchRow({
   sub,
   on,
   onClick,
+  onContextMenu,
 }: {
   icon: React.ReactNode;
   label: string;
   sub?: string;
   on: boolean;
   onClick: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   return (
-    <div onClick={onClick} style={rowBase(2, on)}>
+    <div onClick={onClick} onContextMenu={onContextMenu} style={rowBase(2, on)}>
       {icon}
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       {sub && <span style={{ fontSize: 9.5, color: TEXT.meta, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 90 }}>{sub}</span>}

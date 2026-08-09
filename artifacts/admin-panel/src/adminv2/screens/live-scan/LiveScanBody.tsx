@@ -23,6 +23,7 @@ import { useAdminFetch } from "@/lib/useAdminFetch";
 import { useLiveStream, type LiveStreamFrame } from "@/hooks/useLiveStream";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   extractHighlightFields,
   markForRow,
@@ -74,6 +75,7 @@ export function LiveScanBody() {
   const { adminFetch } = useAdminFetch();
   const { openPeek } = useShell();
   const { frames, connected } = useLiveStream(MONITOR_CHANNEL);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const [profiles, setProfiles] = useState<ScanProfileRow[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(true);
@@ -284,11 +286,24 @@ export function LiveScanBody() {
           ) : (
             profiles.map((row) => {
               const tone = toneForRow(row.status, row.severityMatched);
+              const rowLabel = row.clientCompany !== "Unknown Company" ? row.clientCompany : row.clientName;
               return (
                 <div
                   key={row.id}
                   className="av2-row"
                   onClick={() => openPeek("tenant", row.tenantId)}
+                  onContextMenu={(event) =>
+                    openMenu(
+                      event,
+                      [
+                        { label: "Open tenant", onSelect: () => openPeek("tenant", row.tenantId) },
+                        { label: "Copy tenant ID", onSelect: () => void navigator.clipboard?.writeText(row.tenantId) },
+                        { label: "Copy check key", onSelect: () => void navigator.clipboard?.writeText(row.checkKey) },
+                        { label: "Copy company", onSelect: () => void navigator.clipboard?.writeText(rowLabel) },
+                      ],
+                      `Actions for ${rowLabel}`,
+                    )
+                  }
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -332,6 +347,7 @@ export function LiveScanBody() {
           )}
         </div>
       </div>
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   );
 }

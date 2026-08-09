@@ -16,6 +16,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { Activity, ChevronRight } from "lucide-react";
 import { ACCENT, LINE, SURFACE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import { getSnapshot, selectSignal, subscribe } from "./signalsStore";
 import { ruleFaults, type SignalDef, type SignalRule } from "./signalsTypes";
 
@@ -122,13 +123,28 @@ function SignalRow({ signal, rules, active }: { signal: SignalDef; rules: Signal
   // a disabled signal's rules are inert by choice, not by mistake.
   const broken = signal.enabled && rules.some((r) => ruleFaults(r).length > 0);
   const noRules = signal.enabled && rules.length === 0;
+  const { menu, open, close } = useContextMenu();
+
+  const openSignal = () => {
+    selectSignal(signal.key);
+    getShellApi()?.openDoc({ kind: "signal", id: signal.key, screenId: "tenant-signals" });
+  };
 
   return (
+    <>
     <button
-      onClick={() => {
-        selectSignal(signal.key);
-        getShellApi()?.openDoc({ kind: "signal", id: signal.key, screenId: "tenant-signals" });
-      }}
+      onClick={openSignal}
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Open", onSelect: openSignal },
+            { label: "Copy signal key", onSelect: () => navigator.clipboard?.writeText(signal.key) },
+            { label: "Copy label", onSelect: () => navigator.clipboard?.writeText(signal.label) },
+          ],
+          `Actions for ${signal.label}`,
+        )
+      }
       title={signal.key}
       style={{
         display: "flex",
@@ -168,5 +184,7 @@ function SignalRow({ signal, rules, active }: { signal: SignalDef; rules: Signal
         </span>
       )}
     </button>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
