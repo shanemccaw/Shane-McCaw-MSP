@@ -19,6 +19,7 @@
 
 import { useSyncExternalStore } from "react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   currentTestbed,
   getEngine,
@@ -547,9 +548,28 @@ function EngineCard({ state, def }: { state: EnginesStoreState; def: EngineDefLi
   const busy = state.runBusy === def.key;
   const tone = statusTone(display?.status);
   const score = scoreOfOutput(run);
+  const { menu, open, close } = useContextMenu();
 
   return (
     <div
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Open this engine", onSelect: () => select(def.key) },
+            {
+              label: "Run it for real",
+              // The card's own "Run" button does the same thing — writes a
+              // real history row against the testbed in scope, no dry run.
+              onSelect: () => void runEngine(def.key),
+              disabled: busy,
+            },
+            { label: "Copy last output", onSelect: () => copyRun(def.key), disabled: !run },
+            { label: "Copy engine key", onSelect: () => navigator.clipboard?.writeText(def.key) },
+          ],
+          `Actions for ${def.label}`,
+        )
+      }
       style={{
         flex: "1 1 320px",
         minWidth: 270,
@@ -677,6 +697,7 @@ function EngineCard({ state, def }: { state: EnginesStoreState; def: EngineDefLi
           </div>
         </div>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }

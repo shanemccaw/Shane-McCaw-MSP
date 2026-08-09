@@ -13,6 +13,7 @@
 
 import { useSyncExternalStore } from "react";
 import { ACCENT, ACCENT_TEXT, LINE, PRIMARY, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import { currentChecks, getSnapshot, isDirty, selectPackage, subscribe } from "./packagesStore";
 import { tallyChecks, type MonitoringPackageRow } from "./packagesTypes";
 
@@ -45,11 +46,24 @@ export function PackagesExplorerPanel() {
     const selected = state.selected === pkg.key;
     const dirty = isDirty(pkg.key, state);
     const silent = tally.willRun === 0;
+    const { menu, open, close } = useContextMenu();
 
     return (
+      <>
       <button
         className="av2-row"
         onClick={() => selectPackage(pkg.key)}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: () => selectPackage(pkg.key) },
+              { label: "Copy package key", onSelect: () => navigator.clipboard?.writeText(pkg.key) },
+              { label: "Copy package name", onSelect: () => navigator.clipboard?.writeText(pkg.label) },
+            ],
+            `Actions for ${pkg.label}`,
+          )
+        }
         title={silent ? `${pkg.label} resolves no runnable check — a scan on it collects nothing` : pkg.label}
         style={{
           display: "flex",
@@ -81,6 +95,8 @@ export function PackagesExplorerPanel() {
           {silent ? "runs nothing" : `${tally.willRun} check${tally.willRun === 1 ? "" : "s"} will run`}
         </span>
       </button>
+      <ContextMenu menu={menu} onClose={close} />
+      </>
     );
   }
 

@@ -10,6 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import { getLiveRibbonEntry } from "../../shell/liveRibbon";
 import {
@@ -25,13 +26,26 @@ import {
   SQL_RIBBON_KEYS,
 } from "./sqlStore";
 import { containsDangerousKeyword } from "./sqlTypes";
+import { SqlExplorer } from "./SqlExplorer";
+import { SqlQueryOutputPanel } from "./SqlQueryOutput";
 
 const fetchWithAuth = vi.fn();
 const writeText = vi.fn();
+const openDoc = vi.fn();
+const dispatch = vi.fn();
+const navigate = vi.fn();
+
+vi.mock("../../shell/ShellContext", () => ({
+  useShell: () => ({ state: { docs: [], activeDocId: null }, openDoc, dispatch, navigate }),
+  getShellApi: () => ({ navigate, openDoc, dispatch }),
+}));
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
   writeText.mockReset().mockResolvedValue(undefined);
+  openDoc.mockReset();
+  dispatch.mockReset();
+  navigate.mockReset();
   Object.assign(navigator, { clipboard: { writeText } });
   resetSqlStore();
   configureSqlFetch(fetchWithAuth);
@@ -39,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetSqlStore();
+  cleanup();
 });
 
 describe("containsDangerousKeyword", () => {
@@ -226,5 +241,171 @@ describe("Auto copy", () => {
     setAutoCopyFormat("json");
     expect(getLiveRibbonEntry(SQL_RIBBON_KEYS.autoCopyJson)?.active).toBe(true);
     expect(getLiveRibbonEntry(SQL_RIBBON_KEYS.autoCopyTable)?.active).toBe(false);
+  });
+});
+
+describe("SqlExplorer right-click menus", () => {
+  const sampleScript = {
+    id: 1,
+    name: "Seat counts",
+    category: "Billing",
+    query: "select 1;",
+    isDestructive: false,
+    isResetScript: false,
+    createdAt: null,
+    updatedAt: null,
+  };
+  const sampleMigration = { filename: "0001_test.sql", ranAt: null as string | null };
+
+  beforeEach(async () => {
+    fetchWithAuth.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/simulator/sql/scripts")) return { ok: true, json: async () => ({ scripts: [sampleScript] }) };
+      if (url.includes("/simulator/migrations/files")) return { ok: true, json: async () => ({ files: [sampleMigration] }) };
+      return { ok: true, json: async () => ({}) };
+    });
+    await loadScripts();
+    await loadMigrations();
+  });
+
+  it("right-clicking a script row offers Open / Run it / Duplicate / Copy name / Delete", async () => {
+    render(<SqlExplorer />);
+    const row = await screen.findByText("Seat counts");
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu", { name: "Actions for Seat counts" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run it" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Duplicate" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy name" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy name" }));
+    expect(writeText).toHaveBeenCalledWith("Seat counts");
+  });
+
+  it("Run it opens the script and runs its saved query, same as the contextual tab's own action", async () => {
+    fetchWithAuth.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/simulator/sql/scripts")) return { ok: true, json: async () => ({ scripts: [sampleScript] }) };
+      if (url.includes("/simulator/migrations/files")) return { ok: true, json: async () => ({ files: [sampleMigration] }) };
+      if (url.includes("/simulator/sql/execute")) {
+        return { ok: true, json: async () => ({ statements: [{ statementIndex: 0, statementText: "select 1;", success: true, rows: [], rowCount: 0, fields: [], executionMs: 1 }] }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    render(<SqlExplorer />);
+    const row = await screen.findByText("Seat counts");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run it" }));
+
+    expect(openDoc).toHaveBeenCalledWith({ kind: "script", id: "1", screenId: "sql", label: "Seat counts" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "setBottomTab", id: "sql-output" });
+  });
+
+  it("Delete on a script row is gated by window.confirm, same as the contextual tab", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<SqlExplorer />);
+    const row = await screen.findByText("Seat counts");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith('Delete saved script "Seat counts"? This cannot be undone.');
+    // Declined — no delete request went out.
+    expect(fetchWithAuth).not.toHaveBeenCalledWith(expect.stringContaining("/scripts/1"), expect.objectContaining({ method: "DELETE" }));
+    confirmSpy.mockRestore();
+  });
+
+  it("right-clicking a migration row offers Open / Run migration / Copy filename", async () => {
+    render(<SqlExplorer />);
+    const row = await screen.findByText("0001_test");
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu", { name: "Actions for 0001_test.sql" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run migration" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy filename" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy filename" }));
+    expect(writeText).toHaveBeenCalledWith("0001_test.sql");
+  });
+
+  it("running a migration from its context menu is gated by window.confirm, same as the contextual tab", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<SqlExplorer />);
+    const row = await screen.findByText("0001_test");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run migration" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith('Run "0001_test.sql" against the real database now? This cannot be undone from here.');
+    // Declined — nothing ran.
+    expect(dispatch).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("confirming the migration run wires through to the same runMigrationFile call the contextual tab uses", async () => {
+    fetchWithAuth.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/simulator/sql/scripts")) return { ok: true, json: async () => ({ scripts: [sampleScript] }) };
+      if (url.includes("/simulator/migrations/files")) return { ok: true, json: async () => ({ files: [sampleMigration] }) };
+      if (url.includes("/simulator/migrations/execute")) return { ok: true, json: async () => ({ statements: [] }) };
+      return { ok: true, json: async () => ({}) };
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SqlExplorer />);
+    const row = await screen.findByText("0001_test");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run migration" }));
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "setBottomTab", id: "sql-output" });
+    confirmSpy.mockRestore();
+  });
+});
+
+describe("SqlQueryOutput right-click menu", () => {
+  it("right-clicking a statement block offers Copy statement text / Copy result as JSON, and never Run again", async () => {
+    fetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        statements: [{ statementIndex: 0, statementText: "select 1;", success: true, rows: [{ x: 1 }], rowCount: 1, fields: ["x"], executionMs: 3 }],
+      }),
+    });
+    await runQueryText("select 1;");
+    render(<SqlQueryOutputPanel />);
+
+    const row = (await screen.findByText("select 1;")).closest("div") as HTMLElement;
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menu", { name: "Actions for statement #1" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy statement text" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy result as JSON" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /run again/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy statement text" }));
+    expect(writeText).toHaveBeenCalledWith("select 1;");
+  });
+
+  it("disables Copy error on a successful statement and Copy result as JSON on a failed one", async () => {
+    fetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        statements: [{ statementIndex: 0, statementText: "select bad;", success: false, rows: [], rowCount: 0, fields: [], executionMs: 1, error: "syntax error" }],
+      }),
+    });
+    await runQueryText("select bad;");
+    render(<SqlQueryOutputPanel />);
+
+    const row = (await screen.findByText("select bad;")).closest("div") as HTMLElement;
+    fireEvent.contextMenu(row);
+
+    const copyResult = screen.getByRole("menuitem", { name: "Copy result as JSON" });
+    expect(copyResult.getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy error" }));
+    expect(writeText).toHaveBeenCalledWith("syntax error");
   });
 });

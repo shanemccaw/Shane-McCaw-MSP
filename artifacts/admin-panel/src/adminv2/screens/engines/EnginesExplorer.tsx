@@ -16,7 +16,8 @@ import { useSyncExternalStore } from "react";
 import { Activity, Layers } from "lucide-react";
 import { ACCENT, FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { getSnapshot, select, subscribe } from "./enginesStore";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { getSnapshot, runEngine, select, subscribe } from "./enginesStore";
 import type { EngineConfigMode, EngineDefLite } from "./engineTypes";
 
 const BANDS: Array<{ mode: EngineConfigMode; label: string }> = [
@@ -26,36 +27,64 @@ const BANDS: Array<{ mode: EngineConfigMode; label: string }> = [
 ];
 
 function Row({ def, on, score }: { def: EngineDefLite; on: boolean; score: number | null }) {
+  const { menu, open, close } = useContextMenu();
+  const openEngine = () => {
+    select(def.key);
+    getShellApi()?.openDoc({ kind: "engine", id: def.key, screenId: "engines" });
+  };
+
   return (
-    <button
-      onClick={() => {
-        select(def.key);
-        getShellApi()?.openDoc({ kind: "engine", id: def.key, screenId: "engines" });
-      }}
-      title={def.description}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        width: "100%",
-        height: 24,
-        padding: "0 8px 0 20px",
-        border: 0,
-        borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
-        background: on ? WASH.hover : "transparent",
-        color: on ? TEXT.bright : TEXT.softer,
-        fontFamily: "inherit",
-        fontSize: 12.5,
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      <Activity size={13} color={on ? TEXT.quiet : TEXT.label} style={{ flex: "none" }} />
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{def.label}</span>
-      {score !== null && (
-        <span style={{ flex: "none", whiteSpace: "nowrap", fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: TEXT.dim }}>{score}</span>
-      )}
-    </button>
+    <>
+      <button
+        onClick={openEngine}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open the engine", onSelect: openEngine },
+              {
+                label: "Run it for real",
+                // Same call the ribbon's "Run every engine" and the Score
+                // tab's own button make — there is no dry run here, so this
+                // writes a real history row against the testbed in scope.
+                onSelect: () => void runEngine(def.key),
+              },
+              { label: "Copy engine key", onSelect: () => navigator.clipboard?.writeText(def.key) },
+              {
+                label: "Copy last score",
+                onSelect: () => navigator.clipboard?.writeText(String(score)),
+                disabled: score === null,
+              },
+            ],
+            `Actions for ${def.label}`,
+          )
+        }
+        title={def.description}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          height: 24,
+          padding: "0 8px 0 20px",
+          border: 0,
+          borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
+          background: on ? WASH.hover : "transparent",
+          color: on ? TEXT.bright : TEXT.softer,
+          fontFamily: "inherit",
+          fontSize: 12.5,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <Activity size={13} color={on ? TEXT.quiet : TEXT.label} style={{ flex: "none" }} />
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{def.label}</span>
+        {score !== null && (
+          <span style={{ flex: "none", whiteSpace: "nowrap", fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: TEXT.dim }}>{score}</span>
+        )}
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

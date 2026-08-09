@@ -19,9 +19,11 @@
 import { useSyncExternalStore } from "react";
 import { ACCENT, FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   getSnapshot,
   packagesForCheck,
+  runCheck,
   selectCheck,
   setGroupBy,
   setPillar,
@@ -175,22 +177,45 @@ function Row({ check, state }: { check: MonitorCheck; state: EndpointsState }) {
   const on = state.selectedKey === check.key;
   const packages = packagesForCheck(check.key, state);
   const ruleCount = on ? state.rules.length : null;
+  const { menu, open, close } = useContextMenu();
+
+  const openIt = () => {
+    selectCheck(check.key, pillarOf);
+    getShellApi()?.openDoc({ kind: "endpoint", id: check.key, screenId: "endpoints" });
+  };
+  const requestText =
+    check.executorType === "graph" ? `${check.method} ${check.endpoint}` : `${check.executorType} · no URL`;
 
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
-      onClick={() => {
-        selectCheck(check.key, pillarOf);
-        getShellApi()?.openDoc({ kind: "endpoint", id: check.key, screenId: "endpoints" });
-      }}
+      onClick={openIt}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          selectCheck(check.key, pillarOf);
-          getShellApi()?.openDoc({ kind: "endpoint", id: check.key, screenId: "endpoints" });
+          openIt();
         }
       }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Open", onSelect: openIt },
+            {
+              label: "Run it",
+              onSelect: () => {
+                openIt();
+                void runCheck();
+              },
+            },
+            { label: "Copy key", onSelect: () => navigator.clipboard?.writeText(check.key) },
+            { label: "Copy request", onSelect: () => navigator.clipboard?.writeText(requestText) },
+          ],
+          `Actions for ${check.label}`,
+        )
+      }
       style={{
         display: "block",
         padding: "7px 13px",
@@ -239,5 +264,7 @@ function Row({ check, state }: { check: MonitorCheck; state: EndpointsState }) {
         {packages.length === 0 ? " · in no package" : ""}
       </span>
     </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }

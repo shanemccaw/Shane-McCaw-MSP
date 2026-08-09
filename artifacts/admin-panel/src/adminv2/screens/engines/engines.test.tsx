@@ -19,7 +19,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
+import { EnginesExplorer } from "./EnginesExplorer";
+import { EnginesBody } from "./EnginesBody";
 import {
   configureEnginesFetch,
   getSnapshot,
@@ -28,11 +31,13 @@ import {
   resetEnginesStore,
   runEngine,
   select,
+  setTab,
   setTestbed,
 } from "./enginesStore";
 import { historyUnderreportsScore, scoreOfOutput, traceRowsOf, traceTotal } from "./engineTypes";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 const ENGINES = [
   {
@@ -78,6 +83,11 @@ function jsonOnce(body: unknown, ok = true) {
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
   // The selected customer deliberately survives a reload, which means it also
   // survives `resetEnginesStore()` — that reads it back from storage. Clear it
   // so one test's scope cannot become the next one's starting state.
@@ -87,6 +97,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   resetEnginesStore();
 });
 
@@ -352,5 +363,112 @@ describe("runEngine", () => {
     jsonOnce({ error: "A real customerId is required." }, false);
     await runEngine("health");
     expect(getSnapshot().runError).toBe("A real customerId is required.");
+  });
+});
+
+// ─── Context menus ────────────────────────────────────────────────────────────
+
+function engineCard(label: string): HTMLElement {
+  // The header repeats the selected engine's label as plain text, so this
+  // targets the card's own title button specifically rather than any text
+  // match.
+  const heading = screen.getByRole("button", { name: label });
+  return heading.parentElement!.parentElement!.parentElement as HTMLElement;
+}
+
+describe("EnginesExplorer right-click", () => {
+  it("offers Open the engine / Run it for real / Copy engine key / Copy last score", async () => {
+    jsonOnce({ engines: ENGINES });
+    await loadEngines();
+    render(<EnginesExplorer />);
+
+    const row = screen.getByText("Architecture Health Engine").closest("button")!;
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menuitem", { name: "Open the engine" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run it for real" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy engine key" })).toBeTruthy();
+    // Never scored here yet — "Copy last score" has nothing real to copy.
+    expect(screen.getByRole("menuitem", { name: "Copy last score" }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("copies the real engine key, not a label or a guess", async () => {
+    jsonOnce({ engines: ENGINES });
+    await loadEngines();
+    render(<EnginesExplorer />);
+
+    const row = screen.getByText("SLA Engine").closest("button")!;
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy engine key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("sla");
+  });
+
+  it("Run it for real reuses the same runEngine path the screen's own buttons use — no dry run, no fabricated behaviour", async () => {
+    jsonOnce({ engines: ENGINES });
+    await loadEngines();
+    jsonOnce({ testbeds: TESTBEDS });
+    await loadTestbeds();
+    fetchWithAuth.mockClear();
+    jsonOnce({ mode: "tenant", customerId: 7, output: { engine: "health", score: 61, rawSignals: [] } });
+    jsonOnce({ engineKey: "health", customerId: 7, series: [], baselineEvents: [], signalDeltas: [], latest: null });
+
+    render(<EnginesExplorer />);
+    const row = screen.getByText("Architecture Health Engine").closest("button")!;
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run it for real" }));
+
+    await vi.waitFor(() => expect(getSnapshot().runs.health).toMatchObject({ score: 61 }));
+    const [path, init] = fetchWithAuth.mock.calls[0]!;
+    expect(path).toBe("/api/admin/engines/health/test");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ customerId: 7 });
+    // Real snapshot write, same as every other run path on this screen.
+    expect(getSnapshot().message).toMatch(/history row was written/i);
+  });
+});
+
+describe("EngineCard right-click (Run every engine tab)", () => {
+  async function renderGrid() {
+    jsonOnce({ engines: ENGINES });
+    await loadEngines();
+    jsonOnce({ testbeds: TESTBEDS });
+    await loadTestbeds();
+    jsonOnce({ engineKey: "health", customerId: 7, series: [], baselineEvents: [], signalDeltas: [], latest: null });
+    select("health");
+    setTab("all");
+    render(<EnginesBody />);
+  }
+
+  it("offers Open this engine / Run it for real / Copy last output / Copy engine key", async () => {
+    await renderGrid();
+    const card = engineCard("Architecture Health Engine");
+    fireEvent.contextMenu(card);
+
+    expect(screen.getByRole("menuitem", { name: "Open this engine" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run it for real" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy engine key" })).toBeTruthy();
+    // Nothing has run yet in this session, so there is no output to copy.
+    expect(screen.getByRole("menuitem", { name: "Copy last output" }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("Copy last output copies the real run — enabled only once one exists", async () => {
+    await renderGrid();
+    fetchWithAuth.mockClear();
+    jsonOnce({ mode: "tenant", customerId: 7, output: { engine: "health", score: 61, rawSignals: [] } });
+    jsonOnce({ engineKey: "health", customerId: 7, series: [], baselineEvents: [], signalDeltas: [], latest: null });
+
+    await runEngine("health");
+
+    const card = engineCard("Architecture Health Engine");
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy last output" }));
+    expect(clipboardWrite).toHaveBeenCalledWith(JSON.stringify(getSnapshot().runs.health, null, 2));
+  });
+
+  it("Copy engine key copies the real key", async () => {
+    await renderGrid();
+    const card = engineCard("SLA Engine");
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy engine key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("sla");
   });
 });

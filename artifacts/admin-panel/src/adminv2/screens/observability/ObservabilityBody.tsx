@@ -15,8 +15,9 @@
  * as to the actions.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   codeFrameLines,
   dayLabel,
@@ -50,6 +51,7 @@ import {
   suppressExceptionGroup,
   toggleRule,
   unsuppressExceptionGroup,
+  updateIncident,
   OBS_VIEWS,
   type ObservabilityState,
   type ObsView,
@@ -139,16 +141,19 @@ function ListRow({
   on,
   dim,
   onSelect,
+  onContextMenu,
   children,
 }: {
   on: boolean;
   dim?: boolean;
   onSelect: () => void;
+  onContextMenu?: (event: ReactMouseEvent) => void;
   children: React.ReactNode;
 }) {
   return (
     <div
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{
         padding: "9px 13px",
         cursor: "pointer",
@@ -314,6 +319,7 @@ function Header({ state }: { state: ObservabilityState }) {
 function RulesView({ state }: { state: ObservabilityState }) {
   const selected = state.rules.find((r) => r.id === state.selectedRuleId) ?? null;
   const events = selected ? state.events.filter((e) => e.ruleId === selected.id) : [];
+  const { menu, open, close } = useContextMenu();
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "stretch" }}>
@@ -326,7 +332,23 @@ function RulesView({ state }: { state: ObservabilityState }) {
           const ruleEvents = state.events.filter((e) => e.ruleId === rule.id);
           const live = ruleEvents.filter((e) => !e.resolvedAt).length;
           return (
-            <ListRow key={rule.id} on={rule.id === state.selectedRuleId} dim={!rule.enabled} onSelect={() => selectRule(rule.id)}>
+            <ListRow
+              key={rule.id}
+              on={rule.id === state.selectedRuleId}
+              dim={!rule.enabled}
+              onSelect={() => selectRule(rule.id)}
+              onContextMenu={(e) =>
+                open(
+                  e,
+                  [
+                    { label: "Send a test firing", onSelect: () => void sendTestFiring(rule.id) },
+                    { label: rule.enabled ? "Disable" : "Enable", onSelect: () => toggleRule(rule.id) },
+                    { label: "Open an incident", onSelect: () => void openIncidentFrom("a rule", rule.label) },
+                  ],
+                  `Actions for alert rule ${rule.label}`,
+                )
+              }
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span
                   style={{
@@ -438,6 +460,22 @@ function RulesView({ state }: { state: ObservabilityState }) {
             return (
               <div
                 key={event.id}
+                onContextMenu={(e) =>
+                  open(
+                    e,
+                    [
+                      ...(done
+                        ? []
+                        : [{ label: "Resolve", onSelect: () => void resolveEvent(event.id) }]),
+                      {
+                        label: "Open an incident",
+                        onSelect: () =>
+                          void openIncidentFrom("an alert", event.summary, normaliseSeverity(event.severity)),
+                      },
+                    ],
+                    `Actions for alert firing ${event.summary}`,
+                  )
+                }
                 style={{
                   padding: "11px 13px",
                   borderRadius: 8,
@@ -477,6 +515,7 @@ function RulesView({ state }: { state: ObservabilityState }) {
           })}
         </div>
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -492,6 +531,7 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
   const selected = state.exceptions.find((g) => g.fingerprint === state.selectedFingerprint) ?? null;
   const [suppressing, setSuppressing] = useState(false);
   const [reason, setReason] = useState("");
+  const { menu, open, close } = useContextMenu();
 
   // Arming is per-record, exactly like the peek's `confirm` action: moving to a
   // different group must not leave a half-armed Suppress pointing at it.
@@ -513,6 +553,38 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
             on={group.fingerprint === state.selectedFingerprint}
             dim={group.status === "suppressed"}
             onSelect={() => selectException(group.fingerprint)}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [
+                  ...(group.status !== "resolved"
+                    ? [{ label: "Resolve", onSelect: () => void resolveExceptionGroup(group.fingerprint) }]
+                    : []),
+                  ...(group.status === "suppressed"
+                    ? [{ label: "Unsuppress", onSelect: () => void unsuppressExceptionGroup(group.fingerprint) }]
+                    : [
+                        {
+                          // Suppressing needs a reason the route refuses blank — this
+                          // routes through the exact same in-place arm-then-confirm
+                          // box the primary Suppress button opens, never firing the
+                          // write directly from the menu (see ExceptionsView's
+                          // `suppressing` state above).
+                          label: "Suppress…",
+                          onSelect: () => {
+                            selectException(group.fingerprint);
+                            setSuppressing(true);
+                          },
+                        },
+                      ]),
+                  {
+                    label: "Open an incident",
+                    onSelect: () =>
+                      void openIncidentFrom("an exception group", `${group.errorName}: ${group.errorMessage}`),
+                  },
+                ],
+                `Actions for exception ${group.errorName}`,
+              )
+            }
           >
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <span
@@ -747,6 +819,7 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
           </div>
         </Detail>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -754,6 +827,8 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
 // ── Incidents ────────────────────────────────────────────────────────────────
 
 function IncidentsView({ state }: { state: ObservabilityState }) {
+  const { menu, open, close } = useContextMenu();
+
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div
@@ -781,6 +856,25 @@ function IncidentsView({ state }: { state: ObservabilityState }) {
           <div
             key={incident.id}
             onClick={() => selectIncident(incident.id)}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [
+                  // "Mark resolved" is deliberately not here: the peek gates the same
+                  // write behind `confirm: true` because it publishes to the public
+                  // status page, and a context menu has no confirm step to route
+                  // through — see this screen's incidentPeek() and the
+                  // TenantSignalsBody precedent this sweep follows.
+                  ...(incident.status !== "identified"
+                    ? [{ label: "Mark identified", onSelect: () => void updateIncident(incident.id, { status: "identified" }) }]
+                    : []),
+                  ...(incident.status !== "monitoring"
+                    ? [{ label: "Mark monitoring", onSelect: () => void updateIncident(incident.id, { status: "monitoring" }) }]
+                    : []),
+                ],
+                `Actions for incident ${incident.title}`,
+              )
+            }
             style={{
               padding: "13px 15px",
               borderRadius: 8,
@@ -805,6 +899,7 @@ function IncidentsView({ state }: { state: ObservabilityState }) {
           </div>
         ))}
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -814,6 +909,7 @@ function IncidentsView({ state }: { state: ObservabilityState }) {
 function DlqView({ state }: { state: ObservabilityState }) {
   const selected = state.dlq.find((d) => d.dlqId === state.selectedDlqId) ?? null;
   const [discardArmed, setDiscardArmed] = useState(false);
+  const { menu, open, close } = useContextMenu();
 
   useEffect(() => {
     setDiscardArmed(false);
@@ -827,7 +923,29 @@ function DlqView({ state }: { state: ObservabilityState }) {
           <Placeholder text="Nothing is stuck. Every job that failed has been dealt with." />
         )}
         {state.dlq.map((item) => (
-          <ListRow key={item.dlqId} on={item.dlqId === state.selectedDlqId} onSelect={() => selectDlq(item.dlqId)}>
+          <ListRow
+            key={item.dlqId}
+            on={item.dlqId === state.selectedDlqId}
+            onSelect={() => selectDlq(item.dlqId)}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [
+                  ...(item.replayable
+                    ? [{ label: "Retry", onSelect: () => void retryDlqItem(item.dlqId) }]
+                    : []),
+                  { label: "Mark handled", onSelect: () => void markDlqItem(item.dlqId, "manual") },
+                  { label: "Copy payload", onSelect: () => copyPayload(item.dlqId) },
+                  // Discard is deliberately absent: it is a real destructive action
+                  // with no undo, and the detail pane already gates it behind a
+                  // press-twice arm (`discardArmed` above) that a context menu item
+                  // cannot faithfully reproduce — see TenantSignalsBody's Delete for
+                  // the same call in this sweep.
+                ],
+                `Actions for dead letter ${item.eventType}`,
+              )
+            }
+          >
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <span
                 style={{
@@ -971,6 +1089,7 @@ function DlqView({ state }: { state: ObservabilityState }) {
           )}
         </Detail>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }

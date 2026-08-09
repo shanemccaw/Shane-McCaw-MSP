@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import { PackagesBody } from "./PackagesBody";
+import { PackagesExplorerPanel } from "./PackagesExplorerPanel";
 import {
   configurePackagesFetch,
   currentChecks,
@@ -53,6 +54,7 @@ vi.mock("../../shell/ShellContext", () => ({
 }));
 
 const adminFetch = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 function check(over: Partial<MonitorCheckRow> & { key: string }): MonitorCheckRow {
   return {
@@ -119,6 +121,11 @@ beforeEach(() => {
   openPeek.mockReset();
   openDoc.mockReset();
   adminFetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({ updated: true }) });
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -323,6 +330,77 @@ describe("the body", () => {
     // state state the consequence; neither is allowed to quietly drop it.
     expect(screen.getAllByText(/a scan on this package collects nothing/).length).toBe(2);
     expect(screen.getByText("0 of 0 linked")).toBeTruthy();
+  });
+
+  it("right-clicking an available check offers Add / Copy key / Copy label, and Add stages it same as a click", () => {
+    render(<PackagesBody />);
+    const row = screen.getByText("BitLocker coverage").closest("div")!;
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menuitem", { name: "Copy check key" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy check key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("device:bitlocker");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy check label" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("BitLocker coverage");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to this package" }));
+    expect(adminFetch).not.toHaveBeenCalled();
+    expect(currentChecks("core:security-baseline")).toContain("device:bitlocker");
+  });
+
+  it("right-clicking an assigned check offers Remove instead of Add, staging the removal", () => {
+    render(<PackagesBody />);
+    const row = screen.getByText("MFA registration coverage").closest("div")!;
+    fireEvent.contextMenu(row);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from this package" }));
+    expect(adminFetch).not.toHaveBeenCalled();
+    expect(currentChecks("core:security-baseline")).not.toContain("identity:mfa-registration");
+  });
+
+  it("right-clicking a dangling junction row offers to remove it and to copy its key", () => {
+    seedPackagesStore({
+      checksByPackage: { ...getSnapshot().checksByPackage, "core:security-baseline": ["identity:deleted-long-ago"] },
+      draft: {},
+    });
+    render(<PackagesBody />);
+    const row = screen.getByText("identity:deleted-long-ago").closest("div")!;
+    fireEvent.contextMenu(row);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy check key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("identity:deleted-long-ago");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove this dangling assignment" }));
+    expect(currentChecks("core:security-baseline")).not.toContain("identity:deleted-long-ago");
+  });
+});
+
+describe("the explorer panel", () => {
+  beforeEach(() => {
+    configurePackagesFetch(adminFetch);
+    seedRealisticCatalog();
+  });
+
+  it("right-clicking a package row offers Open / Copy key / Copy name, real actions only", () => {
+    render(<PackagesExplorerPanel />);
+    const row = screen.getByText("Copilot Readiness").closest("button")!;
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy package key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("core:copilot-readiness");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy package name" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Copilot Readiness");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().selected).toBe("core:copilot-readiness");
   });
 });
 

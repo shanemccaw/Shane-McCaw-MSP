@@ -27,6 +27,7 @@ import { getScreen, resetRegistry } from "../../registry/registry";
 import type { ScreenModule } from "../../registry/types";
 import { EndpointExplorerView } from "./EndpointExplorer";
 import { EndpointsBody } from "./EndpointsBody";
+import { GapsPanel } from "./EndpointProperties";
 import { startRun, createRule } from "./endpointsApi";
 import {
   buildRequestUrl,
@@ -57,6 +58,7 @@ import {
 } from "./endpointsStore";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ fetchWithAuth }),
@@ -109,8 +111,13 @@ beforeAll(async () => {
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
   resetEndpointsStore();
   configureEndpointsFetch(fetchWithAuth);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -720,5 +727,227 @@ describe("request overrides", () => {
     setOverride("identity:a", { endpoint: "/users?$top=1" });
     expect(getSnapshot().overrides["identity:a"]).toEqual({ endpoint: "/users?$top=1" });
     expect(getSnapshot().overrides["devices:b"]).toBeUndefined();
+  });
+});
+
+// ── Right-click context menus ──────────────────────────────────────────────────
+//
+// Every menu here wires an action that already exists elsewhere on the
+// screen (selectCheck+openDoc, runCheck, draftFromKey, removeRule,
+// openPeek) — none of it is invented for the menu.
+
+describe("context menus", () => {
+  it("the explorer row opens it, offers to run it, and copies its key and request", async () => {
+    await loadCatalog([check({ key: "identity:a", label: "Guests", endpoint: "/users", method: "GET" })]);
+    render(<EndpointExplorerView state={getSnapshot()} />);
+
+    const row = screen.getByText("Guests").closest('[role="button"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run it" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("identity:a");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy request" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("GET /users");
+
+    expect(getSnapshot().selectedKey).toBeNull();
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    // The same selectCheck the row's own onClick calls.
+    expect(getSnapshot().selectedKey).toBe("identity:a");
+  });
+
+  it("the explorer row's 'Run it' selects the check and issues the same run the ribbon's Run does", async () => {
+    await loadCatalog([check({ key: "identity:a", label: "Guests" })]);
+    setTenant(7);
+    fetchWithAuth.mockClear();
+    fetchWithAuth.mockResolvedValue(jsonResponse({ run: { runId: "r1", checkKey: "identity:a", status: "pending" } }));
+    render(<EndpointExplorerView state={getSnapshot()} />);
+
+    const row = screen.getByText("Guests").closest('[role="button"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run it" }));
+
+    expect(getSnapshot().selectedKey).toBe("identity:a");
+    await vi.waitFor(() =>
+      expect(fetchWithAuth.mock.calls.some(([p]) => String(p).endsWith("/run"))).toBe(true),
+    );
+  });
+
+  it("a property-tree leaf's menu starts the same rule draft its own click does, and copies key/value", async () => {
+    const trace: CheckTrace = {
+      checkKey: "identity:a",
+      itemCount: 2,
+      coveredKeyCount: 0,
+      uncoveredKeyCount: 1,
+      suggestions: [],
+      keys: [
+        {
+          key: "guestCount",
+          value: 2,
+          origin: "mapping",
+          sourceField: "userType",
+          transform: "count",
+          rules: [],
+          uncovered: true,
+          suggestion: null,
+        },
+      ],
+    };
+
+    await loadCatalog([check({ key: "identity:a" })]);
+    selectCheck("identity:a", pillarOf);
+    setTenant(7);
+
+    fetchWithAuth.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/run") && init?.method === "POST") {
+        return jsonResponse({ run: { runId: "r1", checkKey: "identity:a", status: "pending", statusText: "queued" } });
+      }
+      if (/\/monitor-check-runs\/r1$/.test(path)) {
+        return jsonResponse({
+          run: { runId: "r1", checkKey: "identity:a", status: "completed", statusText: "done", result: { itemCount: 2, status: "ok" } },
+          classification: null,
+        });
+      }
+      if (path.endsWith("/items")) return jsonResponse({ items: [{ id: "1" }, { id: "2" }], itemCount: 2 });
+      if (path.endsWith("/trace")) return jsonResponse({ trace });
+      if (path.includes("/signal-rules/for-check")) return jsonResponse({ rules: [] });
+      if (path.includes("/monitor-check-runs?")) return jsonResponse({ runs: [] });
+      return jsonResponse({});
+    });
+
+    vi.useFakeTimers();
+    try {
+      const promise = runCheck();
+      await vi.advanceTimersByTimeAsync(2000);
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    render(<EndpointsBody recordId="identity:a" />);
+    const row = screen.getByText("guestCount").closest('[role="button"]') as HTMLElement;
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "New rule from this value" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("guestCount");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy value" }));
+    expect(clipboardWrite).toHaveBeenCalledWith(displayValue(2));
+
+    expect(getSnapshot().draft).toBeNull();
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "New rule from this value" }));
+    // The exact same draftFromKey the leaf's own onClick calls.
+    expect(getSnapshot().draft?.sourceKey).toBe("guestCount");
+  });
+
+  it("a live rule row's menu copies its condition and signal key, and its Delete calls the same removeRule the X button does", async () => {
+    const trace: CheckTrace = {
+      checkKey: "identity:a",
+      itemCount: 2,
+      coveredKeyCount: 1,
+      uncoveredKeyCount: 0,
+      suggestions: [],
+      keys: [
+        {
+          key: "guestCount",
+          value: 2,
+          origin: "mapping",
+          rules: [
+            {
+              ruleId: 5,
+              signalKey: "security:guestCount",
+              groupId: null,
+              ruleType: "profile_key_gt",
+              sourceKey: "guestCount",
+              compareValue: "0",
+              description: null,
+              result: true,
+              reason: "guestCount 2 > 0",
+            },
+          ],
+          uncovered: false,
+          suggestion: null,
+        },
+      ],
+    };
+    const rule: SignalRule = {
+      id: 5,
+      signalKey: "security:guestCount",
+      groupId: null,
+      ruleType: "profile_key_gt",
+      sourceKey: "guestCount",
+      compareValue: "0",
+      description: "Guests exist.",
+    };
+
+    await loadCatalog([check({ key: "identity:a" })]);
+    selectCheck("identity:a", pillarOf);
+    setTenant(7);
+
+    fetchWithAuth.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/run") && init?.method === "POST") {
+        return jsonResponse({ run: { runId: "r1", checkKey: "identity:a", status: "pending", statusText: "queued" } });
+      }
+      if (/\/monitor-check-runs\/r1$/.test(path)) {
+        return jsonResponse({
+          run: { runId: "r1", checkKey: "identity:a", status: "completed", statusText: "done", result: { itemCount: 2, status: "ok" } },
+          classification: null,
+        });
+      }
+      if (path.endsWith("/items")) return jsonResponse({ items: [{ id: "1" }, { id: "2" }], itemCount: 2 });
+      if (path.endsWith("/trace")) return jsonResponse({ trace });
+      if (path.includes("/signal-rules/for-check")) return jsonResponse({ rules: [rule] });
+      if (path.includes("/monitor-check-runs?")) return jsonResponse({ runs: [] });
+      if (/\/signal-rules\/5$/.test(path) && init?.method === "DELETE") return jsonResponse({ ok: true });
+      return jsonResponse({});
+    });
+
+    vi.useFakeTimers();
+    try {
+      const promise = runCheck();
+      await vi.advanceTimersByTimeAsync(2000);
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(getSnapshot().rules).toHaveLength(1);
+
+    render(<EndpointsBody recordId="identity:a" />);
+    const row = screen.getByText("guestCount is more than 0").closest("div")!.parentElement as HTMLElement;
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy condition" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("guestCount is more than 0");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy signal key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("security:guestCount");
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete rule" }));
+    await vi.waitFor(() =>
+      expect(
+        fetchWithAuth.mock.calls.some(([p, i]) => /\/signal-rules\/5$/.test(String(p)) && (i as RequestInit | undefined)?.method === "DELETE"),
+      ).toBe(true),
+    );
+  });
+
+  it("a gap row opens the same peek its own click does, and copies its key", async () => {
+    await loadCatalog([check({ key: "identity:a", label: "Guests" })]);
+    render(<GapsPanel />);
+
+    const row = screen.getByText("Guests").closest('[role="button"]') as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("identity:a");
   });
 });

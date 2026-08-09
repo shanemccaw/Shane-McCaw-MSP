@@ -19,6 +19,7 @@
 
 import { useSyncExternalStore } from "react";
 import { ACCENT, ACCENT_TEXT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   addChecks,
   clearFilters,
@@ -435,7 +436,10 @@ function CheckRow({
   if (!inPackage && others.length > 0) tags.push({ label: `${others.length} other${others.length === 1 ? "" : "s"}`, tone: TEXT.groupLabel });
   if (inPackage && others.length > 0) tags.push({ label: `shared with ${others.length}`, tone: TEXT.groupLabel });
 
+  const { menu, open, close } = useContextMenu();
+
   return (
+    <>
     <div
       className="av2-row"
       role="button"
@@ -447,6 +451,20 @@ function CheckRow({
           toggleCheck(check.key);
         }
       }}
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            {
+              label: inPackage ? "Remove from this package" : "Add to this package",
+              onSelect: () => toggleCheck(check.key),
+            },
+            { label: "Copy check key", onSelect: () => navigator.clipboard?.writeText(check.key) },
+            { label: "Copy check label", onSelect: () => navigator.clipboard?.writeText(check.label) },
+          ],
+          `Actions for ${check.label}`,
+        )
+      }
       title={inPackage ? `Remove ${check.label} from this package` : `Add ${check.label} to this package`}
       style={{
         display: "flex",
@@ -471,6 +489,8 @@ function CheckRow({
         {check.key}
       </span>
     </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 
@@ -525,6 +545,52 @@ function AvailablePane({ state, d }: { state: PackagesStoreState; d: Derived }) 
   );
 }
 
+/**
+ * A junction row whose check no longer exists in the catalog. Right-click
+ * mirrors the click: the only real action is removing the dangling
+ * assignment, via the same `toggleCheck` staging path every other row uses —
+ * nothing here writes through.
+ */
+function OrphanRow({ checkKey }: { checkKey: string }) {
+  const { menu, open, close } = useContextMenu();
+  return (
+    <>
+    <div
+      className="av2-row"
+      role="button"
+      tabIndex={0}
+      onClick={() => toggleCheck(checkKey)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleCheck(checkKey);
+        }
+      }}
+      onContextMenu={(event) =>
+        open(
+          event,
+          [
+            { label: "Remove this dangling assignment", onSelect: () => toggleCheck(checkKey) },
+            { label: "Copy check key", onSelect: () => navigator.clipboard?.writeText(checkKey) },
+          ],
+          `Actions for ${checkKey}`,
+        )
+      }
+      title="Remove this dangling assignment"
+      style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", padding: "7px 11px", cursor: "pointer", borderBottom: `1px solid ${LINE.subtle}` }}
+    >
+      <span style={{ flex: "none", fontSize: 13, lineHeight: 1, color: ACCENT_TEXT.danger }}>−</span>
+      <span style={{ flex: "1 1 210px", minWidth: 0, fontFamily: "Menlo, Consolas, monospace", fontSize: 12, color: TEXT.strong }}>{checkKey}</span>
+      <Tag label="no such check" tone={ACCENT_TEXT.danger} />
+      <span style={{ flex: "1 1 100%", minWidth: 0, fontSize: 11, color: TEXT.faint }}>
+        The catalog has no check with this key, so it collects nothing. Removing it is safe.
+      </span>
+    </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
+  );
+}
+
 function AssignedPane({ state, d }: { state: PackagesStoreState; d: Derived }) {
   return (
     <div style={{ flex: "1 1 50%", minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -540,28 +606,7 @@ function AssignedPane({ state, d }: { state: PackagesStoreState; d: Derived }) {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         {d.orphans.map((key) => (
-          <div
-            key={key}
-            className="av2-row"
-            role="button"
-            tabIndex={0}
-            onClick={() => toggleCheck(key)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggleCheck(key);
-              }
-            }}
-            title="Remove this dangling assignment"
-            style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", padding: "7px 11px", cursor: "pointer", borderBottom: `1px solid ${LINE.subtle}` }}
-          >
-            <span style={{ flex: "none", fontSize: 13, lineHeight: 1, color: ACCENT_TEXT.danger }}>−</span>
-            <span style={{ flex: "1 1 210px", minWidth: 0, fontFamily: "Menlo, Consolas, monospace", fontSize: 12, color: TEXT.strong }}>{key}</span>
-            <Tag label="no such check" tone={ACCENT_TEXT.danger} />
-            <span style={{ flex: "1 1 100%", minWidth: 0, fontSize: 11, color: TEXT.faint }}>
-              The catalog has no check with this key, so it collects nothing. Removing it is safe.
-            </span>
-          </div>
+          <OrphanRow key={key} checkKey={key} />
         ))}
         {d.inPackage.map((check) => (
           <CheckRow key={check.key} check={check} inPackage state={state} selectedKey={d.key!} />

@@ -34,6 +34,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT, WASH } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   cancelDraft,
   draftFromKey,
@@ -639,18 +640,32 @@ function KeyRow({ node, state }: { node: TracedKey; state: EndpointsState }) {
   const tone = TYPE_TONE[t] ?? TEXT.caption;
   const picked = state.draft?.sourceKey === node.key || (node.origin === "itemCount" && state.draft?.ruleType === "threshold");
   const firing = node.rules.filter((r) => r.result).length;
+  const { menu, open, close } = useContextMenu();
+  const startDraft = () => draftFromKey(node.key, node.suggestion, state.selectedKey ?? "");
 
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
-      onClick={() => draftFromKey(node.key, node.suggestion, state.selectedKey ?? "")}
+      onClick={startDraft}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          draftFromKey(node.key, node.suggestion, state.selectedKey ?? "");
+          startDraft();
         }
       }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "New rule from this value", onSelect: startDraft },
+            { label: "Copy key", onSelect: () => navigator.clipboard?.writeText(node.key) },
+            { label: "Copy value", onSelect: () => navigator.clipboard?.writeText(displayValue(node.value)) },
+          ],
+          `Actions for ${node.key}`,
+        )
+      }
       style={{
         display: "flex",
         alignItems: "center",
@@ -715,6 +730,8 @@ function KeyRow({ node, state }: { node: TracedKey; state: EndpointsState }) {
         {node.uncovered ? "+ rule" : firing ? `${firing} firing` : `${node.rules.length} read it`}
       </span>
     </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 
@@ -966,73 +983,100 @@ function LiveRules({ state, check }: { state: EndpointsState; check: MonitorChec
             the left to write the first.
           </span>
         )}
-        {resolved.map(({ rule, verdict, reason, producedValue }) => (
-          <div
-            key={rule.id}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: `1px solid ${verdict === "fires" ? "rgba(242,202,99,.3)" : verdict === "cannot-read" ? "rgba(229,122,122,.3)" : LINE.quiet}`,
-              background: verdict === "fires" ? "rgba(242,202,99,.05)" : SURFACE.card,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  flex: "none",
-                  minWidth: 60,
-                  textAlign: "center",
-                  whiteSpace: "nowrap",
-                  padding: "3px 8px",
-                  borderRadius: 5,
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: ".06em",
-                  textTransform: "uppercase",
-                  background: verdict === "quiet" ? WASH.hoverSoft : `${VERDICT_TONE[verdict]}26`,
-                  color: VERDICT_TONE[verdict],
-                }}
-              >
-                {verdictLabel(verdict)}
-              </span>
-              <span style={{ flex: "1 1 130px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.strong, wordBreak: "break-all" }}>
-                {rule.sourceKey} {ruleTypeLabel(rule.ruleType)}
-                {ruleTypeNeedsValue(rule.ruleType) ? ` ${rule.compareValue ?? ""}` : ""}
-              </span>
-              <button
-                onClick={() => void removeRule(rule.id)}
-                title="Delete this rule"
-                aria-label={`Delete rule ${rule.id}`}
-                style={{
-                  flex: "none",
-                  width: 22,
-                  height: 22,
-                  borderRadius: 4,
-                  border: `1px solid ${LINE.control}`,
-                  background: "transparent",
-                  color: TEXT.caption,
-                  fontFamily: "inherit",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <span style={{ display: "block", marginTop: 6, fontSize: 11.5, lineHeight: 1.5, color: TEXT.groupLabel }}>
-              {rule.description ?? `writes to ${rule.signalKey}`}
-            </span>
-            <span style={{ display: "block", marginTop: 5, fontFamily: FONT.mono, fontSize: 10.5, color: verdict === "cannot-read" ? ACCENT_TEXT.danger : TEXT.faintest }}>
-              {verdict === "cannot-read"
-                ? state.trace
-                  ? `${rule.sourceKey} is not among the keys this response produced — the rule can never fire.`
-                  : "Run it to see whether this rule lands."
-                : (reason ?? `reads ${displayValue(producedValue)}`)}
-            </span>
-          </div>
+        {resolved.map((r) => (
+          <RuleResultRow key={r.rule.id} resolved={r} state={state} />
         ))}
       </div>
     </>
+  );
+}
+
+function RuleResultRow({
+  resolved: { rule, verdict, reason, producedValue },
+  state,
+}: {
+  resolved: ReturnType<typeof resolveRuleVerdicts>[number];
+  state: EndpointsState;
+}) {
+  const { menu, open, close } = useContextMenu();
+  const conditionText = `${rule.sourceKey} ${ruleTypeLabel(rule.ruleType)}${
+    ruleTypeNeedsValue(rule.ruleType) ? ` ${rule.compareValue ?? ""}` : ""
+  }`;
+
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: `1px solid ${verdict === "fires" ? "rgba(242,202,99,.3)" : verdict === "cannot-read" ? "rgba(229,122,122,.3)" : LINE.quiet}`,
+        background: verdict === "fires" ? "rgba(242,202,99,.05)" : SURFACE.card,
+      }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Copy condition", onSelect: () => navigator.clipboard?.writeText(conditionText) },
+            { label: "Copy signal key", onSelect: () => navigator.clipboard?.writeText(rule.signalKey) },
+            { label: "Delete rule", danger: true, onSelect: () => void removeRule(rule.id) },
+          ],
+          `Actions for ${conditionText}`,
+        )
+      }
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span
+          style={{
+            flex: "none",
+            minWidth: 60,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            padding: "3px 8px",
+            borderRadius: 5,
+            fontSize: 9,
+            fontWeight: 800,
+            letterSpacing: ".06em",
+            textTransform: "uppercase",
+            background: verdict === "quiet" ? WASH.hoverSoft : `${VERDICT_TONE[verdict]}26`,
+            color: VERDICT_TONE[verdict],
+          }}
+        >
+          {verdictLabel(verdict)}
+        </span>
+        <span style={{ flex: "1 1 130px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.strong, wordBreak: "break-all" }}>
+          {conditionText}
+        </span>
+        <button
+          onClick={() => void removeRule(rule.id)}
+          title="Delete this rule"
+          aria-label={`Delete rule ${rule.id}`}
+          style={{
+            flex: "none",
+            width: 22,
+            height: 22,
+            borderRadius: 4,
+            border: `1px solid ${LINE.control}`,
+            background: "transparent",
+            color: TEXT.caption,
+            fontFamily: "inherit",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      <span style={{ display: "block", marginTop: 6, fontSize: 11.5, lineHeight: 1.5, color: TEXT.groupLabel }}>
+        {rule.description ?? `writes to ${rule.signalKey}`}
+      </span>
+      <span style={{ display: "block", marginTop: 5, fontFamily: FONT.mono, fontSize: 10.5, color: verdict === "cannot-read" ? ACCENT_TEXT.danger : TEXT.faintest }}>
+        {verdict === "cannot-read"
+          ? state.trace
+            ? `${rule.sourceKey} is not among the keys this response produced — the rule can never fire.`
+            : "Run it to see whether this rule lands."
+          : (reason ?? `reads ${displayValue(producedValue)}`)}
+      </span>
+      <ContextMenu menu={menu} onClose={close} />
+    </div>
   );
 }
 
@@ -1231,24 +1275,8 @@ function RulesView({ state, check }: { state: EndpointsState; check: MonitorChec
         {resolved.length === 0 && (
           <span style={{ fontSize: 11.5, color: TEXT.faintest }}>Nothing reads this endpoint yet.</span>
         )}
-        {resolved.map(({ rule, verdict, reason }) => (
-          <div key={rule.id} style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${LINE.quiet}`, background: SURFACE.card }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-              <span style={{ flex: "1 1 180px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.strong, wordBreak: "break-all" }}>
-                {rule.sourceKey} {ruleTypeLabel(rule.ruleType)}
-                {ruleTypeNeedsValue(rule.ruleType) ? ` ${rule.compareValue ?? ""}` : ""}
-              </span>
-              <span style={{ flex: "none", fontSize: 10.5, color: TEXT.caption }}>writes to {rule.signalKey}</span>
-              <span style={{ flex: "none", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: VERDICT_TONE[verdict] }}>
-                {verdictLabel(verdict)}
-              </span>
-            </div>
-            {(rule.description || reason) && (
-              <span style={{ display: "block", marginTop: 6, fontSize: 11.5, lineHeight: 1.5, color: TEXT.groupLabel }}>
-                {rule.description ?? reason}
-              </span>
-            )}
-          </div>
+        {resolved.map((r) => (
+          <RuleSummaryRow key={r.rule.id} resolved={r} />
         ))}
       </div>
 
@@ -1282,6 +1310,46 @@ function RulesView({ state, check }: { state: EndpointsState; check: MonitorChec
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RuleSummaryRow({ resolved: { rule, verdict, reason } }: { resolved: ReturnType<typeof resolveRuleVerdicts>[number] }) {
+  const { menu, open, close } = useContextMenu();
+  const conditionText = `${rule.sourceKey} ${ruleTypeLabel(rule.ruleType)}${
+    ruleTypeNeedsValue(rule.ruleType) ? ` ${rule.compareValue ?? ""}` : ""
+  }`;
+
+  return (
+    <div
+      style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${LINE.quiet}`, background: SURFACE.card }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Copy condition", onSelect: () => navigator.clipboard?.writeText(conditionText) },
+            { label: "Copy signal key", onSelect: () => navigator.clipboard?.writeText(rule.signalKey) },
+            { label: "Delete rule", danger: true, onSelect: () => void removeRule(rule.id) },
+          ],
+          `Actions for ${conditionText}`,
+        )
+      }
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+        <span style={{ flex: "1 1 180px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.strong, wordBreak: "break-all" }}>
+          {conditionText}
+        </span>
+        <span style={{ flex: "none", fontSize: 10.5, color: TEXT.caption }}>writes to {rule.signalKey}</span>
+        <span style={{ flex: "none", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: VERDICT_TONE[verdict] }}>
+          {verdictLabel(verdict)}
+        </span>
+      </div>
+      {(rule.description || reason) && (
+        <span style={{ display: "block", marginTop: 6, fontSize: 11.5, lineHeight: 1.5, color: TEXT.groupLabel }}>
+          {rule.description ?? reason}
+        </span>
+      )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }

@@ -457,6 +457,143 @@ describe("body", () => {
   });
 });
 
+// ── Context menus ────────────────────────────────────────────────────────────
+
+describe("context menus", () => {
+  it("offers real actions on a rule row, and fires them for real", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    await waitFor(() => expect(screen.getAllByText("Dead-letter backlog").length).toBeGreaterThan(0));
+
+    const row = screen.getByText("Dead-letter backlog").parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Send a test firing" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Disable" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open an incident" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Send a test firing" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/observability/alert-rules/1/test",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+  });
+
+  it("offers Resolve and Open an incident on a firing event card, and Resolve fires for real", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    await waitFor(() => expect(screen.getByText(EVENT.summary)).toBeTruthy());
+
+    const card = screen.getByText(EVENT.summary).parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(card);
+    expect(screen.getByRole("menuitem", { name: "Resolve" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open an incident" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Resolve" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/observability/alert-events/41/resolve",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+  });
+
+  it("routes Suppress on an exception row through the same reason gate the button opens, never firing it directly", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    openView("exceptions");
+    await waitFor(() => expect(screen.getAllByText("TypeError").length).toBeGreaterThan(0));
+
+    // Index 0 is the list row; the selected group's Detail pane repeats the name.
+    const row = screen.getAllByText("TypeError")[0]!.parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Resolve" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Suppress…" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open an incident" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Suppress…" }));
+    const confirmButton = screen.getByRole("button", { name: "Suppress it" }) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+    expect(fetchWithAuth.mock.calls.some((c: unknown[]) => String(c[0]).includes("/suppress"))).toBe(false);
+  });
+
+  it("fires Resolve on an exception row for real", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    openView("exceptions");
+    await waitFor(() => expect(screen.getAllByText("TypeError").length).toBeGreaterThan(0));
+
+    const row = screen.getAllByText("TypeError")[0]!.parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Resolve" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/exceptions/fp-1/resolve",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+  });
+
+  it("offers Retry / Mark handled / Copy payload on a replayable dlq row, never a raw Discard", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    openView("dlq");
+    await waitFor(() => expect(screen.getAllByText(REPLAYABLE.eventType).length).toBeGreaterThan(0));
+
+    const row = screen.getAllByText(REPLAYABLE.eventType)[0]!.parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Mark handled" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy payload" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /discard/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Retry" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/dlq/d-1/replay",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+  });
+
+  it("omits Retry from a dlq row's context menu when nothing can re-run it", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    openView("dlq");
+    await waitFor(() => expect(screen.getAllByText(NOT_REPLAYABLE.eventType).length).toBeGreaterThan(0));
+
+    const row = screen.getAllByText(NOT_REPLAYABLE.eventType)[0]!.parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.queryByRole("menuitem", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Mark handled" })).toBeTruthy();
+  });
+
+  it("offers status transitions on an incident row, and never a raw Mark resolved", async () => {
+    stubAllRoutes();
+    render(<ObservabilityBody />);
+    openView("incidents");
+    await waitFor(() => expect(screen.getByText(INCIDENT.title)).toBeTruthy());
+
+    const card = screen.getByText(INCIDENT.title).parentElement!.parentElement as HTMLElement;
+    fireEvent.contextMenu(card);
+    // INCIDENT.status is "monitoring": that transition is absent (already there),
+    // "identified" is offered, and resolving is never a raw click here — it
+    // publishes to the public status page and stays behind the peek's confirm.
+    expect(screen.getByRole("menuitem", { name: "Mark identified" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Mark monitoring" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /mark resolved/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark identified" }));
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        "/api/admin/incidents/7",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+  });
+});
+
 // ── Formatting ───────────────────────────────────────────────────────────────
 
 describe("format", () => {

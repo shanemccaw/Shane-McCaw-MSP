@@ -5,11 +5,22 @@
  * block per statement, SSMS-style, same shape the old admin panel's
  * `SqlQueryOutput.tsx` already renders (this is a restyle onto adminv2's own
  * theme tokens, not a new component design).
+ *
+ * Each statement block also gets a right-click menu — the closest fit here to
+ * Deploy Console's `TranscriptRow` "Run again / Copy command / Copy output"
+ * (`screens/git/FloatingDeployConsole.tsx`), since this is this screen's own
+ * run transcript. "Run again" is deliberately left off: `statementText`
+ * (`sqlTypes.ts`) is documented as a truncated preview, "not necessarily the
+ * full statement text", and this panel never receives the original query
+ * that produced it — re-running a possibly-truncated preview could silently
+ * execute different SQL than what actually ran, so the menu only ever copies
+ * what is genuinely shown, the same values the row's own `CopyButton`s copy.
  */
 
 import { useState, useSyncExternalStore, type CSSProperties } from "react";
 import { Check, ChevronDown, ChevronRight, Clock, Copy, Loader2, TableIcon, X } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import { copyOutput, getSnapshot, setResultView, subscribe } from "./sqlStore";
 import type { SqlStatementResult } from "./sqlTypes";
 
@@ -81,9 +92,32 @@ function StatementRows({ statement, view }: { statement: SqlStatementResult; vie
 function StatementBlock({ statement, view }: { statement: SqlStatementResult; view: "table" | "json" }) {
   const [open, setOpen] = useState(!statement.success || statement.rows.length > 0);
   const hasRows = statement.success && statement.rows.length > 0;
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   return (
-    <div style={{ borderRadius: 5, border: `1px solid ${statement.success ? LINE.base : ACCENT.danger}` }}>
+    <div
+      style={{ borderRadius: 5, border: `1px solid ${statement.success ? LINE.base : ACCENT.danger}` }}
+      onContextMenu={(event) =>
+        openMenu(
+          event,
+          [
+            { label: "Copy statement text", onSelect: () => void navigator.clipboard?.writeText(statement.statementText) },
+            {
+              label: "Copy result as JSON",
+              onSelect: () => void navigator.clipboard?.writeText(JSON.stringify(statement.rows, null, 2)),
+              disabled: !hasRows,
+            },
+            {
+              label: "Copy error",
+              onSelect: () => void navigator.clipboard?.writeText(statement.error ?? ""),
+              disabled: statement.success,
+            },
+          ],
+          `Actions for statement #${statement.statementIndex + 1}`,
+        )
+      }
+    >
+      <ContextMenu menu={menu} onClose={closeMenu} />
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

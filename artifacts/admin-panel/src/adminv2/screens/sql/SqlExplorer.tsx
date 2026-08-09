@@ -5,19 +5,23 @@
  * mirroring `SimulatorLeftTree.tsx`'s "Saved SQL Scripts" / "Migrations"
  * sections in the old admin panel — same real data, adminv2 chrome.
  *
- * Rows only navigate (`openDoc`) — no context menu here. Mutating actions
- * (rename, recategorize, toggle destructive, duplicate, delete, run) live on
- * the record's own contextual "Script Tools"/"Migration Tools" ribbon tab
- * once it is open (`index.tsx`), or on its peek's edit fields/actions when
- * reached through the ribbon's gallery — same split `AdExplorerTree.tsx`
- * uses (its tree only navigates too; AD's mutations live on `contextualTab`).
+ * Rows navigate on click (`openDoc`) same as always. Right-click now offers a
+ * context menu too (Open/Run/Duplicate/Copy/Delete for scripts; Open/Run/Copy
+ * for migrations) — every item calls straight through to a function this
+ * screen already ships elsewhere (`sqlStore.ts`, and the same
+ * window.confirm-gated delete/run calls `index.tsx`'s contextual tab already
+ * uses), nothing new invented here. Renaming/recategorizing a script and
+ * toggling its destructive flag are still edit-field-only, reached through
+ * the record's contextual "Script Tools" tab or its peek — same split
+ * `AdExplorerTree.tsx` uses for its own tree vs. `contextualTab`.
  */
 
 import { useState, useSyncExternalStore, type CSSProperties } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Layers, Plus, RefreshCw, RotateCcw, Scroll } from "lucide-react";
 import { ACCENT, LINE, TEXT } from "../../theme";
-import { useShell } from "../../shell/ShellContext";
-import { getSnapshot, loadMigrations, loadScripts, startDraft, subscribe } from "./sqlStore";
+import { useShell, type ShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { deleteScriptById, duplicateScript, getSnapshot, loadMigrations, loadScripts, runMigrationFile, runQueryText, startDraft, subscribe } from "./sqlStore";
 import type { MigrationFile, SavedScript } from "./sqlTypes";
 
 const sectionRowStyle: CSSProperties = {
@@ -133,26 +137,7 @@ export function SqlExplorer() {
               {items.map((sc) => {
                 const on = activeDoc?.id === `script:${sc.id}`;
                 const dirty = !!shell.state.docs.find((d) => d.id === `script:${sc.id}`)?.dirty;
-                return (
-                  <div
-                    key={sc.id}
-                    style={itemRowStyle(on)}
-                    onClick={() => openScript(sc)}
-                    title={sc.isDestructive ? "Destructive script" : sc.isResetScript ? "Reset script" : sc.name}
-                  >
-                    {sc.isDestructive ? (
-                      <AlertTriangle size={12} color={ACCENT.danger} />
-                    ) : sc.isResetScript ? (
-                      <RotateCcw size={12} color={ACCENT.amber} />
-                    ) : (
-                      <Scroll size={12} color={on ? "#fff" : TEXT.quieter} />
-                    )}
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "Menlo, Consolas, monospace" }}>
-                      {sc.name}
-                    </span>
-                    {dirty && <span style={{ fontSize: 8, color: ACCENT.amber }}>●</span>}
-                  </div>
-                );
+                return <ScriptRow key={sc.id} sc={sc} on={on} dirty={dirty} shell={shell} openScript={openScript} />;
               })}
             </div>
           ))}
@@ -171,21 +156,7 @@ export function SqlExplorer() {
           )}
           {orderedMigrations.map((m) => {
             const on = activeDoc?.id === `migration:${m.filename}`;
-            const done = !!m.ranAt;
-            return (
-              <div
-                key={m.filename}
-                style={{ ...itemRowStyle(on), fontFamily: "Menlo, Consolas, monospace", fontSize: 11.5 }}
-                onClick={() => openMigration(m)}
-                title={done ? `Ran ${m.ranAt}` : "Never run"}
-              >
-                <Layers size={12} color={done ? TEXT.faintest : ACCENT.amberDim} />
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: done ? TEXT.faint : undefined }}>
-                  {m.filename.replace(/\.sql$/, "")}
-                </span>
-                {done && <span style={{ fontSize: 9, color: TEXT.faintest }}>ran</span>}
-              </div>
-            );
+            return <MigrationRow key={m.filename} m={m} on={on} shell={shell} openMigration={openMigration} />;
           })}
         </div>
       )}
@@ -193,6 +164,135 @@ export function SqlExplorer() {
         Open a row, then use its Script/Migration Tools tab. Every run here is real — nothing is simulated.
       </div>
     </div>
+  );
+}
+
+/**
+ * A saved script's row menu. "Run it" and "Delete" call the exact same
+ * store functions and (for delete) the exact same `window.confirm` gate
+ * `index.tsx`'s "Script Tools" contextual tab already uses for this record —
+ * this just gives the same actions a second, right-click entry point.
+ */
+function ScriptRow({
+  sc,
+  on,
+  dirty,
+  shell,
+  openScript,
+}: {
+  sc: SavedScript;
+  on: boolean;
+  dirty: boolean;
+  shell: ShellApi;
+  openScript: (sc: SavedScript) => void;
+}) {
+  const { menu, open, close } = useContextMenu();
+
+  return (
+    <>
+      <div
+        style={itemRowStyle(on)}
+        onClick={() => openScript(sc)}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: () => openScript(sc) },
+              {
+                label: "Run it",
+                onSelect: () => {
+                  openScript(sc);
+                  shell.dispatch({ type: "setBottomTab", id: "sql-output" });
+                  void runQueryText(sc.query);
+                },
+              },
+              { label: "Duplicate", onSelect: () => void duplicateScript(sc) },
+              { label: "Copy name", onSelect: () => void navigator.clipboard?.writeText(sc.name) },
+              {
+                label: "Delete",
+                danger: true,
+                onSelect: () => {
+                  if (window.confirm(`Delete saved script "${sc.name}"? This cannot be undone.`)) void deleteScriptById(sc.id);
+                },
+              },
+            ],
+            `Actions for ${sc.name}`,
+          )
+        }
+        title={sc.isDestructive ? "Destructive script" : sc.isResetScript ? "Reset script" : sc.name}
+      >
+        {sc.isDestructive ? (
+          <AlertTriangle size={12} color={ACCENT.danger} />
+        ) : sc.isResetScript ? (
+          <RotateCcw size={12} color={ACCENT.amber} />
+        ) : (
+          <Scroll size={12} color={on ? "#fff" : TEXT.quieter} />
+        )}
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "Menlo, Consolas, monospace" }}>
+          {sc.name}
+        </span>
+        {dirty && <span style={{ fontSize: 8, color: ACCENT.amber }}>●</span>}
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
+  );
+}
+
+/**
+ * A migration row's menu. "Run"/"Run again" reuses the exact same
+ * `window.confirm` copy and `runMigrationFile` call `index.tsx`'s "Migration
+ * Tools" contextual tab already fires — a migration run is real and
+ * irreversible, so the right-click entry point goes through the identical
+ * gate rather than a shortcut around it.
+ */
+function MigrationRow({
+  m,
+  on,
+  shell,
+  openMigration,
+}: {
+  m: MigrationFile;
+  on: boolean;
+  shell: ShellApi;
+  openMigration: (m: MigrationFile) => void;
+}) {
+  const { menu, open, close } = useContextMenu();
+  const done = !!m.ranAt;
+
+  return (
+    <>
+      <div
+        style={{ ...itemRowStyle(on), fontFamily: "Menlo, Consolas, monospace", fontSize: 11.5 }}
+        onClick={() => openMigration(m)}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: () => openMigration(m) },
+              {
+                label: done ? "Run again" : "Run migration",
+                onSelect: () => {
+                  if (!window.confirm(`Run "${m.filename}" against the real database now? This cannot be undone from here.`)) return;
+                  openMigration(m);
+                  shell.dispatch({ type: "setBottomTab", id: "sql-output" });
+                  void runMigrationFile(m.filename);
+                },
+              },
+              { label: "Copy filename", onSelect: () => void navigator.clipboard?.writeText(m.filename) },
+            ],
+            `Actions for ${m.filename}`,
+          )
+        }
+        title={done ? `Ran ${m.ranAt}` : "Never run"}
+      >
+        <Layers size={12} color={done ? TEXT.faintest : ACCENT.amberDim} />
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: done ? TEXT.faint : undefined }}>
+          {m.filename.replace(/\.sql$/, "")}
+        </span>
+        {done && <span style={{ fontSize: 9, color: TEXT.faintest }}>ran</span>}
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

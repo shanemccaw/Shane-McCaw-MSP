@@ -20,6 +20,7 @@
 import { useSyncExternalStore } from "react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   getSnapshot,
   packagesForCheck,
@@ -27,6 +28,7 @@ import {
   selectedCheck,
   subscribe,
   type EndpointsState,
+  type RunHistoryRow,
 } from "./endpointsStore";
 import {
   domainOf,
@@ -34,6 +36,7 @@ import {
   relativeTime,
   requestUrlFor,
   unpackagedLabel,
+  type CheckSeverityRule,
   type MonitorCheck,
 } from "./endpointsTypes";
 import { unpackagedChecks } from "./endpointsStore";
@@ -109,27 +112,42 @@ export function PropertiesView({ state, check }: { state: EndpointsState; check:
             None. A run of this check can never carry a severity band of its own.
           </span>
         ) : (
-          check.severityRules.map((r, i) => (
-            <div key={`${r.expression}-${i}`} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ flex: "1 1 140px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11, color: TEXT.strong, wordBreak: "break-all" }}>
-                  {r.expression}
-                </span>
-                <span style={{ flex: "none", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: ACCENT.amber }}>
-                  {r.severity}
-                </span>
-              </div>
-              {r.label && (
-                <span style={{ display: "block", marginTop: 3, fontSize: 11, lineHeight: 1.55, color: TEXT.groupLabel }}>{r.label}</span>
-              )}
-            </div>
-          ))
+          check.severityRules.map((r, i) => <SeverityRuleRow key={`${r.expression}-${i}`} rule={r} />)
         )}
         <span style={{ display: "block", marginTop: 4, fontSize: 10.5, lineHeight: 1.6, color: TEXT.faintest }}>
           These run inside the executor and set the run's band. They are not the rules the centre column writes — those
           feed scoring.
         </span>
       </Section>
+    </div>
+  );
+}
+
+function SeverityRuleRow({ rule: r }: { rule: CheckSeverityRule }) {
+  const { menu, open, close } = useContextMenu();
+  return (
+    <div
+      style={{ marginBottom: 8 }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [{ label: "Copy expression", onSelect: () => navigator.clipboard?.writeText(r.expression) }],
+          `Actions for ${r.expression}`,
+        )
+      }
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ flex: "1 1 140px", minWidth: 0, fontFamily: FONT.mono, fontSize: 11, color: TEXT.strong, wordBreak: "break-all" }}>
+          {r.expression}
+        </span>
+        <span style={{ flex: "none", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: ACCENT.amber }}>
+          {r.severity}
+        </span>
+      </div>
+      {r.label && (
+        <span style={{ display: "block", marginTop: 3, fontSize: 11, lineHeight: 1.55, color: TEXT.groupLabel }}>{r.label}</span>
+      )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -202,40 +220,59 @@ export function RunHistoryPanel() {
         </button>
       </div>
       {state.history.map((run) => (
-        <div
-          key={run.runId}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            gap: 10,
-            flexWrap: "wrap",
-            padding: "6px 0",
-            borderBottom: `1px solid ${LINE.subtle}`,
-          }}
-        >
-          <span
-            style={{
-              flex: "none",
-              minWidth: 62,
-              fontSize: 9.5,
-              fontWeight: 800,
-              letterSpacing: ".06em",
-              textTransform: "uppercase",
-              color: run.status === "failed" ? ACCENT.danger : run.status === "completed" ? ACCENT.green : ACCENT.amber,
-            }}
-          >
-            {run.resultStatus ?? run.status}
-          </span>
-          <span style={{ flex: "none", fontSize: 11.5, color: TEXT.softer }}>{relativeTime(run.startedAt)}</span>
-          <span style={{ flex: "none", fontFamily: FONT.mono, fontSize: 11, color: TEXT.faint }}>
-            {run.itemCount ?? run.result?.itemCount ?? 0} items
-          </span>
-          <span style={{ flex: "1 1 160px", minWidth: 0, fontSize: 11, color: TEXT.faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {run.statusText}
-          </span>
-          {run.hasTrace && <span style={{ flex: "none", fontSize: 10.5, color: ACCENT.info }}>traced</span>}
-        </div>
+        <HistoryRow key={run.runId} run={run} />
       ))}
+    </div>
+  );
+}
+
+function HistoryRow({ run }: { run: RunHistoryRow }) {
+  const { menu, open, close } = useContextMenu();
+  const status = run.resultStatus ?? run.status;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: 10,
+        flexWrap: "wrap",
+        padding: "6px 0",
+        borderBottom: `1px solid ${LINE.subtle}`,
+      }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Copy run ID", onSelect: () => navigator.clipboard?.writeText(run.runId) },
+            { label: "Copy status", onSelect: () => navigator.clipboard?.writeText(status) },
+          ],
+          `Actions for run ${run.runId}`,
+        )
+      }
+    >
+      <span
+        style={{
+          flex: "none",
+          minWidth: 62,
+          fontSize: 9.5,
+          fontWeight: 800,
+          letterSpacing: ".06em",
+          textTransform: "uppercase",
+          color: run.status === "failed" ? ACCENT.danger : run.status === "completed" ? ACCENT.green : ACCENT.amber,
+        }}
+      >
+        {status}
+      </span>
+      <span style={{ flex: "none", fontSize: 11.5, color: TEXT.softer }}>{relativeTime(run.startedAt)}</span>
+      <span style={{ flex: "none", fontFamily: FONT.mono, fontSize: 11, color: TEXT.faint }}>
+        {run.itemCount ?? run.result?.itemCount ?? 0} items
+      </span>
+      <span style={{ flex: "1 1 160px", minWidth: 0, fontSize: 11, color: TEXT.faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {run.statusText}
+      </span>
+      {run.hasTrace && <span style={{ flex: "none", fontSize: 10.5, color: ACCENT.info }}>traced</span>}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -268,36 +305,57 @@ export function GapsPanel() {
         configured and they run against nobody.
       </span>
       {gaps.map((check) => (
-        <div
-          key={check.key}
-          role="button"
-          tabIndex={0}
-          onClick={() => getShellApi()?.openPeek("endpoint", check.key)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              getShellApi()?.openPeek("endpoint", check.key);
-            }
-          }}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            gap: 10,
-            flexWrap: "wrap",
-            padding: "6px 8px",
-            borderRadius: 5,
-            cursor: "pointer",
-            background: SURFACE.card,
-            marginBottom: 4,
-          }}
-        >
-          <span style={{ flex: "none", fontSize: 12, color: TEXT.strong }}>{check.label}</span>
-          <span style={{ flex: "1 1 160px", minWidth: 0, fontFamily: FONT.mono, fontSize: 10.5, color: ACCENT.info, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {check.key}
-          </span>
-          <span style={{ flex: "none", fontSize: 11, color: TEXT.faint }}>{check.frequency}</span>
-        </div>
+        <GapRow key={check.key} check={check} />
       ))}
     </div>
+  );
+}
+
+function GapRow({ check }: { check: MonitorCheck }) {
+  const { menu, open, close } = useContextMenu();
+  const openIt = () => getShellApi()?.openPeek("endpoint", check.key);
+
+  return (
+    <>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openIt}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openIt();
+        }
+      }}
+      onContextMenu={(e) =>
+        open(
+          e,
+          [
+            { label: "Open", onSelect: openIt },
+            { label: "Copy key", onSelect: () => navigator.clipboard?.writeText(check.key) },
+          ],
+          `Actions for ${check.label}`,
+        )
+      }
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: 10,
+        flexWrap: "wrap",
+        padding: "6px 8px",
+        borderRadius: 5,
+        cursor: "pointer",
+        background: SURFACE.card,
+        marginBottom: 4,
+      }}
+    >
+      <span style={{ flex: "none", fontSize: 12, color: TEXT.strong }}>{check.label}</span>
+      <span style={{ flex: "1 1 160px", minWidth: 0, fontFamily: FONT.mono, fontSize: 10.5, color: ACCENT.info, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {check.key}
+      </span>
+      <span style={{ flex: "none", fontSize: 11, color: TEXT.faint }}>{check.frequency}</span>
+    </div>
+    <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
