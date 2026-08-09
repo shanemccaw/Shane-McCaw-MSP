@@ -1099,6 +1099,11 @@ export function StatementOfWorkBody({
                   <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>
                     {p.addresses}
                   </span>
+                  {p.stage === "continuous" ? (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: SEVERITY_ON_DARK.attention }}>
+                      Ongoing service, not a bounded project — cancel with 30 days
+                    </span>
+                  ) : null}
                   {p.scoreTo !== p.scoreFrom ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: severityColor(p.scoreFrom), ...TABULAR }}>
@@ -1210,6 +1215,11 @@ export function StatementOfWorkBody({
                       <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>
                         {a.blurb}
                       </span>
+                      {a.stage === "continuous" ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: SEVERITY_ON_DARK.attention }}>
+                          Ongoing service, not a bounded project — cancel with 30 days
+                        </span>
+                      ) : null}
                     </span>
                     <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flex: "none" }}>
                       {singleTier ? (

@@ -1612,7 +1612,8 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
             <p style={{ ...BODY, fontSize: 13.5, margin: "12px 0 0" }}>
               This is not Tenant Monitoring. Nobody is paged when something changes, no alert is raised, and no remediation work is
               included — it re-scans and it records, and you look when you want to. Monitoring with active alerting and hands-on
-              remediation is a separate engagement with its own scope and its own price, and buying this does not buy any part of it.
+              remediation is a separate, ongoing engagement — not a bounded project, but a continuing relationship that runs until you
+              cancel with 30 days — with its own scope and its own price, and buying this does not buy any part of it.
             </p>
           </div>
 

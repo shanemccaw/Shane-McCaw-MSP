@@ -785,6 +785,9 @@ export default function Home() {
           <p style={{ fontSize: 13, color: "#475569", margin: "22px 0 0", maxWidth: 720 }}>
             Offered alongside the assessment in your proposal, not a separate decision to make cold. Tier pricing is confirmed in the proposal.
           </p>
+          <p style={{ fontSize: 13, color: "#475569", margin: "10px 0 0", maxWidth: 720 }}>
+            This is an ongoing engagement, not a bounded project — it continues until you cancel with 30 days.
+          </p>
         </section>
 
         {/* ------------------------------------------------------------ The Real Number / assessment CTA */}
