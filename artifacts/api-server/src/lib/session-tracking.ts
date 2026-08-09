@@ -125,7 +125,7 @@ export async function revokeAllOtherSessions(userId: number, exceptTokenHash: st
     await db.update(mspRefreshTokensTable).set({ revokedAt: now })
       .where(and(
         eq(mspRefreshTokensTable.userId, userId),
-        sql`${mspRefreshTokensTable.tokenHash} IN (${tokenHashes})`,
+        sql`${mspRefreshTokensTable.tokenHash} IN ${tokenHashes}`,
         isNull(mspRefreshTokensTable.revokedAt),
       ));
   }
