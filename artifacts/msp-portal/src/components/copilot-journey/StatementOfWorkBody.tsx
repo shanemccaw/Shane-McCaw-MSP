@@ -1195,18 +1195,26 @@ export function StatementOfWorkBody({
                   // — it starts active with its seat-matched tier already
                   // selected (defaultSelection()); the customer's only
                   // actions are picking a different tier below or removing
-                  // the add-on with this header switch.
-                  <div
+                  // the add-on with this header. Git #625: the header is a
+                  // single clickable button, no separate toggle switch.
+                  <button
+                    type="button"
+                    onClick={() => onToggleAddon(a.id)}
+                    aria-pressed={on}
+                    title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "minmax(0,1fr) auto",
                       gap: 14,
                       alignItems: "start",
+                      textAlign: "left",
                       padding: "14px 16px",
                       borderRadius: 10,
                       border: `1px ${signed ? "dashed" : "solid"} ${on ? hexAlpha(BRAND.teal, 0.4) : "rgba(30,41,59,.55)"}`,
                       background: on ? hexAlpha(BRAND.teal, 0.07) : "rgba(15,23,42,.2)",
                       opacity: on ? 1 : 0.42,
+                      cursor: signed ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
                       transition: "opacity 180ms, background 180ms, border-color 180ms",
                     }}
                   >
@@ -1216,21 +1224,7 @@ export function StatementOfWorkBody({
                         {a.blurb}
                       </span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onToggleAddon(a.id)}
-                      aria-pressed={on}
-                      title={signed ? "Scope locked at signature" : on ? "Remove from scope" : "Add to scope"}
-                      style={{
-                        border: 0,
-                        background: "transparent",
-                        padding: 0,
-                        cursor: signed ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <Toggle on={on} locked={signed} />
-                    </button>
-                  </div>
+                  </button>
                 ) : (
                   <button
                     type="button"
