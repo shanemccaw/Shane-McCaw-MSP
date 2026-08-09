@@ -153,6 +153,10 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   msp: ["#7fb4d8", "MSP"],
   user: ["#92d8ae", "USR"],
   group: ["#c3c1bf", "RBAC"],
+  // Tenant Signals. Neutral on purpose: a signal is a definition, not a
+  // verdict — whether it is good or bad news depends entirely on the tenant
+  // it fired against, which the palette cannot know.
+  signal: ["#c3c1bf", "SIG"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

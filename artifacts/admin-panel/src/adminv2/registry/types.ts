@@ -212,6 +212,12 @@ export interface ContextualTabSpec {
  * as `customer` (which AD reuses for a tenant) already was. Unlike
  * `FIXED_TAB_IDS`, this list is not closed: a screen introducing a genuinely
  * new record type extends it.
+ *
+ * `signal` was added for the Tenant Signals screen (`screens/tenant-signals/`).
+ * A signal is a `custom_signals` catalog row keyed by string rather than by
+ * id, and it is neither a `package` (a set of checks) nor a `script` — it is
+ * the thing rules derive, so it needed its own kind rather than borrowing one
+ * and lying about it in the eyebrow.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -229,6 +235,7 @@ export const PEEK_KINDS = [
   "user",
   "group",
   "ou",
+  "signal",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -386,7 +393,8 @@ export type CommandKind =
   | "customer"
   | "msp"
   | "user"
-  | "group";
+  | "group"
+  | "signal";
 
 export interface CommandItem {
   id: string;
