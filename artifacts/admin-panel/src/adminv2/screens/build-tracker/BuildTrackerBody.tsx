@@ -26,7 +26,7 @@ import {
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
   ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, ISSUE_STATUS_NEXT,
-  githubIssueUrl,
+  IssueStatus, githubIssueUrl,
 } from "./buildTrackerTypes";
 import type { ChatRow, IssueRow } from "./buildTrackerTypes";
 
