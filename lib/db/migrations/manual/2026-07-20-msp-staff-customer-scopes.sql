@@ -27,7 +27,13 @@ CREATE TABLE IF NOT EXISTS "msp_staff_customer_scopes" (
   "id" serial PRIMARY KEY,
   "msp_id" integer NOT NULL REFERENCES "msps"("id") ON DELETE CASCADE,
   "staff_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "customer_id" integer NOT NULL REFERENCES "msp_customers"("id") ON DELETE CASCADE,
+  -- tenants.id — no FK by design (msp_customers, this column's original
+  -- referent, was dropped in the Tenant/User Refactor, #92). Fixed
+  -- 2026-08-09: this table is already live in most deployments (created
+  -- before that refactor, its FK constraint dropped along with
+  -- msp_customers) — this edit only matters for an environment where the
+  -- migration has never successfully run.
+  "customer_id" integer NOT NULL,
   "created_by_user_id" integer REFERENCES "users"("id") ON DELETE SET NULL,
   "created_at" timestamptz NOT NULL DEFAULT now()
 );

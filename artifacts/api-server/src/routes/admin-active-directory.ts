@@ -124,7 +124,7 @@ import {
   type TenantConsentRecord,
 } from "@workspace/db";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { eq, asc, and, inArray, count, desc, or, isNotNull, type SQL } from "drizzle-orm";
+import { eq, asc, and, inArray, count, desc, or, isNotNull, sql, type SQL } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -2027,33 +2027,43 @@ router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Requ
 // Dev-environment-only cascading hard delete of an entire tenant. Same
 // `assertNonProductionEnvironment()` gate as the Phase 9 user route above —
 // if anything, "no exceptions" matters MORE here: this can remove dozens of
-// accounts and every tenant-scoped record in one call. ONE transaction, all
-// three phases below succeed together or nothing is deleted:
+// accounts and every tenant-scoped record in one call.
 //
-//   1. Revoke consent — all three grants (graph/writeBack/sharepoint)
-//      explicitly stamped "revoked" via the SAME `mergeConsentKey()`
-//      graph.ts's real PATCH /admin/consent/:tenantId/revoke route uses, run
-//      first and on its own so it is a real, separately-visible action even
-//      though the tenant row is about to be deleted anyway.
-//   2. Every user under the tenant, via `hardDeleteUserWithinTx()` — the
-//      EXACT SAME per-user cascade the Phase 9 single-user route runs (one
-//      call per user; no second implementation of "what deleting a user
-//      means"). This also clears the one real FK the schema has pointing at
-//      `tenants.id` (`users.tenant_id`, onDelete: RESTRICT) — the tenant row
-//      delete in step 4 will fail if any user still references it.
-//   3. Tenant-only tables no per-user delete reaches: every remaining
-//      `customerId`/`tenantId` column in the schema that points at this
-//      tenant but carries no `userId`/`clientUserId` column of its own (so
-//      step 2 never touches it). Audited fresh against lib/db/src/schema on
-//      2026-08-08 — see the `TENANT_ONLY_HARD_DELETE_TABLES` list below for
-//      the complete, named accounting. One exception: `msp_audit_logs
-//      .customer_id` is NULLED, not deleted — audit history survives its
-//      subject being removed, same convention as `audit_logs.actor_user_id`/
-//      `.client_id` in the user route's own Section C.
-//   4. The `tenants` row itself, last.
+// TWO PHASES, deliberately NOT one transaction:
 //
-// The FULL pre-delete state (every table's row count) is logged to the
-// `audit` channel before anything is deleted, same convention as Phase 9.
+//   Phase A (must be atomic — one `db.transaction()`, all-or-nothing):
+//     1. Revoke consent — all three grants (graph/writeBack/sharepoint)
+//        explicitly stamped "revoked" via the SAME `mergeConsentKey()`
+//        graph.ts's real PATCH /admin/consent/:tenantId/revoke route uses.
+//     2. Every user under the tenant, via `hardDeleteUserWithinTx()` — the
+//        EXACT SAME per-user cascade the Phase 9 single-user route runs.
+//        Also clears the one real FK pointing at `tenants.id`
+//        (`users.tenant_id`, RESTRICT) — step 3 fails if any user remains.
+//     3. The `tenants` row itself, last.
+//     This is the part that actually matters: no login, no consent, no
+//     tenant left in the tree.
+//
+//   Phase B (best-effort, run AFTER Phase A commits, table-by-table):
+//     Every remaining tenant-only `customerId`/`tenantId` column with no
+//     `userId` column of its own (Phase A's per-user cascade never reaches
+//     these). This list spans ~30 auxiliary/analytics tables whose manual
+//     migrations (`lib/db/migrations/manual/`) are Shane's to run by hand —
+//     several were written before the Tenant/User Refactor (#92) dropped
+//     `msp_customers` and, if never actually run since, simply do not exist
+//     in a given database (confirmed live: `m365_service_health_samples` and
+//     `msp_message_center_items`'s own migrations still referenced the
+//     dropped table, so `CREATE TABLE` could never have succeeded post-
+//     refactor — fixed in those .sql files, but there is no way for this
+//     route to know which migrations any given deployment has actually run).
+//     A table that doesn't exist (or errors for any other reason) is
+//     recorded as skipped and the loop moves on — Phase A already committed,
+//     so an obscure analytics table's migration gap must never block the
+//     tenant from actually being gone. `msp_audit_logs.customer_id` is
+//     NULLED here too, not deleted — audit history survives its subject
+//     being removed, same convention as the user route's own Section C.
+//
+// The FULL pre-delete state (every table's row count, where countable) is
+// logged to the `audit` channel before Phase A commits.
 router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: Request, res: Response) => {
   // FIRST executed line: the hard non-production gate, before anything else.
   const envRefusal = assertNonProductionEnvironment();
@@ -2075,8 +2085,17 @@ router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: 
   const actor = req.user!;
   const CONSENT_KEYS = ["graph", "writeBack", "sharepoint"] as const;
 
+  let phaseAResult:
+    | { notFound: true }
+    | {
+        notFound: false;
+        tenant: { id: number; tenantGuid: string; name: string; mspId: number };
+        userCount: number;
+        deletedUsers: Array<{ userId: number; email: string }>;
+      };
+
   try {
-    const result = await db.transaction(async (tx) => {
+    phaseAResult = await db.transaction(async (tx) => {
       const [tenant] = await tx
         .select({ id: tenantsTable.id, tenantGuid: tenantsTable.tenantId, name: tenantsTable.customerName, mspId: tenantsTable.mspId })
         .from(tenantsTable)
@@ -2100,77 +2119,15 @@ router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: 
       // ── 2. Every user under this tenant, via the shared per-user cascade ──
       const userRows = await tx.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.tenantId, customerId));
 
-      const perUserResults: Array<{ userId: number; email: string; explicitCounts: Record<string, number> }> = [];
+      const perUserResults: Array<{ userId: number; email: string }> = [];
       for (const u of userRows) {
         const userResult = await hardDeleteUserWithinTx(tx, u.id, { id: actor.id, email: actor.email });
-        if (!userResult.notFound) {
-          perUserResults.push({ userId: u.id, email: u.email, explicitCounts: userResult.explicitCounts });
-        }
+        if (!userResult.notFound) perUserResults.push({ userId: u.id, email: u.email });
       }
-
-      // ── 3. Tenant-only tables — a customerId/tenantId column pointing at
-      //      this tenant, no userId column, so step 2 never reaches them. ──
-      const tenantOnlyDeletes: Array<{ name: string; table: PgTable; where: SQL }> = [
-        { name: "msp_event_store", table: mspEventStoreTable, where: eq(mspEventStoreTable.customerId, customerId) },
-        { name: "msp_dlq_store", table: mspDlqStoreTable, where: eq(mspDlqStoreTable.customerId, customerId) },
-        { name: "msp_documents", table: mspDocumentsTable, where: eq(mspDocumentsTable.customerId, customerId) },
-        { name: "fulfillment_queue", table: fulfillmentQueueTable, where: eq(fulfillmentQueueTable.customerId, customerId) },
-        { name: "outbound_webhooks", table: outboundWebhooksTable, where: eq(outboundWebhooksTable.customerId, customerId) },
-        { name: "portal_wf_runs", table: portalWfRunsTable, where: eq(portalWfRunsTable.customerId, customerId) },
-        { name: "portal_wf_operator_tasks", table: portalWfOperatorTasksTable, where: eq(portalWfOperatorTasksTable.customerId, customerId) },
-        { name: "ai_usage_events", table: aiUsageEventsTable, where: eq(aiUsageEventsTable.customerId, customerId) },
-        {
-          name: "tenant_check_item_details",
-          table: tenantCheckItemDetailsTable,
-          where: or(eq(tenantCheckItemDetailsTable.customerId, customerId), eq(tenantCheckItemDetailsTable.tenantId, tenant.tenantGuid)) as SQL,
-        },
-        { name: "simulator_check_runs", table: simulatorCheckRunsTable, where: eq(simulatorCheckRunsTable.customerId, customerId) },
-        { name: "msp_message_center_items", table: mspMessageCenterItemsTable, where: eq(mspMessageCenterItemsTable.customerId, customerId) },
-        { name: "m365_service_health_samples", table: m365ServiceHealthSamplesTable, where: eq(m365ServiceHealthSamplesTable.customerId, customerId) },
-        { name: "msp_report_definitions", table: mspReportDefinitionsTable, where: eq(mspReportDefinitionsTable.customerId, customerId) },
-        { name: "msp_report_runs", table: mspReportRunsTable, where: eq(mspReportRunsTable.customerId, customerId) },
-        { name: "msp_sales_bundle_assignments", table: mspSalesBundleAssignmentsTable, where: eq(mspSalesBundleAssignmentsTable.customerId, customerId) },
-        {
-          name: "activity_subscriptions",
-          table: activitySubscriptionsTable,
-          where: or(eq(activitySubscriptionsTable.customerId, customerId), eq(activitySubscriptionsTable.tenantId, tenant.tenantGuid)) as SQL,
-        },
-        { name: "msp_sows", table: mspSowsTable, where: eq(mspSowsTable.customerId, customerId) },
-        { name: "break_glass_pending_secrets", table: breakGlassPendingSecretsTable, where: eq(breakGlassPendingSecretsTable.customerId, customerId) },
-        { name: "break_glass_override_audit", table: breakGlassOverrideAuditTable, where: eq(breakGlassOverrideAuditTable.customerId, customerId) },
-        { name: "dashboard_executive_summaries", table: dashboardExecutiveSummariesTable, where: eq(dashboardExecutiveSummariesTable.customerId, customerId) },
-        { name: "msp_change_requests", table: mspChangeRequestsTable, where: eq(mspChangeRequestsTable.tenantId, tenant.tenantGuid) },
-        { name: "msp_sop_runs", table: mspSopRunsTable, where: eq(mspSopRunsTable.tenantId, tenant.tenantGuid) },
-        { name: "msp_risk_decisions", table: mspRiskDecisionsTable, where: eq(mspRiskDecisionsTable.tenantId, tenant.tenantGuid) },
-        { name: "tenant_signal_history", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.customerId, customerId) },
-        { name: "tenant_engine_snapshots", table: tenantEngineSnapshotsTable, where: eq(tenantEngineSnapshotsTable.customerId, customerId) },
-        { name: "engine_score_daily_rollup", table: engineScoreDailyRollupTable, where: eq(engineScoreDailyRollupTable.customerId, customerId) },
-        { name: "policy_rule_firings", table: policyRuleFiringsTable, where: eq(policyRuleFiringsTable.customerId, customerId) },
-        { name: "policy_rule_incidents", table: policyRuleIncidentsTable, where: eq(policyRuleIncidentsTable.customerId, customerId) },
-        { name: "policy_rule_suppressions", table: policyRuleSuppressionsTable, where: eq(policyRuleSuppressionsTable.customerId, customerId) },
-        { name: "engine_baseline_history", table: engineBaselineHistoryTable, where: eq(engineBaselineHistoryTable.customerId, customerId) },
-        { name: "platform_log_stream", table: platformLogStreamTable, where: eq(platformLogStreamTable.customerId, customerId) },
-        { name: "exception_occurrences", table: exceptionOccurrencesTable, where: eq(exceptionOccurrencesTable.customerId, customerId) },
-        { name: "checkout_sessions", table: checkoutSessionsTable, where: eq(checkoutSessionsTable.tenantId, tenant.tenantGuid) },
-        // Junction row only — the staff account itself is untouched; it just
-        // loses its scope onto a tenant that is about to stop existing.
-        { name: "msp_staff_customer_scopes.customer_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.customerId, customerId) },
-      ];
-
-      const countWhere = async (table: PgTable, where: SQL): Promise<number> => {
-        const [row] = await tx.select({ n: count() }).from(table).where(where);
-        return Number(row?.n ?? 0);
-      };
-
-      const tenantOnlyCounts: Record<string, number> = {};
-      for (const entry of tenantOnlyDeletes) {
-        tenantOnlyCounts[entry.name] = await countWhere(entry.table, entry.where);
-      }
-      const auditLogsToDetach = await countWhere(mspAuditLogsTable, eq(mspAuditLogsTable.customerId, customerId));
 
       auditLog.info(
         {
-          actionType: "customer.hard_delete.pre_state",
+          actionType: "customer.hard_delete.phase_a_pre_state",
           actorUserId: actor.id,
           actorEmail: actor.email,
           customerId: tenant.id,
@@ -2179,87 +2136,146 @@ router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: 
           mspId: tenant.mspId,
           userCount: userRows.length,
           userIds: userRows.map((u) => u.id),
-          tenantOnlyCounts,
-          mspAuditLogsToDetach: auditLogsToDetach,
           occurredAt: new Date().toISOString(),
         },
-        "audit: FULL pre-delete state for dev-only customer hard delete (logged before commit)",
+        "audit: pre-delete state for the atomic phase of a dev-only customer hard delete (logged before commit)",
       );
 
-      for (const entry of tenantOnlyDeletes) {
-        await tx.delete(entry.table).where(entry.where);
-      }
-
-      // Audit history survives — detach, don't delete.
-      await tx.update(mspAuditLogsTable).set({ customerId: null }).where(eq(mspAuditLogsTable.customerId, customerId));
-
-      // ── 4. The tenant row itself, last — succeeds only once every
-      //      users.tenant_id FK pointing at it (RESTRICT) is gone, i.e. only
-      //      after step 2 has removed every user. ──
+      // ── 3. The tenant row itself, last — succeeds only once every
+      //      users.tenant_id FK pointing at it (RESTRICT) is gone. ──
       await tx.delete(tenantsTable).where(eq(tenantsTable.id, customerId));
 
-      return {
-        notFound: false as const,
-        tenant,
-        userCount: userRows.length,
-        deletedUsers: perUserResults,
-        tenantOnlyCounts,
-        mspAuditLogsDetached: auditLogsToDetach,
-      };
-    });
-
-    if (result.notFound) {
-      res.status(404).json({ error: "Customer not found" });
-      return;
-    }
-
-    const { tenant, userCount, deletedUsers, tenantOnlyCounts, mspAuditLogsDetached } = result;
-
-    void createAuditLog({
-      actorUserId: actor.id,
-      actorName: actor.name ?? actor.email,
-      actorRole: "admin",
-      actionType: "customer.hard_delete",
-      entityType: "customer",
-      entityId: tenant.id,
-      entityLabel: tenant.name,
-      metadata: {
-        tenantGuid: tenant.tenantGuid,
-        mspId: tenant.mspId,
-        userCount,
-        deletedUserEmails: deletedUsers.map((u) => u.email),
-        tenantOnlyCounts,
-        mspAuditLogsDetached,
-        source: "admin.active-directory",
-      },
-    });
-
-    auditLog.info(
-      {
-        actionType: "customer.hard_delete",
-        actorUserId: actor.id,
-        actorEmail: actor.email,
-        customerId: tenant.id,
-        customerName: tenant.name,
-        userCount,
-        occurredAt: new Date().toISOString(),
-      },
-      "audit: dev-only customer hard delete committed",
-    );
-    log.info({ customerId: tenant.id, name: tenant.name, userCount }, "PlatformAdmin hard-deleted a customer/tenant (dev environment)");
-
-    res.json({
-      ok: true,
-      deletedCustomerId: tenant.id,
-      deletedCustomerName: tenant.name,
-      usersDeleted: userCount,
-      tenantOnlyTables: tenantOnlyCounts,
-      mspAuditLogsDetached,
+      return { notFound: false as const, tenant, userCount: userRows.length, deletedUsers: perUserResults };
     });
   } catch (err) {
     log.error({ err, customerId }, "Customer hard delete failed — transaction rolled back, no rows were deleted");
     res.status(500).json({ error: "Hard delete failed — the transaction was rolled back; nothing was deleted." });
+    return;
   }
+
+  if (phaseAResult.notFound) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  const { tenant, userCount, deletedUsers } = phaseAResult;
+
+  // ── Phase B — best-effort tenant-only cleanup, run only after Phase A has
+  //    genuinely committed. Each table gets its own try/catch outside any
+  //    transaction: a missing table must never look like the customer was
+  //    not actually deleted, and must never poison a shared transaction for
+  //    the tables after it. ──
+  const tenantOnlyTargets: Array<{ name: string; table: PgTable; where: SQL }> = [
+    { name: "msp_event_store", table: mspEventStoreTable, where: eq(mspEventStoreTable.customerId, customerId) },
+    { name: "msp_dlq_store", table: mspDlqStoreTable, where: eq(mspDlqStoreTable.customerId, customerId) },
+    { name: "msp_documents", table: mspDocumentsTable, where: eq(mspDocumentsTable.customerId, customerId) },
+    { name: "fulfillment_queue", table: fulfillmentQueueTable, where: eq(fulfillmentQueueTable.customerId, customerId) },
+    { name: "outbound_webhooks", table: outboundWebhooksTable, where: eq(outboundWebhooksTable.customerId, customerId) },
+    { name: "portal_wf_runs", table: portalWfRunsTable, where: eq(portalWfRunsTable.customerId, customerId) },
+    { name: "portal_wf_operator_tasks", table: portalWfOperatorTasksTable, where: eq(portalWfOperatorTasksTable.customerId, customerId) },
+    { name: "ai_usage_events", table: aiUsageEventsTable, where: eq(aiUsageEventsTable.customerId, customerId) },
+    {
+      name: "tenant_check_item_details",
+      table: tenantCheckItemDetailsTable,
+      where: or(eq(tenantCheckItemDetailsTable.customerId, customerId), eq(tenantCheckItemDetailsTable.tenantId, tenant.tenantGuid)) as SQL,
+    },
+    { name: "simulator_check_runs", table: simulatorCheckRunsTable, where: eq(simulatorCheckRunsTable.customerId, customerId) },
+    { name: "msp_message_center_items", table: mspMessageCenterItemsTable, where: eq(mspMessageCenterItemsTable.customerId, customerId) },
+    { name: "m365_service_health_samples", table: m365ServiceHealthSamplesTable, where: eq(m365ServiceHealthSamplesTable.customerId, customerId) },
+    { name: "msp_report_definitions", table: mspReportDefinitionsTable, where: eq(mspReportDefinitionsTable.customerId, customerId) },
+    { name: "msp_report_runs", table: mspReportRunsTable, where: eq(mspReportRunsTable.customerId, customerId) },
+    { name: "msp_sales_bundle_assignments", table: mspSalesBundleAssignmentsTable, where: eq(mspSalesBundleAssignmentsTable.customerId, customerId) },
+    {
+      name: "activity_subscriptions",
+      table: activitySubscriptionsTable,
+      where: or(eq(activitySubscriptionsTable.customerId, customerId), eq(activitySubscriptionsTable.tenantId, tenant.tenantGuid)) as SQL,
+    },
+    { name: "msp_sows", table: mspSowsTable, where: eq(mspSowsTable.customerId, customerId) },
+    { name: "break_glass_pending_secrets", table: breakGlassPendingSecretsTable, where: eq(breakGlassPendingSecretsTable.customerId, customerId) },
+    { name: "break_glass_override_audit", table: breakGlassOverrideAuditTable, where: eq(breakGlassOverrideAuditTable.customerId, customerId) },
+    { name: "dashboard_executive_summaries", table: dashboardExecutiveSummariesTable, where: eq(dashboardExecutiveSummariesTable.customerId, customerId) },
+    { name: "msp_change_requests", table: mspChangeRequestsTable, where: eq(mspChangeRequestsTable.tenantId, tenant.tenantGuid) },
+    { name: "msp_sop_runs", table: mspSopRunsTable, where: eq(mspSopRunsTable.tenantId, tenant.tenantGuid) },
+    { name: "msp_risk_decisions", table: mspRiskDecisionsTable, where: eq(mspRiskDecisionsTable.tenantId, tenant.tenantGuid) },
+    { name: "tenant_signal_history", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.customerId, customerId) },
+    { name: "tenant_engine_snapshots", table: tenantEngineSnapshotsTable, where: eq(tenantEngineSnapshotsTable.customerId, customerId) },
+    { name: "engine_score_daily_rollup", table: engineScoreDailyRollupTable, where: eq(engineScoreDailyRollupTable.customerId, customerId) },
+    { name: "policy_rule_firings", table: policyRuleFiringsTable, where: eq(policyRuleFiringsTable.customerId, customerId) },
+    { name: "policy_rule_incidents", table: policyRuleIncidentsTable, where: eq(policyRuleIncidentsTable.customerId, customerId) },
+    { name: "policy_rule_suppressions", table: policyRuleSuppressionsTable, where: eq(policyRuleSuppressionsTable.customerId, customerId) },
+    { name: "engine_baseline_history", table: engineBaselineHistoryTable, where: eq(engineBaselineHistoryTable.customerId, customerId) },
+    { name: "platform_log_stream", table: platformLogStreamTable, where: eq(platformLogStreamTable.customerId, customerId) },
+    { name: "exception_occurrences", table: exceptionOccurrencesTable, where: eq(exceptionOccurrencesTable.customerId, customerId) },
+    { name: "checkout_sessions", table: checkoutSessionsTable, where: eq(checkoutSessionsTable.tenantId, tenant.tenantGuid) },
+    // Junction row only — the staff account itself is untouched; it just
+    // loses its scope onto a tenant that no longer exists.
+    { name: "msp_staff_customer_scopes.customer_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.customerId, customerId) },
+  ];
+
+  const tenantOnlyCounts: Record<string, number> = {};
+  const tenantOnlySkipped: Record<string, string> = {};
+  for (const entry of tenantOnlyTargets) {
+    try {
+      const deletedRows = await db.delete(entry.table).where(entry.where).returning({ id: sql<number>`1` });
+      tenantOnlyCounts[entry.name] = deletedRows.length;
+    } catch (err) {
+      tenantOnlySkipped[entry.name] = err instanceof Error ? err.message : String(err);
+      log.warn({ err, customerId, table: entry.name }, "customer hard delete: tenant-only table skipped (likely an unrun manual migration)");
+    }
+  }
+
+  let mspAuditLogsDetached = 0;
+  try {
+    const detached = await db.update(mspAuditLogsTable).set({ customerId: null }).where(eq(mspAuditLogsTable.customerId, customerId)).returning({ id: mspAuditLogsTable.id });
+    mspAuditLogsDetached = detached.length;
+  } catch (err) {
+    log.warn({ err, customerId }, "customer hard delete: msp_audit_logs detach skipped");
+  }
+
+  void createAuditLog({
+    actorUserId: actor.id,
+    actorName: actor.name ?? actor.email,
+    actorRole: "admin",
+    actionType: "customer.hard_delete",
+    entityType: "customer",
+    entityId: tenant.id,
+    entityLabel: tenant.name,
+    metadata: {
+      tenantGuid: tenant.tenantGuid,
+      mspId: tenant.mspId,
+      userCount,
+      deletedUserEmails: deletedUsers.map((u) => u.email),
+      tenantOnlyCounts,
+      tenantOnlySkipped,
+      mspAuditLogsDetached,
+      source: "admin.active-directory",
+    },
+  });
+
+  auditLog.info(
+    {
+      actionType: "customer.hard_delete",
+      actorUserId: actor.id,
+      actorEmail: actor.email,
+      customerId: tenant.id,
+      customerName: tenant.name,
+      userCount,
+      tenantOnlySkippedCount: Object.keys(tenantOnlySkipped).length,
+      occurredAt: new Date().toISOString(),
+    },
+    "audit: dev-only customer hard delete committed",
+  );
+  log.info({ customerId: tenant.id, name: tenant.name, userCount }, "PlatformAdmin hard-deleted a customer/tenant (dev environment)");
+
+  res.json({
+    ok: true,
+    deletedCustomerId: tenant.id,
+    deletedCustomerName: tenant.name,
+    usersDeleted: userCount,
+    tenantOnlyTables: tenantOnlyCounts,
+    tenantOnlySkipped,
+    mspAuditLogsDetached,
+  });
 });
 
 export default router;

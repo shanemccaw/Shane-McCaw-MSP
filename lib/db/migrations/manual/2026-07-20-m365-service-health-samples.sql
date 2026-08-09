@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS "m365_service_health_samples" (
   "id" SERIAL PRIMARY KEY,
   "tenant_id" TEXT NOT NULL,
   "msp_id" INTEGER NOT NULL REFERENCES "msps"("id") ON DELETE CASCADE,
-  "customer_id" INTEGER REFERENCES "msp_customers"("id") ON DELETE SET NULL,
+  -- tenants.id — no FK by design (msp_customers, this column's original
+  -- referent, was dropped in the Tenant/User Refactor, #92). Fixed
+  -- 2026-08-09: this migration had never successfully run post-refactor
+  -- because CREATE TABLE was still pointed at the dropped table.
+  "customer_id" INTEGER,
   "service" TEXT NOT NULL,
   "status" TEXT NOT NULL,
   "sampled_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
