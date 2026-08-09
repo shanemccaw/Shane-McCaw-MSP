@@ -155,34 +155,89 @@ describe("resolveTenantMonitoringAddon", () => {
   });
 });
 
+/** One real Architect Retainer row shape, per the #595 migration. */
+function retainerRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    name: "Architect Essentials Retainer",
+    slug: "architect-essentials-retainer",
+    tagline: null,
+    description: null,
+    hoursPerMonth: null,
+    priceCents: null,
+    price: null,
+    basePrice: null,
+    typeAttributes: { seatMin: 26, seatMax: 100 },
+    ...over,
+  };
+}
+
+const ESSENTIALS_ROW = retainerRow({
+  id: 115,
+  name: "Architect Essentials Retainer",
+  slug: "architect-essentials-retainer",
+  tagline: "Direct access to Shane for design decisions.",
+  price: "1500.00",
+  typeAttributes: { seatMin: 26, seatMax: 100 },
+});
+const GROWTH_ROW = retainerRow({
+  id: 116,
+  name: "Architect Growth Retainer",
+  slug: "architect-growth-retainer",
+  tagline: "Broader engagement across escalations and change review.",
+  price: "3000.00",
+  typeAttributes: { seatMin: 101, seatMax: 500 },
+});
+const ENTERPRISE_ROW = retainerRow({
+  id: 117,
+  name: "Architect Enterprise Retainer",
+  slug: "architect-enterprise-retainer",
+  tagline: "Full programme oversight at enterprise scale.",
+  price: "5500.00",
+  typeAttributes: { seatMin: 501, seatMax: null },
+});
+
 describe("resolveArchitectRetainerAddon", () => {
-  it("null when the real service row is missing from the catalog", async () => {
+  it("null when the real service rows are missing from the catalog", async () => {
     mockResultQueue = [[]];
-    expect(await resolveArchitectRetainerAddon()).toBeNull();
+    expect(await resolveArchitectRetainerAddon(null)).toBeNull();
   });
 
-  it("wires the single real row directly, with no tiering", async () => {
-    mockResultQueue = [
-      [
-        {
-          id: 119,
-          name: "Architect Retainer",
-          slug: "copilot-governance-retainer",
-          tagline: "Direct access to Shane for design decisions.",
-          description: null,
-          hoursPerMonth: "8 hours a month",
-          priceCents: 200_000,
-          price: null,
-          basePrice: null,
-          typeAttributes: {},
-        },
-      ],
-    ];
-    const addon = await resolveArchitectRetainerAddon();
+  it("resolves all three real seat-banded tiers, labelled by real product name", async () => {
+    mockResultQueue = [[ESSENTIALS_ROW, GROWTH_ROW, ENTERPRISE_ROW]];
+    const addon = await resolveArchitectRetainerAddon(null);
     expect(addon).not.toBeNull();
     expect(addon!.id).toBe("architect-retainer");
     expect(addon!.defaultOn).toBe(false);
-    expect(addon!.tiers.length).toBe(1);
-    expect(addon!.tiers[0]!.monthlyUsd).toBe(2_000);
+    expect(addon!.tiers.map((t) => t.label)).toEqual(["Essentials", "Growth", "Enterprise"]);
+    expect(addon!.tiers.map((t) => t.monthlyUsd)).toEqual([1_500, 3_000, 5_500]);
+  });
+
+  it("marks the tenant's real seat-matched band as seat-match and pre-selects it", async () => {
+    mockSeatFigures = { provisioned: 250 };
+    mockResultQueue = [[ESSENTIALS_ROW, GROWTH_ROW, ENTERPRISE_ROW]];
+    const addon = await resolveArchitectRetainerAddon("tenant-guid");
+    const growth = addon!.tiers.find((t) => t.label === "Growth")!;
+    const essentials = addon!.tiers.find((t) => t.label === "Essentials")!;
+    const enterprise = addon!.tiers.find((t) => t.label === "Enterprise")!;
+    expect(growth.emphasis).toBe("seat-match");
+    expect(essentials.emphasis).toBeUndefined();
+    expect(enterprise.emphasis).toBeUndefined();
+    expect(addon!.defaultTierId).toBe(growth.id);
+  });
+
+  it("defaults to Essentials when no real seat count is sourced, with no tier marked seat-match", async () => {
+    mockSeatFigures = null;
+    mockResultQueue = [[ESSENTIALS_ROW, GROWTH_ROW, ENTERPRISE_ROW]];
+    const addon = await resolveArchitectRetainerAddon("tenant-guid");
+    expect(addon!.tiers.every((t) => t.emphasis === undefined)).toBe(true);
+    const essentials = addon!.tiers.find((t) => t.label === "Essentials")!;
+    expect(addon!.defaultTierId).toBe(essentials.id);
+  });
+
+  it("uses the Essentials row's own tagline as the addon-level blurb, never invented copy", async () => {
+    mockResultQueue = [[ESSENTIALS_ROW, GROWTH_ROW, ENTERPRISE_ROW]];
+    const addon = await resolveArchitectRetainerAddon(null);
+    expect(addon!.blurb).toBe("Direct access to Shane for design decisions.");
   });
 });

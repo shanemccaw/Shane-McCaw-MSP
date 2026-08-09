@@ -983,6 +983,10 @@ router.get("/quiz/monitoring-tiers", monitoringTiersLimiter, async (_req, res) =
       .from(servicesTable)
       .where(and(
         eq(servicesTable.serviceType, "monitoring_tier"),
+        // Git #595: same visibility gap sow-monitoring-addon.ts had — a row
+        // set to visibility="private" (e.g. the retired Micro tier) must not
+        // still surface here for deep-link seat matching.
+        eq(servicesTable.visibility, "public"),
       ))
       .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.id));
 

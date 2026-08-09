@@ -1604,7 +1604,7 @@ router.get(
         runSalesOfferEngineForTenant(customerId, customer?.mspId ?? null),
         fetchSignalRulesAndGroups(customer?.mspId ?? null),
         resolveTenantMonitoringAddon(customer?.tenantId ?? null),
-        resolveArchitectRetainerAddon(),
+        resolveArchitectRetainerAddon(customer?.tenantId ?? null),
       ]);
 
       const pillarsBySignal = new Map<string, string>();

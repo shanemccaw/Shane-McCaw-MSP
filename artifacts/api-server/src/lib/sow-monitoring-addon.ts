@@ -30,8 +30,27 @@
  *
  * ARCHITECT RETAINER
  * ------------------
- * One real row (`services.slug = "copilot-governance-retainer"`), no tiering —
- * wired directly per #588's scope note.
+ * Git #595 (supersedes #588's single-row wiring): the three real Architect
+ * retainer rows (`architect-essentials-retainer` / `-growth-retainer` /
+ * `-enterprise-retainer`), flat-priced (no `pricePerUserMonth`), one per real
+ * seat band via `type_attributes.seatMin`/`seatMax` — the SAME three bands
+ * (SMB/Mid-Market/Enterprise) Tenant Monitoring now prices against, per
+ * Shane's 2026-08-08 scope: "the 3 Architect retainer tiers map 1:1 onto
+ * those same 3 bands (Essentials=SMB, Growth=Mid-Market, Enterprise=Enterprise)".
+ * All three are always offered (reuses #594's 3-box tier picker); the tier
+ * whose band actually contains this tenant's real seat count gets
+ * `emphasis: "seat-match"` and becomes `defaultTierId` — this addon's real
+ * selection axis is seats, unlike Monitoring's quality-tier axis (see the
+ * `emphasis` doc on `ResolvedAddonTier` below). `vCISO/Governance` and the
+ * old single `copilot-governance-retainer` row are deliberately excluded from
+ * this resolution (still in the catalog, just not queried here) per Shane's
+ * explicit scope note — not deleted, not deactivated.
+ *
+ * When no real seat count is sourced, all three tiers are still returned
+ * (unlike Monitoring, which omits the whole addon) — a retainer is a flat
+ * monthly service the customer can pick manually; there is simply no
+ * seat-matched default to pre-select, so `defaultTierId` falls back to the
+ * lowest band (Essentials).
  *
  * PER-TIER COPY
  * -------------
@@ -43,14 +62,19 @@
  */
 
 import { db, servicesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { resolveEffectiveChargeCents, resolveTypeAttributesMonthlyPriceCents } from "./catalog-pricing.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.offer" });
 
-const ARCHITECT_RETAINER_SLUG = "copilot-governance-retainer";
+/** Git #595 — real seat-banded order, lowest band first (Essentials/SMB → Enterprise). */
+const ARCHITECT_RETAINER_SLUGS = [
+  "architect-essentials-retainer",
+  "architect-growth-retainer",
+  "architect-enterprise-retainer",
+] as const;
 
 export interface ResolvedAddonTier {
   readonly id: string;
@@ -98,10 +122,12 @@ function toFiniteNumber(v: unknown): number | null {
 }
 
 /**
- * The band row (of one quality tier's rows) whose real seat count contains
- * `seats`, or — for a tenant outside every band this platform has priced —
- * the nearest band, so a real tenant is never left unpriced over an edge the
- * catalog simply has not filled in.
+ * The row (of a set of same-purpose rows, one per seat band) whose real seat
+ * count contains `seats`, or — for a tenant outside every band this platform
+ * has priced — the nearest band, so a real tenant is never left unpriced or
+ * unmatched over an edge the catalog simply has not filled in. Shared by
+ * Tenant Monitoring (bands within one quality tier) and the Architect
+ * Retainer (bands across its three tiers directly, Git #595).
  */
 function pickBandRow(rows: readonly ServiceRow[], seats: number): ServiceRow | null {
   let best: ServiceRow | null = null;
@@ -139,10 +165,15 @@ export async function resolveTenantMonitoringAddon(
     return null;
   }
 
+  // Git #595: visibility filter is required, not optional — a row set to
+  // `visibility = "private"` (e.g. the retired Micro tier) must actually stop
+  // being offered here, or the data-only fix does nothing.
   const rows = await db
     .select()
     .from(servicesTable)
-    .where(eq(servicesTable.serviceType, "monitoring_tier"));
+    .where(
+      and(eq(servicesTable.serviceType, "monitoring_tier"), eq(servicesTable.visibility, "public")),
+    );
 
   const byLabel = new Map<string, ServiceRow[]>();
   for (const row of rows) {
@@ -200,39 +231,73 @@ export async function resolveTenantMonitoringAddon(
   };
 }
 
-/** The real Architect Retainer add-on — one catalog row, no tiering. */
-export async function resolveArchitectRetainerAddon(): Promise<ResolvedSowAddon | null> {
-  const [row] = await db
+/** Real, customer-facing tier names for the three retainer slugs — not invented, these are the product names #595's issue body names them by. */
+const ARCHITECT_RETAINER_LABELS: Readonly<Record<string, string>> = {
+  "architect-essentials-retainer": "Essentials",
+  "architect-growth-retainer": "Growth",
+  "architect-enterprise-retainer": "Enterprise",
+};
+
+/**
+ * The real Architect Retainer add-on — the three real seat-banded tiers
+ * (Essentials/Growth/Enterprise), flat-priced off each row directly. The tier
+ * whose band contains this tenant's real seat count is marked
+ * `emphasis: "seat-match"` and pre-selected; with no sourced seat count every
+ * tier still renders (a retainer is manually pickable, unlike Monitoring
+ * which omits itself entirely when unpriced), defaulting to Essentials.
+ */
+export async function resolveArchitectRetainerAddon(
+  tenantGuid: string | null,
+): Promise<ResolvedSowAddon | null> {
+  const rows = await db
     .select()
     .from(servicesTable)
-    .where(eq(servicesTable.slug, ARCHITECT_RETAINER_SLUG))
-    .limit(1);
+    .where(inArray(servicesTable.slug, ARCHITECT_RETAINER_SLUGS));
 
-  if (!row) {
-    log.warn({ slug: ARCHITECT_RETAINER_SLUG }, "sow-monitoring-addon: Architect Retainer service row not found");
+  if (rows.length === 0) {
+    log.warn({ slugs: ARCHITECT_RETAINER_SLUGS }, "sow-monitoring-addon: Architect Retainer service rows not found");
     return null;
   }
 
-  const monthlyCents = resolveEffectiveChargeCents(row);
-  if (monthlyCents <= 0) {
-    log.warn({ serviceId: row.id }, "sow-monitoring-addon: Architect Retainer resolved to no positive price");
+  const slugOrder = new Map<string, number>(ARCHITECT_RETAINER_SLUGS.map((slug, i) => [slug, i]));
+  const ordered = [...rows].sort(
+    (a, b) => (slugOrder.get(a.slug ?? "") ?? 99) - (slugOrder.get(b.slug ?? "") ?? 99),
+  );
+
+  const seatFigures = tenantGuid ? await resolvePaidSeatFigures(tenantGuid) : null;
+  const seats = seatFigures?.provisioned ?? 0;
+  const seatMatchedRow = seats > 0 ? pickBandRow(ordered, seats) : null;
+
+  const tiers: ResolvedAddonTier[] = [];
+  for (const row of ordered) {
+    const monthlyCents = resolveEffectiveChargeCents(row);
+    if (monthlyCents <= 0) continue;
+    tiers.push({
+      id: slugify(row.slug ?? row.name),
+      label: (row.slug && ARCHITECT_RETAINER_LABELS[row.slug]) ?? row.name,
+      upfrontUsd: 0,
+      monthlyUsd: monthlyCents / 100,
+      detail: (row.tagline ?? row.description ?? "").trim(),
+      emphasis: seatMatchedRow && row.id === seatMatchedRow.id ? "seat-match" : undefined,
+    });
+  }
+
+  if (tiers.length === 0) {
+    log.warn("sow-monitoring-addon: no priceable Architect Retainer rows — Architect Retainer add-on omitted");
     return null;
   }
+
+  const defaultTier = tiers.find((t) => t.emphasis === "seat-match") ?? tiers[0];
 
   return {
     id: "architect-retainer",
-    title: row.name,
-    blurb: (row.tagline ?? row.description ?? "").trim(),
+    title: "Architect Retainer",
+    // Real per-row tagline/description, never invented — the Essentials row's
+    // own copy (the group's entry-level tier) stands in for the addon-level
+    // blurb, same as Monitoring's per-tier `detail` sourcing.
+    blurb: (ordered[0]?.tagline ?? ordered[0]?.description ?? "").trim(),
     defaultOn: false,
-    defaultTierId: "standard",
-    tiers: [
-      {
-        id: "standard",
-        label: row.hoursPerMonth ?? "Retainer",
-        upfrontUsd: 0,
-        monthlyUsd: monthlyCents / 100,
-        detail: (row.tagline ?? row.description ?? "").trim(),
-      },
-    ],
+    defaultTierId: defaultTier.id,
+    tiers,
   };
 }
