@@ -627,6 +627,143 @@ function purchaseLinkForCheck(
 }
 
 /**
+ * One `requires`/`unlocks`/`means` disclosure parsed into the tier's own product
+ * name and the numbered plans it names (#579).
+ *
+ * Only ever matches the "Microsoft <product> P<n>[ or P<n>]" shape the three
+ * confirmed identity disclosures use — anything else (an unconfirmed check, or
+ * a tier phrased some other way, e.g. "Microsoft Intune Plan 2") returns `null`
+ * and is left ungrouped rather than guessed at.
+ */
+function parseConfirmedTier(requires: string): { readonly product: string; readonly tiers: readonly number[] } | null {
+  const match = /^(.+?)\s+((?:P\d+)(?:\s+or\s+P\d+)*)$/i.exec(requires);
+  if (!match) return null;
+  const tiers = Array.from(match[2]!.matchAll(/P(\d+)/gi), (m) => Number(m[1]));
+  return { product: match[1]!.trim(), tiers };
+}
+
+/** A tier-number set as a stable string key, order-independent. */
+function tierSetKey(tiers: readonly number[]): string {
+  return [...new Set(tiers)].sort((a, b) => a - b).join(",");
+}
+
+function joinWithAnd(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * One Upgrade Opportunity row, or several consolidated under one disclosure
+ * sentence (#579).
+ *
+ * `requires`/`sentence` are non-null only when `items.length > 1`: several
+ * checks whose confirmed tier is the same, or where one's tier is a subset of
+ * another's (Entra ID P2 is also "P1 or P2"), share ONE "Requires… Upgrading
+ * unlocks…" statement instead of repeating it per finding. A group of one
+ * keeps the finding's own full disclosure exactly as `licenceGapDisclosure`
+ * wrote it — nothing about the single-gap case changes.
+ */
+export interface UpgradeOpportunityGroup {
+  readonly requires: string | null;
+  readonly sentence: string;
+  readonly items: readonly UpgradeOpportunity[];
+}
+
+/**
+ * Group a section's Upgrade Opportunity rows by shared or overlapping
+ * confirmed tier (#579's "reads as one repeated statement" fix).
+ *
+ * Grouping only ever merges checks whose tier this file can itself confirm
+ * (`LICENCE_GAP_DISCLOSURES[key].requires`) — never a tier the tenant's own
+ * scan merely observed, which #451 already treats as unconfirmed elsewhere in
+ * this file. Two or more checks in the same product family only merge when one
+ * of them names the exact tier set that covers all the others (e.g. "P1 or
+ * P2" covers a sibling that names only "P2"); if no member's tier is a real
+ * superset of the rest, nothing is asserted that was not already said and the
+ * checks stay ungrouped rather than guess at a combined requirement.
+ */
+export function groupUpgradeOpportunities(
+  items: readonly UpgradeOpportunity[],
+): readonly UpgradeOpportunityGroup[] {
+  const byProduct = new Map<
+    string,
+    { readonly item: UpgradeOpportunity; readonly entry: LicenceGapDisclosure; readonly tiers: readonly number[] }[]
+  >();
+  const solo: UpgradeOpportunity[] = [];
+
+  for (const item of items) {
+    const entry = LICENCE_GAP_DISCLOSURES[item.checkKey];
+    const parsed = entry?.requires ? parseConfirmedTier(entry.requires) : null;
+    if (!entry || !parsed) {
+      solo.push(item);
+      continue;
+    }
+    const bucket = byProduct.get(parsed.product) ?? [];
+    bucket.push({ item, entry, tiers: parsed.tiers });
+    byProduct.set(parsed.product, bucket);
+  }
+
+  const groups: UpgradeOpportunityGroup[] = [];
+
+  for (const members of byProduct.values()) {
+    if (members.length < 2) {
+      solo.push(...members.map((m) => m.item));
+      continue;
+    }
+    const union = new Set<number>();
+    members.forEach((m) => m.tiers.forEach((t) => union.add(t)));
+    const unionKey = tierSetKey([...union]);
+    const superset = members.find((m) => tierSetKey(m.tiers) === unionKey);
+    if (!superset) {
+      // No single member's tier covers the rest — do not invent a combined
+      // requirement; every member keeps its own full disclosure.
+      solo.push(...members.map((m) => m.item));
+      continue;
+    }
+
+    const unlocksList = joinWithAnd(
+      members.map((m) => {
+        if (tierSetKey(m.tiers) === unionKey) return m.entry.unlocks;
+        const ownTier = m.entry.requires!.match(/P\d+(?:\s+or\s+P\d+)*$/i)?.[0] ?? m.entry.requires!;
+        return `(${ownTier}) ${m.entry.unlocks}`;
+      }),
+    );
+
+    groups.push({
+      requires: superset.entry.requires,
+      sentence: `This tenant requires ${superset.entry.requires} to unlock: ${unlocksList}.`,
+      items: members.map((m) => m.item),
+    });
+  }
+
+  for (const item of solo) groups.push({ requires: null, sentence: item.disclosure, items: [item] });
+
+  // Groups render in the order their first member appeared in `items`, so a
+  // section's Upgrade Opportunities read in the same order regardless of
+  // which checks happened to group.
+  const order = new Map(items.map((it, i) => [it, i]));
+  groups.sort((a, b) => (order.get(a.items[0]!) ?? 0) - (order.get(b.items[0]!) ?? 0));
+
+  return groups;
+}
+
+/**
+ * One row's own text within a group. A group of one keeps its full
+ * "Requires… Upgrading unlocks…" disclosure — the group's `sentence` already
+ * carries that for a real group, so a grouped row states only what stays
+ * specific to it: the same `means` clause `licenceGapDisclosure` would have
+ * closed on, without repeating the tier or the capability the group sentence
+ * just named.
+ */
+export function upgradeOpportunityRowText(item: UpgradeOpportunity, grouped: boolean): string {
+  if (!grouped) return item.disclosure;
+  const entry = LICENCE_GAP_DISCLOSURES[item.checkKey];
+  if (!entry) return item.disclosure;
+  return entry.means.charAt(0).toUpperCase() + entry.means.slice(1);
+}
+
+/**
  * The block's call to action, or null when there is nothing to recommend.
  *
  * The tier-3 sentence says outright that ONE purchase covers all three gaps.

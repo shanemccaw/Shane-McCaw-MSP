@@ -31,7 +31,9 @@ import { INK, PILLARS, SEVERITY_ON_DARK, hexAlpha, reportAccent } from "./journe
 import { BODY, Block, EYEBROW, H2, type FigureRenderer } from "./ReportBlocks";
 import {
   checkDomainLabel,
+  groupUpgradeOpportunities,
   unavailableReasonText,
+  upgradeOpportunityRowText,
   type LiveReportBlock,
   type LiveReportSection,
   type LiveReportVerdict,
@@ -146,6 +148,7 @@ export function UpgradeOpportunityBlock({
   readonly callToAction?: UpgradeOpportunityCallToAction | null;
 }) {
   const teal = PILLARS.licensing.primary;
+  const groups = groupUpgradeOpportunities(items);
   return (
     <div
       style={{
@@ -164,31 +167,49 @@ export function UpgradeOpportunityBlock({
       <span style={{ ...EYEBROW, color: teal }}>Upgrade opportunity</span>
       <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDarkStrong }}>{detail}</p>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
-        {items.map((item) => (
-          <li
-            key={item.checkKey}
-            style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 11, borderTop: `1px solid ${hexAlpha(teal, 0.16)}` }}
-          >
-            <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: teal }}>
-              {checkDomainLabel(item.checkKey)}
-            </code>
-            <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
-              {item.disclosure}
-            </p>
-            {/* The add-on that answers THIS check, at tier 1/2 only. Absent at
-                tier 3, where one E7 link on the block replaces all three. */}
-            {item.link ? (
-              <a
-                href={item.link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ ...BODY, fontSize: 13, fontWeight: 600, color: teal, textDecoration: "underline" }}
-              >
-                {item.link.skuName}
-              </a>
-            ) : null}
-          </li>
-        ))}
+        {groups.map((group) => {
+          const grouped = group.items.length > 1;
+          return (
+            <li
+              key={group.items.map((i) => i.checkKey).join("+")}
+              style={{ display: "flex", flexDirection: "column", gap: grouped ? 10 : 3, paddingTop: 11, borderTop: `1px solid ${hexAlpha(teal, 0.16)}` }}
+            >
+              {/* One "Requires X. Upgrading unlocks…" statement per group, not
+                  per finding — several checks sharing or overlapping the same
+                  confirmed tier used to repeat the identical sentence back to
+                  back (#579). */}
+              {grouped ? (
+                <p style={{ ...BODY, fontSize: 13.5, fontWeight: 600, lineHeight: 1.6, color: INK.bodyDarkStrong }}>
+                  {group.sentence}
+                </p>
+              ) : null}
+              <div style={{ display: "flex", flexDirection: "column", gap: grouped ? 9 : 3 }}>
+                {group.items.map((item) => (
+                  <div key={item.checkKey} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: teal }}>
+                      {checkDomainLabel(item.checkKey)}
+                    </code>
+                    <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6, color: INK.bodyDark }}>
+                      {upgradeOpportunityRowText(item, grouped)}
+                    </p>
+                    {/* The add-on that answers THIS check, at tier 1/2 only. Absent
+                        at tier 3, where one E7 link on the block replaces all three. */}
+                    {item.link ? (
+                      <a
+                        href={item.link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ ...BODY, fontSize: 13, fontWeight: 600, color: teal, textDecoration: "underline" }}
+                      >
+                        {item.link.skuName}
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {callToAction ? <UpgradeCallToAction accent={teal} callToAction={callToAction} /> : null}
     </div>
