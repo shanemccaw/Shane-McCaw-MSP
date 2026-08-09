@@ -395,8 +395,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     shellSingleton = api;
+    (window as any).__shellApi = api;
     return () => {
       shellSingleton = null;
+      (window as any).__shellApi = null;
     };
   }, [api]);
 

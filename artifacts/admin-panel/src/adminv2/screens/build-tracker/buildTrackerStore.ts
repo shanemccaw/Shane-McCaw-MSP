@@ -200,9 +200,10 @@ export function selectChat(id: number | null) {
 export function setTriageActive(active: boolean) {
   set({ triageActive: active });
   if (active) {
-    void import("../../shell/ShellContext").then((m) => {
-      m.getShellApi()?.dispatch({ type: "selectContextTab" });
-    });
+    const api = (window as any).__shellApi;
+    if (api) {
+      api.dispatch({ type: "selectContextTab" });
+    }
   }
 }
 
