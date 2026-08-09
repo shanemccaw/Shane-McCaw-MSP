@@ -24,6 +24,7 @@ import "./screens/crm";
 import "./screens/inbox";
 import "./screens/money";
 import "./screens/tenant-signals";
+import "./screens/observability";
 import "./screens/endpoints";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
@@ -41,6 +42,9 @@ import { AdAuthBridge } from "./screens/ad/adAuthBridge";
 // Same reasoning again, for the Money tab's own ribbon label (real profit,
 // not the word "Money") — see MoneyFetchBridge.tsx's doc comment.
 import { MoneyFetchBridge } from "./screens/money/MoneyFetchBridge";
+// Same reasoning again, for the Watch tab's Observability groups and its `?`
+// palette answers — see ObservabilityFetchBridge.tsx's doc comment.
+import { ObservabilityFetchBridge } from "./screens/observability/ObservabilityFetchBridge";
 // Same reasoning again, for the Endpoints screen's Home-tab gallery, its Watch
 // -tab live count and its synchronous `endpoint` peek resolver — see
 // EndpointsFetchBridge.tsx's doc comment.
@@ -90,6 +94,7 @@ function AdminV2Inner() {
       <CrmFetchBridge />
       <AdAuthBridge />
       <MoneyFetchBridge />
+      <ObservabilityFetchBridge />
       <EndpointsFetchBridge />
     </Shell>
   );

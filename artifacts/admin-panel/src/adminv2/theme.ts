@@ -157,6 +157,13 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // verdict — whether it is good or bad news depends entirely on the tenant
   // it fired against, which the palette cannot know.
   signal: ["#c3c1bf", "SIG"],
+  // Observability. These four are the only badges that carry a "something is
+  // wrong" colour, and they earn it: each names a row that exists solely
+  // because a thing broke, so the tint is information rather than emphasis.
+  alert: ["#f2ca63", "ALT"],
+  exception: ["#eda3a3", "ERR"],
+  incident: ["#7fb4d8", "INC"],
+  dlq: ["#f2ca63", "DLQ"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

@@ -218,6 +218,14 @@ export interface ContextualTabSpec {
  * id, and it is neither a `package` (a set of checks) nor a `script` — it is
  * the thing rules derive, so it needed its own kind rather than borrowing one
  * and lying about it in the eyebrow.
+ *
+ * `alert`, `exception`, `incident` and `dlq` were added for the Observability
+ * screen (`screens/observability/`) — an alert rule, an exception group, a
+ * public incident and a parked dead-letter job. Each is a distinct table row
+ * with its own id space (`msp_alert_rules.id`, `exception_groups.fingerprint`,
+ * `platform_incidents.id`, `msp_dlq_store.dlq_id`), so none of them could
+ * reuse an existing kind without two records disagreeing about what an id
+ * means.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -236,6 +244,10 @@ export const PEEK_KINDS = [
   "group",
   "ou",
   "signal",
+  "alert",
+  "exception",
+  "incident",
+  "dlq",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -394,7 +406,11 @@ export type CommandKind =
   | "msp"
   | "user"
   | "group"
-  | "signal";
+  | "signal"
+  | "alert"
+  | "exception"
+  | "incident"
+  | "dlq";
 
 export interface CommandItem {
   id: string;
