@@ -9,7 +9,7 @@
  * back to the generic placeholder only if that table is empty too.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
@@ -41,8 +41,17 @@ vi.mock("@workspace/db", () => ({
   },
 }));
 
+// Rejects by default so requireAdminOrDeployToken's fall-through path is
+// actually exercised, not masked by an always-allow stub. A request can opt
+// into "authenticated admin session" with a test-only header.
 vi.mock("../middlewares/requireAuth", () => ({
-  requireAdmin: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
+  requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.header("x-test-admin-session") === "yes") {
+      next();
+      return;
+    }
+    res.status(401).json({ error: "Invalid or expired token" });
+  },
 }));
 
 /** Queue the rowsets the route will await, in order. */
@@ -100,12 +109,20 @@ describe("GET /version — Git #666 deployed_version_stamp fallback", () => {
 });
 
 describe("POST /admin/version-stamp", () => {
+  const originalDeployToken = process.env.DEPLOY_STAMP_TOKEN;
+
   beforeEach(() => {
     vi.resetModules();
     queued.length = 0;
+    delete process.env.DEPLOY_STAMP_TOKEN;
   });
 
-  it("writes a row and returns it", async () => {
+  afterEach(() => {
+    if (originalDeployToken === undefined) delete process.env.DEPLOY_STAMP_TOKEN;
+    else process.env.DEPLOY_STAMP_TOKEN = originalDeployToken;
+  });
+
+  it("writes a row and returns it for a real admin session", async () => {
     stub([]); // startup fallback lookup (empty)
     const { default: versionRouter } = await import("./version");
     await flushMicrotasks();
@@ -115,6 +132,7 @@ describe("POST /admin/version-stamp", () => {
     const app = buildApp(versionRouter);
     const res = await request(app)
       .post("/admin/version-stamp")
+      .set("x-test-admin-session", "yes")
       .send({ commitHash: "def5678", commitMessage: "Deploy commit" });
 
     expect(res.status).toBe(200);
@@ -128,8 +146,57 @@ describe("POST /admin/version-stamp", () => {
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
-    const res = await request(app).post("/admin/version-stamp").send({});
+    const res = await request(app)
+      .post("/admin/version-stamp")
+      .set("x-test-admin-session", "yes")
+      .send({});
 
     expect(res.status).toBe(400);
+  });
+
+  it("401s with no admin session and no deploy token configured", async () => {
+    stub([]);
+    const { default: versionRouter } = await import("./version");
+    await flushMicrotasks();
+
+    const app = buildApp(versionRouter);
+    const res = await request(app)
+      .post("/admin/version-stamp")
+      .send({ commitHash: "def5678", commitMessage: "Deploy commit" });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("accepts a correct X-Deploy-Token even with no admin session — the postBuild path", async () => {
+    process.env.DEPLOY_STAMP_TOKEN = "real-deploy-secret";
+    stub([]);
+    const { default: versionRouter } = await import("./version");
+    await flushMicrotasks();
+
+    stub([{ id: 6, commitHash: "aaa1111", commitMessage: "postBuild deploy", deployedAt: new Date() }]);
+
+    const app = buildApp(versionRouter);
+    const res = await request(app)
+      .post("/admin/version-stamp")
+      .set("X-Deploy-Token", "real-deploy-secret")
+      .send({ commitHash: "aaa1111", commitMessage: "postBuild deploy" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stamp.commitHash).toBe("aaa1111");
+  });
+
+  it("rejects an incorrect X-Deploy-Token and does not fall back to admin session", async () => {
+    process.env.DEPLOY_STAMP_TOKEN = "real-deploy-secret";
+    stub([]);
+    const { default: versionRouter } = await import("./version");
+    await flushMicrotasks();
+
+    const app = buildApp(versionRouter);
+    const res = await request(app)
+      .post("/admin/version-stamp")
+      .set("X-Deploy-Token", "wrong-secret")
+      .send({ commitHash: "aaa1111", commitMessage: "postBuild deploy" });
+
+    expect(res.status).toBe(401);
   });
 });

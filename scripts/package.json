@@ -23,6 +23,7 @@
     "patch-sow-adjustment-rules": "tsx ./src/patch-sow-adjustment-rules.ts",
     "seed-signal-rules": "tsx ./src/seed-signal-rules.ts",
     "seed-engagement-project-triggers": "tsx ./src/seed-engagement-project-triggers.ts",
+    "deploy-stamp-version": "tsx ./src/deploy-stamp-version.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:stripe": "pnpm --filter @workspace/api-server run test"
   },

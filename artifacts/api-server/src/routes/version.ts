@@ -1,5 +1,6 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { execFileSync } from "node:child_process";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import { db, deployedVersionStampTable } from "@workspace/db";
@@ -107,12 +108,37 @@ router.get("/version", (_req, res) => {
   res.json(versionInfo);
 });
 
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
+
+// Git #666: this route is also called headlessly, with no user session, from
+// .replit's [deployment.postBuild] step (scripts/src/deploy-stamp-version.ts)
+// during every real deploy. That script authenticates with a shared secret
+// (DEPLOY_STAMP_TOKEN, set as a Replit secret on both this server and the
+// deploy environment) via the X-Deploy-Token header, since a build step has
+// no admin JWT to send. A real admin session still works too, unchanged —
+// this only ADDS a second accepted credential, it never weakens requireAdmin
+// itself. If DEPLOY_STAMP_TOKEN isn't configured, the header path is a no-op
+// and this always falls through to the normal requireAdmin check.
+function requireAdminOrDeployToken(req: Request, res: Response, next: NextFunction): void {
+  const configuredToken = process.env.DEPLOY_STAMP_TOKEN;
+  const presentedToken = req.header("X-Deploy-Token");
+  if (configuredToken && presentedToken && timingSafeEqualStrings(presentedToken, configuredToken)) {
+    next();
+    return;
+  }
+  requireAdmin(req, res, next);
+}
+
 const versionStampBodySchema = z.object({
   commitHash: z.string().trim().min(1),
   commitMessage: z.string().trim().min(1),
 });
 
-router.post("/admin/version-stamp", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/version-stamp", requireAdminOrDeployToken, async (req: Request, res: Response) => {
   const parsed = versionStampBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "commitHash and commitMessage are required", detail: parsed.error.flatten() });
