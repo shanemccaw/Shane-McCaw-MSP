@@ -186,6 +186,12 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // carries the amber "needs attention" tint for the same reason `delivery`
   // does: an `awaiting_approval` run is exactly what the Watch tab exists for.
   workflowRun: ["#f2ca63", "RUN"],
+  // Workflow Triggers. Neutral like `workflow` itself — a trigger is a
+  // configuration object (what fires the graph, and how), not an outcome.
+  // Whether ITS most recent fire was good news is a per-row fact (the Watch
+  // tab's own errored-triggers count), not something the palette badge
+  // should try to encode.
+  trigger: ["#c3c1bf", "TRG"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

@@ -285,6 +285,15 @@ export interface ContextualTabSpec {
  * (`screens/run-history/`'s own store), a completely different table with no
  * relationship to `wf_runs.id`, so a numeric id collision would resolve to
  * the wrong record's peek.
+ *
+ * `trigger` was added for the Workflow Triggers screen (`screens/
+ * workflow-triggers/`) — one `wf_triggers` row: the thing that *fires* a
+ * workflow definition (manual, schedule, webhook or event), with its own
+ * enable state, config and fire history. It is not `workflow` (the graph a
+ * trigger fires, edited on its own screen) and not `workflowRun` (one
+ * execution a trigger produced) — a trigger outlives any single run and can
+ * exist with zero runs behind it, so neither kind can honestly stand in for
+ * what editing or deleting *this* record means.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -315,6 +324,7 @@ export const PEEK_KINDS = [
   "campaign",
   "share",
   "workflowRun",
+  "trigger",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -483,7 +493,8 @@ export type CommandKind =
   | "delivery"
   | "fulfillmentType"
   | "campaign"
-  | "share";
+  | "share"
+  | "trigger";
 
 export interface CommandItem {
   id: string;
