@@ -238,8 +238,8 @@ export interface ContextualTabSpec {
  * twelve intelligence engines in `lib/engine-registry.ts` is openable, keyed
  * by a stable string, and needs a name the tab strip and the Back group can
  * resolve — and no existing kind describes it: it is not a `package` of
- * checks, not a `workflow`, and not a `signal` (an engine *sums* signals;
- * it is not one).
+ * checks, not a `workflow`, and not a `signal` (an engine *sums* signals; it
+ * is not one).
  *
  * `run` was added for the Run History screen (`screens/run-history/`) — one
  * completed execution: a Deploy Console command or a SQL Runner query, with
@@ -247,7 +247,7 @@ export interface ContextualTabSpec {
  * is the reusable text; a run is one firing of it, and most runs never came
  * from a saved script at all) and not a `migration` (a migration file is a
  * thing on disk that may have run many times). Note the deliberate near-miss
- * with `CommandKind`’s `"run"`, which is a palette *action* badge — the two
+ * with `CommandKind`'s `"run"`, which is a palette *action* badge — the two
  * unions are separate and neither is keyed by the other.
  *
  * `delivery` and `fulfillmentType` were added for the Fulfillment screen
@@ -285,6 +285,15 @@ export interface ContextualTabSpec {
  * (`screens/run-history/`'s own store), a completely different table with no
  * relationship to `wf_runs.id`, so a numeric id collision would resolve to
  * the wrong record's peek.
+ *
+ * `trigger` was added for the Workflow Triggers screen (`screens/
+ * workflow-triggers/`) — one `wf_triggers` row: the thing that *fires* a
+ * workflow definition (manual, schedule, webhook or event), with its own
+ * enable state, config and fire history. It is not `workflow` (the graph a
+ * trigger fires, edited on its own screen) and not `workflowRun` (one
+ * execution a trigger produced) — a trigger outlives any single run and can
+ * exist with zero runs behind it, so neither kind can honestly stand in for
+ * what editing or deleting *this* record means.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -315,6 +324,7 @@ export const PEEK_KINDS = [
   "campaign",
   "share",
   "workflowRun",
+  "trigger",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -483,7 +493,8 @@ export type CommandKind =
   | "delivery"
   | "fulfillmentType"
   | "campaign"
-  | "share";
+  | "share"
+  | "trigger";
 
 export interface CommandItem {
   id: string;

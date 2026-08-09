@@ -18,6 +18,7 @@
  * POST   /api/admin/workflows/definitions/:id/triggers
  * DELETE /api/admin/workflows/definitions/:id/triggers/:tid
  * PATCH  /api/admin/workflows/definitions/:id/triggers/:tid
+ * GET    /api/admin/workflows/triggers               (every trigger, all definitions)
  * POST   /api/admin/workflows/definitions/:id/run   (manual trigger)
  * GET    /api/admin/workflows/runs
  * GET    /api/admin/workflows/runs/:id
@@ -755,6 +756,64 @@ router.delete("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, as
     res.status(204).end();
   } catch (err) {
     sendError(res, 500, "Failed to delete trigger");
+  }
+});
+
+// ── All triggers, across every definition ─────────────────────────────────────
+// The per-definition GET above only answers "triggers for one workflow" — the
+// Workflow Triggers screen (adminv2) needs the reverse: every trigger, with
+// its definition's name and its own latest fired-event outcome, in one call
+// rather than N+1 fetches over every definition. Read-only, no new table.
+
+router.get("/admin/workflows/triggers", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db.execute<{
+      id: number;
+      definition_id: number;
+      definition_name: string;
+      type: string;
+      config: Record<string, unknown>;
+      webhook_token: string | null;
+      next_run_at: string | null;
+      enabled: boolean;
+      created_at: string;
+      last_fired_at: string | null;
+      last_status: string | null;
+      event_count: number;
+    }>(sql`
+      SELECT
+        t.id, t.definition_id, d.name AS definition_name, t.type, t.config,
+        t.webhook_token, t.next_run_at, t.enabled, t.created_at,
+        le.fired_at AS last_fired_at, le.status AS last_status,
+        COALESCE(ec.event_count, 0) AS event_count
+      FROM wf_triggers t
+      JOIN wf_definitions d ON d.id = t.definition_id
+      LEFT JOIN LATERAL (
+        SELECT te.fired_at, te.status FROM wf_trigger_events te
+        WHERE te.trigger_id = t.id ORDER BY te.fired_at DESC LIMIT 1
+      ) le ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS event_count FROM wf_trigger_events te2 WHERE te2.trigger_id = t.id
+      ) ec ON true
+      ORDER BY d.name ASC, t.type ASC, t.id ASC
+    `);
+    res.json(rows.rows.map(r => ({
+      id: Number(r.id),
+      definitionId: Number(r.definition_id),
+      definitionName: r.definition_name,
+      type: r.type,
+      config: r.config ?? {},
+      webhookToken: r.webhook_token,
+      nextRunAt: r.next_run_at,
+      enabled: r.enabled,
+      createdAt: r.created_at,
+      lastFiredAt: r.last_fired_at,
+      lastStatus: r.last_status,
+      eventCount: Number(r.event_count),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "workflows: list all triggers failed");
+    sendError(res, 500, "Failed to list triggers");
   }
 });
 

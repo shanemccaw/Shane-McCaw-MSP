@@ -26,6 +26,7 @@ import "./screens/money";
 import "./screens/tenant-signals";
 import "./screens/observability";
 import "./screens/endpoints";
+import "./screens/services";
 import "./screens/sql";
 import "./screens/packages";
 import "./screens/engines";
@@ -36,6 +37,7 @@ import "./screens/ai-prompts";
 import "./screens/shared-links";
 import "./screens/documents";
 import "./screens/workflows";
+import "./screens/workflow-triggers";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -59,6 +61,10 @@ import { ObservabilityFetchBridge } from "./screens/observability/ObservabilityF
 // -tab live count and its synchronous `endpoint` peek resolver — see
 // EndpointsFetchBridge.tsx's doc comment.
 import { EndpointsFetchBridge } from "./screens/endpoints/EndpointsFetchBridge";
+// Same reasoning again, for the Services screen's Watch-tab live "no price
+// set" label and its synchronous `service` peek resolver — see
+// ServicesFetchBridge.tsx's doc comment.
+import { ServicesFetchBridge } from "./screens/services/ServicesFetchBridge";
 // Same reasoning again, for the "run" tab's "Saved scripts" gallery and the
 // synchronous `script`/`migration` peek resolvers — see SqlFetchBridge.tsx's
 // doc comment.
@@ -101,6 +107,10 @@ import { DocumentsFetchBridge } from "./screens/documents/DocumentsFetchBridge";
 // synchronous `workflow`/`workflowRun` peek resolvers — see
 // WorkflowFetchBridge.tsx's doc comment.
 import { WorkflowFetchBridge } from "./screens/workflows/WorkflowFetchBridge";
+// Same reasoning again, for the Home tab's "All triggers" gallery and the
+// Watch tab's live "trigger errors" count — see
+// WorkflowTriggersFetchBridge.tsx's doc comment.
+import { WorkflowTriggersFetchBridge } from "./screens/workflow-triggers/WorkflowTriggersFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -148,6 +158,7 @@ function AdminV2Inner() {
       <MoneyFetchBridge />
       <ObservabilityFetchBridge />
       <EndpointsFetchBridge />
+      <ServicesFetchBridge />
       <SqlFetchBridge />
       <PackagesFetchBridge />
       <EnginesFetchBridge />
@@ -158,6 +169,7 @@ function AdminV2Inner() {
       <SharedLinksFetchBridge />
       <DocumentsFetchBridge />
       <WorkflowFetchBridge />
+      <WorkflowTriggersFetchBridge />
     </Shell>
   );
 }
