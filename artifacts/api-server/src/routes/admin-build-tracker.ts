@@ -400,9 +400,11 @@ router.delete("/admin/build-tracker/chats/:id", requireAdmin, async (req: Reques
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GITHUB SYNC
-// Pulls milestones → bt_epics and all issues → bt_issues from
-// shanemccaw/Shane-McCaw-MSP. Uses GITHUB_TOKEN env var (PAT with repo:read).
-// Upserts on github_number so re-running is fully idempotent.
+// Pulls all issues from shanemccaw/Shane-McCaw-MSP.
+// An Epic is defined as any issue that has sub-issues assigned to it (meaning
+// it has sub_issues_summary.total > 0 OR is referenced as a parent by another
+// issue's parent_issue_url).
+// All other issues (child issues and standalone issues) are stored in bt_issues.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GITHUB_OWNER = "shanemccaw";
@@ -421,7 +423,29 @@ async function ghFetch(path: string): Promise<Response> {
   });
 }
 
+function getParentNumber(url: string | null | undefined): number | null {
+  if (!url) return null;
+  const match = url.match(/\/issues\/(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 type GhIssueStatus = "backlog" | "in_progress" | "done" | "closed";
+
+interface GitHubIssuePayload {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  html_url: string;
+  parent_issue_url?: string | null;
+  sub_issues_summary?: {
+    total: number;
+    completed: number;
+    percent_completed: number;
+  } | null;
+  labels: Array<{ name: string }>;
+  pull_request?: unknown;
+}
 
 /** POST /admin/build-tracker/github-sync */
 router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Request, res: Response) => {
@@ -430,87 +454,98 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
     return;
   }
   try {
-    // ── 1. Milestones → bt_epics ──────────────────────────────────────────
-    const milestonesRes = await ghFetch(
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=all&per_page=100`,
-    );
-    if (!milestonesRes.ok) {
-      res.status(502).json({ error: `GitHub milestones fetch failed: ${milestonesRes.status}` });
-      return;
-    }
-    const milestones = (await milestonesRes.json()) as Array<{
-      number: number; title: string; description: string | null; state: string;
-    }>;
-
-    let epicsUpserted = 0;
-    for (const m of milestones) {
-      const epicStatus = m.state === "closed" ? "closed" : "open";
-      const existing = await db
-        .select({ id: btEpicsTable.id })
-        .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, m.number))
-        .limit(1);
-      if (existing.length > 0) {
-        await db.update(btEpicsTable)
-          .set({ title: m.title, description: m.description ?? null, status: epicStatus, updatedAt: new Date() })
-          .where(eq(btEpicsTable.githubNumber, m.number));
-      } else {
-        await db.insert(btEpicsTable)
-          .values({ title: m.title, description: m.description ?? null, status: epicStatus, githubNumber: m.number });
-      }
-      epicsUpserted++;
-    }
-
-    // ── 2. Build milestone → epic id map ─────────────────────────────────
-    const allEpics = await db
-      .select({ id: btEpicsTable.id, githubNumber: btEpicsTable.githubNumber })
-      .from(btEpicsTable);
-    const epicByMilestone = new Map(
-      allEpics.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.id]),
-    );
-
-    // ── 3. Issues → bt_issues (paginated, all states) ────────────────────
+    // ── 1. Fetch all issues (paginated) ──────────────────────────────────
     let page = 1;
-    let issuesUpserted = 0;
+    const fetchedIssues: GitHubIssuePayload[] = [];
 
     while (true) {
       const issuesRes = await ghFetch(
         `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues?state=all&per_page=100&page=${page}`,
       );
-      if (!issuesRes.ok) break;
-      const ghIssues = (await issuesRes.json()) as Array<{
-        number: number; title: string; body: string | null;
-        state: string; html_url: string;
-        milestone: { number: number } | null;
-        labels: Array<{ name: string }>;
-        pull_request?: unknown;
-      }>;
-      if (!ghIssues.length) break;
-
-      for (const gh of ghIssues) {
-        if (gh.pull_request) continue; // GitHub /issues includes PRs; skip them
-        const issueStatus: GhIssueStatus = gh.state === "closed" ? "closed" : "backlog";
-        const epicId = gh.milestone ? (epicByMilestone.get(gh.milestone.number) ?? null) : null;
-        const labels = gh.labels.map((l) => l.name);
-
-        const existing = await db
-          .select({ id: btIssuesTable.id })
-          .from(btIssuesTable)
-          .where(eq(btIssuesTable.githubNumber, gh.number))
-          .limit(1);
-
-        if (existing.length > 0) {
-          await db.update(btIssuesTable)
-            .set({ title: gh.title, description: gh.body ?? null, status: issueStatus, epicId, githubUrl: gh.html_url, labels, updatedAt: new Date() })
-            .where(eq(btIssuesTable.githubNumber, gh.number));
-        } else {
-          await db.insert(btIssuesTable)
-            .values({ title: gh.title, description: gh.body ?? null, status: issueStatus, epicId, githubNumber: gh.number, githubUrl: gh.html_url, labels });
-        }
-        issuesUpserted++;
+      if (!issuesRes.ok) {
+        log.error({ status: issuesRes.status }, "GitHub issues page fetch failed");
+        break;
       }
-      if (ghIssues.length < 100) break;
+      const pageIssues = (await issuesRes.json()) as GitHubIssuePayload[];
+      if (!pageIssues.length) break;
+
+      for (const gh of pageIssues) {
+        if (!gh.pull_request) {
+          fetchedIssues.push(gh);
+        }
+      }
+      if (pageIssues.length < 100) break;
       page++;
+    }
+
+    log.info({ count: fetchedIssues.length }, "Fetched issues from GitHub");
+
+    // ── 2. Identify parents (Epics) ──────────────────────────────────────
+    const parentNumbers = new Set<number>();
+    for (const gh of fetchedIssues) {
+      if (gh.sub_issues_summary && gh.sub_issues_summary.total > 0) {
+        parentNumbers.add(gh.number);
+      }
+      const pNum = getParentNumber(gh.parent_issue_url);
+      if (pNum !== null) {
+        parentNumbers.add(pNum);
+      }
+    }
+
+    log.info({ epicsCount: parentNumbers.size }, "Identified parent issue numbers");
+
+    // Clear old synced records to prevent duplication or stale links
+    await db.delete(btIssuesTable).where(sql`github_number IS NOT NULL`);
+    await db.delete(btEpicsTable).where(sql`github_number IS NOT NULL`);
+
+    // ── 3. Upsert Epics into bt_epics ────────────────────────────────────
+    let epicsUpserted = 0;
+    const issueMapByNumber = new Map(fetchedIssues.map((i) => [i.number, i]));
+
+    for (const pNum of parentNumbers) {
+      const ghEpic = issueMapByNumber.get(pNum);
+      const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
+      const description = ghEpic ? ghEpic.body : null;
+      const status = (ghEpic && ghEpic.state === "closed") ? "closed" : "open";
+
+      await db.insert(btEpicsTable).values({
+        title,
+        description,
+        status,
+        githubNumber: pNum,
+      });
+      epicsUpserted++;
+    }
+
+    // Load newly inserted epics to map githubNumber -> DB id
+    const dbEpics = await db
+      .select({ id: btEpicsTable.id, githubNumber: btEpicsTable.githubNumber })
+      .from(btEpicsTable);
+    const epicIdByGithubNumber = new Map(
+      dbEpics.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.id]),
+    );
+
+    // ── 4. Upsert Child and Standalone Issues into bt_issues ──────────────
+    let issuesUpserted = 0;
+    for (const gh of fetchedIssues) {
+      // Epics themselves are saved in bt_epics, not bt_issues
+      if (parentNumbers.has(gh.number)) continue;
+
+      const parentNum = getParentNumber(gh.parent_issue_url);
+      const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
+      const issueStatus: GhIssueStatus = gh.state === "closed" ? "closed" : "backlog";
+      const labels = gh.labels.map((l) => l.name);
+
+      await db.insert(btIssuesTable).values({
+        title: gh.title,
+        description: gh.body,
+        status: issueStatus,
+        epicId,
+        githubNumber: gh.number,
+        githubUrl: gh.html_url,
+        labels,
+      });
+      issuesUpserted++;
     }
 
     log.info({ epicsUpserted, issuesUpserted }, "GitHub sync complete");
@@ -522,4 +557,5 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
 });
 
 export default router;
+
 
