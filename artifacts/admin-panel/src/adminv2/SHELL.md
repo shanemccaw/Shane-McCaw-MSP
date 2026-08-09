@@ -197,7 +197,7 @@ A peek is how a record is handled **without leaving**. Clicking a row in any
 ribbon gallery opens one rather than navigating.
 
 Supported kinds: `endpoint` `package` `lead` `script` `document` `tenant`
-`workflow` `prompt` `service` `customer`.
+`workflow` `prompt` `service` `customer` `mail`.
 
 ```tsx
 registerScreen({

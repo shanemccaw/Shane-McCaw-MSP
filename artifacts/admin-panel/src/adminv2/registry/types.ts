@@ -205,6 +205,7 @@ export const PEEK_KINDS = [
   "prompt",
   "service",
   "customer",
+  "mail",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
