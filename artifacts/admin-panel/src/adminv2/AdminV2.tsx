@@ -26,6 +26,7 @@ import "./screens/money";
 import "./screens/tenant-signals";
 import "./screens/observability";
 import "./screens/endpoints";
+import "./screens/services";
 import "./screens/sql";
 import "./screens/packages";
 import "./screens/engines";
@@ -54,6 +55,10 @@ import { ObservabilityFetchBridge } from "./screens/observability/ObservabilityF
 // -tab live count and its synchronous `endpoint` peek resolver — see
 // EndpointsFetchBridge.tsx's doc comment.
 import { EndpointsFetchBridge } from "./screens/endpoints/EndpointsFetchBridge";
+// Same reasoning again, for the Services screen's Watch-tab live "no price
+// set" label and its synchronous `service` peek resolver — see
+// ServicesFetchBridge.tsx's doc comment.
+import { ServicesFetchBridge } from "./screens/services/ServicesFetchBridge";
 // Same reasoning again, for the "run" tab's "Saved scripts" gallery and the
 // synchronous `script`/`migration` peek resolvers — see SqlFetchBridge.tsx's
 // doc comment.
@@ -62,10 +67,15 @@ import { SqlFetchBridge } from "./screens/sql/SqlFetchBridge";
 // gallery, its Watch-tab "collects nothing" count and its synchronous
 // `package` peek resolver — see PackagesFetchBridge.tsx's doc comment.
 import { PackagesFetchBridge } from "./screens/packages/PackagesFetchBridge";
-// Same reasoning again, for the Run tab's "One engine" gallery — it lists
-// the real twelve engines with the score each last recorded — and for the
-// synchronous engine peek resolver. See EnginesFetchBridge.tsx.
+// Same reasoning again, for the Run tab's "One engine" gallery — it lists the
+// real twelve engines with the score each last recorded — and for the
+// synchronous `engine` peek resolver. See EnginesFetchBridge.tsx.
 import { EnginesFetchBridge } from "./screens/engines/EnginesFetchBridge";
+// Same reasoning again, for the Watch tab’s "Runs that failed" count and the
+// Run tab’s "Recent runs" gallery — and because deployStore/sqlStore ping the
+// run-history store the moment a run finishes, which needs a fetch already
+// handed over. See RunHistoryFetchBridge.tsx.
+import { RunHistoryFetchBridge } from "./screens/run-history/RunHistoryFetchBridge";
 // Same reasoning again, for the Home tab's "Queue"/"Types" galleries and the
 // Watch tab's live "overdue"/"blocked" counts — see
 // FulfillmentFetchBridge.tsx's doc comment.
@@ -117,9 +127,11 @@ function AdminV2Inner() {
       <MoneyFetchBridge />
       <ObservabilityFetchBridge />
       <EndpointsFetchBridge />
+      <ServicesFetchBridge />
       <SqlFetchBridge />
       <PackagesFetchBridge />
       <EnginesFetchBridge />
+      <RunHistoryFetchBridge />
       <FulfillmentFetchBridge />
     </Shell>
   );
