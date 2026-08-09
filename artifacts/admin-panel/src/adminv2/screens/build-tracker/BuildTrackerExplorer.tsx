@@ -214,6 +214,63 @@ function EpicNode({
   );
 }
 
+// ── No Epic node ─────────────────────────────────────────────────────────────
+
+function NoEpicNode({
+  issues,
+  selectedIssueId,
+  selectedChatId,
+  onIssue,
+  onChat,
+}: {
+  issues: IssueRow[];
+  selectedIssueId: number | null;
+  selectedChatId: number | null;
+  onIssue: (id: number) => void;
+  onChat: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          width: "100%", padding: "5px 8px",
+          background: "transparent",
+          border: 0, borderRadius: 3, cursor: "pointer", textAlign: "left",
+        }}
+      >
+        {open ? <FolderOpen size={13} color={TEXT.caption} style={{ flex: "none" }} />
+               : <Folder size={13} color={TEXT.caption} style={{ flex: "none" }} />}
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: TEXT.primary, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          NO EPIC
+        </span>
+        <span style={{ fontSize: 10, color: TEXT.dim, marginRight: 4 }}>
+          {issues.length}
+        </span>
+        <span style={{ color: TEXT.dim }}>{open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}</span>
+      </button>
+
+      {open && (
+        <div style={{ paddingLeft: 4 }}>
+          {issues.map((i) => (
+            <IssueNode
+              key={i.id}
+              issue={i}
+              selectedIssueId={selectedIssueId}
+              selectedChatId={selectedChatId}
+              onIssue={onIssue}
+              onChat={onChat}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Free-form section ─────────────────────────────────────────────────────────
 
 function CategoryNode({
@@ -275,6 +332,8 @@ export function BuildTrackerExplorer() {
   }
 
   const visibleEpics = showClosed ? state.epics : state.epics.filter(e => e.status !== "closed");
+  const noEpicIssues = state.issues.filter((i) => i.epicId === null);
+  const visibleNoEpicIssues = showClosed ? noEpicIssues : noEpicIssues.filter((i) => i.status !== "closed");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -323,6 +382,16 @@ export function BuildTrackerExplorer() {
               showClosed={showClosed}
             />
           ))
+        )}
+
+        {visibleNoEpicIssues.length > 0 && (
+          <NoEpicNode
+            issues={visibleNoEpicIssues}
+            selectedIssueId={state.selectedIssueId}
+            selectedChatId={state.selectedChatId}
+            onIssue={handleIssue}
+            onChat={handleChat}
+          />
         )}
       </div>
 
