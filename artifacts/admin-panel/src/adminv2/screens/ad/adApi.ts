@@ -221,3 +221,25 @@ export async function createAdConsentInviteLink(
   const res = await postJson(adminFetch, "/api/consent/invite-link", input);
   return json<AdConsentInviteLink>(res);
 }
+
+export interface AdCustomerHardDeleteResult {
+  ok: true;
+  deletedCustomerId: number;
+  deletedCustomerName: string;
+  usersDeleted: number;
+  tenantOnlyTables: Record<string, number>;
+  mspAuditLogsDetached: number;
+}
+
+/**
+ * Dev-environment-only cascading hard delete of an entire tenant — revokes
+ * all three consent grants first, then removes every user under the tenant
+ * (the same cascade `hardDeleteAdUser` runs, once per user), then every
+ * remaining tenant-scoped table, then the tenant row itself. One transaction
+ * server-side; the server refuses this outside a non-production environment,
+ * same gate as `hardDeleteAdUser`.
+ */
+export async function hardDeleteAdCustomer(adminFetch: AdminFetch, id: number): Promise<AdCustomerHardDeleteResult> {
+  const res = await adminFetch(`/api/admin/active-directory/customer/${id}`, { method: "DELETE" });
+  return json<AdCustomerHardDeleteResult>(res);
+}

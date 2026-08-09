@@ -17,12 +17,13 @@ import { useShell } from "../../../shell/ShellContext";
 import {
   createAdConsentInviteLink,
   fetchAdCustomer,
+  hardDeleteAdCustomer,
   revokeAdTenantConsent,
   runAdCustomerDiagnostics,
   type ConsentKey,
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
-import { onAdRecordAction } from "../adEvents";
+import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
 import type { AdConsentStatus, AdCustomerDetail } from "../adTypes";
 import {
   AdArmedButton,
@@ -63,6 +64,15 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
   const [scanning, setScanning] = useState(false);
 
+  // ── Hard delete — self-contained state, same convention as the User
+  // canvas's own delete flow: an explicit "arm" click is confirmation #1,
+  // typing the tenant's own name exactly is confirmation #2. Neither request
+  // is sent until both are complete.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -84,6 +94,9 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
 
   useEffect(() => {
     setOutcome(null);
+    setDeleteArmed(false);
+    setDeleteConfirmText("");
+    setDeleted(false);
     void load();
   }, [load]);
 
@@ -129,6 +142,24 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     }
   }, [fetchWithAuth, customerId, detail]);
 
+  const runHardDelete = useCallback(async () => {
+    setDeleteBusy(true);
+    setOutcome(null);
+    try {
+      const res = await hardDeleteAdCustomer(fetchWithAuth, customerId);
+      setDeleted(true);
+      requestAdTreeRefresh();
+      setOutcome({
+        tone: "ok",
+        message: `${res.deletedCustomerName} and ${res.usersDeleted} user${res.usersDeleted === 1 ? "" : "s"} permanently removed. There is no undo.`,
+      });
+    } catch (err) {
+      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to delete the tenant." });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [fetchWithAuth, customerId]);
+
   useEffect(
     () =>
       onAdRecordAction("customer", String(customerId), (action) => {
@@ -149,6 +180,16 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       <AdLoadError message={error ?? "This tenant could not be loaded."} />
     </AdCanvasColumn>
   );
+
+  if (deleted) {
+    return (
+      <AdCanvasColumn>
+        <div style={{ padding: 24, fontSize: 12.5, color: ACCENT_TEXT.green }}>
+          This tenant and everything tied to it was permanently deleted. Close this tab — it no longer exists.
+        </div>
+      </AdCanvasColumn>
+    );
+  }
 
   const { customer, owningMsp, users, purchasedServices, recentDiagnosticRuns } = detail;
   const connected = !!customer.tenantId;
@@ -265,6 +306,45 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
               ))
             )}
           </AdListRowGroup>
+        </AdSection>
+
+        <AdSection
+          title="Delete"
+          note="Revokes all consent, then removes every user under this tenant and everything tied to it — there is no undo. The server refuses this outside a non-production environment."
+        >
+          {!deleteArmed ? (
+            <div>
+              <AdButton label="Permanently delete this tenant" tone="danger" onClick={() => setDeleteArmed(true)} />
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
+              <span style={{ fontSize: 11.5, color: ACCENT_TEXT.danger }}>Type &ldquo;{customer.name}&rdquo; to confirm.</span>
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={customer.name}
+                style={{
+                  height: 28,
+                  padding: "0 10px",
+                  borderRadius: 5,
+                  border: "1px solid #5a3232",
+                  background: "#1b1b1b",
+                  color: "#eda3a3",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                }}
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <AdButton
+                  label={deleteBusy ? "Deleting…" : "Delete permanently"}
+                  tone="danger"
+                  disabled={deleteBusy || deleteConfirmText !== customer.name}
+                  onClick={() => void runHardDelete()}
+                />
+                <AdButton label="Cancel" onClick={() => { setDeleteArmed(false); setDeleteConfirmText(""); }} disabled={deleteBusy} />
+              </div>
+            </div>
+          )}
         </AdSection>
       </AdCanvasBody>
     </AdCanvasColumn>

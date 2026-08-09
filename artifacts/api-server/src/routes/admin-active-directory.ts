@@ -81,6 +81,46 @@ import {
   insightsAutomationsTable,
   salesOffersTable,
   salesOfferEventsTable,
+  // ── Customer hard-delete (Issue #<pending>) — tenant-only tables with a
+  // loose customerId/tenantId column pointing at `tenants.id`/`tenants.tenantId`
+  // but NO userId/clientUserId column of their own, so the Phase 9 per-user
+  // cascade above never reaches them. Audited fresh against lib/db/src/schema
+  // on 2026-08-08 — every customerId/tenantId column in the schema, minus the
+  // ones already covered (via a user FK) or genuinely unrelated (see the
+  // route's own header comment for the full accounting).
+  mspEventStoreTable,
+  mspDlqStoreTable,
+  mspDocumentsTable,
+  fulfillmentQueueTable,
+  outboundWebhooksTable,
+  portalWfRunsTable,
+  portalWfOperatorTasksTable,
+  aiUsageEventsTable,
+  tenantCheckItemDetailsTable,
+  simulatorCheckRunsTable,
+  mspMessageCenterItemsTable,
+  m365ServiceHealthSamplesTable,
+  mspReportDefinitionsTable,
+  mspReportRunsTable,
+  mspSalesBundleAssignmentsTable,
+  activitySubscriptionsTable,
+  mspSowsTable,
+  breakGlassPendingSecretsTable,
+  breakGlassOverrideAuditTable,
+  dashboardExecutiveSummariesTable,
+  mspChangeRequestsTable,
+  mspSopRunsTable,
+  mspRiskDecisionsTable,
+  tenantSignalHistoryTable,
+  tenantEngineSnapshotsTable,
+  engineScoreDailyRollupTable,
+  policyRuleFiringsTable,
+  policyRuleIncidentsTable,
+  policyRuleSuppressionsTable,
+  engineBaselineHistoryTable,
+  platformLogStreamTable,
+  exceptionOccurrencesTable,
+  checkoutSessionsTable,
   type TenantConsentRecord,
 } from "@workspace/db";
 import type { PgTable } from "drizzle-orm/pg-core";
@@ -94,6 +134,7 @@ import { adminResetMfa, isMfaMethod, MFA_METHODS } from "./mfa";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import { mergeConsentKey } from "../lib/graph.ts";
 import {
   buildMspTree,
   buildGroupNodes,
@@ -1550,35 +1591,43 @@ export function assertNonProductionEnvironment(): string | null {
   } — requires "development" or "test". Failing closed; nothing was deleted.`;
 }
 
-router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Request, res: Response) => {
-  // FIRST executed line: the hard non-production gate, before anything else.
-  const envRefusal = assertNonProductionEnvironment();
-  if (envRefusal) {
-    auditLog.warn(
-      { actionType: "user.hard_delete.refused_env", actorUserId: req.user?.id ?? null, path: req.originalUrl },
-      "audit: dev-only hard delete refused by non-production gate",
-    );
-    res.status(403).json({ error: envRefusal });
-    return;
-  }
+/** The transaction parameter type `db.transaction()`'s callback receives — extracted so the per-user cascade below can be typed without importing drizzle's internal transaction type directly. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-  const userId = Number(req.params.id);
-  if (!Number.isInteger(userId)) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
+type UserHardDeleteResult =
+  | { notFound: true }
+  | {
+      notFound: false;
+      target: {
+        id: number;
+        email: string;
+        name: string | null;
+        mspRole: string;
+        mspId: number | null;
+        tenantId: number | null;
+      };
+      tenant: { id: number; tenantGuid: string } | null;
+      explicitCounts: Record<string, number>;
+      cascadeCounts: Record<string, number>;
+      setNullCounts: Record<string, number>;
+    };
 
-  const actor = req.user!;
-  if (userId === actor.id) {
-    // Same convention as Phase 8's self-impersonation refusal: an admin
-    // hard-deleting the very account they are acting as is never intended.
-    res.status(400).json({ error: "You cannot hard-delete your own account" });
-    return;
-  }
-
-  try {
-    const result = await db.transaction(async (tx) => {
-      const [target] = await tx
+/**
+ * The full Phase 9 per-user cascade (table footprint documented on the
+ * DELETE /user/:id route below), extracted so it has exactly ONE
+ * implementation shared by that route and the customer-level hard delete
+ * further down — "what deleting one user means" must not exist twice and
+ * drift. Must run inside an already-open transaction; the caller owns
+ * commit/rollback. Emits the same `auditLog.info(...)` pre-state line the
+ * original single-user route always has, once per user, so a tenant-wide
+ * delete produces one such line per user it removes.
+ */
+async function hardDeleteUserWithinTx(
+  tx: Tx,
+  userId: number,
+  actor: { id: number; email: string },
+): Promise<UserHardDeleteResult> {
+  const [target] = await tx
         .select({
           id: usersTable.id,
           email: usersTable.email,
@@ -1891,8 +1940,37 @@ router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Requ
       // section C as part of this statement.
       await tx.delete(usersTable).where(eq(usersTable.id, userId));
 
-      return { notFound: false as const, target, tenant, explicitCounts, cascadeCounts, setNullCounts };
-    });
+  return { notFound: false, target, tenant, explicitCounts, cascadeCounts, setNullCounts };
+}
+
+router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Request, res: Response) => {
+  // FIRST executed line: the hard non-production gate, before anything else.
+  const envRefusal = assertNonProductionEnvironment();
+  if (envRefusal) {
+    auditLog.warn(
+      { actionType: "user.hard_delete.refused_env", actorUserId: req.user?.id ?? null, path: req.originalUrl },
+      "audit: dev-only hard delete refused by non-production gate",
+    );
+    res.status(403).json({ error: envRefusal });
+    return;
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const actor = req.user!;
+  if (userId === actor.id) {
+    // Same convention as Phase 8's self-impersonation refusal: an admin
+    // hard-deleting the very account they are acting as is never intended.
+    res.status(400).json({ error: "You cannot hard-delete your own account" });
+    return;
+  }
+
+  try {
+    const result = await db.transaction((tx) => hardDeleteUserWithinTx(tx, userId, { id: actor.id, email: actor.email }));
 
     if (result.notFound) {
       res.status(404).json({ error: "User not found" });
@@ -1941,6 +2019,245 @@ router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Requ
     });
   } catch (err) {
     log.error({ err, userId }, "Hard delete failed — transaction rolled back, no rows were deleted");
+    res.status(500).json({ error: "Hard delete failed — the transaction was rolled back; nothing was deleted." });
+  }
+});
+
+// ─── DELETE /admin/active-directory/customer/:id — customer hard delete ─────
+// Dev-environment-only cascading hard delete of an entire tenant. Same
+// `assertNonProductionEnvironment()` gate as the Phase 9 user route above —
+// if anything, "no exceptions" matters MORE here: this can remove dozens of
+// accounts and every tenant-scoped record in one call. ONE transaction, all
+// three phases below succeed together or nothing is deleted:
+//
+//   1. Revoke consent — all three grants (graph/writeBack/sharepoint)
+//      explicitly stamped "revoked" via the SAME `mergeConsentKey()`
+//      graph.ts's real PATCH /admin/consent/:tenantId/revoke route uses, run
+//      first and on its own so it is a real, separately-visible action even
+//      though the tenant row is about to be deleted anyway.
+//   2. Every user under the tenant, via `hardDeleteUserWithinTx()` — the
+//      EXACT SAME per-user cascade the Phase 9 single-user route runs (one
+//      call per user; no second implementation of "what deleting a user
+//      means"). This also clears the one real FK the schema has pointing at
+//      `tenants.id` (`users.tenant_id`, onDelete: RESTRICT) — the tenant row
+//      delete in step 4 will fail if any user still references it.
+//   3. Tenant-only tables no per-user delete reaches: every remaining
+//      `customerId`/`tenantId` column in the schema that points at this
+//      tenant but carries no `userId`/`clientUserId` column of its own (so
+//      step 2 never touches it). Audited fresh against lib/db/src/schema on
+//      2026-08-08 — see the `TENANT_ONLY_HARD_DELETE_TABLES` list below for
+//      the complete, named accounting. One exception: `msp_audit_logs
+//      .customer_id` is NULLED, not deleted — audit history survives its
+//      subject being removed, same convention as `audit_logs.actor_user_id`/
+//      `.client_id` in the user route's own Section C.
+//   4. The `tenants` row itself, last.
+//
+// The FULL pre-delete state (every table's row count) is logged to the
+// `audit` channel before anything is deleted, same convention as Phase 9.
+router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: Request, res: Response) => {
+  // FIRST executed line: the hard non-production gate, before anything else.
+  const envRefusal = assertNonProductionEnvironment();
+  if (envRefusal) {
+    auditLog.warn(
+      { actionType: "customer.hard_delete.refused_env", actorUserId: req.user?.id ?? null, path: req.originalUrl },
+      "audit: dev-only customer hard delete refused by non-production gate",
+    );
+    res.status(403).json({ error: envRefusal });
+    return;
+  }
+
+  const customerId = Number(req.params.id);
+  if (!Number.isInteger(customerId)) {
+    res.status(400).json({ error: "Invalid customer id" });
+    return;
+  }
+
+  const actor = req.user!;
+  const CONSENT_KEYS = ["graph", "writeBack", "sharepoint"] as const;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [tenant] = await tx
+        .select({ id: tenantsTable.id, tenantGuid: tenantsTable.tenantId, name: tenantsTable.customerName, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      if (!tenant) return { notFound: true as const };
+
+      // ── 1. Revoke every consent grant, explicitly, before anything else ──
+      for (const key of CONSENT_KEYS) {
+        await tx
+          .update(tenantsTable)
+          .set({ consent: mergeConsentKey(key, { status: "revoked", revokedAt: new Date().toISOString() }), updatedAt: new Date() })
+          .where(eq(tenantsTable.id, customerId));
+      }
+      auditLog.info(
+        { actionType: "customer.hard_delete.consent_revoked", actorUserId: actor.id, actorEmail: actor.email, customerId, tenantGuid: tenant.tenantGuid, occurredAt: new Date().toISOString() },
+        "audit: revoked all consent ahead of a customer hard delete",
+      );
+
+      // ── 2. Every user under this tenant, via the shared per-user cascade ──
+      const userRows = await tx.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.tenantId, customerId));
+
+      const perUserResults: Array<{ userId: number; email: string; explicitCounts: Record<string, number> }> = [];
+      for (const u of userRows) {
+        const userResult = await hardDeleteUserWithinTx(tx, u.id, { id: actor.id, email: actor.email });
+        if (!userResult.notFound) {
+          perUserResults.push({ userId: u.id, email: u.email, explicitCounts: userResult.explicitCounts });
+        }
+      }
+
+      // ── 3. Tenant-only tables — a customerId/tenantId column pointing at
+      //      this tenant, no userId column, so step 2 never reaches them. ──
+      const tenantOnlyDeletes: Array<{ name: string; table: PgTable; where: SQL }> = [
+        { name: "msp_event_store", table: mspEventStoreTable, where: eq(mspEventStoreTable.customerId, customerId) },
+        { name: "msp_dlq_store", table: mspDlqStoreTable, where: eq(mspDlqStoreTable.customerId, customerId) },
+        { name: "msp_documents", table: mspDocumentsTable, where: eq(mspDocumentsTable.customerId, customerId) },
+        { name: "fulfillment_queue", table: fulfillmentQueueTable, where: eq(fulfillmentQueueTable.customerId, customerId) },
+        { name: "outbound_webhooks", table: outboundWebhooksTable, where: eq(outboundWebhooksTable.customerId, customerId) },
+        { name: "portal_wf_runs", table: portalWfRunsTable, where: eq(portalWfRunsTable.customerId, customerId) },
+        { name: "portal_wf_operator_tasks", table: portalWfOperatorTasksTable, where: eq(portalWfOperatorTasksTable.customerId, customerId) },
+        { name: "ai_usage_events", table: aiUsageEventsTable, where: eq(aiUsageEventsTable.customerId, customerId) },
+        {
+          name: "tenant_check_item_details",
+          table: tenantCheckItemDetailsTable,
+          where: or(eq(tenantCheckItemDetailsTable.customerId, customerId), eq(tenantCheckItemDetailsTable.tenantId, tenant.tenantGuid)) as SQL,
+        },
+        { name: "simulator_check_runs", table: simulatorCheckRunsTable, where: eq(simulatorCheckRunsTable.customerId, customerId) },
+        { name: "msp_message_center_items", table: mspMessageCenterItemsTable, where: eq(mspMessageCenterItemsTable.customerId, customerId) },
+        { name: "m365_service_health_samples", table: m365ServiceHealthSamplesTable, where: eq(m365ServiceHealthSamplesTable.customerId, customerId) },
+        { name: "msp_report_definitions", table: mspReportDefinitionsTable, where: eq(mspReportDefinitionsTable.customerId, customerId) },
+        { name: "msp_report_runs", table: mspReportRunsTable, where: eq(mspReportRunsTable.customerId, customerId) },
+        { name: "msp_sales_bundle_assignments", table: mspSalesBundleAssignmentsTable, where: eq(mspSalesBundleAssignmentsTable.customerId, customerId) },
+        {
+          name: "activity_subscriptions",
+          table: activitySubscriptionsTable,
+          where: or(eq(activitySubscriptionsTable.customerId, customerId), eq(activitySubscriptionsTable.tenantId, tenant.tenantGuid)) as SQL,
+        },
+        { name: "msp_sows", table: mspSowsTable, where: eq(mspSowsTable.customerId, customerId) },
+        { name: "break_glass_pending_secrets", table: breakGlassPendingSecretsTable, where: eq(breakGlassPendingSecretsTable.customerId, customerId) },
+        { name: "break_glass_override_audit", table: breakGlassOverrideAuditTable, where: eq(breakGlassOverrideAuditTable.customerId, customerId) },
+        { name: "dashboard_executive_summaries", table: dashboardExecutiveSummariesTable, where: eq(dashboardExecutiveSummariesTable.customerId, customerId) },
+        { name: "msp_change_requests", table: mspChangeRequestsTable, where: eq(mspChangeRequestsTable.tenantId, tenant.tenantGuid) },
+        { name: "msp_sop_runs", table: mspSopRunsTable, where: eq(mspSopRunsTable.tenantId, tenant.tenantGuid) },
+        { name: "msp_risk_decisions", table: mspRiskDecisionsTable, where: eq(mspRiskDecisionsTable.tenantId, tenant.tenantGuid) },
+        { name: "tenant_signal_history", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.customerId, customerId) },
+        { name: "tenant_engine_snapshots", table: tenantEngineSnapshotsTable, where: eq(tenantEngineSnapshotsTable.customerId, customerId) },
+        { name: "engine_score_daily_rollup", table: engineScoreDailyRollupTable, where: eq(engineScoreDailyRollupTable.customerId, customerId) },
+        { name: "policy_rule_firings", table: policyRuleFiringsTable, where: eq(policyRuleFiringsTable.customerId, customerId) },
+        { name: "policy_rule_incidents", table: policyRuleIncidentsTable, where: eq(policyRuleIncidentsTable.customerId, customerId) },
+        { name: "policy_rule_suppressions", table: policyRuleSuppressionsTable, where: eq(policyRuleSuppressionsTable.customerId, customerId) },
+        { name: "engine_baseline_history", table: engineBaselineHistoryTable, where: eq(engineBaselineHistoryTable.customerId, customerId) },
+        { name: "platform_log_stream", table: platformLogStreamTable, where: eq(platformLogStreamTable.customerId, customerId) },
+        { name: "exception_occurrences", table: exceptionOccurrencesTable, where: eq(exceptionOccurrencesTable.customerId, customerId) },
+        { name: "checkout_sessions", table: checkoutSessionsTable, where: eq(checkoutSessionsTable.tenantId, tenant.tenantGuid) },
+        // Junction row only — the staff account itself is untouched; it just
+        // loses its scope onto a tenant that is about to stop existing.
+        { name: "msp_staff_customer_scopes.customer_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.customerId, customerId) },
+      ];
+
+      const countWhere = async (table: PgTable, where: SQL): Promise<number> => {
+        const [row] = await tx.select({ n: count() }).from(table).where(where);
+        return Number(row?.n ?? 0);
+      };
+
+      const tenantOnlyCounts: Record<string, number> = {};
+      for (const entry of tenantOnlyDeletes) {
+        tenantOnlyCounts[entry.name] = await countWhere(entry.table, entry.where);
+      }
+      const auditLogsToDetach = await countWhere(mspAuditLogsTable, eq(mspAuditLogsTable.customerId, customerId));
+
+      auditLog.info(
+        {
+          actionType: "customer.hard_delete.pre_state",
+          actorUserId: actor.id,
+          actorEmail: actor.email,
+          customerId: tenant.id,
+          customerName: tenant.name,
+          tenantGuid: tenant.tenantGuid,
+          mspId: tenant.mspId,
+          userCount: userRows.length,
+          userIds: userRows.map((u) => u.id),
+          tenantOnlyCounts,
+          mspAuditLogsToDetach: auditLogsToDetach,
+          occurredAt: new Date().toISOString(),
+        },
+        "audit: FULL pre-delete state for dev-only customer hard delete (logged before commit)",
+      );
+
+      for (const entry of tenantOnlyDeletes) {
+        await tx.delete(entry.table).where(entry.where);
+      }
+
+      // Audit history survives — detach, don't delete.
+      await tx.update(mspAuditLogsTable).set({ customerId: null }).where(eq(mspAuditLogsTable.customerId, customerId));
+
+      // ── 4. The tenant row itself, last — succeeds only once every
+      //      users.tenant_id FK pointing at it (RESTRICT) is gone, i.e. only
+      //      after step 2 has removed every user. ──
+      await tx.delete(tenantsTable).where(eq(tenantsTable.id, customerId));
+
+      return {
+        notFound: false as const,
+        tenant,
+        userCount: userRows.length,
+        deletedUsers: perUserResults,
+        tenantOnlyCounts,
+        mspAuditLogsDetached: auditLogsToDetach,
+      };
+    });
+
+    if (result.notFound) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const { tenant, userCount, deletedUsers, tenantOnlyCounts, mspAuditLogsDetached } = result;
+
+    void createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: "admin",
+      actionType: "customer.hard_delete",
+      entityType: "customer",
+      entityId: tenant.id,
+      entityLabel: tenant.name,
+      metadata: {
+        tenantGuid: tenant.tenantGuid,
+        mspId: tenant.mspId,
+        userCount,
+        deletedUserEmails: deletedUsers.map((u) => u.email),
+        tenantOnlyCounts,
+        mspAuditLogsDetached,
+        source: "admin.active-directory",
+      },
+    });
+
+    auditLog.info(
+      {
+        actionType: "customer.hard_delete",
+        actorUserId: actor.id,
+        actorEmail: actor.email,
+        customerId: tenant.id,
+        customerName: tenant.name,
+        userCount,
+        occurredAt: new Date().toISOString(),
+      },
+      "audit: dev-only customer hard delete committed",
+    );
+    log.info({ customerId: tenant.id, name: tenant.name, userCount }, "PlatformAdmin hard-deleted a customer/tenant (dev environment)");
+
+    res.json({
+      ok: true,
+      deletedCustomerId: tenant.id,
+      deletedCustomerName: tenant.name,
+      usersDeleted: userCount,
+      tenantOnlyTables: tenantOnlyCounts,
+      mspAuditLogsDetached,
+    });
+  } catch (err) {
+    log.error({ err, customerId }, "Customer hard delete failed — transaction rolled back, no rows were deleted");
     res.status(500).json({ error: "Hard delete failed — the transaction was rolled back; nothing was deleted." });
   }
 });
