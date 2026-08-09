@@ -39,11 +39,18 @@
  * WHAT IS LOST WITHOUT THE STORED DOCUMENT, AND WHY EACH LOSS IS DECLARED
  * RATHER THAN FILLED IN
  * ----------------------------------------------------------------------
- *   • Per-phase week estimates and delivery dates. Those are written by the AI
- *     at generation time (`assignDeliveryDates()` runs over lines the model
- *     produced); the engine quotes a price, never a duration. `weeksQuoted` is
- *     `null` here — NOT `0` — so nothing can render "approx. 0 weeks" over a
- *     scope that simply never quoted one. See `sowLiveContract.ts`'s
+ *   • Per-phase delivery DATES. Those are written by the AI at generation
+ *     time (`assignDeliveryDates()` runs over lines the model produced) and
+ *     have no equivalent here at all.
+ *   • Per-phase week ESTIMATES — no longer lost, as of #593. The engine
+ *     still quotes only a price, never a duration itself, but each catalog
+ *     row now carries its own real `durationWeeks` in `type_attributes`
+ *     (2026-08-08-sow-phase-stage-duration-593.sql), which
+ *     `journeyScopeFromOffers()` reads straight through. `weeksQuoted` is
+ *     `null` only for a service this migration never tagged (an add_on that
+ *     isn't a bounded-duration phase, or a genuinely Continuous one) — NOT
+ *     `0` — so nothing can render "approx. 0 weeks" over a phase that
+ *     honestly has no bounded duration. See `sowLiveContract.ts`'s
  *     `resolveTimeline`.
  *   • Adjustment lines. `sow-pricing.ts` writes rows literally titled "Price
  *     Adjustments" / "Tenant Size Adjustment Factor" into `sow_pricing_lines`,
@@ -73,7 +80,24 @@
 
 import { PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
 import { inferPillar, slugify, type JourneySowPhase, type JourneySowScope } from "./journeyScopeFromSow.ts";
-import type { JourneyAddon, JourneyTier } from "./journeyPricing.ts";
+import type { JourneyAddon, JourneyPhaseStage, JourneyTier } from "./journeyPricing.ts";
+
+/**
+ * Git #593 — the only 4 stages the Gantt's dependency model recognises. An
+ * unrecognised wire string (a future stage value this client predates, or a
+ * malformed row) becomes `null` — an unstaged bar the Gantt renders
+ * sequentially — rather than a guess at which of the four it meant.
+ */
+const KNOWN_STAGES: ReadonlySet<string> = new Set<JourneyPhaseStage>([
+  "foundation",
+  "parallel-eligible",
+  "closeout",
+  "continuous",
+]);
+
+export function normalizeStage(raw: string | null | undefined): JourneyPhaseStage | null {
+  return typeof raw === "string" && KNOWN_STAGES.has(raw) ? (raw as JourneyPhaseStage) : null;
+}
 
 /**
  * `document_types.key` for the Statement of Work — the real seeded catalogue key
@@ -108,6 +132,10 @@ export interface WireRecommendedOffer {
   readonly priceCents?: number;
   /** Health pillars of the signals that fired this offer. Free strings on the wire. */
   readonly pillars?: readonly string[];
+  /** Git #593 — free string on the wire; validated by `normalizeStage()` before use. */
+  readonly stage?: string | null;
+  /** Git #593 — `services.type_attributes.durationWeeks`, or `null` where untagged. */
+  readonly durationWeeks?: number | null;
 }
 
 /**
@@ -133,6 +161,8 @@ export interface WireSowAddon {
   readonly defaultOn?: boolean;
   readonly defaultTierId?: string | null;
   readonly tiers?: readonly WireSowAddonTier[];
+  /** Git #593 — `"continuous"` for Tenant Monitoring; absent for the Architect Retainer (no stage claim). */
+  readonly stage?: string | null;
 }
 
 export interface WireRecommendedOffers {
@@ -178,6 +208,7 @@ export function journeyAddonsFromWire(addons: readonly WireSowAddon[] | undefine
       tiers,
       defaultOn: a.defaultOn === true,
       defaultTierId,
+      ...(normalizeStage(a.stage) === "continuous" ? { stage: "continuous" as const } : {}),
     });
   }
   return out;
@@ -241,6 +272,13 @@ export function journeyScopeFromOffers(body: WireRecommendedOffers): JourneySowS
     const pillarShown = pillarForOffer(offer, title);
     if (pillarShown) pillarById[id] = pillarShown;
 
+    // Git #593: real per-phase duration, off the catalog row's own
+    // type_attributes (see sales-offer-engine.ts) — replaces the `null`
+    // this used to be unconditionally, back when the engine genuinely had no
+    // duration concept at all (see this file's own header note above).
+    const durationWeeks =
+      typeof offer.durationWeeks === "number" && Number.isFinite(offer.durationWeeks) ? offer.durationWeeks : null;
+
     phases.push({
       id,
       title,
@@ -265,8 +303,9 @@ export function journeyScopeFromOffers(body: WireRecommendedOffers): JourneySowS
       // "shown, never toggleable" money is the pricing adjustment, and that is
       // already inside `priceUsd` above rather than a row of its own.
       locked: false,
-      weeks: 0,
-      weeksQuoted: null,
+      weeks: durationWeeks ?? 0,
+      weeksQuoted: durationWeeks,
+      stage: normalizeStage(offer.stage),
     });
   }
 

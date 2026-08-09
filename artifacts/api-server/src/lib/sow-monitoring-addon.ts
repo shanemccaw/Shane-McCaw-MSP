@@ -68,6 +68,14 @@ export interface ResolvedSowAddon {
   readonly defaultOn: boolean;
   readonly defaultTierId: string | null;
   readonly tiers: readonly ResolvedAddonTier[];
+  /**
+   * Git #593 — the Gantt's continuous-band flag, read off the real catalog
+   * rows' `type_attributes.stage` (2026-08-08-sow-phase-stage-duration-593.sql)
+   * rather than asserted here. `undefined` (not `false`) for an addon this
+   * migration never tagged — the Architect Retainer has no bounded/continuous
+   * claim on it either way, so it stays silent rather than guessing.
+   */
+  readonly stage?: "continuous";
 }
 
 type ServiceRow = typeof servicesTable.$inferSelect;
@@ -76,6 +84,7 @@ interface MonitoringAttrs {
   tenantTierLabel?: unknown;
   seatMin?: unknown;
   seatMax?: unknown;
+  stage?: unknown;
 }
 
 function slugify(s: string): string {
@@ -169,6 +178,13 @@ export async function resolveTenantMonitoringAddon(
   tiers.sort((a, b) => (TIER_LABEL_ORDER[a.label.toLowerCase()] ?? 99) - (TIER_LABEL_ORDER[b.label.toLowerCase()] ?? 99));
   const defaultTier = tiers.find((t) => t.emphasis === "recommended") ?? tiers[0];
 
+  // Git #593 — real, not asserted: only set when at least one of this
+  // tenant's actual band rows carries it (every monitoring_tier row does,
+  // post-migration, but a stale/un-migrated environment should not claim it).
+  const stage = rows.some((row) => (row.typeAttributes as MonitoringAttrs | null)?.stage === "continuous")
+    ? ("continuous" as const)
+    : undefined;
+
   return {
     id: "tenant-monitoring",
     title: "Tenant Monitoring",
@@ -180,6 +196,7 @@ export async function resolveTenantMonitoringAddon(
     defaultOn: true,
     defaultTierId: defaultTier.id,
     tiers,
+    stage,
   };
 }
 

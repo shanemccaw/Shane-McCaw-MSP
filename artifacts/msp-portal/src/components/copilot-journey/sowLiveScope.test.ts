@@ -209,6 +209,34 @@ describe("journeyScopeFromOffers", () => {
     assert.ok(built);
     assert.equal(built.phases[0]!.scope, "");
   });
+
+  it("Git #593: a real durationWeeks on the wire becomes the phase's weeksQuoted, not a flattened 0", () => {
+    const built = journeyScopeFromOffers({ offers: [offer({ durationWeeks: 2 })] });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.weeks, 2);
+    assert.equal(built.phases[0]!.weeksQuoted, 2);
+  });
+
+  it("Git #593: a recognised stage passes through untouched", () => {
+    const built = journeyScopeFromOffers({ offers: [offer({ stage: "foundation" })] });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.stage, "foundation");
+  });
+
+  it("Git #593: an unrecognised stage string normalises to null rather than a guess", () => {
+    const built = journeyScopeFromOffers({ offers: [offer({ stage: "not-a-real-stage" })] });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.stage, null);
+  });
+
+  it("Git #593: a continuous phase (White-Glove) carries no durationWeeks but still reports its stage", () => {
+    const built = journeyScopeFromOffers({
+      offers: [offer({ serviceName: "White-Glove Copilot Adoption", stage: "continuous", durationWeeks: null })],
+    });
+    assert.ok(built);
+    assert.equal(built.phases[0]!.stage, "continuous");
+    assert.equal(built.phases[0]!.weeksQuoted, null);
+  });
 });
 
 describe("journeyAddonsFromWire", () => {
@@ -290,5 +318,17 @@ describe("journeyAddonsFromWire", () => {
     assert.equal(addon.defaultOn, false);
     assert.equal(addon.tiers.length, 1);
     assert.equal(addon.tiers[0]!.monthlyUsd, 2000);
+  });
+
+  it("Git #593: carries a continuous stage through when the wire says so", () => {
+    const [addon] = journeyAddonsFromWire([monitoringAddon({ stage: "continuous" })]);
+    assert.ok(addon);
+    assert.equal(addon.stage, "continuous");
+  });
+
+  it("Git #593: no stage field at all when the wire carries none (Architect Retainer)", () => {
+    const [addon] = journeyAddonsFromWire([monitoringAddon({ stage: undefined })]);
+    assert.ok(addon);
+    assert.equal(addon.stage, undefined);
   });
 });

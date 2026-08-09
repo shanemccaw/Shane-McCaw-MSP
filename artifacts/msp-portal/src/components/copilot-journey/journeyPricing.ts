@@ -22,6 +22,18 @@ import type { PillarKey } from "./journeyTokens.ts";
  * Inputs
  * ------------------------------------------------------------------ */
 
+/**
+ * Git #593's Gantt sequencing bucket, keyed on phase TYPE (not position —
+ * which phases appear varies by tenant): Foundation always renders first,
+ * Closeout always last, Parallel-eligible phases overlap/any order among
+ * themselves, Continuous has no bounded duration and renders as a background
+ * band. Real values come from `services.type_attributes.stage`
+ * (2026-08-08-sow-phase-stage-duration-593.sql) — see `sowLiveScope.ts`'s
+ * `normalizeStage()` for how an unrecognised wire string becomes `null`
+ * rather than a guess.
+ */
+export type JourneyPhaseStage = "foundation" | "parallel-eligible" | "closeout" | "continuous";
+
 export interface JourneyPhase {
   /** Stable identity — the workstream title the SOW document uses. */
   readonly id: string;
@@ -62,6 +74,13 @@ export interface JourneyPhase {
    * rendering AND the absence of a click handler.
    */
   readonly locked: boolean;
+  /**
+   * Git #593's Gantt bucket. `null`/absent where this phase's source carries
+   * none — a stored-document workstream (`journeyScopeFromSow.ts`) never has
+   * one, so the Gantt falls back to rendering it as a plain sequential bar
+   * rather than guessing a stage.
+   */
+  readonly stage?: JourneyPhaseStage | null;
 }
 
 export interface JourneyTier {
@@ -91,6 +110,8 @@ export interface JourneyAddon {
   readonly defaultOn: boolean;
   /** Which tier starts selected. */
   readonly defaultTierId: string | null;
+  /** Git #593 — set to `"continuous"` for an always-on recurring service (Tenant Monitoring); absent otherwise. */
+  readonly stage?: "continuous";
 }
 
 export interface JourneyScopeInput {

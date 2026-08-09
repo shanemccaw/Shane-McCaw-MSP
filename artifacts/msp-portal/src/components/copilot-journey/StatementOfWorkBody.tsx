@@ -89,6 +89,7 @@ import {
   togglePhase,
   toggleAddon,
   type JourneyPhase,
+  type JourneyPhaseStage,
   type JourneyScopeInput,
   type JourneySelection,
 } from "./journeyPricing.ts";
@@ -239,6 +240,202 @@ function identityPillarFor(
 ): PillarKey | null {
   if (!pillarById) return phase.pillar;
   return pillarById[phase.id] ?? null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Git #593 — the Delivery Timeline's real Gantt visual.
+ *
+ * Static CSS bars, same idiom as ReportFigures.tsx's `BarList`/`SplitBar` —
+ * no charting library, no animation. Sequencing is keyed on `JourneyPhase.stage`
+ * (Foundation always first, Closeout always last, Parallel-eligible phases
+ * overlap, Continuous has no bounded duration) — never on array position or a
+ * hardcoded phase count, since which phases and stages appear varies by
+ * tenant. A phase carrying no recognised stage (a stored-document workstream;
+ * see `journeyScopeFromSow.ts`) still renders, sequenced after the parallel
+ * block and before Closeout, rather than being dropped.
+ * ------------------------------------------------------------------ */
+
+const KNOWN_GANTT_STAGES: ReadonlySet<JourneyPhaseStage> = new Set(["foundation", "parallel-eligible", "closeout", "continuous"]);
+
+interface GanttBar {
+  readonly phase: JourneyPhase;
+  readonly start: number;
+  readonly width: number;
+}
+
+/**
+ * Lays out the bounded (non-continuous) phases actually in scope along one
+ * shared week axis. A phase with no real quoted duration still draws a
+ * 1-week sliver rather than collapsing to a zero-width bar nobody can see.
+ */
+function buildGanttLayout(
+  phases: readonly JourneyPhase[],
+  weeksFor: (id: string) => number | null,
+): { bars: GanttBar[]; totalWeeks: number } {
+  const weeksOrMin = (id: string) => {
+    const w = weeksFor(id);
+    return typeof w === "number" && w > 0 ? w : 1;
+  };
+  const bucket = (stage: JourneyPhaseStage) => phases.filter((p) => p.stage === stage);
+  const foundation = bucket("foundation");
+  const parallel = bucket("parallel-eligible");
+  const closeout = bucket("closeout");
+  const unstaged = phases.filter((p) => !KNOWN_GANTT_STAGES.has((p.stage ?? "") as JourneyPhaseStage));
+
+  const bars: GanttBar[] = [];
+  let cursor = 0;
+  for (const p of foundation) {
+    const width = weeksOrMin(p.id);
+    bars.push({ phase: p, start: cursor, width });
+    cursor += width;
+  }
+  const parallelStart = cursor;
+  let parallelWidth = 0;
+  for (const p of parallel) {
+    const width = weeksOrMin(p.id);
+    bars.push({ phase: p, start: parallelStart, width });
+    parallelWidth = Math.max(parallelWidth, width);
+  }
+  cursor = parallelStart + parallelWidth;
+  for (const p of unstaged) {
+    const width = weeksOrMin(p.id);
+    bars.push({ phase: p, start: cursor, width });
+    cursor += width;
+  }
+  for (const p of closeout) {
+    const width = weeksOrMin(p.id);
+    bars.push({ phase: p, start: cursor, width });
+    cursor += width;
+  }
+
+  return { bars, totalWeeks: Math.max(cursor, 1) };
+}
+
+const GANTT_ROW: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(150px,1fr) minmax(0,2.6fr)",
+  gap: 14,
+  alignItems: "center",
+};
+
+const GANTT_LABEL: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: INK.headingDark,
+};
+
+/** One always-on service with no bounded duration — a hatched full-width band, not a positioned bar. */
+function ContinuousBandRow({ title, color }: { readonly title: string; readonly color: string }) {
+  return (
+    <div style={GANTT_ROW}>
+      <span style={GANTT_LABEL}>{title}</span>
+      <span
+        aria-hidden="true"
+        style={{
+          height: 10,
+          borderRadius: 999,
+          display: "block",
+          background: `repeating-linear-gradient(135deg, ${hexAlpha(color, 0.4)} 0 7px, ${hexAlpha(color, 0.16)} 7px 14px)`,
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The real Gantt: one row per bounded phase actually in scope, positioned by
+ * its stage bucket and its own quoted duration, plus a continuous band for
+ * every always-on service (a Continuous-stage phase, or a Continuous-stage
+ * add-on the customer has toggled on — Tenant Monitoring). `null` when scope
+ * carries nothing to draw at all.
+ */
+function PhaseGanttChart({
+  scope,
+  selection,
+  pillarById,
+  weeksQuotedById,
+}: {
+  readonly scope: JourneyScopeInput;
+  readonly selection: JourneySelection;
+  readonly pillarById: Readonly<Partial<Record<string, PillarKey>>> | undefined;
+  readonly weeksQuotedById: Map<string, number | null>;
+}) {
+  const included = scope.phases.filter((p) => isPhaseIncluded(scope, selection, p.id));
+  const bounded = included.filter((p) => p.stage !== "continuous");
+  const continuousPhases = included.filter((p) => p.stage === "continuous");
+  const continuousAddons = scope.addons.filter((a) => a.stage === "continuous" && selection.addons[a.id]);
+
+  if (bounded.length === 0 && continuousPhases.length === 0 && continuousAddons.length === 0) return null;
+
+  const { bars, totalWeeks } = buildGanttLayout(bounded, (id) => weeksQuotedById.get(id) ?? null);
+  const hasContinuous = continuousPhases.length > 0 || continuousAddons.length > 0;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+        padding: "12px 14px",
+        border: `1px solid ${INK.hairlineDark}`,
+        borderRadius: 10,
+      }}
+    >
+      {bars.map(({ phase, start, width }) => {
+        const identity = identityPillarFor(phase, pillarById);
+        const color = identity ? PILLARS[identity].primary : INK.micro;
+        return (
+          <div key={phase.id} style={GANTT_ROW}>
+            <span style={GANTT_LABEL}>{phase.title}</span>
+            <span
+              aria-hidden="true"
+              style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(148,163,184,.14)", display: "block" }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: `${(start / totalWeeks) * 100}%`,
+                  width: `${(width / totalWeeks) * 100}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: color,
+                  opacity: 0.85,
+                }}
+              />
+            </span>
+          </div>
+        );
+      })}
+      {hasContinuous ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 7,
+            marginTop: bars.length ? 2 : 0,
+            paddingTop: bars.length ? 7 : 0,
+            borderTop: bars.length ? `1px dashed ${INK.hairlineDark}` : "none",
+          }}
+        >
+          {continuousPhases.map((p) => {
+            const identity = identityPillarFor(p, pillarById);
+            const color = identity ? PILLARS[identity].primary : INK.micro;
+            return <ContinuousBandRow key={p.id} title={p.title} color={color} />;
+          })}
+          {continuousAddons.map((a) => (
+            <ContinuousBandRow key={a.id} title={a.title} color={INK.micro} />
+          ))}
+        </div>
+      ) : null}
+      <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: INK.micro }}>
+        {bars.length > 0
+          ? `Foundation to close-out, approx. ${totalWeeks} ${totalWeeks === 1 ? "week" : "weeks"} bounded${
+              hasContinuous ? " · continuous services run throughout" : ""
+            }`
+          : "Continuous services only — no bounded phases in this scope"}
+      </span>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -706,6 +903,7 @@ export function StatementOfWorkBody({
         <p style={{ ...BODY, margin: "-6px 0", padding: "6px 0" }}>
           {resolveTimelineIntro(isPreview)}
         </p>
+        <PhaseGanttChart scope={scope} selection={selection} pillarById={pillarById} weeksQuotedById={weeksQuotedById} />
         <div style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${INK.hairlineDark}` }}>
           {scope.phases.map((p, i) => {
             const on = isPhaseIncluded(scope, selection, p.id);

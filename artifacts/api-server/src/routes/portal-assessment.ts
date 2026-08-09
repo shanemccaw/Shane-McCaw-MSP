@@ -1624,6 +1624,11 @@ router.get(
           pillars: [...new Set(c.firedSignalKeys.map((k) => pillarsBySignal.get(k)).filter(Boolean))],
           // Real destination: the existing customer offers page.
           link: "/customer-offers",
+          // Git #593 — the phase's real Gantt-sequencing bucket + duration,
+          // read off the catalog row's own type_attributes (see
+          // sales-offer-engine.ts). Never invented on this route.
+          stage: c.stage,
+          durationWeeks: c.durationWeeks,
         })),
         // Tenant Monitoring + Architect Retainer — real, already-priced catalog
         // services, resolved independently of the Sales Offer Engine's

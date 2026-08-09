@@ -203,6 +203,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Cannot be removed — Copilot inherits identity on day one.",
     findingCount: 8,
     locked: true,
+    stage: "foundation",
   },
   {
     id: "sharing-exposure-remediation",
@@ -217,6 +218,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Addresses: 212 sites shared org-wide, 2,940 non-expiring links.",
     findingCount: 9,
     locked: false,
+    stage: "parallel-eligible",
   },
   {
     id: "data-protection-baseline",
@@ -231,6 +233,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Addresses: no DLP on Teams chat, 61% of files unlabelled.",
     findingCount: 7,
     locked: false,
+    stage: "parallel-eligible",
   },
   {
     id: "licence-rationalisation",
@@ -245,6 +248,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Recovers $18,400 a year — this phase pays for itself in month one.",
     findingCount: 5,
     locked: false,
+    stage: "parallel-eligible",
   },
   {
     id: "adoption-enablement",
@@ -259,6 +263,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Addresses: 412 users dormant 30+ days, OneDrive at 31%.",
     findingCount: 6,
     locked: false,
+    stage: "parallel-eligible",
   },
   {
     id: "drift-baseline-handover",
@@ -273,6 +278,7 @@ export const PREVIEW_PHASES: readonly JourneyPhase[] = [
     addresses: "Addresses: 37 configuration changes in 90 days, no baseline.",
     findingCount: 6,
     locked: false,
+    stage: "closeout",
   },
 ];
 
@@ -296,6 +302,7 @@ export const PREVIEW_ADDONS: readonly JourneyAddon[] = [
       },
       { id: "enterprise", label: "Enterprise", upfrontUsd: 0, monthlyUsd: 2350, detail: "2,500+ seats" },
     ],
+    stage: "continuous",
   },
   {
     id: "white-glove-adoption",
@@ -329,6 +336,7 @@ export const PREVIEW_ADDONS: readonly JourneyAddon[] = [
         detail: "Full programme, monthly reporting",
       },
     ],
+    stage: "continuous",
   },
   {
     id: "architect-retainer",

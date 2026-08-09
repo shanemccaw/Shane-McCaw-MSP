@@ -46,6 +46,15 @@ export interface SalesOfferCandidate {
   score: number;
   expirationDays: number;
   idempotencyKey: string;
+  /**
+   * Git #593 — the phase's real Gantt-sequencing bucket, read from
+   * `services.type_attributes.stage`. `null` for a service this migration
+   * never tagged (e.g. an add_on/subscription row that isn't a SOW phase at
+   * all) — never guessed.
+   */
+  stage: string | null;
+  /** `services.type_attributes.durationWeeks` — `null` where untagged (continuous services never carry one). */
+  durationWeeks: number | null;
 }
 
 export interface SalesOfferEngineOutput {
@@ -105,7 +114,13 @@ export function computeSalesOfferEngine(
   customerId: number | null,
   firedSignals: Set<string>,
   ruleGroups: SalesOfferRuleGroup[],
-  services: Array<{ id: number; name: string; price: string | null; basePrice: string | null }>,
+  services: Array<{
+    id: number;
+    name: string;
+    price: string | null;
+    basePrice: string | null;
+    typeAttributes?: Record<string, unknown> | null;
+  }>,
   config: Pick<SalesOfferConfig, "minScore" | "maxOffersPerGenerate" | "defaultExpirationDays" | "bundlingThreshold">,
   ctx?: { evaluationTimestamp?: Date },
   signalLabels: Map<string, string> = new Map(),
@@ -178,6 +193,15 @@ export function computeSalesOfferEngine(
 
     const idempotencyKey = buildIdempotencyKey(customerId, serviceId, firedSignalArray);
 
+    // Git #593 — real Gantt sequencing/duration, tagged onto the catalog row
+    // itself (lib/db/migrations/manual/2026-08-08-sow-phase-stage-duration-593.sql),
+    // never derived or guessed here.
+    const typeAttributes = service.typeAttributes ?? {};
+    const stage = typeof typeAttributes.stage === "string" ? typeAttributes.stage : null;
+    const durationWeeks = typeof typeAttributes.durationWeeks === "number" && Number.isFinite(typeAttributes.durationWeeks)
+      ? typeAttributes.durationWeeks
+      : null;
+
     candidates.push({
       serviceId,
       serviceName: service.name,
@@ -190,6 +214,8 @@ export function computeSalesOfferEngine(
       score,
       expirationDays,
       idempotencyKey,
+      stage,
+      durationWeeks,
     });
   }
 
@@ -283,7 +309,15 @@ export async function runSalesOfferEngineForTenant(
       fetchSignalRulesAndGroups(),
       getDisabledSignalKeys(),
       loadSalesOfferRuleGroups(),
-      db.select({ id: servicesTable.id, name: servicesTable.name, price: servicesTable.price, basePrice: servicesTable.basePrice }).from(servicesTable),
+      db
+        .select({
+          id: servicesTable.id,
+          name: servicesTable.name,
+          price: servicesTable.price,
+          basePrice: servicesTable.basePrice,
+          typeAttributes: servicesTable.typeAttributes,
+        })
+        .from(servicesTable),
       loadSalesOfferConfig(mspId),
     ]);
 

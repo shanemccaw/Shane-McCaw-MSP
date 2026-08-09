@@ -189,6 +189,10 @@ function toPhase(line: WireSowLine): JourneySowPhase {
     // "shown, never toggleable" rows are the adjustments, and those are not
     // phases at all — see the note at the top of this file.
     locked: false,
+    // Git #593: `sow_pricing_lines` has no stage column — a stored SOW
+    // document predates the Gantt's dependency model entirely. Declared
+    // `null` rather than guessed, same discipline `pillarShown` uses above.
+    stage: null,
   };
 }
 
