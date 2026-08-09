@@ -193,6 +193,40 @@ author = 60842278
 task = "shell.exec"
 args = "git pull"
 
+[[workflows.workflow]]
+name = "Start Projects"
+mode = "parallel"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/api-server: API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/msp-portal: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/admin-panel: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/shane-mccaw-consulting: web"
+
+[[workflows.workflow]]
+name = "Run!"
+mode = "sequential"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Git  pull"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start Projects"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
