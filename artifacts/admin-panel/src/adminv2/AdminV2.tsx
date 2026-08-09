@@ -34,6 +34,7 @@ import "./screens/fulfillment";
 import "./screens/marketing";
 import "./screens/ai-prompts";
 import "./screens/shared-links";
+import "./screens/documents";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -90,6 +91,10 @@ import { AiPromptsFetchBridge } from "./screens/ai-prompts/AiPromptsFetchBridge"
 // the Watch tab's live "expiring soon" count — see
 // SharedLinksFetchBridge.tsx's doc comment.
 import { SharedLinksFetchBridge } from "./screens/shared-links/SharedLinksFetchBridge";
+// Same reasoning again, for the Home tab's "Search documents" gallery, the
+// Watch tab's live "generations that failed" count and the synchronous
+// `document` peek resolver — see DocumentsFetchBridge.tsx's doc comment.
+import { DocumentsFetchBridge } from "./screens/documents/DocumentsFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -145,6 +150,7 @@ function AdminV2Inner() {
       <MarketingFetchBridge />
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />
+      <DocumentsFetchBridge />
     </Shell>
   );
 }
