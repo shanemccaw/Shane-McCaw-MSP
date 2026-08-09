@@ -177,6 +177,10 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // Marketing. Informational blue like `endpoint`/`msp` — a campaign is a
   // record you go look at, not a verdict on anything.
   campaign: ["#7fb4d8", "CMP"],
+  // Shared Links. Amber like `alert`/`delivery` — unlike a campaign, a
+  // share's own engagement (views, days left) is exactly the kind of
+  // needs-a-look signal the Watch tab exists for.
+  share: ["#f2ca63", "SHR"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

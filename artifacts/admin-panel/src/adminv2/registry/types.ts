@@ -267,6 +267,13 @@ export interface ContextualTabSpec {
  * strip and Back group need to resolve. It is not a `service` (the catalog
  * entry a campaign might promote) and not a `lead` (a person a campaign may
  * have generated) — it is the effort that generated them.
+ *
+ * `share` was added for the Shared Links screen (`screens/shared-links/`).
+ * A `quick_win_result_shares` row is a client-facing, token-based link to a
+ * diagnostic scores snapshot or a generated document — openable, with a
+ * stable id. It is not a `document` (the thing a share may point at, when
+ * `shareKind === "document"`) and not a `customer`/`lead` (who it's shared
+ * with) — it is the link itself, with its own view count and expiry.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -295,6 +302,7 @@ export const PEEK_KINDS = [
   "delivery",
   "fulfillmentType",
   "campaign",
+  "share",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -461,7 +469,8 @@ export type CommandKind =
   | "engine"
   | "delivery"
   | "fulfillmentType"
-  | "campaign";
+  | "campaign"
+  | "share";
 
 export interface CommandItem {
   id: string;
