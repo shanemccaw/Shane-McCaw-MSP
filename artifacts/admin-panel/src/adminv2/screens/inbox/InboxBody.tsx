@@ -368,12 +368,17 @@ function ReadingPane({ id }: { id: string }) {
           {message.body?.contentType === "html" ? (
             <iframe
               title="Message body"
-              sandbox=""
+              sandbox="allow-same-origin"
               srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Inter,'Segoe UI',sans-serif;font-size:13px;color:${TEXT.body};background:transparent;margin:0;padding:0;line-height:1.6}a{color:${ACCENT.info}}img{max-width:100%;height:auto}</style></head><body>${message.body.content}</body></html>`}
               style={{ width: "100%", minHeight: 220, border: "none", background: "transparent" }}
               onLoad={(e) => {
-                const win = e.currentTarget.contentWindow;
-                if (win) e.currentTarget.style.height = `${win.document.documentElement.scrollHeight}px`;
+                try {
+                  const win = e.currentTarget.contentWindow;
+                  if (win) e.currentTarget.style.height = `${win.document.documentElement.scrollHeight}px`;
+                } catch {
+                  // Cross-origin content (a rare srcDoc edge case in some browsers) —
+                  // the iframe just keeps its minHeight instead of auto-sizing.
+                }
               }}
             />
           ) : (
