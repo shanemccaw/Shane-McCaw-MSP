@@ -75,7 +75,8 @@ import { logger } from "../lib/logger";
 import { type OmgCard } from "../lib/omg-card-generator-v2";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { getStripeKey } from "../lib/stripe";
+import { getStripeKey, getStripePublishableKey } from "../lib/stripe";
+import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
@@ -1860,6 +1861,365 @@ router.post(
     } catch (err) {
       billingLog.error({ err, userId, customerId }, "POST /portal/assessment/sow/checkout-session failed");
       res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  },
+);
+
+// ── SOW cart payment: shared order resolution (Git #600, Epic #597 stage 3) ──
+//
+// Resolves a `checkout_sessions` row created by `/portal/assessment/sow/
+// checkout-session` (#599) into what the PaymentIntent routes below need, or
+// responds and returns null.
+//
+// Ownership is enforced by TENANT, not by trusting the sessionId alone: #599
+// always stamps `tenantId` (the Entra GUID) from the authenticated customer's
+// own `tenants` row at snapshot time, so a session only resolves here when it
+// was created by THIS SAME customer — a portal customer can never pay for
+// another customer's cart by guessing/reusing a session id.
+//
+// The charge amount is NEVER recomputed here. `sowCartTotalCents` is the
+// number #599 already computed server-side (from the same Sales Offer Engine
+// + monitoring/retainer addon sources `/recommended-offers` reads) and
+// snapshotted onto the row at that time — this reads it back verbatim, same
+// discipline #599 already established.
+type SowOrder = {
+  sessionId: string;
+  status: string;
+  email: string;
+  fullName: string;
+  company: string | null;
+  /** The Entra tenant GUID #599 stamped on the row. */
+  tenantId: string | null;
+  /** `tenants.id` — same id space `resolveCustomerId` returns, so it doubles as the `tenantRowId` `ensureFlowStripeCustomer` needs. */
+  customerId: number;
+  totalCents: number;
+  phaseCount: number;
+  addonCount: number;
+};
+
+async function resolveSowOrder(
+  sessionId: string,
+  customerId: number,
+  res: Response,
+): Promise<SowOrder | null> {
+  const [session] = await db
+    .select({
+      id: checkoutSessionsTable.id,
+      status: checkoutSessionsTable.status,
+      email: checkoutSessionsTable.email,
+      fullName: checkoutSessionsTable.fullName,
+      company: checkoutSessionsTable.company,
+      tenantId: checkoutSessionsTable.tenantId,
+      sowCartTotalCents: checkoutSessionsTable.sowCartTotalCents,
+      sowSelectedPhaseServiceIds: checkoutSessionsTable.sowSelectedPhaseServiceIds,
+      sowAddonSelections: checkoutSessionsTable.sowAddonSelections,
+      expiresAt: checkoutSessionsTable.expiresAt,
+    })
+    .from(checkoutSessionsTable)
+    .where(eq(checkoutSessionsTable.id, sessionId))
+    .limit(1);
+
+  if (!session || session.expiresAt.getTime() < Date.now()) {
+    res.status(404).json({ error: "session_expired" });
+    return null;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
+    .limit(1);
+
+  if (!customer?.tenantId || !session.tenantId || session.tenantId !== customer.tenantId) {
+    billingLog.warn(
+      { sessionId, customerId },
+      "sow cart payment: REFUSED — session does not belong to this customer's tenant",
+    );
+    res.status(403).json({ error: "not_your_session" });
+    return null;
+  }
+
+  // "consented" is what #599 sets on creation; "paid" is a replayed/recovered
+  // confirm on an already-paid session — never "pending"/"expired".
+  if (session.status !== "consented" && session.status !== "paid") {
+    res.status(409).json({ error: "session_not_ready" });
+    return null;
+  }
+
+  const totalCents = session.sowCartTotalCents ?? 0;
+  if (totalCents <= 0) {
+    billingLog.error(
+      { sessionId, customerId },
+      "sow cart payment: session carries no positive sowCartTotalCents — refusing to charge an unresolved amount",
+    );
+    res.status(409).json({ error: "price_unresolved" });
+    return null;
+  }
+
+  return {
+    sessionId: session.id,
+    status: session.status,
+    email: session.email,
+    fullName: session.fullName,
+    company: session.company,
+    tenantId: session.tenantId,
+    customerId,
+    totalCents,
+    phaseCount: session.sowSelectedPhaseServiceIds.length,
+    addonCount: session.sowAddonSelections.length,
+  };
+}
+
+// ── POST /portal/assessment/sow/checkout-session/payment-intent ─────────────
+//
+// Creates (or recovers) the PaymentIntent the embedded Payment Element (#602,
+// the next epic stage) will confirm against. Reuses the EXACT pattern already
+// proven live on the marketing site's assessment purchase flow
+// (`public-assessment-payment.ts`'s `/public/flow/payment-intent`) — same
+// idempotency-key convention (derived from the checkout session id, so a
+// reload, a retry after a declined card, or a double submit all recover the
+// SAME intent rather than minting a second one against the same cart), same
+// `receipt_email`, same flat metadata shape. Not a second payment mechanism.
+//
+// The amount is `order.totalCents` — #599's own server-computed
+// `sowCartTotalCents`, read back verbatim by `resolveSowOrder` above. There is
+// no price field on this request to trust in the first place.
+//
+// Deliberately narrower than its marketing-site sibling: no #490 rescan-addon
+// save-card/subscription branch. A selected SOW addon's recurring monthly
+// component is snapshotted on the session (`sowAddonSelections`) for a LATER
+// stage to subscribe — following the rescan-addon pattern, per #599's own
+// comment — creating that subscription is not this issue's scope.
+const sowPaymentIntentSchema = z.object({ sessionId: z.string().uuid() });
+
+router.post(
+  "/portal/assessment/sow/checkout-session/payment-intent",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const parsed = sowPaymentIntentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "sessionId is required" });
+      return;
+    }
+
+    const order = await resolveSowOrder(parsed.data.sessionId, customerId, res);
+    if (!order) return;
+
+    const publishableKey = getStripePublishableKey();
+    if (!publishableKey) {
+      billingLog.error(
+        {},
+        "sow cart payment: STRIPE_PUBLISHABLE_KEY is not configured — the in-page Payment Element cannot be initialised",
+      );
+      res.status(503).json({ error: "payment_unavailable" });
+      return;
+    }
+
+    let stripeKey: string;
+    try {
+      stripeKey = getStripeKey();
+    } catch (err) {
+      billingLog.error({ err }, "sow cart payment: Stripe secret key is not configured");
+      res.status(503).json({ error: "payment_unavailable" });
+      return;
+    }
+
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey);
+
+      // Same non-fatal degrade as the marketing flow's own customer
+      // resolution: a Stripe customer is an ENHANCEMENT (real receipt
+      // history on the account) whose absence must never block the charge.
+      let stripeCustomerId: string | null = null;
+      try {
+        stripeCustomerId = await ensureFlowStripeCustomer(stripe, {
+          tenantRowId: order.customerId,
+          tenantGuid: order.tenantId,
+          email: order.email,
+          fullName: order.fullName,
+          company: order.company,
+        });
+      } catch (err) {
+        billingLog.error(
+          { err, checkoutSessionId: order.sessionId, tenantRowId: order.customerId },
+          "sow cart payment: Stripe customer could not be resolved — falling back to an anonymous PaymentIntent",
+        );
+      }
+
+      const phaseLabel = `${order.phaseCount} phase${order.phaseCount === 1 ? "" : "s"}`;
+      const addonLabel = order.addonCount > 0 ? `, ${order.addonCount} add-on${order.addonCount === 1 ? "" : "s"}` : "";
+
+      const intent = await stripe.paymentIntents.create(
+        {
+          amount: order.totalCents,
+          currency: "usd",
+          // Lets Stripe offer whatever in-page methods are enabled on the
+          // account without a hosted page or a redirect — same as the
+          // marketing flow's embedded card entry.
+          automatic_payment_methods: { enabled: true },
+          ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
+          receipt_email: order.email,
+          description: `SOW Cart${order.company ? ` — ${order.company}` : ""} (${phaseLabel}${addonLabel})`,
+          metadata: {
+            flow: "portal_sow_cart",
+            checkoutSessionId: order.sessionId,
+            customerId: String(order.customerId),
+            tenantId: order.tenantId ?? "",
+            phaseCount: String(order.phaseCount),
+            addonCount: String(order.addonCount),
+          },
+        },
+        { idempotencyKey: `portal-sow-cart:pi:${order.sessionId}:${stripeCustomerId ? "cust" : "anon"}` },
+      );
+
+      billingLog.info(
+        {
+          checkoutSessionId: order.sessionId,
+          paymentIntentId: intent.id,
+          amountCents: order.totalCents,
+          status: intent.status,
+          stripeCustomerId,
+        },
+        "sow cart payment: PaymentIntent ready",
+      );
+
+      res.json({
+        clientSecret: intent.client_secret,
+        publishableKey,
+        paymentIntentId: intent.id,
+        amountCents: order.totalCents,
+        // A recovered, already-succeeded intent (paid, then reloaded before
+        // the confirm callback landed) — the client skips straight to confirming.
+        alreadyPaid: intent.status === "succeeded",
+      });
+    } catch (err) {
+      billingLog.error({ err, checkoutSessionId: order.sessionId }, "sow cart payment: PaymentIntent creation failed");
+      res.status(500).json({ error: "payment_intent_failed" });
+    }
+  },
+);
+
+// ── POST /portal/assessment/sow/checkout-session/payment-confirmed ──────────
+//
+// Same server-verified confirm pattern as the marketing flow's
+// `/public/flow/payment-confirmed`: the browser's success claim is not
+// evidence — the PaymentIntent is re-read from Stripe and must be
+// "succeeded" AND carry this exact checkout session in its metadata before
+// the session is marked paid.
+//
+// Deliberately stops at marking the session paid + an audit log. No
+// confirmation email / CRM signal here (the marketing flow's
+// `purchaseConfirmationEmail`/`markAssessmentLeadPurchased` are shaped for a
+// single flat product and a pre-conversion marketing lead respectively —
+// neither fits a multi-item cart for an already-onboarded portal customer),
+// and no agreement recording — #603 ("Reconcile post-payment agreement
+// recording for live-scope checkout") is the epic's own explicitly deferred
+// next stage for that real decision. Not guessed at here.
+const sowPaymentConfirmedSchema = z.object({
+  sessionId: z.string().uuid(),
+  paymentIntentId: z.string().min(1),
+});
+
+router.post(
+  "/portal/assessment/sow/checkout-session/payment-confirmed",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    const customerId = resolveCustomerId(req);
+    if (userId == null || customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const parsed = sowPaymentConfirmedSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "sessionId and paymentIntentId are required" });
+      return;
+    }
+
+    const order = await resolveSowOrder(parsed.data.sessionId, customerId, res);
+    if (!order) return;
+
+    let stripeKey: string;
+    try {
+      stripeKey = getStripeKey();
+    } catch {
+      res.status(503).json({ error: "payment_unavailable" });
+      return;
+    }
+
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey);
+      const intent = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
+
+      if (intent.metadata?.["checkoutSessionId"] !== order.sessionId) {
+        billingLog.warn(
+          {
+            checkoutSessionId: order.sessionId,
+            paymentIntentId: intent.id,
+            metaSessionId: intent.metadata?.["checkoutSessionId"],
+          },
+          "sow cart payment: REFUSED — PaymentIntent belongs to a different checkout session",
+        );
+        res.status(403).json({ error: "intent_session_mismatch" });
+        return;
+      }
+
+      if (intent.status !== "succeeded") {
+        billingLog.info(
+          { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, status: intent.status },
+          "sow cart payment: confirm callback for an intent that has not succeeded",
+        );
+        res.status(409).json({ error: "payment_not_succeeded", status: intent.status });
+        return;
+      }
+
+      // Already "paid" from an earlier confirm — replaying is a no-op, not an error.
+      if (order.status !== "paid") {
+        await db
+          .update(checkoutSessionsTable)
+          .set({ status: "paid", updatedAt: new Date() })
+          .where(eq(checkoutSessionsTable.id, order.sessionId));
+
+        await createAuditLog({
+          actorUserId: userId,
+          actorName: order.email,
+          actorRole: "client",
+          actionType: "sow_cart_payment_succeeded",
+          entityType: "checkout_session",
+          entityId: order.sessionId,
+          metadata: {
+            customerId: order.customerId,
+            paymentIntentId: intent.id,
+            amountCents: intent.amount_received || order.totalCents,
+            tenantId: order.tenantId,
+            phaseCount: order.phaseCount,
+            addonCount: order.addonCount,
+          },
+        });
+
+        billingLog.info(
+          { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, amountCents: intent.amount_received },
+          "sow cart payment: checkout session marked paid",
+        );
+      }
+
+      res.json({
+        ok: true,
+        amountCents: intent.amount_received || order.totalCents,
+        email: order.email,
+      });
+    } catch (err) {
+      billingLog.error({ err, checkoutSessionId: order.sessionId }, "sow cart payment: confirm failed");
+      res.status(500).json({ error: "confirm_failed" });
     }
   },
 );
