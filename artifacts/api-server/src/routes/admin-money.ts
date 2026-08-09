@@ -175,7 +175,7 @@ async function computeAvgSaleCents(mspId: number, manualSales: ManualSale[]): Pr
   const [row90] = await db
     .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)`, n: count() })
     .from(mspChargesTable)
-    .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, since90)));
+    .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, since90), excludeTestbedCharges()));
   const manual90 = manualSales.filter((m) => new Date(m.when).getTime() >= since90.getTime());
   const combined90Count = Number(row90?.n ?? 0) + manual90.length;
   if (combined90Count > 0) {
@@ -186,11 +186,38 @@ async function computeAvgSaleCents(mspId: number, manualSales: ManualSale[]): Pr
   const [rowAll] = await db
     .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)`, n: count() })
     .from(mspChargesTable)
-    .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded")));
+    .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), excludeTestbedCharges()));
   const combinedAllCount = Number(rowAll?.n ?? 0) + manualSales.length;
   if (combinedAllCount === 0) return 0;
   const combinedAllCents = Number(rowAll?.cents ?? 0) + manualSales.reduce((s, m) => s + m.amountCents, 0);
   return Math.round(combinedAllCents / combinedAllCount);
+}
+
+// ── Testbed exclusion (Git #661) ────────────────────────────────────────────
+// A testbed tenant (tenants.is_testbed) is real infrastructure used for
+// scanning/simulation, not a real customer — any SOW/charge/AI-usage row tied
+// to one is test data and must never count toward Shane's real revenue, cost,
+// or profit figures. `tenantsTable.isTestbed` is the per-customer flag (see
+// msp.ts's comment: deliberately independent of `mspsTable.isTestbed`, which
+// marks a whole test MSP org rather than one test customer inside a real MSP).
+
+/** Excludes msp_charges rows whose SOW belongs to a testbed tenant. */
+function excludeTestbedCharges() {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${mspSowsTable}
+    INNER JOIN ${tenantsTable} ON ${tenantsTable.id} = ${mspSowsTable.customerId}
+    WHERE ${mspSowsTable.sowId} = ${mspChargesTable.sowId}
+      AND ${tenantsTable.isTestbed} = true
+  )`;
+}
+
+/** Excludes ai_usage_events rows billed to a testbed tenant. */
+function excludeTestbedAiUsage() {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${tenantsTable}
+    WHERE ${tenantsTable.id} = ${aiUsageEventsTable.customerId}
+      AND ${tenantsTable.isTestbed} = true
+  )`;
 }
 
 /** Active retainers for this MSP's own end-clients, normalised to a monthly cents figure. */
@@ -207,7 +234,7 @@ async function loadRetainers(mspId: number) {
     .innerJoin(usersTable, eq(clientServicesTable.clientUserId, usersTable.id))
     .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
-    .where(and(eq(tenantsTable.mspId, mspId), eq(clientServicesTable.status, "active")));
+    .where(and(eq(tenantsTable.mspId, mspId), eq(clientServicesTable.status, "active"), eq(tenantsTable.isTestbed, false)));
 
   return rows.map((r) => ({
     id: String(r.id),
@@ -241,7 +268,7 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
       .from(mspChargesTable)
       .leftJoin(mspSowsTable, eq(mspChargesTable.sowId, mspSowsTable.sowId))
       .leftJoin(tenantsTable, eq(mspSowsTable.customerId, tenantsTable.id))
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, thisMonthStart)))
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, thisMonthStart), excludeTestbedCharges()))
       .orderBy(desc(mspChargesTable.chargedAt));
 
     const manualSales = await readManualSales();
@@ -256,7 +283,7 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
     const [lifetimeRow] = await db
       .select({ cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)` })
       .from(mspChargesTable)
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded")));
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), excludeTestbedCharges()));
     const lifetimeCents = Number(lifetimeRow?.cents ?? 0) + manualSales.reduce((s, m) => s + m.amountCents, 0);
 
     const aiRows = await db
@@ -265,7 +292,7 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
         cents: sql<number>`coalesce(sum(${aiUsageEventsTable.costCents}), 0)`,
       })
       .from(aiUsageEventsTable)
-      .where(and(eq(aiUsageEventsTable.mspId, mspId), gte(aiUsageEventsTable.occurredAt, thisMonthStart)))
+      .where(and(eq(aiUsageEventsTable.mspId, mspId), gte(aiUsageEventsTable.occurredAt, thisMonthStart), excludeTestbedAiUsage()))
       .groupBy(sql`coalesce(${aiUsageEventsTable.feature}, ${aiUsageEventsTable.nodeType})`);
     const aiCostCents = aiRows.reduce((sum, r) => sum + Number(r.cents ?? 0), 0);
 
@@ -282,7 +309,7 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
         cents: sql<number>`coalesce(sum(${mspChargesTable.amountCents}), 0)`,
       })
       .from(mspChargesTable)
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, trendStart)))
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, trendStart), excludeTestbedCharges()))
       .groupBy(sql`date_trunc('month', ${mspChargesTable.chargedAt})`);
     const trendByKey = new Map(trendRowsRaw.map((r) => [monthKey(new Date(r.monthTrunc)), Number(r.cents)]));
     const trend = Array.from({ length: 6 }, (_, i) => 5 - i).map((i) => {
@@ -297,7 +324,7 @@ router.get("/admin/money/summary", requireAdmin, async (_req: Request, res: Resp
     const countRowsRaw = await db
       .select({ monthTrunc: sql<string>`date_trunc('month', ${mspChargesTable.chargedAt})`, n: count() })
       .from(mspChargesTable)
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, streakStart)))
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, streakStart), excludeTestbedCharges()))
       .groupBy(sql`date_trunc('month', ${mspChargesTable.chargedAt})`);
     const countByKey = new Map(countRowsRaw.map((r) => [monthKey(new Date(r.monthTrunc)), Number(r.n)]));
 
@@ -461,7 +488,7 @@ router.get("/admin/money/ramp", requireAdmin, async (_req: Request, res: Respons
     const countRowsRaw = await db
       .select({ monthTrunc: sql<string>`date_trunc('month', ${mspChargesTable.chargedAt})`, n: count() })
       .from(mspChargesTable)
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, start)))
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, start), excludeTestbedCharges()))
       .groupBy(sql`date_trunc('month', ${mspChargesTable.chargedAt})`);
     const countByKey = new Map(countRowsRaw.map((r) => [monthKey(new Date(r.monthTrunc)), Number(r.n)]));
 
@@ -540,7 +567,7 @@ router.get("/admin/money/business", requireAdmin, async (_req: Request, res: Res
       .from(mspChargesTable)
       .leftJoin(mspSowsTable, eq(mspChargesTable.sowId, mspSowsTable.sowId))
       .leftJoin(tenantsTable, eq(mspSowsTable.customerId, tenantsTable.id))
-      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, windowStart)))
+      .where(and(eq(mspChargesTable.mspId, mspId), eq(mspChargesTable.status, "succeeded"), gte(mspChargesTable.chargedAt, windowStart), excludeTestbedCharges()))
       .groupBy(tenantsTable.customerName);
 
     // Manually-logged sales in the window, folded into the same per-client
@@ -566,7 +593,7 @@ router.get("/admin/money/business", requireAdmin, async (_req: Request, res: Res
     const [aiRow] = await db
       .select({ cents: sql<number>`coalesce(sum(${aiUsageEventsTable.costCents}), 0)` })
       .from(aiUsageEventsTable)
-      .where(and(eq(aiUsageEventsTable.mspId, mspId), gte(aiUsageEventsTable.occurredAt, windowStart)));
+      .where(and(eq(aiUsageEventsTable.mspId, mspId), gte(aiUsageEventsTable.occurredAt, windowStart), excludeTestbedAiUsage()));
     const aiCostCents = Number(aiRow?.cents ?? 0);
     const threeMonthGrossCents = totalOneTimeCents + mrrCents * 3;
     const marginAfterAiCostPct = threeMonthGrossCents > 0 ? Math.round(((threeMonthGrossCents - aiCostCents) / threeMonthGrossCents) * 1000) / 10 : 0;

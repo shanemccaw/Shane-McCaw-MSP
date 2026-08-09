@@ -24,10 +24,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import request from "supertest";
 
+/** Flattens a drizzle `and()`/`sql` condition tree down to its literal/column
+ * text fragments, so a test can assert a `where()` call embeds a given
+ * column/keyword without depending on drizzle's internal SQL AST shape. */
+function flattenCondition(node: unknown, out: string[] = []): string[] {
+  if (node == null) return out;
+  if (typeof node === "string") {
+    out.push(node);
+    return out;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((n) => flattenCondition(n, out));
+    return out;
+  }
+  if (typeof node === "object") {
+    const obj = node as Record<string, unknown>;
+    if (obj["queryChunks"]) {
+      flattenCondition(obj["queryChunks"], out);
+      return out;
+    }
+    if ("value" in obj) {
+      flattenCondition(obj["value"], out);
+      return out;
+    }
+    Object.values(obj).forEach((v) => flattenCondition(v, out));
+  }
+  return out;
+}
+
 process.env["DATABASE_URL"] = "postgres://test";
 
 let selectQueue: unknown[][] = [];
 const insertCalls: { table: string; values: unknown }[] = [];
+const whereCalls: unknown[] = [];
 
 vi.mock("@workspace/db", () => {
   const makeSelectChain = (): Record<string, unknown> => {
@@ -35,7 +64,10 @@ vi.mock("@workspace/db", () => {
       from: vi.fn(() => chain),
       leftJoin: vi.fn(() => chain),
       innerJoin: vi.fn(() => chain),
-      where: vi.fn(() => chain),
+      where: vi.fn((cond: unknown) => {
+        whereCalls.push(cond);
+        return chain;
+      }),
       orderBy: vi.fn(() => chain),
       groupBy: vi.fn(() => chain),
       limit: vi.fn(() => chain),
@@ -70,7 +102,7 @@ vi.mock("@workspace/db", () => {
       sowId: "sow_id",
     },
     mspSowsTable: { title: "title", customerId: "customer_id", sowId: "sow_id" },
-    tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name" },
+    tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", isTestbed: "is_testbed" },
     usersTable: { id: "id", tenantId: "tenant_id" },
     clientServicesTable: { id: "id", clientUserId: "client_user_id", serviceId: "service_id", status: "status", billingInterval: "billing_interval" },
     servicesTable: { id: "id", name: "name", priceCents: "price_cents" },
@@ -114,6 +146,7 @@ const admin = (r: request.Test) => r.set("x-test-admin", "1");
 beforeEach(() => {
   selectQueue = [];
   insertCalls.length = 0;
+  whereCalls.length = 0;
   __resetMoneyCacheForTests();
 });
 
@@ -294,6 +327,48 @@ describe("POST /admin/money/sales — Log a sale", () => {
     const written = JSON.parse((insertCalls[0].values as { value: string }).value);
     expect(written).toHaveLength(1);
     expect(written[0].amountCents).toBe(150000);
+  });
+});
+
+describe("Testbed tenant exclusion (Git #661)", () => {
+  it("every real revenue/cost query on /admin/money/summary excludes testbed tenants", async () => {
+    selectQueue.push([{ id: 7 }]); // getDirectBusinessMspId
+    selectQueue.push([]); // salesRows
+    selectQueue.push([]); // readManualSales
+    selectQueue.push([{ cents: 0 }]); // lifetimeRow
+    selectQueue.push([]); // aiRows
+    selectQueue.push([]); // retainers
+    selectQueue.push([]); // trendRowsRaw
+    selectQueue.push([]); // countRowsRaw
+    selectQueue.push([]); // readGoals
+
+    const res = await admin(request(buildApp()).get("/api/admin/money/summary"));
+    expect(res.status).toBe(200);
+
+    // getDirectBusinessMspId's own lookup and the generic settingsTable reads
+    // (goals/manual sales) have no charge/tenant condition to check — every
+    // where() call that actually queries msp_charges/ai_usage_events must
+    // embed the testbed exclusion.
+    const chargeOrAiWheres = whereCalls.map((cond) => flattenCondition(cond).join("|")).filter((text) => /msp_id/.test(text));
+    expect(chargeOrAiWheres.length).toBeGreaterThan(0);
+    for (const text of chargeOrAiWheres) {
+      expect(text).toMatch(/is_testbed/);
+    }
+  });
+
+  it("filters testbed tenants out of retainers directly via tenantsTable.isTestbed", async () => {
+    selectQueue.push([{ id: 7 }]); // mspId
+    selectQueue.push([]); // byClientRows
+    selectQueue.push([]); // readManualSales
+    selectQueue.push([]); // retainers
+    selectQueue.push([{ cents: 0 }]); // ai cost
+
+    await admin(request(buildApp()).get("/api/admin/money/business"));
+
+    // retainers is the 4th select call (mspId, byClientRows, readManualSales, retainers)
+    const retainersWhere = whereCalls[3];
+    const text = flattenCondition(retainersWhere).join("|");
+    expect(text).toMatch(/is_testbed/);
   });
 });
 
