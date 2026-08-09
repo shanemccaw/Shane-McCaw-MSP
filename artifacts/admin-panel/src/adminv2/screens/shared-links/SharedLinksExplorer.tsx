@@ -9,8 +9,12 @@
 import { useSyncExternalStore } from "react";
 import { ACCENT, FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
+  copyShareLink,
+  extendShareAction,
   getSnapshot,
+  revokeShareAction,
   setSearch,
   setSort,
   setStatusFilter,
@@ -20,7 +24,7 @@ import {
   type SortField,
   type StatusFilter,
 } from "./sharedLinksStore";
-import { clientLabel, formatDate, isExpired, isHighEngagement, relativeExpiry, type Share } from "./sharedLinksTypes";
+import { clientLabel, formatDate, isExpired, isHighEngagement, isOpenable, relativeExpiry, shareUrl, type Share } from "./sharedLinksTypes";
 
 export function SharedLinksExplorer() {
   const state = useSyncExternalStore(subscribe, getSnapshot);
@@ -142,39 +146,62 @@ function Row({ share, state }: { share: Share; state: SharedLinksState }) {
   const expired = isExpired(share);
   const hot = isHighEngagement(share);
   const border = on ? ACCENT.info : hot ? ACCENT.amber : "transparent";
+  const { menu, open, close } = useContextMenu();
+  const openRecord = () => getShellApi()?.openDoc({ kind: "share", id: String(share.id), screenId: "shared-links" });
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => getShellApi()?.openDoc({ kind: "share", id: String(share.id), screenId: "shared-links" })}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          getShellApi()?.openDoc({ kind: "share", id: String(share.id), screenId: "shared-links" });
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={openRecord}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openRecord();
+          }
+        }}
+        onContextMenu={(e) =>
+          open(
+            e,
+            [
+              { label: "Open", onSelect: openRecord },
+              // No public viewer exists for a quick_win_scores link — never offer to copy a dead URL.
+              { label: "Copy link", onSelect: () => copyShareLink(shareUrl(share)), disabled: !isOpenable(share) },
+              {
+                label: expired ? "Extend 14 days (revives it)" : "Extend 14 days",
+                onSelect: () => void extendShareAction(share.id),
+              },
+              ...(!expired
+                ? [{ label: "Revoke now", onSelect: () => void revokeShareAction(share.id), danger: true }]
+                : []),
+            ],
+            `Actions for ${clientLabel(share.client)}`,
+          )
         }
-      }}
-      style={{
-        display: "block",
-        padding: "7px 13px",
-        cursor: "pointer",
-        borderLeft: `2px solid ${border}`,
-        background: on ? WASH.hoverSoft : state.savingIds.has(share.id) ? WASH.hoverFaint : "transparent",
-        opacity: expired ? 0.6 : 1,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, color: TEXT.strong }}>
-          {clientLabel(share.client)}
-        </span>
-        <span style={{ flex: "none", whiteSpace: "nowrap", fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: hot ? ACCENT.amber : TEXT.softer }}>
-          {share.viewCount} view{share.viewCount === 1 ? "" : "s"}
+        style={{
+          display: "block",
+          padding: "7px 13px",
+          cursor: "pointer",
+          borderLeft: `2px solid ${border}`,
+          background: on ? WASH.hoverSoft : state.savingIds.has(share.id) ? WASH.hoverFaint : "transparent",
+          opacity: expired ? 0.6 : 1,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, color: TEXT.strong }}>
+            {clientLabel(share.client)}
+          </span>
+          <span style={{ flex: "none", whiteSpace: "nowrap", fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: hot ? ACCENT.amber : TEXT.softer }}>
+            {share.viewCount} view{share.viewCount === 1 ? "" : "s"}
+          </span>
+        </div>
+        <span style={{ display: "block", marginTop: 3, fontSize: 11, color: expired ? TEXT.faint : hot ? ACCENT.amber : TEXT.faint }}>
+          {expired ? `Expired ${formatDate(share.expiresAt)}` : `Expires in ${relativeExpiry(share.expiresAt)}`}
+          {hot ? " · high engagement" : ""}
         </span>
       </div>
-      <span style={{ display: "block", marginTop: 3, fontSize: 11, color: expired ? TEXT.faint : hot ? ACCENT.amber : TEXT.faint }}>
-        {expired ? `Expired ${formatDate(share.expiresAt)}` : `Expires in ${relativeExpiry(share.expiresAt)}`}
-        {hot ? " · high engagement" : ""}
-      </span>
-    </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }

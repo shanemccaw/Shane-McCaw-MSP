@@ -45,6 +45,7 @@ import { dayBand, durationLabel, repeatLabel, whenLabel, type RunHistoryEntry } 
 const DAY = 86_400_000;
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
 
 /** One list row as the API actually returns it — no `output`, `runCount` from the server. */
 function row(over: Partial<RunHistoryEntry> = {}): RunHistoryEntry {
@@ -86,8 +87,13 @@ function serveRuns(runs: RunHistoryEntry[], extra: Record<string, unknown> = {})
 beforeEach(() => {
   vi.useRealTimers();
   fetchWithAuth.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
   resetRunHistoryStore();
   configureRunHistoryFetch(fetchWithAuth);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
 });
 
 afterEach(() => {
@@ -299,6 +305,88 @@ describe("rendering", () => {
     await vi.waitFor(() => expect(entryById("4")?.note).toBe("the panel export was missing"));
     const patch = fetchWithAuth.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "PATCH");
     expect(patch).toBeTruthy();
+  });
+});
+
+describe("row context menu", () => {
+  // The row's double-click and the peek/contextual tab already do all of
+  // this — right-click is just a second entry point onto the same functions,
+  // never a new capability.
+
+  function rowFor(title: string): HTMLElement {
+    return screen.getByText(title).closest('[role="button"]') as HTMLElement;
+  }
+
+  it("offers Open, Run again, Copy output and Copy command, real actions the row already supports", async () => {
+    serveRuns([row({ id: "20", cmd: "pnpm run build", title: "Rebuild the api-server" })]);
+    render(<RunHistoryBody />);
+
+    await screen.findByText("Rebuild the api-server");
+    fireEvent.contextMenu(rowFor("Rebuild the api-server"));
+
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Run again" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy command" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("pnpm run build");
+
+    // Selecting the row (its own plain click) loads the output the same way
+    // it always has; the menu's Copy output reads whatever that loaded.
+    fireEvent.click(rowFor("Rebuild the api-server"));
+    await vi.waitFor(() => expect(entryById("20")?.output).toBeDefined());
+    fireEvent.contextMenu(rowFor("Rebuild the api-server"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy output" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("output for 20");
+  });
+
+  it("labels the rerun item per kind: Run again for deploy, Open in SQL Runner for sql, Run this migration again for a migration", async () => {
+    serveRuns([
+      row({ id: "21", kind: "sql", cmd: "select 1;", title: "Ad-hoc query" }),
+      row({ id: "22", kind: "sql", cmd: "0002_test.sql", title: "Run 0002_test.sql", migrationFile: "0002_test.sql" }),
+    ]);
+    render(<RunHistoryBody />);
+
+    await screen.findByText("Ad-hoc query");
+    fireEvent.contextMenu(rowFor("Ad-hoc query"));
+    expect(screen.getByRole("menuitem", { name: "Open in SQL Runner" })).toBeTruthy();
+
+    fireEvent.contextMenu(rowFor("Run 0002_test.sql"));
+    expect(screen.getByRole("menuitem", { name: "Run this migration again" })).toBeTruthy();
+  });
+
+  it("arms the same confirm a migration re-run always requires, even from the right-click menu", async () => {
+    serveRuns([row({ id: "23", kind: "sql", cmd: "0003_test.sql", title: "Run 0003_test.sql", migrationFile: "0003_test.sql" })]);
+    render(<RunHistoryBody />);
+
+    await screen.findByText("Run 0003_test.sql");
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.contextMenu(rowFor("Run 0003_test.sql"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Run this migration again" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Run "0003_test.sql" against the real database again? This cannot be undone from here.',
+    );
+    confirmSpy.mockRestore();
+  });
+
+  it("disables Copy output when the run printed nothing, and gates Forget behind the contextual tab's own confirm copy", async () => {
+    serveRuns([row({ id: "24", title: "No output run", hasOutput: false })]);
+    render(<RunHistoryBody />);
+
+    await screen.findByText("No output run");
+    fireEvent.contextMenu(rowFor("No output run"));
+    expect(screen.getByRole("menuitem", { name: "Copy output" }).getAttribute("aria-disabled")).toBe("true");
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Forget this run" }));
+    expect(confirmSpy).toHaveBeenCalledWith('Forget "No output run"? Its output goes with it.');
+
+    await vi.waitFor(() =>
+      expect(fetchWithAuth.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "DELETE")).toBe(
+        true,
+      ),
+    );
+    confirmSpy.mockRestore();
   });
 });
 

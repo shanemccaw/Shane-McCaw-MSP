@@ -5,13 +5,15 @@
  * the one thing worth scanning a delivery list for.
  */
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { ACCENT, FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   clearFilters,
   filtersActive,
   getSnapshot,
+  setDeliveryStatus,
   setFilterOverdue,
   setFilterSource,
   setFilterStatus,
@@ -28,6 +30,7 @@ export function FulfillmentExplorer() {
 }
 
 export function FulfillmentExplorerView({ state }: { state: FulfillmentState }) {
+  const { menu, open, close } = useContextMenu();
   const groups = new Map<string, DeliveryRow[]>();
   for (const item of state.items) {
     const list = groups.get(item.deliveryStatus);
@@ -89,7 +92,7 @@ export function FulfillmentExplorerView({ state }: { state: FulfillmentState }) 
               {STATUS_LABEL[status]} · {items.length}
             </span>
             {items.map((item) => (
-              <Row key={item.id} item={item} state={state} />
+              <Row key={item.id} item={item} state={state} onContextMenu={(e) => open(e, deliveryMenuItems(item), `Actions for ${item.itemTitle}`)} />
             ))}
           </div>
         ))}
@@ -112,8 +115,22 @@ export function FulfillmentExplorerView({ state }: { state: FulfillmentState }) 
           )}
         </div>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
+}
+
+/**
+ * Same status choices `FulfillmentProperties.tsx`'s `DeliveryView` and
+ * `FulfillmentBody.tsx`'s `DeliveryRecordView` already offer as buttons —
+ * `setDeliveryStatus` has no arm-then-confirm gate anywhere in this screen,
+ * so wiring it straight from the menu doesn't bypass anything.
+ */
+function deliveryMenuItems(item: DeliveryRow) {
+  return DELIVERY_STATUSES.filter((s) => s !== item.deliveryStatus).map((s) => ({
+    label: `Mark ${STATUS_LABEL[s].toLowerCase()}`,
+    onSelect: () => void setDeliveryStatus(item.id, s),
+  }));
 }
 
 function PageButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled: boolean }) {
@@ -150,7 +167,7 @@ function Chip({ label, on, onClick, tone }: { label: string; on: boolean; onClic
   );
 }
 
-function Row({ item, state }: { item: DeliveryRow; state: FulfillmentState }) {
+function Row({ item, state, onContextMenu }: { item: DeliveryRow; state: FulfillmentState; onContextMenu: (e: ReactMouseEvent) => void }) {
   const on = state.openItemId === item.id;
   const border = on ? ACCENT.info : item.isOverdue && item.deliveryStatus !== "delivered" ? ACCENT.amber : item.deliveryStatus === "blocked" ? ACCENT.danger : "transparent";
 
@@ -165,6 +182,7 @@ function Row({ item, state }: { item: DeliveryRow; state: FulfillmentState }) {
           getShellApi()?.openDoc({ kind: "delivery", id: String(item.id), screenId: "fulfillment" });
         }
       }}
+      onContextMenu={onContextMenu}
       style={{ display: "block", padding: "7px 13px", cursor: "pointer", borderLeft: `2px solid ${border}`, background: on ? WASH.hoverSoft : "transparent" }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>

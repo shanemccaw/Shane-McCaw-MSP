@@ -11,42 +11,65 @@ import { useSyncExternalStore } from "react";
 import { ScrollText } from "lucide-react";
 import { LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { getSnapshot, select, subscribe } from "./aiPromptsStore";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { copyPromptKey, getSnapshot, select, subscribe } from "./aiPromptsStore";
 import { AI_PROMPT_CATEGORIES, hasDraft, type AiPrompt } from "./aiPromptTypes";
 
 function Row({ prompt, on }: { prompt: AiPrompt; on: boolean }) {
+  const { menu, open, close } = useContextMenu();
+
+  const openInDoc = () => {
+    select(prompt.key);
+    getShellApi()?.openDoc({ kind: "prompt", id: prompt.key, screenId: "ai-prompts" });
+  };
+
   return (
-    <button
-      onClick={() => {
-        select(prompt.key);
-        getShellApi()?.openDoc({ kind: "prompt", id: prompt.key, screenId: "ai-prompts" });
-      }}
-      title={prompt.description || prompt.name}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        width: "100%",
-        height: 24,
-        padding: "0 8px 0 20px",
-        border: 0,
-        borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
-        background: on ? WASH.hover : "transparent",
-        color: on ? TEXT.bright : TEXT.softer,
-        fontFamily: "inherit",
-        fontSize: 12.5,
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      <ScrollText size={13} color={on ? TEXT.quiet : TEXT.label} style={{ flex: "none" }} />
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prompt.name}</span>
-      {hasDraft(prompt) && (
-        <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 9, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: TEXT.dim }}>
-          draft
-        </span>
-      )}
-    </button>
+    <>
+      <button
+        onClick={openInDoc}
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Open", onSelect: openInDoc },
+              { label: "Copy prompt key", onSelect: () => copyPromptKey(prompt.key) },
+              {
+                label: "Where it runs",
+                onSelect: () => window.open(`/admin-panel${prompt.featureRoute}`, "_blank", "noopener"),
+                disabled: !prompt.featureRoute,
+              },
+            ],
+            `Actions for ${prompt.name}`,
+          )
+        }
+        title={prompt.description || prompt.name}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          height: 24,
+          padding: "0 8px 0 20px",
+          border: 0,
+          borderLeft: `2px solid ${on ? TEXT.quiet : "transparent"}`,
+          background: on ? WASH.hover : "transparent",
+          color: on ? TEXT.bright : TEXT.softer,
+          fontFamily: "inherit",
+          fontSize: 12.5,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <ScrollText size={13} color={on ? TEXT.quiet : TEXT.label} style={{ flex: "none" }} />
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prompt.name}</span>
+        {hasDraft(prompt) && (
+          <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 9, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: TEXT.dim }}>
+            draft
+          </span>
+        )}
+      </button>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

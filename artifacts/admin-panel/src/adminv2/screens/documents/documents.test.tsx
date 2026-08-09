@@ -40,6 +40,13 @@ import {
 } from "./documentsStore";
 import { costLabel, statusTone, whenLabel, type DocumentEntry } from "./documentsTypes";
 
+const openDoc = vi.fn();
+const writeText = vi.fn();
+
+vi.mock("../../shell/ShellContext", () => ({
+  getShellApi: () => ({ openDoc, navigate: vi.fn(), dispatch: vi.fn() }),
+}));
+
 const fetchWithAuth = vi.fn();
 
 /** One list row as the real route actually returns it — a bare object in a bare array, no `html`. */
@@ -83,6 +90,9 @@ function serveDocuments(entries: DocumentEntry[], html: Record<string, string> =
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  openDoc.mockReset();
+  writeText.mockReset().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
   resetDocumentsStore();
   configureDocumentsFetch(fetchWithAuth);
 });
@@ -282,6 +292,88 @@ describe("rendering", () => {
     await vi.waitFor(() => expect(entryById("2")?.status).toBe("archived"));
     expect(confirmSpy).toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+});
+
+describe("right-click context menu on a document row", () => {
+  it("offers Open / Copy title / Archive, real actions only — no generate/regenerate", async () => {
+    serveDocuments([row({ id: "20", title: "Guest Access Review", status: "delivered" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Guest Access Review");
+    fireEvent.contextMenu(rowEl);
+
+    expect(screen.getByRole("menu", { name: "Actions for document Guest Access Review" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy title" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /generate/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /new document/i })).toBeNull();
+  });
+
+  it("Open wires through to the shell's openDoc, same as double-click", async () => {
+    serveDocuments([row({ id: "21", title: "Guest Access Review" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Guest Access Review");
+    fireEvent.contextMenu(rowEl);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+
+    expect(openDoc).toHaveBeenCalledWith({ kind: "document", id: "21", screenId: "documents" });
+  });
+
+  it("Copy title copies the real title to the clipboard", async () => {
+    serveDocuments([row({ id: "22", title: "Statement of Work — Fabrikam" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Statement of Work — Fabrikam");
+    fireEvent.contextMenu(rowEl);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy title" }));
+
+    expect(writeText).toHaveBeenCalledWith("Statement of Work — Fabrikam");
+  });
+
+  it("Archive from the context menu is gated by window.confirm, same as Properties and the contextual tab", async () => {
+    serveDocuments([row({ id: "23", title: "Security Findings — Contoso Ltd", status: "delivered" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Security Findings — Contoso Ltd");
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.contextMenu(rowEl);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Archive "Security Findings — Contoso Ltd"? The client keeps any copy already sent.',
+    );
+    // Declined — no archive request went out, status unchanged.
+    expect(fetchWithAuth.mock.calls.some((c) => String(c[0]).includes("/archive"))).toBe(false);
+    confirmSpy.mockRestore();
+  });
+
+  it("confirming Archive from the context menu actually archives, through the same store call", async () => {
+    serveDocuments([row({ id: "24", title: "Security Findings — Contoso Ltd", status: "delivered" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Security Findings — Contoso Ltd");
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.contextMenu(rowEl);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+    await vi.waitFor(() => expect(entryById("24")?.status).toBe("archived"));
+    confirmSpy.mockRestore();
+  });
+
+  it("an already-archived document offers a disabled Already archived item instead of Archive", async () => {
+    serveDocuments([row({ id: "25", title: "Old Report", status: "archived" })]);
+    render(<DocumentsExplorer />);
+
+    const rowEl = await screen.findByText("Old Report");
+    fireEvent.contextMenu(rowEl);
+
+    expect(screen.getByRole("menuitem", { name: "Already archived" }).getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByRole("menuitem", { name: "Archive" })).toBeNull();
   });
 });
 

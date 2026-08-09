@@ -11,6 +11,8 @@
 import { useSyncExternalStore } from "react";
 import { AlertTriangle, Copy, ExternalLink } from "lucide-react";
 import { ACCENT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   copyShareLink,
   expiringSoon,
@@ -123,24 +125,48 @@ function Overview({ state }: { state: SharedLinksState }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: ACCENT.amber }}>Expiring soon</span>
           {soon.map((s) => (
-            <div
-              key={s.id}
-              role="button"
-              tabIndex={0}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, cursor: "pointer" }}
-              onClick={() => void extendShareAction(s.id)}
-              title="Extend 14 days"
-            >
-              <AlertTriangle size={13} color={ACCENT.amber} />
-              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {clientLabel(s.client)}
-              </span>
-              <span style={{ fontSize: 11, color: ACCENT.amber }}>{relativeExpiry(s.expiresAt)}</span>
-            </div>
+            <ExpiringSoonRow key={s.id} share={s} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function ExpiringSoonRow({ share }: { share: Share }) {
+  const { menu, open, close } = useContextMenu();
+  const openRecord = () => getShellApi()?.openDoc({ kind: "share", id: String(share.id), screenId: "shared-links" });
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, cursor: "pointer" }}
+        onClick={() => void extendShareAction(share.id)}
+        title="Extend 14 days"
+        onContextMenu={(e) =>
+          open(
+            e,
+            [
+              { label: "Open", onSelect: openRecord },
+              { label: "Extend 14 days", onSelect: () => void extendShareAction(share.id) },
+              { label: "Revoke now", onSelect: () => void revokeShareAction(share.id), danger: true },
+              // No public viewer exists for a quick_win_scores link — never offer to copy a dead URL.
+              { label: "Copy link", onSelect: () => copyShareLink(shareUrl(share)), disabled: !isOpenable(share) },
+            ],
+            `Actions for ${clientLabel(share.client)}`,
+          )
+        }
+      >
+        <AlertTriangle size={13} color={ACCENT.amber} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {clientLabel(share.client)}
+        </span>
+        <span style={{ fontSize: 11, color: ACCENT.amber }}>{relativeExpiry(share.expiresAt)}</span>
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
   );
 }
 

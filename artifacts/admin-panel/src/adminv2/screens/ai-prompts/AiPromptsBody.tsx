@@ -16,6 +16,7 @@
 import { useSyncExternalStore } from "react";
 import DOMPurify from "dompurify";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   armReset,
   cancelReset,
@@ -36,7 +37,7 @@ import {
   toggleTestPanel,
   type AiPromptsStoreState,
 } from "./aiPromptsStore";
-import { actionLabel, actionTone, hasDraft, isModifiedFromDefault, relativeTime, type AiPrompt } from "./aiPromptTypes";
+import { actionLabel, actionTone, hasDraft, isModifiedFromDefault, relativeTime, type AiPrompt, type AiPromptVersion } from "./aiPromptTypes";
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 
@@ -251,6 +252,55 @@ function TestPanel({ state, prompt }: { state: AiPromptsStoreState; prompt: AiPr
 
 // ─── History rail ─────────────────────────────────────────────────────────────
 
+function VersionRow({ promptKey, version: v }: { promptKey: string; version: AiPromptVersion }) {
+  const { menu, open, close } = useContextMenu();
+  const loadIntoEditor = () => setEditorText(promptKey, v.body);
+
+  return (
+    <>
+      <div
+        onContextMenu={(event) =>
+          open(
+            event,
+            [
+              { label: "Load into editor", onSelect: loadIntoEditor },
+              { label: "Copy version body", onSelect: () => navigator.clipboard?.writeText(v.body) },
+            ],
+            `Actions for v${v.versionNumber} · ${actionLabel(v.action)}`,
+          )
+        }
+        style={{ padding: "8px 13px", borderBottom: `1px solid ${LINE.subtle}` }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: actionTone(v.action) }}>
+            v{v.versionNumber} · {actionLabel(v.action)}
+          </span>
+          <div style={{ flex: 1, minWidth: 4 }} />
+          <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11, color: TEXT.faint }}>{relativeTime(v.createdAt)}</span>
+        </div>
+        <button
+          onClick={loadIntoEditor}
+          title="Loads this version into the editor above — publish it to make it live"
+          style={{
+            marginTop: 6,
+            padding: "3px 9px",
+            borderRadius: 5,
+            border: `1px solid ${LINE.strong}`,
+            background: "transparent",
+            color: TEXT.dim,
+            fontFamily: "inherit",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          Load into editor
+        </button>
+      </div>
+      <ContextMenu menu={menu} onClose={close} />
+    </>
+  );
+}
+
 function HistoryRail({ state, prompt }: { state: AiPromptsStoreState; prompt: AiPrompt }) {
   const versions = state.versions[prompt.key];
   return (
@@ -266,34 +316,7 @@ function HistoryRail({ state, prompt }: { state: AiPromptsStoreState; prompt: Ai
             No saved versions yet — save a draft or publish to create the first one.
           </div>
         ) : (
-          versions.slice(0, 20).map((v) => (
-            <div key={v.id} style={{ padding: "8px 13px", borderBottom: `1px solid ${LINE.subtle}` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: actionTone(v.action) }}>
-                  v{v.versionNumber} · {actionLabel(v.action)}
-                </span>
-                <div style={{ flex: 1, minWidth: 4 }} />
-                <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11, color: TEXT.faint }}>{relativeTime(v.createdAt)}</span>
-              </div>
-              <button
-                onClick={() => setEditorText(prompt.key, v.body)}
-                title="Loads this version into the editor above — publish it to make it live"
-                style={{
-                  marginTop: 6,
-                  padding: "3px 9px",
-                  borderRadius: 5,
-                  border: `1px solid ${LINE.strong}`,
-                  background: "transparent",
-                  color: TEXT.dim,
-                  fontFamily: "inherit",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                Load into editor
-              </button>
-            </div>
-          ))
+          versions.slice(0, 20).map((v) => <VersionRow key={v.id} promptKey={prompt.key} version={v} />)
         )}
       </div>
     </div>

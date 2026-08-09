@@ -11,26 +11,43 @@
  *    model after, with Delete armed rather than firing on the first press.
  *  - the store: loading, creating, status transitions, and the "waiting on
  *    you" live-ribbon count reacting to real draft campaigns.
+ *  - the right-click menus on campaign rows/cards and on assets: every item
+ *    wired to an action the screen already has (status transitions, "Copy
+ *    the numbers", open), with Delete deliberately absent — it stays behind
+ *    the peek's arm-then-confirm gate, never duplicated here unguarded.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import { getLiveRibbonEntry } from "../../shell/liveRibbon";
+import { MarketingExplorer } from "./MarketingExplorer";
+import { MarketingBody } from "./MarketingBody";
 import {
   campaignById,
   configureMarketingFetch,
   createCampaign,
   generateAds,
   getSnapshot,
+  loadCampaignDetail,
   loadCampaigns,
   resetMarketingStore,
   saveGeneratedAds,
+  selectCampaign,
   setCampaignStatus,
   WATCH_WAITING_KEY,
 } from "./marketingStore";
 import type { CampaignListRow } from "./marketingTypes";
 
 const fetchWithAuth = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
+const openDoc = vi.fn();
+
+vi.mock("../../shell/ShellContext", () => ({
+  useShell: () => ({ openDoc, navigate: vi.fn() }),
+  getShellApi: () => ({ openDoc, openPeek: vi.fn(), navigate: vi.fn() }),
+  ADMINV2_BASE: "/adminv2",
+}));
 
 function campaign(overrides: Partial<CampaignListRow> = {}): CampaignListRow {
   return {
@@ -58,11 +75,18 @@ function jsonOnce(body: unknown, ok = true) {
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  openDoc.mockReset();
+  clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: clipboardWrite },
+    configurable: true,
+  });
   resetMarketingStore();
   configureMarketingFetch(fetchWithAuth);
 });
 
 afterEach(() => {
+  cleanup();
   resetMarketingStore();
 });
 
@@ -228,5 +252,105 @@ describe("waiting on you", () => {
     jsonOnce([campaign({ id: 1, status: "active" })]);
     await loadCampaigns();
     expect(getLiveRibbonEntry(WATCH_WAITING_KEY)?.label).toBe("Nothing waiting");
+  });
+});
+
+// ─── Context menus ──────────────────────────────────────────────────────────
+
+describe("MarketingExplorer campaign row context menu", () => {
+  it("offers Open, the real status transition, and Copy the numbers — no Delete", async () => {
+    jsonOnce([campaign({ id: 1, status: "draft" })]);
+    await loadCampaigns();
+    render(<MarketingExplorer />);
+
+    const row = screen.getByText("Copilot readiness — Q3").closest("button")!;
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    // draft's only legal transition, per CAMPAIGN_STATUS_TRANSITIONS.
+    expect(screen.getByRole("menuitem", { name: "Set it active" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy the numbers" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+  });
+
+  it("Copy the numbers copies the same real figures the store already computes", async () => {
+    jsonOnce([campaign({ id: 1, leadsGenerated: 11, revenueAttributed: "9600.00", emailsSent: 420, emailsSentAuto: 420 })]);
+    await loadCampaigns();
+    render(<MarketingExplorer />);
+
+    fireEvent.contextMenu(screen.getByText("Copilot readiness — Q3").closest("button")!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy the numbers" }));
+
+    expect(clipboardWrite).toHaveBeenCalledWith(JSON.stringify({ leadsGenerated: 11, revenueAttributed: "9600.00", emailsSent: 420, emailsSentAuto: 420 }, null, 2));
+  });
+
+  it("the status transition item calls the real PATCH, same as the contextual tab's button", async () => {
+    jsonOnce([campaign({ id: 1, status: "draft" })]);
+    await loadCampaigns();
+    render(<MarketingExplorer />);
+
+    fireEvent.contextMenu(screen.getByText("Copilot readiness — Q3").closest("button")!);
+    jsonOnce(campaign({ status: "active" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Set it active" }));
+
+    const [path, init] = fetchWithAuth.mock.calls[1]!;
+    expect(path).toBe("/api/admin/marketing/campaigns/1");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ status: "active" });
+  });
+});
+
+describe("MarketingBody campaign card context menu", () => {
+  it("offers Open it, the real status transition, and Copy the numbers — no Delete", async () => {
+    jsonOnce([campaign({ id: 1, status: "active" })]);
+    await loadCampaigns();
+    render(<MarketingBody />);
+
+    const card = screen.getByText("Copilot readiness — Q3").closest("button")!.parentElement!.parentElement!;
+    fireEvent.contextMenu(card);
+
+    expect(screen.getByRole("menuitem", { name: "Open it" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Pause it" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Mark completed" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy the numbers" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+  });
+
+  it("Open it selects the campaign and opens it as a doc, same as clicking the card's name", async () => {
+    jsonOnce([campaign({ id: 1 })]);
+    await loadCampaigns();
+    render(<MarketingBody />);
+
+    const card = screen.getByText("Copilot readiness — Q3").closest("button")!.parentElement!.parentElement!;
+    fireEvent.contextMenu(card);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open it" }));
+
+    expect(getSnapshot().selectedCampaignId).toBe(1);
+    expect(openDoc).toHaveBeenCalledWith({ kind: "campaign", id: "1", screenId: "marketing" });
+  });
+});
+
+describe("MarketingBody asset context menu", () => {
+  it("copies exactly the title and content already shown on the row", async () => {
+    jsonOnce([campaign({ id: 1 })]);
+    await loadCampaigns();
+    jsonOnce({
+      campaign: campaign({ id: 1 }),
+      assets: [{ id: 1, campaignId: 1, assetType: "ad_google", title: "Google — oversharing", content: "Full ad copy body.", metadata: {}, generatedWithOfferIds: null, createdAt: "2026-08-01T00:00:00.000Z" }],
+      landingPages: [],
+      offers: [],
+      emailEvents: [],
+    });
+    await loadCampaignDetail(1);
+    selectCampaign(1);
+    render(<MarketingBody recordId="1" />);
+
+    const assetRow = screen.getByText("Google — oversharing").parentElement!.parentElement!;
+    fireEvent.contextMenu(assetRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy title" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Google — oversharing");
+
+    fireEvent.contextMenu(assetRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy content" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Full ad copy body.");
   });
 });

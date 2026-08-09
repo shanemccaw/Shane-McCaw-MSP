@@ -14,7 +14,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
+import { AiPromptsExplorer } from "./AiPromptsExplorer";
+import { AiPromptsBody } from "./AiPromptsBody";
 import {
   configureAiPromptsFetch,
   discardChanges,
@@ -22,6 +25,7 @@ import {
   getSnapshot,
   isDirty,
   loadPrompts,
+  loadVersions,
   publish,
   resetAiPromptsStore,
   resetToDefault,
@@ -31,9 +35,15 @@ import {
   setEditorText,
   setTestClientUserId,
 } from "./aiPromptsStore";
-import type { AiPrompt } from "./aiPromptTypes";
+import type { AiPrompt, AiPromptVersion } from "./aiPromptTypes";
 
 const fetchWithAuth = vi.fn();
+const openDoc = vi.fn();
+const clipboardWrite = vi.fn((_text: string) => Promise.resolve());
+
+vi.mock("../../shell/ShellContext", () => ({
+  getShellApi: () => ({ openDoc, openPeek: vi.fn(), navigate: vi.fn() }),
+}));
 
 const PROMPTS: AiPrompt[] = [
   {
@@ -287,5 +297,71 @@ describe("runTestDraft", () => {
     expect(path).toBe("/api/admin/ai-prompts/1/test-draft");
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({ clientUserId: 42, body: "Draft a SOW for {{service}}." });
     expect(getSnapshot().testError).toMatch(/does not support Test Draft/);
+  });
+});
+
+// ─── Context menus ────────────────────────────────────────────────────────────
+
+describe("context menus", () => {
+  beforeEach(async () => {
+    openDoc.mockReset();
+    clipboardWrite.mockReset().mockImplementation(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: clipboardWrite }, configurable: true });
+    jsonOnce({ prompts: PROMPTS });
+    await loadPrompts();
+  });
+
+  afterEach(cleanup);
+
+  it("right-clicking a prompt row in the Explorer offers Open, Copy prompt key, and Where it runs, reusing the real click/copy behaviour", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<AiPromptsExplorer />);
+    const row = await screen.findByTitle("Drafts the SOW body.");
+
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy prompt key" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Where it runs" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy prompt key" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("insights-consulting-sow");
+
+    // "Open" reuses the same select + openDoc the click handler uses.
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(getSnapshot().selected).toBe("insights-consulting-sow");
+    expect(openDoc).toHaveBeenCalledWith({ kind: "prompt", id: "insights-consulting-sow", screenId: "ai-prompts" });
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Where it runs" }));
+    expect(openSpy).toHaveBeenCalledWith("/admin-panel/command/doc-generator", "_blank", "noopener");
+
+    openSpy.mockRestore();
+  });
+
+  it("right-clicking a version row in the History rail offers Load into editor and Copy version body, never overwriting the live body directly", async () => {
+    select("insights-consulting-sow");
+    const versions: AiPromptVersion[] = [
+      { id: 10, promptId: 1, versionNumber: 2, body: "Draft a SOW for {{service}}, v2.", action: "publish", createdAt: "2026-08-08T00:00:00.000Z" },
+    ];
+    jsonOnce({ versions });
+    await loadVersions("insights-consulting-sow", true);
+
+    render(<AiPromptsBody />);
+    await screen.findByText("v2 · published");
+
+    const row = screen.getByText("v2 · published").closest("div")!.parentElement as HTMLElement;
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menuitem", { name: "Load into editor" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy version body" }));
+    expect(clipboardWrite).toHaveBeenCalledWith("Draft a SOW for {{service}}, v2.");
+
+    // "Load into editor" stages the version into the in-progress editor only —
+    // it does not call saveDraft/publish, so the live/draft body is untouched.
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Load into editor" }));
+    expect(editorTextFor("insights-consulting-sow")).toBe("Draft a SOW for {{service}}, v2.");
+    expect(getSnapshot().prompts.find((p) => p.key === "insights-consulting-sow")?.promptBody).toBe("Draft a SOW for {{service}}.");
   });
 });

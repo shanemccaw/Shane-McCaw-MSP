@@ -13,6 +13,7 @@ import { useState, useSyncExternalStore } from "react";
 import { AlertTriangle, Loader2, Play, Trash2 } from "lucide-react";
 import { ACCENT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   deliveryById,
   getSnapshot,
@@ -88,6 +89,7 @@ function Toast({ message }: { message: string }) {
 // ── Overview (nothing open) ──────────────────────────────────────────────────
 
 function Overview({ state }: { state: FulfillmentState }) {
+  const { menu, open, close } = useContextMenu();
   const summary = state.summary;
   if (!summary && state.loading) {
     return <div style={{ padding: 20, fontSize: 12.5, color: TEXT.meta }}>Reading the queue…</div>;
@@ -141,6 +143,19 @@ function Overview({ state }: { state: FulfillmentState }) {
               role="button"
               tabIndex={0}
               onClick={() => getShellApi()?.openDoc({ kind: "delivery", id: String(item.id), screenId: "fulfillment" })}
+              onContextMenu={(e) =>
+                open(
+                  e,
+                  // Same status choices `FulfillmentProperties.tsx`'s `DeliveryView`
+                  // already offers as buttons — `setDeliveryStatus` has no
+                  // arm-then-confirm gate on this screen.
+                  DELIVERY_STATUSES.filter((s) => s !== item.deliveryStatus).map((s) => ({
+                    label: `Mark ${STATUS_LABEL[s].toLowerCase()}`,
+                    onSelect: () => void setDeliveryStatus(item.id, s),
+                  })),
+                  `Actions for ${item.itemTitle}`,
+                )
+              }
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, cursor: "pointer" }}
             >
               <AlertTriangle size={13} color={ACCENT.amber} />
@@ -150,6 +165,7 @@ function Overview({ state }: { state: FulfillmentState }) {
           ))}
         </div>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }

@@ -14,7 +14,10 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Search } from "lucide-react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, SURFACE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
+  archiveSelected,
+  copyText,
   getSnapshot,
   selectDocument,
   setCategory,
@@ -43,6 +46,7 @@ const TONE_COLOR: Record<string, string> = {
 
 export function DocumentsExplorer() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const { menu, open, close } = useContextMenu();
 
   useEffect(warmDocuments, []);
 
@@ -123,9 +127,12 @@ export function DocumentsExplorer() {
         {rows.length === 0 ? (
           <EmptyState loading={state.loading} loaded={state.loaded} filtered={Boolean(state.search.trim()) || state.category !== "All"} />
         ) : (
-          rows.map((entry) => <Row key={entry.id} entry={entry} selected={state.selectedId === entry.id} />)
+          rows.map((entry) => (
+            <Row key={entry.id} entry={entry} selected={state.selectedId === entry.id} onContextMenu={open} />
+          ))
         )}
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -141,8 +148,17 @@ function EmptyState({ loading, loaded, filtered }: { loading: boolean; loaded: b
   );
 }
 
-function Row({ entry, selected }: { entry: DocumentEntry; selected: boolean }) {
+function Row({
+  entry,
+  selected,
+  onContextMenu,
+}: {
+  entry: DocumentEntry;
+  selected: boolean;
+  onContextMenu: ReturnType<typeof useContextMenu>["open"];
+}) {
   const tone = TONE_COLOR[statusTone(entry.status)];
+  const archived = entry.status === "archived";
   return (
     <div
       role="button"
@@ -155,6 +171,32 @@ function Row({ entry, selected }: { entry: DocumentEntry; selected: boolean }) {
         }
       }}
       onDoubleClick={() => getShellApi()?.openDoc({ kind: "document", id: entry.id, screenId: "documents" })}
+      onContextMenu={(e) =>
+        onContextMenu(
+          e,
+          [
+            {
+              label: "Open",
+              onSelect: () => getShellApi()?.openDoc({ kind: "document", id: entry.id, screenId: "documents" }),
+            },
+            { label: "Copy title", onSelect: () => copyText(entry.title) },
+            {
+              label: archived ? "Already archived" : "Archive",
+              danger: true,
+              disabled: archived,
+              // Same gate as the Properties panel and the contextual tab's Archive
+              // item — a real window.confirm, not a bypass, since a context menu
+              // item has no in-place arm-then-press-again UI of its own to reuse.
+              onSelect: () => {
+                if (window.confirm(`Archive "${entry.title}"? The client keeps any copy already sent.`)) {
+                  void archiveSelected(entry.id);
+                }
+              },
+            },
+          ],
+          `Actions for document ${entry.title}`,
+        )
+      }
       title={entry.title}
       style={{
         display: "flex",

@@ -19,11 +19,13 @@
  * doc tab, its own contextual tab — is the peek's "Open it properly".
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { Search } from "lucide-react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, SURFACE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { getSnapshot, selectRun, setFilter, setSearch, subscribe, warmRunHistory } from "./runHistoryStore";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { copyText, forgetRun, getSnapshot, selectRun, setFilter, setSearch, subscribe, warmRunHistory } from "./runHistoryStore";
+import { rerunEntry } from "./runHistoryActions";
 import {
   dayBand,
   durationLabel,
@@ -258,7 +260,46 @@ function EmptyState({
   );
 }
 
+/**
+ * Right-click reuses exactly what the row's own double-click, the "Run
+ * Tools" contextual tab and the peek already offer — `rerunEntry` (which
+ * arms its own `window.confirm` for a migration re-run, the one re-run that
+ * writes to the live database from text nobody in this session has read),
+ * `copyText`, `openPeek`, and `forgetRun` behind the identical confirm copy
+ * `index.tsx`'s contextual tab uses. Nothing here is a new capability.
+ */
 function Row({ entry, showDay, selected }: { entry: RunHistoryEntry; showDay: boolean; selected: boolean }) {
+  const { menu, open, close } = useContextMenu();
+
+  function rerunLabel(): string {
+    if (entry.migrationFile) return "Run this migration again";
+    return entry.kind === "sql" ? "Open in SQL Runner" : "Run again";
+  }
+
+  function onContextMenu(event: ReactMouseEvent) {
+    open(
+      event,
+      [
+        { label: "Open", onSelect: () => getShellApi()?.openPeek("run", entry.id) },
+        { label: rerunLabel(), onSelect: () => rerunEntry(entry) },
+        {
+          label: "Copy output",
+          onSelect: () => copyText(entry.output ?? ""),
+          disabled: !entry.hasOutput || entry.output === undefined,
+        },
+        { label: "Copy command", onSelect: () => copyText(entry.cmd) },
+        {
+          label: "Forget this run",
+          danger: true,
+          onSelect: () => {
+            if (window.confirm(`Forget "${entry.title}"? Its output goes with it.`)) void forgetRun(entry.id);
+          },
+        },
+      ],
+      `Actions for ${entry.title}`,
+    );
+  }
+
   return (
     <>
       {showDay ? (
@@ -286,6 +327,7 @@ function Row({ entry, showDay, selected }: { entry: RunHistoryEntry; showDay: bo
           }
         }}
         onDoubleClick={() => getShellApi()?.openPeek("run", entry.id)}
+        onContextMenu={onContextMenu}
         title={entry.ok ? entry.title : `${entry.title} — failed`}
         style={{
           display: "flex",
@@ -402,6 +444,7 @@ function Row({ entry, showDay, selected }: { entry: RunHistoryEntry; showDay: bo
           ) : null}
         </div>
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </>
   );
 }

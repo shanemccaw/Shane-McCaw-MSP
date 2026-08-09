@@ -13,11 +13,12 @@
  * "Copy the catalog".
  */
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { CheckCircle2, Plus, XCircle, Zap } from "lucide-react";
 import { ACCENT, LINE, PRIMARY, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { copyTypesAsJson, createTypeInteractive, getSnapshot, seedPresetTypes, subscribe } from "./fulfillmentStore";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { copyTypesAsJson, createTypeInteractive, getSnapshot, patchType, seedPresetTypes, subscribe } from "./fulfillmentStore";
 import { firedWhenLabel, type FulfillmentTypeRow } from "./fulfillmentTypes";
 
 function newType(): void {
@@ -28,6 +29,7 @@ function newType(): void {
 
 export function FulfillmentTypesPanel() {
   const state = useSyncExternalStore(subscribe, getSnapshot);
+  const { menu, open, close } = useContextMenu();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -57,9 +59,34 @@ export function FulfillmentTypesPanel() {
           </div>
         )}
         {state.types.map((t) => (
-          <Row key={t.key} type={t} />
+          <Row
+            key={t.key}
+            type={t}
+            onContextMenu={(e) =>
+              open(
+                e,
+                [
+                  {
+                    label: t.isActive ? "Deactivate" : "Activate",
+                    onSelect: () => void patchType(t.key, { isActive: !t.isActive }),
+                  },
+                  {
+                    label: t.recurring ? "Switch to one-time billing" : "Switch to recurring billing",
+                    onSelect: () => void patchType(t.key, { recurring: !t.recurring }),
+                  },
+                  // Delete is deliberately absent — it is gated behind a
+                  // press-twice arm in FulfillmentBody.tsx's TypeRecordView
+                  // (and `confirm: true` on the peek's action), and a
+                  // context menu item has no way to faithfully reproduce
+                  // that arm, so it cannot go here without bypassing it.
+                ],
+                `Actions for fulfillment type ${t.label}`,
+              )
+            }
+          />
         ))}
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -87,7 +114,7 @@ const primaryButton: React.CSSProperties = {
   cursor: "pointer",
 };
 
-function Row({ type }: { type: FulfillmentTypeRow }) {
+function Row({ type, onContextMenu }: { type: FulfillmentTypeRow; onContextMenu: (e: ReactMouseEvent) => void }) {
   return (
     <div
       role="button"
@@ -99,6 +126,7 @@ function Row({ type }: { type: FulfillmentTypeRow }) {
           getShellApi()?.openPeek("fulfillmentType", type.key);
         }
       }}
+      onContextMenu={onContextMenu}
       style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 12px", borderBottom: `1px solid ${LINE.subtle}`, cursor: "pointer" }}
     >
       <div style={{ flex: "1 1 220px", minWidth: 0 }}>

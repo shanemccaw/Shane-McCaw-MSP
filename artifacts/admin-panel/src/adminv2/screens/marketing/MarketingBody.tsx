@@ -6,13 +6,15 @@
  * hero headlines/email templates are not part of this screen.
  */
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { getShellApi } from "../../shell/ShellContext";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
 import {
   campaignAssets,
   campaignById,
   clearAdGen,
+  copyCampaignNumbers,
   createCampaign,
   generateAds,
   getSnapshot,
@@ -34,6 +36,7 @@ import {
   shortDate,
   usd,
   type AdType,
+  type CampaignAsset,
   type CampaignListRow,
 } from "./marketingTypes";
 
@@ -192,9 +195,9 @@ function NewCampaignForm({ onDone }: { onDone: (id: number) => void }) {
   );
 }
 
-function CampaignCard({ c, onOpen }: { c: CampaignListRow; onOpen: () => void }) {
+function CampaignCard({ c, onOpen, onContextMenu }: { c: CampaignListRow; onOpen: () => void; onContextMenu: (event: ReactMouseEvent) => void }) {
   return (
-    <div style={{ flex: "1 1 260px", minWidth: 220, padding: "13px 15px", borderRadius: 9, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
+    <div onContextMenu={onContextMenu} style={{ flex: "1 1 260px", minWidth: 220, padding: "13px 15px", borderRadius: 9, border: `1px solid ${LINE.base}`, background: SURFACE.card }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <button
           onClick={onOpen}
@@ -227,6 +230,13 @@ function CampaignCard({ c, onOpen }: { c: CampaignListRow; onOpen: () => void })
 
 function CampaignsListView({ state }: { state: MarketingState }) {
   const shell = getShellApi();
+  const { menu, open, close } = useContextMenu();
+
+  function openCampaign(c: CampaignListRow): void {
+    selectCampaign(c.id);
+    shell?.openDoc({ kind: "campaign", id: String(c.id), screenId: "marketing" });
+  }
+
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "16px 18px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
@@ -245,14 +255,28 @@ function CampaignsListView({ state }: { state: MarketingState }) {
             <CampaignCard
               key={c.id}
               c={c}
-              onOpen={() => {
-                selectCampaign(c.id);
-                shell?.openDoc({ kind: "campaign", id: String(c.id), screenId: "marketing" });
-              }}
+              onOpen={() => openCampaign(c)}
+              onContextMenu={(event) =>
+                // Real actions only: open it, the same status moves the contextual tab and
+                // detail-view buttons already expose (`CAMPAIGN_STATUS_TRANSITIONS`), and the
+                // numbers-copy the peek already offers. Delete is deliberately left out — it
+                // stays behind the peek's arm-then-confirm gate (`index.tsx`), never duplicated
+                // here without a confirm step.
+                open(
+                  event,
+                  [
+                    { label: "Open it", onSelect: () => openCampaign(c) },
+                    ...CAMPAIGN_STATUS_TRANSITIONS[c.status].map((t) => ({ label: t.label, onSelect: () => void setCampaignStatus(c.id, t.to) })),
+                    { label: "Copy the numbers", onSelect: () => copyCampaignNumbers(c.id) },
+                  ],
+                  `Actions for ${c.name}`,
+                )
+              }
             />
           ))}
         </div>
       )}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
@@ -318,11 +342,20 @@ function AdGenerator({ campaign }: { campaign: CampaignListRow }) {
   );
 }
 
+/** Copies exactly what's on screen — no store call exists for a single asset's text, so this reads the same fields the row already renders. */
+function assetMenuItems(a: CampaignAsset) {
+  return [
+    { label: "Copy title", onSelect: () => void navigator.clipboard?.writeText(a.title) },
+    { label: "Copy content", onSelect: () => void navigator.clipboard?.writeText(a.content) },
+  ];
+}
+
 function CampaignDetailView({ campaign, state }: { campaign: CampaignListRow; state: MarketingState }) {
   const detail = state.campaignDetails[campaign.id];
   const assets = campaignAssets(campaign.id);
   const saving = state.savingIds.has(`campaign:${campaign.id}`);
   const available = CAMPAIGN_STATUS_TRANSITIONS[campaign.status];
+  const { menu: assetMenu, open: openAssetMenu, close: closeAssetMenu } = useContextMenu();
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: SURFACE.app }}>
@@ -366,7 +399,11 @@ function CampaignDetailView({ campaign, state }: { campaign: CampaignListRow; st
             <Note>Nothing generated for this campaign yet.</Note>
           ) : (
             assets.map((a) => (
-              <div key={a.id} style={{ padding: "10px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div
+                key={a.id}
+                onContextMenu={(event) => openAssetMenu(event, assetMenuItems(a), `Actions for ${a.title}`)}
+                style={{ padding: "10px 13px", borderRadius: 7, border: `1px solid ${LINE.base}`, background: SURFACE.card, display: "flex", flexDirection: "column", gap: 4 }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Badge text={ASSET_TYPE_LABEL[a.assetType]} tone={ACCENT.info} />
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
@@ -393,6 +430,7 @@ function CampaignDetailView({ campaign, state }: { campaign: CampaignListRow; st
           </div>
         )}
       </div>
+      <ContextMenu menu={assetMenu} onClose={closeAssetMenu} />
     </div>
   );
 }

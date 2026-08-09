@@ -8,12 +8,13 @@
  * sub-view switcher and beneath it is the real campaign list.
  */
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import { BarChart3, Megaphone } from "lucide-react";
 import { FONT, LINE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import { campaignAssets, getSnapshot, selectCampaign, setTab, subscribe, type MarketingState, type MarketingTab } from "./marketingStore";
-import { CAMPAIGN_STATUS_TONE } from "./marketingTypes";
+import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { campaignAssets, copyCampaignNumbers, getSnapshot, selectCampaign, setCampaignStatus, setTab, subscribe, type MarketingState, type MarketingTab } from "./marketingStore";
+import { CAMPAIGN_STATUS_TRANSITIONS, CAMPAIGN_STATUS_TONE, type CampaignListRow } from "./marketingTypes";
 
 const SECTIONS: Array<{ tab: MarketingTab; label: string; icon: typeof Megaphone }> = [
   { tab: "campaigns", label: "Campaigns", icon: Megaphone },
@@ -49,10 +50,25 @@ function SectionRow({ tab, label, icon: Icon, on, count }: { tab: MarketingTab; 
   );
 }
 
-function Row({ on, tone, name, sub, onSelect }: { on: boolean; tone?: string; name: string; sub?: string; onSelect: () => void }) {
+function Row({
+  on,
+  tone,
+  name,
+  sub,
+  onSelect,
+  onContextMenu,
+}: {
+  on: boolean;
+  tone?: string;
+  name: string;
+  sub?: string;
+  onSelect: () => void;
+  onContextMenu?: (event: ReactMouseEvent) => void;
+}) {
   return (
     <button
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{
         display: "flex",
         alignItems: "center",
@@ -82,7 +98,17 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: "8px 12px", fontSize: 11, color: TEXT.faint, textWrap: "pretty" }}>{children}</div>;
 }
 
-function CampaignRows({ state }: { state: MarketingState }) {
+/** Real, non-destructive actions only — Delete stays behind the peek's arm-then-confirm gate (`index.tsx`'s `campaign` peek), never duplicated here. */
+function campaignRowMenuItems(c: CampaignListRow, openIt: () => void) {
+  const transitions = CAMPAIGN_STATUS_TRANSITIONS[c.status];
+  return [
+    { label: "Open", onSelect: openIt },
+    ...transitions.map((t) => ({ label: t.label, onSelect: () => void setCampaignStatus(c.id, t.to) })),
+    { label: "Copy the numbers", onSelect: () => copyCampaignNumbers(c.id) },
+  ];
+}
+
+function CampaignRows({ state, onContextMenu }: { state: MarketingState; onContextMenu: (event: ReactMouseEvent, c: CampaignListRow) => void }) {
   if (state.campaignsLoading && state.campaigns.length === 0) return <Empty>Reading campaigns…</Empty>;
   if (state.campaigns.length === 0) return <Empty>{state.campaignsError ?? "No campaigns yet."}</Empty>;
   return (
@@ -98,6 +124,7 @@ function CampaignRows({ state }: { state: MarketingState }) {
             selectCampaign(c.id);
             getShellApi()?.openDoc({ kind: "campaign", id: String(c.id), screenId: "marketing" });
           }}
+          onContextMenu={(event) => onContextMenu(event, c)}
         />
       ))}
     </>
@@ -106,6 +133,7 @@ function CampaignRows({ state }: { state: MarketingState }) {
 
 export function MarketingExplorer() {
   const state = useSyncExternalStore(subscribe, getSnapshot);
+  const { menu, open, close } = useContextMenu();
 
   return (
     <div style={{ padding: "6px 0 12px" }}>
@@ -113,8 +141,23 @@ export function MarketingExplorer() {
         <SectionRow key={s.tab} tab={s.tab} label={s.label} icon={s.icon} on={state.tab === s.tab} count={s.tab === "campaigns" ? state.campaigns.length || null : null} />
       ))}
       <div style={{ margin: "6px 0", borderTop: `1px solid ${LINE.subtle}` }} />
-      {state.tab === "campaigns" && <CampaignRows state={state} />}
+      {state.tab === "campaigns" && (
+        <CampaignRows
+          state={state}
+          onContextMenu={(event, c) =>
+            open(
+              event,
+              campaignRowMenuItems(c, () => {
+                selectCampaign(c.id);
+                getShellApi()?.openDoc({ kind: "campaign", id: String(c.id), screenId: "marketing" });
+              }),
+              `Actions for ${c.name}`,
+            )
+          }
+        />
+      )}
       {state.tab === "analytics" && <Empty>Real visitors, pages, sources and the conversion funnel — nothing to pick here.</Empty>}
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   );
 }
