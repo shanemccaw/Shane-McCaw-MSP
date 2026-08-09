@@ -21,7 +21,7 @@ import {
   issuesForEpic, chatsForIssue, chatsForEpic,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
-  selectIssue, syncFromGitHub,
+  selectIssue, selectEpic, updateIssue, setTriageActive, syncFromGitHub,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -526,10 +526,228 @@ function ChatDetail({ id }: { id: number }) {
   );
 }
 
+function TriageView() {
+  const state = useStore();
+  const triagable = state.issues.filter((i) => i.status !== "closed" && i.status !== "done");
+  const [index, setIndex] = useState(0);
+
+  // Clamp index to valid bounds
+  const currentIndex = Math.max(0, Math.min(index, triagable.length - 1));
+  const issue = triagable[currentIndex];
+
+  if (triagable.length === 0) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        <div style={{ fontSize: 48 }}>🎉</div>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>All issues triaged!</h1>
+        <p style={{ margin: 0, fontSize: 14, color: TEXT.dim, maxWidth: 400 }}>
+          Your pile of open issues is completely clean. Beautiful job!
+        </p>
+        <button
+          onClick={() => setTriageActive(false)}
+          style={{
+            marginTop: 8, padding: "8px 16px", borderRadius: 6, border: 0,
+            background: ACCENT.info, color: SURFACE.well, fontWeight: 600,
+            cursor: "pointer", fontFamily: FONT.sans, fontSize: 13,
+          }}
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  const epic = issue.epicId ? epicById(issue.epicId) : null;
+
+  async function handleAssignEpic(epicId: number | null) {
+    await updateIssue(issue.id, { epicId });
+  }
+
+  async function handleSetStatus(status: IssueStatus) {
+    await updateIssue(issue.id, { status });
+  }
+
+  async function handleDelete() {
+    if (window.confirm(`Delete issue "${issue.title}"?`)) {
+      await deleteIssue(issue.id);
+    }
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 600, display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: ACCENT.amber }}>
+            Triage Mode
+          </span>
+          <h1 style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 800, color: TEXT.bright }}>
+            Clean the Pile
+          </h1>
+        </div>
+        <button
+          onClick={() => setTriageActive(false)}
+          style={{
+            padding: "5px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+            background: "transparent", color: TEXT.dim, cursor: "pointer",
+            fontFamily: FONT.sans, fontSize: 11.5,
+          }}
+        >
+          Exit Triage
+        </button>
+      </div>
+
+      {/* Progress Bar */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: TEXT.caption }}>
+          <span>{triagable.length} issues remaining</span>
+          <span>{currentIndex + 1} of {triagable.length}</span>
+        </div>
+        <div style={{ height: 6, background: SURFACE.well, borderRadius: 3, overflow: "hidden" }}>
+          <div style={{
+            height: "100%", background: ACCENT.info, borderRadius: 3,
+            width: `${((currentIndex + 1) / triagable.length) * 100}%`,
+            transition: "width 200ms ease",
+          }} />
+        </div>
+      </div>
+
+      {/* Current Issue Card */}
+      <div style={{
+        padding: 20, background: SURFACE.card, borderRadius: 8,
+        border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <GitPullRequest size={15} color={ISSUE_STATUS_COLOR[issue.status]} />
+          <span style={{ fontSize: 11.5, fontFamily: FONT.mono, color: TEXT.dim }}>
+            {issue.githubNumber ? `#${issue.githubNumber}` : "Local Issue"}
+          </span>
+          <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
+        </div>
+        
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: TEXT.primary }}>
+          {issue.title}
+        </h2>
+
+        {epic ? (
+          <p style={{ margin: 0, fontSize: 12.5, color: TEXT.quiet }}>
+            Assigned to Epic: <strong style={{ color: ACCENT.greenSoft }}>{epic.title}</strong>
+          </p>
+        ) : (
+          <p style={{ margin: 0, fontSize: 12.5, color: ACCENT.amber, fontWeight: 500 }}>
+            ⚠️ No Epic assigned
+          </p>
+        )}
+      </div>
+
+      {/* Decisions Grid */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* 1. Epic Assignment */}
+        <Section title="Assign to Epic">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+            <button
+              onClick={() => void handleAssignEpic(null)}
+              style={{
+                padding: "8px 12px", borderRadius: 6,
+                border: `1px solid ${!issue.epicId ? ACCENT.amber : LINE.control}`,
+                background: !issue.epicId ? `${ACCENT.amber}12` : SURFACE.well,
+                color: !issue.epicId ? ACCENT.amber : TEXT.quiet,
+                cursor: "pointer", fontSize: 12, fontWeight: 600, textAlign: "left",
+                fontFamily: FONT.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              No Epic
+            </button>
+            {state.epics.filter(e => e.status !== "closed").map((e) => (
+              <button
+                key={e.id}
+                onClick={() => void handleAssignEpic(e.id)}
+                style={{
+                  padding: "8px 12px", borderRadius: 6,
+                  border: `1px solid ${issue.epicId === e.id ? ACCENT.greenSoft : LINE.control}`,
+                  background: issue.epicId === e.id ? `${ACCENT.greenSoft}12` : SURFACE.well,
+                  color: issue.epicId === e.id ? ACCENT.greenSoft : TEXT.quiet,
+                  cursor: "pointer", fontSize: 12, fontWeight: 600, textAlign: "left",
+                  fontFamily: FONT.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}
+              >
+                {e.title}
+              </button>
+            ))}
+          </div>
+        </Section>
+
+        {/* 2. Status Actions */}
+        <Section title="Set Status & Advance">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+            {(["backlog", "in_progress", "done", "closed"] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => void handleSetStatus(status)}
+                style={{
+                  padding: "8px 4px", borderRadius: 6,
+                  border: `1px solid ${issue.status === status ? ISSUE_STATUS_COLOR[status] : LINE.control}`,
+                  background: issue.status === status ? `${ISSUE_STATUS_COLOR[status]}15` : SURFACE.well,
+                  color: issue.status === status ? ISSUE_STATUS_COLOR[status] : TEXT.quiet,
+                  cursor: "pointer", fontSize: 11, fontWeight: 600,
+                  fontFamily: FONT.sans,
+                }}
+              >
+                {ISSUE_STATUS_LABEL[status]}
+              </button>
+            ))}
+          </div>
+        </Section>
+      </div>
+
+      {/* Footer controls */}
+      <div style={{ display: "flex", gap: 10, marginTop: 12, borderTop: `1px solid ${LINE.quiet}`, paddingTop: 16 }}>
+        <button
+          onClick={() => setIndex((i) => Math.max(0, i - 1))}
+          disabled={currentIndex === 0}
+          style={{
+            padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+            background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
+            fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
+            opacity: currentIndex === 0 ? 0.4 : 1,
+          }}
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => setIndex((i) => Math.min(triagable.length - 1, i + 1))}
+          disabled={currentIndex === triagable.length - 1}
+          style={{
+            padding: "8px 16px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+            background: SURFACE.well, color: TEXT.quiet, fontSize: 12,
+            fontFamily: FONT.sans, cursor: currentIndex === triagable.length - 1 ? "default" : "pointer",
+            opacity: currentIndex === triagable.length - 1 ? 0.4 : 1,
+            marginLeft: "auto",
+          }}
+        >
+          Skip / Next
+        </button>
+        <button
+          onClick={() => void handleDelete()}
+          style={{
+            padding: "8px 16px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
+            background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12,
+            fontFamily: FONT.sans, cursor: "pointer",
+          }}
+        >
+          Delete Issue
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 export function BuildTrackerBody() {
   const state = useStore();
+
+  if (state.triageActive) return <TriageView />;
 
   if (state.selectedChatId !== null) {
     const chat = chatById(state.selectedChatId);

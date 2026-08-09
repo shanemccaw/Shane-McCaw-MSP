@@ -39,6 +39,7 @@ export interface BuildTrackerState {
   /** Transient status message shown in right panel. */
   message: string | null;
   savingIds: Set<string>;
+  triageActive: boolean;
 }
 
 function initialState(): BuildTrackerState {
@@ -57,6 +58,7 @@ function initialState(): BuildTrackerState {
     chatsError: null,
     message: null,
     savingIds: new Set(),
+    triageActive: false,
   };
 }
 
@@ -182,15 +184,19 @@ export async function loadAll(): Promise<void> {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function selectEpic(id: number | null) {
-  set({ selectedEpicId: id, selectedIssueId: null, selectedChatId: null });
+  set({ selectedEpicId: id, selectedIssueId: null, selectedChatId: null, triageActive: false });
 }
 
 export function selectIssue(id: number | null) {
-  set({ selectedIssueId: id, selectedChatId: null });
+  set({ selectedIssueId: id, selectedChatId: null, triageActive: false });
 }
 
 export function selectChat(id: number | null) {
-  set({ selectedChatId: id });
+  set({ selectedChatId: id, triageActive: false });
+}
+
+export function setTriageActive(active: boolean) {
+  set({ triageActive: active });
 }
 
 function flashMessage(msg: string) {

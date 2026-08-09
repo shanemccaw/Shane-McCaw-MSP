@@ -38,7 +38,7 @@ import {
   chatsForIssue, unlinkedCount,
   updateEpic, updateIssue, updateChat,
   deleteEpic, deleteIssue, deleteChat,
-  syncFromGitHub, loadAll,
+  syncFromGitHub, loadAll, setTriageActive,
   WATCH_UNLINKED_KEY,
 } from "./buildTrackerStore";
 import {
@@ -225,6 +225,22 @@ registerScreen({
                 : []),
             ],
           },
+          {
+            label: "Triage",
+            large: [
+              {
+                label: "Triage issues",
+                icon: BookOpen,
+                intent: "record",
+                color: ACCENT.amber,
+                onSelect: () => {
+                  goto();
+                  setTriageActive(true);
+                },
+                title: "Decide what to do with the pile of open issues",
+              },
+            ],
+          },
         ],
       };
     }
@@ -313,6 +329,22 @@ registerScreen({
               ...(issue.githubUrl
                 ? [{ label: "GitHub Issue", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(issue.githubUrl!, "_blank") }]
                 : []),
+            ],
+          },
+          {
+            label: "Triage",
+            large: [
+              {
+                label: "Triage issues",
+                icon: BookOpen,
+                intent: "record",
+                color: ACCENT.amber,
+                onSelect: () => {
+                  goto();
+                  setTriageActive(true);
+                },
+                title: "Decide what to do with the pile of open issues",
+              },
             ],
           },
         ],
