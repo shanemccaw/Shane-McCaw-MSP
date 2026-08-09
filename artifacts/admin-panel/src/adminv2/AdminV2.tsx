@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
 import "./screens/live-scan";
+import "./screens/crm";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -26,6 +27,9 @@ import "./screens/live-scan";
 // of route"; this is a direct, documented workaround, the same shape as
 // `getShellApi()` in `ShellContext.tsx`.
 import { FloatingDeployConsole } from "./screens/git/FloatingDeployConsole";
+// Same reasoning as FloatingDeployConsole, for the CRM screen's fetch bridge
+// — see CrmFetchBridge.tsx's doc comment.
+import { CrmFetchBridge } from "./screens/crm/CrmFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -65,6 +69,7 @@ function AdminV2Inner() {
     >
       <ActiveScreen />
       <FloatingDeployConsole />
+      <CrmFetchBridge />
     </Shell>
   );
 }
