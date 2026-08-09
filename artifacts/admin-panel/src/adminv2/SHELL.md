@@ -206,9 +206,11 @@ A peek is how a record is handled **without leaving**. Clicking a row in any
 ribbon gallery opens one rather than navigating.
 
 Supported kinds: `endpoint` `package` `lead` `script` `document` `tenant`
-`workflow` `prompt` `service` `customer` `mail` `msp` `user` `group` `ou`.
+`workflow` `prompt` `service` `customer` `mail` `msp` `user` `group` `ou`
+`signal` `alert` `exception` `incident` `dlq` `migration` `engine` `run`.
 Unlike the seven fixed tabs, this list is not closed — a screen that owns a
-genuinely new record type extends `PEEK_KINDS` in `registry/types.ts`.
+genuinely new record type extends `PEEK_KINDS` in `registry/types.ts`, where
+each addition carries a doc comment saying why no existing kind fitted.
 
 ```tsx
 registerScreen({

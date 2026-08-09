@@ -29,6 +29,7 @@ import "./screens/endpoints";
 import "./screens/sql";
 import "./screens/packages";
 import "./screens/engines";
+import "./screens/run-history";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own

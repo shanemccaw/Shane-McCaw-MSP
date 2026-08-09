@@ -29,6 +29,10 @@ import {
   type SqlScriptInput,
 } from "./sqlApi";
 import { EMPTY_SQL_OUTPUT, type MigrationFile, type SavedScript, type SchemaTable, type SqlOutput } from "./sqlTypes";
+// Every executed query and migration is logged to the Run History screen —
+// same one-way dependency the Deploy Console has (`screens/git/deployStore.ts`):
+// that screen owns the log, this one only reports what it just ran.
+import { recordSqlRun } from "../run-history/runHistoryStore";
 
 export type ResultView = "table" | "json";
 
@@ -170,24 +174,43 @@ function clearDraft(): void {
 
 // ── Execution ────────────────────────────────────────────────────────────────
 
-async function runStatements(run: () => Promise<import("./sqlTypes").SqlStatementResult[]>): Promise<void> {
+/**
+ * The one choke point both `runQueryText` and `runMigrationFile` go through,
+ * which is why the Run History write lives here rather than in each caller:
+ * a future third way to execute SQL gets logged for free instead of being the
+ * one path that quietly is not.
+ */
+async function runStatements(
+  run: () => Promise<import("./sqlTypes").SqlStatementResult[]>,
+  record: { cmd: string; label?: string; migrationFile?: string },
+): Promise<void> {
+  const startedAt = Date.now();
   setState({ output: { isExecuting: true, statements: null, error: null } });
   try {
     const statements = await run();
     setState({ output: { isExecuting: false, statements, error: null } });
+    recordSqlRun({ ...record, startedAt, statements, error: null });
   } catch (err) {
-    setState({ output: { isExecuting: false, statements: null, error: err instanceof Error ? err.message : String(err) } });
+    const error = err instanceof Error ? err.message : String(err);
+    setState({ output: { isExecuting: false, statements: null, error } });
+    recordSqlRun({ ...record, startedAt, statements: null, error });
   }
 }
 
 export async function runQueryText(query: string): Promise<void> {
   if (!adminFetchRef || !query.trim()) return;
-  await runStatements(() => executeSql(adminFetchRef!, query));
+  await runStatements(() => executeSql(adminFetchRef!, query), { cmd: query });
 }
 
 export async function runMigrationFile(filename: string): Promise<void> {
   if (!adminFetchRef) return;
-  await runStatements(() => executeMigrationFile(adminFetchRef!, filename));
+  // `cmd` is the repo path, not SQL: the file is read off the server
+  // filesystem and its text never reaches the browser.
+  await runStatements(() => executeMigrationFile(adminFetchRef!, filename), {
+    cmd: `lib/db/migrations/manual/${filename}`,
+    label: filename,
+    migrationFile: filename,
+  });
   // The file's own trailing self-mark INSERT (#497) just changed `ranAt` server-side.
   void loadMigrations();
 }

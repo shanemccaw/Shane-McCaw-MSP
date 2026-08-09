@@ -240,6 +240,15 @@ export interface ContextualTabSpec {
  * resolve — and no existing kind describes it: it is not a `package` of
  * checks, not a `workflow`, and not a `signal` (an engine *sums* signals;
  * it is not one).
+ *
+ * `run` was added for the Run History screen (`screens/run-history/`) — one
+ * completed execution: a Deploy Console command or a SQL Runner query, with
+ * the output it printed and what it changed. It is not a `script` (a script
+ * is the reusable text; a run is one firing of it, and most runs never came
+ * from a saved script at all) and not a `migration` (a migration file is a
+ * thing on disk that may have run many times). Note the deliberate near-miss
+ * with `CommandKind`’s `"run"`, which is a palette *action* badge — the two
+ * unions are separate and neither is keyed by the other.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -264,6 +273,7 @@ export const PEEK_KINDS = [
   "dlq",
   "migration",
   "engine",
+  "run",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
