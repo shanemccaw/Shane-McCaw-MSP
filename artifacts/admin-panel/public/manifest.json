@@ -2,7 +2,7 @@
   "name": "Shane McCaw Consulting — Admin Panel",
   "short_name": "Admin Panel",
   "description": "Platform admin console — installable to the home screen for on-the-go push alerts.",
-  "start_url": "/",
+  "start_url": "/admin-panel/playground",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

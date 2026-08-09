@@ -32,6 +32,7 @@ import MspReportsPage from "@/pages/MspReports";
 
 // ─── Labs (experimental spikes, full-bleed, no IDE shell) ─────────────────────
 import FactoryFloorLab from "@/pages/labs/FactoryFloorLab";
+import ShanePlayground from "@/pages/ShanePlayground";
 
 // ─── adminv2 (Simulator Studio shell — brings its own chrome) ─────────────────
 import AdminV2 from "@/adminv2/AdminV2";
@@ -340,6 +341,13 @@ function Router() {
           <div className="relative w-full h-full">
             <FactoryFloorLab />
           </div>
+        </RequireAdmin>
+      </Route>
+
+      {/* ── Git #663: PWA start_url — plain, full-bleed, no IDE shell ── */}
+      <Route path="/playground">
+        <RequireAdmin>
+          <ShanePlayground />
         </RequireAdmin>
       </Route>
 
