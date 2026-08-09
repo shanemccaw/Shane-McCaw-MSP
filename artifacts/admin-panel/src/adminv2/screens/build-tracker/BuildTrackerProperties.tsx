@@ -32,17 +32,37 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({
-  label, value, onChange, area,
-}: { label: string; value: string; onChange: (v: string) => void; area?: boolean }) {
+interface FieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  area?: boolean;
+  onOpenModal?: () => void;
+}
+
+function Field({ label, value, onChange, area, onOpenModal }: FieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <Label>{label}</Label>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label>{label}</Label>
+        {area && onOpenModal && (
+          <button
+            onClick={onOpenModal}
+            style={{
+              padding: "2px 6px", borderRadius: 3, border: `1px solid ${LINE.control}`,
+              background: SURFACE.well, color: TEXT.quiet, fontSize: 10,
+              cursor: "pointer", fontFamily: FONT.sans, fontWeight: 600,
+            }}
+          >
+            🔍 Read Full
+          </button>
+        )}
+      </div>
       {area ? (
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          rows={4}
+          rows={12}
           style={{
             background: SURFACE.well, border: `1px solid ${LINE.control}`,
             borderRadius: 4, padding: "6px 8px", color: TEXT.primary,
@@ -60,6 +80,46 @@ function Field({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function DescriptionModal({
+  title, value, onClose,
+}: { title: string; value: string; onClose: () => void }) {
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center",
+      justifyContent: "center", zIndex: 9999, padding: 40,
+    }}>
+      <div style={{
+        background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+        borderRadius: 8, padding: 24, width: "100%", maxWidth: 700,
+        display: "flex", flexDirection: "column", gap: 16, maxHeight: "80vh",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: TEXT.primary }}>{title}</h3>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "4px 10px", borderRadius: 4, border: `1px solid ${LINE.control}`,
+              background: "transparent", color: TEXT.dim, cursor: "pointer",
+              fontSize: 11, fontFamily: FONT.sans,
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div style={{
+          overflowY: "auto", fontSize: 13, color: TEXT.primary,
+          lineHeight: 1.6, background: SURFACE.well, padding: 16,
+          borderRadius: 6, border: `1px solid ${LINE.control}`,
+          fontFamily: FONT.mono, whiteSpace: "pre-wrap", flex: 1,
+        }}>
+          {value || "No content."}
+        </div>
+      </div>
     </div>
   );
 }
@@ -90,6 +150,7 @@ function EpicProperties({ id }: { id: number }) {
   const epic = epicById(id);
   const [title, setTitle]       = useState(epic?.title ?? "");
   const [desc, setDesc]         = useState(epic?.description ?? "");
+  const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`epic:${id}`);
 
   if (!epic) return null;
@@ -114,7 +175,15 @@ function EpicProperties({ id }: { id: number }) {
       </div>
 
       <Field label="Title" value={title} onChange={setTitle} />
-      <Field label="Description" value={desc} onChange={setDesc} area />
+      <Field label="Description" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+
+      {modalOpen && (
+        <DescriptionModal
+          title={`Epic #${epic.githubNumber ?? "Local"}: ${epic.title}`}
+          value={desc}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
 
       {state.message && (
         <p style={{ fontSize: 11, color: ACCENT.green, margin: 0 }}>{state.message}</p>
@@ -136,11 +205,27 @@ function IssueProperties({ id }: { id: number }) {
   const issue = issueById(id);
   const [title, setTitle] = useState(issue?.title ?? "");
   const [desc, setDesc]   = useState(issue?.description ?? "");
+  const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`issue:${id}`);
 
   if (!issue) return null;
 
   const next = ISSUE_STATUS_NEXT[issue.status];
+
+  function handleCopyProse() {
+    if (!issue) return;
+    const numStr = issue.githubNumber ? ` #${issue.githubNumber}` : "";
+    const prose = `Please research the codebase for this task:
+Issue:${numStr} "${issue.title}"
+
+Description:
+${issue.description || "No description provided."}
+
+Please find the relevant files, analyze the requirements, and suggest a clear implementation plan.`;
+
+    navigator.clipboard.writeText(prose);
+    alert("Copied Claude research prompt to clipboard!");
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 12 }}>
@@ -158,8 +243,40 @@ function IssueProperties({ id }: { id: number }) {
         </button>
       </div>
 
-      <Field label="Title" value={title} onChange={setTitle} />
-      <Field label="Description / Notes" value={desc} onChange={setDesc} area />
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Label>Title</Label>
+          <button
+            onClick={handleCopyProse}
+            style={{
+              padding: "3px 6px", borderRadius: 4, border: `1px solid ${ACCENT.amber}40`,
+              background: `${ACCENT.amber}15`, color: ACCENT.amber, fontSize: 10,
+              cursor: "pointer", fontFamily: FONT.sans, fontWeight: 700,
+            }}
+          >
+            📋 Copy Claude research prompt
+          </button>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={{
+            background: SURFACE.well, border: `1px solid ${LINE.control}`,
+            borderRadius: 4, padding: "5px 8px", color: TEXT.primary,
+            fontFamily: FONT.sans, fontSize: 12, outline: "none",
+          }}
+        />
+      </div>
+
+      <Field label="Description / Notes" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+
+      {modalOpen && (
+        <DescriptionModal
+          title={`Issue #${issue.githubNumber ?? "Local"}: ${issue.title}`}
+          value={desc}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
 
       {issue.githubUrl && (
         <a href={issue.githubUrl} target="_blank" rel="noopener noreferrer"
@@ -185,6 +302,7 @@ function ChatProperties({ id }: { id: number }) {
   const [title, setTitle]       = useState(chat?.title ?? "");
   const [notes, setNotes]       = useState(chat?.notes ?? "");
   const [category, setCategory] = useState(chat?.category ?? "");
+  const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`chat:${id}`);
 
   if (!chat) return null;
@@ -209,7 +327,15 @@ function ChatProperties({ id }: { id: number }) {
 
       <Field label="Label" value={title} onChange={setTitle} />
       <Field label="Category (if free-form)" value={category} onChange={setCategory} />
-      <Field label="Notes" value={notes} onChange={setNotes} area />
+      <Field label="Notes" value={notes} onChange={setNotes} area onOpenModal={() => setModalOpen(true)} />
+
+      {modalOpen && (
+        <DescriptionModal
+          title={`Chat Notes: ${chat.title}`}
+          value={notes}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
 
       {state.message && (
         <p style={{ fontSize: 11, color: ACCENT.green, margin: 0 }}>{state.message}</p>
