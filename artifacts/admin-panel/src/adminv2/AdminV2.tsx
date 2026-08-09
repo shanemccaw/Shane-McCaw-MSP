@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
+import "./screens/live-scan";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
