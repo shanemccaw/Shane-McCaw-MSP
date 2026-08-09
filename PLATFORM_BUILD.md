@@ -914,3 +914,4 @@ px tsc --noEmit clean in admin-panel. | 3a6ab945 |
 | 2026-08-08 | ⏳ IN FLIGHT | Run History screen (adminv2) - the run log at /admin-panel/adminv2/run-history, following the shell contract in artifacts/admin-panel/src/adminv2/SHELL.md. Records every real Deploy Console command and SQL Runner query as it completes - no invented run data. | |
 | 2026-08-08 | ✅ DONE | Git #596 - Ongoing-service copy for Tenant Monitoring and White-Glove Adoption, at checkout/SOW and on the marketing site, reading off #593's real stage:"continuous" catalog data rather than hardcoding which two services this applies to. | `6f6d4882` |
 | 2026-08-08 | ⏳ IN FLIGHT | Git #610 - TypewriterHeadline hero box height clipping long headlines at HEADLINE_MIN_SCALE floor | |
+| 2026-08-08 | ⏳ IN FLIGHT | Fulfillment screen (adminv2) - the delivery queue + fulfillment-type registry at /admin-panel/adminv2/fulfillment, following the shell contract in artifacts/admin-panel/src/adminv2/SHELL.md. | |
