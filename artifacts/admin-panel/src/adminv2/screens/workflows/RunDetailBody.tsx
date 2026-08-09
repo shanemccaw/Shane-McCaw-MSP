@@ -17,6 +17,7 @@
  */
 
 import { useState, useSyncExternalStore } from "react";
+import { Check, Copy } from "lucide-react";
 import { ACCENT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
 import { cancelRunNow, getSnapshot, rerunNow, subscribe, type WorkflowState } from "./workflowStore";
@@ -113,7 +114,10 @@ export function RunDetailBodyView({ state }: { state: WorkflowState }) {
 
         {run.payload && Object.keys(run.payload).length > 0 && (
           <Section title="Trigger payload">
-            <pre style={preStyle}>{JSON.stringify(run.payload, null, 2)}</pre>
+            <div>
+              <FieldLabel title="Payload" value={JSON.stringify(run.payload, null, 2)} />
+              <pre style={preStyle}>{JSON.stringify(run.payload, null, 2)}</pre>
+            </div>
           </Section>
         )}
       </div>
@@ -177,6 +181,35 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** Icon-only copy button — matches `screens/sql/SqlQueryOutput.tsx`'s `CopyButton` (the established adminv2 pattern for a JSON/text block). */
+function CopyButton({ value, title = "Copy" }: { value: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        void navigator.clipboard?.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      title={title}
+      style={{ display: "flex", alignItems: "center", background: "transparent", border: 0, color: copied ? ACCENT.greenSoft : TEXT.faint, cursor: "pointer", padding: 2 }}
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+    </button>
+  );
+}
+
+function FieldLabel({ title, value }: { title: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: TEXT.metaAlt }}>{title}</span>
+      <CopyButton value={value} title={`Copy ${title.toLowerCase()}`} />
+    </div>
+  );
+}
+
 const preStyle: React.CSSProperties = {
   margin: 0,
   padding: "10px 12px",
@@ -235,13 +268,13 @@ function StepRow({ run, stepId, index, active }: { run: RunDetail; stepId: strin
           )}
           {result?.input != null && (
             <div>
-              <span style={{ display: "block", marginBottom: 4, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: TEXT.metaAlt }}>Input</span>
+              <FieldLabel title="Input" value={JSON.stringify(result.input, null, 2)} />
               <pre style={preStyle}>{JSON.stringify(result.input, null, 2)}</pre>
             </div>
           )}
           {result?.output != null && (
             <div>
-              <span style={{ display: "block", marginBottom: 4, fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: TEXT.metaAlt }}>Output</span>
+              <FieldLabel title="Output" value={JSON.stringify(result.output, null, 2)} />
               <pre style={preStyle}>{JSON.stringify(result.output, null, 2)}</pre>
             </div>
           )}

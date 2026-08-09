@@ -18,6 +18,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { getScreen, resetRegistry } from "../../registry/registry";
 import { getLiveRibbonEntry } from "../../shell/liveRibbon";
 import {
@@ -36,6 +37,7 @@ import {
   resetWorkflowStore,
   runNow,
   saveGraph,
+  seedWorkflowStore,
   selectDefinition,
   selectRunDetail,
   setGraph,
@@ -44,8 +46,10 @@ import {
   RIBBON_KEYS,
 } from "./workflowStore";
 import type { DefinitionRow, RunDetail, RunRow, TriggerRow, VersionRow } from "./workflowTypes";
+import { RunDetailBodyView } from "./RunDetailBody";
 
 const fetchWithAuth = vi.fn();
+const writeText = vi.fn();
 
 function definition(overrides: Partial<DefinitionRow> = {}): DefinitionRow {
   return {
@@ -139,12 +143,15 @@ function jsonOnce(body: unknown, ok = true) {
 
 beforeEach(() => {
   fetchWithAuth.mockReset();
+  writeText.mockReset().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
   resetWorkflowStore();
   configureWorkflowFetch(fetchWithAuth);
 });
 
 afterEach(() => {
   resetWorkflowStore();
+  cleanup();
 });
 
 // ─── Registration ─────────────────────────────────────────────────────────────
@@ -555,5 +562,32 @@ describe("workflowRun contextual tab", () => {
     expect(spec?.id).toBe("workflow-run-tools");
     expect(spec?.groups.map((g) => g.label)).not.toContain("Back");
     expect(spec?.groups[0]?.large?.[0]?.label).toBe("Cancel");
+  });
+});
+
+describe("RunDetailBody copy buttons", () => {
+  it("copies a step's output to the clipboard when its copy icon is clicked", () => {
+    seedWorkflowStore({
+      runDetail: runDetail({
+        branchPath: ["node-1"],
+        nodeResultMap: { "node-1": { status: "ok", durationMs: 250, errorMessage: null, logPreview: null, input: { seats: 5 }, output: { ok: true, id: 42 } } },
+      }),
+    });
+    render(<RunDetailBodyView state={getSnapshot()} />);
+
+    // The step is collapsed by default — open it to reveal the Output field.
+    fireEvent.click(screen.getByText("Start"));
+    fireEvent.click(screen.getByTitle("Copy output"));
+
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify({ ok: true, id: 42 }, null, 2));
+  });
+
+  it("copies the trigger payload independently of any step's output", () => {
+    seedWorkflowStore({ runDetail: runDetail({ branchPath: [], payload: { source: "manual", note: "test run" } }) });
+    render(<RunDetailBodyView state={getSnapshot()} />);
+
+    fireEvent.click(screen.getByTitle("Copy payload"));
+
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify({ source: "manual", note: "test run" }, null, 2));
   });
 });
