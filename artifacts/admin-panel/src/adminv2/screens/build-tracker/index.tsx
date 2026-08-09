@@ -33,7 +33,7 @@ import { BuildTrackerProperties } from "./BuildTrackerProperties";
 import {
   getSnapshot,
   selectEpic, selectIssue, selectChat,
-  createEpic, createIssue,
+  createEpic, createIssue, createChat,
   epicById, issueById, chatById,
   chatsForIssue, unlinkedCount,
   updateEpic, updateIssue, updateChat,
