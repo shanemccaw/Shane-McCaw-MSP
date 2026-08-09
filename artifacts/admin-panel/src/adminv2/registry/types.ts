@@ -249,6 +249,18 @@ export interface ContextualTabSpec {
  * thing on disk that may have run many times). Note the deliberate near-miss
  * with `CommandKind`’s `"run"`, which is a palette *action* badge — the two
  * unions are separate and neither is keyed by the other.
+ *
+ * `delivery` and `fulfillmentType` were added for the Fulfillment screen
+ * (`screens/fulfillment/`). A `delivery` is one `fulfillment_queue` row — a
+ * sold offer/SOW/bundle that has to actually be handed to a client, tracked
+ * separately from the sale itself. It is not `service` (the catalog entry
+ * sold) and not `customer` (who bought it) — it is the delivery obligation
+ * that sits between the two. `fulfillmentType` is a `fulfillment_types`
+ * registry row — a lifecycle *kind* a service can declare (`assessment`,
+ * `retainer`, …), each wired to a `fulfillment.<key>` workflow trigger. It
+ * is not a `delivery` (a delivery is one obligation; a type is the category
+ * of obligation) and not a `workflow` (the workflow is what a type's event
+ * fires, not the type itself).
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -274,6 +286,8 @@ export const PEEK_KINDS = [
   "migration",
   "engine",
   "run",
+  "delivery",
+  "fulfillmentType",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -437,7 +451,9 @@ export type CommandKind =
   | "exception"
   | "incident"
   | "dlq"
-  | "engine";
+  | "engine"
+  | "delivery"
+  | "fulfillmentType";
 
 export interface CommandItem {
   id: string;

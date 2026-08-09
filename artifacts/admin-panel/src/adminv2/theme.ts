@@ -168,6 +168,12 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // and whether the number it produced is good news depends on the engine —
   // a high `health` is healthy, a high `security` or `drift` is not.
   engine: ["#c3c1bf", "ENG"],
+  // Fulfillment. `delivery` carries the amber "needs attention" tint because
+  // an overdue delivery is exactly what the Watch tab exists for; a
+  // `fulfillmentType` is a registry definition, not a verdict on any one
+  // sale, so it stays neutral like `signal`/`engine`.
+  delivery: ["#f2ca63", "DLV"],
+  fulfillmentType: ["#c3c1bf", "TYPE"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];
