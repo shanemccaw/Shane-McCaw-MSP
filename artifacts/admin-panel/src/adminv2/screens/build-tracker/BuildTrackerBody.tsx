@@ -21,7 +21,7 @@ import {
   issuesForEpic, chatsForIssue, chatsForEpic,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
-  syncFromGitHub,
+  selectIssue, syncFromGitHub,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -297,19 +297,28 @@ function EpicDetail({ id }: { id: number }) {
           <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No issues yet</p>
         ) : (
           issues.map((issue) => (
-            <div key={issue.id} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-              background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
-            }}>
-              <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[issue.status]} />
-              <span style={{ flex: 1, fontSize: 13, color: TEXT.body }}>
+            <button
+              key={issue.id}
+              onClick={() => selectIssue(issue.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                cursor: "pointer", width: "100%", textAlign: "left",
+                fontFamily: FONT.sans,
+                transition: "border-color 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+            >
+              <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
+              <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
               </span>
               <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
               {issue.chatCount > 0 && (
-                <span style={{ fontSize: 11, color: ACCENT.info }}>💬{issue.chatCount}</span>
+                <span style={{ fontSize: 11, color: ACCENT.info, marginLeft: 4 }}>💬{issue.chatCount}</span>
               )}
-            </div>
+            </button>
           ))
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>

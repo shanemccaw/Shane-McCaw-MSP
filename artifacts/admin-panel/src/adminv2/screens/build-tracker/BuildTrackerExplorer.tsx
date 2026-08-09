@@ -152,6 +152,7 @@ function EpicNode({
   onEpic,
   onIssue,
   onChat,
+  showClosed,
 }: {
   epic: EpicRow;
   selectedEpicId: number | null;
@@ -160,9 +161,11 @@ function EpicNode({
   onEpic: (id: number) => void;
   onIssue: (id: number) => void;
   onChat: (id: number) => void;
+  showClosed: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const issues = issuesForEpic(epic.id);
+  const visibleIssues = showClosed ? issues : issues.filter((i) => i.status !== "closed");
   const directChats = chatsForEpic(epic.id).filter((c) => c.epicId === epic.id && !c.issueId);
   const isSelected = selectedEpicId === epic.id;
 
@@ -189,7 +192,7 @@ function EpicNode({
 
       {open && (
         <div style={{ paddingLeft: 4 }}>
-          {issues.map((i) => (
+          {visibleIssues.map((i) => (
             <IssueNode
               key={i.id}
               issue={i}
@@ -202,7 +205,7 @@ function EpicNode({
           {directChats.map((c) => (
             <ChatChip key={c.id} chat={c} selected={selectedChatId === c.id} onSelect={() => onChat(c.id)} />
           ))}
-          {issues.length === 0 && directChats.length === 0 && (
+          {visibleIssues.length === 0 && directChats.length === 0 && (
             <p style={{ fontSize: 11, color: TEXT.faintest, padding: "2px 8px 2px 24px", margin: 0 }}>No issues yet</p>
           )}
         </div>
@@ -248,6 +251,7 @@ export function BuildTrackerExplorer() {
   const state = useStore();
   const unlinked = unlinkedChats();
   const categories = freeFormCategories();
+  const [showClosed, setShowClosed] = useState(false);
 
   function handleEpic(id: number) {
     selectEpic(state.selectedEpicId === id ? null : id);
@@ -270,29 +274,57 @@ export function BuildTrackerExplorer() {
     );
   }
 
+  const visibleEpics = showClosed ? state.epics : state.epics.filter(e => e.status !== "closed");
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", height: "100%" }}>
-      {/* Epics */}
-      {state.epics.length === 0 ? (
-        <div style={{ padding: "12px 8px", fontSize: 12, color: TEXT.dim, textAlign: "center" }}>
-          <GitBranch size={20} color={TEXT.faintest} style={{ marginBottom: 6 }} />
-          <p style={{ margin: 0 }}>No epics yet</p>
-          <p style={{ margin: "4px 0 0", fontSize: 11, color: TEXT.faintest }}>Sync from GitHub or create one</p>
-        </div>
-      ) : (
-        state.epics.map((e) => (
-          <EpicNode
-            key={e.id}
-            epic={e}
-            selectedEpicId={state.selectedEpicId}
-            selectedIssueId={state.selectedIssueId}
-            selectedChatId={state.selectedChatId}
-            onEpic={handleEpic}
-            onIssue={handleIssue}
-            onChat={handleChat}
-          />
-        ))
-      )}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Filter Bar */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "6px 8px", borderBottom: `1px solid ${LINE.control}`,
+        background: SURFACE.well, flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: TEXT.caption }}>
+          Filter
+        </span>
+        <button
+          onClick={() => setShowClosed(!showClosed)}
+          style={{
+            background: showClosed ? `${ACCENT.info}15` : "transparent",
+            border: `1px solid ${showClosed ? ACCENT.info + "40" : LINE.control}`,
+            cursor: "pointer", fontSize: 10.5, color: showClosed ? ACCENT.info : TEXT.dim,
+            fontWeight: 600, padding: "2px 6px", borderRadius: 4,
+            fontFamily: FONT.sans,
+          }}
+        >
+          {showClosed ? "Showing All" : "Open Only"}
+        </button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", flex: 1 }}>
+        {/* Epics */}
+        {visibleEpics.length === 0 ? (
+          <div style={{ padding: "12px 8px", fontSize: 12, color: TEXT.dim, textAlign: "center" }}>
+            <GitBranch size={20} color={TEXT.faintest} style={{ marginBottom: 6 }} />
+            <p style={{ margin: 0 }}>No open epics</p>
+            {state.epics.length > 0 && <p style={{ margin: "4px 0 0", fontSize: 11, color: TEXT.faintest }}>Change filter to see closed epics</p>}
+          </div>
+        ) : (
+          visibleEpics.map((e) => (
+            <EpicNode
+              key={e.id}
+              epic={e}
+              selectedEpicId={state.selectedEpicId}
+              selectedIssueId={state.selectedIssueId}
+              selectedChatId={state.selectedChatId}
+              onEpic={handleEpic}
+              onIssue={handleIssue}
+              onChat={handleChat}
+              showClosed={showClosed}
+            />
+          ))
+        )}
+      </div>
 
       {/* Free-form / categorised chats */}
       {(categories.length > 0 || unlinked.length > 0) && (
