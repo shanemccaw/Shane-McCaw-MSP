@@ -14,6 +14,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { X } from "lucide-react";
 import { useAdminFetch } from "@/lib/useAdminFetch";
 import { ACCENT, ACCENT_TEXT, LINE, SHADOW, SURFACE, TEXT, Z } from "../../theme";
+import { ColorizedOutput } from "../../shell/colorizeOutput";
 import {
   closeConsole,
   configureDeployFetch,
@@ -219,7 +220,6 @@ function TranscriptRow({ entry }: { entry: DeployTranscriptEntry }) {
             <pre
               style={{
                 fontSize: 10.5,
-                color: TEXT.meta,
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-all",
                 background: SURFACE.well,
@@ -230,7 +230,7 @@ function TranscriptRow({ entry }: { entry: DeployTranscriptEntry }) {
                 marginBottom: 0,
               }}
             >
-              {step.output}
+              <ColorizedOutput text={step.output} />
             </pre>
           )}
         </div>
