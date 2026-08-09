@@ -16,6 +16,9 @@ import { ShellProvider, subRoute, useShell } from "./shell/ShellContext";
 import { Shell, NoScreen } from "./shell/Shell";
 import { logger } from "@/lib/logger";
 
+// Screens register themselves at import time — see SHELL.md.
+import "./screens/git";
+
 const log = logger.child({ channel: "admin.shell" });
 
 function ActiveScreen() {

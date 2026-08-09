@@ -58,7 +58,7 @@ export {
 } from "./registry/types";
 
 // Runtime
-export { useShell, ADMINV2_BASE } from "./shell/ShellContext";
+export { useShell, getShellApi, ADMINV2_BASE } from "./shell/ShellContext";
 export type { ShellApi, OpenDocInput } from "./shell/ShellContext";
 export type { OpenDoc, ShellState } from "./shell/shellState";
 export { pushTrail, TRAIL_MAX, backGroupFrom, assembleContextualGroups } from "./registry/ribbonAssembly";
