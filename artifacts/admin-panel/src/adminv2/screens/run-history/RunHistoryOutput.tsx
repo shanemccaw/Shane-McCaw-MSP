@@ -7,9 +7,15 @@
  * line, because which line matters is exactly the thing that cannot be known
  * ahead of time.
  *
- * Long output is truncated at storage time, not here, and says so in the text
- * itself (`runHistoryStore.MAX_OUTPUT_CHARS`) — a silently shortened
- * transcript would be worse than a missing one.
+ * Long output is truncated when the server records it, not here, and says so
+ * in the text itself (`api-server/src/lib/run-history.ts`'s
+ * `MAX_OUTPUT_CHARS`) — a silently shortened transcript would be worse than a
+ * missing one.
+ *
+ * The list response deliberately omits `output`, so it arrives one fetch after
+ * the row does. `undefined` means "not here yet" and `hasOutput` is what says
+ * whether there was any — the two are never conflated, because "it printed
+ * nothing" is a real and different answer from "still reading".
  */
 
 import { useSyncExternalStore } from "react";
@@ -65,7 +71,7 @@ export function RunHistoryOutput() {
         <button
           type="button"
           disabled={!entry.output}
-          onClick={() => copyText(entry.output)}
+          onClick={() => copyText(entry.output ?? "")}
           style={{
             flex: "none",
             height: 22,
@@ -99,7 +105,7 @@ export function RunHistoryOutput() {
           wordBreak: "break-word",
         }}
       >
-        {entry.output || "It printed nothing."}
+        {entry.output ?? (entry.hasOutput ? "Reading what it printed…" : "It printed nothing.")}
       </pre>
     </div>
   );

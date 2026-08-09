@@ -29,10 +29,11 @@ import {
   type SqlScriptInput,
 } from "./sqlApi";
 import { EMPTY_SQL_OUTPUT, type MigrationFile, type SavedScript, type SchemaTable, type SqlOutput } from "./sqlTypes";
-// Every executed query and migration is logged to the Run History screen —
-// same one-way dependency the Deploy Console has (`screens/git/deployStore.ts`):
-// that screen owns the log, this one only reports what it just ran.
-import { recordSqlRun } from "../run-history/runHistoryStore";
+// The run itself is recorded SERVER-side, by the execute routes, before they
+// answer (api-server lib/run-history.ts). This only tells the Run History
+// screen there is something new to re-read - same one-way dependency the
+// Deploy Console has (`screens/git/deployStore.ts`).
+import { runHistoryChanged } from "../run-history/runHistoryStore";
 
 export type ResultView = "table" | "json";
 
@@ -176,41 +177,35 @@ function clearDraft(): void {
 
 /**
  * The one choke point both `runQueryText` and `runMigrationFile` go through,
- * which is why the Run History write lives here rather than in each caller:
- * a future third way to execute SQL gets logged for free instead of being the
- * one path that quietly is not.
+ * which is why the Run History refresh lives here rather than in each caller:
+ * a future third way to execute SQL gets it for free instead of being the one
+ * path that quietly does not.
+ *
+ * It carries no run details, because it is not what records the run — the
+ * execute routes do that server-side, before answering. Passing the query text
+ * back down from here would be a second, disagreeing account of the same run.
  */
-async function runStatements(
-  run: () => Promise<import("./sqlTypes").SqlStatementResult[]>,
-  record: { cmd: string; label?: string; migrationFile?: string },
-): Promise<void> {
-  const startedAt = Date.now();
+async function runStatements(run: () => Promise<import("./sqlTypes").SqlStatementResult[]>): Promise<void> {
   setState({ output: { isExecuting: true, statements: null, error: null } });
   try {
     const statements = await run();
     setState({ output: { isExecuting: false, statements, error: null } });
-    recordSqlRun({ ...record, startedAt, statements, error: null });
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    setState({ output: { isExecuting: false, statements: null, error } });
-    recordSqlRun({ ...record, startedAt, statements: null, error });
+    setState({ output: { isExecuting: false, statements: null, error: err instanceof Error ? err.message : String(err) } });
+  } finally {
+    // Both paths: a failed query is still a run the server wrote a row for.
+    runHistoryChanged();
   }
 }
 
 export async function runQueryText(query: string): Promise<void> {
   if (!adminFetchRef || !query.trim()) return;
-  await runStatements(() => executeSql(adminFetchRef!, query), { cmd: query });
+  await runStatements(() => executeSql(adminFetchRef!, query));
 }
 
 export async function runMigrationFile(filename: string): Promise<void> {
   if (!adminFetchRef) return;
-  // `cmd` is the repo path, not SQL: the file is read off the server
-  // filesystem and its text never reaches the browser.
-  await runStatements(() => executeMigrationFile(adminFetchRef!, filename), {
-    cmd: `lib/db/migrations/manual/${filename}`,
-    label: filename,
-    migrationFile: filename,
-  });
+  await runStatements(() => executeMigrationFile(adminFetchRef!, filename));
   // The file's own trailing self-mark INSERT (#497) just changed `ranAt` server-side.
   void loadMigrations();
 }

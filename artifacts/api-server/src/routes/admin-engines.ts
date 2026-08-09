@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { db, pool, usersTable, engagementProjectsTable, tenantsTable, mspsTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
 import { splitSqlStatements } from "../lib/sql-statement-splitter";
+import { recordFailedSqlRun, recordSqlRun } from "../lib/run-history";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -1839,16 +1840,27 @@ async function executeRawSql(query: string): Promise<{ statements: StatementResu
  * @desc Executes SQL queries/CRUD scripts with performance timing & safety checks
  */
 router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Response) => {
+  const startedAt = Date.now();
+  const { query } = req.body ?? {};
+
+  if (!query || typeof query !== "string") {
+    return res.status(400).json({ error: "A valid SQL query string is required." });
+  }
+
   try {
-    const { query } = req.body;
-
-    if (!query || typeof query !== "string") {
-      return res.status(400).json({ error: "A valid SQL query string is required." });
-    }
-
-    return res.json(await executeRawSql(query));
+    const result = await executeRawSql(query);
+    // Recorded server-side rather than by the browser, so a query is kept even
+    // if the tab closed before the response landed — see lib/run-history.ts.
+    await recordSqlRun({ cmd: query, startedAt, statements: result.statements, actorUserId: req.user?.id ?? null });
+    return res.json(result);
   } catch (err: any) {
-    log.error({ err, query: req.body?.query }, "SQL console execute failed");
+    log.error({ err, query }, "SQL console execute failed");
+    await recordFailedSqlRun({
+      cmd: query,
+      startedAt,
+      error: err?.message || "Failed to execute query",
+      actorUserId: req.user?.id ?? null,
+    });
     return res.status(500).json({ error: err.message || "Failed to execute query" });
   }
 });
@@ -1912,12 +1924,18 @@ router.get("/simulator/migrations/files", requireAdmin, async (_req: Request, re
  *       through the same execution path as the SQL console.
  */
 router.post("/simulator/migrations/execute", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const { filename } = req.body;
-    if (!filename || typeof filename !== "string") {
-      return res.status(400).json({ error: "A valid migration filename is required." });
-    }
+  const startedAt = Date.now();
+  const { filename } = req.body ?? {};
 
+  if (!filename || typeof filename !== "string") {
+    return res.status(400).json({ error: "A valid migration filename is required." });
+  }
+
+  // The run-history row records the repo path, not the SQL: the file is read
+  // off the server filesystem and its text never belongs to the browser.
+  const cmd = `lib/db/migrations/manual/${filename}`;
+
+  try {
     // Exact allowlist check against the real directory listing — not just
     // string sanitization — so a path-traversal filename can never reach fs.readFile.
     const realFiles = await listManualMigrationFiles();
@@ -1928,9 +1946,24 @@ router.post("/simulator/migrations/execute", requireAdmin, async (req: Request, 
     const filePath = path.join(MANUAL_MIGRATIONS_DIR, filename);
     const query = await fs.readFile(filePath, "utf8");
 
-    return res.json(await executeRawSql(query));
+    const result = await executeRawSql(query);
+    await recordSqlRun({
+      cmd,
+      startedAt,
+      statements: result.statements,
+      migrationFile: filename,
+      actorUserId: req.user?.id ?? null,
+    });
+    return res.json(result);
   } catch (err: any) {
-    systemLog.error({ err, filename: req.body?.filename }, "Simulator migrations: execute failed");
+    systemLog.error({ err, filename }, "Simulator migrations: execute failed");
+    await recordFailedSqlRun({
+      cmd,
+      startedAt,
+      error: err?.message || "Failed to execute migration file",
+      migrationFile: filename,
+      actorUserId: req.user?.id ?? null,
+    });
     return res.status(500).json({ error: err.message || "Failed to execute migration file" });
   }
 });

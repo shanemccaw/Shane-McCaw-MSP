@@ -22,11 +22,20 @@ import request from "supertest";
 process.env["DATABASE_URL"] = "postgres://test";
 
 const mockExec = vi.hoisted(() => vi.fn());
+const mockDbQuery = vi.hoisted(() => vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 1 })));
 const mockExecSync = vi.hoisted(() => vi.fn(() => "/repo\n"));
 
 vi.mock("child_process", () => ({
   exec: mockExec,
   execSync: mockExecSync,
+}));
+
+// Every completed run is recorded to simulator_run_history through
+// lib/run-history.ts, which holds `pool` from @workspace/db. Mocked for the
+// same reason `logger` is below (a real import throws without DATABASE_URL),
+// and so the recording itself is assertable.
+vi.mock("@workspace/db", () => ({
+  pool: { query: mockDbQuery },
 }));
 
 vi.mock("../middlewares/requireAuth", () => ({
@@ -74,7 +83,14 @@ function fail(message: string) {
 beforeEach(() => {
   mockExec.mockReset();
   mockExecSync.mockReset().mockReturnValue("/repo\n");
+  mockDbQuery.mockClear();
 });
+
+/** The parameters of the run-history INSERT, if one was issued. */
+function recordedRun(): unknown[] | undefined {
+  const insert = mockDbQuery.mock.calls.find((call) => String(call[0]).includes("simulator_run_history"));
+  return insert?.[1] as unknown[] | undefined;
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -165,5 +181,69 @@ describe("free-text console", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(false);
     expect(res.body.output).toContain("command not found");
+  });
+});
+
+describe("run history", () => {
+  // The row is written HERE, by the route, before it answers — not by the
+  // browser reporting what it saw. That is what makes a run survive a closed
+  // tab and show up in another admin's history.
+  const COLS = ["kind", "cmd", "title", "ticket", "started_at", "duration_ms", "ok", "effect", "output"] as const;
+  const at = (name: (typeof COLS)[number], params: unknown[]) => params[COLS.indexOf(name)];
+
+  it("records a whitelisted operation with the read/write kind the whitelist declares", async () => {
+    succeed("## main...origin/main");
+    await request(buildApp()).post("/admin/simulator/deploy/git-status").set("x-test-admin", "1");
+
+    const params = recordedRun();
+    expect(params).toBeTruthy();
+    expect(at("kind", params!)).toBe("deploy");
+    expect(at("ok", params!)).toBe(true);
+    expect(at("cmd", params!)).toBe("git status --short --branch");
+    // "read only" can only ever come from OPERATION_KIND, never from the text.
+    expect(JSON.parse(String(at("effect", params!)))).toEqual(["read only"]);
+    expect(String(at("output", params!))).toContain("## main...origin/main");
+  });
+
+  it("records a free-typed command without claiming anything about its effect", async () => {
+    succeed("done");
+    await request(buildApp())
+      .post("/admin/simulator/deploy/console")
+      .set("x-test-admin", "1")
+      .send({ command: "rm -rf /tmp/whatever" });
+
+    const params = recordedRun();
+    expect(params).toBeTruthy();
+    expect(at("cmd", params!)).toBe("rm -rf /tmp/whatever");
+    // No "read only": the whitelist cannot classify text it has never seen,
+    // and a wrong read-only chip on a command that wrote is the worst thing
+    // Run History could say.
+    expect(JSON.parse(String(at("effect", params!)))).toEqual([]);
+  });
+
+  it("records a stopped rebuild, naming the step it stopped at", async () => {
+    fail("fatal: not a fast-forward");
+    await request(buildApp()).post("/admin/simulator/deploy/full-rebuild").set("x-test-admin", "1");
+
+    const params = recordedRun();
+    expect(params).toBeTruthy();
+    expect(at("ok", params!)).toBe(false);
+    expect(JSON.parse(String(at("effect", params!)))).toContain("stopped at git pull --ff-only");
+  });
+
+  it("still answers normally when the history table does not exist yet", async () => {
+    // The expected state until the manual migration is run. A deploy that
+    // succeeded must never be reported as failed because the log could not be
+    // written.
+    mockDbQuery.mockRejectedValueOnce(
+      Object.assign(new Error('relation "simulator_run_history" does not exist'), { code: "42P01" }),
+    );
+    succeed("## main...origin/main");
+
+    const res = await request(buildApp()).post("/admin/simulator/deploy/git-status").set("x-test-admin", "1");
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.steps[0].output).toBe("## main...origin/main");
   });
 });

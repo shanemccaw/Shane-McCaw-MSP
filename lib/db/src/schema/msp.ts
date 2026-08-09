@@ -2705,6 +2705,62 @@ export const savedSqlScripts = pgTable("saved_sql_scripts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+/**
+ * Simulator Studio's Run History — one row per command or query actually run
+ * from the admin console, with the output it printed and what it changed.
+ *
+ * Written **server-side**, by the routes that do the running
+ * (`admin-deploy-console.ts`'s two POSTs and `admin-engines.ts`'s
+ * `/simulator/sql/execute` + `/simulator/migrations/execute`), not by the
+ * browser reporting what it saw. That matters for two reasons: a run is kept
+ * even if the tab is closed or the response never arrives, and the row cannot
+ * disagree with what the server actually did.
+ *
+ * `effect` is the short consequence list ("read only", "41 rows changed",
+ * "stopped at pnpm install"). Every entry is derived from the real result —
+ * a SQL statement that came back with `fields` read, one with a `rowCount`
+ * and no fields wrote — never guessed from the command text, because a
+ * keyword guess calls `insert ... returning` read-only.
+ *
+ * `actorUserId` deliberately carries **no** foreign key: this is a record of
+ * what was done to the server, and it must not be deleted or blocked by
+ * anything happening to the user row that did it.
+ */
+export const simulatorRunHistory = pgTable("simulator_run_history", {
+  id: serial("id").primaryKey(),
+  /** 'deploy' (a shell command) or 'sql' (a query, or a manual migration file). */
+  kind: text("kind").notNull(),
+  /** Verbatim: the shell command, the query text, or the migration's repo path. */
+  cmd: text("cmd").notNull(),
+  /** Derived once at record time — a leading `--`/`#` comment, a ticket, or the first line. */
+  title: text("title").notNull(),
+  /** `#412` / `GH-388` lifted out of the text, or '' when the text carries none. */
+  ticket: text("ticket").notNull().default(""),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Database execution time for SQL; wall clock for a deploy command. */
+  durationMs: integer("duration_ms").notNull().default(0),
+  ok: boolean("ok").notNull(),
+  /** Array of short strings. See the note above on why these are derived, not declared. */
+  effect: jsonb("effect").$type<string[]>().notNull().default([]),
+  /** Whatever it printed, truncated with a visible marker rather than silently. */
+  output: text("output").notNull().default(""),
+  /** Free text the operator writes on the run afterwards. The only field not derived. */
+  note: text("note").notNull().default(""),
+  /** Set only for a manual migration run — its SQL lives on the server, so `cmd` is the path. */
+  migrationFile: text("migration_file"),
+  /** Who ran it. Intentionally un-FK'd — see the table doc comment. */
+  actorUserId: integer("actor_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("simulator_run_history_started_at_idx").on(t.startedAt),
+  index("simulator_run_history_kind_idx").on(t.kind),
+  // "Run before: 14 times in all" counts every row sharing this exact command.
+  index("simulator_run_history_cmd_idx").on(t.cmd),
+]);
+
+export type SimulatorRunHistoryRow = typeof simulatorRunHistory.$inferSelect;
+export type InsertSimulatorRunHistoryRow = typeof simulatorRunHistory.$inferInsert;
+
 export const simulationProfiles = pgTable("simulation_profiles", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id), // The testbed target

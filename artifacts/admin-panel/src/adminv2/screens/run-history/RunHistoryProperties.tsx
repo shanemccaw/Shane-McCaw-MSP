@@ -17,7 +17,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT, FONT } from "../../theme";
-import { copyText, getSnapshot, runCount, selectedEntry, setNote, subscribe } from "./runHistoryStore";
+import { copyText, getSnapshot, selectedEntry, setNote, subscribe } from "./runHistoryStore";
 import { durationLabel, repeatLabel, whenLabel, type RunHistoryEntry } from "./runHistoryTypes";
 import { rerunEntry } from "./runHistoryActions";
 
@@ -40,7 +40,7 @@ export function RunHistoryProperties() {
         <Field label="Ticket" value={entry.ticket || "none in the text"} dim={!entry.ticket} />
         <Field label="When" value={whenLabel(entry.startedAt)} />
         <Field label="Took" value={durationLabel(entry.durationMs) || "not measured"} />
-        <Field label="Run before" value={repeatLabel(runCount(entry.cmd))} />
+        <Field label="Run before" value={repeatLabel(entry.runCount)} />
       </Group>
 
       <Group label="What it did">
@@ -61,14 +61,21 @@ export function RunHistoryProperties() {
         <ActionRow label={rerunLabel(entry)} value={rerunValue(entry)} onSelect={() => rerunEntry(entry)} />
         <ActionRow
           label="Copy output"
-          value={entry.output ? "click to copy" : "it printed nothing"}
-          disabled={!entry.output}
-          onSelect={() => copyText(entry.output)}
+          value={outputValue(entry)}
+          disabled={!entry.hasOutput || entry.output === undefined}
+          onSelect={() => copyText(entry.output ?? "")}
         />
         <ActionRow label="Copy command" value="click to copy" onSelect={() => copyText(entry.cmd)} />
       </Group>
     </div>
   );
+}
+
+/** Distinguishes "it printed nothing" from "the output has not arrived yet" - see runHistoryStore. */
+function outputValue(entry: RunHistoryEntry): string {
+  if (!entry.hasOutput) return "it printed nothing";
+  if (entry.output === undefined) return "still loading…";
+  return "click to copy";
 }
 
 function rerunLabel(entry: RunHistoryEntry): string {
@@ -138,8 +145,10 @@ function Field({
 
 /**
  * The note writes straight through on blur rather than on every keystroke —
- * every write persists the whole log to localStorage, and doing that per
- * character is the one place "no save step" would cost something real.
+ * each write is a PATCH to the server, and one per character is the one place
+ * "no save step" would cost something real. The store applies it optimistically
+ * and puts the stored value back if the PATCH fails, so the field never sits
+ * there looking saved when it is not.
  */
 function NoteField({ entry }: { entry: RunHistoryEntry }) {
   const [draft, setDraft] = useState(entry.note);
@@ -157,7 +166,7 @@ function NoteField({ entry }: { entry: RunHistoryEntry }) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          if (draft !== entry.note) setNote(entry.id, draft);
+          if (draft !== entry.note) void setNote(entry.id, draft);
         }}
         placeholder={entry.title}
         aria-label="What this run was"

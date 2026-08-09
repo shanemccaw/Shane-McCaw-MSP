@@ -22,12 +22,13 @@
  * real terminal, not a separate safer path.
  */
 
-import { findDeployOperation, type DeployOperation } from "./deployOperations";
-// Every completed run is logged to the Run History screen. That screen owns
-// the log; this store only reports what it just did, so the dependency runs
-// one way (`screens/run-history` never imports this file) and the Deploy
-// Console keeps working identically whether or not Run History is mounted.
-import { recordDeployRun } from "../run-history/runHistoryStore";
+import type { DeployOperation } from "./deployOperations";
+// The run itself is recorded SERVER-side, by the deploy route, before it
+// answers (api-server lib/run-history.ts) - so a run is kept even if this tab
+// never sees the response. All this store does is tell the Run History screen
+// there is something new to re-read. One-way, as before: `screens/run-history`
+// never imports this file.
+import { runHistoryChanged } from "../run-history/runHistoryStore";
 
 export interface DeployStepResult {
   label: string;
@@ -140,15 +141,8 @@ async function execute(cmd: string, id: string, opKey?: string): Promise<void> {
   const entry: DeployTranscriptEntry = { id, cmd, status: "running", steps: [], startedAt };
   setState({ transcript: [...state.transcript, entry] });
 
-  // Undefined for a free-typed command, deliberately — Run History would
-  // rather say nothing about a command's effect than guess "read only" from
-  // its text. See `recordDeployRun`'s `opKind` doc comment.
-  const opKind = opKey ? findDeployOperation(opKey)?.kind : undefined;
-  const logRun = (ok: boolean, steps: DeployStepResult[], error?: string) =>
-    recordDeployRun({ cmd, startedAt, ok, steps, opKind, error });
-
   if (!adminFetchRef) {
-    // Not logged: nothing was sent, so there is no run to keep.
+    // Nothing was sent, so the server has no run to have recorded.
     updateEntry(id, { status: "failed", error: "The Deploy Console is not ready yet — reopen it." });
     return;
   }
@@ -168,7 +162,7 @@ async function execute(cmd: string, id: string, opKey?: string): Promise<void> {
         ? (data.steps ?? [])
         : [{ label: cmd, command: cmd, ok: true, output: data.output ?? "" }];
       updateEntry(id, { status: "ok", steps });
-      logRun(true, steps);
+      runHistoryChanged();
       maybeAutoCopy(steps);
     } else {
       const steps: DeployStepResult[] = opKey
@@ -178,13 +172,15 @@ async function execute(cmd: string, id: string, opKey?: string): Promise<void> {
           : [];
       const error = data.error ?? "Command failed";
       updateEntry(id, { status: "failed", steps, error });
-      logRun(false, steps, error);
+      runHistoryChanged();
       maybeAutoCopy(steps);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     updateEntry(id, { status: "failed", error: message });
-    logRun(false, [], message);
+    // No server round-trip completed, so there may be no row; ask anyway -
+    // the request may have run and only the response been lost.
+    runHistoryChanged();
   }
 }
 

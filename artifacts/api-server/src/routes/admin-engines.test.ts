@@ -58,7 +58,15 @@ vi.mock("../middlewares/requireAuth", () => ({
 }));
 
 vi.mock("../lib/logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  // `child` included because lib/run-history.ts — which the SQL and migration
+  // executors record every run through — binds its own channel at module load.
+  logger: {
+    child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 vi.mock("../lib/engine-test-log-buffer", () => ({

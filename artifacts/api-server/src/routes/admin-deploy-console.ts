@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { exec, execSync } from "child_process";
 import { logger } from "../lib/logger";
+import { recordDeployRun } from "../lib/run-history";
 
 const log = logger.child({ channel: "admin.deploy" });
 
@@ -72,6 +73,21 @@ const DEPLOY_OPERATIONS: Record<string, DeployStep[]> = {
   ],
 };
 
+// Whether each whitelisted operation reads or writes. This is the ONLY thing
+// that lets Run History put a "read only" chip on a run — a free-typed command
+// has no entry here and therefore claims nothing about its effect, because a
+// wrong "read only" on a command that wrote is the most misleading thing that
+// screen could say. Kept beside the whitelist it describes, so adding an
+// operation without classifying it is visible in one place.
+const OPERATION_KIND: Record<string, "read" | "write" | "heavy"> = {
+  "git-status": "read",
+  "version-info": "read",
+  "git-pull": "write",
+  "pnpm-install": "write",
+  "pnpm-build": "write",
+  "full-rebuild": "heavy",
+};
+
 interface StepResult {
   label: string;
   command: string;
@@ -133,12 +149,23 @@ router.post("/admin/simulator/deploy/console", requireAdmin, async (req: Request
 
   log.info({ command, userId: req.user?.id }, "Deploy console free-text command starting");
 
+  const startedAt = Date.now();
   const result = await runStep({ label: command, command, timeoutMs: 300_000 }, workspaceRoot);
 
   log.info(
     { command, userId: req.user?.id, ok: result.ok },
     result.ok ? "Deploy console free-text command completed" : "Deploy console free-text command failed",
   );
+
+  // No opKind: this is free text, and Run History says nothing about the
+  // effect of a command it cannot classify. Awaited, but it never throws.
+  await recordDeployRun({
+    command,
+    startedAt,
+    ok: result.ok,
+    steps: [result],
+    actorUserId: req.user?.id ?? null,
+  });
 
   res.json({ ok: result.ok, command, output: result.output });
 });
@@ -168,18 +195,41 @@ router.post("/admin/simulator/deploy/:operation", requireAdmin, async (req: Requ
 
   log.info({ operation, userId: req.user?.id }, "Deploy console operation starting");
 
+  const startedAt = Date.now();
+  const opKind = OPERATION_KIND[operation];
+  const actorUserId = req.user?.id ?? null;
+
   const results: StepResult[] = [];
   for (const step of steps) {
     const result = await runStep(step, workspaceRoot);
     results.push(result);
     if (!result.ok) {
       log.error({ operation, step: step.label }, "Deploy console step failed");
+      // Recorded on the failure path too — a stopped rebuild is the run you
+      // most want to find again three days later.
+      await recordDeployRun({
+        command: steps.map((s) => s.command).join(" && "),
+        startedAt,
+        ok: false,
+        steps: results,
+        opKind,
+        error: `${step.label} failed`,
+        actorUserId,
+      });
       res.status(500).json({ ok: false, operation, steps: results, error: `${step.label} failed` });
       return;
     }
   }
 
   log.info({ operation }, "Deploy console operation completed");
+  await recordDeployRun({
+    command: steps.map((s) => s.command).join(" && "),
+    startedAt,
+    ok: true,
+    steps: results,
+    opKind,
+    actorUserId,
+  });
   res.json({ ok: true, operation, steps: results });
 });
 

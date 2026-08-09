@@ -67,6 +67,11 @@ import { PackagesFetchBridge } from "./screens/packages/PackagesFetchBridge";
 // the real twelve engines with the score each last recorded — and for the
 // synchronous engine peek resolver. See EnginesFetchBridge.tsx.
 import { EnginesFetchBridge } from "./screens/engines/EnginesFetchBridge";
+// Same reasoning again, for the Watch tab's "Runs that failed" count and the
+// Run tab's "Recent runs" gallery — and because deployStore/sqlStore ping the
+// run-history store the moment a run finishes, which needs a fetch already
+// handed over. See RunHistoryFetchBridge.tsx.
+import { RunHistoryFetchBridge } from "./screens/run-history/RunHistoryFetchBridge";
 // Same reasoning again, for the Home tab's "Queue"/"Types" galleries and the
 // Watch tab's live "overdue"/"blocked" counts — see
 // FulfillmentFetchBridge.tsx's doc comment.
@@ -125,6 +130,7 @@ function AdminV2Inner() {
       <SqlFetchBridge />
       <PackagesFetchBridge />
       <EnginesFetchBridge />
+      <RunHistoryFetchBridge />
       <FulfillmentFetchBridge />
       <AiPromptsFetchBridge />
     </Shell>

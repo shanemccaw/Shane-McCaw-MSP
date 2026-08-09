@@ -1,11 +1,14 @@
 /**
  * Run History — screen registration.
  *
- * The log of every command and query the operator has actually run from
- * adminv2. Read `SHELL.md` first, then `runHistoryStore.ts` for the one thing
- * about this screen that is a real tradeoff rather than a detail: there is no
- * server-side record of these runs to read, so the log is kept per browser
- * profile and the screen says so on its own surface.
+ * The log of every command and query actually run against this server. Read
+ * `SHELL.md` first, then `api-server/src/lib/run-history.ts` — the rows are
+ * written *there*, by the routes that do the running, not by this screen
+ * reporting what its browser saw. A run is therefore kept when the tab is
+ * closed mid-build, and one admin's runs show up in another's history.
+ *
+ * This module only reads, annotates and forgets. There is no code path here
+ * that can create a run.
  *
  * ## Placement
  *
@@ -25,13 +28,17 @@
  * open, so they are `record` intents and live on the contextual tab and in the
  * peek.
  *
- * ## Known gap
+ * ## Known gaps
  *
- * Runs started anywhere other than adminv2 — the old admin panel's own
- * Simulator deploy/SQL panels, or a shell on the box — are not in here and
- * cannot be, for the same reason there is no table: nothing writes one. The
- * empty state names the server's `admin.deploy` log channel as the thing that
- * *is* the audit record, rather than letting this screen imply it is.
+ * - The table is provisioned by a manual migration Shane runs himself
+ *   (`lib/db/migrations/manual/2026-08-09-simulator-run-history.sql`, per
+ *   CLAUDE.md). Until he does, the routes answer with `tableMissing` and this
+ *   screen says exactly that, naming the file — a state it can be in, not an
+ *   error.
+ * - Runs started by a shell on the box itself are not here, and cannot be:
+ *   nothing writes a row for them. Anything that goes through the Deploy
+ *   Console or the SQL Runner is covered, including from the old admin panel,
+ *   because the recording sits in the shared routes rather than in adminv2.
  */
 
 import { Clock, Database, Layers, Search, Terminal, Trash2 } from "lucide-react";
@@ -50,12 +57,11 @@ import {
   failedCount,
   forgetRun,
   getSnapshot,
-  hydrateRunHistory,
-  runCount,
   selectRun,
   setFilter,
   setNote,
   setSearch,
+  warmRunHistory,
   WATCH_FAILED_KEY,
 } from "./runHistoryStore";
 import {
@@ -70,13 +76,13 @@ import {
 const ROUTE = "/run-history";
 
 function openRunHistory(filter?: RunFilter) {
-  hydrateRunHistory();
+  warmRunHistory();
   if (filter) setFilter(filter);
   getShellApi()?.navigate(ROUTE);
 }
 
 function showEverything() {
-  hydrateRunHistory();
+  warmRunHistory();
   setFilter("All");
   setSearch("");
   getShellApi()?.navigate(ROUTE);
@@ -89,7 +95,7 @@ function openRun(entry: RunHistoryEntry) {
 }
 
 function showFailures() {
-  hydrateRunHistory();
+  warmRunHistory();
   setFilter("All");
   setSearch("");
   getShellApi()?.navigate(ROUTE);
@@ -110,7 +116,7 @@ function tileFor(entry: RunHistoryEntry): string {
  * Same pattern `screens/sql/index.tsx` uses.
  */
 function recentRunRows(): GalleryRow[] {
-  hydrateRunHistory();
+  warmRunHistory();
   return getSnapshot()
     .entries.slice(0, 40)
     .map((entry) => ({
@@ -145,7 +151,7 @@ function runPeek(id: string): PeekModel | null {
     facts: [
       { label: "When", value: whenLabel(entry.startedAt), prose: true },
       { label: "Took", value: durationLabel(entry.durationMs) || "not measured" },
-      { label: "Run before", value: repeatLabel(runCount(entry.cmd)), prose: true },
+      { label: "Run before", value: repeatLabel(entry.runCount), prose: true },
       { label: "Ticket", value: entry.ticket || "none in the text", prose: !entry.ticket },
     ],
     edits: [
@@ -154,10 +160,14 @@ function runPeek(id: string): PeekModel | null {
         label: "What it was",
         value: entry.note,
         area: true,
-        onChange: (next) => setNote(entry.id, next),
+        onChange: (next) => void setNote(entry.id, next),
       },
     ],
-    body: { title: entry.ok ? "Output" : "What it printed before it failed", content: entry.output || "It printed nothing." },
+    body: {
+      title: entry.ok ? "Output" : "What it printed before it failed",
+      // undefined is "not fetched yet", not "empty" - selecting the run loads it.
+      content: entry.output ?? (entry.hasOutput ? "Reading what it printed…" : "It printed nothing."),
+    },
     list:
       entry.effect.length > 0
         ? {
@@ -176,8 +186,8 @@ function runPeek(id: string): PeekModel | null {
         confirm: Boolean(entry.migrationFile),
         onSelect: () => rerunEntry(entry),
       },
-      { label: "Copy output", onSelect: () => copyText(entry.output) },
-      { label: "Forget it", tone: "danger", confirm: true, onSelect: () => forgetRun(entry.id) },
+      { label: "Copy output", onSelect: () => copyText(entry.output ?? "") },
+      { label: "Forget it", tone: "danger", confirm: true, onSelect: () => void forgetRun(entry.id) },
     ],
   };
 }
@@ -271,8 +281,8 @@ registerScreen({
               label: "Copy output",
               icon: Layers,
               intent: "record",
-              disabled: !entry.output,
-              onSelect: () => copyText(entry.output),
+              disabled: !entry.hasOutput,
+              onSelect: () => copyText(entry.output ?? ""),
             },
             { label: "Copy command", icon: Database, intent: "record", onSelect: () => copyText(entry.cmd) },
             {
@@ -281,7 +291,7 @@ registerScreen({
               intent: "record",
               color: ACCENT.danger,
               onSelect: () => {
-                if (window.confirm(`Forget "${entry.title}"? Its output goes with it.`)) forgetRun(entry.id);
+                if (window.confirm(`Forget "${entry.title}"? Its output goes with it.`)) void forgetRun(entry.id);
               },
             },
           ],
@@ -293,7 +303,7 @@ registerScreen({
   peeks: { run: runPeek },
 
   commands: () => {
-    hydrateRunHistory();
+    warmRunHistory();
     const items: CommandItem[] = [
       {
         id: "act:run-history-search",
@@ -329,7 +339,7 @@ registerScreen({
         area: "run-history",
         run: () => {
           if (window.confirm("Forget every run and its output? The runs themselves already happened — this only clears the log.")) {
-            clearRunHistory();
+            void clearRunHistory();
           }
         },
       });

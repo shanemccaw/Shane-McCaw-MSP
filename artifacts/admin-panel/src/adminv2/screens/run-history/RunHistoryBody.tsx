@@ -5,30 +5,25 @@
  * column (`Admin Shell.dc.html` line 2012 onward). One row carries: a
  * pass/fail dot, the derived title, the ticket pill, the kind, when it ran,
  * how many times that exact command has run, the command on a mono line, and
- * the consequence chips. Everything a row says is derived from what actually
- * came back — see `runHistoryStore.ts`.
+ * the consequence chips. Everything a row says is measured from what actually
+ * came back — see `api-server/src/lib/run-history.ts`, which is where the
+ * measuring happens.
+ *
+ * Search and the Deploy/SQL chips are applied **server-side** (the search
+ * covers the output, which the list response does not carry), so the rows here
+ * are already the answer — there is no second, local filter pass that could
+ * disagree with the count in the header.
  *
  * Selecting a row is not navigation: it fills the Properties panel and the
- * Output tab, which is handoff.md principle 3 (a one-off task should not move
- * you off what you were doing). Opening a run *properly* — a doc tab, its own
- * contextual tab — is the peek's "Open it properly", not a side effect of
- * clicking a row.
+ * Output tab, which is handoff.md principle 3. Opening a run *properly* — a
+ * doc tab, its own contextual tab — is the peek's "Open it properly".
  */
 
 import { useEffect, useSyncExternalStore } from "react";
 import { Search } from "lucide-react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, SURFACE, TEXT, WASH } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
-import {
-  getSnapshot,
-  hydrateRunHistory,
-  runCount,
-  selectRun,
-  setFilter,
-  setSearch,
-  subscribe,
-  visibleEntries,
-} from "./runHistoryStore";
+import { getSnapshot, selectRun, setFilter, setSearch, subscribe, warmRunHistory } from "./runHistoryStore";
 import {
   dayBand,
   durationLabel,
@@ -52,15 +47,16 @@ export function useRunHistory() {
 export function RunHistoryBody({ recordId }: { recordId?: string }) {
   const state = useRunHistory();
 
-  useEffect(hydrateRunHistory, []);
+  useEffect(warmRunHistory, []);
   useEffect(() => {
     if (recordId) selectRun(recordId);
   }, [recordId]);
 
-  const rows = visibleEntries();
-  const total = state.entries.length;
-  const count =
-    rows.length === total ? `${total} run${total === 1 ? "" : "s"}` : `${rows.length} of ${total}`;
+  const rows = state.entries;
+  const filtered = Boolean(state.search.trim()) || state.filter !== "All";
+  const count = filtered
+    ? `${rows.length} of ${state.total}`
+    : `${state.total} run${state.total === 1 ? "" : "s"}`;
 
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: SURFACE.app }}>
@@ -90,10 +86,12 @@ export function RunHistoryBody({ recordId }: { recordId?: string }) {
             color: TEXT.groupLabel,
           }}
         >
-          Every command and query you have run, with its output and what it changed
+          Every command and query run against this server, with its output and what it changed
         </span>
         <div style={{ flex: 1, minWidth: 4 }} />
-        <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11.5, color: TEXT.faint }}>{count}</span>
+        <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11.5, color: TEXT.faint }}>
+          {state.loading ? "reading…" : count}
+        </span>
       </header>
 
       <div
@@ -167,7 +165,7 @@ export function RunHistoryBody({ recordId }: { recordId?: string }) {
         })}
       </div>
 
-      {state.storageError ? (
+      {state.error ? (
         <div
           style={{
             flex: "none",
@@ -177,13 +175,19 @@ export function RunHistoryBody({ recordId }: { recordId?: string }) {
             color: ACCENT_TEXT.danger,
           }}
         >
-          {state.storageError}
+          {state.error}
         </div>
       ) : null}
 
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", paddingBottom: 8 }}>
         {rows.length === 0 ? (
-          <EmptyState anyRuns={total > 0} />
+          <EmptyState
+            loading={state.loading}
+            loaded={state.loaded}
+            filtered={filtered}
+            tableMissing={state.tableMissing}
+            migration={state.migration}
+          />
         ) : (
           rows.map((entry, index) => (
             <Row
@@ -199,30 +203,62 @@ export function RunHistoryBody({ recordId }: { recordId?: string }) {
   );
 }
 
-function EmptyState({ anyRuns }: { anyRuns: boolean }) {
+function EmptyState({
+  loading,
+  loaded,
+  filtered,
+  tableMissing,
+  migration,
+}: {
+  loading: boolean;
+  loaded: boolean;
+  filtered: boolean;
+  tableMissing: boolean;
+  migration: string | null;
+}) {
+  const base = { padding: "34px 22px", maxWidth: 600, fontSize: 12, lineHeight: 1.6 } as const;
+
+  if (tableMissing) {
+    return (
+      <div style={{ ...base, color: TEXT.meta }}>
+        The run history table does not exist yet, so nothing is being kept.
+        <div style={{ marginTop: 10, color: TEXT.faint }}>
+          Run{" "}
+          <span style={{ fontFamily: FONT.mono, color: ACCENT_TEXT.amber }}>
+            lib/db/migrations/manual/{migration ?? "2026-08-09-simulator-run-history.sql"}
+          </span>{" "}
+          and every command and query from then on lands here. Runs made before that are not
+          recoverable — there was nowhere to put them.
+        </div>
+      </div>
+    );
+  }
+
+  if (!loaded || loading) {
+    return <div style={{ ...base, color: TEXT.faint }}>Reading the log…</div>;
+  }
+
+  if (filtered) {
+    return (
+      <div style={{ ...base, color: TEXT.meta }}>
+        Nothing matches. History keeps every run — command, output, and what it did.
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: "34px 22px", maxWidth: 560, fontSize: 12, lineHeight: 1.6, color: TEXT.meta }}>
-      {anyRuns ? (
-        "Nothing matches. History keeps every run — command, output, and what it did."
-      ) : (
-        <>
-          Nothing has been run yet. Every Deploy Console command and every SQL Runner query lands here
-          the moment it finishes, with its output and what it changed.
-          <div style={{ marginTop: 10, color: TEXT.faint }}>
-            Kept in this browser, on this machine — it survives a reload and a redeploy, but it does not
-            follow you to another machine and it is not the audit trail. The server keeps that on its own
-            <span style={{ fontFamily: FONT.mono }}> admin.deploy </span>
-            log channel.
-          </div>
-        </>
-      )}
+    <div style={{ ...base, color: TEXT.meta }}>
+      Nothing has been run yet. Every Deploy Console command and every SQL Runner query lands here
+      the moment it finishes, with its output and what it changed.
+      <div style={{ marginTop: 10, color: TEXT.faint }}>
+        Recorded by the server as it runs, not by this browser — so a run is kept even if you close
+        the tab mid-build, and another admin&rsquo;s runs show up here too.
+      </div>
     </div>
   );
 }
 
 function Row({ entry, showDay, selected }: { entry: RunHistoryEntry; showDay: boolean; selected: boolean }) {
-  const runs = runCount(entry.cmd);
-
   return (
     <>
       {showDay ? (
@@ -322,7 +358,7 @@ function Row({ entry, showDay, selected }: { entry: RunHistoryEntry; showDay: bo
             {whenLabel(entry.startedAt)}
           </span>
           <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11, color: TEXT.faint }}>
-            {repeatLabel(runs)}
+            {repeatLabel(entry.runCount)}
           </span>
         </div>
 

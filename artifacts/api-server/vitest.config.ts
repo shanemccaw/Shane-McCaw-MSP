@@ -253,6 +253,10 @@ export default defineConfig({
       // document pinned at `generating`. Fails CLOSED, unlike the audit
       // deadline above: there is no fallback narrative to proceed with.
       "src/lib/ai-generation-deadline.test.ts",
+      // Run History: the effect strings are measured off real results, never
+      // sniffed from the command text (insert...returning is the case that
+      // proves it), and a failed write never breaks the run it was logging.
+      "src/lib/run-history.test.ts",
     ],
     coverage: {
       provider: "v8",
