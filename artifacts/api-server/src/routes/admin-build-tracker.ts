@@ -633,7 +633,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
     // Unfiltered — needed both for the open-work browse list below AND to
     // compute real milestone progress, which has to count closed/done work
     // too (a milestone with everything closed should read 100%, not 0/0).
-    const [allEpics, allIssues, currentChatRows] = await Promise.all([
+    const [allEpics, allIssues, allChats, currentChatRows] = await Promise.all([
       db
         .select({
           id: btEpicsTable.id,
@@ -659,6 +659,19 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         })
         .from(btIssuesTable)
         .orderBy(asc(btIssuesTable.title)),
+      // Every chat, not just open-work ones — the navigator (Git #697) needs
+      // to point at a chat even if the epic it's linked to has since closed,
+      // and there's no cheap way to filter that server-side without also
+      // dragging in a join against both issueId and epicId.
+      db
+        .select({
+          conversationId: btChatsTable.conversationId,
+          title: btChatsTable.title,
+          issueId: btChatsTable.issueId,
+          epicId: btChatsTable.epicId,
+          updatedAt: btChatsTable.updatedAt,
+        })
+        .from(btChatsTable),
       conversationId
         ? db.select().from(btChatsTable).where(eq(btChatsTable.conversationId, conversationId)).limit(1)
         : Promise.resolve([]),
@@ -729,7 +742,25 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
       ? { ...chatRow, claudeUrl: claudeUrl(chatRow.conversationId), focusEpic, focusEpicOpenIssues, focusMilestone }
       : null;
 
-    res.json({ milestones, epics, issues, currentChat });
+    // Resolved against allEpics/allIssues (unfiltered) rather than the
+    // open-only `epics`/`issues` above, so a chat pointing at an already-
+    // closed epic/issue still resolves — the navigator should still be able
+    // to find it, same reasoning as focusEpic's own resolution above.
+    const chats = allChats.map((c) => {
+      let epicId = c.epicId;
+      if (!epicId && c.issueId) {
+        epicId = allIssues.find((i) => i.id === c.issueId)?.epicId ?? null;
+      }
+      return {
+        conversationId: c.conversationId,
+        title: c.title,
+        epicId,
+        claudeUrl: claudeUrl(c.conversationId),
+        updatedAt: c.updatedAt,
+      };
+    });
+
+    res.json({ milestones, epics, issues, chats, currentChat });
   } catch (err) {
     log.error({ err }, "GET /extension/board failed");
     res.status(500).json({ error: "Failed to load board" });

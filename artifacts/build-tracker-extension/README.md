@@ -6,8 +6,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
 1. **Title sync** — sends the conversation ID and the tab's title to Build
    Tracker's `POST /admin/build-tracker/chats/ingest` endpoint, so the chat
    shows up already labeled instead of a bare conversation ID.
-2. **"What am I working on?" panel** — a small floating tab on the right
-   edge of the page. Expand it to see your open Milestones/Epics/Issues and
+2. **"What am I working on?" panel** — opens by default on every claude.ai
+   page (it remembers if you last closed it and stays closed until you
+   reopen it, but a fresh install/browser starts open — the panel is meant
+   to be left open, not reopened every time). Expand it to see your open
+   Milestones/Epics/Issues and
    click one to link the *current* chat to it, right there in the chat —
    no round-trip to Build Tracker needed to figure out where a chat belongs.
    Once a chat is already linked to an epic, the panel switches to a
@@ -23,6 +26,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
    fills up with rows you've already acted on. Dismissed rows stay hidden
    (stored locally in the extension, not in Build Tracker) until you clear
    the extension's storage.
+
+   The header's 🧭 button opens a **Milestone → Epic → chat** navigator for
+   getting to a *different* chat's context — pick a milestone, then one of
+   its epics, then click a chat linked to that epic to jump straight there
+   (a real tab navigation, not just a link-this-chat action).
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

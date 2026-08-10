@@ -269,6 +269,7 @@ function buildPanel() {
     <div class="header">
       <span class="title">What am I working on?</span>
       <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
+      <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
       <button class="iconbtn" data-action="refresh" title="Quick sync — checks just the issues on screen">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
@@ -298,6 +299,42 @@ function buildPanel() {
   `;
   shadow.appendChild(dlgBackdrop);
 
+  // Milestone → Epic → chat navigator (Git #697) — the base panel only ever
+  // shows the CURRENT chat's own context; this is the way to get to a
+  // *different* chat's epic without leaving claude.ai to go dig through
+  // Build Tracker itself. Reuses the same .dlg/.epic-row look as everything
+  // else, just a separate backdrop so it can stack independently of the
+  // details dialog.
+  const navBackdrop = document.createElement("div");
+  navBackdrop.className = "dlg-backdrop";
+  navBackdrop.hidden = true;
+  navBackdrop.innerHTML = `
+    <div class="dlg" role="dialog" aria-label="Find a chat">
+      <div class="dlg-header">
+        <button class="iconbtn" data-action="nav-back" title="Back">←</button>
+        <span class="dlg-title">Find a chat</span>
+        <button class="iconbtn" data-action="nav-close" title="Close">✕</button>
+      </div>
+      <div class="dlg-body nav-body"></div>
+    </div>
+  `;
+  shadow.appendChild(navBackdrop);
+
+  const navTitle = navBackdrop.querySelector(".dlg-title");
+  const navBody = navBackdrop.querySelector(".nav-body");
+  const navBackBtn = navBackdrop.querySelector('[data-action="nav-back"]');
+
+  const closeNavigator = () => { navBackdrop.hidden = true; };
+  navBackdrop.querySelector('[data-action="nav-close"]').addEventListener("click", closeNavigator);
+  navBackdrop.querySelector('[data-action="nav-back"]').addEventListener("click", () => navBack());
+  navBackdrop.addEventListener("click", (e) => { if (e.target === navBackdrop) closeNavigator(); });
+  for (const evt of ["keydown", "keyup", "keypress"]) {
+    navBackdrop.addEventListener(evt, (e) => {
+      e.stopPropagation();
+      if (evt === "keydown" && e.key === "Escape") closeNavigator();
+    });
+  }
+
   const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
   const dlgStatus = dlgBackdrop.querySelector(".dlg-status");
   const dlgBody = dlgBackdrop.querySelector(".dlg-body");
@@ -324,6 +361,7 @@ function buildPanel() {
   panel.querySelector('[data-action="refresh"]').addEventListener("click", () => void quickRefresh());
   panel.querySelector('[data-action="full-sync"]').addEventListener("click", () => void fullSyncFromGithub());
   panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
+  panel.querySelector('[data-action="navigate"]').addEventListener("click", () => openNavigator());
   search.addEventListener("input", () => renderList(search.value));
 
   // claude.ai listens for keystrokes on the document to auto-focus its own
@@ -337,7 +375,11 @@ function buildPanel() {
     panel.addEventListener(evt, (e) => e.stopPropagation());
   }
 
-  panelEls = { host, tab, panel, progress, current, list, search, dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand };
+  panelEls = {
+    host, tab, panel, progress, current, list, search,
+    dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand,
+    navBackdrop, navTitle, navBody, navBackBtn,
+  };
   return panelEls;
 }
 
@@ -484,11 +526,24 @@ function insertPrompt(issue) {
   }
 }
 
+/**
+ * "I'd rather close it less than open it more" — the panel now defaults to
+ * OPEN on every claude.ai page (initPanelVisibility() below), and every
+ * explicit open/close click persists here too, so the one time Shane does
+ * close it for something (e.g. reading a wide code block) it stays closed
+ * on the next page, but a fresh browser/reinstall still starts open.
+ */
 function togglePanel(open) {
   const { panel, tab } = buildPanel();
   panel.hidden = !open;
   tab.style.display = open ? "none" : "block";
+  void chrome.storage.local.set({ panelOpen: open });
   if (open) loadBoard(false);
+}
+
+async function initPanelVisibility() {
+  const { panelOpen } = await chrome.storage.local.get("panelOpen");
+  togglePanel(panelOpen !== false); // default OPEN unless Shane explicitly closed it last time
 }
 
 async function loadBoard(force) {
@@ -737,6 +792,121 @@ function renderList(query) {
   }
 }
 
+// ── Milestone → Epic → chat navigator (Git #697) ───────────────────────────
+// Drill-down picker for jumping to a DIFFERENT chat's context, rather than
+// the always-current-chat view the rest of the panel shows. `navMilestone`/
+// `navEpic` track how deep we are; null/null means "list all milestones."
+
+let navMilestone = null;
+let navEpic = null;
+
+function openNavigator() {
+  const { navBackdrop } = buildPanel();
+  navMilestone = null;
+  navEpic = null;
+  renderNavStep();
+  navBackdrop.hidden = false;
+}
+
+function navBack() {
+  if (navEpic) { navEpic = null; renderNavStep(); return; }
+  if (navMilestone) { navMilestone = null; renderNavStep(); return; }
+  panelEls.navBackdrop.hidden = true;
+}
+
+function renderNavStep() {
+  const { navTitle, navBackBtn } = panelEls;
+  navBackBtn.style.visibility = navMilestone || navEpic ? "visible" : "hidden";
+  if (!boardCache) {
+    navTitle.textContent = "Find a chat";
+    panelEls.navBody.innerHTML = `<div class="empty">Loading…</div>`;
+    return;
+  }
+  if (navEpic) {
+    navTitle.textContent = navEpic.title;
+    renderNavChats();
+  } else if (navMilestone) {
+    navTitle.textContent = navMilestone.title;
+    renderNavEpics();
+  } else {
+    navTitle.textContent = "Find a chat — pick a Milestone";
+    renderNavMilestones();
+  }
+}
+
+function renderNavMilestones() {
+  const { navBody } = panelEls;
+  const { milestones, epics } = boardCache.data;
+  navBody.innerHTML = "";
+
+  for (const m of milestones) {
+    const epicCount = epics.filter((e) => e.milestoneId === m.githubNumber).length;
+    if (epicCount === 0) continue;
+    const row = document.createElement("div");
+    row.className = "epic-row";
+    row.innerHTML = `<span>${escapeHtml(m.title)}</span><span class="pill">${epicCount} epic${epicCount === 1 ? "" : "s"} · ${m.progress.pct}%</span>`;
+    row.addEventListener("click", () => { navMilestone = m; navEpic = null; renderNavStep(); });
+    navBody.appendChild(row);
+  }
+
+  const unsorted = epics.filter((e) => e.milestoneId == null);
+  if (unsorted.length > 0) {
+    const row = document.createElement("div");
+    row.className = "epic-row";
+    row.innerHTML = `<span>Unsorted Epics</span><span class="pill">${unsorted.length}</span>`;
+    row.addEventListener("click", () => { navMilestone = { title: "Unsorted Epics", githubNumber: null }; navEpic = null; renderNavStep(); });
+    navBody.appendChild(row);
+  }
+
+  if (!navBody.firstChild) navBody.innerHTML = `<div class="empty">No open milestones with epics.</div>`;
+}
+
+function renderNavEpics() {
+  const { navBody } = panelEls;
+  const { epics, chats } = boardCache.data;
+  const list = epics.filter((e) => e.milestoneId === navMilestone.githubNumber);
+  navBody.innerHTML = "";
+  if (list.length === 0) {
+    navBody.innerHTML = `<div class="empty">No open epics in this milestone.</div>`;
+    return;
+  }
+  for (const epic of list) {
+    const chatCount = chats.filter((c) => c.epicId === epic.id).length;
+    const row = document.createElement("div");
+    row.className = "epic-row";
+    row.innerHTML = `<span>${escapeHtml(epic.title)}</span><span class="pill">${epic.githubNumber ? `#${epic.githubNumber} · ` : ""}${chatCount} chat${chatCount === 1 ? "" : "s"}</span>`;
+    row.addEventListener("click", () => { navEpic = epic; renderNavStep(); });
+    navBody.appendChild(row);
+  }
+}
+
+/** Clicking a chat here navigates the TAB there (location.href) — a real chat switch, not a link-the-current-chat action like the rest of the panel does. */
+function renderNavChats() {
+  const { navBody } = panelEls;
+  const { chats } = boardCache.data;
+  const conversationId = conversationIdFromUrl();
+  const linked = chats
+    .filter((c) => c.epicId === navEpic.id)
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  navBody.innerHTML = "";
+  if (linked.length === 0) {
+    navBody.innerHTML = `<div class="empty">No chats linked to this epic yet.</div>`;
+    return;
+  }
+  for (const chat of linked) {
+    const isCurrent = chat.conversationId === conversationId;
+    const row = document.createElement("div");
+    row.className = "epic-row";
+    row.style.cursor = isCurrent ? "default" : "pointer";
+    row.innerHTML = `<span>${escapeHtml(chat.title)}</span><span class="pill">${isCurrent ? "current chat" : "→"}</span>`;
+    if (!isCurrent) {
+      row.addEventListener("click", () => { location.href = chat.claudeUrl; });
+    }
+    navBody.appendChild(row);
+  }
+}
+
 async function linkTo(target, label) {
   const conversationId = conversationIdFromUrl();
   if (!conversationId) return;
@@ -876,6 +1046,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Build the (collapsed) panel shell once on load so the tab is there
-// immediately, without eagerly hitting the API before you've asked for it.
+// Build the panel shell once on load, then open it by default (see
+// togglePanel's doc comment) — unlike before, this now does hit the API
+// immediately rather than waiting for a click, since "open by default" only
+// works if it's actually showing real data.
 buildPanel();
+void initPanelVisibility();
