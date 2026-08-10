@@ -4020,6 +4020,14 @@ export const btEpicsTable = pgTable("bt_epics", {
    * onDelete: "set null" foreign key on every sync (Git #693). */
   githubNumber:  integer("github_number").unique(),
   milestoneId:   integer("milestone_id"),
+  /** Non-null when this epic is itself a sub-issue of another tracked epic
+   * (GitHub sub-issues can nest — an issue with its own sub-issues gets
+   * promoted into this table same as a top-level epic, see sync's
+   * getParentNumber() usage). Without this, a nested one showed up as an
+   * unrelated top-level epic with no visible tie back to its real parent —
+   * easy to lose track of, and if it got closed while its own children were
+   * still open, the whole thing vanished (Git #699). */
+  parentEpicId:  integer("parent_epic_id").references((): AnyPgColumn => btEpicsTable.id, { onDelete: "set null" }),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

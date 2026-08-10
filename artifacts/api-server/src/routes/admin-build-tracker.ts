@@ -641,6 +641,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           status: btEpicsTable.status,
           githubNumber: btEpicsTable.githubNumber,
           milestoneId: btEpicsTable.milestoneId,
+          parentEpicId: btEpicsTable.parentEpicId,
         })
         .from(btEpicsTable)
         .orderBy(asc(btEpicsTable.title)),
@@ -658,7 +659,11 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           labels: btIssuesTable.labels,
         })
         .from(btIssuesTable)
-        .orderBy(asc(btIssuesTable.title)),
+        // By Git number, not title (Git #700 — Shane, with 19 issues under
+        // one epic: "hard to find" in title-alphabetical order). Filtering
+        // this array later (focusEpicOpenIssues, per-epic groups) preserves
+        // this order since Array.filter keeps source order.
+        .orderBy(asc(btIssuesTable.githubNumber)),
       // Every chat, not just open-work ones — the navigator (Git #697) needs
       // to point at a chat even if the epic it's linked to has since closed,
       // and there's no cheap way to filter that server-side without also
@@ -695,11 +700,29 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         if (msRes.ok) {
           const ghMsList = (await msRes.json()) as Array<{ number: number; title: string; state: string }>;
           milestones = ghMsList.map((m) => {
-            const msEpics = allEpics.filter((e) => e.milestoneId === m.number);
+            // Git #699 follow-up — Shane: "I am closing Issues but it's not
+            // changing." A nested epic (an issue with its own sub-issues,
+            // itself nested under a real epic) usually has no `milestone`
+            // set on ITSELF on GitHub — only the top epic gets tagged. The
+            // old `e.milestoneId === m.number` filter silently dropped every
+            // nested epic (and everything under it) out of this count
+            // whenever that was the case — closing one of its issues had
+            // genuinely zero effect on the number, not a caching problem.
+            // Walking the whole parentEpicId tree from each top-level epic
+            // in this milestone counts every descendant regardless of its
+            // own milestoneId.
+            const collectTree = (epicId: number): number[] => {
+              const children = allEpics.filter((e) => e.parentEpicId === epicId);
+              return [epicId, ...children.flatMap((c) => collectTree(c.id))];
+            };
+            const topEpics = allEpics.filter((e) => e.milestoneId === m.number && e.parentEpicId == null);
+            const msEpicIds = topEpics.flatMap((e) => collectTree(e.id));
+
             let total = 0;
             let done = 0;
-            for (const ep of msEpics) {
-              const epIssues = allIssues.filter((i) => i.epicId === ep.id);
+            for (const epicId of msEpicIds) {
+              const ep = allEpics.find((e) => e.id === epicId)!;
+              const epIssues = allIssues.filter((i) => i.epicId === epicId);
               if (epIssues.length === 0) {
                 total += 1;
                 if (ep.status === "closed") done += 1;
@@ -717,9 +740,29 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
       }
     }
 
+    // A "sub item under an item" (Git #699) — an issue promoted into
+    // bt_epics because it has its own sub-issues, nested under a real epic
+    // via parentEpicId. Without surfacing these separately they're
+    // invisible in the focused view: they don't show as one of the epic's
+    // own OPEN ISSUES (they're not in bt_issues at all, they're their own
+    // epic row), so "This epic's open issues" would silently omit them.
+    const subEpicsOf = (epicId: number) =>
+      allEpics
+        .filter((e) => e.parentEpicId === epicId)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          githubNumber: e.githubNumber,
+          status: e.status,
+          openIssueCount: allIssues.filter(
+            (i) => i.epicId === e.id && i.status !== "closed" && i.status !== "done",
+          ).length,
+        }));
+
     const chatRow = currentChatRows[0] ?? null;
     let focusEpic: typeof allEpics[number] | null = null;
     let focusEpicOpenIssues: typeof allIssues = [];
+    let focusEpicSubEpics: ReturnType<typeof subEpicsOf> = [];
     let focusMilestone: (typeof milestones)[number] | null = null;
 
     if (chatRow) {
@@ -733,14 +776,42 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           focusEpicOpenIssues = allIssues.filter(
             (i) => i.epicId === focusEpic!.id && i.status !== "closed" && i.status !== "done",
           );
+          focusEpicSubEpics = subEpicsOf(focusEpic.id);
           focusMilestone = milestones.find((m) => m.githubNumber === focusEpic!.milestoneId) ?? null;
         }
       }
     }
 
     const currentChat = chatRow
-      ? { ...chatRow, claudeUrl: claudeUrl(chatRow.conversationId), focusEpic, focusEpicOpenIssues, focusMilestone }
+      ? { ...chatRow, claudeUrl: claudeUrl(chatRow.conversationId), focusEpic, focusEpicOpenIssues, focusEpicSubEpics, focusMilestone }
       : null;
+
+    // Proactive warning (Git #699) — Shane: "I might have closed parents
+    // thinking I was done." A closed epic with a still-open child issue OR
+    // a still-open nested sub-epic underneath it is real work that just
+    // went invisible: closed epics are filtered out of `epics` above, so
+    // nothing else in this response would ever surface it again. Checked
+    // regardless of which chat/epic is currently focused — this needs to be
+    // seen even from an unrelated chat.
+    function hasOpenDescendantWork(epicId: number, seen: Set<number> = new Set()): boolean {
+      if (seen.has(epicId)) return false; // cycle guard — shouldn't happen, but never loop forever
+      seen.add(epicId);
+      const hasOpenIssue = allIssues.some(
+        (i) => i.epicId === epicId && i.status !== "closed" && i.status !== "done",
+      );
+      if (hasOpenIssue) return true;
+      return allEpics
+        .filter((e) => e.parentEpicId === epicId)
+        .some((child) => child.status !== "closed" || hasOpenDescendantWork(child.id, seen));
+    }
+    const alerts = allEpics
+      .filter((e) => e.status === "closed" && hasOpenDescendantWork(e.id))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        githubNumber: e.githubNumber,
+        githubUrl: e.githubNumber != null ? `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${e.githubNumber}` : null,
+      }));
 
     // Resolved against allEpics/allIssues (unfiltered) rather than the
     // open-only `epics`/`issues` above, so a chat pointing at an already-
@@ -760,7 +831,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
       };
     });
 
-    res.json({ milestones, epics, issues, chats, currentChat });
+    res.json({ milestones, epics, issues, chats, currentChat, alerts });
   } catch (err) {
     log.error({ err }, "GET /extension/board failed");
     res.status(500).json({ error: "Failed to load board" });
@@ -831,6 +902,78 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
   res.json({ updated, requested: numbers.length, failed });
 });
 
+async function ghFetchIssue(number: number): Promise<GitHubIssuePayload | null> {
+  const res = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}`);
+  if (!res.ok) return null;
+  return (await res.json()) as GitHubIssuePayload;
+}
+
+async function ghFetchSubIssues(number: number): Promise<GitHubIssuePayload[]> {
+  const res = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}/sub_issues`);
+  if (!res.ok) return [];
+  return (await res.json()) as GitHubIssuePayload[];
+}
+
+/** Upserts a GitHub issue as an EPIC row (used both for the epic being synced and any nested sub-epic found under it). */
+async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null): Promise<number> {
+  const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
+  const [row] = await db
+    .insert(btEpicsTable)
+    .values({
+      title: gh.title,
+      description: gh.body,
+      status: gh.state === "closed" ? "closed" : "open",
+      githubNumber: gh.number,
+      milestoneId,
+      parentEpicId,
+    })
+    .onConflictDoUpdate({
+      target: btEpicsTable.githubNumber,
+      set: {
+        title: gh.title,
+        description: gh.body,
+        // "closed wins" one-way push, same rule quick-sync uses — never
+        // downgrades a locally-tracked "in_progress" back to "open" here.
+        ...(gh.state === "closed" ? { status: "closed" as const } : {}),
+        milestoneId,
+        parentEpicId,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ id: btEpicsTable.id });
+  return row.id;
+}
+
+async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<void> {
+  const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
+  const labels = gh.labels.map((l) => l.name);
+  await db
+    .insert(btIssuesTable)
+    .values({
+      title: gh.title,
+      description: gh.body,
+      status: gh.state === "closed" ? "closed" : "backlog",
+      epicId,
+      milestoneId,
+      githubNumber: gh.number,
+      githubUrl: gh.html_url,
+      labels,
+    })
+    .onConflictDoUpdate({
+      target: btIssuesTable.githubNumber,
+      set: {
+        title: gh.title,
+        description: gh.body,
+        epicId,
+        milestoneId,
+        githubUrl: gh.html_url,
+        labels,
+        ...(gh.state === "closed" ? { status: "closed" as const } : {}),
+        updatedAt: new Date(),
+      },
+    });
+}
+
 /**
  * POST /admin/build-tracker/extension/sync-epic
  *
@@ -841,6 +984,20 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
  * full repo sync. This calls GitHub's own sub-issues endpoint for ONE epic
  * (a single request, not a full-repo page-through) so newly added children
  * get discovered too, not just refreshed.
+ *
+ * Git #699 — sub-issues can themselves have sub-issues ("if there are sub
+ * items under items I need to know that so I can work them too... I might
+ * have closed parents thinking I was done"). A child that itself has
+ * sub_issues_summary.total > 0 gets promoted into bt_epics (same rule the
+ * full sync uses to decide what's an "Epic") WITH parentEpicId pointing
+ * back here, instead of silently becoming an orphaned top-level epic with
+ * no visible tie to where it actually lives — that disconnect is exactly
+ * what made it easy to close a "done"-looking parent while its own children
+ * were still open underneath it. Walks two levels deep (children, then
+ * their children) — a 4th level still gets upserted as a plain issue (not
+ * lost) but isn't expanded further; that deep a hierarchy needs its own
+ * sync-epic call on that item directly. Capped at 40 total upserts as a
+ * runaway guard.
  *
  * Body: { epicNumber: number }
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
@@ -857,78 +1014,53 @@ router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: 
   }
 
   try {
-    const epicRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${epicNumber}`);
-    if (!epicRes.ok) {
+    const ghEpic = await ghFetchIssue(epicNumber!);
+    if (!ghEpic) {
       res.status(404).json({ error: `Epic #${epicNumber} not found on GitHub` });
       return;
     }
-    const ghEpic = (await epicRes.json()) as GitHubIssuePayload;
-    const epicMilestoneId = ghEpic.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
 
-    const [epicRow] = await db
-      .insert(btEpicsTable)
-      .values({
-        title: ghEpic.title,
-        description: ghEpic.body,
-        status: ghEpic.state === "closed" ? "closed" : "open",
-        githubNumber: epicNumber,
-        milestoneId: epicMilestoneId,
-      })
-      .onConflictDoUpdate({
-        target: btEpicsTable.githubNumber,
-        set: {
-          title: ghEpic.title,
-          description: ghEpic.body,
-          // "closed wins" one-way push, same rule quick-sync uses — never
-          // downgrades a locally-tracked "in_progress" back to "open" here.
-          ...(ghEpic.state === "closed" ? { status: "closed" as const } : {}),
-          milestoneId: epicMilestoneId,
-          updatedAt: new Date(),
-        },
-      })
-      .returning({ id: btEpicsTable.id });
-
-    const subRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${epicNumber}/sub_issues`);
-    if (!subRes.ok) {
-      res.status(502).json({ error: `Couldn't fetch sub-issues for #${epicNumber} from GitHub` });
-      return;
+    // If this epic is itself nested under another tracked epic, link it —
+    // otherwise a sub-epic synced directly (e.g. via the navigator) reads
+    // as an unrelated top-level epic same as before this fix.
+    let ownParentEpicId: number | null = null;
+    const ownParentNum = getParentNumber(ghEpic.parent_issue_url);
+    if (ownParentNum !== null) {
+      const [parentRow] = await db
+        .select({ id: btEpicsTable.id })
+        .from(btEpicsTable)
+        .where(eq(btEpicsTable.githubNumber, ownParentNum))
+        .limit(1);
+      ownParentEpicId = parentRow?.id ?? null;
     }
-    const subIssues = (await subRes.json()) as GitHubIssuePayload[];
+    const epicId = await upsertEpicRow(ghEpic, ownParentEpicId);
 
-    let upserted = 0;
-    for (const gh of subIssues) {
+    const level1 = await ghFetchSubIssues(epicNumber!);
+    let issuesUpserted = 0;
+    let nestedEpicsUpserted = 0;
+    const MAX_UPSERTS = 40;
+
+    for (const gh of level1) {
       if (gh.pull_request) continue;
-      const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
-      const labels = gh.labels.map((l) => l.name);
-      await db
-        .insert(btIssuesTable)
-        .values({
-          title: gh.title,
-          description: gh.body,
-          status: gh.state === "closed" ? "closed" : "backlog",
-          epicId: epicRow.id,
-          milestoneId: issueMilestoneId,
-          githubNumber: gh.number,
-          githubUrl: gh.html_url,
-          labels,
-        })
-        .onConflictDoUpdate({
-          target: btIssuesTable.githubNumber,
-          set: {
-            title: gh.title,
-            description: gh.body,
-            epicId: epicRow.id,
-            milestoneId: issueMilestoneId,
-            githubUrl: gh.html_url,
-            labels,
-            ...(gh.state === "closed" ? { status: "closed" as const } : {}),
-            updatedAt: new Date(),
-          },
-        });
-      upserted++;
+      if (issuesUpserted + nestedEpicsUpserted >= MAX_UPSERTS) break;
+
+      if (gh.sub_issues_summary && gh.sub_issues_summary.total > 0) {
+        const subEpicId = await upsertEpicRow(gh, epicId);
+        nestedEpicsUpserted++;
+        const level2 = await ghFetchSubIssues(gh.number);
+        for (const gh2 of level2) {
+          if (gh2.pull_request) continue;
+          if (issuesUpserted + nestedEpicsUpserted >= MAX_UPSERTS) break;
+          await upsertIssueRow(gh2, subEpicId);
+          issuesUpserted++;
+        }
+      } else {
+        await upsertIssueRow(gh, epicId);
+        issuesUpserted++;
+      }
     }
 
-    res.json({ epicNumber, issuesUpserted: upserted, issuesFound: subIssues.length });
+    res.json({ epicNumber, issuesUpserted, nestedEpicsUpserted, issuesFound: level1.length });
   } catch (err) {
     log.error({ err, epicNumber }, "POST /extension/sync-epic failed");
     res.status(500).json({ error: "Epic sync failed" });
@@ -1618,6 +1750,26 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
     const epicIdByGithubNumber = new Map(
       dbEpics.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.id]),
     );
+
+    // ── 3b. Link nested epics to their real parent epic (Git #699) ────────
+    // An epic here is really "any issue with sub-issues" — one of those can
+    // itself be a sub-issue of ANOTHER epic. Without this, a nested one
+    // shows up as an unrelated top-level epic with no tie back to where it
+    // actually lives, and if it's closed while its own children stay open,
+    // it silently vanishes from every filtered ("open only") view.
+    let nestedEpicsLinked = 0;
+    for (const pNum of parentNumbers) {
+      const ghEpic = issueMapByNumber.get(pNum);
+      const ownParentNum = getParentNumber(ghEpic?.parent_issue_url);
+      const ownParentEpicId = ownParentNum !== null ? (epicIdByGithubNumber.get(ownParentNum) ?? null) : null;
+      if (ownParentEpicId === null) continue;
+      await db
+        .update(btEpicsTable)
+        .set({ parentEpicId: ownParentEpicId, updatedAt: new Date() })
+        .where(eq(btEpicsTable.githubNumber, pNum));
+      nestedEpicsLinked++;
+    }
+    debugLog += `Nested epics linked to their parent epic: ${nestedEpicsLinked}\n`;
 
     // ── 4. Upsert Child and Standalone Issues into bt_issues ──────────────
     let issuesUpserted = 0;

@@ -32,6 +32,22 @@ An unpacked Edge/Chrome extension with two parts, both running on
    its epics, then click a chat linked to that epic to jump straight there
    (a real tab navigation, not just a link-this-chat action).
 
+   Issues under an epic can themselves have sub-issues — GitHub tracks that
+   as its own nested epic, not a plain issue, so it would otherwise be
+   invisible from the epic you're actually looking at. The focused view now
+   shows a **"Sub-epics under this one"** section above the plain issue
+   list whenever that happens; click one to jump straight into its own
+   chats via the navigator. A red banner up top also warns about any
+   *closed* epic that still has open work underneath it — the exact "I
+   might have closed parents thinking I was done" case, since a closed
+   epic otherwise disappears from every other view here even with real
+   work still open inside it.
+
+   The focused view now also has its own **search box** (same one used for
+   browsing — it just filters differently depending on which view you're
+   in) and issues are listed by Git number, not alphabetically by title —
+   with a lot of issues under one epic, alphabetical order was hard to scan.
+
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
 cookie, and even with one, claude.ai is a client-rendered SPA so the raw

@@ -152,6 +152,15 @@ function buildPanel() {
     .progress-bar { height: 6px; border-radius: 3px; background: #292929; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 3px; transition: width 200ms ease; }
     .progress-note { font-size: 10px; color: #8f8c88; margin-top: 5px; }
+    /* Git #699 — a closed epic that still has open work underneath it, so it
+       would otherwise be invisible everywhere else in the panel. Shown
+       regardless of which chat/epic is currently in focus — this is the
+       "you might have closed something you shouldn't have" flag. */
+    .alerts { padding: 8px 12px; background: rgba(224,108,90,.14); border-bottom: 1px solid rgba(224,108,90,.3); flex: none; }
+    .alerts[hidden] { display: none; }
+    .alert-title { font-size: 11px; font-weight: 700; color: #e8a08f; margin-bottom: 4px; }
+    .alert-row { font-size: 11.5px; color: #f0c9bf; padding: 2px 0; }
+    .alert-row:hover { text-decoration: underline; }
     .current {
       padding: 8px 12px; font-size: 11px; color: #a19f9d; border-bottom: 1px solid #2e2e2e; flex: none;
     }
@@ -274,6 +283,7 @@ function buildPanel() {
       <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
+    <div class="alerts" hidden></div>
     <div class="progress" hidden></div>
     <div class="current"></div>
     <input class="search" placeholder="Search…" />
@@ -352,6 +362,7 @@ function buildPanel() {
     });
   }
 
+  const alertsEl = panel.querySelector(".alerts");
   const progress = panel.querySelector(".progress");
   const current = panel.querySelector(".current");
   const list = panel.querySelector(".list");
@@ -363,7 +374,10 @@ function buildPanel() {
   panel.querySelector('[data-action="full-sync"]').addEventListener("click", () => void fullSyncFromGithub());
   panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
   panel.querySelector('[data-action="navigate"]').addEventListener("click", () => openNavigator());
-  search.addEventListener("input", () => renderList(search.value));
+  // Git #700 — search now works in BOTH views (render() itself decides
+  // which render*() to call), so this can't call renderList() directly
+  // anymore or typing while focused on an epic would silently do nothing.
+  search.addEventListener("input", () => render());
 
   // claude.ai listens for keystrokes on the document to auto-focus its own
   // chat composer ("type anywhere to start typing") — keyboard events are
@@ -377,7 +391,7 @@ function buildPanel() {
   }
 
   panelEls = {
-    host, tab, panel, progress, current, list, search,
+    host, tab, panel, alertsEl, progress, current, list, search,
     dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand,
     navBackdrop, navTitle, navBody, navBackBtn,
   };
@@ -642,25 +656,56 @@ async function fullSyncFromGithub() {
   await loadBoard(true);
 }
 
+/** Shared by both views' search — title substring or a bare/`#`-prefixed number match. */
+function textMatches(title, num, q) {
+  return !q || title.toLowerCase().includes(q) || (num != null && String(num).includes(q.replace(/^#/, "")));
+}
+
+function renderAlerts() {
+  const { alertsEl } = panelEls;
+  const alerts = boardCache?.data?.alerts ?? [];
+  if (alerts.length === 0) {
+    alertsEl.hidden = true;
+    alertsEl.innerHTML = "";
+    return;
+  }
+  alertsEl.hidden = false;
+  alertsEl.innerHTML = `<div class="alert-title">⚠ ${alerts.length} closed item${alerts.length === 1 ? "" : "s"} still ha${alerts.length === 1 ? "s" : "ve"} open sub-work</div>`;
+  for (const a of alerts) {
+    const row = document.createElement("div");
+    row.className = "alert-row";
+    row.textContent = `${a.githubNumber ? `#${a.githubNumber} ` : ""}${a.title}`;
+    if (a.githubUrl) {
+      row.style.cursor = "pointer";
+      row.addEventListener("click", () => window.open(a.githubUrl, "_blank", "noopener"));
+    }
+    alertsEl.appendChild(row);
+  }
+}
+
 /**
  * Dispatches between two very different views: a chat linked to an epic
  * shows ONLY that epic and its own open issues (plus the milestone it
  * belongs to, as a progress bar) — Shane's ask was explicit that seeing the
- * whole board once a chat already has a home is just noise. Search only
- * makes sense in the browse view, so it's hidden while focused.
+ * whole board once a chat already has a home is just noise. Search (Git
+ * #700) stays visible and functional in BOTH views now — with 19 issues
+ * under one epic, "hard to find" applied just as much to the focused view
+ * as the browse one.
  */
 function render() {
   if (!boardCache) return;
-  const { search, progress } = panelEls;
+  const { search } = panelEls;
   const currentChat = boardCache.data.currentChat;
   const focusEpic = currentChat?.focusEpic ?? null;
 
+  renderAlerts();
+
   if (focusEpic && !showAllOverride) {
-    search.style.display = "none";
+    search.placeholder = "Search this epic's issues…";
     renderProgress(currentChat.focusMilestone);
-    renderFocused(currentChat);
+    renderFocused(currentChat, search.value);
   } else {
-    search.style.display = "";
+    search.placeholder = "Search…";
     renderProgress(null);
     renderCurrent(currentChat, focusEpic);
     renderList(search.value);
@@ -687,10 +732,11 @@ function renderProgress(milestone) {
   `;
 }
 
-/** The linked-epic-only view — read-only (already linked, nothing to click). */
-function renderFocused(currentChat) {
+/** The linked-epic-only view — read-only (already linked, nothing to click except sub-epics/search). */
+function renderFocused(currentChat, query) {
   const { current, list } = panelEls;
   const epic = currentChat.focusEpic;
+  const q = (query ?? "").trim().toLowerCase();
 
   current.className = "current linked";
   current.innerHTML = `Linked to Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Show everything</a>`;
@@ -707,7 +753,33 @@ function renderFocused(currentChat) {
   row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
   list.appendChild(row);
 
-  const openIssues = (currentChat.focusEpicOpenIssues ?? []).filter((i) => !isDismissed(i));
+  // Sub-epics (Git #699) — an issue under this epic that itself has
+  // sub-issues gets tracked as its own epic, not a plain issue, so it would
+  // otherwise never show up here at all: "if there are sub items under
+  // items I need to know that so I can work them too." Shown ABOVE the
+  // plain open-issues list since these need drilling into, not just a click.
+  const subEpics = (currentChat.focusEpicSubEpics ?? []).filter((e) => textMatches(e.title, e.githubNumber, q));
+  if (subEpics.length > 0) {
+    const subHeading = document.createElement("div");
+    subHeading.className = "milestone";
+    subHeading.textContent = `⚠ Sub-epics under this one — they have their own checklist (${subEpics.length})`;
+    list.appendChild(subHeading);
+    for (const sub of subEpics) {
+      const subRow = document.createElement("div");
+      subRow.className = "epic-row";
+      subRow.innerHTML = `<span>${escapeHtml(sub.title)}</span><span class="pill">${sub.githubNumber ? `#${sub.githubNumber} · ` : ""}${sub.openIssueCount} open</span>`;
+      subRow.addEventListener("click", () => {
+        openNavigator({
+          milestone: currentChat.focusMilestone ?? { title: epic.title, githubNumber: null },
+          epic: sub,
+        });
+      });
+      list.appendChild(subRow);
+    }
+  }
+
+  const openIssues = (currentChat.focusEpicOpenIssues ?? [])
+    .filter((i) => !isDismissed(i) && textMatches(i.title, i.githubNumber, q));
   const heading = document.createElement("div");
   heading.className = "milestone";
   heading.textContent = `This epic's open issues (${openIssues.length})`;
@@ -716,7 +788,9 @@ function renderFocused(currentChat) {
   if (openIssues.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "No open issues on this epic — the milestone progress above covers other epics too.";
+    empty.textContent = q
+      ? "No matches."
+      : "No open issues on this epic — the milestone progress above covers other epics too.";
     list.appendChild(empty);
   } else {
     for (const issue of openIssues) {
@@ -825,10 +899,17 @@ function renderList(query) {
 let navMilestone = null;
 let navEpic = null;
 
-function openNavigator() {
+/**
+ * Opens the navigator dialog. With no args, starts at the top (Milestones)
+ * — the header 🧭 button's behavior. Passed `{ milestone, epic }`, jumps
+ * straight to that epic's chat list instead — used by the sub-epic rows in
+ * the focused view (Git #699) to drill into a nested epic directly, rather
+ * than making Shane re-pick the milestone he's already looking at.
+ */
+function openNavigator(startAt) {
   const { navBackdrop } = buildPanel();
-  navMilestone = null;
-  navEpic = null;
+  navMilestone = startAt?.milestone ?? null;
+  navEpic = startAt?.epic ?? null;
   renderNavStep();
   navBackdrop.hidden = false;
 }
