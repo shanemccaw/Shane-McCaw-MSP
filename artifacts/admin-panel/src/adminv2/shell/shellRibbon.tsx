@@ -10,9 +10,11 @@
  * allowed to carry.
  */
 
-import { PanelBottom, PanelLeft, PanelRight, Search, Rows3 } from "lucide-react";
+import { PanelBottom, PanelLeft, PanelRight, Search, Rows3, GitBranch, Flag, RefreshCw } from "lucide-react";
 import { ACCENT } from "../theme";
 import type { FixedTabId, RibbonGroup } from "../registry/types";
+import { getShellApi } from "./ShellContext";
+import { syncFromGitHub } from "../screens/build-tracker/buildTrackerStore";
 
 export interface ShellRibbonDeps {
   left: boolean;
@@ -41,6 +43,36 @@ export function shellGroupsForTab(tab: FixedTabId, deps: ShellRibbonDeps): Ribbo
             onSelect: deps.openPalette,
             color: ACCENT.info,
             title: "Search everything (Ctrl K)",
+          },
+        ],
+      },
+      {
+        label: "Build Studio",
+        large: [
+          {
+            label: "Build Tracker",
+            icon: GitBranch,
+            intent: "open",
+            color: ACCENT.info,
+            onSelect: () => getShellApi()?.navigate("/build-tracker"),
+            title: "Open Build Tracker",
+          },
+          {
+            label: "Roadmap & Milestones",
+            icon: Flag,
+            intent: "open",
+            color: ACCENT.amber,
+            onSelect: () => getShellApi()?.navigate("/project-management"),
+            title: "Open Roadmap & Milestones Gantt Chart",
+          },
+        ],
+        small: [
+          {
+            label: "Sync GitHub",
+            icon: RefreshCw,
+            intent: "record",
+            onSelect: () => void syncFromGitHub(),
+            title: "Sync latest Milestones and Epics from GitHub",
           },
         ],
       },

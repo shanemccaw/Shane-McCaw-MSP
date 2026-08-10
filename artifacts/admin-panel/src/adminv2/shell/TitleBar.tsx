@@ -53,6 +53,157 @@ const barStyle: CSSProperties = {
   borderBottom: `1px solid ${LINE.base}`,
 };
 
+import { useSyncExternalStore } from "react";
+import {
+  getSnapshot, subscribe, createChat, selectIssue, selectEpic,
+} from "../screens/build-tracker/buildTrackerStore";
+import { getShellApi } from "./ShellContext";
+
+function InProgressWorkItem({
+  title, id, type, githubNumber,
+}: { title: string; id: number; type: "epic" | "issue"; githubNumber?: number | null }) {
+  const [chatInput, setChatInput] = useState("");
+  const [linked, setLinked] = useState(false);
+
+  async function handleLink() {
+    if (!chatInput.trim()) return;
+    const cid = chatInput.trim();
+    await createChat(cid, cid, type === "issue" ? id : null, type === "epic" ? id : null);
+    setChatInput("");
+    setLinked(true);
+    setTimeout(() => setLinked(false), 2000);
+  }
+
+  function handleNavigate() {
+    if (type === "issue") {
+      selectIssue(id);
+      getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
+    } else {
+      selectEpic(id);
+      getShellApi()?.openDoc({ kind: "epic", id: String(id), screenId: "build-tracker" });
+    }
+  }
+
+  return (
+    <div style={{
+      padding: 10, borderRadius: 6, background: SURFACE.well,
+      border: `1px solid ${LINE.control}`, display: "flex", flexDirection: "column", gap: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          onClick={handleNavigate}
+          style={{
+            background: "transparent", border: 0, padding: 0, cursor: "pointer",
+            textAlign: "left", display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <span style={{
+            fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em",
+            padding: "1px 5px", borderRadius: 3,
+            background: type === "issue" ? `${ACCENT.info}20` : `${ACCENT.amber}20`,
+            color: type === "issue" ? ACCENT.info : ACCENT.amber,
+          }}>
+            {type}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: TEXT.bright, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+            {githubNumber ? `#${githubNumber} ` : ""}{title}
+          </span>
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          placeholder="Paste Claude chat URL or ID..."
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void handleLink(); }}
+          style={{
+            flex: 1, padding: "4px 8px", borderRadius: 4,
+            background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+            color: TEXT.primary, fontFamily: FONT.sans, fontSize: 11, outline: "none",
+          }}
+        />
+        <button
+          onClick={() => void handleLink()}
+          disabled={!chatInput.trim()}
+          style={{
+            padding: "4px 8px", borderRadius: 4, border: 0,
+            background: linked ? ACCENT.green : ACCENT.info,
+            color: SURFACE.well, fontSize: 11, fontWeight: 700, cursor: !chatInput.trim() ? "default" : "pointer",
+            fontFamily: FONT.sans, opacity: !chatInput.trim() ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4,
+          }}
+        >
+          {linked ? "✓ Linked!" : "Link Chat"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InProgressWorkPillDropdown() {
+  const state = useSyncExternalStore(subscribe, getSnapshot);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const inProgressEpics = state.epics.filter((e) => e.status === "in_progress");
+  const inProgressIssues = state.issues.filter((i) => i.status === "in_progress");
+  const totalCount = inProgressEpics.length + inProgressIssues.length;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  if (totalCount === 0) return null;
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block", marginLeft: 8 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "3px 9px",
+          borderRadius: 12, border: `1px solid ${ACCENT.amber}50`,
+          background: `${ACCENT.amber}22`, color: ACCENT.amber,
+          fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: FONT.sans,
+        }}
+        title="View in-progress work and paste Claude chat links"
+      >
+        <span style={{ fontSize: 12 }}>🔥</span> {totalCount} In Progress
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, width: 340,
+          background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+          borderRadius: 8, boxShadow: SHADOW.popover, zIndex: Z.dropdown,
+          padding: 12, display: "flex", flexDirection: "column", gap: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${LINE.quiet}`, paddingBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: ACCENT.amber }}>
+              In Progress Active Work ({totalCount})
+            </span>
+            <span style={{ fontSize: 10, color: TEXT.dim }}>Paste chat link to assign</span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 380, overflowY: "auto" }}>
+            {inProgressEpics.map((e) => (
+              <InProgressWorkItem key={`epic-${e.id}`} id={e.id} title={e.title} type="epic" githubNumber={e.githubNumber} />
+            ))}
+            {inProgressIssues.map((i) => (
+              <InProgressWorkItem key={`issue-${i.id}`} id={i.id} title={i.title} type="issue" githubNumber={i.githubNumber} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const quickBtnStyle: CSSProperties = {
   width: 26,
   height: 24,
@@ -144,6 +295,7 @@ export function TitleBar({
               </button>
             );
           })}
+          <InProgressWorkPillDropdown />
         </div>
       )}
 

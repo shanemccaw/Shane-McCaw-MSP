@@ -119,7 +119,7 @@ const log = logger.child({ channel: "admin.shell" });
 
 function ActiveScreen() {
   const { activeScreen, state } = useShell();
-  if (!activeScreen) return <NoScreen />;
+  if (!activeScreen || state.docs.length === 0) return <NoScreen />;
 
   const activeDoc = state.docs.find((d) => d.id === state.activeDocId);
   return (
