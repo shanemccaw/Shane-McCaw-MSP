@@ -28,7 +28,40 @@ export interface AuthUser {
    * against it now resolves through `tenants`, not the dropped msp_customers.
    */
   customerId?: number;
+  /**
+   * Git #439 — set only on a session issued while MFA enforcement is active
+   * (production, or a per-user mfaEnforced flag) but the account has zero
+   * enrolled MFA methods yet. A pending session is real (accessToken +
+   * refreshToken) so the account-creation/enrollment UI can render, but
+   * requireAuth refuses every route except MFA_SETUP_ALLOWLIST below until
+   * enrollment completes — enforcement is a real backend gate, not a
+   * frontend-only nicety a direct API call could skip past.
+   */
+  mfaSetupPending?: boolean;
 }
+
+/**
+ * The only routes a pending session (see AuthUser.mfaSetupPending) may reach.
+ * Exactly the existing self-service MFA enrollment endpoints (mfa.ts) plus
+ * logout — nothing here is new mechanics, just what a session needs to
+ * finish enrolling. Keep in sync with mfa.ts's requireAuth-gated routes.
+ */
+const MFA_SETUP_ALLOWLIST: ReadonlyArray<{ method: string; path: string }> = [
+  { method: "GET", path: "/auth/mfa/enrollments" },
+  { method: "POST", path: "/auth/mfa/totp/setup" },
+  { method: "POST", path: "/auth/mfa/totp/verify-setup" },
+  { method: "POST", path: "/auth/mfa/sms/setup" },
+  { method: "POST", path: "/auth/mfa/sms/verify-setup" },
+  { method: "POST", path: "/auth/mfa/passkey/registration-options" },
+  { method: "POST", path: "/auth/mfa/passkey/verify-registration" },
+  { method: "POST", path: "/auth/mfa/passkey/admin-registration-options" },
+  { method: "POST", path: "/auth/logout" },
+  // The Assessment flow's own mandatory MFA gate (AssessmentWizard) reads its
+  // enrollment state off this status endpoint before it can render the gate
+  // at all — without it a pending Assessment session could never reach the
+  // enrollment UI in the first place.
+  { method: "GET", path: "/portal/assessment/status" },
+];
 
 declare global {
   namespace Express {
@@ -80,6 +113,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   try {
     const payload = jwt.verify(token, secret) as AuthUser;
     req.user = payload;
+
+    if (payload.mfaSetupPending) {
+      const allowed = MFA_SETUP_ALLOWLIST.some((a) => a.method === req.method && a.path === req.path);
+      if (!allowed) {
+        res.status(403).json({ error: "mfa_setup_required" });
+        return;
+      }
+    }
 
     // Enrich the per-request child logger with tenant context so every
     // downstream log line is automatically correlated to the MSP and customer.

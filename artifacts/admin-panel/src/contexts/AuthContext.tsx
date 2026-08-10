@@ -23,6 +23,8 @@ interface AuthContextValue extends AuthState {
   completeMfaLogin: (accessToken: string, user: AuthUser) => void;
   logout: () => Promise<void>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  /** Force a fresh access token — used after MFA enrollment completes (Git #439) so the stale mfaSetupPending token isn't carried for the rest of its life. */
+  refresh: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -204,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, completeMfaLogin, logout, fetchWithAuth }}>
+    <AuthContext.Provider value={{ ...state, login, completeMfaLogin, logout, fetchWithAuth, refresh }}>
       {children}
     </AuthContext.Provider>
   );

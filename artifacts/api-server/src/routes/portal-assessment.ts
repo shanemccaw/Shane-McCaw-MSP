@@ -77,6 +77,7 @@ import { type OmgCard } from "../lib/omg-card-generator-v2";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { getStripeKey, getStripePublishableKey } from "../lib/stripe";
+import { isProductionEnvironment } from "../lib/env.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
 import { verifyCaptchaToken } from "../lib/captcha";
@@ -485,6 +486,10 @@ router.get(
           : null,
         mfa: {
           enrolled: mfaEnrolled,
+          // Git #439 — real prod/dev signal (REPLIT_DOMAINS, same formula as
+          // stripe.ts's getStripeKey) replacing the wizard's old hardcoded
+          // SKIP_MFA_GATE_FOR_TESTING bypass constant.
+          gateRequired: isProductionEnvironment(),
         },
         // Real tenant-health radar — only pillars this customer's actual scanned
         // package genuinely covers (see pillar-coverage.ts). Empty until a

@@ -15,8 +15,35 @@ const auditLog = logger.child({ channel: "audit" });
 import { createSession, type LoginMethod } from "../lib/session-tracking";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
+import { isProductionEnvironment } from "../lib/env.ts";
 
 const router = Router();
+
+/**
+ * The active MFA methods a user has enrolled — the single real check both
+ * the login flow (auth.ts) and every session-issuing account-creation path
+ * (setup-password, msp-invite-accept) must agree on before deciding whether
+ * a session needs to come back MFA-pending (Git #439). A passkey enrollment
+ * writes both a webauthn_credentials row and an mfa_enrollments(method:
+ * "passkey") row, so the enrollments table alone is authoritative for it;
+ * the credentials table is checked as a belt-and-suspenders fallback.
+ */
+export async function getActiveMfaMethods(userId: number): Promise<string[]> {
+  const enrollments = await db
+    .select()
+    .from(mfaEnrollmentsTable)
+    .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.enabled, true)));
+
+  const passkeys = await db
+    .select()
+    .from(webauthnCredentialsTable)
+    .where(eq(webauthnCredentialsTable.userId, userId));
+
+  return [
+    ...enrollments.filter((e) => e.method !== "passkey").map((e) => e.method),
+    ...(passkeys.length > 0 ? ["passkey"] : []),
+  ];
+}
 
 const mfaLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -335,6 +362,9 @@ router.get("/auth/mfa/enrollments", requireAuth, async (req: Request, res: Respo
     smsPhone: enrollments.find(e => e.method === "sms")?.phone ?? null,
     passkey: passkeys.length > 0,
     passkeyCount: passkeys.length,
+    // Git #439 — real prod/dev signal so a caller can show "your account
+    // requires MFA" without reimplementing REPLIT_DOMAINS sniffing itself.
+    gateRequired: isProductionEnvironment(),
   });
 });
 

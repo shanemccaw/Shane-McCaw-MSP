@@ -44,6 +44,13 @@ export interface AuthUser {
   impersonatedBy?: number;
   /** Unix timestamp (seconds) when this access token expires */
   exp?: number;
+  /**
+   * Git #439 — set when this session was issued under MFA enforcement with
+   * zero MFA methods enrolled yet. requireAuth refuses every route except the
+   * MFA enrollment endpoints until enrollment completes; the app shell
+   * redirects to /setup-mfa instead of rendering normal protected routes.
+   */
+  mfaSetupPending?: boolean;
 }
 
 interface AuthState {
@@ -63,7 +70,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaSetupRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
+  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
   /** Complete an MFA flow by supplying the tokens received from the MFA challenge endpoint */
   completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
   logout: () => Promise<void>;
@@ -389,7 +396,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshToken?: string;
         refreshExpiresAt?: string;
         mfaRequired?: boolean;
-        mfaSetupRequired?: boolean;
         mfaToken?: string;
         methods?: string[];
         error?: string;
@@ -401,10 +407,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { mfaRequired: true, mfaToken: data.mfaToken, methods: data.methods };
       }
 
-      if (data.mfaSetupRequired) {
-        return { mfaSetupRequired: true };
-      }
-
+      // An account under MFA enforcement with nothing enrolled yet (Git #439)
+      // now comes back here too — a real accessToken, just carrying
+      // mfaSetupPending: true on its `user` claims. The app shell's route
+      // gate (useMfaGate in App.tsx) reads that and redirects to /setup-mfa;
+      // there is no separate dead-end response shape for this case anymore.
       if (data.accessToken) {
         applyTokens(data.accessToken, data.refreshToken, data.refreshExpiresAt);
 

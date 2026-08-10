@@ -34,6 +34,7 @@ import OffboardingPage from "@/pages/offboarding";
 import WebhooksPage from "@/pages/webhooks";
 import InitiateOnboardingPage from "@/pages/initiate-onboarding";
 import AcceptAgreementPage from "@/pages/accept-agreement";
+import { AssessmentMfaEnrollment } from "@/components/assessment/AssessmentMfaEnrollment";
 import TrustPage from "@/pages/trust";
 import CustomerHomePage from "@/pages/customer-home";
 import CustomerDocumentsPage from "@/pages/customer-documents";
@@ -205,16 +206,81 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
   return { loading, required };
 }
 
-// ── Protected route with agreement gate ───────────────────────────────────────
-// Redirects to /login and /accept-agreement — both are valid relative paths
-// inside the slug-scoped inner router, so they resolve correctly to
-// /portal/{slug}/login and /portal/{slug}/accept-agreement automatically.
+// ── MFA gate (Git #439) ────────────────────────────────────────────────────────
+// Mirrors useAgreementGate below: production-only (dev-server test logins are
+// never gated), and skipped for the Assessment role, which already has its
+// own richer mandatory MFA gate inline in AssessmentWizard/AssessmentMfaEnrollment
+// as part of its first-login flow — this generic route-level gate exists for
+// every OTHER role (CustomerUser, MSPAdmin, MSPOperator, Free), which land
+// straight on /m365-health or /dashboard with no equivalent gate today.
+// The real security boundary is requireAuth's mfaSetupPending allowlist on the
+// backend; this hook is what redirects the UI to /setup-mfa instead of 403ing
+// on every other request.
+
+function useMfaGate(): { loading: boolean; required: boolean } {
+  const { user, fetchWithAuth, isImpersonating } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [required, setRequired] = useState(false);
+
+  useEffect(() => {
+    if (!user || isImpersonating || user.role === "admin" || user.mspRole === "Assessment") {
+      setLoading(false);
+      setRequired(false);
+      return;
+    }
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 8_000),
+    );
+
+    Promise.race([
+      fetchWithAuth("/api/auth/mfa/enrollments").then((r) => r.json()),
+      timeout,
+    ])
+      .then((data: { totp?: boolean; passkey?: boolean; gateRequired?: boolean }) => {
+        setRequired(!!data.gateRequired && !data.totp && !data.passkey);
+      })
+      .catch(() => {
+        // On timeout or any error, unblock the UI — don't gate forever.
+        setRequired(false);
+      })
+      .finally(() => setLoading(false));
+  }, [user, fetchWithAuth, isImpersonating]);
+
+  return { loading, required };
+}
+
+// Standalone page (auth-required but not itself gated) — reuses the exact
+// same enrollment surface AssessmentWizard's mandatory gate uses, just for
+// every non-Assessment role. onEnrolled refreshes the access token (the
+// current one is mfaSetupPending) before returning to the intended landing.
+function SetupMfaPage() {
+  const { user, extendSession } = useAuth();
+  const [, navigate] = useLocation();
+
+  const defaultLanding =
+    user?.mspRole === "CustomerUser" ? "/m365-health" : "/dashboard";
+
+  return (
+    <AssessmentMfaEnrollment
+      onEnrolled={() => {
+        void extendSession().then(() => navigate(defaultLanding, { replace: true }));
+      }}
+    />
+  );
+}
+
+// ── Protected route with agreement + MFA gates ─────────────────────────────────
+// Redirects to /login, /accept-agreement, and /setup-mfa — all valid relative
+// paths inside the slug-scoped inner router, so they resolve correctly to
+// /portal/{slug}/login etc. automatically.
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   const { loading: agreementLoading, required: agreementRequired } = useAgreementGate();
+  const { loading: mfaLoading, required: mfaRequired } = useMfaGate();
 
-  if (isLoading || agreementLoading) {
+  if (isLoading || agreementLoading || mfaLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -228,6 +294,10 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (agreementRequired) {
     return <Redirect to="/accept-agreement" />;
+  }
+
+  if (mfaRequired) {
+    return <Redirect to="/setup-mfa" />;
   }
 
   return <Component />;
@@ -288,6 +358,11 @@ function SlugInnerSwitch() {
       {/* Agreement gate page — auth-required but not gated itself */}
       <Route path="/accept-agreement">
         <AcceptAgreementPage />
+      </Route>
+
+      {/* MFA gate page (Git #439) — auth-required but not gated itself */}
+      <Route path="/setup-mfa">
+        <SetupMfaPage />
       </Route>
 
       {/* MSP-facing pages */}

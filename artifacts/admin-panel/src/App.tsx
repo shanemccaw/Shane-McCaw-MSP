@@ -1,5 +1,5 @@
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -7,6 +7,7 @@ import { InboxProvider } from "@/contexts/InboxContext";
 import LoginPage from "@/pages/Login";
 import GlobalIDEShell from "@/components/GlobalIDEShell";
 import { AdminDebugPanel } from "@/components/debug/AdminDebugPanel";
+import { AdminMfaSetupGate } from "@/components/AdminMfaSetupGate";
 
 // ─── Workspace pages ──────────────────────────────────────────────────────────
 import CommandWorkspace from "@/pages/workspaces/CommandWorkspace";
@@ -52,9 +53,55 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
 });
 
+/**
+ * Git #439 — real MFA enforcement gate, production only. Fetches the same
+ * status AdminSecurity.tsx's settings page already reads (passkeyCount,
+ * gateRequired) so RequireAdmin — the single choke point every admin route
+ * already passes through — can force enrollment before rendering anything
+ * else. requireAuth's mfaSetupPending allowlist on the backend is the real
+ * security boundary; this is what redirects the UI to a working enrollment
+ * screen instead of every other request just 403ing.
+ */
+function useAdminMfaGate(user: { role: string } | null): { loading: boolean; required: boolean; recheck: () => void } {
+  const { fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [required, setRequired] = useState(false);
+  const [generation, setGeneration] = useState(0);
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") {
+      setLoading(false);
+      setRequired(false);
+      return;
+    }
+
+    setLoading(true);
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 8_000),
+    );
+
+    Promise.race([
+      fetchWithAuth("/api/auth/mfa/enrollments").then((r) => r.json()),
+      timeout,
+    ])
+      .then((data: { passkeyCount?: number; gateRequired?: boolean }) => {
+        setRequired(!!data.gateRequired && !data.passkeyCount);
+      })
+      .catch(() => {
+        // On timeout or any error, unblock the UI — don't gate forever.
+        setRequired(false);
+      })
+      .finally(() => setLoading(false));
+  }, [user, fetchWithAuth, generation]);
+
+  return { loading, required, recheck: () => setGeneration((g) => g + 1) };
+}
+
 function RequireAdmin({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) {
+  const { loading: mfaLoading, required: mfaRequired, recheck: recheckMfaGate } = useAdminMfaGate(user);
+
+  if (isLoading || mfaLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -68,6 +115,9 @@ function RequireAdmin({ children }: { children: ReactNode }) {
       sessionStorage.setItem("adminReturnTo", rel);
     }
     return <Redirect to="/login" />;
+  }
+  if (mfaRequired) {
+    return <AdminMfaSetupGate onEnrolled={recheckMfaGate} />;
   }
   // The debug panel (#285) mounts here rather than per-page: this is the single
   // choke point every admin route already passes through, and putting it after

@@ -3,12 +3,13 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
-import { signMfaToken } from "./mfa.ts";
+import { signMfaToken, getActiveMfaMethods } from "./mfa.ts";
+import { isProductionEnvironment } from "../lib/env.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
@@ -200,6 +201,7 @@ async function getMspClaims(userId: number): Promise<{
 function buildUserPayload(
   user: typeof usersTable.$inferSelect,
   mspClaims: { mspRole: MspRole | null; mspId: number | null; customerId: number | null; mspSlug: string | null },
+  mfaSetupPending?: boolean,
 ) {
   return {
     id: user.id,
@@ -216,7 +218,21 @@ function buildUserPayload(
     mspId: mspClaims.mspId ?? undefined,
     customerId: mspClaims.customerId ?? undefined,
     mspSlug: mspClaims.mspSlug ?? undefined,
+    ...(mfaSetupPending ? { mfaSetupPending: true } : {}),
   };
+}
+
+/**
+ * Git #439 — real 100%-of-every-login MFA enforcement, production only (dev
+ * server test logins are unaffected, per Shane's explicit friction concern).
+ * Reuses the exact env-detection formula proven in stripe.ts's getStripeKey()
+ * (REPLIT_DOMAINS: absent or all-.replit.dev domains → dev; any other domain
+ * → prod) rather than inventing a second mechanism. A per-user mfaEnforced
+ * flag (customer-team.tsx toggle) still forces the same gate in dev, since
+ * that is an explicit per-account decision, not "every test login."
+ */
+export function mfaEnforcementActive(userMfaEnforced: boolean): boolean {
+  return isProductionEnvironment() || userMfaEnforced;
 }
 
 /**
@@ -336,20 +352,7 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   }
 
   // Check for active MFA enrollments
-  const enrollments = await db
-    .select()
-    .from(mfaEnrollmentsTable)
-    .where(and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.enabled, true)));
-
-  const passkeys = await db
-    .select()
-    .from(webauthnCredentialsTable)
-    .where(eq(webauthnCredentialsTable.userId, user.id));
-
-  const methods: string[] = [
-    ...enrollments.filter(e => e.method !== "passkey").map(e => e.method),
-    ...(passkeys.length > 0 ? ["passkey"] : []),
-  ];
+  const methods = await getActiveMfaMethods(user.id);
 
   if (methods.length > 0) {
     const mfaToken = signMfaToken(user.id, methods);
@@ -357,18 +360,17 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
-  // No active MFA enrollment. If this account's team has enforcement turned
-  // on for this user (customer-team.tsx toggle), block login until they set
-  // one up rather than letting them in unprotected — an enforced-but-unenrolled
-  // user is distinct from mfaRequired (which implies enrollment already exists).
-  if (user.mfaEnforced) {
-    const mfaToken = signMfaToken(user.id, []);
-    res.json({ mfaSetupRequired: true, mfaToken });
-    return;
-  }
+  // No active MFA enrollment. Under enforcement (production, or this
+  // account's team turning it on early via the customer-team.tsx toggle) the
+  // session is still issued — real, usable to reach the MFA enrollment
+  // endpoints — but comes back mfaSetupPending: true, which requireAuth
+  // refuses everywhere else until enrollment completes (Git #439). This
+  // replaces the old dead-end ("mfaSetupRequired, no session, contact your
+  // administrator") response, which had no self-service way back in.
+  const mfaSetupPending = mfaEnforcementActive(user.mfaEnforced);
 
   const mspClaims = await getMspClaims(user.id);
-  const payload = buildUserPayload(user, mspClaims);
+  const payload = buildUserPayload(user, mspClaims, mfaSetupPending);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
 
@@ -436,7 +438,13 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
   }
 
   const mspClaims = await getMspClaims(user.id);
-  const payload = buildUserPayload(user, mspClaims);
+  // Recomputed fresh from real DB state on every refresh (not carried forward
+  // from the old token) — the moment enrollment completes, the very next
+  // refresh naturally drops mfaSetupPending and the session stops being
+  // gated, with no separate "clear the flag" step needed anywhere (#439).
+  const methods = await getActiveMfaMethods(user.id);
+  const mfaSetupPending = methods.length === 0 && mfaEnforcementActive(user.mfaEnforced);
+  const payload = buildUserPayload(user, mspClaims, mfaSetupPending);
   const newAccessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
 
   // Sliding refresh: issue a new token and mark the old one as replaced
@@ -577,7 +585,14 @@ router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, r
   }
 
   const mspClaims = await getMspClaims(user.id);
-  const payload = buildUserPayload(user, mspClaims);
+  // Git #439 — account creation is a login-equivalent: pay -> set password ->
+  // MFA required, same as the corrected Assessment-flow sequence. A brand new
+  // account has no enrollment yet, so under enforcement this session comes
+  // back mfaSetupPending: true — real and usable to reach the enrollment
+  // endpoints, refused everywhere else until enrollment completes.
+  const methods = await getActiveMfaMethods(user.id);
+  const mfaSetupPending = methods.length === 0 && mfaEnforcementActive(user.mfaEnforced);
+  const payload = buildUserPayload(user, mspClaims, mfaSetupPending);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
 

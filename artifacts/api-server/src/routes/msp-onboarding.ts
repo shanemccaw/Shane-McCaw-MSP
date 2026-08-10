@@ -41,6 +41,8 @@ import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
+import { getActiveMfaMethods } from "./mfa.ts";
+import { mfaEnforcementActive } from "./auth.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { z } from "zod";
 
@@ -622,6 +624,14 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
       // separate msp_users row (and the "both rows present" guard it needed) is
       // gone with the table.
       if (acceptedUserRow) {
+        // Git #439 — this is an account-creation-equivalent path (invite
+        // acceptance provisions the MSPAdmin/MSPOperator account inline, same
+        // as auth.ts's setup-password), so it needs the same enforcement: a
+        // brand-new staff account with no MFA enrolled yet comes back
+        // mfaSetupPending under enforcement, real and usable only to reach the
+        // enrollment endpoints, rather than a fully unrestricted session.
+        const methods = await getActiveMfaMethods(acceptedUserRow.id);
+        const mfaSetupPending = methods.length === 0 && mfaEnforcementActive(acceptedUserRow.mfaEnforced);
         const payload = {
           id: acceptedUserRow.id,
           email: acceptedUserRow.email,
@@ -630,6 +640,7 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
           mspRole: acceptedUserRow.mspRole ?? undefined,
           mspId: acceptedUserRow.mspId ?? undefined,
           mspSlug: row.mspSlug,
+          ...(mfaSetupPending ? { mfaSetupPending: true } : {}),
         };
 
         const accessToken = jwt.sign(payload, jwtSecret, { expiresIn: "15m" });
