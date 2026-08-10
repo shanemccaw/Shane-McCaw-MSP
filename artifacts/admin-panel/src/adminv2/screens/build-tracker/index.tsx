@@ -39,7 +39,7 @@ import {
   updateEpic, updateIssue, updateChat,
   deleteEpic, deleteIssue, deleteChat,
   syncFromGitHub, loadAll, setTriageActive, setTriageShowAssigned,
-  WATCH_UNLINKED_KEY,
+  WATCH_UNLINKED_KEY, SYNC_GITHUB_KEY,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -134,6 +134,7 @@ registerScreen({
             label: "Sync GitHub",
             icon: RefreshCw,
             intent: "global",
+            liveKey: SYNC_GITHUB_KEY,
             onSelect: () => { goto(); void syncFromGitHub(); },
             title: "Pull milestones → epics and issues from shanemccaw/Shane-McCaw-MSP",
           },
@@ -230,6 +231,7 @@ registerScreen({
                 label: "Sync from GitHub",
                 icon: RefreshCw,
                 intent: "record",
+                liveKey: SYNC_GITHUB_KEY,
                 onSelect: () => void syncFromGitHub(),
               },
               {

@@ -200,7 +200,7 @@ function EpicProperties({ id }: { id: number }) {
       )}
 
       {state.message && (
-        <p style={{ fontSize: 11, color: ACCENT.green, margin: 0 }}>{state.message}</p>
+        <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
       <SaveButton saving={saving} onClick={() => void updateEpic(id, { title, description: desc })} />
 
@@ -313,7 +313,7 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
       )}
 
       {state.message && (
-        <p style={{ fontSize: 11, color: ACCENT.green, margin: 0 }}>{state.message}</p>
+        <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
       <SaveButton saving={saving} onClick={() => void updateIssue(id, { title, description: desc })} />
     </div>
@@ -364,7 +364,7 @@ function ChatProperties({ id }: { id: number }) {
       )}
 
       {state.message && (
-        <p style={{ fontSize: 11, color: ACCENT.green, margin: 0 }}>{state.message}</p>
+        <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
       <SaveButton saving={saving} onClick={() => void updateChat(id, { title, notes: notes || null, category: category || null })} />
 
@@ -378,6 +378,7 @@ function ChatProperties({ id }: { id: number }) {
 // ── Milestone properties ──────────────────────────────────────────────────────
 
 function MilestoneProperties({ id }: { id: number }) {
+  const state = useStore();
   const milestone = milestoneById(id);
   const [title, setTitle] = useState(milestone?.title ?? "");
   const [desc, setDesc] = useState(milestone?.description ?? "");
@@ -435,6 +436,9 @@ function MilestoneProperties({ id }: { id: number }) {
         />
       )}
 
+      {state.message && (
+        <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
+      )}
       <SaveButton onClick={() => void updateMilestone(id, { title, description: desc, targetDate })} />
     </div>
   );
@@ -451,8 +455,11 @@ export function BuildTrackerProperties() {
   if (state.selectedEpicId !== null) return <EpicProperties id={state.selectedEpicId} />;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: TEXT.dim, fontSize: 12, padding: 16, textAlign: "center" }}>
-      Select a milestone, epic, issue, or chat to edit it here.
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, padding: 16, textAlign: "center" }}>
+      <span style={{ color: TEXT.dim, fontSize: 12 }}>Select a milestone, epic, issue, or chat to edit it here.</span>
+      {state.message && (
+        <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
+      )}
     </div>
   );
 }

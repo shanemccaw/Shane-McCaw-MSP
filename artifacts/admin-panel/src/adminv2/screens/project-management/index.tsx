@@ -3,7 +3,7 @@ import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import { ProjectManagementBody } from "./ProjectManagementBody";
-import { syncFromGitHub, MILESTONE_ETA_KEY, openHeadlineMilestone } from "../build-tracker/buildTrackerStore";
+import { syncFromGitHub, MILESTONE_ETA_KEY, openHeadlineMilestone, SYNC_GITHUB_KEY } from "../build-tracker/buildTrackerStore";
 
 import { BuildTrackerExplorer } from "../build-tracker/BuildTrackerExplorer";
 import { BuildTrackerProperties } from "../build-tracker/BuildTrackerProperties";
@@ -69,6 +69,7 @@ registerScreen({
               label: "Sync from GitHub",
               icon: RefreshCw,
               intent: "record",
+              liveKey: SYNC_GITHUB_KEY,
               onSelect: () => void syncFromGitHub(),
               title: "Pull latest milestones and issues from GitHub",
             },

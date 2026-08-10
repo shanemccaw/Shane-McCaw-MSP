@@ -14,7 +14,7 @@ import { PanelBottom, PanelLeft, PanelRight, Search, Rows3, GitBranch, Flag, Ref
 import { ACCENT } from "../theme";
 import type { FixedTabId, RibbonGroup } from "../registry/types";
 import { getShellApi } from "./ShellContext";
-import { syncFromGitHub } from "../screens/build-tracker/buildTrackerStore";
+import { syncFromGitHub, SYNC_GITHUB_KEY } from "../screens/build-tracker/buildTrackerStore";
 
 export interface ShellRibbonDeps {
   left: boolean;
@@ -71,6 +71,7 @@ export function shellGroupsForTab(tab: FixedTabId, deps: ShellRibbonDeps): Ribbo
             label: "Sync GitHub",
             icon: RefreshCw,
             intent: "record",
+            liveKey: SYNC_GITHUB_KEY,
             onSelect: () => void syncFromGitHub(),
             title: "Sync latest Milestones and Epics from GitHub",
           },

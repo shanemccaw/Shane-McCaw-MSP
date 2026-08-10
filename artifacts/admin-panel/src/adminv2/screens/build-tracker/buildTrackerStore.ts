@@ -23,6 +23,8 @@ const SCREEN_ID = "build-tracker";
 export const WATCH_UNLINKED_KEY = "bt:unlinked";
 /** Key for the Build tab's always-visible "Milestone: est. time left" button — see syncMilestoneEtaRibbon(). */
 export const MILESTONE_ETA_KEY = "bt:milestone-eta";
+/** Key every "Sync GitHub" ribbon button reads so it shows a real "Syncing…" state — see syncFromGitHub(). */
+export const SYNC_GITHUB_KEY = "bt:sync-github";
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -54,9 +56,13 @@ export interface BuildTrackerState {
 
   /** Transient status message shown in right panel. */
   message: string | null;
+  messageTone: "success" | "error";
   savingIds: Set<string>;
   triageActive: boolean;
   triageShowAssigned: boolean;
+
+  /** True while a GitHub sync is in flight — see syncFromGitHub()/SYNC_GITHUB_KEY. */
+  syncingGitHub: boolean;
 }
 
 function initialState(): BuildTrackerState {
@@ -76,9 +82,11 @@ function initialState(): BuildTrackerState {
     issuesError: null,
     chatsError: null,
     message: null,
+    messageTone: "success",
     savingIds: new Set(),
     triageActive: false,
     triageShowAssigned: false,
+    syncingGitHub: false,
   };
 }
 
@@ -544,9 +552,9 @@ export async function assignEpicToMilestone(epicId: number, milestoneId: number 
   flashMessage("Epic milestone assignment updated");
 }
 
-function flashMessage(msg: string) {
-  set({ message: msg });
-  setTimeout(() => set({ message: null }), 3000);
+function flashMessage(msg: string, tone: "success" | "error" = "success") {
+  set({ message: msg, messageTone: tone });
+  setTimeout(() => set({ message: null }), tone === "error" ? 6000 : 3000);
 }
 
 // ── EPIC mutations ────────────────────────────────────────────────────────────
@@ -785,19 +793,50 @@ export async function deleteChat(id: number): Promise<void> {
 
 // ── GitHub sync (real API, uses GITHUB_TOKEN set on server) ───────────────────
 
+/**
+ * Pulls milestones/epics/issues from GitHub. Every "Sync GitHub" trigger in
+ * the app (Home tab, Build tab, both contextual tabs, the palette, the
+ * Explorer's milestone context menu, the Dashboard button) calls this same
+ * function, so `syncingGitHub` + `SYNC_GITHUB_KEY` here is the one place that
+ * needs to track progress — no per-caller loading state to keep in sync.
+ * Previously this swallowed both HTTP and thrown errors with a bare
+ * `return null`, so a failed sync (e.g. GITHUB_TOKEN unset) looked identical
+ * to a slow one: nothing on screen ever changed either way.
+ */
 export async function syncFromGitHub(): Promise<{ epics: number; issues: number; milestones?: number } | null> {
+  if (state.syncingGitHub) return null;
+  set({ syncingGitHub: true });
+  setLiveRibbonValue(SYNC_GITHUB_KEY, { label: "Syncing…", color: ACCENT.amber, active: true });
   try {
     const res = await apiFetch("/admin/build-tracker/github-sync", { method: "POST" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.error) detail = body.error;
+      } catch {
+        // response wasn't JSON — fall back to the status code above
+      }
+      throw new Error(detail);
+    }
     const result = (await res.json()) as { epics: number; issues: number; milestones?: MilestoneRow[] };
     if (result.milestones && Array.isArray(result.milestones) && result.milestones.length > 0) {
       set({ milestones: result.milestones });
     }
     await loadAll(); // refresh after sync
     clearHistory(SCREEN_ID); // stale undo entries are now meaningless
+    const milestoneCount = result.milestones?.length ?? 0;
+    flashMessage(
+      `Synced from GitHub: ${result.epics} epic${result.epics === 1 ? "" : "s"}, ${result.issues} issue${result.issues === 1 ? "" : "s"}${milestoneCount ? `, ${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}` : ""}`,
+    );
     return { epics: result.epics, issues: result.issues, milestones: result.milestones?.length };
   } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
     log.error({ err }, "syncFromGitHub failed");
+    flashMessage(`GitHub sync failed: ${detail}`, "error");
     return null;
+  } finally {
+    set({ syncingGitHub: false });
+    setLiveRibbonValue(SYNC_GITHUB_KEY, null);
   }
 }

@@ -153,8 +153,6 @@ function ChatOpenChip({ chat }: { chat: ChatRow }) {
 
 function Dashboard() {
   const state = useStore();
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ epics: number; issues: number } | null>(null);
 
   const openEpics      = state.epics.filter((e) => e.status === "open").length;
   const inProgressEpics = state.epics.filter((e) => e.status === "in_progress").length;
@@ -162,14 +160,6 @@ function Dashboard() {
   const activeIssues   = state.issues.filter((i) => i.status === "in_progress").length;
   const doneIssues     = state.issues.filter((i) => i.status === "done" || i.status === "closed").length;
   const unlinked       = unlinkedChats().length;
-
-  async function doSync() {
-    setSyncing(true);
-    setSyncResult(null);
-    const result = await syncFromGitHub();
-    setSyncing(false);
-    if (result) setSyncResult(result);
-  }
 
   const statCard = (icon: React.ReactNode, label: string, value: number, color: string) => (
     <div style={{
@@ -218,16 +208,20 @@ function Dashboard() {
           </button>
           <button
             onClick={() => void syncFromGitHub()}
+            disabled={state.syncingGitHub}
             style={{
               padding: "6px 14px", borderRadius: 6, border: `1px solid ${LINE.control}`,
               background: SURFACE.well, color: TEXT.primary, fontSize: 12, fontWeight: 600,
-              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+              cursor: state.syncingGitHub ? "default" : "pointer", fontFamily: FONT.sans,
+              display: "flex", alignItems: "center", gap: 6, opacity: state.syncingGitHub ? 0.7 : 1,
             }}
           >
-            <RefreshCw size={13} /> Sync GitHub
+            <RefreshCw size={13} style={state.syncingGitHub ? { animation: "bt-spin 0.9s linear infinite" } : undefined} />
+            {state.syncingGitHub ? "Syncing…" : "Sync GitHub"}
           </button>
         </div>
       </div>
+      <style>{"@keyframes bt-spin { to { transform: rotate(360deg); } }"}</style>
 
       {/* 2 Column Dashboard Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>
