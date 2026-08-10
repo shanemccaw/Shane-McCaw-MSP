@@ -11,7 +11,7 @@ import { logger } from "@/lib/logger";
 import { ACCENT } from "../../theme";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
-import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus } from "./buildTrackerTypes";
+import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus, IterationOption } from "./buildTrackerTypes";
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -1041,6 +1041,41 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
     set({ syncingGitHub: false });
     setLiveRibbonValue(SYNC_GITHUB_KEY, null);
   }
+}
+
+// ── Iteration field bulk-assign (AI-assisted? no — plain GitHub Projects v2) ───
+// Purely a live board concept, nothing local to load into the store's state.
+
+export async function fetchIterations(): Promise<IterationOption[]> {
+  const res = await apiFetch("/admin/build-tracker/iterations");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error || `HTTP ${res.status}`);
+  }
+  const result = (await res.json()) as { iterations: IterationOption[] };
+  return result.iterations;
+}
+
+export interface AssignIterationResult {
+  candidateCount: number;
+  updated: number;
+  failed: number;
+  remaining?: number;
+  sampleTitles?: string[];
+}
+
+/** dryRun: true only counts candidates (no writes) — used to show a real impact count before Shane confirms. */
+export async function assignIteration(iterationId: string, dryRun: boolean): Promise<AssignIterationResult> {
+  const res = await apiFetch("/admin/build-tracker/assign-iteration", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ iterationId, dryRun }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error || `HTTP ${res.status}`);
+  }
+  return (await res.json()) as AssignIterationResult;
 }
 
 // ── GitHub auto-poll (Play/Pause) ──────────────────────────────────────────────

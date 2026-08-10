@@ -752,31 +752,42 @@ async function fetchInProgressFromProjects(): Promise<ProjectStatusDiagnostics> 
   }
 }
 
-// Shane's real board (Shane-McCaw-MSP v1.1 Launch), given directly rather
-// than looked up per-issue by field/option NAME — confirmed live via a
-// read-only `gh api graphql` query against this exact project id before
-// wiring in: title "Shane-McCaw-MSP v1.1 Launch", Status field with exactly
-// these five options. Hardcoding these ids is more reliable than matching on
-// "Status"/"In Progress" strings (case, renames, a second field also named
-// "Status" on some other linked project) and needs no extra query per push
-// to discover them.
-const PROJECT_V2_ID = "PVT_kwHOEiBDdc4Bfy37";
-const PROJECT_V2_STATUS_FIELD_ID = "PVTSSF_lAHOEiBDdc4Bfy37zhaDMq4";
+// Shane's real board — given directly rather than looked up per-issue by
+// field/option NAME, more reliable than matching on "Status"/"In Progress"
+// strings (case, renames, a second field also named "Status" on some other
+// linked project) and needs no extra query per push to discover them.
+//
+// NOT STABLE ACROSS TIME: the project this originally pointed at
+// ("Shane-McCaw-MSP v1.1 Launch", PVT_kwHOEiBDdc4Bfy37, verified live when
+// b8aea5da landed) had been DELETED by the time the very next request in
+// this same session re-verified it — a `gh api graphql` node lookup that
+// had just succeeded came back NOT_FOUND. Its fields (Status, and nothing
+// else) look consolidated onto Shane's other project, "Shane McCaw
+// Consulting" (PVT_kwHOEiBDdc4BeoiY), which now carries a materially richer
+// field set (Status/Priority/Size/Estimate/Iteration) — re-verified live
+// 2026-08-10 before writing these ids. If pushStatusToProjects()/the
+// iteration bulk-assign start silently no-op'ing again, the project was
+// probably reorganized again — re-run the same read-only `gh api graphql`
+// node/title lookup rather than assume the code is broken.
+const PROJECT_V2_ID = "PVT_kwHOEiBDdc4BeoiY";
+const PROJECT_V2_STATUS_FIELD_ID = "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0";
 
 /**
- * local status -> real Status option id. "Architecting" and "Verify" are
- * real stages on the board this tool has no local equivalent for — never
- * written here, only ever set by Shane by hand. "closed" reuses the "Done"
- * option since the board has no separate "Closed" stage; the real close
- * itself is still the REST issue-state push above, this is just the board
- * reflecting it.
+ * local status -> real Status option id. "Architecting"/"In review"/"Batter
+ * Up"/"Need to Test"/"Zoho"/"EngageBay" are real stages on the board this
+ * tool has no local equivalent for — never written here, only ever set by
+ * Shane by hand. "closed" reuses "Done" since there's no separate "Closed"
+ * stage; the real close itself is still the REST issue-state push above,
+ * this is just the board reflecting it. Option name is "In progress"
+ * (lowercase p) on this board, unlike the deleted board's "In Progress" —
+ * matched by id here, not name, so the casing difference doesn't matter.
  */
 const PROJECT_V2_STATUS_OPTION_ID: Record<string, string> = {
-  backlog: "16da40aa",
-  open: "16da40aa", // epic "open" -> the same Backlog bucket
-  in_progress: "3ab1a0bc",
-  done: "b056cc8b",
-  closed: "b056cc8b",
+  backlog: "63cc47c8",
+  open: "63cc47c8", // epic "open" -> the same Backlog bucket
+  in_progress: "6cf0ca80",
+  done: "0003ae3b",
+  closed: "0003ae3b",
 };
 
 const ISSUE_NODE_AND_PROJECT_ITEM_QUERY = `
@@ -861,6 +872,193 @@ async function pushStatusToProjects(issueNumber: number, localStatus: string): P
     log.error({ err, issueNumber, localStatus }, "pushStatusToProjects failed");
   }
 }
+
+// ── Iteration field bulk-assign ──────────────────────────────────────────────
+// Shane asked for a button to assign a chosen iteration to every board item
+// that doesn't have one set yet. "Iteration" here is purely a live Projects
+// v2 field (id verified 2026-08-10 alongside the Status field fix above) —
+// this tool has no local column for it at all, nothing to sync or store.
+
+const PROJECT_V2_ITERATION_FIELD_ID = "PVTIF_lAHOEiBDdc4BeoiYzhZBRMY";
+
+const ITERATION_FIELD_CONFIG_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Iteration") {
+          ... on ProjectV2IterationField {
+            id
+            configuration {
+              iterations { id title startDate duration }
+              completedIterations { id title startDate duration }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface IterationFieldConfigResult {
+  node: {
+    field: {
+      id: string;
+      configuration: {
+        iterations: Array<{ id: string; title: string; startDate: string; duration: number }>;
+        completedIterations: Array<{ id: string; title: string; startDate: string; duration: number }>;
+      };
+    } | null;
+  } | null;
+}
+
+/** GET /admin/build-tracker/iterations — the board's real current/future + completed iterations. */
+router.get("/admin/build-tracker/iterations", requireAdmin, async (_req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  try {
+    const data = await ghGraphQL<IterationFieldConfigResult>(ITERATION_FIELD_CONFIG_QUERY, {
+      projectId: PROJECT_V2_ID,
+    });
+    const config = data.node?.field?.configuration;
+    if (!config) {
+      res.status(502).json({ error: "Could not read the Iteration field — the board may have been reorganized again, see the PROJECT_V2_ID comment" });
+      return;
+    }
+    res.json({
+      iterations: [
+        ...config.iterations.map((it) => ({ ...it, completed: false })),
+        ...config.completedIterations.map((it) => ({ ...it, completed: true })),
+      ],
+    });
+  } catch (err) {
+    log.error({ err }, "GET /iterations failed");
+    res.status(500).json({ error: "Failed to load iterations" });
+  }
+});
+
+const PROJECT_ITEMS_WITHOUT_ITERATION_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content { ... on Issue { number title } }
+            fieldValueByName(name: "Iteration") {
+              ... on ProjectV2ItemFieldIterationValue { title }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface ProjectItemsPage {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: Array<{
+    id: string;
+    content: { number: number; title: string } | null;
+    fieldValueByName: { title: string } | null;
+  }>;
+}
+
+interface ProjectItemsWithoutIterationResult {
+  node: { items: ProjectItemsPage } | null;
+}
+
+/** Every board item (id + issue number/title) with no Iteration value set, paginating the whole project. */
+async function findItemsWithoutIteration(): Promise<Array<{ itemId: string; number: number | null; title: string }>> {
+  const found: Array<{ itemId: string; number: number | null; title: string }> = [];
+  let after: string | null = null;
+  do {
+    const data: ProjectItemsWithoutIterationResult = await ghGraphQL(PROJECT_ITEMS_WITHOUT_ITERATION_QUERY, {
+      projectId: PROJECT_V2_ID,
+      after,
+    });
+    const items: ProjectItemsPage | undefined = data.node?.items;
+    if (!items) break;
+    for (const item of items.nodes) {
+      if (item.fieldValueByName) continue; // already has an iteration
+      found.push({ itemId: item.id, number: item.content?.number ?? null, title: item.content?.title ?? "(untitled)" });
+    }
+    after = items.pageInfo.hasNextPage ? items.pageInfo.endCursor : null;
+  } while (after);
+  return found;
+}
+
+/** Hard ceiling on one bulk-assign call — a real cap, not silent: the response reports how many were left over. */
+const MAX_ITERATION_ASSIGNMENTS_PER_CALL = 400;
+
+const UPDATE_PROJECT_V2_ITEM_ITERATION_MUTATION = `
+  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+      value: { iterationId: $iterationId }
+    }) {
+      projectV2Item { id }
+    }
+  }
+`;
+
+/**
+ * POST /admin/build-tracker/assign-iteration — assigns `iterationId` to every
+ * board item with no Iteration value set. `dryRun: true` only counts
+ * candidates (no writes) so the client can show a real impact count before
+ * asking Shane to confirm a bulk, live, hard-to-reverse change.
+ */
+router.post("/admin/build-tracker/assign-iteration", requireAdmin, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const { iterationId, dryRun } = req.body as { iterationId?: string; dryRun?: boolean };
+  if (!iterationId?.trim()) { res.status(400).json({ error: "iterationId is required" }); return; }
+
+  try {
+    const candidates = await findItemsWithoutIteration();
+
+    if (dryRun) {
+      res.json({
+        candidateCount: candidates.length,
+        sampleTitles: candidates.slice(0, 8).map((c) => (c.number ? `#${c.number} ${c.title}` : c.title)),
+        updated: 0,
+        failed: 0,
+      });
+      return;
+    }
+
+    const toAssign = candidates.slice(0, MAX_ITERATION_ASSIGNMENTS_PER_CALL);
+    let updated = 0;
+    let failed = 0;
+    for (const item of toAssign) {
+      try {
+        await ghGraphQL(UPDATE_PROJECT_V2_ITEM_ITERATION_MUTATION, {
+          projectId: PROJECT_V2_ID,
+          itemId: item.itemId,
+          fieldId: PROJECT_V2_ITERATION_FIELD_ID,
+          iterationId,
+        });
+        updated++;
+      } catch (err) {
+        failed++;
+        log.error({ err, itemId: item.itemId, number: item.number }, "assign-iteration: single item failed");
+      }
+    }
+
+    const remaining = candidates.length - toAssign.length;
+    if (remaining > 0) {
+      log.warn({ remaining, capped: MAX_ITERATION_ASSIGNMENTS_PER_CALL }, "assign-iteration: hit the per-call cap, items left over");
+    }
+    res.json({ candidateCount: candidates.length, updated, failed, remaining });
+  } catch (err) {
+    log.error({ err }, "POST /assign-iteration failed");
+    res.status(500).json({ error: "Failed to assign iteration" });
+  }
+});
 
 function getParentNumber(url: string | null | undefined): number | null {
   if (!url) return null;

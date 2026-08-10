@@ -18,7 +18,7 @@ import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
   GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash, Sparkles,
-  Play, Pause, ClipboardPaste,
+  Play, Pause, ClipboardPaste, CalendarRange,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
@@ -38,6 +38,7 @@ import {
 } from "./buildTrackerTypes";
 import type { ChatRow, IssueRow } from "./buildTrackerTypes";
 import { PasteImportModal } from "./BuildTrackerPasteImport";
+import { IterationAssignModal } from "./BuildTrackerIterationAssign";
 import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL } from "../project-management/ProjectManagementBody";
 
 function useStore() {
@@ -165,6 +166,7 @@ function ChatOpenChip({ chat }: { chat: ChatRow }) {
 function Dashboard() {
   const state = useStore();
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
+  const [iterationAssignOpen, setIterationAssignOpen] = useState(false);
 
   const openEpics      = state.epics.filter((e) => e.status === "open").length;
   const inProgressEpics = state.epics.filter((e) => e.status === "in_progress").length;
@@ -256,10 +258,22 @@ function Dashboard() {
           >
             <ClipboardPaste size={13} /> Paste from Claude
           </button>
+          <button
+            onClick={() => setIterationAssignOpen(true)}
+            title="Assign a chosen iteration to every board item that doesn't have one set"
+            style={{
+              padding: "6px 14px", borderRadius: 6, border: `1px solid ${LINE.control}`,
+              background: SURFACE.well, color: TEXT.primary, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <CalendarRange size={13} /> Assign Iteration
+          </button>
         </div>
       </div>
       <style>{"@keyframes bt-spin { to { transform: rotate(360deg); } }"}</style>
       {pasteImportOpen && <PasteImportModal onClose={() => setPasteImportOpen(false)} />}
+      {iterationAssignOpen && <IterationAssignModal onClose={() => setIterationAssignOpen(false)} />}
 
       {/* 2 Column Dashboard Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>

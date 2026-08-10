@@ -123,3 +123,14 @@ export interface PasteImportGroup {
   label: string;
   items: PasteImportItem[];
 }
+
+// ── GitHub Projects v2 Iteration field ──────────────────────────────────────
+// Purely a live GitHub concept — no local table/column for it at all.
+
+export interface IterationOption {
+  id: string;
+  title: string;
+  startDate: string;
+  duration: number;
+  completed: boolean;
+}
