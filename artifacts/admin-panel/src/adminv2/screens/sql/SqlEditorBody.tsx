@@ -53,13 +53,15 @@ const editorSurfaceTheme = EditorView.theme(
     ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
     ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
     // oneDark's own selection color reads as near-invisible against this
-    // theme's darker `.cm-content` background — explicit override so a
-    // selected range is actually visible, focused or not.
-    "&:not(.cm-focused) .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground": {
-      backgroundColor: `${ACCENT.info}40 !important`,
-    },
-    "&.cm-focused .cm-selectionBackground, &.cm-focused .cm-selectionLayer .cm-selectionBackground": {
-      backgroundColor: `${ACCENT.info}66 !important`,
+    // theme's darker `.cm-content` background. oneDark paints selection
+    // through THREE different paths depending on focus/drawSelection state —
+    // the drawn overlay (`.cm-selectionBackground`, both the plain and the
+    // focused-nested-under-`.cm-selectionLayer` form) *and* the browser's
+    // native `::selection` pseudo-element — so all three need overriding
+    // together, matching oneDark's own selector exactly, or whichever path
+    // is actually live falls through to its barely-visible default.
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: `${ACCENT.info}4d !important`,
     },
     ".cm-tooltip, .cm-tooltip-autocomplete": { backgroundColor: SURFACE.overlay, border: `1px solid ${LINE.control}` },
     ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: SURFACE.wellHover },
