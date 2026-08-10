@@ -182,16 +182,30 @@ export function issueByGithubNumber(githubNumber: number): IssueRow | undefined 
   return issues.find((i) => i.githubNumber === githubNumber);
 }
 
+/**
+ * Resolves a raw milestone reference — which may be a local DB `id` (set by
+ * assignEpicToMilestone) or a GitHub milestone number (set by a GitHub sync,
+ * before it's reconciled to a local row) — to the single MilestoneRow it
+ * identifies. DB ids and GitHub numbers are independently-assigned integers,
+ * so they can collide (a raw value of 8 might be milestone A's id AND
+ * milestone B's githubNumber); id match is checked first and wins so a raw
+ * value never resolves to more than one milestone.
+ */
+function milestoneRowForRawId(rawId: number | string | null | undefined): MilestoneRow | undefined {
+  if (rawId == null) return undefined;
+  const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+  const byId = milestones.find((m) => m.id === Number(rawId));
+  if (byId) return byId;
+  return milestones.find((m) => m.githubNumber != null && String(m.githubNumber) === String(rawId));
+}
+
 export function epicsForMilestone(milestoneId: number): EpicRow[] {
-  const m = milestoneById(milestoneId);
-  const msNum = m?.githubNumber ?? milestoneId;
   const epics = Array.isArray(state?.epics) ? state.epics : [];
   const issues = Array.isArray(state?.issues) ? state.issues : [];
   return epics.filter(
     (e) =>
-      e.milestoneId === milestoneId ||
-      (m && m.githubNumber !== null && m.githubNumber !== undefined && (e.milestoneId === m.githubNumber || String(e.milestoneId) === String(m.githubNumber))) ||
-      issues.some((i) => i.epicId === e.id && (i.milestoneId === milestoneId || i.milestoneId === msNum))
+      milestoneRowForRawId(e.milestoneId)?.id === milestoneId ||
+      issues.some((i) => i.epicId === e.id && milestoneRowForRawId(i.milestoneId)?.id === milestoneId)
   );
 }
 
@@ -346,7 +360,6 @@ export function milestoneForEpic(epicId: number): MilestoneRow | undefined {
  * directly, only reached by walking down to its epics/issues.
  */
 export function chatsForMilestone(milestoneId: number): ChatRow[] {
-  const milestone = milestoneById(milestoneId);
   const seen = new Set<number>();
   const chats: ChatRow[] = [];
   const add = (row: ChatRow) => { if (!seen.has(row.id)) { seen.add(row.id); chats.push(row); } };
@@ -355,10 +368,7 @@ export function chatsForMilestone(milestoneId: number): ChatRow[] {
     for (const c of chatsForEpic(epic.id)) add(c);
   }
   const standaloneIssues = (Array.isArray(state?.issues) ? state.issues : []).filter(
-    (i) => i.epicId === null && (
-      i.milestoneId === milestoneId ||
-      (milestone?.githubNumber != null && String(i.milestoneId) === String(milestone.githubNumber))
-    ),
+    (i) => i.epicId === null && milestoneRowForRawId(i.milestoneId)?.id === milestoneId,
   );
   for (const issue of standaloneIssues) {
     for (const c of chatsForIssue(issue.id)) add(c);
@@ -383,10 +393,7 @@ export function chatsForIssueWithFallback(issue: IssueRow): ChatRow[] {
     return milestone ? chatsForMilestone(milestone.id) : [];
   }
   if (issue.milestoneId != null) {
-    const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
-    const milestone = milestones.find(
-      (m) => m.id === issue.milestoneId || (m.githubNumber != null && String(m.githubNumber) === String(issue.milestoneId)),
-    );
+    const milestone = milestoneRowForRawId(issue.milestoneId);
     if (milestone) return chatsForMilestone(milestone.id);
   }
   return [];
@@ -485,6 +492,31 @@ export function estimateMilestoneHours(milestoneId: number): { openIssues: numbe
   const totalHours = Math.round(openIssuesCount * avgH * 10) / 10;
   const totalDays = Math.round((totalHours / 8) * 10) / 10;
   return { openIssues: openIssuesCount, totalHours, totalDays };
+}
+
+/**
+ * Completion across every epic assigned to `milestoneId` and their issues,
+ * for the Explorer's milestone progress bar. Each epic's issues are the unit
+ * of work; an epic with no issues yet counts as one unit of its own so a
+ * milestone made up of freshly-created, still-issue-less epics doesn't read
+ * as 0/0 (100% by an empty-total convention) when it's actually just unstarted.
+ */
+export function milestoneProgress(milestoneId: number): { total: number; done: number; pct: number } {
+  const epics = epicsForMilestone(milestoneId);
+  let total = 0;
+  let done = 0;
+  for (const epic of epics) {
+    const issues = issuesForEpic(epic.id);
+    if (issues.length === 0) {
+      total += 1;
+      if (epicIsDone(epic)) done += 1;
+    } else {
+      total += issues.length;
+      done += issues.filter((i) => i.status === "done" || i.status === "closed").length;
+    }
+  }
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return { total, done, pct };
 }
 
 /**

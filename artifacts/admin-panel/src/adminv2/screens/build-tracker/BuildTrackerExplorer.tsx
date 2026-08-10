@@ -33,7 +33,7 @@ import {
   unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
   deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
   formatIssueAge, trimMilestoneToCapacity, syncFromGitHub, assignEpicToMilestone,
-  epicIsUnassigned,
+  epicIsUnassigned, milestoneProgress,
 } from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -235,6 +235,7 @@ function MilestoneNode({
     .filter((e) => epicMatchesQuery(e, query));
   const visibleEpics = epics;
   const est = estimateMilestoneHours(milestone.id);
+  const progress = milestoneProgress(milestone.id);
   const isSelected = selectedMilestoneId === milestone.id;
 
   return (
@@ -262,6 +263,18 @@ function MilestoneNode({
             <span>{visibleEpics.length} epics</span>
             <span>·</span>
             <span>Est: {est.totalDays}d ({est.totalHours}h)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
+            <div style={{ flex: 1, height: 4, borderRadius: 2, background: `${TEXT.dim}30`, overflow: "hidden" }}>
+              <div style={{
+                width: `${progress.pct}%`, height: "100%", borderRadius: 2,
+                background: progress.pct >= 100 ? ACCENT.greenSoft : ACCENT.amber,
+                transition: "width 0.2s ease",
+              }} />
+            </div>
+            <span style={{ fontSize: 9.5, color: TEXT.caption, fontFamily: FONT.mono, flex: "none" }}>
+              {progress.done}/{progress.total} · {progress.pct}%
+            </span>
           </div>
         </div>
         <span style={{ color: TEXT.dim }}>{open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}</span>
