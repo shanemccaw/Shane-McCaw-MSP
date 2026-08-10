@@ -20,7 +20,6 @@ import { db, btEpicsTable, btIssuesTable, btChatsTable } from "@workspace/db";
 import { eq, desc, asc, isNull, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -844,124 +843,6 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
   }
 });
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PASTE IMPORT (AI-assisted) — turns a block of text pasted from a Claude chat
-// (a status-summary reply, e.g. "here's everything open, grouped by X") into
-// the same grouped structure the source text already uses, so the client can
-// match each referenced issue number against real tracker rows. Writes
-// nothing — pure extraction for display.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const PASTE_PARSE_MODEL = "claude-sonnet-4-6";
-const MAX_PASTE_CHARS = 20_000;
-
-interface PasteImportItem { numbers: number[]; text: string }
-interface PasteImportGroup { label: string; items: PasteImportItem[] }
-
-/** Pull the first balanced JSON object out of a model reply (fences, prose, etc). */
-function extractPasteJsonObject(text: string): unknown {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\" && inString) { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        try { return JSON.parse(text.slice(start, i + 1)); } catch { return null; }
-      }
-    }
-  }
-  return null;
-}
-
-function normalizePasteGroups(value: unknown): PasteImportGroup[] {
-  if (!value || typeof value !== "object" || !Array.isArray((value as { groups?: unknown }).groups)) return [];
-  const groups: PasteImportGroup[] = [];
-  for (const g of (value as { groups: unknown[] }).groups) {
-    if (!g || typeof g !== "object") continue;
-    const label = typeof (g as { label?: unknown }).label === "string" ? (g as { label: string }).label.trim() : "";
-    const rawItems = (g as { items?: unknown }).items;
-    if (!label || !Array.isArray(rawItems)) continue;
-    const items: PasteImportItem[] = [];
-    for (const it of rawItems) {
-      if (!it || typeof it !== "object") continue;
-      const text = typeof (it as { text?: unknown }).text === "string" ? (it as { text: string }).text.trim() : "";
-      if (!text) continue;
-      const rawNumbers = (it as { numbers?: unknown }).numbers;
-      const numbers = Array.isArray(rawNumbers)
-        ? rawNumbers.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
-        : [];
-      items.push({ numbers, text });
-    }
-    if (items.length > 0) groups.push({ label, items });
-  }
-  return groups;
-}
-
-/** POST /admin/build-tracker/parse-paste — AI-extract a pasted status summary into groups. Writes nothing. */
-router.post("/admin/build-tracker/parse-paste", requireAdmin, async (req: Request, res: Response) => {
-  const { text } = req.body as { text?: string };
-  if (!text?.trim()) { res.status(400).json({ error: "text is required" }); return; }
-  if (text.length > MAX_PASTE_CHARS) {
-    res.status(400).json({ error: `text is too long (max ${MAX_PASTE_CHARS} characters)` });
-    return;
-  }
-
-  const prompt = [
-    `You will be given a raw block of text pasted from a Claude chat conversation. It summarizes the status of a list of GitHub issues, usually organized under bold headers (e.g. "**Currently building:**") followed by bullet lines, each bullet referencing one or more GitHub issue numbers (e.g. "#439", "#626/#627/#628", or a range like "#647-652" meaning issues 647 through 652 inclusive).`,
-    ``,
-    `Extract the SAME grouping the text already uses — do not invent new categories, merge groups, or reorder them. For each group, capture its header text as "label" (strip markdown "**" and any trailing colon). For each bullet under it, produce one item with:`,
-    `  - "numbers": every GitHub issue number the bullet references, expanded to individual integers (a range like #647-652 becomes [647,648,649,650,651,652]; a slash list like #626/#627/#628 becomes [626,627,628]). Empty array if the bullet references no issue number.`,
-    `  - "text": the bullet's descriptive text with the leading issue-number reference(s) removed, trimmed.`,
-    ``,
-    `Respond with ONLY a JSON object, no prose and no markdown fences:`,
-    `{"groups":[{"label":"...","items":[{"numbers":[123],"text":"..."}]}]}`,
-    ``,
-    `Text to parse:`,
-    `"""`,
-    text.trim(),
-    `"""`,
-  ].join("\n");
-
-  try {
-    const message = await withAiAttribution(
-      {
-        costOwner: "platform",
-        feature: "build_tracker_paste_import",
-        triggerSource: "admin-build-tracker:parse-paste",
-      },
-      () =>
-        anthropic.messages.create({
-          model: PASTE_PARSE_MODEL,
-          max_tokens: 4000,
-          messages: [{ role: "user", content: prompt }],
-        }),
-    );
-
-    const block = message.content.find((b) => b.type === "text");
-    const rawText = block && block.type === "text" ? block.text : "";
-    const groups = normalizePasteGroups(extractPasteJsonObject(rawText));
-
-    if (groups.length === 0) {
-      res.status(502).json({ error: "AI returned an unreadable response — please try again" });
-      return;
-    }
-
-    res.json({ groups });
-  } catch (err) {
-    log.error({ err }, "parse-paste failed");
-    res.status(500).json({ error: "Failed to parse pasted text" });
-  }
-});
 
 export default router;
 

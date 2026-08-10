@@ -13,7 +13,7 @@ import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
   GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash, Sparkles,
-  Play, Pause,
+  Play, Pause, ClipboardPaste,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
@@ -248,7 +248,7 @@ function Dashboard() {
               cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
             }}
           >
-            <Sparkles size={13} /> Paste from Claude
+            <ClipboardPaste size={13} /> Paste from Claude
           </button>
         </div>
       </div>

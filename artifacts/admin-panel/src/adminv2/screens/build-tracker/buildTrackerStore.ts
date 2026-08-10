@@ -11,7 +11,7 @@ import { logger } from "@/lib/logger";
 import { ACCENT } from "../../theme";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
-import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus, PasteImportGroup } from "./buildTrackerTypes";
+import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus } from "./buildTrackerTypes";
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -916,35 +916,6 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
   } finally {
     set({ syncingGitHub: false });
     setLiveRibbonValue(SYNC_GITHUB_KEY, null);
-  }
-}
-
-// ── Paste import (AI-assisted) ─────────────────────────────────────────────────
-
-/**
- * Sends a raw block of pasted text (typically a Claude chat's status-summary
- * reply) to the server, which uses a real Anthropic call to extract it into
- * the same grouped structure the source text already uses. Throws on failure
- * — the caller (PasteImportModal) shows its own inline error rather than this
- * function flashing a toast, since it's already inside a modal with its own
- * error area.
- */
-export async function parsePasteText(text: string): Promise<PasteImportGroup[] | null> {
-  try {
-    const res = await apiFetch("/admin/build-tracker/parse-paste", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null) as { error?: string } | null;
-      throw new Error(body?.error || `HTTP ${res.status}`);
-    }
-    const result = (await res.json()) as { groups: PasteImportGroup[] };
-    return Array.isArray(result.groups) ? result.groups : [];
-  } catch (err) {
-    log.error({ err }, "parsePasteText failed");
-    throw err;
   }
 }
 

@@ -6,19 +6,22 @@
  * wants to see it laid out the same way it was written, with every
  * referenced issue number resolved against what the tracker actually knows
  * about it (real title/status), rather than re-typing or re-reading each one
- * by hand. The server does the actual extraction with a real Anthropic call
- * (parse-paste, admin-build-tracker.ts) — this component is pure display +
- * client-side matching against the already-loaded store, no writes.
+ * by hand. Parsing is a plain deterministic regex parser
+ * (buildTrackerPasteParser.ts) — no AI call, no network, no cost — since
+ * Shane's own paste format is consistent enough not to need one. This
+ * component is pure display + client-side matching against the already-
+ * loaded store, no writes.
  */
 
 import { useState, useSyncExternalStore } from "react";
-import { X, Sparkles, ExternalLink, AlertCircle } from "lucide-react";
+import { X, ClipboardPaste, ExternalLink, AlertCircle } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
 import {
-  getSnapshot, subscribe, parsePasteText, issueByGithubNumber, epicByGithubNumber,
+  getSnapshot, subscribe, issueByGithubNumber, epicByGithubNumber,
   selectIssue, selectEpic,
 } from "./buildTrackerStore";
+import { parsePasteText } from "./buildTrackerPasteParser";
 import { ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_COLOR, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import type { PasteImportGroup } from "./buildTrackerTypes";
 
@@ -105,27 +108,23 @@ function ParsedGroups({ groups, onClose }: { groups: PasteImportGroup[]; onClose
 
 export function PasteImportModal({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [groups, setGroups] = useState<PasteImportGroup[] | null>(null);
+  const [empty, setEmpty] = useState(false);
 
-  async function handleParse() {
+  function handleParse() {
     if (!text.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await parsePasteText(text);
-      setGroups(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+    const result = parsePasteText(text);
+    if (result.length === 0) {
+      setEmpty(true);
+      return;
     }
+    setEmpty(false);
+    setGroups(result);
   }
 
   function handleReset() {
     setGroups(null);
-    setError(null);
+    setEmpty(false);
   }
 
   return (
@@ -145,7 +144,7 @@ export function PasteImportModal({ onClose }: { onClose: () => void }) {
               Build Tracker
             </span>
             <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: TEXT.primary, display: "flex", alignItems: "center", gap: 8 }}>
-              <Sparkles size={16} color={ACCENT.info} /> Paste from Claude
+              <ClipboardPaste size={16} color={ACCENT.info} /> Paste from Claude
             </h3>
           </div>
           <button onClick={onClose} style={{ background: "transparent", border: 0, color: TEXT.dim, cursor: "pointer" }}>
@@ -171,24 +170,24 @@ export function PasteImportModal({ onClose }: { onClose: () => void }) {
                 fontFamily: FONT.mono, outline: "none", resize: "vertical",
               }}
             />
-            {error && (
+            {empty && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: ACCENT.danger, fontSize: 12 }}>
-                <AlertCircle size={13} /> {error}
+                <AlertCircle size={13} /> Couldn't find any "**Header:**" groups or "- " bullets in that text — paste it as-is from the chat, formatting included.
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
-                onClick={() => void handleParse()}
-                disabled={loading || !text.trim()}
+                onClick={handleParse}
+                disabled={!text.trim()}
                 style={{
                   padding: "8px 18px", borderRadius: 6, border: 0,
                   background: ACCENT.info, color: SURFACE.well, fontSize: 12.5, fontWeight: 700,
-                  cursor: loading || !text.trim() ? "default" : "pointer",
-                  opacity: loading || !text.trim() ? 0.6 : 1,
+                  cursor: !text.trim() ? "default" : "pointer",
+                  opacity: !text.trim() ? 0.6 : 1,
                   fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
                 }}
               >
-                <Sparkles size={13} /> {loading ? "Parsing…" : "Parse"}
+                <ClipboardPaste size={13} /> Parse
               </button>
             </div>
           </div>
