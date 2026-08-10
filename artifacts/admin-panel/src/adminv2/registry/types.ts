@@ -578,7 +578,8 @@ export type CommandKind =
   | "share"
   | "trigger"
   | "issue"
-  | "chatLink";
+  | "chatLink"
+  | "post";
 
 export interface CommandItem {
   id: string;

@@ -4,32 +4,37 @@
  * Phase A of Git #601's build plan (posted as a comment on #601) was
  * scaffolding only (Git #681): registration, ribbon, empty-state body.
  * Phase B (Git #682) landed the `post` peek Compose opens, with in-memory
- * state in `contentStudioStore.ts`. This file now also carries Phase C
- * (Git #683) — the real Queue gallery. Phase D adds palette + Watch wiring,
- * Phase E undo/redo, Phase F the scheduling backend (a real `content_posts`
- * table replacing the in-memory store), Phase G optional in-peek AI Assist.
+ * state in `contentStudioStore.ts`. Phase C (Git #683) landed the real Queue
+ * gallery. This file now also carries Phase D (Git #684) — palette commands
+ * and the Watch tab's "Failed posts" wiring. Phase E adds undo/redo, Phase F
+ * the scheduling backend (a real `content_posts` table replacing the
+ * in-memory store), Phase G optional in-peek AI Assist.
  *
  * Per SHELL.md's updated Home rule (section 1): `content` owns the actions,
  * `home` gets one mirrored primary command — Compose, here — not a second
  * copy of every group.
  */
 
-import { PenSquare, ListChecks } from "lucide-react";
+import { AlertTriangle, PenSquare, ListChecks } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
-import type { GalleryRow } from "../../registry/types";
+import { ACCENT } from "../../theme";
+import type { CommandItem, GalleryRow } from "../../registry/types";
 import { ContentStudioBody } from "./ContentStudioBody";
 import {
   createDraftPost,
   deletePost,
+  failedPostsCount,
   getSnapshot,
   postById,
+  scheduledThisWeekCount,
   schedulePost,
   STATUS_CODE,
   STATUS_LABEL,
   STATUS_ORDER,
   STATUS_TONE,
   updatePostField,
+  WATCH_FAILED_KEY,
   type Post,
 } from "./contentStudioStore";
 
@@ -120,7 +125,62 @@ registerScreen({
         large: [{ label: "Compose", icon: PenSquare, intent: "create", onSelect: compose }],
       },
     },
+    {
+      // Failed posts (retries exhausted) surface here, not in Content
+      // Studio itself — the DLQ/exceptions pattern `observability/index.tsx`
+      // already established, and the same `liveKey` overlay
+      // `marketing/index.tsx`'s "Campaigns waiting on you" button uses,
+      // since a static `color`/`label` would freeze at whatever it was when
+      // this module first loaded (SHELL.md section 6: the only other place
+      // besides a bottom-panel tab a live number belongs, because this one
+      // is actionable).
+      tab: "watch",
+      order: 40,
+      group: {
+        label: "Content Studio",
+        small: [
+          {
+            label: "Failed posts",
+            icon: AlertTriangle,
+            intent: "open",
+            color: failedPostsCount() > 0 ? ACCENT.danger : undefined,
+            liveKey: WATCH_FAILED_KEY,
+            onSelect: () => getShellApi()?.navigate(ROUTE),
+            title: "Posts that failed to publish after retries were exhausted",
+          },
+        ],
+      },
+    },
   ],
+
+  commands: (): CommandItem[] => {
+    const { posts } = getSnapshot();
+
+    const postRecords: CommandItem[] = posts.map((post) => ({
+      id: `rec:post-${post.id}`,
+      type: "record",
+      kind: "post",
+      name: firstLine(post.body),
+      sub: post.scheduledFor || "Not scheduled",
+      tag: STATUS_LABEL[post.status],
+      area: "content",
+      run: () => getShellApi()?.openPeek("post", post.id),
+    }));
+
+    const answers: CommandItem[] = [
+      {
+        id: "ans:content-studio-scheduled-week",
+        type: "answer",
+        name: "Posts scheduled this week",
+        sub: "Scheduled, next 7 days",
+        area: "content",
+        live: String(scheduledThisWeekCount()),
+        run: () => getShellApi()?.navigate(ROUTE),
+      },
+    ];
+
+    return [...postRecords, ...answers];
+  },
 
   peeks: {
     post: (id) => {

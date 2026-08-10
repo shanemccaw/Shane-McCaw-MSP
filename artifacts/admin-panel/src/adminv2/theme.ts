@@ -195,6 +195,10 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // Build Tracker. Amber like the Explorer's own Flag icon for a milestone —
   // a roadmap target you're actively tracking, not a neutral definition.
   milestone: ["#f2ca63", "MS"],
+  // Content Studio. Blue like `campaign` — a post is a record you go
+  // compose or check, not itself a verdict; whether it needs attention is
+  // what the Watch tab's own "Failed posts" contribution is for.
+  post: ["#7fb4d8", "PST"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

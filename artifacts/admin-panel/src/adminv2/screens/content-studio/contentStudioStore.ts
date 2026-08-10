@@ -4,16 +4,23 @@
  * `content`/`home` ribbon groups (`screens/content-studio/index.tsx`) are
  * built once, at `registerScreen()` module-load time, outside any component.
  *
- * Phase B only: posts live in memory here and are lost on reload — there is
- * no `content_posts` table yet. Phase F swaps this for a real
- * backend-backed store shaped like `marketingStore.ts`'s; this file's public
- * functions (`postById`, `createDraftPost`, `updatePostField`,
- * `schedulePost`, `deletePost`) are named to survive that swap without the
- * `post` peek needing to change.
+ * Posts live in memory here and are lost on reload — there is no
+ * `content_posts` table yet. Phase F swaps this for a real backend-backed
+ * store shaped like `marketingStore.ts`'s; this file's public functions
+ * (`postById`, `createDraftPost`, `updatePostField`, `schedulePost`,
+ * `deletePost`) are named to survive that swap without the `post` peek
+ * needing to change.
+ *
+ * Phase D (Git #684) added `WATCH_FAILED_KEY`'s live-ribbon sync, following
+ * `marketingStore.ts`'s own `WATCH_WAITING_KEY`/`syncLiveRibbon` pattern —
+ * the Watch tab's "Failed posts" button in `index.tsx` reads this, not a
+ * static count, since `ribbon` is built once at `registerScreen()`
+ * module-load time.
  */
 
 import { logger } from "@/lib/logger";
 import { ACCENT } from "../../theme";
+import { setLiveRibbonValue } from "../../shell/liveRibbon";
 
 const log = logger.child({ channel: "admin.content-studio" });
 
@@ -60,8 +67,33 @@ let state: ContentStudioState = { posts: [] };
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
+/** The Watch tab's "Failed posts" button's live key — see `liveRibbon.ts`'s doc comment for why this can't just be a static `live:` number. */
+export const WATCH_FAILED_KEY = "content-studio:watch-failed";
+
+/** Retries exhausted (Phase F wires the real dispatcher that produces these — this only reads the status). */
+export function failedPostsCount(s: ContentStudioState = state): number {
+  return s.posts.filter((p) => p.status === "failed").length;
+}
+
+/** `scheduledFor` is freeform text (no date picker yet), so this only counts entries that parse as a real date within the next 7 days. */
+export function scheduledThisWeekCount(s: ContentStudioState = state): number {
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  return s.posts.filter((p) => {
+    if (p.status !== "scheduled") return false;
+    const t = Date.parse(p.scheduledFor);
+    return !Number.isNaN(t) && t >= now && t <= now + weekMs;
+  }).length;
+}
+
+function syncLiveRibbon(): void {
+  const count = failedPostsCount();
+  setLiveRibbonValue(WATCH_FAILED_KEY, count > 0 ? { label: `${count} failed`, color: ACCENT.danger } : { label: "No failed posts" });
+}
+
 function setState(patch: Partial<ContentStudioState>): void {
   state = { ...state, ...patch };
+  syncLiveRibbon();
   for (const listener of listeners) listener();
 }
 
