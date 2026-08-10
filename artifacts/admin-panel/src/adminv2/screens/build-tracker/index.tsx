@@ -688,8 +688,8 @@ registerScreen({
       return {
         kind: "milestone",
         eyebrow: "MILESTONE",
-        title: milestone.title,
-        sub: milestone.githubNumber ? `#${milestone.githubNumber} · ${MILESTONE_STATUS_LABEL[milestone.status]}` : MILESTONE_STATUS_LABEL[milestone.status],
+        title: milestone.githubNumber ? `#${milestone.githubNumber} ${milestone.title}` : milestone.title,
+        sub: MILESTONE_STATUS_LABEL[milestone.status],
         icon: Flag,
         tone: MILESTONE_STATUS_COLOR[milestone.status],
         tag: MILESTONE_STATUS_LABEL[milestone.status],
@@ -717,8 +717,8 @@ registerScreen({
       return {
         kind: "epic",
         eyebrow: "EPIC",
-        title: epic.title,
-        sub: epic.githubNumber ? `#${epic.githubNumber} · ${EPIC_STATUS_LABEL[epic.status]}` : EPIC_STATUS_LABEL[epic.status],
+        title: epic.githubNumber ? `#${epic.githubNumber} ${epic.title}` : epic.title,
+        sub: EPIC_STATUS_LABEL[epic.status],
         icon: GitBranch,
         tone: EPIC_STATUS_COLOR[epic.status],
         tag: EPIC_STATUS_LABEL[epic.status],
@@ -747,8 +747,8 @@ registerScreen({
       return {
         kind: "issue",
         eyebrow: "ISSUE",
-        title: issue.title,
-        sub: issue.githubNumber ? `#${issue.githubNumber} · ${ISSUE_STATUS_LABEL[issue.status]}` : ISSUE_STATUS_LABEL[issue.status],
+        title: issue.githubNumber ? `#${issue.githubNumber} ${issue.title}` : issue.title,
+        sub: ISSUE_STATUS_LABEL[issue.status],
         icon: GitPullRequest,
         tone: ISSUE_STATUS_COLOR[issue.status],
         tag: ISSUE_STATUS_LABEL[issue.status],

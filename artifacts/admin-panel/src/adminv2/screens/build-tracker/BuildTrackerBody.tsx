@@ -25,7 +25,7 @@ import { getShellApi } from "../../shell/ShellContext";
 import {
   getSnapshot, subscribe,
   epicById, issueById, chatById, milestoneById,
-  issuesForEpic, chatsForIssue, chatsForEpic, chatsForEpicWithFallback, epicsForMilestone,
+  issuesForEpic, chatsForIssue, chatsForEpic, chatsForEpicWithFallback, chatsForMilestone, epicsForMilestone,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
   selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, updateChat, setTriageActive, syncFromGitHub,
@@ -529,6 +529,7 @@ function MilestoneDetail({ id }: { id: number }) {
   const milestoneId = milestone.id;
   const epics = epicsForMilestone(milestoneId);
   const est = estimateMilestoneHours(milestoneId);
+  const allChats = chatsForMilestone(milestoneId);
 
   return (
     <div style={{ padding: 24, maxWidth: 1000, display: "flex", flexDirection: "column", gap: 20 }}>
@@ -540,13 +541,31 @@ function MilestoneDetail({ id }: { id: number }) {
             {milestone.githubNumber && (
               <a href={`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${milestone.githubNumber}`} target="_blank" rel="noopener noreferrer"
                 style={{ fontSize: 11, color: ACCENT.info, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
-                <ExternalLink size={11} /> #{milestone.githubNumber}
+                <ExternalLink size={11} /> View on GitHub
               </a>
             )}
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>{milestone.title}</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>
+            {milestone.githubNumber ? `#${milestone.githubNumber} ` : ""}{milestone.title}
+          </h1>
         </div>
       </div>
+
+      {/* Claude chats — flat and right up top, not nested inside the Epics
+          list below. Every chat reachable anywhere under this milestone
+          (chatsForMilestone already walks every epic and standalone issue),
+          because "which epic owns it" is a second question — "does a chat
+          for this exist" is the first one, and that shouldn't require
+          expanding anything to answer. */}
+      <Section title={`Claude Chats in this Milestone (${allChats.length})`}>
+        {allChats.length === 0 ? (
+          <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No chats linked yet</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {allChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
+          </div>
+        )}
+      </Section>
 
       {/* Gantt & Roadmap, scoped to just this milestone — the same component
           /project-management shows for everything, focused down to one row. */}
@@ -662,21 +681,35 @@ function EpicDetail({ id }: { id: number }) {
             {epic.githubNumber && (
               <a href={`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${epic.githubNumber}`} target="_blank" rel="noopener noreferrer"
                 style={{ fontSize: 11, color: ACCENT.info, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
-                <ExternalLink size={11} /> #{epic.githubNumber}
+                <ExternalLink size={11} /> View on GitHub
               </a>
             )}
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>{epic.title}</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>
+            {epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}
+          </h1>
         </div>
       </div>
 
-      {/* Two Column Layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "start" }}>
-        {/* Left Column: Description, Issues, Delete button */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {epic.description && <FormattedDescription text={epic.description} />}
+      {/* Claude chats — right under the header, not tucked into a side
+          column where it's easy to miss on first look. */}
+      <Section title={`Chats on this epic (${directChats.length})`}>
+        {directChats.length === 0 ? (
+          <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No chats linked yet</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {directChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
+          </div>
+        )}
+      </Section>
 
-          {blockedIssues.length > 0 && (
+      {/* Description, Issues, Delete button — single column; the epic's own
+          chats moved up top, so there's nothing left to put in a second
+          column. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 700 }}>
+        {epic.description && <FormattedDescription text={epic.description} />}
+
+        {blockedIssues.length > 0 && (
             <Section title={`🚫 Blocked (${blockedIssues.length})`}>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {blockedIssues.map((issue) => {
@@ -797,21 +830,7 @@ function EpicDetail({ id }: { id: number }) {
             </ActionBtn>
           </div>
         </div>
-
-        {/* Right Column: Chats */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <Section title={`Chats on this epic (${directChats.length})`}>
-            {directChats.length === 0 ? (
-              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No chats linked yet</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {directChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
-              </div>
-            )}
-          </Section>
-        </div>
       </div>
-    </div>
   );
 }
 
@@ -849,11 +868,13 @@ function IssueDetail({ id }: { id: number }) {
           {issue.githubNumber && (
             <a href={issue.githubUrl ?? githubIssueUrl(issue.githubNumber)} target="_blank" rel="noopener noreferrer"
               style={{ fontSize: 11, color: ACCENT.info, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
-              <ExternalLink size={11} /> #{issue.githubNumber} on GitHub
+              <ExternalLink size={11} /> View on GitHub
             </a>
           )}
         </div>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT.bright, marginBottom: 12 }}>{issue.title}</h1>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT.bright, marginBottom: 12 }}>
+          {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
+        </h1>
         {issue.description && <FormattedDescription text={issue.description} />}
         {issue.labels.length > 0 && (
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
