@@ -163,11 +163,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const navigate = useCallback(
     (route: string) => {
+      setLocation(`${ADMINV2_BASE}${route === "/" ? "" : route}`);
       const screen = screenForRoute(route);
-      if (screen) {
+      if (screen && !docsRef.current.some((d) => d.id === `screen:${screen.id}`)) {
         openDocRef.current({ kind: "screen", id: screen.id, screenId: screen.id, label: screen.title });
-      } else {
-        setLocation(`${ADMINV2_BASE}${route === "/" ? "" : route}`);
       }
     },
     [setLocation],
@@ -176,10 +175,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const activeScreen = useMemo(() => screenForRoute(subRoute(location)), [location]);
 
   useEffect(() => {
-    if (activeScreen && docsRef.current.length === 0) {
+    const currentSub = subRoute(location);
+    if (activeScreen && currentSub !== "/" && !docsRef.current.some((d) => d.screenId === activeScreen.id)) {
       openDocRef.current({ kind: "screen", id: activeScreen.id, screenId: activeScreen.id, label: activeScreen.title });
     }
-  }, [activeScreen]);
+  }, [activeScreen, location]);
 
   // Kept in a ref so `openDoc` does not have to re-create itself whenever the
   // route changes, which would re-render every screen that memoises on it.
@@ -211,12 +211,13 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       open: () => openDocRef.current(input),
     };
     dispatch({ type: "openDoc", doc, trail });
-    // Route to the screen that owns the doc. Without this, `screenId` is stored
-    // and never acted on: the centre column keeps rendering whichever screen the
-    // URL points at and hands it a recordId belonging to a different screen.
-    routeToScreen(screenId);
+
+    const target = getScreen(screenId);
+    if (target && subRoute(locationRef.current) !== target.route) {
+      setLocation(`${ADMINV2_BASE}${target.route === "/" ? "" : target.route}`);
+    }
     log.debug({ doc: doc.id, label, screen: screenId }, "doc opened");
-  }, []);
+  }, [setLocation]);
 
   /** Navigates to a screen's route unless it is already the routed one. */
   const routeToScreen = useCallback((screenId: string) => {
