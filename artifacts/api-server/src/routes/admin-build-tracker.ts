@@ -100,25 +100,42 @@ router.post("/admin/build-tracker/epics", requireAdmin, async (req: Request, res
   }
 });
 
-/** PATCH /admin/build-tracker/epics/:id — update title/description/status */
+/** PATCH /admin/build-tracker/epics/:id — update title/description/status/milestoneId */
 router.patch("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
-  const { title, description, status, githubNumber } = req.body as {
+  const { title, description, status, githubNumber, milestoneId } = req.body as {
     title?: string;
     description?: string;
     status?: string;
     githubNumber?: number | null;
+    milestoneId?: number | null;
   };
   const updates: Partial<typeof btEpicsTable.$inferInsert> = { updatedAt: new Date() };
   if (title !== undefined)         updates.title        = title.trim();
   if (description !== undefined)   updates.description  = description ?? null;
   if (status !== undefined)        updates.status       = status;
   if (githubNumber !== undefined)  updates.githubNumber = githubNumber ?? null;
+
   try {
     const [row] = await db.update(btEpicsTable).set(updates).where(eq(btEpicsTable.id, id)).returning();
+    const ghNum = githubNumber || row?.githubNumber;
+
+    if (process.env.GITHUB_TOKEN && ghNum && milestoneId !== undefined) {
+      try {
+        await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${ghNum}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            milestone: milestoneId ?? null,
+          }),
+        });
+      } catch (err) {
+        log.error({ err, id, ghNum }, "Failed to update GitHub issue milestone remote");
+      }
+    }
+
     if (!row) { res.status(404).json({ error: "not found" }); return; }
-    res.json(row);
+    res.json({ ...row, milestoneId });
   } catch (err) {
     log.error({ err, id }, "PATCH /epics/:id failed");
     res.status(500).json({ error: "Failed to update epic" });

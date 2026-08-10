@@ -399,6 +399,8 @@ export async function assignEpicToMilestone(epicId: number, milestoneId: number 
       epicCount: counts.get(m.id) || 0,
     })),
   });
+
+  await updateEpic(epicId, { milestoneId });
   flashMessage("Epic milestone assignment updated");
 }
 
