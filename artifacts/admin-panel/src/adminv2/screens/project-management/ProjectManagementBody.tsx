@@ -2,25 +2,29 @@
  * ProjectManagementBody — ADHD-friendly Project Management studio view.
  *
  * Features:
- *   1. Milestone Timeline across the top with target date countdowns & completion progress rings.
+ *   1. Milestone Timeline across the top — one glass card per milestone with a
+ *      row of per-epic status capsules (green/red/amber/blue/grey) and a
+ *      hover/focus tooltip surfacing the most relevant issue.
  *   2. Interactive Gantt Chart showing timeline bars per milestone & epic with completion fills.
  *   3. "Focus Mode" zero-distraction toggle for active milestones.
  *   4. One-Click Epic-to-Milestone assignment matrix.
  *   5. Quick Milestone creator modal.
  */
 
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Calendar, CheckCircle, Clock, Flag, GitBranch,
-  GitPullRequest, Plus, Target, Sparkles, Filter, Eye, ChevronRight, X
+  GitPullRequest, Plus, Target, Sparkles, Filter, Eye, ChevronRight, X, ArrowUpRight,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import {
-  getSnapshot, subscribe, milestoneById, epicsForMilestone,
+  getSnapshot, subscribe, milestoneById, epicsForMilestone, issuesForEpic,
   createMilestone, updateMilestone, deleteMilestone, assignEpicToMilestone,
   selectMilestone, selectEpic, epicIsUnassigned, epicBubbleStatus,
-  type EpicBubbleStatus,
+  epicCardState, issueCardState, formatIssueAge,
+  type EpicBubbleStatus, type EpicCardState, type IssueCardState,
 } from "../build-tracker/buildTrackerStore";
+import { githubIssueUrl } from "../build-tracker/buildTrackerTypes";
 import type { MilestoneRow, EpicRow, MilestoneStatus } from "../build-tracker/buildTrackerTypes";
 
 function useStore() {
@@ -42,6 +46,248 @@ const BUBBLE_LABEL: Record<EpicBubbleStatus, string> = {
   open: "In progress",
 };
 
+// ── Milestone Timeline card — capsule colors/labels ────────────────────────────
+
+const CARD_EPIC_COLOR: Record<EpicCardState, string> = {
+  blocked: "#b8746f",
+  on_hold: "#b79a68",
+  on_track: "#7ba489",
+  done: "#7b98bd",
+  not_started: "#5a6672",
+};
+
+const CARD_EPIC_RING: Record<EpicCardState, string> = {
+  blocked: "rgba(184,116,111,.34)",
+  on_hold: "rgba(183,154,104,.32)",
+  on_track: "rgba(123,164,137,.30)",
+  done: "rgba(123,152,189,.30)",
+  not_started: "rgba(255,255,255,.07)",
+};
+
+const CARD_EPIC_LABEL: Record<EpicCardState, string> = {
+  blocked: "Blocked",
+  on_hold: "On hold",
+  on_track: "On track",
+  done: "Done",
+  not_started: "Not started",
+};
+
+/** Tooltip section header per epic state, colored the same as the epic's own state. */
+const CARD_EPIC_SECTION_LABEL: Record<EpicCardState, string> = {
+  blocked: "Blocking issue",
+  on_hold: "On hold",
+  on_track: "Next up",
+  done: "Last closed",
+  not_started: "Not started",
+};
+
+const CARD_ISSUE_DOT_COLOR: Record<IssueCardState, string> = {
+  blocked: "#b8746f",
+  on_hold: "#b79a68",
+  open: "#7c8a99",
+  closed: "#7b98bd",
+};
+
+/** Sort/pick priority when choosing which issue(s) to surface in the tooltip. */
+const CARD_ISSUE_RANK: Record<IssueCardState, number> = { blocked: 0, on_hold: 1, open: 2, closed: 3 };
+
+interface CardIssue {
+  id: string;
+  title: string;
+  state: IssueCardState;
+  meta: string;
+  url: string;
+}
+
+interface CardEpic {
+  epicId: number;
+  name: string;
+  state: EpicCardState;
+  total: number;
+  closed: number;
+  issues: CardIssue[];
+}
+
+/** Real epics/issues for a milestone, mapped into the card's generic shape. */
+function buildCardEpics(milestoneId: number): CardEpic[] {
+  return epicsForMilestone(milestoneId).map((ep) => {
+    const issues = issuesForEpic(ep.id);
+    return {
+      epicId: ep.id,
+      name: ep.githubNumber ? `#${ep.githubNumber} ${ep.title}` : ep.title,
+      state: epicCardState(ep),
+      total: issues.length,
+      closed: issues.filter((i) => i.status === "done" || i.status === "closed").length,
+      issues: issues.map((i) => ({
+        id: i.githubNumber ? `#${i.githubNumber}` : `#${i.id}`,
+        title: i.title,
+        state: issueCardState(i),
+        meta: formatIssueAge(i.createdAt, i.closedAt),
+        url: i.githubUrl ?? (i.githubNumber ? githubIssueUrl(i.githubNumber) : "#"),
+      })),
+    };
+  });
+}
+
+/** Which issue(s) the tooltip shows: every blocked issue (max 2) if the epic itself
+ *  is blocked, otherwise just the single highest-priority issue. */
+function pickTooltipIssues(epic: CardEpic): CardIssue[] {
+  const sorted = [...epic.issues].sort((a, b) => CARD_ISSUE_RANK[a.state] - CARD_ISSUE_RANK[b.state]);
+  if (epic.state === "blocked") return sorted.filter((i) => i.state === "blocked").slice(0, 2);
+  return sorted.slice(0, 1);
+}
+
+function EpicTooltip({
+  epic, index, total, onMouseEnter, onMouseLeave,
+}: {
+  epic: CardEpic; index: number; total: number;
+  onMouseEnter: () => void; onMouseLeave: () => void;
+}) {
+  const pct = epic.total > 0 ? Math.round((epic.closed / epic.total) * 100) : 0;
+  const leftPct = Math.min(88, Math.max(12, ((index + 0.5) / total) * 100));
+  const pickedIssues = pickTooltipIssues(epic);
+  const stateColor = CARD_EPIC_COLOR[epic.state];
+
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        position: "absolute",
+        bottom: 8,
+        left: `${leftPct}%`,
+        transform: "translateX(-50%)",
+        width: 246,
+        borderRadius: 12,
+        background: "rgba(18,24,31,.94)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,.11)",
+        boxShadow: "0 12px 30px rgba(0,0,0,.55)",
+        padding: 12,
+        zIndex: 50,
+        pointerEvents: "auto",
+        animation: "milestone-card-tooltip-in 150ms ease-out",
+        fontFamily: FONT.sans,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", flex: "none", background: stateColor }} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#e8edf2" }}>{epic.name}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "#8b98a6", marginTop: 4, marginLeft: 14 }}>
+        {CARD_EPIC_LABEL[epic.state]} · {epic.closed}/{epic.total} · {pct}%
+      </div>
+
+      <div style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "10px 0 8px" }} />
+
+      <div style={{
+        fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em",
+        color: stateColor, marginBottom: 6,
+      }}>
+        {CARD_EPIC_SECTION_LABEL[epic.state]}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {pickedIssues.length === 0 ? (
+          <div style={{ fontSize: 11, color: "#7c8a99" }}>No issues yet</div>
+        ) : pickedIssues.map((issue) => (
+          <a
+            key={issue.id}
+            href={issue.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "6px 7px", borderRadius: 8,
+              background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)",
+              textDecoration: "none", transition: "background 160ms, border-color 160ms",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,.08)";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,.14)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,.04)";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,.07)";
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", flex: "none", background: CARD_ISSUE_DOT_COLOR[issue.state] }} />
+            <span style={{ flex: 1, fontSize: 11.5, color: "#dbe3ea", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {issue.id} {issue.title}
+            </span>
+            <span style={{ fontSize: 10, color: "#78859a", flex: "none" }}>{issue.meta}</span>
+            <ArrowUpRight size={11} color="#78859a" strokeWidth={2} style={{ flex: "none" }} />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EpicCapsuleBar({ epics, onEpicClick }: { epics: CardEpic[]; onEpicClick: (epic: CardEpic) => void }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
+
+  function openNow(i: number) {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setHovered(i);
+  }
+  function scheduleClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setHovered(null), 260);
+  }
+
+  return (
+    <div style={{ position: "relative", display: "flex", gap: 5 }} onMouseLeave={scheduleClose}>
+      {epics.map((ep, i) => {
+        const pct = ep.total > 0 ? Math.round((ep.closed / ep.total) * 100) : 0;
+        const color = CARD_EPIC_COLOR[ep.state];
+        const ring = CARD_EPIC_RING[ep.state];
+        const isHovered = hovered === i;
+        return (
+          <div
+            key={ep.epicId}
+            role="button"
+            tabIndex={0}
+            aria-label={`${ep.name}, ${CARD_EPIC_LABEL[ep.state]}, ${ep.closed} of ${ep.total} issues`}
+            onMouseEnter={() => openNow(i)}
+            onFocus={() => openNow(i)}
+            onBlur={scheduleClose}
+            onKeyDown={(e) => { if (e.key === "Escape") setHovered(null); }}
+            onClick={(e) => { e.stopPropagation(); onEpicClick(ep); }}
+            style={{
+              flex: 1, height: 8, borderRadius: 999, position: "relative",
+              background: "rgba(255,255,255,.075)",
+              boxShadow: `inset 0 0 0 1px ${isHovered ? color : ring}`,
+              cursor: "pointer", outline: "none",
+            }}
+          >
+            <div style={{ height: "100%", borderRadius: 999, background: color, width: `${pct}%`, transition: "width 320ms" }} />
+          </div>
+        );
+      })}
+
+      {hovered !== null && epics[hovered] && (
+        <EpicTooltip
+          epic={epics[hovered]}
+          index={hovered}
+          total={epics.length}
+          onMouseEnter={() => openNow(hovered)}
+          onMouseLeave={scheduleClose}
+        />
+      )}
+    </div>
+  );
+}
+
 export const STATUS_COLOR: Record<MilestoneStatus, string> = {
   open: ACCENT.info,
   in_progress: ACCENT.amber,
@@ -53,16 +299,6 @@ export const STATUS_LABEL: Record<MilestoneStatus, string> = {
   in_progress: "In Progress",
   closed: "Completed",
 };
-
-function daysLeft(targetDateStr: string | null): string {
-  if (!targetDateStr) return "No target date";
-  const target = new Date(targetDateStr).getTime();
-  const now = new Date().getTime();
-  const diffDays = Math.ceil((target - now) / (1000 * 3600 * 24));
-  if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
-  if (diffDays === 0) return "Due today!";
-  return `${diffDays} days left`;
-}
 
 // ── Milestone Card ─────────────────────────────────────────────────────────────
 
@@ -77,43 +313,42 @@ function MilestoneCard({
   onFocusToggle: () => void;
   onSelect: () => void;
 }) {
-  const epics = epicsForMilestone(milestone.id);
-  const state = useStore();
-  
-  // Calculate completion % from issues inside the epics
-  let totalIssues = 0;
-  let doneIssues = 0;
-  for (const ep of epics) {
-    const epIssues = state.issues.filter((i) => i.epicId === ep.id);
-    totalIssues += epIssues.length;
-    doneIssues += epIssues.filter((i) => i.status === "done" || i.status === "closed").length;
-  }
-
-  const percent = totalIssues > 0 ? Math.round((doneIssues / totalIssues) * 100) : 0;
-  const daysText = daysLeft(milestone.targetDate);
+  useStore(); // re-render as epics/issues change — buildCardEpics reads the store directly
+  const epics = buildCardEpics(milestone.id);
+  const totalIssues = epics.reduce((sum, e) => sum + e.total, 0);
+  const closedIssues = epics.reduce((sum, e) => sum + e.closed, 0);
+  const overallPct = totalIssues > 0 ? Math.round((closedIssues / totalIssues) * 100) : 0;
+  const cardStatus: "Open" | "Closed" = milestone.status === "closed" ? "Closed" : "Open";
+  const title = milestone.githubNumber ? `#${milestone.githubNumber} ${milestone.title}` : milestone.title;
 
   return (
     <div
       onClick={onSelect}
       style={{
-        padding: 14,
-        borderRadius: 8,
-        background: focused ? `${ACCENT.amber}14` : SURFACE.card,
-        border: `1px solid ${focused ? ACCENT.amber : LINE.quiet}`,
+        width: 340,
+        padding: 16,
+        borderRadius: 18,
+        background: "rgba(255,255,255,.045)",
+        backdropFilter: "blur(24px) saturate(150%)",
+        WebkitBackdropFilter: "blur(24px) saturate(150%)",
+        border: focused ? `1px solid ${ACCENT.amber}80` : "1px solid rgba(255,255,255,.085)",
+        boxShadow: focused
+          ? `inset 0 1px 0 rgba(255,255,255,.07), 0 0 0 1px ${ACCENT.amber}40, 0 12px 32px rgba(0,0,0,.42)`
+          : "inset 0 1px 0 rgba(255,255,255,.07), 0 12px 32px rgba(0,0,0,.42)",
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        minWidth: 260,
+        gap: 12,
+        flex: "none",
         cursor: "pointer",
-        transition: "all 150ms ease",
-        boxShadow: focused ? `0 0 12px ${ACCENT.amber}25` : "none",
+        transition: "border-color 150ms, box-shadow 150ms",
+        fontFamily: FONT.sans,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Flag size={13} color={STATUS_COLOR[milestone.status]} />
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[milestone.status] }}>
-            {STATUS_LABEL[milestone.status]}
+          <Flag size={12} color="#8ba7c4" strokeWidth={2} />
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8ba7c4" }}>
+            {cardStatus}
           </span>
         </div>
         <button
@@ -123,62 +358,46 @@ function MilestoneCard({
           }}
           title={focused ? "Exit Focus Mode" : "Focus on this Milestone"}
           style={{
-            padding: "2px 6px",
-            borderRadius: 4,
-            border: `1px solid ${focused ? ACCENT.amber : LINE.control}`,
-            background: focused ? `${ACCENT.amber}22` : SURFACE.well,
-            color: focused ? ACCENT.amber : TEXT.caption,
-            fontSize: 10,
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "3px 9px", borderRadius: 999,
+            background: focused ? `${ACCENT.amber}22` : "rgba(255,255,255,.05)",
+            border: `1px solid ${focused ? ACCENT.amber + "60" : "rgba(255,255,255,.09)"}`,
+            color: focused ? ACCENT.amber : "#93a1b0",
+            fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: FONT.sans,
           }}
         >
-          <Target size={10} />
+          <Target size={11} strokeWidth={2} />
           {focused ? "Focused" : "Focus"}
         </button>
       </div>
 
       <div>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
-          {milestone.githubNumber ? `#${milestone.githubNumber} ` : ""}{milestone.title}
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 650, letterSpacing: "-0.01em", color: "#eef2f6" }}>
+          {title}
         </h3>
         {milestone.description && (
-          <p style={{ margin: "4px 0 0", fontSize: 11.5, color: TEXT.quiet, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          <p style={{
+            margin: "4px 0 0", fontSize: 12.5, lineHeight: 1.45, color: "#8b98a6",
+            textWrap: "pretty" as React.CSSProperties["textWrap"],
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
             {milestone.description}
           </p>
         )}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: TEXT.caption }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <Clock size={11} color={ACCENT.info} />
-          <span>{daysText}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11.5, color: "#7c8a99" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Clock size={12} strokeWidth={2} />
+          <span>{milestone.targetDate ?? "No target date"}</span>
         </div>
-        <span>{epics.length} Epics • {percent}% done</span>
+        <span>{epics.length} epics · {overallPct}% done</span>
       </div>
 
-      {/* Bubble progress — one clickable bubble per epic, not an aggregate fill bar. */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {epics.map((ep) => {
-          const bubbleStatus = epicBubbleStatus(ep);
-          return (
-            <button
-              key={ep.id}
-              onClick={(e) => { e.stopPropagation(); selectEpic(ep.id); }}
-              title={`${ep.title} — ${BUBBLE_LABEL[bubbleStatus]}`}
-              style={{
-                width: 12, height: 12, borderRadius: "50%", flex: "none",
-                border: 0, padding: 0, cursor: "pointer",
-                background: BUBBLE_COLOR[bubbleStatus],
-                boxShadow: bubbleStatus === "blocked" ? `0 0 0 2px ${BUBBLE_COLOR[bubbleStatus]}35` : "none",
-              }}
-            />
-          );
-        })}
-      </div>
+      <EpicCapsuleBar
+        epics={epics}
+        onEpicClick={(ep) => { selectEpic(ep.epicId); }}
+      />
     </div>
   );
 }
@@ -704,6 +923,7 @@ export function ProjectManagementBody() {
 
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 24, maxWidth: 1100, margin: "0 auto", width: "100%" }}>
+      <style>{"@keyframes milestone-card-tooltip-in { from { opacity: 0; transform: translateX(-50%) translateY(3px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }"}</style>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>

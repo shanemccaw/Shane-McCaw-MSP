@@ -261,6 +261,32 @@ export function epicBubbleStatus(epic: EpicRow): EpicBubbleStatus {
   return "open";
 }
 
+// ── Milestone card state (5-state epic verdict + 4-state issue verdict) ───────
+// A richer sibling of epicBubbleStatus() for the Milestone Timeline card's
+// capsule tooltip, which also needs a per-issue verdict to rank and pick which
+// issues to surface, and a "not_started" epic state epicBubbleStatus() has no
+// use for elsewhere.
+
+export type EpicCardState = "blocked" | "on_hold" | "on_track" | "done" | "not_started";
+export type IssueCardState = "blocked" | "on_hold" | "open" | "closed";
+
+export function issueCardState(issue: IssueRow): IssueCardState {
+  if (issue.status === "done" || issue.status === "closed") return "closed";
+  if (issueIsBlocked(issue)) return "blocked";
+  if (issueIsAged(issue)) return "on_hold";
+  return "open";
+}
+
+/** "not_started" when the epic has no issues yet, or none have left backlog. */
+export function epicCardState(epic: EpicRow): EpicCardState {
+  if (epicIsDone(epic)) return "done";
+  if (epicIsBlocked(epic)) return "blocked";
+  if (epicIsAged(epic)) return "on_hold";
+  const issues = issuesForEpic(epic.id);
+  if (issues.length === 0 || issues.every((i) => i.status === "backlog")) return "not_started";
+  return "on_track";
+}
+
 export function chatsForIssue(issueId: number): ChatRow[] {
   const chats = Array.isArray(state?.chats) ? state.chats : [];
   return chats.filter((c) => c.issueId === issueId);
