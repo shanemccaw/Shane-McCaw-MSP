@@ -507,7 +507,7 @@ export async function loadAll(): Promise<void> {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function selectMilestone(id: number | null) {
-  set({ selectedMilestoneId: id, triageActive: false });
+  set({ selectedMilestoneId: id, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, triageActive: false });
 }
 
 export function selectEpic(id: number | null) {
@@ -923,16 +923,40 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
       }
       throw new Error(detail);
     }
-    const result = (await res.json()) as { epics: number; issues: number; milestones?: MilestoneRow[] };
+    const result = (await res.json()) as {
+      epics: number; issues: number; milestones?: MilestoneRow[];
+      projectStatus?: {
+        error: string | null;
+        issuesScanned: number;
+        issuesWithProjectItems: number;
+        issuesWithStatusField: number;
+        distinctStatusValues: string[];
+        inProgressCount: number;
+      };
+    };
     if (result.milestones && Array.isArray(result.milestones) && result.milestones.length > 0) {
       set({ milestones: result.milestones });
     }
     await loadAll(); // refresh after sync
     clearHistory(SCREEN_ID); // stale undo entries are now meaningless
     const milestoneCount = result.milestones?.length ?? 0;
-    flashMessage(
-      `Synced from GitHub: ${result.epics} epic${result.epics === 1 ? "" : "s"}, ${result.issues} issue${result.issues === 1 ? "" : "s"}${milestoneCount ? `, ${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}` : ""}`,
-    );
+    const headline = `Synced from GitHub: ${result.epics} epic${result.epics === 1 ? "" : "s"}, ${result.issues} issue${result.issues === 1 ? "" : "s"}${milestoneCount ? `, ${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}` : ""}`;
+
+    // Surfaced here rather than left in server logs (the previous attempt at
+    // this, f9d80c3c, came back all-zero In Progress with no way to tell why
+    // from outside a live server) — one Sync click now shows exactly what
+    // the GitHub Projects read actually saw.
+    const ps = result.projectStatus;
+    if (ps?.error) {
+      flashMessage(`${headline} — GitHub Projects status unavailable: ${ps.error}`, "error");
+    } else if (ps && ps.inProgressCount === 0) {
+      const note = ps.issuesWithStatusField === 0
+        ? `no issue has a "Status" Projects field value GitHub returned at all (checked ${ps.issuesScanned}, ${ps.issuesWithProjectItems} linked to a project)`
+        : `saw these Status values instead: ${ps.distinctStatusValues.join(", ") || "(none)"}`;
+      flashMessage(`${headline} — 0 In Progress: ${note}`, "error");
+    } else {
+      flashMessage(headline);
+    }
     return { epics: result.epics, issues: result.issues, milestones: result.milestones?.length };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

@@ -686,18 +686,40 @@ interface ProjectStatusQueryResult {
   };
 }
 
+export interface ProjectStatusDiagnostics {
+  inProgress: Set<number>;
+  /** GraphQL exception message, if the call failed outright (bad scope, network, etc). Null on success. */
+  error: string | null;
+  issuesScanned: number;
+  /** Issues with at least one Projects v2 item linked at all. */
+  issuesWithProjectItems: number;
+  /** Issues where a linked project actually has a "Status" field with a value set. */
+  issuesWithStatusField: number;
+  /** Every distinct Status value actually seen, capped — lets a human confirm real label casing/wording. */
+  distinctStatusValues: string[];
+}
+
 /**
  * Every issue number where AT LEAST ONE linked GitHub Project's Status field
  * reads "In Progress" — Shane's call: an issue counts if either of his two
  * linked projects (repo-level "Shane McCaw Consulting" or the per-release
  * "Shane-McCaw-MSP v1.1 Launch" board) says so, not just one specific board.
- * Best-effort: returns an empty set rather than throwing on any failure
- * (insufficient token scope, network error) — a Projects read failure
- * degrades to "no real in-progress signal from GitHub", not a failed sync;
- * the REST-sourced open/closed data sync depends on is unaffected.
+ * Best-effort: `error` records any failure (insufficient token/GraphQL
+ * scope, network) rather than throwing — a Projects read failure degrades
+ * `inProgress` to empty, not a failed sync; the REST-sourced open/closed
+ * data sync depends on is unaffected. The rest of the diagnostics exist
+ * because the first attempt at this (commit f9d80c3c) came back all zeros
+ * with no way to tell WHY from outside a live server's logs — this makes
+ * the real cause (wrong field name, no project links resolving, a
+ * fine-grained PAT's known GraphQL ProjectV2 restriction, label mismatch)
+ * visible in the sync result itself instead of requiring log access.
  */
-async function fetchInProgressFromProjects(): Promise<Set<number>> {
+async function fetchInProgressFromProjects(): Promise<ProjectStatusDiagnostics> {
   const inProgress = new Set<number>();
+  const distinctStatusValues = new Set<string>();
+  let issuesScanned = 0;
+  let issuesWithProjectItems = 0;
+  let issuesWithStatusField = 0;
   let after: string | null = null;
   try {
     do {
@@ -707,17 +729,26 @@ async function fetchInProgressFromProjects(): Promise<Set<number>> {
         after,
       });
       for (const issue of data.repository.issues.nodes) {
-        const isInProgress = issue.projectItems.nodes.some(
-          (item) => item.fieldValueByName?.name?.trim().toLowerCase() === "in progress",
-        );
-        if (isInProgress) inProgress.add(issue.number);
+        issuesScanned++;
+        if (issue.projectItems.nodes.length > 0) issuesWithProjectItems++;
+        let hasStatusField = false;
+        for (const item of issue.projectItems.nodes) {
+          const value = item.fieldValueByName?.name?.trim();
+          if (!value) continue;
+          hasStatusField = true;
+          if (distinctStatusValues.size < 20) distinctStatusValues.add(value);
+          if (value.toLowerCase() === "in progress") inProgress.add(issue.number);
+        }
+        if (hasStatusField) issuesWithStatusField++;
       }
       after = data.repository.issues.pageInfo.hasNextPage ? data.repository.issues.pageInfo.endCursor : null;
     } while (after);
+    return { inProgress, error: null, issuesScanned, issuesWithProjectItems, issuesWithStatusField, distinctStatusValues: [...distinctStatusValues] };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     log.error({ err }, "fetchInProgressFromProjects failed — continuing sync without Projects status data");
+    return { inProgress, error: message, issuesScanned, issuesWithProjectItems, issuesWithStatusField, distinctStatusValues: [...distinctStatusValues] };
   }
-  return inProgress;
 }
 
 /**
@@ -893,8 +924,9 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
     // (the REST issues fetched above only ever carry open/closed). Best-effort:
     // an empty set here just means no real in-progress signal from GitHub this
     // sync, not a failure — see fetchInProgressFromProjects()'s own comment.
-    const projectInProgress = await fetchInProgressFromProjects();
-    debugLog += `Issues with a GitHub Projects "In Progress" status: ${projectInProgress.size}\n`;
+    const projectStatus = await fetchInProgressFromProjects();
+    const projectInProgress = projectStatus.inProgress;
+    debugLog += `Projects status diagnostics: ${JSON.stringify({ ...projectStatus, inProgress: projectInProgress.size })}\n`;
 
     // ── 2. Identify parents (Epics) ──────────────────────────────────────
     const parentNumbers = new Set<number>();
@@ -1052,7 +1084,19 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
     await fs.writeFile(debugLogPath, debugLog, "utf-8");
 
     log.info({ epicsUpserted, issuesUpserted, milestoneCount: syncedMilestones.length }, "GitHub sync complete");
-    res.json({ epics: epicsUpserted, issues: issuesUpserted, milestones: syncedMilestones });
+    res.json({
+      epics: epicsUpserted,
+      issues: issuesUpserted,
+      milestones: syncedMilestones,
+      projectStatus: {
+        error: projectStatus.error,
+        issuesScanned: projectStatus.issuesScanned,
+        issuesWithProjectItems: projectStatus.issuesWithProjectItems,
+        issuesWithStatusField: projectStatus.issuesWithStatusField,
+        distinctStatusValues: projectStatus.distinctStatusValues,
+        inProgressCount: projectInProgress.size,
+      },
+    });
   } catch (err: any) {
     debugLog += `Sync failed with error: ${err instanceof Error ? err.stack : String(err)}\n`;
     await fs.writeFile(debugLogPath, debugLog, "utf-8");
