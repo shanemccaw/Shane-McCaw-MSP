@@ -32,7 +32,7 @@
  * deferred scope; this module's job ends at a server-confirmed charge.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BRAND, INK, hexAlpha } from "./journeyTokens.ts";
+import { BRAND, INK, TABULAR, hexAlpha } from "./journeyTokens.ts";
 import { money } from "./journeyPricing.ts";
 
 type FetchWithAuth = (
@@ -53,6 +53,51 @@ export interface SowPhaseBreakdownEntry {
   readonly priceCents: number;
   readonly stage: string | null;
   readonly durationWeeks: number | null;
+}
+
+/**
+ * Git #659 — the Pay by Phase card's pre-signature preview entry: real phase
+ * title/price/duration `StatementOfWorkBody.tsx` already has on `scope`
+ * before signing, ordered to match the server's real billing order
+ * (`orderPhasesForBillingPreview`). Deliberately narrower than
+ * `SowPhaseBreakdownEntry` — no `serviceId`/`stage`, which this preview has
+ * no use for and which would invite treating it as the authoritative snapshot
+ * (that stays `SowCheckoutSessionResult.phaseBreakdown`, resolved once at
+ * signing).
+ */
+export interface SowPhaseBillingPreviewEntry {
+  readonly title: string;
+  readonly priceUsd: number;
+  readonly weeksQuoted: number | null;
+}
+
+/**
+ * Git #659 — the same "no real duration quoted still gets a 1-week estimate"
+ * rule `StatementOfWorkBody.tsx`'s own Gantt layout (`buildGanttLayout`)
+ * applies, so a phase's absence of a quoted duration doesn't collapse its
+ * neighbours' estimated dates to the same day.
+ */
+function weeksOrMin(weeks: number | null): number {
+  return typeof weeks === "number" && weeks > 0 ? weeks : 1;
+}
+
+/**
+ * Git #659 — phase 1 charges the day of signing; each phase after it charges
+ * an estimate built from the cumulative real quoted duration of every phase
+ * ahead of it in the real billing order — the same weeks this document's own
+ * Delivery Timeline states, not a second, invented schedule. Labelled
+ * "estimated" everywhere this is shown: it is a projection from quoted
+ * durations, not a locked invoicing date.
+ */
+function estimatedChargeDate(index: number, weeksAhead: readonly (number | null)[]): Date {
+  const weeksFromToday = weeksAhead.slice(0, index).reduce<number>((sum, w) => sum + weeksOrMin(w), 0);
+  const d = new Date();
+  d.setDate(d.getDate() + weeksFromToday * 7);
+  return d;
+}
+
+function formatChargeDate(d: Date): string {
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
 export interface SowCheckoutSessionRequest {
@@ -168,6 +213,7 @@ function SowPaymentPlanCard({
   selected,
   disabled,
   onSelect,
+  children,
 }: {
   readonly title: string;
   readonly subtitle: string;
@@ -175,6 +221,8 @@ function SowPaymentPlanCard({
   readonly selected: boolean;
   readonly disabled: boolean;
   readonly onSelect: () => void;
+  /** Git #659 — the urgency badge (Pay in Full) or real phase itemization (Pay by Phase). */
+  readonly children?: React.ReactNode;
 }) {
   return (
     <button
@@ -232,7 +280,75 @@ function SowPaymentPlanCard({
         </span>
       </span>
       <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.55, color: INK.bodyDark }}>{body}</span>
+      {children}
     </button>
+  );
+}
+
+/**
+ * Git #659 — the real urgency indicator Pay in Full was missing entirely.
+ * Only rendered when `discountPct` is a real, live number from
+ * `GET .../sow/pay-in-full-offer` (`StatementOfWorkBody.tsx`'s
+ * `SowLiveInputs.payInFullDiscountPct`) — no badge at all when that coupon
+ * is inactive, rather than a discount claim nothing backs.
+ */
+function PayInFullUrgencyBadge({ discountPct }: { readonly discountPct: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        alignSelf: "flex-start",
+        fontSize: 10.5,
+        fontWeight: 800,
+        letterSpacing: ".04em",
+        color: "#020617",
+        background: BRAND.teal,
+        borderRadius: 999,
+        padding: "3px 9px",
+      }}
+    >
+      {`${discountPct}% off — act now`}
+    </span>
+  );
+}
+
+/**
+ * Git #659 — the real Pay by Phase itemization: every included phase, in
+ * real billing order, with its real price and an estimated charge date built
+ * from its own quoted duration. Replaces the plan card's generic "a deposit
+ * and your first phase are charged today" body text with the actual phases
+ * it is describing.
+ */
+function SowPhasePreviewList({ phases }: { readonly phases: readonly SowPhaseBillingPreviewEntry[] }) {
+  if (phases.length === 0) return null;
+  const weeksAhead = phases.map((p) => p.weeksQuoted);
+  return (
+    // `<span>`s all the way down, not `<div>`s — this list renders inside
+    // `SowPaymentPlanCard`'s `<button>`, whose content model this file's own
+    // other buttons (the phase/addon toggles above) already keep to phrasing
+    // content only.
+    <span style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 2 }}>
+      {phases.map((p, i) => (
+        <span
+          key={`${p.title}-${i}`}
+          style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}
+        >
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: INK.bodyDarkStrong, minWidth: 0 }}>
+            {`Phase ${i + 1} — ${p.title}`}
+          </span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 8, flex: "none" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.micro }}>
+              {i === 0 ? "today" : `est. ${formatChargeDate(estimatedChargeDate(i, weeksAhead))}`}
+            </span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: INK.headingDark, ...TABULAR }}>
+              {money(p.priceUsd)}
+            </span>
+          </span>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -244,22 +360,30 @@ function SowPaymentPlanCard({
  * checkout-session creation IS the sign() moment, so there is no later step
  * to change it in.
  *
- * No percentage is printed here on purpose. The live pay-in-full discount
- * and phase-deposit fraction are both `coupons` rows Shane can edit at any
- * time, and neither is knowable until the signing request actually resolves
- * one (`createSowCheckoutSession`'s response) — stating a number here would
- * risk quoting a figure this signature will not actually be charged. The
- * real deposit/discount figures appear on `SowCartPaymentPanel` below the
- * instant they exist.
+ * Git #659 update: the phase-deposit fraction is still not printed here —
+ * it is a `coupons` row Shane can edit at any time and is not knowable until
+ * the signing request actually resolves one (`createSowCheckoutSession`'s
+ * response), so stating it here would risk quoting a figure this signature
+ * will not actually be charged; the real deposit figure still only appears
+ * on `SowCartPaymentPanel` below, the instant it exists. The pay-in-full
+ * PERCENTAGE and the Pay by Phase itemization, however, ARE both real and
+ * knowable before signing (`payInFullDiscountPct`, `phasePreview` below) —
+ * see `PayInFullUrgencyBadge`/`SowPhasePreviewList`.
  */
 export function SowPaymentPlanChoice({
   plan,
   onChange,
   disabled,
+  phasePreview,
+  payInFullDiscountPct,
 }: {
   readonly plan: SowPaymentPlan;
   readonly onChange: (plan: SowPaymentPlan) => void;
   readonly disabled: boolean;
+  /** Git #659 — the real phases this signature would put on a Pay by Phase schedule. */
+  readonly phasePreview: readonly SowPhaseBillingPreviewEntry[];
+  /** Git #659 — the live pay-in-full coupon's real percentage, or `null` when it is not currently active. */
+  readonly payInFullDiscountPct: number | null;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -286,7 +410,9 @@ export function SowPaymentPlanChoice({
           selected={plan === "full"}
           disabled={disabled}
           onSelect={() => onChange("full")}
-        />
+        >
+          {payInFullDiscountPct !== null ? <PayInFullUrgencyBadge discountPct={payInFullDiscountPct} /> : null}
+        </SowPaymentPlanCard>
         <SowPaymentPlanCard
           title="Pay by Phase"
           subtitle="Deposit + Phase 1 today"
@@ -294,7 +420,9 @@ export function SowPaymentPlanChoice({
           selected={plan === "phased"}
           disabled={disabled}
           onSelect={() => onChange("phased")}
-        />
+        >
+          {plan === "phased" ? <SowPhasePreviewList phases={phasePreview} /> : null}
+        </SowPaymentPlanCard>
       </div>
     </div>
   );
@@ -893,7 +1021,21 @@ export function SowCartPaymentPanel({
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: INK.bodyDarkStrong }}>
                   {`Phase ${i + 1} — ${p.title}`}
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: INK.headingDark }}>{money(p.priceCents / 100)}</span>
+                <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                  {/* Git #659 — real, estimated from this phase's own quoted duration
+                      (`durationWeeks`), never a second invented schedule. */}
+                  <span style={{ fontSize: 11, fontWeight: 500, color: INK.micro }}>
+                    {i === 0
+                      ? "today"
+                      : `est. ${formatChargeDate(
+                          estimatedChargeDate(
+                            i,
+                            phaseBreakdown.map((q) => q.durationWeeks),
+                          ),
+                        )}`}
+                  </span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: INK.headingDark }}>{money(p.priceCents / 100)}</span>
+                </span>
               </span>
             ))}
           </div>

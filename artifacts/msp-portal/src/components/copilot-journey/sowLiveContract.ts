@@ -256,6 +256,8 @@ export function resolvePaymentTerms(
   isPreview: boolean,
   phasedSelfServe: boolean | null,
   payInFullActive: boolean,
+  /** Git #659 — the coupon's own live percentage, stated instead of a vague "the active discount" when known. */
+  payInFullDiscountPct: number | null = null,
 ): string {
   if (isPreview) {
     return "40% deposit at signature · balance invoiced per phase on your sign-off · 14 days net";
@@ -266,7 +268,9 @@ export function resolvePaymentTerms(
   const phasedClause = phasedSelfServe
     ? "phased billing invoices per phase on your sign-off"
     : "phased billing is milestone-based and arranged directly with your assessment lead, not a self-serve deposit";
-  const discountClause = payInFullActive ? " · paying in full at checkout applies the active discount" : "";
+  const discountClause = payInFullActive
+    ? ` · paying in full at checkout applies${payInFullDiscountPct !== null ? ` the current ${payInFullDiscountPct}% off` : " the active discount"}`
+    : "";
   return `Pay in full at checkout, or ${phasedClause}${discountClause}`;
 }
 

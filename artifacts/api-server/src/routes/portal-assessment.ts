@@ -1650,6 +1650,38 @@ router.get(
   },
 );
 
+// ── GET /portal/assessment/sow/pay-in-full-offer ────────────────────────────
+//
+// Git #659. The SOW page's Pay in Full / Pay by Phase selector had no real
+// urgency signal for Pay in Full — the discount that `checkout-session` below
+// applies at signing was invisible until the customer had already committed
+// to a plan. This reads the SAME live `PAY_IN_FULL_COUPON_CODE` coupon, ahead
+// of signing, so the selector can show a real percentage rather than a
+// hardcoded "20% off" that would drift the moment Shane edits the coupon row.
+// No pricing math here — just the coupon's own active/percentage state; the
+// authoritative cents figure is still computed exactly once, at signing, by
+// `computePayInFullOffer` below.
+router.get(
+  "/portal/assessment/sow/pay-in-full-offer",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const coupon = await loadPayInFullCoupon();
+      const discountPct = coupon ? parseFloat(String(coupon.discountValue)) : null;
+      const active = coupon !== null && discountPct !== null && Number.isFinite(discountPct) && discountPct > 0;
+      res.json({ active, discountPct: active ? discountPct : null });
+    } catch (err) {
+      billingLog.error({ err, customerId }, "GET /portal/assessment/sow/pay-in-full-offer failed");
+      res.status(500).json({ error: "Failed to load pay-in-full offer" });
+    }
+  },
+);
+
 // ── POST /portal/assessment/sow/checkout-session ────────────────────────────────
 //
 // Git #599 (Epic #597 stage 2). Creates a `checkout_sessions` row (#598's new

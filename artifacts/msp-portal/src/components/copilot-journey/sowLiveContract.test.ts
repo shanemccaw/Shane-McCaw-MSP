@@ -289,6 +289,21 @@ describe("resolvePaymentTerms", () => {
   it("live: unknown before payment-options settles", () => {
     assert.equal(resolvePaymentTerms(false, null, false), "Confirmed at checkout for your agreed scope");
   });
+  // Git #659 — the real coupon percentage, when known, replaces the vague
+  // "the active discount" clause rather than sitting alongside it.
+  it("live: states the real percentage when known", () => {
+    const text = resolvePaymentTerms(false, false, true, 20);
+    assert.match(text, /the current 20% off/);
+    assert.ok(!text.includes("the active discount"));
+  });
+  it("live: falls back to the vague clause when the percentage is not known", () => {
+    assert.match(resolvePaymentTerms(false, false, true, null), /the active discount/);
+  });
+  it("live: no discount clause at all when inactive, regardless of a stray percentage", () => {
+    const text = resolvePaymentTerms(false, false, false, 20);
+    assert.ok(!text.includes("%"));
+    assert.ok(!text.includes("discount"));
+  });
 });
 
 describe("resolveValidity", () => {

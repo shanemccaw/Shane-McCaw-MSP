@@ -169,6 +169,7 @@ import {
   SowCartPaymentPanel,
   SowPaymentPlanChoice,
   type SowPaymentPlan,
+  type SowPhaseBillingPreviewEntry,
   type SowPhaseBreakdownEntry,
 } from "./sowCartPayment";
 import { JourneySignaturePanel, type JourneySignature } from "./JourneySignaturePanel";
@@ -182,6 +183,8 @@ import { JourneyUnavailable } from "./JourneyPrimitives";
  * built from rather than a second one.
  */
 const RECOMMENDED_OFFERS_URL = "/api/portal/assessment/recommended-offers";
+/** Git #659 — the real, live pay-in-full coupon state; see `SowLiveInputs.payInFullDiscountPct`. */
+const PAY_IN_FULL_OFFER_URL = "/api/portal/assessment/sow/pay-in-full-offer";
 const JOURNEY_CHANNEL = "engine.dashboard";
 
 const H2: React.CSSProperties = {
@@ -272,6 +275,24 @@ function identityPillarFor(
 ): PillarKey | null {
   if (!pillarById) return phase.pillar;
   return pillarById[phase.id] ?? null;
+}
+
+/**
+ * Git #659 — orders the phases actually in scope the same way the server's
+ * own `orderPhasesForBilling` (`portal-assessment.ts`) numbers "Phase 1..N"
+ * at signing: Foundation first, Parallel-eligible next, any unstaged
+ * workstream folded in after, Closeout always last. Reimplemented here (that
+ * function lives in a server-only route file with no client-safe export,
+ * same reasoning `buildGanttLayout` above already documents) so the Pay by
+ * Phase card can preview the real billing order before signing rather than
+ * showing array order, which need not match it.
+ */
+function orderPhasesForBillingPreview(phases: readonly JourneyPhase[]): JourneyPhase[] {
+  const foundation = phases.filter((p) => p.stage === "foundation");
+  const parallel = phases.filter((p) => p.stage === "parallel-eligible");
+  const closeout = phases.filter((p) => p.stage === "closeout");
+  const rest = phases.filter((p) => p.stage !== "foundation" && p.stage !== "parallel-eligible" && p.stage !== "closeout");
+  return [...foundation, ...parallel, ...rest, ...closeout];
 }
 
 /* ------------------------------------------------------------------ *
@@ -489,6 +510,14 @@ export interface SowLiveInputs {
   /** `payment-options`' own `payInFull.active`. `false` unless a discount is confirmed — an unconfirmed one is never implied. */
   readonly payInFullActive: boolean;
   /**
+   * Git #659 — the real, live `PAY_IN_FULL_COUPON_CODE` discount percentage,
+   * read from `GET .../sow/pay-in-full-offer` before signing so the Pay in
+   * Full card can show a real urgency figure instead of a hardcoded one.
+   * `null` when that coupon is not currently active — the card renders no
+   * urgency claim at all rather than a guessed percentage.
+   */
+  readonly payInFullDiscountPct: number | null;
+  /**
    * Whether a signature taken here can actually be recorded.
    *
    * Used to be `false` for every engine-computed scope: `POST .../sow/checkout`
@@ -552,7 +581,22 @@ export function StatementOfWorkBody({
         readonly depositCents: number | null;
         readonly depositPct: number | null;
       }
-    | { readonly status: "paid"; readonly amountCents: number }
+    | {
+        readonly status: "paid";
+        readonly amountCents: number;
+        /**
+         * Git #644 — carried over from the "ready" state so the confirmation
+         * below can state what was actually signed and charged, rather than
+         * just an amount. `null` only for the (untestable) case a "paid"
+         * status is ever reached without first passing through "ready".
+         */
+        readonly paymentPlan: SowPaymentPlan | null;
+        readonly totalCents: number | null;
+        readonly phaseCount: number | null;
+        readonly addonCount: number | null;
+        readonly phaseBreakdown: readonly SowPhaseBreakdownEntry[];
+        readonly depositCents: number | null;
+      }
     | { readonly status: "error"; readonly message: string }
   >({ status: "idle" });
   /**
@@ -640,6 +684,23 @@ export function StatementOfWorkBody({
       ),
     [scope, selection, weeksQuotedById],
   );
+
+  /**
+   * Git #659 — the Pay by Phase card's real, pre-signature preview: the
+   * phases actually toggled on, in real billing order, each with its real
+   * price and quoted duration. Every figure here already exists on `scope`
+   * before signing (the same prices the phase toggle buttons above show) —
+   * nothing invented for the selector that the contract itself does not
+   * already state.
+   */
+  const phaseBillingPreview = useMemo<readonly SowPhaseBillingPreviewEntry[]>(() => {
+    const included = scope.phases.filter((p) => isPhaseIncluded(scope, selection, p.id));
+    return orderPhasesForBillingPreview(included).map((p) => ({
+      title: p.title,
+      priceUsd: p.priceUsd,
+      weeksQuoted: weeksQuotedById.get(p.id) ?? null,
+    }));
+  }, [scope, selection, weeksQuotedById]);
 
   /** See `SowLiveInputs.signable`. Preview always signs — that is the design's own flow. */
   const signable = isPreview || !live ? true : live.signable;
@@ -752,8 +813,34 @@ export function StatementOfWorkBody({
   // effect depends on in turn; a fresh inline arrow here re-fired that
   // effect on every parent render, recreating the checkout session and
   // re-mounting Stripe Elements in a loop (Git #631).
+  // Git #644 — carries the "ready" state's own real scope (plan, phase count,
+  // breakdown) into "paid" via the functional-update form, so the confirmation
+  // below can state what was actually signed without this callback closing
+  // over `sowPayment` (which would break the stable-identity guarantee above).
   const onSowPaid = useCallback((amountCents: number) => {
-    setSowPayment({ status: "paid", amountCents });
+    setSowPayment((prev) =>
+      prev.status === "ready"
+        ? {
+            status: "paid",
+            amountCents,
+            paymentPlan: prev.paymentPlan,
+            totalCents: prev.totalCents,
+            phaseCount: prev.phaseCount,
+            addonCount: prev.addonCount,
+            phaseBreakdown: prev.phaseBreakdown,
+            depositCents: prev.depositCents,
+          }
+        : {
+            status: "paid",
+            amountCents,
+            paymentPlan: null,
+            totalCents: null,
+            phaseCount: null,
+            addonCount: null,
+            phaseBreakdown: [],
+            depositCents: null,
+          },
+    );
   }, []);
 
   /**
@@ -854,6 +941,7 @@ export function StatementOfWorkBody({
             isPreview,
             !isPreview && live ? live.phasedSelfServe : null,
             !isPreview && live ? live.payInFullActive : false,
+            !isPreview && live ? live.payInFullDiscountPct : null,
           );
         case "validity": {
           const validUntilIso = !isPreview && live ? live.built.quoteHoldIso : null;
@@ -1488,9 +1576,16 @@ export function StatementOfWorkBody({
               {`Executed · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(netFee)}`}
             </span>
           ) : sowPayment.status === "paid" ? (
-            <span style={{ fontSize: 13, fontWeight: 700, color: SEVERITY_ON_DARK.healthy, ...TABULAR }}>
-              {`Executed & paid · ${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${money(sowPayment.amountCents / 100)}`}
-            </span>
+            <SowPaymentConfirmation
+              tenantName={tenant.name}
+              reference={reference}
+              amountCents={sowPayment.amountCents}
+              paymentPlan={sowPayment.paymentPlan}
+              phaseCount={sowPayment.phaseCount}
+              addonCount={sowPayment.addonCount}
+              totalCents={sowPayment.totalCents}
+              depositCents={sowPayment.depositCents}
+            />
           ) : sowPayment.status === "ready" ? (
             <SowCartPaymentPanel
               fetchWithAuth={fetchWithAuth}
@@ -1602,7 +1697,13 @@ export function StatementOfWorkBody({
                 invoicing backend for it. Rendered here, above the pad, because
                 the choice has to be made BEFORE signing — `handleLiveSign`
                 below carries it in the very request that signs. */}
-            <SowPaymentPlanChoice plan={paymentPlan} onChange={onSetPaymentPlan} disabled={sowPayment.status === "creating"} />
+            <SowPaymentPlanChoice
+              plan={paymentPlan}
+              onChange={onSetPaymentPlan}
+              disabled={sowPayment.status === "creating"}
+              phasePreview={phaseBillingPreview}
+              payInFullDiscountPct={live.payInFullDiscountPct}
+            />
             {/* Git #603 — a real drawn signature + typed legal name, the same
                 pad the proposal screen already uses, replacing the plain
                 checkbox for a live scope. `handleLiveSign` locks the scope AND
@@ -1683,6 +1784,97 @@ function IncludedAdjustments({ lines }: { readonly lines: readonly JourneyAdjust
   );
 }
 
+/**
+ * Git #644 — the real post-payment confirmation. Before this, a paid live
+ * signature rendered one line ("Executed & paid · N phases · $X") and
+ * nothing else: no acknowledgement, no restatement of what was actually
+ * signed, no next-step expectation — a jarring stop right after a real,
+ * potentially five-figure charge. Every figure here comes off the SAME
+ * `sowPayment` state the signature and payment panel above already computed
+ * (see `onSowPaid`) — nothing re-quoted or invented. Deliberately does not
+ * claim an emailed receipt: `payment-confirmed`'s own comment states there is
+ * no confirmation email on this path.
+ */
+function SowPaymentConfirmation({
+  tenantName,
+  reference,
+  amountCents,
+  paymentPlan,
+  phaseCount,
+  addonCount,
+  totalCents,
+  depositCents,
+}: {
+  readonly tenantName: string;
+  readonly reference: string;
+  readonly amountCents: number;
+  readonly paymentPlan: SowPaymentPlan | null;
+  readonly phaseCount: number | null;
+  readonly addonCount: number | null;
+  readonly totalCents: number | null;
+  readonly depositCents: number | null;
+}) {
+  const remainingCents =
+    paymentPlan === "phased" && totalCents !== null ? Math.max(0, totalCents - amountCents) : null;
+  const scopeLabel =
+    phaseCount !== null
+      ? `${phaseCount} phase${phaseCount === 1 ? "" : "s"}${
+          addonCount ? ` + ${addonCount} add-on${addonCount === 1 ? "" : "s"}` : ""
+        }`
+      : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            background: hexAlpha(SEVERITY_ON_DARK.healthy, 0.18),
+            flex: "none",
+          }}
+        >
+          <Check size={16} strokeWidth={3} color={SEVERITY_ON_DARK.healthy} aria-hidden="true" />
+        </span>
+        <span style={{ fontSize: 15, fontWeight: 800, color: INK.headingDark }}>
+          {`Payment received — thank you, ${tenantName}`}
+        </span>
+      </div>
+
+      <p style={{ ...BODY, fontSize: 13.5, lineHeight: 1.6 }}>
+        {`${money(amountCents / 100)} charged today`}
+        {scopeLabel ? ` for ${scopeLabel} of statement of work ${reference}.` : ` against statement of work ${reference}.`}
+        {remainingCents !== null && remainingCents > 0
+          ? ` Your deposit${
+              depositCents !== null ? ` (${money(depositCents / 100)})` : ""
+            } and first phase are covered — the remaining ${money(
+              remainingCents / 100,
+            )} is invoiced as each later phase begins.`
+          : ""}
+      </p>
+
+      <div
+        style={{
+          border: `1px solid ${hexAlpha(SEVERITY_ON_DARK.healthy, 0.32)}`,
+          borderRadius: 10,
+          background: hexAlpha(SEVERITY_ON_DARK.healthy, 0.06),
+          padding: "12px 14px",
+        }}
+      >
+        <p style={{ ...BODY, fontSize: 13, lineHeight: 1.6, color: INK.bodyDarkStrong }}>
+          Shane will be in touch within one business day to schedule your kickoff. Your signed statement of work
+          stays available on this page.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function formatSowDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -1696,7 +1888,7 @@ function formatSowDate(iso: string): string {
 
 type SowLoad =
   | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly built: JourneySowScope }
+  | { readonly status: "ready"; readonly built: JourneySowScope; readonly payInFullDiscountPct: number | null }
   | { readonly status: "none" }
   | { readonly status: "error"; readonly message: string };
 
@@ -1734,7 +1926,19 @@ export function LiveStatementOfWorkBody({
         const body = (await res.json()) as WireRecommendedOffers;
         if (cancelled) return;
         const built = journeyScopeFromOffers(body);
-        setLoad(built ? { status: "ready", built } : { status: "none" });
+        if (!built) {
+          setLoad({ status: "none" });
+          return;
+        }
+        // Git #659 — best-effort: a failure here should never take down the
+        // scope this document actually signs against, so it degrades to "no
+        // urgency claim" rather than an error state.
+        const payInFullDiscountPct = await fetchWithAuth(PAY_IN_FULL_OFFER_URL)
+          .then((r) => (r.ok ? (r.json() as Promise<{ active: boolean; discountPct: number | null }>) : null))
+          .then((offer) => (offer?.active ? offer.discountPct : null))
+          .catch(() => null);
+        if (cancelled) return;
+        setLoad({ status: "ready", built, payInFullDiscountPct });
       } catch (e) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : String(e);
@@ -1757,11 +1961,15 @@ export function LiveStatementOfWorkBody({
         live={{
           view,
           built: load.built,
-          // Both come off `payment-options`, which reads the stored document
-          // this scope deliberately does not have. Stated as unknown rather
-          // than guessed — see `resolvePaymentTerms`.
+          // Comes off `payment-options`, which reads the stored document this
+          // scope deliberately does not have. Stated as unknown rather than
+          // guessed — see `resolvePaymentTerms`.
           phasedSelfServe: null,
-          payInFullActive: false,
+          // Git #659 — real now, off `GET .../sow/pay-in-full-offer` above,
+          // rather than the permanent `false` this carried before that route
+          // existed.
+          payInFullActive: load.payInFullDiscountPct !== null,
+          payInFullDiscountPct: load.payInFullDiscountPct,
           // Git #602: true now that signing a live scope pays it, right here,
           // through #599/#600's checkout-session + PaymentIntent endpoints —
           // neither depends on the stored `insights_generated_documents` row
