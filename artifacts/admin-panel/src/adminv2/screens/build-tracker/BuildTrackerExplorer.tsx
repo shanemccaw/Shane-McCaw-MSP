@@ -30,7 +30,7 @@ import {
   issuesForEpic, chatsForIssue, chatsForEpic, chatsForCategory, freeFormCategories,
   unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
   deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
-  formatIssueAge, trimMilestoneToCapacity, syncFromGitHub,
+  formatIssueAge, trimMilestoneToCapacity, syncFromGitHub, assignEpicToMilestone,
 } from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -440,7 +440,18 @@ export function BuildTrackerExplorer() {
   }
 
   function onEpicContextMenu(e: React.MouseEvent, epic: EpicRow) {
+    const currentMilestone = state.milestones.find(m => m.id === epic.milestoneId);
     const items = [
+      epic.milestoneId ? {
+        label: `Unassign from "${currentMilestone?.title ?? 'Milestone'}"`,
+        onSelect: () => void assignEpicToMilestone(epic.id, null)
+      } : null,
+      ...state.milestones
+        .filter(m => m.status !== "closed" && m.id !== epic.milestoneId)
+        .map(m => ({
+          label: `Assign to "${m.title}"`,
+          onSelect: () => void assignEpicToMilestone(epic.id, m.id)
+        })),
       {
         label: "New issue...",
         onSelect: () => {
