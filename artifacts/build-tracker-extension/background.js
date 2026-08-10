@@ -282,6 +282,35 @@ async function runDeploy({ operationKey, freeCommand }) {
   }
 }
 
+/**
+ * PATCHes /issues/:id with {status: "closed"} — Shane: "when I close it in
+ * this, that IS me closing it." Reuses the admin panel's own issue-edit
+ * route, which already pushes the real close to GitHub (and to the
+ * Projects v2 Status field) when `status` changes — not new capability,
+ * just widened auth (Git #714 follow-up).
+ */
+async function closeIssue(issueId) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/issues/${encodeURIComponent(issueId)}`;
+  try {
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ status: "closed" }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, issue: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -313,6 +342,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-run-deploy") {
     void runDeploy({ operationKey: message.operationKey, freeCommand: message.freeCommand }).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-close-issue") {
+    void closeIssue(message.issueId).then(sendResponse);
     return true;
   }
   return false;

@@ -381,8 +381,17 @@ router.post("/admin/build-tracker/issues", requireAdmin, async (req: Request, re
   }
 });
 
-/** PATCH /admin/build-tracker/issues/:id */
-router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Request, res: Response) => {
+/**
+ * PATCH /admin/build-tracker/issues/:id
+ *
+ * Auth widened to ingestAuth (Git #714 follow-up) — Shane: "this is
+ * replacing that manual step in GitHub... when I close it in this, that IS
+ * me closing it." The panel's complete-row click now calls this with
+ * {status: "closed"} to actually close the real GitHub issue (this route
+ * already pushed status to GitHub for the admin panel's own issue editing —
+ * reused as-is, not a new capability), not just mark it done locally.
+ */
+router.patch("/admin/build-tracker/issues/:id", ingestAuth, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   const { title, description, status, epicId, githubNumber, githubUrl, labels } = req.body as {

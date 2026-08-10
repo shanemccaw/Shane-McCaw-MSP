@@ -645,6 +645,27 @@ function insertPrompt(issue) {
 }
 
 /**
+ * A `complete`-labeled row's click (Git #714 follow-up) — Shane: "this is
+ * replacing that manual step in GitHub... when I close it in this, that IS
+ * me closing it." So this is a real close, not just cosmetic: PATCHes the
+ * real GitHub issue to closed (via the existing /issues/:id route, which
+ * already pushes state to GitHub + Projects for the admin panel's own
+ * editing UI), THEN still inserts the "N landed" text same as before — the
+ * two aren't mutually exclusive, telling Claude it landed is still useful
+ * context even though the close itself no longer needs a manual GitHub trip.
+ */
+async function closeIssueAndAnnounce(issue) {
+  insertTextIntoComposer(issuePromptText(issue));
+  if (issue.id == null) return;
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-close-issue", issueId: issue.id });
+  if (!res?.ok) {
+    console.warn("[Build Tracker] failed to close issue on GitHub:", res?.error);
+    return;
+  }
+  await loadBoard(true, true); // quiet — the now-closed issue drops out of every open-work list on its own
+}
+
+/**
  * "I'd rather close it less than open it more" — the panel now defaults to
  * OPEN on every claude.ai page (initPanelVisibility() below), and every
  * explicit open/close click persists here too, so the one time Shane does
@@ -1433,7 +1454,7 @@ function buildIssueRow(issue, onClick) {
   const labelState = issueLabelState(issue);
   const isComplete = labelState === "complete";
   irow.className = "issue-row" + (isComplete ? " label-complete" : "");
-  const rowClick = onClick ?? (isComplete ? () => insertPrompt(issue) : null);
+  const rowClick = onClick ?? (isComplete ? () => void closeIssueAndAnnounce(issue) : null);
   if (!rowClick) irow.style.cursor = "default";
   else irow.addEventListener("click", rowClick);
 
@@ -1454,7 +1475,7 @@ function buildIssueRow(issue, onClick) {
     const check = document.createElement("span");
     check.className = "check";
     check.textContent = "✓";
-    check.title = "Confirmed done in code — click to tell Claude it landed";
+    check.title = "Confirmed done in code — click to close the GitHub issue and tell Claude it landed";
     top.appendChild(check);
   }
   irow.appendChild(top);
@@ -1478,12 +1499,13 @@ function buildIssueRow(issue, onClick) {
     promptBtn.type = "button";
     promptBtn.className = "ibtn";
     promptBtn.title = isComplete
-      ? `Tell Claude "${issue.githubNumber} landed" (inserted, you press Enter)`
+      ? `Close #${issue.githubNumber} on GitHub and tell Claude it landed`
       : "Insert a prompt for this issue into the chat box (you send it)";
     promptBtn.textContent = "➜";
     promptBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      insertPrompt(issue);
+      if (isComplete) void closeIssueAndAnnounce(issue);
+      else insertPrompt(issue);
     });
     actions.appendChild(promptBtn);
   }

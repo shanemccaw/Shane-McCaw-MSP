@@ -17,8 +17,10 @@ An unpacked Edge/Chrome extension with two parts, both running on
    focused view — just that epic and its own open issues, plus a progress
    bar for the milestone it belongs to — instead of the whole board. Click
    "Show everything" to browse past it if you need to. A `complete`-labeled
-   issue's row is a single click to tell Claude it landed (inserts
-   `"<number> landed"` into the composer — you press Enter); the header's
+   issue's row is a single click to **actually close it on GitHub** (a real
+   PATCH, not just cosmetic — this replaces the manual "Close issue" click
+   on GitHub itself) and insert `"<number> landed"` into the composer — you
+   press Enter to send that part; the header's
    📋 button copies Claude's last code block straight to your clipboard,
    since the panel sits over claude.ai's own per-block copy button. A
    `complete` row also gets a ✕ button to dismiss it once you're done with
