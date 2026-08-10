@@ -159,8 +159,15 @@ function buildPanel() {
     .alerts { padding: 8px 12px; background: rgba(224,108,90,.14); border-bottom: 1px solid rgba(224,108,90,.3); flex: none; }
     .alerts[hidden] { display: none; }
     .alert-title { font-size: 11px; font-weight: 700; color: #e8a08f; margin-bottom: 4px; }
-    .alert-row { font-size: 11.5px; color: #f0c9bf; padding: 2px 0; }
-    .alert-row:hover { text-decoration: underline; }
+    .alert-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #f0c9bf; padding: 2px 0; }
+    .alert-row-text { flex: 1; }
+    .alert-row-text:hover { text-decoration: underline; }
+    .alert-resync {
+      flex: none; width: 20px; height: 18px; border-radius: 4px; border: 0; background: transparent;
+      color: #f0c9bf; cursor: pointer; font-size: 12px; padding: 0;
+    }
+    .alert-resync:hover { background: rgba(224,108,90,.25); }
+    .alert-resync:disabled { opacity: .5; cursor: default; }
     .current {
       padding: 8px 12px; font-size: 11px; color: #a19f9d; border-bottom: 1px solid #2e2e2e; flex: none;
     }
@@ -834,11 +841,45 @@ function renderAlerts() {
   for (const a of alerts) {
     const row = document.createElement("div");
     row.className = "alert-row";
-    row.textContent = `${a.githubNumber ? `#${a.githubNumber} ` : ""}${a.title}`;
+
+    const text = document.createElement("span");
+    text.className = "alert-row-text";
+    text.textContent = `${a.githubNumber ? `#${a.githubNumber} ` : ""}${a.title}`;
     if (a.githubUrl) {
-      row.style.cursor = "pointer";
-      row.addEventListener("click", () => window.open(a.githubUrl, "_blank", "noopener"));
+      text.style.cursor = "pointer";
+      text.addEventListener("click", () => window.open(a.githubUrl, "_blank", "noopener"));
     }
+    row.appendChild(text);
+
+    // This entry is a CLOSED epic — invisible to the Navigator (browse only
+    // lists open epics) and skipped by #701's polling (which only ever
+    // touches the focused OPEN epic). Nothing else in the panel would ever
+    // re-check it once flagged, so a fix made on GitHub could sit unseen
+    // here indefinitely — "I fixed it... maybe it didn't save" was really
+    // "nothing here was resyncing this specific item." sync-epic doesn't
+    // care whether the epic is open or closed, so this works either way.
+    if (a.githubNumber) {
+      const resyncBtn = document.createElement("button");
+      resyncBtn.type = "button";
+      resyncBtn.className = "alert-resync";
+      resyncBtn.title = "Re-check this item on GitHub";
+      resyncBtn.textContent = "⟳";
+      resyncBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        resyncBtn.disabled = true;
+        resyncBtn.textContent = "…";
+        const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: a.githubNumber });
+        if (!res?.ok) {
+          resyncBtn.disabled = false;
+          resyncBtn.textContent = "⟳";
+          window.alert(`Couldn't resync #${a.githubNumber}: ${res?.error ?? "unknown error"}`);
+          return;
+        }
+        await loadBoard(true);
+      });
+      row.appendChild(resyncBtn);
+    }
+
     alertsEl.appendChild(row);
   }
 }
