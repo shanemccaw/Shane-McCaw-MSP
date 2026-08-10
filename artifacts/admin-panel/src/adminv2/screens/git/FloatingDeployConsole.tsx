@@ -22,11 +22,13 @@ import {
   getSnapshot,
   loadBranch,
   recallLastTyped,
+  runBatch,
   runTyped,
   setInput,
   subscribe,
   type DeployTranscriptEntry,
 } from "./deployStore";
+import { FloatingRunHistorySidekick } from "./FloatingRunHistorySidekick";
 
 export function FloatingDeployConsole() {
   const { adminFetch } = useAdminFetch();
@@ -47,142 +49,160 @@ export function FloatingDeployConsole() {
   if (!state.open) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-label="Deploy Console"
-      style={{
-        position: "fixed",
-        right: 16,
-        bottom: 16,
-        width: 620,
-        maxWidth: "calc(100vw - 32px)",
-        height: 340,
-        maxHeight: "calc(100vh - 80px)",
-        display: "flex",
-        flexDirection: "column",
-        background: SURFACE.overlay,
-        border: `1px solid ${LINE.strong}`,
-        borderRadius: 9,
-        boxShadow: SHADOW.overlay,
-        zIndex: Z.ribbon + 10,
-        overflow: "hidden",
-      }}
-    >
+    <>
+      <FloatingRunHistorySidekick />
       <div
+        role="dialog"
+        aria-label="Deploy Console"
         style={{
-          flex: "none",
-          height: 34,
+          position: "fixed",
+          right: 16,
+          bottom: 16,
+          width: 620,
+          maxWidth: "calc(100vw - 32px)",
+          height: 340,
+          maxHeight: "calc(100vh - 80px)",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 10px",
-          borderBottom: `1px solid ${LINE.base}`,
-          background: SURFACE.chrome,
+          flexDirection: "column",
+          background: SURFACE.overlay,
+          border: `1px solid ${LINE.strong}`,
+          borderRadius: 9,
+          boxShadow: SHADOW.overlay,
+          zIndex: Z.ribbon + 10,
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: TEXT.bright }}>Deploy Console</span>
-          <span style={{ fontSize: 11, color: TEXT.meta, fontFamily: "Menlo, Consolas, monospace" }}>
-            {state.loadingBranch ? "reading branch…" : state.branch ? `branch: ${state.branch}` : ""}
-          </span>
-        </div>
-        <button
-          type="button"
-          aria-label="Close Deploy Console"
-          onClick={closeConsole}
+        <div
           style={{
+            flex: "none",
+            height: 34,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            width: 20,
-            height: 20,
-            border: "none",
-            borderRadius: 4,
-            background: "transparent",
-            color: TEXT.meta,
-            cursor: "pointer",
-          }}
-        >
-          <X size={13} />
-        </button>
-      </div>
-
-      <div ref={transcriptRef} style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 10 }}>
-        {state.transcript.length === 0 ? (
-          <div style={{ fontSize: 12, color: TEXT.meta, lineHeight: 1.6, maxWidth: 480 }}>
-            Type any command below — Enter runs it, the Up arrow recalls the last one. Nothing here is
-            simulated: this runs against the server&rsquo;s own checkout, the same as the Sync and Build
-            buttons.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {state.transcript.map((entry) => (
-              <TranscriptRow key={entry.id} entry={entry} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: 8,
-          borderTop: `1px solid ${LINE.base}`,
-        }}
-      >
-        <input
-          value={state.input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              runTyped();
-            } else if (e.key === "ArrowUp" && !state.input) {
-              e.preventDefault();
-              recallLastTyped();
-            }
-          }}
-          placeholder="any command — Enter runs it, ↑ recalls"
-          spellCheck={false}
-          aria-label="Deploy Console command"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            height: 28,
+            justifyContent: "space-between",
             padding: "0 10px",
-            borderRadius: 5,
-            border: `1px solid ${LINE.control}`,
-            background: SURFACE.inset,
-            color: TEXT.body,
-            outline: "none",
-            fontFamily: "Menlo, Consolas, monospace",
-            fontSize: 12,
-          }}
-        />
-        <button
-          type="button"
-          onClick={runTyped}
-          style={{
-            flexShrink: 0,
-            height: 28,
-            padding: "0 14px",
-            borderRadius: 5,
-            border: "none",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 600,
-            fontFamily: "inherit",
-            background: "#3a8f5f",
-            color: "#fff",
+            borderBottom: `1px solid ${LINE.base}`,
+            background: SURFACE.chrome,
           }}
         >
-          Run
-        </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: TEXT.bright }}>Deploy Console</span>
+            <span style={{ fontSize: 11, color: TEXT.meta, fontFamily: "Menlo, Consolas, monospace" }}>
+              {state.loadingBranch ? "reading branch…" : state.branch ? `branch: ${state.branch}` : ""}
+            </span>
+          </div>
+          <button
+            type="button"
+            aria-label="Close Deploy Console"
+            onClick={closeConsole}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 20,
+              height: 20,
+              border: "none",
+              borderRadius: 4,
+              background: "transparent",
+              color: TEXT.meta,
+              cursor: "pointer",
+            }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        <div ref={transcriptRef} style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 10 }}>
+          {state.transcript.length === 0 ? (
+            <div style={{ fontSize: 12, color: TEXT.meta, lineHeight: 1.6, maxWidth: 480 }}>
+              Type any command below — Enter runs it, the Up arrow recalls the last one. Nothing here is
+              simulated: this runs against the server&rsquo;s own checkout, the same as the Sync and Build
+              buttons.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {state.transcript.map((entry) => (
+                <TranscriptRow key={entry.id} entry={entry} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: 8,
+            borderTop: `1px solid ${LINE.base}`,
+          }}
+        >
+          <input
+            value={state.input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runTyped();
+              } else if (e.key === "ArrowUp" && !state.input) {
+                e.preventDefault();
+                recallLastTyped();
+              }
+            }}
+            onPaste={(e) => {
+              // A block of 2+ commands pasted in (e.g. straight out of a chat
+              // reply) runs as a batch instead of being crammed, newlines and
+              // all, into this single-line input. One line pastes normally.
+              const text = e.clipboardData.getData("text");
+              const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+              if (lines.length < 2) return;
+              e.preventDefault();
+              const proceed = window.confirm(`Run ${lines.length} commands in sequence?\n\n${lines.join("\n")}`);
+              if (proceed) void runBatch(lines);
+            }}
+            disabled={state.runningBatch}
+            placeholder={state.runningBatch ? "running batch…" : "any command — Enter runs it, ↑ recalls, paste 2+ lines to batch"}
+            spellCheck={false}
+            aria-label="Deploy Console command"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: 28,
+              padding: "0 10px",
+              borderRadius: 5,
+              border: `1px solid ${LINE.control}`,
+              background: SURFACE.inset,
+              color: TEXT.body,
+              outline: "none",
+              fontFamily: "Menlo, Consolas, monospace",
+              fontSize: 12,
+              opacity: state.runningBatch ? 0.6 : 1,
+            }}
+          />
+          <button
+            type="button"
+            onClick={runTyped}
+            disabled={state.runningBatch}
+            style={{
+              flexShrink: 0,
+              height: 28,
+              padding: "0 14px",
+              borderRadius: 5,
+              border: "none",
+              cursor: state.runningBatch ? "default" : "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "inherit",
+              background: "#3a8f5f",
+              color: "#fff",
+              opacity: state.runningBatch ? 0.6 : 1,
+            }}
+          >
+            {state.runningBatch ? "Running…" : "Run"}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

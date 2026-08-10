@@ -73,6 +73,8 @@ export interface DeployStoreState {
   /** Populated once, from a real `git status --short --branch` on first load. */
   branch: string | null;
   loadingBranch: boolean;
+  /** True while runBatch() is working through a pasted block — see runBatch(). */
+  runningBatch: boolean;
 }
 
 type AdminFetch = (path: string, init?: RequestInit) => Promise<Response>;
@@ -94,6 +96,7 @@ let state: DeployStoreState = {
   autoCopyFormat: "text",
   branch: null,
   loadingBranch: false,
+  runningBatch: false,
 };
 
 const listeners = new Set<Listener>();
@@ -218,6 +221,33 @@ export function runTyped(): void {
   void execute(cmd, `run-${++nextId}`);
 }
 
+/**
+ * Runs a pasted block of 2+ commands in sequence — same transcript, same
+ * per-command run-history recording as typing and pressing Enter N times in
+ * a row, just batched. Stops at the first failed command rather than
+ * continuing on to whatever came after it, since later commands often
+ * depend on the ones before them (e.g. a failed `git add` shouldn't be
+ * followed by a `git commit`).
+ */
+export async function runBatch(commands: string[]): Promise<void> {
+  if (state.runningBatch) return;
+  const cmds = commands.map((c) => c.trim()).filter(Boolean);
+  if (cmds.length === 0) return;
+
+  setState({ open: true, runningBatch: true });
+  try {
+    for (const cmd of cmds) {
+      setState({ typedHistory: pushTypedHistory(cmd) });
+      const id = `run-${++nextId}`;
+      await execute(cmd, id);
+      const entry = state.transcript.find((e) => e.id === id);
+      if (entry?.status === "failed") break;
+    }
+  } finally {
+    setState({ runningBatch: false });
+  }
+}
+
 export function clearTranscript(): void {
   setState({ transcript: [] });
 }
@@ -302,6 +332,7 @@ export function resetDeployStore(): void {
     autoCopyFormat: "text",
     branch: null,
     loadingBranch: false,
+    runningBatch: false,
   };
   // The live-ribbon overlay is its own module-level map (shell/liveRibbon.ts)
   // and does not reset itself — without this, a test that left Auto copy
