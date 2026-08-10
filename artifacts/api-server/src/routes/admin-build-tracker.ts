@@ -618,6 +618,103 @@ async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+// ── GitHub Projects (v2) "Status" field — read only ─────────────────────────
+// "In Progress" is a Projects v2 board field (visible in the GitHub UI's
+// right-hand Projects panel on an issue), NOT anything the plain REST Issues
+// API exposes — REST only ever gives open/closed. Reading it requires the
+// separate GraphQL API. Read-only deliberately: writing a Projects v2 field
+// back needs the `project` (write) scope, which this token isn't confirmed
+// to have (a prior session found a different token here was read:project
+// only) — pushing local status to GitHub issue open/closed (see the PATCH
+// routes above) is the one write path this tool has into GitHub.
+
+const GITHUB_GRAPHQL_API = "https://api.github.com/graphql";
+
+async function ghGraphQL<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN env var not set");
+  const res = await fetch(GITHUB_GRAPHQL_API, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const body = await res.json() as { data?: T; errors?: Array<{ message: string }> };
+  if (!res.ok || body.errors?.length) {
+    const message = body.errors?.map((e) => e.message).join("; ") || `HTTP ${res.status}`;
+    throw new Error(`GitHub GraphQL error: ${message}`);
+  }
+  return body.data as T;
+}
+
+const PROJECT_STATUS_QUERY = `
+  query($owner: String!, $repo: String!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      issues(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          number
+          projectItems(first: 10) {
+            nodes {
+              fieldValueByName(name: "Status") {
+                ... on ProjectV2ItemFieldSingleSelectValue { name }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface ProjectStatusQueryResult {
+  repository: {
+    issues: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: Array<{
+        number: number;
+        projectItems: { nodes: Array<{ fieldValueByName: { name: string } | null }> };
+      }>;
+    };
+  };
+}
+
+/**
+ * Every issue number where AT LEAST ONE linked GitHub Project's Status field
+ * reads "In Progress" — Shane's call: an issue counts if either of his two
+ * linked projects (repo-level "Shane McCaw Consulting" or the per-release
+ * "Shane-McCaw-MSP v1.1 Launch" board) says so, not just one specific board.
+ * Best-effort: returns an empty set rather than throwing on any failure
+ * (insufficient token scope, network error) — a Projects read failure
+ * degrades to "no real in-progress signal from GitHub", not a failed sync;
+ * the REST-sourced open/closed data sync depends on is unaffected.
+ */
+async function fetchInProgressFromProjects(): Promise<Set<number>> {
+  const inProgress = new Set<number>();
+  let after: string | null = null;
+  try {
+    do {
+      const data: ProjectStatusQueryResult = await ghGraphQL(PROJECT_STATUS_QUERY, {
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO_NAME,
+        after,
+      });
+      for (const issue of data.repository.issues.nodes) {
+        const isInProgress = issue.projectItems.nodes.some(
+          (item) => item.fieldValueByName?.name?.trim().toLowerCase() === "in progress",
+        );
+        if (isInProgress) inProgress.add(issue.number);
+      }
+      after = data.repository.issues.pageInfo.hasNextPage ? data.repository.issues.pageInfo.endCursor : null;
+    } while (after);
+  } catch (err) {
+    log.error({ err }, "fetchInProgressFromProjects failed — continuing sync without Projects status data");
+  }
+  return inProgress;
+}
+
 function getParentNumber(url: string | null | undefined): number | null {
   if (!url) return null;
   const match = url.match(/\/issues\/(\d+)$/);
@@ -682,6 +779,13 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
 
     debugLog += `Fetched issues count: ${fetchedIssues.length}\n`;
 
+    // GitHub Projects (v2) "Status" field — the real source for "In Progress"
+    // (the REST issues fetched above only ever carry open/closed). Best-effort:
+    // an empty set here just means no real in-progress signal from GitHub this
+    // sync, not a failure — see fetchInProgressFromProjects()'s own comment.
+    const projectInProgress = await fetchInProgressFromProjects();
+    debugLog += `Issues with a GitHub Projects "In Progress" status: ${projectInProgress.size}\n`;
+
     // ── 2. Identify parents (Epics) ──────────────────────────────────────
     const parentNumbers = new Set<number>();
     let subIssuesSummaryFound = 0;
@@ -745,7 +849,9 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const previousStatus = previousEpicStatusByNumber.get(pNum);
       const status = (ghEpic && ghEpic.state === "closed")
         ? "closed"
-        : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
+        : projectInProgress.has(pNum)
+          ? "in_progress"
+          : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
       
       let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
       if (milestoneId === null) {
@@ -786,9 +892,11 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const previousStatus = previousIssueStatusByNumber.get(gh.number);
       const issueStatus: GhIssueStatus = gh.state === "closed"
         ? "closed"
-        : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
-          ? previousStatus
-          : "backlog";
+        : projectInProgress.has(gh.number)
+          ? "in_progress"
+          : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
+            ? previousStatus
+            : "backlog";
       const labels = gh.labels.map((l) => l.name);
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
