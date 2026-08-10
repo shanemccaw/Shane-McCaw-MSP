@@ -8,7 +8,7 @@
  * width to the screen rather than to the log.
  */
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Compass, Search } from "lucide-react";
 import { useShell } from "./ShellContext";
 import { TitleBar, type TitleBarProps } from "./TitleBar";
@@ -21,7 +21,7 @@ import { CommandPalette } from "./CommandPalette";
 import { Peek } from "./Peek";
 import { Gallery } from "./Gallery";
 import { StatusBar, type StatusSegment } from "./StatusBar";
-import { ACCENT, KIND_BADGE, KIND_BADGE_FALLBACK, LINE, SURFACE, TEXT } from "../theme";
+import { ACCENT, FONT, KIND_BADGE, KIND_BADGE_FALLBACK, LINE, SURFACE, TEXT } from "../theme";
 import { getScreen, resolvePeek } from "../registry/registry";
 import { defaultKind } from "../command/paletteQuery";
 import type { TrailEntry } from "../registry/ribbonAssembly";
@@ -110,14 +110,14 @@ export function Shell({
           side="left"
           open={state.left}
           width={state.leftWidth}
-          title={activeScreen?.left?.title ?? "Explorer"}
+          title={activeScreen?.left?.title ?? "Start Something"}
           dragging={state.drag === "left"}
           onToggle={() => dispatch({ type: "togglePanel", panel: "left" })}
           onResize={(size) => dispatch({ type: "setPanelSize", panel: "left", size })}
           onDragStart={() => dispatch({ type: "startDrag", panel: "left" })}
           onDragEnd={() => dispatch({ type: "endDrag" })}
         >
-          {activeScreen?.left ? activeScreen.left.render() : null}
+          {activeScreen?.left ? activeScreen.left.render() : <StartSomethingExplorer />}
         </SidePanel>
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -237,107 +237,262 @@ const rowStyle = {
   textAlign: "left" as const,
 };
 
-/**
- * What the centre column shows when nothing is open — the bare `/adminv2`
- * root, or after closing the last doc. handoff.md principle 3 ("a one-off
- * task should not move you off what you were doing") is why this exists at
- * all: coming back to nothing should not mean re-deriving where you were
- * from memory.
- *
- * Two real, live sources, nothing invented: `state.trail` (already tracked
- * for the Back group, so "Recent" costs nothing new) and the palette's own
- * `action`-type commands, via `commandIndex()` — the same list `?`/`>` search
- * against, so a quick-start button can never offer something the palette
- * itself would refuse to run.
- */
-export function NoScreen() {
-  const { state, commandIndex, runCommand, openPalette } = useShell();
-  const recents = state.trail.slice(0, 6);
-  const actions = commandIndex().filter((item) => item.type === "action");
+import { useSyncExternalStore } from "react";
+import {
+  subscribe, getSnapshot, unlinkedChats, setTriageActive,
+} from "../screens/build-tracker/buildTrackerStore";
+import { getShellApi } from "./ShellContext";
+
+export function StartSomethingExplorer() {
+  const { commandIndex, runCommand, openPalette } = useShell();
+  const [filter, setFilter] = useState("");
+  const items = commandIndex().filter((item) => item.type === "action" || item.type === "destination");
+
+  const filtered = items.filter((item) => {
+    if (!filter.trim()) return true;
+    return item.name.toLowerCase().includes(filter.trim().toLowerCase());
+  });
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", justifyContent: "center", padding: "48px 24px" }}>
-      <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-.01em", color: TEXT.bright }}>
-            Pick up where you left off
-          </span>
-          <span style={{ fontSize: 12.5, color: TEXT.caption }}>
-            Nothing is open. Everything below opens in one click.
-          </span>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ padding: "8px 10px", borderBottom: `1px solid ${LINE.control}`, background: SURFACE.well }}>
+        <input
+          placeholder="Filter actions & destinations..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          style={{
+            width: "100%", padding: "5px 8px", borderRadius: 4,
+            background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+            color: TEXT.primary, fontSize: 11.5, fontFamily: FONT.sans, outline: "none",
+          }}
+        />
+      </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: TEXT.meta }}>
-            Recent
-          </span>
-          {recents.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: TEXT.caption, padding: "9px 12px" }}>
-              Nothing yet. Press Ctrl K and type what you want.
-            </div>
-          ) : (
-            recents.map((entry) => {
-              const { icon: Icon, color } = trailGlyph(entry);
-              return (
-                <button
-                  key={`${entry.kind}:${entry.id}`}
-                  type="button"
-                  className="av2-card"
-                  onClick={entry.open}
-                  style={rowStyle}
-                >
-                  <Icon size={15} color={color} style={{ flexShrink: 0 }} />
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: 12.5,
-                      color: TEXT.body,
-                    }}
-                  >
-                    {entry.label}
-                  </span>
-                  <span style={{ flexShrink: 0, fontSize: 11, color: TEXT.meta }}>{entry.kind}</span>
-                </button>
-              );
-            })
-          )}
-        </div>
+      <div style={{ padding: "8px 6px", display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", flex: 1 }}>
+        <button
+          onClick={() => openPalette()}
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+            background: `${ACCENT.info}15`, border: `1px solid ${ACCENT.info}30`,
+            borderRadius: 6, cursor: "pointer", color: ACCENT.info, fontSize: 12, fontWeight: 600,
+            fontFamily: FONT.sans, width: "100%", textAlign: "left", marginBottom: 4,
+          }}
+        >
+          <Search size={14} /> Search Everything (Ctrl K)
+        </button>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: TEXT.meta }}>
-            Start something
-          </span>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: TEXT.caption, padding: "4px 6px" }}>
+          Start Something ({filtered.length})
+        </span>
+
+        {filtered.map((item) => {
+          const [color, badge] = KIND_BADGE[item.kind ?? defaultKind(item)] ?? KIND_BADGE_FALLBACK;
+          return (
             <button
-              type="button"
-              className="av2-card"
-              onClick={() => openPalette()}
-              style={{ ...rowStyle, width: "auto", gap: 7, padding: "8px 13px" }}
+              key={item.id}
+              onClick={() => runCommand(item)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
+                background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                borderRadius: 5, cursor: "pointer", textAlign: "left", width: "100%",
+                fontFamily: FONT.sans, transition: "border-color 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.info; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.control; }}
             >
-              <Search size={14} color={ACCENT.info} style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: TEXT.soft, whiteSpace: "nowrap" }}>Search everything</span>
+              <span style={{ fontSize: 9, fontWeight: 800, color, fontFamily: FONT.mono, flexShrink: 0 }}>
+                {badge}
+              </span>
+              <span style={{ flex: 1, fontSize: 12, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {item.name}
+              </span>
+              <span style={{ fontSize: 10, color: TEXT.dim }}>↗</span>
             </button>
-            {actions.map((item) => {
-              const [color, badge] = KIND_BADGE[item.kind ?? defaultKind(item)] ?? KIND_BADGE_FALLBACK;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="av2-card"
-                  onClick={() => runCommand(item)}
-                  style={{ ...rowStyle, width: "auto", gap: 7, padding: "8px 13px" }}
-                >
-                  <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", color, fontFamily: "Menlo, Consolas, monospace" }}>
-                    {badge}
-                  </span>
-                  <span style={{ fontSize: 12, color: TEXT.soft, whiteSpace: "nowrap" }}>{item.name}</span>
-                </button>
-              );
-            })}
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the centre column shows when nothing is open — the bare `/adminv2`
+ * root, or after closing the last doc.
+ */
+export function NoScreen() {
+  const { state } = useShell();
+  const buildState = useSyncExternalStore(subscribe, getSnapshot);
+  const recents = state.trail.slice(0, 8);
+
+  const unlinked = unlinkedChats().length;
+  const noEpicIssues = buildState.issues.filter((i) => i.epicId === null && i.status !== "closed" && i.status !== "done").length;
+  const inProgressEpics = buildState.epics.filter((e) => e.status === "in_progress").length;
+  const inProgressIssues = buildState.issues.filter((i) => i.status === "in_progress").length;
+  const inProgressTotal = inProgressEpics + inProgressIssues;
+  const activeMilestones = buildState.milestones.filter((m) => m.status !== "closed");
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", justifyContent: "center", padding: "36px 24px" }}>
+      <div style={{ width: "100%", maxWidth: 840, display: "flex", flexDirection: "column", gap: 24 }}>
+        
+        {/* Title Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${LINE.quiet}`, paddingBottom: 16 }}>
+          <div>
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: ACCENT.amber }}>
+              ADHD Command Center
+            </span>
+            <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800, color: TEXT.bright }}>
+              Pickup where you left off
+            </h1>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: TEXT.dim }}>
+              Live system rollup. Everything below opens in 1 click.
+            </p>
+          </div>
+
+          <button
+            onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" })}
+            style={{
+              padding: "8px 16px", borderRadius: 6, border: 0,
+              background: ACCENT.info, color: SURFACE.well, fontSize: 13, fontWeight: 700,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            🚀 Open Build Studio
+          </button>
+        </div>
+
+        {/* 2 Column Rollup Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 20, alignItems: "start" }}>
+          
+          {/* Left Column: Recent Work (Where You Were) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ padding: 16, background: SURFACE.card, borderRadius: 8, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: ACCENT.info }}>
+                  🕒 Recent Work (Jump Back)
+                </span>
+                <span style={{ fontSize: 10.5, color: TEXT.dim }}>{recents.length} recent places</span>
+              </div>
+
+              {recents.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: TEXT.caption, padding: "8px 0" }}>
+                  Nothing yet. Press Ctrl K and type what you want to open.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {recents.map((entry) => {
+                    const { icon: Icon, color } = trailGlyph(entry);
+                    return (
+                      <button
+                        key={`${entry.kind}:${entry.id}`}
+                        type="button"
+                        className="av2-card"
+                        onClick={entry.open}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "9px 12px",
+                          background: SURFACE.well, borderRadius: 6, border: `1px solid ${LINE.control}`,
+                          cursor: "pointer", textAlign: "left", width: "100%", fontFamily: FONT.sans,
+                          transition: "border-color 150ms",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.info; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.control; }}
+                      >
+                        <Icon size={15} color={color} style={{ flexShrink: 0 }} />
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, fontWeight: 600, color: TEXT.primary }}>
+                          {entry.label}
+                        </span>
+                        <span style={{ flexShrink: 0, fontSize: 10.5, color: TEXT.dim, textTransform: "uppercase", fontWeight: 700 }}>
+                          {entry.kind} ↗
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Live Attention Rollup */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Attention Rollup Card */}
+            <div style={{ padding: 16, background: SURFACE.card, borderRadius: 8, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 14 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: ACCENT.amber }}>
+                ⚡ Attention Rollup & Signals
+              </span>
+
+              {/* Build Triage Item */}
+              <div
+                onClick={() => {
+                  setTriageActive(true);
+                  getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" });
+                }}
+                style={{
+                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>🧹</span>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                      {unlinked} unlinked chats & {noEpicIssues} unassigned issues
+                    </span>
+                    <span style={{ fontSize: 11, color: TEXT.caption }}>
+                      Click to launch 1-click Triage Mode
+                    </span>
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, color: ACCENT.amber, fontWeight: 700 }}>Triage ↗</span>
+              </div>
+
+              {/* In-Progress Work Item */}
+              <div
+                onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" })}
+                style={{
+                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>🔥</span>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                      {inProgressTotal} active items in progress
+                    </span>
+                    <span style={{ fontSize: 11, color: TEXT.caption }}>
+                      {inProgressEpics} epics · {inProgressIssues} issues active
+                    </span>
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, color: ACCENT.info, fontWeight: 700 }}>View ↗</span>
+              </div>
+
+              {/* Milestones Roadmap Rollup */}
+              <div
+                onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "project-management", screenId: "project-management", label: "Milestones & Roadmap" })}
+                style={{
+                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  cursor: "pointer", display: "flex", flexDirection: "column", gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>🎯</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                      {activeMilestones.length} active GitHub milestones
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, color: ACCENT.amber, fontWeight: 700 }}>Gantt ↗</span>
+                </div>
+                {activeMilestones.slice(0, 2).map((m) => (
+                  <div key={m.id} style={{ fontSize: 11, color: TEXT.caption, display: "flex", justifyContent: "space-between", paddingLeft: 24 }}>
+                    <span>#{m.githubNumber ?? m.id} {m.title}</span>
+                    <span>{m.targetDate ? m.targetDate : "No date"}</span>
+                  </div>
+                ))}
+              </div>
+
+            </div>
           </div>
         </div>
       </div>
