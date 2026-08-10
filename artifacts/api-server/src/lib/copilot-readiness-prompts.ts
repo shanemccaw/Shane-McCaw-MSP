@@ -53,6 +53,7 @@ const SHARED_RULES = `INSTRUCTIONS:
 - The NOT COLLECTED block lists checks this tenant's scan does not carry. Never state or imply a value for any of them, and never describe their absence as a finding about the tenant — it is a gap in coverage, not a gap in their posture.
 - A pillar marked NO SCORE was not evaluated. Say nothing about it either way.
 - No hype adjectives ("game-changing", "seamless", "critical risk exposure"), no scare framing beyond what the real severities support. Credibility comes from specificity.
+- Never frame a license-gap or Invest-tier finding as taking priority over, making secondary, or single-handedly explaining a score floor against, any other finding — regardless of how large its point impact looks. This platform's own doctrine is Secure-first, Invest-last: free security and governance fixes come first, license/investment items come last. A sentence like "that blocker makes every other consideration secondary" or "the single critical finding explains the floor directly" (about a license gap) inverts this and is forbidden.
 - CRITICAL: output the HTML fragment and then STOP. No commentary, no preamble, no closing remark.`;
 
 export const COPILOT_SAFETY_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience, writing the "Copilot Safety & Exposure" section of a completed Copilot Readiness assessment for {{tenantName}} — in your own voice, not a templated report.
