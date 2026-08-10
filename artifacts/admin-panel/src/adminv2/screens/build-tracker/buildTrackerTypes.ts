@@ -37,6 +37,7 @@ export interface EpicRow {
 export interface IssueRow {
   id: number;
   epicId: number | null;
+  milestoneId?: number | null;
   title: string;
   description: string | null;
   status: IssueStatus;
