@@ -135,11 +135,13 @@ router.patch("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request
       }
     }
 
-    // GitHub only has open/closed — "in_progress" is a local-only refinement
-    // this tool invented on top of that (see the sync reconciliation below).
-    // Any status PATCH that lands on/off "closed" pushes the matching real
-    // state to the GitHub issue so a local status change is actually visible
-    // there, not just in this tool.
+    // GitHub's REST issue state only has open/closed — "in_progress" is a
+    // local-only refinement this tool invented on top of that (see the sync
+    // reconciliation below). Any status PATCH that lands on/off "closed"
+    // pushes the matching real state to the GitHub issue so a local status
+    // change is actually visible there, not just in this tool. The separate
+    // Projects v2 "Status" board field (In Progress/Done/etc, a GraphQL-only
+    // concept the REST state above can't touch) gets pushed too.
     if (process.env.GITHUB_TOKEN && ghNum && status !== undefined) {
       try {
         await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${ghNum}`, {
@@ -149,6 +151,7 @@ router.patch("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request
       } catch (err) {
         log.error({ err, id, ghNum, status }, "Failed to push epic status to GitHub issue");
       }
+      await pushStatusToProjects(ghNum, status);
     }
 
     if (!row) { res.status(404).json({ error: "not found" }); return; }
@@ -403,11 +406,13 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
     const [row] = await db.update(btIssuesTable).set(updates).where(eq(btIssuesTable.id, id)).returning();
     const ghNum = githubNumber || row?.githubNumber;
 
-    // GitHub only has open/closed — "backlog"/"in_progress"/"done" are local
-    // refinements this tool invented on top of that. Without this, a local
-    // status change never reached GitHub at all: Sync only ever pulled FROM
-    // GitHub, so closing/reopening an issue here silently diverged from the
-    // real issue on GitHub forever, even after a resync.
+    // GitHub's REST issue state only has open/closed — "backlog"/"in_progress"/
+    // "done" are local refinements this tool invented on top of that. Without
+    // this, a local status change never reached GitHub at all: Sync only ever
+    // pulled FROM GitHub, so closing/reopening an issue here silently diverged
+    // from the real issue on GitHub forever, even after a resync. The separate
+    // Projects v2 "Status" board field (In Progress/Done/etc, a GraphQL-only
+    // concept the REST state above can't touch) gets pushed too.
     if (process.env.GITHUB_TOKEN && ghNum && status !== undefined) {
       try {
         await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${ghNum}`, {
@@ -417,6 +422,7 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
       } catch (err) {
         log.error({ err, id, ghNum, status }, "Failed to push issue status to GitHub issue");
       }
+      await pushStatusToProjects(ghNum, status);
     }
 
     if (!row) { res.status(404).json({ error: "not found" }); return; }
@@ -618,15 +624,14 @@ async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-// ── GitHub Projects (v2) "Status" field — read only ─────────────────────────
-// "In Progress" is a Projects v2 board field (visible in the GitHub UI's
-// right-hand Projects panel on an issue), NOT anything the plain REST Issues
-// API exposes — REST only ever gives open/closed. Reading it requires the
-// separate GraphQL API. Read-only deliberately: writing a Projects v2 field
-// back needs the `project` (write) scope, which this token isn't confirmed
-// to have (a prior session found a different token here was read:project
-// only) — pushing local status to GitHub issue open/closed (see the PATCH
-// routes above) is the one write path this tool has into GitHub.
+// ── GitHub Projects (v2) "Status" field — read + write ──────────────────────
+// "In Progress"/"Done" etc. are Projects v2 board fields (the right-hand
+// Projects panel on an issue), NOT anything the plain REST Issues API
+// exposes — REST only ever gives open/closed. Both directions go through the
+// separate GraphQL API. Confirmed by Shane the token in this environment DOES
+// have project write access (another tool using the same PAT already sets
+// this field) — a prior session's read:project-only finding was a different
+// token, not this one.
 
 const GITHUB_GRAPHQL_API = "https://api.github.com/graphql";
 
@@ -713,6 +718,111 @@ async function fetchInProgressFromProjects(): Promise<Set<number>> {
     log.error({ err }, "fetchInProgressFromProjects failed — continuing sync without Projects status data");
   }
   return inProgress;
+}
+
+/**
+ * Candidate Status-field option names per local status, tried in order —
+ * different boards can label the same stage differently ("Todo" vs
+ * "Backlog"), so this tries a short list and uses whichever one a given
+ * project's Status field actually has, rather than assuming one fixed label
+ * across every linked project. "In Progress" and "Done" are Shane-confirmed
+ * real option names; the others are reasonable common defaults, silently
+ * skipped (not an error) on any project whose field has none of them.
+ */
+const PROJECT_STATUS_CANDIDATES: Record<string, string[]> = {
+  backlog: ["Todo", "Backlog"],
+  open: ["Todo", "Backlog"],
+  in_progress: ["In Progress"],
+  done: ["Done"],
+  closed: ["Done", "Closed"],
+};
+
+const ISSUE_PROJECT_FIELDS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 10) {
+          nodes {
+            id
+            project {
+              id
+              field(name: "Status") {
+                ... on ProjectV2SingleSelectField {
+                  id
+                  options { id name }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const UPDATE_PROJECT_ITEM_STATUS_MUTATION = `
+  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+      value: { singleSelectOptionId: $optionId }
+    }) {
+      projectV2Item { id }
+    }
+  }
+`;
+
+interface IssueProjectFieldsResult {
+  repository: {
+    issue: {
+      projectItems: {
+        nodes: Array<{
+          id: string;
+          project: {
+            id: string;
+            field: { id: string; options: Array<{ id: string; name: string }> } | null;
+          };
+        }>;
+      };
+    } | null;
+  };
+}
+
+/**
+ * Sets the GitHub Projects v2 "Status" field on every project linked to
+ * `issueNumber` (an epic is itself a GitHub issue, so this covers both) to
+ * the first name in `candidateNames` that matches one of that project's real
+ * options, case-insensitive. A project with no Status field, or none of the
+ * candidate names among its options, is silently skipped — not every linked
+ * project needs to track the same field. Best-effort like every other
+ * GitHub-write call site in this file: logs and returns on any failure,
+ * never throws into the caller, which has already committed the local write.
+ */
+async function pushStatusToProjects(issueNumber: number, localStatus: string): Promise<void> {
+  const candidateNames = PROJECT_STATUS_CANDIDATES[localStatus];
+  if (!candidateNames || candidateNames.length === 0) return;
+  const wanted = candidateNames.map((n) => n.toLowerCase());
+  try {
+    const data = await ghGraphQL<IssueProjectFieldsResult>(ISSUE_PROJECT_FIELDS_QUERY, {
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO_NAME,
+      number: issueNumber,
+    });
+    const items = data.repository.issue?.projectItems.nodes ?? [];
+    for (const item of items) {
+      const field = item.project.field;
+      if (!field) continue;
+      const option = field.options.find((o) => wanted.includes(o.name.trim().toLowerCase()));
+      if (!option) continue;
+      await ghGraphQL(UPDATE_PROJECT_ITEM_STATUS_MUTATION, {
+        projectId: item.project.id,
+        itemId: item.id,
+        fieldId: field.id,
+        optionId: option.id,
+      });
+    }
+  } catch (err) {
+    log.error({ err, issueNumber, localStatus }, "pushStatusToProjects failed");
+  }
 }
 
 function getParentNumber(url: string | null | undefined): number | null {
