@@ -20,7 +20,10 @@ An unpacked Edge/Chrome extension with two parts, both running on
    issue's row is a single click to **actually close it on GitHub** (a real
    PATCH, not just cosmetic — this replaces the manual "Close issue" click
    on GitHub itself) and insert `"<number> landed"` into the composer — you
-   press Enter to send that part; the header's
+   press Enter to send that part. A closed issue gets a brief **"Closed #N
+   — Undo"** toast (about 8 seconds) since the close itself is a single
+   un-gated click with no confirm step — clicking Undo reopens it on GitHub.
+   The header's
    📋 button copies Claude's last code block straight to your clipboard,
    since the panel sits over claude.ai's own per-block copy button. A
    `complete` row also gets a ✕ button to dismiss it once you're done with
@@ -55,7 +58,10 @@ An unpacked Edge/Chrome extension with two parts, both running on
    issue on screen, and every ~30s it re-syncs the currently focused epic to
    catch anything newly added or closed. No loading flicker — it only
    re-renders if something actually changed, and it pauses while a dialog is
-   open or the tab is backgrounded.
+   open or the tab is backgrounded. Any sync in progress — manual or
+   background — shows a small "Syncing…" label next to the title and spins
+   the ⟳ button (disabled while it runs), so there's a passive "it's going"
+   signal without ever blanking the list.
 
    The header's 🗄 and 💻 buttons open a **floaty SQL Runner** and **Deploy
    Console** — full read/write SQL, and shell commands (including free

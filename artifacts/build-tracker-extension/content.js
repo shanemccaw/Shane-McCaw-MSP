@@ -134,15 +134,23 @@ function buildPanel() {
     }
     .panel[hidden] { display: none; }
     .header {
-      display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
       border-bottom: 1px solid #2e2e2e; font-size: 12.5px; font-weight: 700; flex: none;
     }
-    .header .title { flex: 1; }
+    .header-top { display: flex; align-items: center; gap: 8px; }
+    .header-top .title { flex: 1; }
+    .header-toolbar { display: flex; align-items: center; gap: 4px; }
+    .sync-indicator { font-size: 10.5px; font-weight: 600; color: #7fb4d8; flex: none; }
+    .sync-indicator[hidden] { display: none; }
     .iconbtn {
       background: transparent; border: 0; color: #a19f9d; cursor: pointer;
       font-size: 13px; padding: 2px 6px; border-radius: 4px;
     }
     .iconbtn:hover { background: #292929; color: #fff; }
+    .iconbtn:disabled { opacity: .45; cursor: default; }
+    .iconbtn:disabled:hover { background: transparent; color: #a19f9d; }
+    .iconbtn.spinning { animation: bt-spin 0.8s linear infinite; }
+    @keyframes bt-spin { to { transform: rotate(360deg); } }
     .progress { padding: 10px 12px 4px; flex: none; }
     .progress[hidden] { display: none; }
     .progress-label {
@@ -158,6 +166,19 @@ function buildPanel() {
        would otherwise be invisible everywhere else in the panel. Shown
        regardless of which chat/epic is currently in focus — this is the
        "you might have closed something you shouldn't have" flag. */
+    /* Undo toast (Shane: "I'm OK with undo right now") — a real close is
+       now one un-gated click, so a stray click needs a fast way back. */
+    .undo-toast {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 7px 12px; background: rgba(127,174,145,.18); border-bottom: 1px solid rgba(127,174,145,.35);
+      font-size: 11.5px; color: #dff2e6; flex: none;
+    }
+    .undo-toast[hidden] { display: none; }
+    .undo-toast button {
+      background: transparent; border: 1px solid rgba(127,174,145,.5); color: #dff2e6;
+      border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 700; cursor: pointer; flex: none;
+    }
+    .undo-toast button:hover { background: rgba(127,174,145,.28); }
     .alerts { padding: 8px 12px; background: rgba(224,108,90,.14); border-bottom: 1px solid rgba(224,108,90,.3); flex: none; }
     .alerts[hidden] { display: none; }
     .alert-title { font-size: 11px; font-weight: 700; color: #e8a08f; margin-bottom: 4px; }
@@ -312,14 +333,20 @@ function buildPanel() {
   panel.hidden = true;
   panel.innerHTML = `
     <div class="header">
-      <span class="title">What am I working on?</span>
-      <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
-      <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
-      <button class="iconbtn" data-action="sql" title="SQL Runner (dev server)">🗄</button>
-      <button class="iconbtn" data-action="console" title="Deploy Console (dev server)">💻</button>
-      <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
-      <button class="iconbtn" data-action="close" title="Close">✕</button>
+      <div class="header-top">
+        <span class="title">What am I working on?</span>
+        <span class="sync-indicator" hidden>Syncing…</span>
+        <button class="iconbtn" data-action="close" title="Close">✕</button>
+      </div>
+      <div class="header-toolbar">
+        <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
+        <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
+        <button class="iconbtn" data-action="sql" title="SQL Runner (dev server)">🗄</button>
+        <button class="iconbtn" data-action="console" title="Deploy Console (dev server)">💻</button>
+        <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
+      </div>
     </div>
+    <div class="undo-toast" hidden></div>
     <div class="alerts" hidden></div>
     <div class="progress" hidden></div>
     <div class="current"></div>
@@ -454,11 +481,14 @@ function buildPanel() {
     });
   }
 
+  const undoToast = panel.querySelector(".undo-toast");
   const alertsEl = panel.querySelector(".alerts");
   const progress = panel.querySelector(".progress");
   const current = panel.querySelector(".current");
   const list = panel.querySelector(".list");
   const search = panel.querySelector(".search");
+  const refreshBtn = panel.querySelector('[data-action="refresh"]');
+  const syncIndicator = panel.querySelector(".sync-indicator");
 
   tab.addEventListener("click", () => togglePanel(true));
   panel.querySelector('[data-action="close"]').addEventListener("click", () => togglePanel(false));
@@ -485,7 +515,8 @@ function buildPanel() {
   }
 
   panelEls = {
-    host, tab, panel, alertsEl, progress, current, list, search,
+    host, tab, panel, undoToast, alertsEl, progress, current, list, search,
+    refreshBtn, syncIndicator,
     dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand,
     navBackdrop, navTitle, navBody, navBackBtn,
     sqlBackdrop, consoleBackdrop,
@@ -657,12 +688,53 @@ function insertPrompt(issue) {
 async function closeIssueAndAnnounce(issue) {
   insertTextIntoComposer(issuePromptText(issue));
   if (issue.id == null) return;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-close-issue", issueId: issue.id });
-  if (!res?.ok) {
-    console.warn("[Build Tracker] failed to close issue on GitHub:", res?.error);
-    return;
+  setSyncing(true);
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-close-issue", issueId: issue.id });
+    if (!res?.ok) {
+      console.warn("[Build Tracker] failed to close issue on GitHub:", res?.error);
+      return;
+    }
+    showUndoToast(issue);
+    await loadBoard(true, true); // quiet — the now-closed issue drops out of every open-work list on its own
+  } finally {
+    setSyncing(false);
   }
-  await loadBoard(true, true); // quiet — the now-closed issue drops out of every open-work list on its own
+}
+
+let undoToastTimer = null;
+
+/** Shane: "I'm OK with undo right now" — a real close is now a single un-gated click (Git #715), so a stray click needs a fast way back. Self-dismisses; doesn't slow the close itself down. */
+function showUndoToast(issue) {
+  const { undoToast } = panelEls;
+  clearTimeout(undoToastTimer);
+  undoToast.hidden = false;
+  undoToast.innerHTML = `<span>Closed ${issue.githubNumber ? `#${issue.githubNumber}` : "issue"}</span>`;
+  const undoBtn = document.createElement("button");
+  undoBtn.type = "button";
+  undoBtn.textContent = "Undo";
+  undoBtn.addEventListener("click", () => {
+    clearTimeout(undoToastTimer);
+    undoToast.hidden = true;
+    void reopenIssue(issue);
+  });
+  undoToast.appendChild(undoBtn);
+  undoToastTimer = setTimeout(() => { undoToast.hidden = true; }, 8000);
+}
+
+async function reopenIssue(issue) {
+  if (issue.id == null) return;
+  setSyncing(true);
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-reopen-issue", issueId: issue.id });
+    if (!res?.ok) {
+      window.alert(`Couldn't reopen #${issue.githubNumber}: ${res?.error ?? "unknown error"}`);
+      return;
+    }
+    await loadBoard(true, true);
+  } finally {
+    setSyncing(false);
+  }
 }
 
 /**
@@ -728,6 +800,22 @@ document.addEventListener("visibilitychange", () => {
   void pollFocusedEpic();
 });
 
+/**
+ * Shane: "when a refresh is happening... minimize flash, but add a
+ * 'Syncing...' indicator so I know... and maybe even make the sync button
+ * spin and disable." Covers every sync source — the manual ⟳ click, both
+ * background polls, an alert row's resync, a sub-epic's resync — so
+ * there's always a passive "it's going" signal without ever blanking the
+ * list itself (that's what `loadBoard(force, quiet)` is for).
+ */
+function setSyncing(active) {
+  if (!panelEls) return;
+  const { refreshBtn, syncIndicator } = panelEls;
+  refreshBtn.disabled = active;
+  refreshBtn.classList.toggle("spinning", active);
+  syncIndicator.hidden = !active;
+}
+
 /** Don't yank content out from under Shane while a dialog's open, the tab's backgrounded, or the panel's closed. */
 function pollingBlocked() {
   if (!panelEls || panelEls.panel.hidden) return true;
@@ -750,11 +838,16 @@ async function pollInFlightIssues() {
     .filter((i) => (i.labels ?? []).includes("in-flight") && typeof i.githubNumber === "number")
     .map((i) => i.githubNumber);
   if (numbers.length === 0) return;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
-  if (res?.ok) await loadBoard(true, true);
-  // A failed background sync used to disappear silently — no error anywhere,
-  // making it indistinguishable from "nothing changed yet." At least log it.
-  else console.warn("[Build Tracker] background quick-sync failed:", res?.error);
+  setSyncing(true);
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+    if (res?.ok) await loadBoard(true, true);
+    // A failed background sync used to disappear silently — no error anywhere,
+    // making it indistinguishable from "nothing changed yet." At least log it.
+    else console.warn("[Build Tracker] background quick-sync failed:", res?.error);
+  } finally {
+    setSyncing(false);
+  }
 }
 
 /** Every 30s: quiet sync-epic of the focused epic — catches a brand-new or newly-closed sub-issue, not just label changes. */
@@ -762,9 +855,14 @@ async function pollFocusedEpic() {
   if (pollingBlocked() || !boardCache) return;
   const focusEpic = boardCache.data.currentChat?.focusEpic;
   if (!focusEpic || showAllOverride || !focusEpic.githubNumber) return;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
-  if (res?.ok) await loadBoard(true, true);
-  else console.warn("[Build Tracker] background epic sync failed:", res?.error);
+  setSyncing(true);
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+    if (res?.ok) await loadBoard(true, true);
+    else console.warn("[Build Tracker] background epic sync failed:", res?.error);
+  } finally {
+    setSyncing(false);
+  }
 }
 
 /** `quiet` skips the "Loading…" placeholder — for background polling (Git #701), where blanking the list every 15-30s would read as flicker, not a refresh. */
@@ -814,35 +912,41 @@ async function quickRefresh() {
   const { list } = buildPanel();
   const focusEpic = boardCache?.data?.currentChat?.focusEpic;
 
-  // Git #698: focused on one epic → sync THAT epic for real, discovering any
-  // new sub-issues GitHub-side, not just refreshing the numbers already on
-  // screen — "I dont have to sync the whole thing again to get new items in
-  // that one epic." Only makes sense with a single epic in view; the browse
-  // view (multiple epics/issues at once) keeps the numbers-only quick-sync.
-  if (focusEpic && !showAllOverride && focusEpic.githubNumber) {
-    list.innerHTML = `<div class="empty">Syncing epic "${escapeHtml(focusEpic.title)}"…</div>`;
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
-    if (!res?.ok) {
-      list.innerHTML = `<div class="empty">${escapeHtml(`Epic sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
+  setSyncing(true);
+  try {
+    // Git #698: focused on one epic → sync THAT epic for real, discovering
+    // any new sub-issues GitHub-side, not just refreshing the numbers
+    // already on screen — "I dont have to sync the whole thing again to get
+    // new items in that one epic." Only makes sense with a single epic in
+    // view; the browse view (multiple epics/issues at once) keeps the
+    // numbers-only quick-sync. Errors still get a real message — only the
+    // "Syncing…"/"Checking N…" placeholders (Shane: "minimize flash") are
+    // gone, replaced by the header's spinner + indicator.
+    if (focusEpic && !showAllOverride && focusEpic.githubNumber) {
+      const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+      if (!res?.ok) {
+        list.innerHTML = `<div class="empty">${escapeHtml(`Epic sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
+        return;
+      }
+      await loadBoard(true, true);
       return;
     }
-    await loadBoard(true);
-    return;
-  }
 
-  const numbers = visibleIssueNumbers();
-  if (numbers.length === 0) {
-    await loadBoard(true);
-    return;
-  }
+    const numbers = visibleIssueNumbers();
+    if (numbers.length === 0) {
+      await loadBoard(true, true);
+      return;
+    }
 
-  list.innerHTML = `<div class="empty">Checking ${numbers.length} issue${numbers.length === 1 ? "" : "s"}…</div>`;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
-  if (!res?.ok) {
-    list.innerHTML = `<div class="empty">${escapeHtml(`Quick sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
-    return;
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+    if (!res?.ok) {
+      list.innerHTML = `<div class="empty">${escapeHtml(`Quick sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
+      return;
+    }
+    await loadBoard(true, true);
+  } finally {
+    setSyncing(false);
   }
-  await loadBoard(true);
 }
 
 /**
@@ -853,14 +957,17 @@ async function quickRefresh() {
  */
 async function fullSyncFromGithub() {
   const { list } = buildPanel();
-  list.innerHTML = `<div class="empty">Full syncing from GitHub…</div>`;
-
-  const syncRes = await chrome.runtime.sendMessage({ type: "build-tracker-sync-github" });
-  if (!syncRes?.ok) {
-    list.innerHTML = `<div class="empty">${escapeHtml(`Sync failed: ${syncRes?.error ?? "unknown error"}`)}</div>`;
-    return;
+  setSyncing(true);
+  try {
+    const syncRes = await chrome.runtime.sendMessage({ type: "build-tracker-sync-github" });
+    if (!syncRes?.ok) {
+      list.innerHTML = `<div class="empty">${escapeHtml(`Sync failed: ${syncRes?.error ?? "unknown error"}`)}</div>`;
+      return;
+    }
+    await loadBoard(true, true);
+  } finally {
+    setSyncing(false);
   }
-  await loadBoard(true);
 }
 
 /** Shared by both views' search — title substring or a bare/`#`-prefixed number match. */
@@ -907,15 +1014,18 @@ function renderAlerts() {
       resyncBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         resyncBtn.disabled = true;
-        resyncBtn.textContent = "…";
-        const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: a.githubNumber });
-        if (!res?.ok) {
+        setSyncing(true);
+        try {
+          const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: a.githubNumber });
+          if (!res?.ok) {
+            window.alert(`Couldn't resync #${a.githubNumber}: ${res?.error ?? "unknown error"}`);
+            return;
+          }
+          await loadBoard(true, true);
+        } finally {
           resyncBtn.disabled = false;
-          resyncBtn.textContent = "⟳";
-          window.alert(`Couldn't resync #${a.githubNumber}: ${res?.error ?? "unknown error"}`);
-          return;
+          setSyncing(false);
         }
-        await loadBoard(true);
       });
       row.appendChild(resyncBtn);
     }

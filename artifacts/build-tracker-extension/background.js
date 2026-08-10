@@ -289,7 +289,7 @@ async function runDeploy({ operationKey, freeCommand }) {
  * Projects v2 Status field) when `status` changes — not new capability,
  * just widened auth (Git #714 follow-up).
  */
-async function closeIssue(issueId) {
+async function setIssueStatus(issueId, status) {
   const { apiBaseUrl, ingestToken } = await getConfig();
   if (!apiBaseUrl || !ingestToken) {
     return { ok: false, error: "Not configured — open the extension's Options page." };
@@ -299,7 +299,7 @@ async function closeIssue(issueId) {
     const res = await fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
-      body: JSON.stringify({ status: "closed" }),
+      body: JSON.stringify({ status }),
     });
     const parsed = await readJson(res);
     if (!res.ok || !parsed.ok) {
@@ -309,6 +309,15 @@ async function closeIssue(issueId) {
   } catch (err) {
     return { ok: false, error: String(err) };
   }
+}
+
+function closeIssue(issueId) {
+  return setIssueStatus(issueId, "closed");
+}
+
+/** Undo for an accidental close click (Shane: "I'm OK with undo right now") — reopens on GitHub, back to "done" locally since it's still complete-labeled, just not closed. */
+function reopenIssue(issueId) {
+  return setIssueStatus(issueId, "done");
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -346,6 +355,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-close-issue") {
     void closeIssue(message.issueId).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-reopen-issue") {
+    void reopenIssue(message.issueId).then(sendResponse);
     return true;
   }
   return false;
