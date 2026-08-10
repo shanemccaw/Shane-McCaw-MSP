@@ -692,6 +692,19 @@ function stopPolling() {
   epicPollTimer = null;
 }
 
+// Switching tabs to close something on GitHub, then back, is the exact
+// workflow polling exists for — but pollingBlocked() pauses everything while
+// the tab's backgrounded, and setInterval keeps ticking on its ORIGINAL
+// schedule regardless, so coming back could mean waiting up to another 30s
+// before anything happens. That reads as "not updating," not "about to
+// update" (Shane: "still not updating when I close Issues"). Firing both
+// polls immediately the moment the tab becomes visible again closes that gap.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  void pollInFlightIssues();
+  void pollFocusedEpic();
+});
+
 /** Don't yank content out from under Shane while a dialog's open, the tab's backgrounded, or the panel's closed. */
 function pollingBlocked() {
   if (!panelEls || panelEls.panel.hidden) return true;
@@ -716,6 +729,9 @@ async function pollInFlightIssues() {
   if (numbers.length === 0) return;
   const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
   if (res?.ok) await loadBoard(true, true);
+  // A failed background sync used to disappear silently — no error anywhere,
+  // making it indistinguishable from "nothing changed yet." At least log it.
+  else console.warn("[Build Tracker] background quick-sync failed:", res?.error);
 }
 
 /** Every 30s: quiet sync-epic of the focused epic — catches a brand-new or newly-closed sub-issue, not just label changes. */
@@ -725,6 +741,7 @@ async function pollFocusedEpic() {
   if (!focusEpic || showAllOverride || !focusEpic.githubNumber) return;
   const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
   if (res?.ok) await loadBoard(true, true);
+  else console.warn("[Build Tracker] background epic sync failed:", res?.error);
 }
 
 /** `quiet` skips the "Loading…" placeholder — for background polling (Git #701), where blanking the list every 15-30s would read as flicker, not a refresh. */
