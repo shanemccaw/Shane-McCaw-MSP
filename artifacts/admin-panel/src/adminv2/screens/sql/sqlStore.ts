@@ -44,6 +44,12 @@ import { runHistoryChanged } from "../run-history/runHistoryStore";
 
 export type ResultView = "table" | "json";
 
+/** Default/min size for the floating SQL console — see `floatingWidth`/`floatingHeight`. */
+export const FLOATING_SQL_DEFAULT_WIDTH = 760;
+export const FLOATING_SQL_DEFAULT_HEIGHT = 560;
+export const FLOATING_SQL_MIN_WIDTH = 420;
+export const FLOATING_SQL_MIN_HEIGHT = 320;
+
 export type FloatingSqlStatus = "running" | "ok" | "failed";
 
 /**
@@ -98,6 +104,14 @@ export interface SqlStoreState {
   floatingOpen: boolean;
   floatingInput: string;
   floatingTranscript: FloatingSqlEntry[];
+  /**
+   * The floating console's own size — a real multi-line editor needs to be
+   * resizable, unlike the single-line input it replaced. Lives here (not
+   * component state) so `FloatingSqlHistorySidekick.tsx` can dock to the
+   * console's actual current right edge instead of a stale hardcoded width.
+   */
+  floatingWidth: number;
+  floatingHeight: number;
 }
 
 /** Keys this store owns in the shared live-ribbon overlay. See `screens/sql/index.tsx`'s `liveKey` usage. */
@@ -147,6 +161,8 @@ let state: SqlStoreState = {
   floatingOpen: false,
   floatingInput: "",
   floatingTranscript: [],
+  floatingWidth: FLOATING_SQL_DEFAULT_WIDTH,
+  floatingHeight: FLOATING_SQL_DEFAULT_HEIGHT,
 };
 
 const listeners = new Set<Listener>();
@@ -339,6 +355,14 @@ export function setFloatingInput(value: string): void {
   setState({ floatingInput: value });
 }
 
+/** Drag-resize for the floating console — clamped to a usable minimum, uncapped on the top end (the panel's own `maxWidth`/`maxHeight` styles handle the viewport bound). */
+export function setFloatingSize(width: number, height: number): void {
+  setState({
+    floatingWidth: Math.max(FLOATING_SQL_MIN_WIDTH, width),
+    floatingHeight: Math.max(FLOATING_SQL_MIN_HEIGHT, height),
+  });
+}
+
 function updateFloatingEntry(id: string, patch: Partial<FloatingSqlEntry>): void {
   setState({ floatingTranscript: state.floatingTranscript.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
 }
@@ -510,5 +534,7 @@ export function resetSqlStore(): void {
     floatingOpen: false,
     floatingInput: "",
     floatingTranscript: [],
+    floatingWidth: FLOATING_SQL_DEFAULT_WIDTH,
+    floatingHeight: FLOATING_SQL_DEFAULT_HEIGHT,
   };
 }

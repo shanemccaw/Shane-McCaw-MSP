@@ -36,45 +36,8 @@ import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
 import { createScriptFromDraft, getSnapshot, loadMigrationContent, patchScript, runMigrationFile, runQueryText, setDraftQuery, subscribe } from "./sqlStore";
+import { sqlEditorTheme } from "./sqlEditorTheme";
 import { containsDangerousKeyword, relativeTime } from "./sqlTypes";
-
-// `oneDark` is the base palette (backgrounds, selection, syntax highlighting,
-// autocomplete popup) — without it CodeMirror falls back to its default
-// *light* theme almost everywhere, which is why the editor was rendering as
-// a bright white box against the rest of this shell's dark chrome. The
-// override on top only repaints the couple of surfaces that need to match
-// `theme.ts` tokens exactly rather than oneDark's own dark blue-grey.
-const editorSurfaceTheme = EditorView.theme(
-  {
-    "&": { backgroundColor: SURFACE.app, height: "100%" },
-    ".cm-scroller": { fontFamily: FONT.mono, fontSize: "12.5px" },
-    // No backgroundColor here, on purpose — see the note below. `&`'s own
-    // background already shows through `.cm-content` (which paints nothing
-    // of its own by default), so this still isn't a white box.
-    ".cm-content": { caretColor: "#fff" },
-    ".cm-gutters": { backgroundColor: SURFACE.app, borderRight: `1px solid ${LINE.subtle}`, color: TEXT.faintest },
-    ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
-    ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
-    // The actual reason selection stayed invisible through two color-only
-    // fix attempts: CodeMirror's selection/cursor layers (`.cm-selectionLayer`,
-    // `.cm-cursorLayer`) are DOM siblings of `.cm-content` appended straight
-    // to `.cm-scroller` with a NEGATIVE z-index (`@codemirror/view`'s
-    // `LayerView` — layer.above is false for selection, so it sinks behind
-    // everything else in the stacking context `.cm-scroller` establishes),
-    // deliberately so the highlight paints *behind* the text glyphs. That
-    // only works when `.cm-content` itself has no background of its own —
-    // giving it one (as this override used to, redundantly matching `&`'s
-    // background) paints an opaque layer ABOVE those negative-z-index layers,
-    // fully hiding the selection rectangle no matter what color it was set
-    // to. No color override was ever going to fix that — the fix is not
-    // painting over the layer in the first place.
-    ".cm-selectionBackground": { backgroundColor: `${ACCENT.info}4d` },
-    "&.cm-focused .cm-selectionBackground": { backgroundColor: `${ACCENT.info}66` },
-    ".cm-tooltip, .cm-tooltip-autocomplete": { backgroundColor: SURFACE.overlay, border: `1px solid ${LINE.control}` },
-    ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: SURFACE.wellHover },
-  },
-  { dark: true },
-);
 
 interface Props {
   recordId?: string;
@@ -209,7 +172,7 @@ export function SqlEditorBody({ recordId, kind }: Props) {
   const extensions = useMemo(
     () => [
       sql({ dialect: PostgreSQL, schema: schemaMap, upperCaseKeywords: true }),
-      editorSurfaceTheme,
+      sqlEditorTheme,
       EditorState.readOnly.of(isReadOnly),
       EditorView.editable.of(!isReadOnly),
       // Migrations are excluded: their text is a read-only preview and Run

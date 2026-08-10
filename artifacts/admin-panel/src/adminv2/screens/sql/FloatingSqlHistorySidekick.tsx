@@ -10,7 +10,10 @@
  * Rendered by `FloatingSqlConsole.tsx` as its own sibling, not nested inside
  * it, so it can sit outside the console's own `overflow: hidden` box. Shares
  * the console's `floatingOpen` state — no point floating a companion panel
- * next to a console that is not there.
+ * next to a console that is not there — and its live `floatingWidth`, since
+ * the console is resizable now (a real multi-line editor, not the single-line
+ * input it started as) and a hardcoded offset would drift out of alignment
+ * the moment someone drags it wider or narrower.
  *
  * Clicking a Saved row runs it through `runFloatingQuery` — the exact same
  * execution path the console's own input takes. Clicking a Recent row goes
@@ -29,7 +32,6 @@ import { oneLine, whenLabel, type RunHistoryEntry } from "../run-history/runHist
 
 const SIDEKICK_WIDTH = 260;
 const CONSOLE_RIGHT = 16;
-const CONSOLE_WIDTH = 620;
 const GAP = 12;
 const SAVED_LIMIT = 8;
 const RECENT_LIMIT = 15;
@@ -49,11 +51,11 @@ export function FloatingSqlHistorySidekick() {
       aria-label="SQL Console run history"
       style={{
         position: "fixed",
-        right: CONSOLE_RIGHT + CONSOLE_WIDTH + GAP,
+        right: CONSOLE_RIGHT + sqlState.floatingWidth + GAP,
         bottom: 16,
         width: SIDEKICK_WIDTH,
         maxHeight: "calc(100vh - 80px)",
-        height: 340,
+        height: sqlState.floatingHeight,
         display: "flex",
         flexDirection: "column",
         background: SURFACE.overlay,
