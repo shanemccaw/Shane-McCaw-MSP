@@ -411,9 +411,9 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
     // this, a local status change never reached GitHub at all: Sync only ever
     // pulled FROM GitHub, so closing/reopening an issue here silently diverged
     // from the real issue on GitHub forever, even after a resync. The
-    // "status:*" label (the confirmed-real signal — see statusFromLabels'
-    // comment) gets pushed too, and so does the Projects v2 "Status" board
-    // field as a secondary attempt, in case a given issue also tracks one.
+    // Projects v2 "Status" board field (a GraphQL-only concept the REST
+    // state above can't touch — Shane confirmed this issue, its real
+    // mechanism) gets pushed too.
     if (process.env.GITHUB_TOKEN && ghNum && status !== undefined) {
       try {
         await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${ghNum}`, {
@@ -423,7 +423,6 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
       } catch (err) {
         log.error({ err, id, ghNum, status }, "Failed to push issue status to GitHub issue");
       }
-      await pushStatusLabel(ghNum, row?.labels ?? [], status);
       await pushStatusToProjects(ghNum, status);
     }
 
@@ -753,47 +752,55 @@ async function fetchInProgressFromProjects(): Promise<ProjectStatusDiagnostics> 
   }
 }
 
+// Shane's real board (Shane-McCaw-MSP v1.1 Launch), given directly rather
+// than looked up per-issue by field/option NAME — confirmed live via a
+// read-only `gh api graphql` query against this exact project id before
+// wiring in: title "Shane-McCaw-MSP v1.1 Launch", Status field with exactly
+// these five options. Hardcoding these ids is more reliable than matching on
+// "Status"/"In Progress" strings (case, renames, a second field also named
+// "Status" on some other linked project) and needs no extra query per push
+// to discover them.
+const PROJECT_V2_ID = "PVT_kwHOEiBDdc4Bfy37";
+const PROJECT_V2_STATUS_FIELD_ID = "PVTSSF_lAHOEiBDdc4Bfy37zhaDMq4";
+
 /**
- * Candidate Status-field option names per local status, tried in order —
- * different boards can label the same stage differently ("Todo" vs
- * "Backlog"), so this tries a short list and uses whichever one a given
- * project's Status field actually has, rather than assuming one fixed label
- * across every linked project. "In Progress" and "Done" are Shane-confirmed
- * real option names; the others are reasonable common defaults, silently
- * skipped (not an error) on any project whose field has none of them.
+ * local status -> real Status option id. "Architecting" and "Verify" are
+ * real stages on the board this tool has no local equivalent for — never
+ * written here, only ever set by Shane by hand. "closed" reuses the "Done"
+ * option since the board has no separate "Closed" stage; the real close
+ * itself is still the REST issue-state push above, this is just the board
+ * reflecting it.
  */
-const PROJECT_STATUS_CANDIDATES: Record<string, string[]> = {
-  backlog: ["Todo", "Backlog"],
-  open: ["Todo", "Backlog"],
-  in_progress: ["In Progress"],
-  done: ["Done"],
-  closed: ["Done", "Closed"],
+const PROJECT_V2_STATUS_OPTION_ID: Record<string, string> = {
+  backlog: "16da40aa",
+  open: "16da40aa", // epic "open" -> the same Backlog bucket
+  in_progress: "3ab1a0bc",
+  done: "b056cc8b",
+  closed: "b056cc8b",
 };
 
-const ISSUE_PROJECT_FIELDS_QUERY = `
+const ISSUE_NODE_AND_PROJECT_ITEM_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
       issue(number: $number) {
-        projectItems(first: 10) {
-          nodes {
-            id
-            project {
-              id
-              field(name: "Status") {
-                ... on ProjectV2SingleSelectField {
-                  id
-                  options { id name }
-                }
-              }
-            }
-          }
+        id
+        projectItems(first: 20) {
+          nodes { id project { id } }
         }
       }
     }
   }
 `;
 
-const UPDATE_PROJECT_ITEM_STATUS_MUTATION = `
+const ADD_PROJECT_V2_ITEM_MUTATION = `
+  mutation($projectId: ID!, $contentId: ID!) {
+    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+      item { id }
+    }
+  }
+`;
+
+const UPDATE_PROJECT_V2_ITEM_STATUS_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
     updateProjectV2ItemFieldValue(input: {
       projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
@@ -804,55 +811,52 @@ const UPDATE_PROJECT_ITEM_STATUS_MUTATION = `
   }
 `;
 
-interface IssueProjectFieldsResult {
+interface IssueNodeAndProjectItemResult {
   repository: {
     issue: {
-      projectItems: {
-        nodes: Array<{
-          id: string;
-          project: {
-            id: string;
-            field: { id: string; options: Array<{ id: string; name: string }> } | null;
-          };
-        }>;
-      };
+      id: string;
+      projectItems: { nodes: Array<{ id: string; project: { id: string } }> };
     } | null;
   };
 }
 
 /**
- * Sets the GitHub Projects v2 "Status" field on every project linked to
- * `issueNumber` (an epic is itself a GitHub issue, so this covers both) to
- * the first name in `candidateNames` that matches one of that project's real
- * options, case-insensitive. A project with no Status field, or none of the
- * candidate names among its options, is silently skipped — not every linked
- * project needs to track the same field. Best-effort like every other
- * GitHub-write call site in this file: logs and returns on any failure,
- * never throws into the caller, which has already committed the local write.
+ * Moves `issueNumber` to `localStatus` on Shane's real Projects v2 board
+ * (an epic is itself a GitHub issue, so this covers both). Adds the issue
+ * to the board first (addProjectV2ItemById) if it isn't already an item on
+ * it — a fresh issue synced from GitHub has no project item yet. No-op for
+ * a local status with no real board option (see PROJECT_V2_STATUS_OPTION_ID).
+ * Best-effort like every other GitHub-write call site in this file: logs
+ * and returns on any failure, never throws into the caller, which has
+ * already committed the local write.
  */
 async function pushStatusToProjects(issueNumber: number, localStatus: string): Promise<void> {
-  const candidateNames = PROJECT_STATUS_CANDIDATES[localStatus];
-  if (!candidateNames || candidateNames.length === 0) return;
-  const wanted = candidateNames.map((n) => n.toLowerCase());
+  const optionId = PROJECT_V2_STATUS_OPTION_ID[localStatus];
+  if (!optionId) return;
   try {
-    const data = await ghGraphQL<IssueProjectFieldsResult>(ISSUE_PROJECT_FIELDS_QUERY, {
+    const data = await ghGraphQL<IssueNodeAndProjectItemResult>(ISSUE_NODE_AND_PROJECT_ITEM_QUERY, {
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO_NAME,
       number: issueNumber,
     });
-    const items = data.repository.issue?.projectItems.nodes ?? [];
-    for (const item of items) {
-      const field = item.project.field;
-      if (!field) continue;
-      const option = field.options.find((o) => wanted.includes(o.name.trim().toLowerCase()));
-      if (!option) continue;
-      await ghGraphQL(UPDATE_PROJECT_ITEM_STATUS_MUTATION, {
-        projectId: item.project.id,
-        itemId: item.id,
-        fieldId: field.id,
-        optionId: option.id,
-      });
+    const issue = data.repository.issue;
+    if (!issue) return;
+
+    let itemId = issue.projectItems.nodes.find((n) => n.project.id === PROJECT_V2_ID)?.id;
+    if (!itemId) {
+      const added = await ghGraphQL<{ addProjectV2ItemById: { item: { id: string } } }>(
+        ADD_PROJECT_V2_ITEM_MUTATION,
+        { projectId: PROJECT_V2_ID, contentId: issue.id },
+      );
+      itemId = added.addProjectV2ItemById.item.id;
     }
+
+    await ghGraphQL(UPDATE_PROJECT_V2_ITEM_STATUS_MUTATION, {
+      projectId: PROJECT_V2_ID,
+      itemId,
+      fieldId: PROJECT_V2_STATUS_FIELD_ID,
+      optionId,
+    });
   } catch (err) {
     log.error({ err, issueNumber, localStatus }, "pushStatusToProjects failed");
   }
@@ -865,79 +869,6 @@ function getParentNumber(url: string | null | undefined): number | null {
 }
 
 type GhIssueStatus = "backlog" | "in_progress" | "done" | "closed";
-
-// ── "status:*" labels — the REAL signal, confirmed live ──────────────────────
-// Shane found this by inspecting the raw GitHub API response directly: issues
-// already carry labels like "status:in-progress" (66 matches on his repo) —
-// NOT a Projects v2 board field. This is plain REST data the sync already
-// fetches (`gh.labels`), so it needs no GraphQL call at all and is far more
-// reliable than the Projects v2 heuristic above (kept as a secondary signal
-// below this one — harmless if a given issue also happens to have a matching
-// Projects Status field, since this label check runs first).
-
-const STATUS_LABEL_PREFIX = "status:";
-
-/** local status -> the label suffix to push. "In Progress"/"Done" naming confirmed; the rest are this tool's own vocabulary, kebab-cased to match. */
-const LOCAL_STATUS_TO_LABEL_SUFFIX: Record<string, string> = {
-  backlog: "backlog",
-  open: "backlog",
-  in_progress: "in-progress",
-  done: "done",
-  closed: "closed",
-};
-
-/** label suffix (lowercased) -> local status, the reverse of the map above plus a couple of tolerated aliases. */
-const LABEL_SUFFIX_TO_LOCAL_STATUS: Record<string, GhIssueStatus> = {
-  backlog: "backlog",
-  todo: "backlog",
-  "in-progress": "in_progress",
-  in_progress: "in_progress",
-  done: "done",
-  closed: "closed",
-};
-
-/** First "status:*" label on `labels` that maps to a known local status, or null if none match. */
-function statusFromLabels(labels: Array<{ name: string }>): GhIssueStatus | null {
-  for (const label of labels) {
-    const name = label.name.trim().toLowerCase();
-    if (!name.startsWith(STATUS_LABEL_PREFIX)) continue;
-    const mapped = LABEL_SUFFIX_TO_LOCAL_STATUS[name.slice(STATUS_LABEL_PREFIX.length)];
-    if (mapped) return mapped;
-  }
-  return null;
-}
-
-/**
- * Adds the "status:<localStatus>" label to `issueNumber` and removes any
- * OTHER "status:*" label already on it (an issue should carry at most one),
- * using `currentLabels` — the last-synced label set already on hand, so this
- * needs no extra GitHub read before writing. Best-effort like every other
- * GitHub-write call site in this file: logs and returns on failure, never
- * blocks the local write the PATCH has already committed.
- */
-async function pushStatusLabel(issueNumber: number, currentLabels: string[], localStatus: string): Promise<void> {
-  const suffix = LOCAL_STATUS_TO_LABEL_SUFFIX[localStatus];
-  if (!suffix) return;
-  const target = `${STATUS_LABEL_PREFIX}${suffix}`;
-  const stale = currentLabels.filter((l) => l.toLowerCase().startsWith(STATUS_LABEL_PREFIX) && l.toLowerCase() !== target);
-  const alreadyCorrect = currentLabels.some((l) => l.toLowerCase() === target);
-  try {
-    for (const staleLabel of stale) {
-      await ghFetch(
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/labels/${encodeURIComponent(staleLabel)}`,
-        { method: "DELETE" },
-      );
-    }
-    if (!alreadyCorrect) {
-      await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/labels`, {
-        method: "POST",
-        body: JSON.stringify({ labels: [target] }),
-      });
-    }
-  } catch (err) {
-    log.error({ err, issueNumber, localStatus }, "pushStatusLabel failed");
-  }
-}
 
 interface GitHubIssuePayload {
   number: number;
@@ -1064,22 +995,11 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
       const description = ghEpic ? ghEpic.body : null;
       const previousStatus = previousEpicStatusByNumber.get(pNum);
-      // An epic is itself a GitHub issue, so it can carry a "status:*" label
-      // too — just not written back yet (bt_epics has no local labels column
-      // to compute a stale-label diff from without an extra live fetch; the
-      // read side costs nothing since ghEpic.labels is already in hand).
-      // EpicStatus has no "backlog"/"done" of its own — "backlog" reads as
-      // the epic's "open", "done" as its "closed" (no separate not-closed-
-      // but-done concept for epics).
-      const rawLabelStatus = ghEpic ? statusFromLabels(ghEpic.labels) : null;
-      const epicLabelStatus = rawLabelStatus === "backlog" ? "open" : rawLabelStatus === "done" ? "closed" : rawLabelStatus;
       const status = (ghEpic && ghEpic.state === "closed")
         ? "closed"
-        : epicLabelStatus
-          ? epicLabelStatus
-          : projectInProgress.has(pNum)
-            ? "in_progress"
-            : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
+        : projectInProgress.has(pNum)
+          ? "in_progress"
+          : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
       
       let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
       if (milestoneId === null) {
@@ -1119,16 +1039,13 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const parentNum = getParentNumber(gh.parent_issue_url);
       const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
       const previousStatus = previousIssueStatusByNumber.get(gh.number);
-      const labelStatus = statusFromLabels(gh.labels);
       const issueStatus: GhIssueStatus = gh.state === "closed"
         ? "closed"
-        : labelStatus
-          ? labelStatus
-          : projectInProgress.has(gh.number)
-            ? "in_progress"
-            : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
-              ? previousStatus
-              : "backlog";
+        : projectInProgress.has(gh.number)
+          ? "in_progress"
+          : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
+            ? previousStatus
+            : "backlog";
       const labels = gh.labels.map((l) => l.name);
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
