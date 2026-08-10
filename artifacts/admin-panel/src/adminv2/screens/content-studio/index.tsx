@@ -25,10 +25,13 @@ import { ACCENT } from "../../theme";
 import type { CommandItem, GalleryRow } from "../../registry/types";
 import { ContentStudioBody } from "./ContentStudioBody";
 import {
+  aiDraftErrorFor,
   createDraftPost,
   deletePost,
   failedPostsCount,
+  generateAiDraft,
   getSnapshot,
+  isGeneratingAiDraft,
   postById,
   scheduledThisWeekCount,
   schedulePost,
@@ -48,6 +51,14 @@ function compose(): void {
   void createDraftPost().then((post) => {
     if (post) getShellApi()?.openPeek("post", post.id);
   });
+}
+
+/** The compose peek's "AI Assist" action — a plain `window.prompt` for the topic, same shape as `marketingStore.ts`'s `createCampaignInteractive`; no new peek kind needed for one text field. */
+function aiAssist(id: string): void {
+  if (isGeneratingAiDraft(id)) return;
+  const topic = window.prompt("What should this post be about? (topic or a few bullet points)");
+  if (!topic?.trim()) return;
+  void generateAiDraft(id, topic.trim());
 }
 
 /** First line of the body, or a stated placeholder for a still-blank draft — never an empty row name. */
@@ -191,6 +202,9 @@ registerScreen({
       const post = postById(id);
       if (!post) return null;
 
+      const aiError = aiDraftErrorFor(post.id);
+      const aiBusy = isGeneratingAiDraft(post.id);
+
       return {
         kind: "post",
         eyebrow: "POST",
@@ -200,11 +214,13 @@ registerScreen({
         tone: STATUS_TONE[post.status],
         tag: STATUS_LABEL[post.status],
         tagTone: STATUS_TONE[post.status],
+        facts: aiError ? [{ label: "AI Assist", value: aiError, prose: true, color: ACCENT.danger }] : undefined,
         edits: [
           { key: "body", label: "Body", value: post.body, area: true, mono: false, onChange: (next) => void updatePostField(post.id, { body: next }) },
           { key: "scheduledFor", label: "Scheduled for", value: post.scheduledFor, onChange: (next) => void updatePostField(post.id, { scheduledFor: next }) },
         ],
         actions: [
+          { label: aiBusy ? "Generating…" : "AI Assist", onSelect: () => aiAssist(post.id) },
           { label: "Schedule", tone: "primary", onSelect: () => void schedulePost(post.id) },
           { label: "Delete", tone: "danger", confirm: true, onSelect: () => void deletePost(post.id) },
         ],

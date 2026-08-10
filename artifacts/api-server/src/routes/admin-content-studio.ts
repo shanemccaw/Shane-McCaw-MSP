@@ -10,6 +10,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { db, contentPostsTable } from "@workspace/db";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -21,6 +22,12 @@ const router = Router();
 function parseId(params: Request["params"], key: string): number {
   return parseInt(String(params[key] ?? ""), 10);
 }
+
+const AI_DRAFT_SYSTEM_PROMPT = `You write short-form LinkedIn posts for a Microsoft 365 consulting/MSP business, in the voice of a senior, professional advisor. Style rules:
+- 3-6 short paragraphs or lines, LinkedIn-native (no markdown headers, minimal hashtags — at most 2-3 at the very end if relevant)
+- Confident, clear, and results-oriented — a trusted advisor's voice, not a vendor pitch
+- No filler openers like "Exciting news!" or "I hope this finds you well"
+- Output ONLY the post body text — no preamble, no explanation, no quotes around it`;
 
 // ── GET /admin/content-studio/posts ──────────────────────────────────────────
 
@@ -62,6 +69,53 @@ router.patch("/admin/content-studio/posts/:id", requireAdmin, async (req: Reques
     res.json(row);
   } catch (e) {
     log.warn({ err: e }, "failed to update content_posts row");
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ── POST /admin/content-studio/posts/:id/ai-draft ────────────────────────────
+// The compose peek's "AI Assist" button — generates a first-draft body from a
+// topic/bullet the person typed in. Persists straight to the row (aiGenerated
+// true) so the client can just swap in the returned row, same shape as every
+// other mutation endpoint here; the peek still requires an explicit Schedule
+// afterward, this never touches `status`.
+
+router.post("/admin/content-studio/posts/:id/ai-draft", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseId(req.params, "id");
+  const { topic } = req.body as { topic?: string };
+  if (!topic?.trim()) {
+    res.status(400).json({ error: "topic is required" });
+    return;
+  }
+
+  let draft: string;
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system: AI_DRAFT_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Write a LinkedIn post about: ${topic.trim()}` }],
+    });
+    const block = msg.content.find((b) => b.type === "text");
+    if (!block || block.type !== "text" || !block.text.trim()) {
+      throw new Error("No text response from AI");
+    }
+    draft = block.text.trim();
+  } catch (e) {
+    log.warn({ err: e, id }, "AI draft generation failed");
+    res.status(502).json({ error: e instanceof Error ? e.message : "AI generation failed" });
+    return;
+  }
+
+  try {
+    const [row] = await db.update(contentPostsTable)
+      .set({ body: draft, aiGenerated: true, updatedAt: new Date() })
+      .where(eq(contentPostsTable.id, id))
+      .returning();
+    if (!row) { res.status(404).json({ error: "Not found" }); return; }
+    res.json(row);
+  } catch (e) {
+    log.warn({ err: e, id }, "failed to persist AI draft for content_posts row");
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });

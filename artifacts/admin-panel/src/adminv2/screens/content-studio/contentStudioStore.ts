@@ -75,6 +75,7 @@ export interface Post {
   body: string;
   scheduledFor: string;
   status: PostStatus;
+  aiGenerated: boolean;
 }
 
 /** The server's `content_posts` row shape — `id` numeric, `scheduledFor`/timestamps ISO strings or null. */
@@ -83,10 +84,11 @@ interface ContentPostRow {
   body: string;
   status: PostStatus;
   scheduledFor: string | null;
+  aiGenerated: boolean;
 }
 
 function fromRow(row: ContentPostRow): Post {
-  return { id: String(row.id), body: row.body, scheduledFor: row.scheduledFor ?? "", status: row.status };
+  return { id: String(row.id), body: row.body, scheduledFor: row.scheduledFor ?? "", status: row.status, aiGenerated: row.aiGenerated };
 }
 
 export const STATUS_LABEL: Record<PostStatus, string> = {
@@ -118,9 +120,13 @@ interface ContentStudioState {
   posts: Post[];
   postsLoading: boolean;
   postsError: string | null;
+  /** Post ids currently waiting on an AI Assist generation. */
+  aiDraftLoading: Set<string>;
+  /** Post id -> the last AI Assist failure for that post, shown inline in the peek. Cleared on the next attempt or a successful one. */
+  aiDraftErrors: Record<string, string>;
 }
 
-let state: ContentStudioState = { posts: [], postsLoading: false, postsError: null };
+let state: ContentStudioState = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {} };
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -192,6 +198,14 @@ export function getSnapshot(): ContentStudioState {
 export function postById(id: string | null | undefined): Post | undefined {
   if (!id) return undefined;
   return state.posts.find((p) => p.id === id);
+}
+
+export function isGeneratingAiDraft(id: string): boolean {
+  return state.aiDraftLoading.has(id);
+}
+
+export function aiDraftErrorFor(id: string): string | undefined {
+  return state.aiDraftErrors[id];
 }
 
 // ─── Warm load ────────────────────────────────────────────────────────────────
@@ -303,6 +317,54 @@ export async function schedulePost(id: string): Promise<void> {
   log.info({ postId: id }, "post scheduled");
 }
 
+/**
+ * The compose peek's "AI Assist" button. Generates a draft body server-side
+ * (existing metered Anthropic client, see `admin-content-studio.ts`) from a
+ * topic the person typed into a `window.prompt`, same interactive-prompt
+ * shape as `marketingStore.ts`'s `createCampaignInteractive` — no new peek
+ * kind needed for a single text input. Never auto-schedules: this only
+ * replaces `body` (and flips `aiGenerated`) exactly like any other edit — the
+ * person still has to review it and hit Schedule themselves.
+ */
+export async function generateAiDraft(id: string, topic: string): Promise<void> {
+  if (!adminFetchRef || state.aiDraftLoading.has(id)) return;
+  const existing = postById(id);
+  const { [id]: _dropped, ...remainingErrors } = state.aiDraftErrors;
+  setState({ aiDraftLoading: new Set(state.aiDraftLoading).add(id), aiDraftErrors: remainingErrors });
+  try {
+    const res = await adminFetchRef(`/api/admin/content-studio/posts/${id}/ai-draft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    });
+    const loadingAfter = new Set(state.aiDraftLoading);
+    loadingAfter.delete(id);
+    if (!res.ok) {
+      const message = await failureOf(res);
+      setState({ aiDraftLoading: loadingAfter, aiDraftErrors: { ...state.aiDraftErrors, [id]: message } });
+      return;
+    }
+    const row = fromRow((await res.json()) as ContentPostRow);
+    if (existing) {
+      pushUndo({
+        label: `AI draft "${labelBody(existing.body)}"`,
+        revert: async () => { await updatePostField(id, { body: existing.body }, true); },
+      });
+    }
+    const { [id]: _cleared, ...errorsAfter } = state.aiDraftErrors;
+    setState({
+      posts: state.posts.map((p) => (p.id === id ? row : p)),
+      aiDraftLoading: loadingAfter,
+      aiDraftErrors: errorsAfter,
+    });
+  } catch (err) {
+    log.warn({ err, id }, "generateAiDraft failed");
+    const loadingAfter = new Set(state.aiDraftLoading);
+    loadingAfter.delete(id);
+    setState({ aiDraftLoading: loadingAfter, aiDraftErrors: { ...state.aiDraftErrors, [id]: errorText(err) } });
+  }
+}
+
 /** Undo recreates the row — best-effort: restores body/schedule, but a snapshot whose status was posted/failed (not draft/scheduled) comes back as a fresh draft, since there is no endpoint to force an arbitrary status on create. Rare in practice — deleting an already-posted post is not the normal flow. */
 async function restorePost(snapshot: Post): Promise<void> {
   if (!adminFetchRef) return;
@@ -336,5 +398,5 @@ export function resetContentStudioStore(): void {
   listeners.clear();
   adminFetchRef = null;
   warmed = false;
-  state = { posts: [], postsLoading: false, postsError: null };
+  state = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {} };
 }
