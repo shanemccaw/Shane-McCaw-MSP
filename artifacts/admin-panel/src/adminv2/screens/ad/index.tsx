@@ -102,8 +102,7 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 40,
+      tab: "ad",
       group: {
         label: "Active Directory",
         large: [

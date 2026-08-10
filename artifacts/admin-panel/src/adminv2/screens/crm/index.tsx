@@ -55,8 +55,7 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 30,
+      tab: "crm",
       group: {
         label: "CRM",
         large: [{ label: "Pipeline", icon: Users, intent: "open", onSelect: openPipeline, color: ACCENT.green }],

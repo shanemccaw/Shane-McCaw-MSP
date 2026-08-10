@@ -1,7 +1,7 @@
 /**
  * Ribbon tab strip — 30px.
  *
- * Eight fixed tabs: five ordinary ones, then Git, Run and Build inside an amber
+ * Ten fixed tabs: seven ordinary ones, then Git, Run and Build inside an amber
  * capsule that marks them as the developer set the way Office marks special tabs.
  * The contextual tab, when one is live, sits to the right behind a rule. The
  * "Search everything" capsule and the ribbon collapse chevron are pinned right.

@@ -17,14 +17,18 @@ import type { LucideIcon } from "lucide-react";
 // ─── Ribbon ───────────────────────────────────────────────────────────────────
 
 /**
- * The seven fixed tabs. Home · Inbox · Money · Watch · View | Git · Run.
+ * The ten fixed tabs. Home · Inbox · Money · Watch · Active Directory · CRM ·
+ * View | Git · Run · Build.
  *
  * This list is closed. A new screen does not get a new fixed tab — it
  * contributes groups to the tabs that already exist, and puts anything
- * record-specific on its contextual tab. Adding an eighth entry here is a
- * design decision, not an implementation detail.
+ * record-specific on its contextual tab. Adding an entry here is a design
+ * decision, not an implementation detail. `ad` and `crm` were carved out of
+ * `home` because each had grown into a major group of its own (Active
+ * Directory's MSP/user/group/OU commands, CRM's pipeline/lead commands) —
+ * Home was becoming a dumping ground rather than a launcher.
  */
-export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "view", "git", "run", "build"] as const;
+export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "ad", "crm", "view", "git", "run", "build"] as const;
 export type FixedTabId = (typeof FIXED_TAB_IDS)[number];
 
 export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
@@ -33,6 +37,8 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
   money: "Money",
   /** The "what needs me" tab: exceptions, alerts, dead letters, unrun migrations, overdue invoices. */
   watch: "Watch",
+  ad: "Active Directory",
+  crm: "CRM",
   view: "View",
   git: "Git",
   run: "Run",
@@ -43,8 +49,8 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
 /** Git, Run and Build render inside the amber capsule that marks them as the developer set. */
 export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run", "build"];
 
-/** The five ordinary tabs, in ribbon order. */
-export const MAIN_TAB_IDS: readonly FixedTabId[] = ["home", "inbox", "money", "watch", "view"];
+/** The seven ordinary tabs, in ribbon order. */
+export const MAIN_TAB_IDS: readonly FixedTabId[] = ["home", "inbox", "money", "watch", "ad", "crm", "view"];
 
 /**
  * What a ribbon command does. This is the type-level form of the rule in

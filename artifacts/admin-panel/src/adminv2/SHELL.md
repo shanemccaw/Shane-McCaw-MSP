@@ -73,9 +73,9 @@ Everything below is optional and additive.
 
 ## 1. Contributing to a fixed ribbon tab
 
-Seven fixed tabs, and the list is closed:
+Ten fixed tabs, and the list is closed:
 
-`home` · `inbox` · `money` · `watch` · `view` | `git` · `run`
+`home` · `inbox` · `money` · `watch` · `ad` · `crm` · `view` | `git` · `run` · `build`
 
 Git and Run render inside an amber capsule that marks them as a developer set.
 `watch` is the "what needs me" tab — exceptions, dead letters, unrun migrations,
@@ -208,7 +208,7 @@ ribbon gallery opens one rather than navigating.
 Supported kinds: `endpoint` `package` `lead` `script` `document` `tenant`
 `workflow` `prompt` `service` `customer` `mail` `msp` `user` `group` `ou`
 `signal` `alert` `exception` `incident` `dlq` `migration` `engine` `run`.
-Unlike the seven fixed tabs, this list is not closed — a screen that owns a
+Unlike the fixed tabs, this list is not closed — a screen that owns a
 genuinely new record type extends `PEEK_KINDS` in `registry/types.ts`, where
 each addition carries a doc comment saying why no existing kind fitted.
 
@@ -436,7 +436,7 @@ focuses it. Opening a record auto-selects its contextual tab.
 
 ## What the shell owns and you do not
 
-- The seven fixed tabs and their order.
+- The fixed tabs and their order.
 - The Back group and its position.
 - The peek layout, its fact sizing, and its action arming.
 - The palette, its prefixes, its badges and its ranking.

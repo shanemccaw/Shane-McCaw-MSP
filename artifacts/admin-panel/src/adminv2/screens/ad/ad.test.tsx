@@ -79,7 +79,7 @@ describe("registration", () => {
     expect(screenModule?.route).toBe("/ad");
 
     const tabs = new Set(screenModule?.ribbon?.map((r) => r.tab));
-    expect(tabs).toEqual(new Set(["home"]));
+    expect(tabs).toEqual(new Set(["ad"]));
     for (const contribution of screenModule!.ribbon!) {
       expect(auditFixedTabIntents(contribution)).toEqual([]);
     }

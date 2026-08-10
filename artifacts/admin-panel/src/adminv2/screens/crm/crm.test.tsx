@@ -65,11 +65,11 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("registration", () => {
-  it("registers against the fixed home tab only, and never puts a record command there", () => {
+  it("registers against the fixed crm tab only, and never puts a record command there", () => {
     expect(crmScreen).toBeTruthy();
     expect(crmScreen.route).toBe("/crm");
     const tabs = new Set(crmScreen.ribbon?.map((r) => r.tab));
-    expect(tabs).toEqual(new Set(["home"]));
+    expect(tabs).toEqual(new Set(["crm"]));
 
     const allCommands = (crmScreen.ribbon ?? []).flatMap((r) => [
       ...(r.group.large ?? []),
