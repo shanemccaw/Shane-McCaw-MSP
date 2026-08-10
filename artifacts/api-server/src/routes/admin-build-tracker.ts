@@ -515,7 +515,7 @@ router.post("/admin/build-tracker/chats", requireAdmin, async (req: Request, res
  * POST /admin/build-tracker/chats/ingest
  *
  * Browser-extension webhook. Payload:
- *   { "conversation_id": "13e012ad-5aa8-401a-9905-dcb0ec545147", "title"?: "..." }
+ *   { "conversation_id": "13e012ad-...", "title"?: "...", "issueId"?: 5, "epicId"?: 9 }
  *
  * `title` is optional and meant to be `document.title` read straight off the
  * live claude.ai tab by the extension — there's no server-side way to get a
@@ -525,26 +525,42 @@ router.post("/admin/build-tracker/chats", requireAdmin, async (req: Request, res
  * that's already inside an authenticated, JS-rendered page, so it's the only
  * realistic source for this.
  *
+ * `issueId`/`epicId` are optional and come from the extension's claude.ai-side
+ * panel (GET /extension/board below) — Shane picking "this chat is about
+ * that issue" while still inside the chat, instead of triaging it later.
+ * Same non-clobbering rule as title: applied ONLY when the chat is currently
+ * unlinked (no issueId AND no epicId set yet). If he already decided this
+ * chat belongs somewhere else, re-sending a different id here is a no-op for
+ * linking — relinking stays a deliberate action inside Build Tracker itself,
+ * not something a background sync call can silently override.
+ *
  * Creates a stub chat record (title = given title, or conversation_id if
- * none was sent) if the conversation_id is new. If it already exists: a
- * non-empty title is applied ONLY when the stored title still equals the
- * conversation_id (i.e. nobody has renamed it since) — never overwrites a
- * title Shane already edited by hand. Always returns 200 with the current
- * record either way, so the extension can call it idempotently on every page
- * load/title change without needing to track what it already sent.
+ * none was sent; issueId/epicId applied as given) if the conversation_id is
+ * new. If it already exists: title backfills only while still stubbed as the
+ * conversation_id, issueId/epicId apply only while still unlinked — neither
+ * ever overwrites a choice Shane already made. Always returns 200 with the
+ * current record either way, so the extension can call it idempotently on
+ * every page load/title change without needing to track what it already sent.
  *
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id, title } = req.body as { conversation_id?: string; title?: string };
+  const { conversation_id, title, issueId, epicId } = req.body as {
+    conversation_id?: string;
+    title?: string;
+    issueId?: number | null;
+    epicId?: number | null;
+  };
   if (!conversation_id?.trim()) {
     res.status(400).json({ error: "conversation_id is required" });
     return;
   }
   const id = conversation_id.trim();
   const incomingTitle = title?.trim() || null;
+  const incomingIssueId = typeof issueId === "number" ? issueId : null;
+  const incomingEpicId = typeof epicId === "number" ? epicId : null;
   try {
-    // Upsert: if already exists, maybe backfill its title; otherwise insert stub.
+    // Upsert: if already exists, maybe backfill its title/link; otherwise insert stub.
     const existing = await db
       .select()
       .from(btChatsTable)
@@ -553,15 +569,21 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
 
     if (existing.length > 0) {
       let row = existing[0];
-      if (incomingTitle && row.title === row.conversationId) {
+      const patch: Partial<typeof btChatsTable.$inferInsert> = {};
+      if (incomingTitle && row.title === row.conversationId) patch.title = incomingTitle;
+      if ((incomingIssueId !== null || incomingEpicId !== null) && row.issueId === null && row.epicId === null) {
+        patch.issueId = incomingIssueId;
+        patch.epicId = incomingIssueId ? null : incomingEpicId;
+      }
+      if (Object.keys(patch).length > 0) {
         [row] = await db
           .update(btChatsTable)
-          .set({ title: incomingTitle, updatedAt: new Date() })
+          .set({ ...patch, updatedAt: new Date() })
           .where(eq(btChatsTable.id, row.id))
           .returning();
-        log.info({ conversationId: id }, "ingest: backfilled title on existing stub");
+        log.info({ conversationId: id, patch: Object.keys(patch) }, "ingest: backfilled existing stub");
       } else {
-        log.debug({ conversationId: id }, "ingest: already exists");
+        log.debug({ conversationId: id }, "ingest: already exists, nothing to backfill");
       }
       res.json({ ...row, claudeUrl: claudeUrl(row.conversationId), created: false });
       return;
@@ -569,14 +591,91 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
 
     const [row] = await db
       .insert(btChatsTable)
-      .values({ conversationId: id, title: incomingTitle ?? id })
+      .values({
+        conversationId: id,
+        title: incomingTitle ?? id,
+        issueId: incomingIssueId,
+        epicId: incomingIssueId ? null : incomingEpicId,
+      })
       .returning();
 
-    log.info({ conversationId: id, hadTitle: !!incomingTitle }, "ingest: new chat stub created");
+    log.info({ conversationId: id, hadTitle: !!incomingTitle, linked: !!(incomingIssueId || incomingEpicId) }, "ingest: new chat stub created");
     res.status(201).json({ ...row, claudeUrl: claudeUrl(row.conversationId), created: true });
   } catch (err) {
     log.error({ err, conversationId: id }, "POST /chats/ingest failed");
     res.status(500).json({ error: "Ingest failed" });
+  }
+});
+
+/**
+ * GET /admin/build-tracker/extension/board?conversationId=<uuid>
+ *
+ * Companion to the browser extension's claude.ai-side panel: a trimmed,
+ * open-work-only view of Milestones/Epics/Issues so Shane can see what he's
+ * working on without leaving the chat, plus — when conversationId is given —
+ * whether *this* chat is already linked to something. Deliberately not the
+ * same shape as GET /epics|/issues|/milestones: those carry full
+ * description/count fields the extension's small panel has no use for, and
+ * every open record for a repo this size is already a lot to render inside
+ * claude.ai's own busy page.
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Request, res: Response) => {
+  const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId.trim() : "";
+  try {
+    const [epics, issues, currentChatRows] = await Promise.all([
+      db
+        .select({
+          id: btEpicsTable.id,
+          title: btEpicsTable.title,
+          status: btEpicsTable.status,
+          githubNumber: btEpicsTable.githubNumber,
+          milestoneId: btEpicsTable.milestoneId,
+        })
+        .from(btEpicsTable)
+        .where(sql`${btEpicsTable.status} <> 'closed'`)
+        .orderBy(asc(btEpicsTable.title)),
+      db
+        .select({
+          id: btIssuesTable.id,
+          title: btIssuesTable.title,
+          status: btIssuesTable.status,
+          githubNumber: btIssuesTable.githubNumber,
+          epicId: btIssuesTable.epicId,
+        })
+        .from(btIssuesTable)
+        .where(sql`${btIssuesTable.status} NOT IN ('closed', 'done')`)
+        .orderBy(asc(btIssuesTable.title)),
+      conversationId
+        ? db.select().from(btChatsTable).where(eq(btChatsTable.conversationId, conversationId)).limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    // Milestones are GitHub-live here too, same as GET /milestones above —
+    // there's no local bt_milestones table, only bt_epics.milestone_id
+    // pointing at a GitHub milestone number.
+    let milestones: Array<{ id: number; title: string; githubNumber: number | null; status: string }> = [];
+    if (process.env.GITHUB_TOKEN) {
+      try {
+        const msRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=open`);
+        if (msRes.ok) {
+          const ghMsList = (await msRes.json()) as Array<{ number: number; title: string; state: string }>;
+          milestones = ghMsList.map((m) => ({ id: m.number, title: m.title, githubNumber: m.number, status: m.state }));
+        }
+      } catch (err) {
+        log.error({ err }, "GET /extension/board: GitHub milestones fetch failed");
+      }
+    }
+
+    const currentChat = currentChatRows[0]
+      ? { ...currentChatRows[0], claudeUrl: claudeUrl(currentChatRows[0].conversationId) }
+      : null;
+
+    res.json({ milestones, epics, issues, currentChat });
+  } catch (err) {
+    log.error({ err }, "GET /extension/board failed");
+    res.status(500).json({ error: "Failed to load board" });
   }
 });
 
