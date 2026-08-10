@@ -390,12 +390,22 @@ export async function createMilestone(
     };
   }
   set({ milestones: [newRow, ...state.milestones.filter((m) => m.id !== newRow.id)] });
+  pushUndo({ label: `Create milestone "${title}"`, revert: () => deleteMilestone(newRow.id) });
   flashMessage(`Milestone "${title}" created`);
   return newRow;
 }
 
 export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) {
   const existing = state.milestones.find((m) => m.id === id);
+  if (existing) {
+    const prevFields = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, (existing as any)[k]])
+    ) as Partial<MilestoneRow>;
+    pushUndo({
+      label: `Edit milestone "${existing.title}"`,
+      revert: () => updateMilestone(id, prevFields),
+    });
+  }
   set({
     milestones: state.milestones.map((m) =>
       m.id === id ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m
@@ -415,6 +425,12 @@ export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) 
 
 export async function deleteMilestone(id: number) {
   const existing = state.milestones.find((m) => m.id === id);
+  if (existing) {
+    pushUndo({
+      label: `Delete milestone "${existing.title}"`,
+      revert: () => createMilestone(existing.title, existing.targetDate, existing.description, existing.startDate),
+    });
+  }
   set({
     milestones: state.milestones.filter((m) => m.id !== id),
     epics: state.epics.map((e) => (e.milestoneId === id ? { ...e, milestoneId: null } : e)),
@@ -476,6 +492,7 @@ export async function createEpic(title: string): Promise<EpicRow | null> {
     });
     const row = (await res.json()) as EpicRow;
     set({ epics: [{ ...row, issueCount: 0, chatCount: 0 }, ...state.epics] });
+    pushUndo({ label: `Create epic "${title}"`, revert: () => deleteEpic(row.id) });
     return row;
   } catch (err) {
     log.error({ err }, "createEpic failed");
@@ -483,8 +500,16 @@ export async function createEpic(title: string): Promise<EpicRow | null> {
   }
 }
 
-export async function updateEpic(id: number, patch: Partial<EpicRow>): Promise<void> {
+export async function updateEpic(id: number, patch: Partial<EpicRow>, _skipUndo = false): Promise<void> {
   const key = `epic:${id}`;
+  const existing = state.epics.find((e) => e.id === id);
+  if (!_skipUndo && existing) {
+    const prevFields = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, (existing as any)[k]])
+    ) as Partial<EpicRow>;
+    const label = `Edit epic "${existing.title}"${patch.status ? ` → ${patch.status}` : ""}`;
+    pushUndo({ label, revert: () => updateEpic(id, prevFields, true) });
+  }
   set({ savingIds: new Set([...state.savingIds, key]) });
   try {
     const res = await apiFetch(`/admin/build-tracker/epics/${id}`, {
@@ -505,6 +530,13 @@ export async function updateEpic(id: number, patch: Partial<EpicRow>): Promise<v
 }
 
 export async function deleteEpic(id: number): Promise<void> {
+  const existing = state.epics.find((e) => e.id === id);
+  if (existing) {
+    pushUndo({
+      label: `Delete epic "${existing.title}"`,
+      revert: () => createEpic(existing.title),
+    });
+  }
   try {
     await apiFetch(`/admin/build-tracker/epics/${id}`, { method: "DELETE" });
     set({
@@ -529,6 +561,7 @@ export async function createIssue(title: string, epicId: number | null = null): 
     const row = (await res.json()) as IssueRow;
     const withCount = { ...row, chatCount: 0 };
     set({ issues: [withCount, ...state.issues] });
+    pushUndo({ label: `Create issue "${title}"`, revert: () => deleteIssue(row.id) });
     return withCount;
   } catch (err) {
     log.error({ err }, "createIssue failed");
@@ -536,8 +569,16 @@ export async function createIssue(title: string, epicId: number | null = null): 
   }
 }
 
-export async function updateIssue(id: number, patch: Partial<IssueRow>): Promise<void> {
+export async function updateIssue(id: number, patch: Partial<IssueRow>, _skipUndo = false): Promise<void> {
   const key = `issue:${id}`;
+  const existing = state.issues.find((i) => i.id === id);
+  if (!_skipUndo && existing) {
+    const prevFields = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, (existing as any)[k]])
+    ) as Partial<IssueRow>;
+    const label = `Edit issue "${existing.title}"${patch.status ? ` → ${patch.status}` : patch.epicId !== undefined ? ` re-parent` : ""}`;
+    pushUndo({ label, revert: () => updateIssue(id, prevFields, true) });
+  }
   set({ savingIds: new Set([...state.savingIds, key]) });
   try {
     const res = await apiFetch(`/admin/build-tracker/issues/${id}`, {
@@ -567,10 +608,17 @@ export async function cycleIssueStatus(id: number, next: IssueStatus): Promise<v
       revert: () => cycleIssueStatus(id, prev as IssueStatus),
     });
   }
-  await updateIssue(id, { status: next });
+  await updateIssue(id, { status: next }, true); // already pushed undo above
 }
 
 export async function deleteIssue(id: number): Promise<void> {
+  const existing = state.issues.find((i) => i.id === id);
+  if (existing) {
+    pushUndo({
+      label: `Delete issue "${existing.title}"`,
+      revert: () => createIssue(existing.title, existing.epicId),
+    });
+  }
   try {
     await apiFetch(`/admin/build-tracker/issues/${id}`, { method: "DELETE" });
     set({
@@ -609,6 +657,7 @@ export async function createChat(conversationId: string, title: string, issueId:
     const row = (await res.json()) as ChatRow;
     set({ chats: [row, ...state.chats] });
     setLiveRibbonValue(WATCH_UNLINKED_KEY, { label: String(unlinkedCount()) });
+    pushUndo({ label: `Link chat "${cleanTitle}"`, revert: () => deleteChat(row.id) });
     return row;
   } catch (err) {
     log.error({ err }, "createChat failed");
@@ -616,8 +665,16 @@ export async function createChat(conversationId: string, title: string, issueId:
   }
 }
 
-export async function updateChat(id: number, patch: Partial<ChatRow>): Promise<void> {
+export async function updateChat(id: number, patch: Partial<ChatRow>, _skipUndo = false): Promise<void> {
   const key = `chat:${id}`;
+  const existing = state.chats.find((c) => c.id === id);
+  if (!_skipUndo && existing) {
+    const prevFields = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, (existing as any)[k]])
+    ) as Partial<ChatRow>;
+    const label = `Edit chat "${existing.title}"${patch.issueId !== undefined || patch.epicId !== undefined ? " re-link" : ""}`;
+    pushUndo({ label, revert: () => updateChat(id, prevFields, true) });
+  }
   set({ savingIds: new Set([...state.savingIds, key]) });
   try {
     const res = await apiFetch(`/admin/build-tracker/chats/${id}`, {
@@ -639,6 +696,13 @@ export async function updateChat(id: number, patch: Partial<ChatRow>): Promise<v
 }
 
 export async function deleteChat(id: number): Promise<void> {
+  const existing = state.chats.find((c) => c.id === id);
+  if (existing) {
+    pushUndo({
+      label: `Delete chat "${existing.title}"`,
+      revert: () => createChat(existing.conversationId, existing.title, existing.issueId, existing.epicId, existing.category ?? null),
+    });
+  }
   try {
     await apiFetch(`/admin/build-tracker/chats/${id}`, { method: "DELETE" });
     set({
