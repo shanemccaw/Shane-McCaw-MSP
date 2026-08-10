@@ -82,6 +82,20 @@ export function Shell({
   // than the quick-nav/empty state that actually matches what's on screen.
   const noDocOpen = !activeScreen || state.docs.length === 0;
 
+  // The right Properties panel only exists for screens that register one —
+  // most of the git/deploy/sql-console-style screens don't have per-record
+  // properties at all, so showing an empty rail there is pure chrome with
+  // nothing behind it. Hidden outright (no rail, no splitter) rather than
+  // just rendering empty, per Shane's ask.
+  const rightPanelAvailable = !noDocOpen && !!activeScreen?.right;
+  // Whether the panel WOULD show real content right now — a record doc is
+  // open (kind !== "screen"), the same test contextualTab/ribbonGroups above
+  // already use to decide "is a record actually open." Drives the collapsed
+  // rail's attention tint below so a collapsed-for-viewport-space Properties
+  // panel doesn't silently swallow the fact that there's something in it.
+  const activeDocKind = state.docs.find((d) => d.id === state.activeDocId)?.kind;
+  const rightHasContent = rightPanelAvailable && activeDocKind !== undefined && activeDocKind !== "screen";
+
   return (
     <div
       className="av2 dark"
@@ -166,19 +180,22 @@ export function Shell({
           />
         </div>
 
-        <SidePanel
-          side="right"
-          open={state.right}
-          width={state.rightWidth}
-          title={!noDocOpen ? (activeScreen?.right?.title ?? "Properties") : "Properties"}
-          dragging={state.drag === "right"}
-          onToggle={() => dispatch({ type: "togglePanel", panel: "right" })}
-          onResize={(size) => dispatch({ type: "setPanelSize", panel: "right", size })}
-          onDragStart={() => dispatch({ type: "startDrag", panel: "right" })}
-          onDragEnd={() => dispatch({ type: "endDrag" })}
-        >
-          {!noDocOpen && activeScreen?.right ? activeScreen.right.render() : null}
-        </SidePanel>
+        {rightPanelAvailable && (
+          <SidePanel
+            side="right"
+            open={state.right}
+            width={state.rightWidth}
+            title={activeScreen?.right?.title ?? "Properties"}
+            attentionTint={!state.right && rightHasContent}
+            dragging={state.drag === "right"}
+            onToggle={() => dispatch({ type: "togglePanel", panel: "right" })}
+            onResize={(size) => dispatch({ type: "setPanelSize", panel: "right", size })}
+            onDragStart={() => dispatch({ type: "startDrag", panel: "right" })}
+            onDragEnd={() => dispatch({ type: "endDrag" })}
+          >
+            {activeScreen?.right ? activeScreen.right.render() : null}
+          </SidePanel>
+        )}
       </div>
 
       <StatusBar left={statusLeft} right={statusRight} />

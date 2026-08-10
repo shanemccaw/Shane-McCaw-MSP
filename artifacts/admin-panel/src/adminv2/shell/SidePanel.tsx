@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { LINE, METRICS, PRIMARY, SURFACE, TEXT } from "../theme";
+import { ACCENT, LINE, METRICS, PRIMARY, SURFACE, TEXT } from "../theme";
 
 export interface SidePanelProps {
   side: "left" | "right";
@@ -24,6 +24,13 @@ export interface SidePanelProps {
   children: ReactNode | null;
   /** Header buttons, e.g. expand-all / collapse-all. */
   actions?: ReactNode;
+  /**
+   * True when the panel is collapsed but has real content waiting behind the
+   * rail (e.g. Properties for a record you have open) — tints the collapsed
+   * rail so collapsing it for viewport space doesn't quietly hide that
+   * something's there. No effect while `open`.
+   */
+  attentionTint?: boolean;
   onToggle: () => void;
   onResize: (width: number) => void;
   onDragStart: () => void;
@@ -38,6 +45,7 @@ export function SidePanel({
   title,
   children,
   actions,
+  attentionTint = false,
   onToggle,
   onResize,
   onDragStart,
@@ -93,12 +101,14 @@ export function SidePanel({
     />
   );
 
+  const tinted = attentionTint && !open;
+
   const rail = (
     <div
       onClick={onToggle}
-      title={`Expand ${title}`}
+      title={tinted ? `Expand ${title} — has properties for the current selection` : `Expand ${title}`}
       role="button"
-      aria-label={`Expand ${title}`}
+      aria-label={tinted ? `Expand ${title} — has properties for the current selection` : `Expand ${title}`}
       style={{
         flex: "none",
         width: METRICS.rail,
@@ -106,10 +116,11 @@ export function SidePanel({
         flexDirection: "column",
         alignItems: "center",
         paddingTop: 7,
-        background: SURFACE.chrome,
-        [side === "left" ? "borderRight" : "borderLeft"]: `1px solid ${LINE.group}`,
-        color: TEXT.caption,
+        background: tinted ? `${ACCENT.amber}14` : SURFACE.chrome,
+        [side === "left" ? "borderRight" : "borderLeft"]: `1px solid ${tinted ? `${ACCENT.amber}40` : LINE.group}`,
+        color: tinted ? ACCENT.amber : TEXT.caption,
         cursor: "pointer",
+        transition: "background 150ms, color 150ms, border-color 150ms",
       }}
     >
       <svg
