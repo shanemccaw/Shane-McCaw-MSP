@@ -362,6 +362,15 @@ export interface ContextualTabSpec {
  * (a generated artefact, not authored and timed by a person) and not
  * `campaign` (the marketing effort a post might belong to, not the post
  * itself) — it is the individually schedulable unit of content.
+ *
+ * `milestone` was added for the Build Tracker screen, alongside `epic`/
+ * `issue`/`chatLink` — a `bt_milestones` row (a GitHub milestone, mirrored
+ * locally with its own target date and progress). Selecting one in the
+ * Explorer used to just flip local state inside whichever doc was already
+ * open, so it silently took over the Build Tracker tab instead of opening
+ * its own — the same "open like a document" contract every other Build
+ * Tracker record already gets. It is not `epic` (one thing a milestone
+ * groups, not the grouping itself) — it is the roadmap unit.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -397,6 +406,7 @@ export const PEEK_KINDS = [
   "chatLink",
   "epic",
   "post",
+  "milestone",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 

@@ -34,7 +34,7 @@ import {
   unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
   deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
   formatIssueAge, trimMilestoneToCapacity, syncFromGitHub, assignEpicToMilestone,
-  epicIsUnassigned, milestoneProgress,
+  epicIsUnassigned, milestoneProgress, setChatTriageActive,
 } from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -558,6 +558,31 @@ export function BuildTrackerExplorer() {
     selectChat(id);
     getShellApi()?.openDoc({ kind: "chatLink", id: String(id), screenId: "build-tracker" });
   }
+  function handleMilestone(id: number) {
+    selectMilestone(id);
+    getShellApi()?.openDoc({ kind: "milestone", id: String(id), screenId: "build-tracker" });
+  }
+
+  /**
+   * Right-click on empty Explorer space — "the whole reason I can't find
+   * where to add a chat" per Shane's feedback. Creates a brand-new unlinked
+   * chat straight into the Needs Triage bucket, no record to click into
+   * first required.
+   */
+  function onBackgroundContextMenu(e: React.MouseEvent) {
+    if (e.target !== e.currentTarget) return; // a row's own handler already ran
+    openMenu(e, [
+      {
+        label: "Add New Chat...",
+        onSelect: () => {
+          const cid = window.prompt("Paste Claude conversation ID or URL:");
+          if (!cid?.trim()) return;
+          const title = window.prompt("Label (optional — defaults to the conversation ID):", cid.trim());
+          void createChat(cid.trim(), (title ?? cid).trim() || cid.trim(), null, null, null);
+        },
+      },
+    ], "Explorer actions");
+  }
 
   function onEpicContextMenu(e: React.MouseEvent, epic: EpicRow) {
     const currentMilestone = state.milestones.find(m => m.id === epic.milestoneId);
@@ -675,11 +700,16 @@ export function BuildTrackerExplorer() {
   }
 
   function onChatContextMenu(e: React.MouseEvent, chat: ChatRow) {
+    const isUnlinked = chat.issueId === null && chat.epicId === null && !chat.category;
     const items = [
       {
         label: "Open in Claude",
         onSelect: () => window.open(chat.claudeUrl, "_blank")
       },
+      isUnlinked ? {
+        label: "Assign triage chat...",
+        onSelect: () => setChatTriageActive(true, chat.id),
+      } : null,
       {
         label: "Rename chat...",
         onSelect: () => {
@@ -696,7 +726,7 @@ export function BuildTrackerExplorer() {
           }
         }
       }
-    ];
+    ].filter(Boolean) as any[];
 
     openMenu(e, items, `Chat actions for ${chat.title}`);
   }
@@ -795,7 +825,10 @@ export function BuildTrackerExplorer() {
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", flex: 1 }}>
+      <div
+        onContextMenu={onBackgroundContextMenu}
+        style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", flex: 1 }}
+      >
         {/* Milestones Vertical Timeline */}
         {visibleMilestones.length > 0 && (
           <div style={{ marginBottom: 8 }}>
@@ -821,7 +854,7 @@ export function BuildTrackerExplorer() {
                 selectedEpicId={state.selectedEpicId}
                 selectedIssueId={state.selectedIssueId}
                 selectedChatId={state.selectedChatId}
-                onMilestoneSelect={(id) => selectMilestone(id)}
+                onMilestoneSelect={handleMilestone}
                 onEpic={handleEpic}
                 onIssue={handleIssue}
                 onChat={handleChat}

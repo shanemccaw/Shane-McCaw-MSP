@@ -689,8 +689,16 @@ export function setTriageShowAssigned(show: boolean) {
   set({ triageShowAssigned: show });
 }
 
-/** Opens/exits the chat-linking triage flow — see `chatTriageActive`'s own doc comment on `BuildTrackerState`. */
-export function setChatTriageActive(active: boolean) {
+/** The chat `ChatTriageView` should open on, set by the caller of `setChatTriageActive(true, chatId)` — e.g. Explorer's "Assign triage chat..." context menu item, jumping straight to the chat that was right-clicked instead of whichever one happens to be first. Read once by the view on mount, not part of reactive `state` since it's a one-shot hint, not something anything else re-renders on. */
+let chatTriageFocusId: number | null = null;
+
+export function getChatTriageFocusId(): number | null {
+  return chatTriageFocusId;
+}
+
+/** Opens/exits the chat-linking triage flow — see `chatTriageActive`'s own doc comment on `BuildTrackerState`. `focusChatId` jumps straight to that chat instead of starting at the first unlinked one. */
+export function setChatTriageActive(active: boolean, focusChatId?: number) {
+  chatTriageFocusId = active ? (focusChatId ?? null) : null;
   set({ chatTriageActive: active, triageActive: false, dashboardFilter: active ? null : state.dashboardFilter });
   if (active) activateRibbonContext();
 }

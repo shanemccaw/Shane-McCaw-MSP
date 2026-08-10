@@ -30,7 +30,7 @@ import {
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
   selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, updateChat, setTriageActive, syncFromGitHub,
   estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
-  setDashboardFilter, setChatTriageActive, chatDestination, type DashboardFilter,
+  setDashboardFilter, setChatTriageActive, chatDestination, getChatTriageFocusId, type DashboardFilter,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -1257,7 +1257,12 @@ function TriageView() {
 function ChatTriageView() {
   const state = useStore();
   const chats = unlinkedChats();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => {
+    const focusId = getChatTriageFocusId();
+    if (focusId == null) return 0;
+    const i = chats.findIndex((c) => c.id === focusId);
+    return i >= 0 ? i : 0;
+  });
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
 

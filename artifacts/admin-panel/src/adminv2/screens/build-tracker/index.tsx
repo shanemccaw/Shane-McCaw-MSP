@@ -6,8 +6,12 @@
  * "Unlinked chats" live count — chats that have been ingested but not yet
  * assigned to an epic, issue, or category.
  *
- * Peek kinds registered: `issue` and `chatLink` (both added to PEEK_KINDS in
- * registry/types.ts with the standard rationale doc comment).
+ * Peek kinds registered: `epic`, `issue`, `chatLink`, `milestone` (all added
+ * to PEEK_KINDS in registry/types.ts with the standard rationale doc
+ * comment). Each opens its own doc tab via openDoc({kind, id, screenId}) —
+ * never mutate selection state alone from outside render(ctx), or the
+ * record silently takes over whatever doc happens to be active instead of
+ * opening its own (this bit milestones until it was fixed to match).
  *
  * GitHub integration: POST /admin/build-tracker/github-sync pulls milestones
  * → bt_epics and issues → bt_issues from shanemccaw/Shane-McCaw-MSP using
@@ -21,7 +25,7 @@
 
 import {
   BookOpen, GitBranch, GitPullRequest, MessageSquare, Plus,
-  RefreshCw, AlertCircle, ExternalLink, Trash2, Target,
+  RefreshCw, AlertCircle, ExternalLink, Trash2, Target, Flag,
 } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
@@ -30,14 +34,15 @@ import type { CommandItem } from "../../registry/types";
 import { BuildTrackerBody } from "./BuildTrackerBody";
 import { BuildTrackerExplorer } from "./BuildTrackerExplorer";
 import { BuildTrackerProperties } from "./BuildTrackerProperties";
+import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL } from "../project-management/ProjectManagementBody";
 import {
   getSnapshot,
-  selectEpic, selectIssue, selectChat,
+  selectEpic, selectIssue, selectChat, selectMilestone,
   createEpic, createIssue, createChat,
-  epicById, issueById, chatById,
+  epicById, issueById, chatById, milestoneById,
   chatsForIssue, unlinkedCount,
-  updateEpic, updateIssue, updateChat,
-  deleteEpic, deleteIssue, deleteChat,
+  updateEpic, updateIssue, updateChat, updateMilestone,
+  deleteEpic, deleteIssue, deleteChat, deleteMilestone,
   syncFromGitHub, loadAll, setTriageActive, setTriageShowAssigned,
   setChatTriageActive, setDashboardFilter,
   WATCH_UNLINKED_KEY, SYNC_GITHUB_KEY,
@@ -96,6 +101,9 @@ registerScreen({
     }
     if (ctx.kind === "chatLink" && ctx.recordId && state.selectedChatId !== Number(ctx.recordId)) {
       selectChat(Number(ctx.recordId));
+    }
+    if (ctx.kind === "milestone" && ctx.recordId && state.selectedMilestoneId !== Number(ctx.recordId)) {
+      selectMilestone(Number(ctx.recordId));
     }
     // The plain "Build Tracker" doc carries no record context (ctx.kind is
     // undefined) — e.g. clicking the ribbon button, or switching back to an
@@ -358,6 +366,50 @@ registerScreen({
                   setTriageActive(true);
                 },
               },
+            ],
+          },
+        ],
+      };
+    }
+
+    if (ctx.kind === "milestone") {
+      const milestone = milestoneById(Number(ctx.recordId));
+      if (!milestone) return null;
+      return {
+        id: "milestone-tools",
+        label: "Milestone Tools",
+        groups: [
+          {
+            label: "Actions",
+            small: [
+              {
+                label: "Sync from GitHub",
+                icon: RefreshCw,
+                intent: "record",
+                liveKey: SYNC_GITHUB_KEY,
+                onSelect: () => void syncFromGitHub(),
+              },
+              {
+                label: "Delete Milestone",
+                icon: Trash2,
+                intent: "record",
+                color: ACCENT.danger,
+                onSelect: () => {
+                  if (window.confirm(`Delete Milestone "${milestone.title}"? This cannot be undone.`)) {
+                    void deleteMilestone(milestone.id);
+                    getShellApi()?.navigate(ROUTE);
+                  }
+                },
+              },
+            ],
+          },
+          {
+            label: "Navigate",
+            small: [
+              { label: "All milestones", icon: BookOpen, intent: "open", onSelect: goToDashboard },
+              ...(milestone.githubNumber
+                ? [{ label: "GitHub Milestone", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${milestone.githubNumber}`, "_blank") }]
+                : []),
             ],
           },
         ],
@@ -630,6 +682,35 @@ registerScreen({
 
   // ── Peeks ──────────────────────────────────────────────────────────────────
   peeks: {
+    milestone: (id) => {
+      const milestone = milestoneById(Number(id));
+      if (!milestone) return null;
+      return {
+        kind: "milestone",
+        eyebrow: "MILESTONE",
+        title: milestone.title,
+        sub: milestone.githubNumber ? `#${milestone.githubNumber} · ${MILESTONE_STATUS_LABEL[milestone.status]}` : MILESTONE_STATUS_LABEL[milestone.status],
+        icon: Flag,
+        tone: MILESTONE_STATUS_COLOR[milestone.status],
+        tag: MILESTONE_STATUS_LABEL[milestone.status],
+        tagTone: MILESTONE_STATUS_COLOR[milestone.status],
+        facts: [
+          { label: "Status", value: MILESTONE_STATUS_LABEL[milestone.status], prose: true },
+        ],
+        edits: [
+          { key: "title", label: "Title", value: milestone.title, onChange: (v) => void updateMilestone(milestone.id, { title: v }) },
+        ],
+        open: () => {
+          selectMilestone(milestone.id);
+          getShellApi()?.openDoc({ kind: "milestone", id: String(milestone.id), screenId: "build-tracker" });
+        },
+        openLabel: "Open detail",
+        actions: [
+          { label: "Delete", tone: "danger", confirm: true, onSelect: () => void deleteMilestone(milestone.id) },
+        ],
+      };
+    },
+
     epic: (id) => {
       const epic = epicById(Number(id));
       if (!epic) return null;
@@ -733,6 +814,16 @@ registerScreen({
   commands: (): CommandItem[] => {
     const state = getSnapshot();
 
+    const milestoneItems: CommandItem[] = state.milestones.map((m) => ({
+      id: `rec:milestone-${m.id}`,
+      type: "record",
+      kind: "go",
+      name: m.title,
+      sub: `Milestone · ${MILESTONE_STATUS_LABEL[m.status]}${m.githubNumber ? ` · #${m.githubNumber}` : ""}`,
+      area: "build-tracker",
+      run: () => getShellApi()?.openPeek("milestone", String(m.id)),
+    }));
+
     const epicItems: CommandItem[] = state.epics.map((e) => ({
       id: `rec:epic-${e.id}`,
       type: "record",
@@ -783,7 +874,7 @@ registerScreen({
       { id: "act:bt-new-issue", type: "action", kind: "run", name: "New issue", sub: "Create an issue manually", area: "build-tracker", run: () => { goto(); const t = window.prompt("Issue title:"); if (t?.trim()) void createIssue(t.trim(), null); } },
     ];
 
-    return [...epicItems, ...issueItems, ...chatItems, ...answers, ...actions];
+    return [...milestoneItems, ...epicItems, ...issueItems, ...chatItems, ...answers, ...actions];
   },
 
   left:  { title: "Epics & Issues", render: () => <BuildTrackerExplorer /> },
