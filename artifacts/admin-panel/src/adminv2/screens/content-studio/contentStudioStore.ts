@@ -124,9 +124,11 @@ interface ContentStudioState {
   aiDraftLoading: Set<string>;
   /** Post id -> the last AI Assist failure for that post, shown inline in the peek. Cleared on the next attempt or a successful one. */
   aiDraftErrors: Record<string, string>;
+  /** Post id -> the last Schedule failure for that post (server-side validation from `/schedule`, Git #711), shown inline in the peek the exact same way `aiDraftErrors` is. Cleared on the next attempt or a successful one. */
+  scheduleErrors: Record<string, string>;
 }
 
-let state: ContentStudioState = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {} };
+let state: ContentStudioState = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {}, scheduleErrors: {} };
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -208,6 +210,10 @@ export function aiDraftErrorFor(id: string): string | undefined {
   return state.aiDraftErrors[id];
 }
 
+export function scheduleErrorFor(id: string): string | undefined {
+  return state.scheduleErrors[id];
+}
+
 // ─── Warm load ────────────────────────────────────────────────────────────────
 
 let warmed = false;
@@ -287,9 +293,33 @@ export async function updatePostField(id: string, patch: Partial<Pick<Post, "bod
   }
 }
 
-/** Generic status setter behind `schedulePost` — same capture-and-revert shape as `updatePostField`, kept private since nothing outside this file needs to set an arbitrary status yet. */
-async function setPostStatus(id: string, status: PostStatus, _skipUndo = false): Promise<void> {
-  if (!adminFetchRef) return;
+/**
+ * Generic status setter behind `schedulePost` — same capture-and-revert shape
+ * as `updatePostField`, kept private since nothing outside this file needs to
+ * set an arbitrary status yet.
+ *
+ * Not optimistic (unlike `updatePostField`): the server now validates
+ * `scheduledFor` before flipping status (Git #711), so this waits for a real
+ * response and only updates local state on success — flipping first and
+ * unwinding on failure is exactly the silent-success bug #711 fixed on the
+ * server side. Returns the failure message, or `null` on success.
+ */
+async function setPostStatus(id: string, status: PostStatus, _skipUndo = false): Promise<string | null> {
+  if (!adminFetchRef) return null;
+  try {
+    // "scheduled" is the only status this store's own UI sets — the dispatcher
+    // workflow owns the posted/failed transitions server-side. A future
+    // status here would need its own endpoint; nothing calls one yet.
+    const res = await adminFetchRef(`/api/admin/content-studio/posts/${id}/schedule`, { method: "POST" });
+    if (!res.ok) {
+      const message = await failureOf(res);
+      log.warn({ id, status: res.status }, "setPostStatus failed to persist");
+      return message;
+    }
+  } catch (err) {
+    log.warn({ err, id }, "setPostStatus failed to persist");
+    return errorText(err);
+  }
   const existing = postById(id);
   if (!_skipUndo && existing && existing.status !== status) {
     const prevStatus = existing.status;
@@ -299,21 +329,19 @@ async function setPostStatus(id: string, status: PostStatus, _skipUndo = false):
     });
   }
   setState({ posts: state.posts.map((p) => (p.id === id ? { ...p, status } : p)) });
-  try {
-    // "scheduled" is the only status this store's own UI sets — the dispatcher
-    // workflow owns the posted/failed transitions server-side. A future
-    // status here would need its own endpoint; nothing calls one yet.
-    const res = await adminFetchRef(`/api/admin/content-studio/posts/${id}/schedule`, { method: "POST" });
-    if (!res.ok) log.warn({ id, status: res.status }, "setPostStatus failed to persist");
-  } catch (err) {
-    log.warn({ err, id }, "setPostStatus failed to persist");
-  }
+  return null;
 }
 
-/** The dispatcher workflow (seed-system-workflows.ts) fires the real LinkedIn post and owns the posted/failed transitions; this just marks the row due. */
+/** The dispatcher workflow (seed-system-workflows.ts) fires the real LinkedIn post and owns the posted/failed transitions; this just marks the row due. Surfaces a real server-side validation failure (missing/invalid/past `scheduledFor`, Git #711) inline in the peek via `scheduleErrorFor`, instead of the previous silent `log.warn`-only failure. */
 export async function schedulePost(id: string): Promise<void> {
   if (!postById(id)) return;
-  await setPostStatus(id, "scheduled");
+  const { [id]: _dropped, ...remainingErrors } = state.scheduleErrors;
+  setState({ scheduleErrors: remainingErrors });
+  const error = await setPostStatus(id, "scheduled");
+  if (error) {
+    setState({ scheduleErrors: { ...state.scheduleErrors, [id]: error } });
+    return;
+  }
   log.info({ postId: id }, "post scheduled");
 }
 
@@ -398,5 +426,5 @@ export function resetContentStudioStore(): void {
   listeners.clear();
   adminFetchRef = null;
   warmed = false;
-  state = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {} };
+  state = { posts: [], postsLoading: false, postsError: null, aiDraftLoading: new Set(), aiDraftErrors: {}, scheduleErrors: {} };
 }

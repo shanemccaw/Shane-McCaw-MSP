@@ -444,6 +444,16 @@ export interface PeekEdit {
   area?: boolean;
   /** Monospace the value — paths, keys, JSON. */
   mono?: boolean;
+  /**
+   * Renders an ADHD-friendly quick-pick date/time control instead of a plain
+   * input — added for Content Studio's `scheduledFor` (Git #711). One-tap
+   * chips ("Today 5pm", "Tomorrow 9am", …) resolve to a real ISO datetime and
+   * call `onChange` immediately, the same straight-through-write contract
+   * every other `PeekEdit` already has; a collapsed toggle reveals a plain
+   * `datetime-local` input for anything the chips don't cover. Mutually
+   * exclusive with `options`/`area`/`mono` — a field is one shape.
+   */
+  datetime?: boolean;
 }
 
 /** A row in the peek's list section. Can drill to another peek. */

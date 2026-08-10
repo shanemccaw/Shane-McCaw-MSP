@@ -122,11 +122,30 @@ router.post("/admin/content-studio/posts/:id/ai-draft", requireAdmin, async (req
 
 // ── POST /admin/content-studio/posts/:id/schedule ────────────────────────────
 // Flips status to scheduled — the dispatcher workflow's fan_out_query is what
-// actually picks it up and posts it once scheduled_for arrives.
+// actually picks it up and posts it once scheduled_for arrives. Git #711:
+// validates scheduledFor is a real, parseable, future date first — flipping
+// status unconditionally let a garbage/empty schedule "succeed" and the post
+// just sat there forever, since the dispatcher's fan-out query never matched
+// it against now().
 
 router.post("/admin/content-studio/posts/:id/schedule", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseId(req.params, "id");
+    const [existing] = await db.select().from(contentPostsTable).where(eq(contentPostsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+    if (!existing.scheduledFor) {
+      res.status(400).json({ error: "Set a scheduled time before scheduling this post" });
+      return;
+    }
+    const when = new Date(existing.scheduledFor);
+    if (Number.isNaN(when.getTime())) {
+      res.status(400).json({ error: "Scheduled time is not a valid date" });
+      return;
+    }
+    if (when.getTime() <= Date.now()) {
+      res.status(400).json({ error: "Scheduled time must be in the future" });
+      return;
+    }
     const [row] = await db.update(contentPostsTable)
       .set({ status: "scheduled", updatedAt: new Date() })
       .where(eq(contentPostsTable.id, id))

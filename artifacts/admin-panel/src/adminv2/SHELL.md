@@ -319,7 +319,11 @@ Things the shell does for you, and that you therefore must not reimplement:
   caption. Do not invert it.
 - **Edits write straight through.** There is no save step and no dirty state
   inside a peek; `onChange` should hit the record. Supplying `options` turns the
-  field into a cycle button rather than a dropdown.
+  field into a cycle button rather than a dropdown. Supplying `datetime: true`
+  (Git #711) turns it into one-tap quick-pick chips ("Today 5pm", "Tomorrow
+  9am", …) plus a collapsed custom `datetime-local` fallback, for a field an
+  ADHD-friendly single-tap interaction matters more for than typing or a
+  calendar grid — see Content Studio's `scheduledFor` for the reference use.
 - **`confirm: true` arms in place.** The first press relabels the button to
   `<label> — press again`; only the second calls `onSelect`. There is
   deliberately no confirm dialog behind it — the user does not want to be taken

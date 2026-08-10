@@ -59,6 +59,9 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
    */
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
+  /** Whether a `datetime` edit's collapsed custom-time input is expanded. Keyed by edit key, same reset-on-remount reasoning as `drafts` above. */
+  const [customTimeOpen, setCustomTimeOpen] = useState<Record<string, boolean>>({});
+
   // aria-modal hides everything behind this from assistive tech, so focus has
   // to come with it. Without this the first Tab lands on the title bar the
   // screen reader can no longer see.
@@ -370,7 +373,19 @@ export function Peek({ model, armedActionLabel, onArm, onClose }: PeekProps) {
                   >
                     {edit.label}
                   </label>
-                  {edit.options ? (
+                  {edit.datetime ? (
+                    <DatetimeEdit
+                      value={drafts[edit.key] ?? edit.value}
+                      onChange={(next) => {
+                        setDrafts((d) => ({ ...d, [edit.key]: next }));
+                        edit.onChange(next);
+                      }}
+                      open={!!customTimeOpen[edit.key]}
+                      onToggleOpen={() =>
+                        setCustomTimeOpen((s) => ({ ...s, [edit.key]: !s[edit.key] }))
+                      }
+                    />
+                  ) : edit.options ? (
                     <button
                       id={`peek-${edit.key}`}
                       onClick={() => {
@@ -641,6 +656,138 @@ function editBase(mono?: boolean): CSSProperties {
     fontFamily: mono ? FONT.mono : FONT.sans,
     fontSize: 12.5,
   };
+}
+
+// ─── Datetime edit (Git #711) ──────────────────────────────────────────────
+//
+// ADHD-friendly single-tap scheduling: quick-pick chips resolve straight to
+// an ISO datetime and write through immediately, same as every other
+// `PeekEdit`. No calendar grid, no typing as the primary path — typing only
+// exists behind the collapsed "Pick a different time" toggle, via the one
+// `datetime-local` input already used elsewhere in the app
+// (`SimulatorOverridesPanel.tsx`'s Expires At field), given `color-scheme:
+// dark` so its native popup doesn't render white-on-white against this
+// theme.
+
+function startOfDayAt(date: Date, hours: number, minutes = 0): Date {
+  const d = new Date(date);
+  d.setHours(hours, minutes, 0, 0);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+/** Always strictly in the future — 7 days out if `from` is itself a Monday. */
+function nextMonday(from: Date): Date {
+  const diff = (8 - from.getDay()) % 7 || 7;
+  return addDays(from, diff);
+}
+
+function quickPicks(now: Date): Array<{ label: string; date: Date }> {
+  const picks: Array<{ label: string; date: Date }> = [];
+  const todayFivePm = startOfDayAt(now, 17, 0);
+  if (todayFivePm.getTime() > now.getTime()) picks.push({ label: "Today 5pm", date: todayFivePm });
+  picks.push({ label: "Tomorrow 9am", date: startOfDayAt(addDays(now, 1), 9, 0) });
+  const thisAfternoon = startOfDayAt(now, 14, 0);
+  if (thisAfternoon.getTime() > now.getTime()) picks.push({ label: "This afternoon", date: thisAfternoon });
+  picks.push({ label: "Next Monday 9am", date: startOfDayAt(nextMonday(now), 9, 0) });
+  return picks;
+}
+
+/** `datetime-local` inputs read/write local wall-clock time with no zone — this is the one conversion point. */
+function isoToLocalInputValue(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatPlain(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function DatetimeEdit({
+  value,
+  onChange,
+  open,
+  onToggleOpen,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  const picks = quickPicks(new Date());
+  const plain = formatPlain(value);
+
+  return (
+    <div style={{ flex: "1 1 100%", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {picks.map((pick) => (
+          <button
+            key={pick.label}
+            type="button"
+            onClick={() => onChange(pick.date.toISOString())}
+            style={{
+              flex: "none",
+              padding: "5px 11px",
+              borderRadius: 999,
+              border: `1px solid ${alpha(ACCENT.info, "38")}`,
+              background: alpha(ACCENT.info, "12"),
+              color: ACCENT_TEXT.neutral,
+              fontFamily: FONT.sans,
+              fontSize: 11.5,
+              cursor: "pointer",
+            }}
+          >
+            {pick.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          style={{
+            flex: "none",
+            padding: "5px 11px",
+            borderRadius: 999,
+            border: `1px solid ${LINE.control}`,
+            background: "transparent",
+            color: TEXT.metaAlt,
+            fontFamily: FONT.sans,
+            fontSize: 11.5,
+            cursor: "pointer",
+          }}
+        >
+          {open ? "Hide custom time" : "Pick a different time"}
+        </button>
+      </div>
+
+      {open && (
+        <input
+          type="datetime-local"
+          value={isoToLocalInputValue(value)}
+          onChange={(event) => {
+            const local = event.target.value;
+            if (!local) return;
+            const parsed = new Date(local);
+            if (Number.isNaN(parsed.getTime())) return;
+            onChange(parsed.toISOString());
+          }}
+          style={{ ...editBase(false), flex: "none", width: 220, colorScheme: "dark" } as CSSProperties}
+        />
+      )}
+
+      <span style={{ fontSize: 11.5, color: TEXT.metaAlt }}>
+        {plain || "Not scheduled yet"}
+      </span>
+    </div>
+  );
 }
 
 function SectionRule({ label }: { label: string }) {

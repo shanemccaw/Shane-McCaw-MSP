@@ -22,7 +22,7 @@ import { AlertTriangle, PenSquare, ListChecks } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import { ACCENT } from "../../theme";
-import type { CommandItem, GalleryRow } from "../../registry/types";
+import type { CommandItem, GalleryRow, PeekFact } from "../../registry/types";
 import { ContentStudioBody } from "./ContentStudioBody";
 import {
   aiDraftErrorFor,
@@ -34,6 +34,7 @@ import {
   isGeneratingAiDraft,
   postById,
   scheduledThisWeekCount,
+  scheduleErrorFor,
   schedulePost,
   STATUS_CODE,
   STATUS_LABEL,
@@ -204,6 +205,13 @@ registerScreen({
 
       const aiError = aiDraftErrorFor(post.id);
       const aiBusy = isGeneratingAiDraft(post.id);
+      const scheduleError = scheduleErrorFor(post.id);
+
+      // Same inline-error pattern as AI Assist's — a `facts` row rather than
+      // a second display mechanism (Git #711).
+      const errorFacts: PeekFact[] = [];
+      if (aiError) errorFacts.push({ label: "AI Assist", value: aiError, prose: true, color: ACCENT.danger });
+      if (scheduleError) errorFacts.push({ label: "Schedule", value: scheduleError, prose: true, color: ACCENT.danger });
 
       return {
         kind: "post",
@@ -214,10 +222,10 @@ registerScreen({
         tone: STATUS_TONE[post.status],
         tag: STATUS_LABEL[post.status],
         tagTone: STATUS_TONE[post.status],
-        facts: aiError ? [{ label: "AI Assist", value: aiError, prose: true, color: ACCENT.danger }] : undefined,
+        facts: errorFacts.length > 0 ? errorFacts : undefined,
         edits: [
           { key: "body", label: "Body", value: post.body, area: true, mono: false, onChange: (next) => void updatePostField(post.id, { body: next }) },
-          { key: "scheduledFor", label: "Scheduled for", value: post.scheduledFor, onChange: (next) => void updatePostField(post.id, { scheduledFor: next }) },
+          { key: "scheduledFor", label: "Scheduled for", value: post.scheduledFor, datetime: true, onChange: (next) => void updatePostField(post.id, { scheduledFor: next }) },
         ],
         actions: [
           { label: aiBusy ? "Generating…" : "AI Assist", onSelect: () => aiAssist(post.id) },
