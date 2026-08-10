@@ -21,7 +21,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Layers, Plus, RefreshCw, Rota
 import { ACCENT, LINE, TEXT } from "../../theme";
 import { useShell, type ShellApi } from "../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
-import { deleteScriptById, duplicateScript, getSnapshot, loadMigrations, loadScripts, runMigrationFile, runQueryText, startDraft, subscribe } from "./sqlStore";
+import { deleteScriptById, duplicateScript, getSnapshot, loadMigrations, loadScripts, markMigrationAsRan, runMigrationFile, runQueryText, startDraft, subscribe } from "./sqlStore";
 import type { MigrationFile, SavedScript } from "./sqlTypes";
 
 const sectionRowStyle: CSSProperties = {
@@ -279,6 +279,18 @@ function MigrationRow({
                 },
               },
               { label: "Copy filename", onSelect: () => void navigator.clipboard?.writeText(m.filename) },
+              {
+                label: done ? "Re-mark as run" : "Mark as run (no execute)",
+                onSelect: () => {
+                  if (
+                    window.confirm(
+                      `Mark "${m.filename}" as already run WITHOUT executing it?\n\nOnly do this if you already ran the SQL yourself and the file's own tracking INSERT didn't fire.`,
+                    )
+                  ) {
+                    void markMigrationAsRan(m.filename);
+                  }
+                },
+              },
             ],
             `Actions for ${m.filename}`,
           )

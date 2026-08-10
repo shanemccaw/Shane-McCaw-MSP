@@ -32,7 +32,7 @@
  * past due.
  */
 
-import { AlertTriangle, Copy, Database, FileJson, FileWarning, Layers, Play, Plus, Table2, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCheck, Copy, Database, FileJson, FileWarning, Layers, Play, Plus, Table2, Trash2 } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
@@ -44,6 +44,7 @@ import {
   deleteScriptById,
   duplicateScript,
   getSnapshot,
+  markMigrationAsRan,
   patchScript,
   runMigrationFile,
   runQueryText,
@@ -273,6 +274,22 @@ registerScreen({
                 },
               },
             ],
+            small: [
+              {
+                label: m.ranAt ? "Re-mark as run" : "Mark as run (no execute)",
+                icon: CheckCheck,
+                intent: "record",
+                onSelect: () => {
+                  if (
+                    window.confirm(
+                      `Mark "${m.filename}" as already run WITHOUT executing it?\n\nOnly do this if you already ran the SQL yourself and the file's own tracking INSERT didn't fire.`,
+                    )
+                  ) {
+                    void markMigrationAsRan(m.filename);
+                  }
+                },
+              },
+            ],
           },
         ],
       };
@@ -349,6 +366,11 @@ registerScreen({
               getShellApi()?.dispatch({ type: "setBottomTab", id: "sql-output" });
               void runMigrationFile(filename);
             },
+          },
+          {
+            label: m.ranAt ? "Re-mark as run" : "Mark as run (no execute)",
+            confirm: true,
+            onSelect: () => void markMigrationAsRan(filename),
           },
         ],
       };

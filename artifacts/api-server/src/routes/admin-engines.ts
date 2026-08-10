@@ -1969,6 +1969,43 @@ router.post("/simulator/migrations/execute", requireAdmin, async (req: Request, 
 });
 
 /**
+ * @route POST /api/simulator/migrations/mark-ran
+ * @desc Writes the file's own trailing self-mark INSERT directly, without
+ *       executing the rest of the file — for the (occasional) migration file
+ *       that never got that trailing INSERT written into it, where Shane has
+ *       already run the real SQL himself via his own console and just needs
+ *       the Migrations tree's checkbox to reflect that. Does not touch the
+ *       file's actual schema/data changes — this only ever writes to
+ *       simulator_migration_runs.
+ */
+router.post("/simulator/migrations/mark-ran", requireAdmin, async (req: Request, res: Response) => {
+  const { filename } = req.body ?? {};
+
+  if (!filename || typeof filename !== "string") {
+    return res.status(400).json({ error: "A valid migration filename is required." });
+  }
+
+  try {
+    // Exact allowlist check against the real directory listing — same guard
+    // `/migrations/execute` uses — so this can never mark an arbitrary string.
+    const realFiles = await listManualMigrationFiles();
+    if (!realFiles.includes(filename)) {
+      return res.status(400).json({ error: "Not a recognized manual migration file." });
+    }
+
+    await pool.query(
+      `INSERT INTO simulator_migration_runs (filename, ran_at) VALUES ($1, now())
+       ON CONFLICT (filename) DO UPDATE SET ran_at = now()`,
+      [filename],
+    );
+    return res.json({ filename, ranAt: new Date().toISOString() });
+  } catch (err: any) {
+    systemLog.error({ err, filename }, "Simulator migrations: mark-ran failed");
+    return res.status(500).json({ error: err.message || "Failed to mark migration as run" });
+  }
+});
+
+/**
  * @route GET /api/simulator/migrations/:filename/content
  * @desc Reads one manual migration file's real text off disk, for the SQL
  *       Runner's editor to preview before running — no execution, no DB hit.

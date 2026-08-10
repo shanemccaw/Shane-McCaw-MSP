@@ -26,6 +26,7 @@ import {
   fetchMigrationContent,
   fetchMigrationFiles,
   fetchSqlScripts,
+  markMigrationRan,
   updateSqlScript,
   type SqlScriptInput,
 } from "./sqlApi";
@@ -262,6 +263,27 @@ export async function runMigrationFile(filename: string): Promise<void> {
   await runStatements(() => executeMigrationFile(adminFetchRef!, filename));
   // The file's own trailing self-mark INSERT (#497) just changed `ranAt` server-side.
   void loadMigrations();
+}
+
+/**
+ * For the migration files that never got their trailing self-mark INSERT
+ * written into them — Shane already ran the real SQL by hand, this just
+ * writes the tracking row directly so the Migrations tree stops showing it
+ * as pending. Does not execute anything.
+ */
+export async function markMigrationAsRan(filename: string): Promise<boolean> {
+  if (!adminFetchRef) return false;
+  try {
+    const ranAt = await markMigrationRan(adminFetchRef, filename);
+    setState({
+      migrations: state.migrations.map((m) => (m.filename === filename ? { ...m, ranAt } : m)),
+      lastMessage: "Marked as run.",
+    });
+    return true;
+  } catch (err) {
+    setState({ lastMessage: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
 }
 
 export function setResultView(view: ResultView): void {

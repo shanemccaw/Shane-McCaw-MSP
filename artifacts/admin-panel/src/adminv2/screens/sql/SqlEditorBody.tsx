@@ -52,6 +52,15 @@ const editorSurfaceTheme = EditorView.theme(
     ".cm-gutters": { backgroundColor: SURFACE.app, borderRight: `1px solid ${LINE.subtle}`, color: TEXT.faintest },
     ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
     ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
+    // oneDark's own selection color reads as near-invisible against this
+    // theme's darker `.cm-content` background — explicit override so a
+    // selected range is actually visible, focused or not.
+    "&:not(.cm-focused) .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground": {
+      backgroundColor: `${ACCENT.info}40 !important`,
+    },
+    "&.cm-focused .cm-selectionBackground, &.cm-focused .cm-selectionLayer .cm-selectionBackground": {
+      backgroundColor: `${ACCENT.info}66 !important`,
+    },
     ".cm-tooltip, .cm-tooltip-autocomplete": { backgroundColor: SURFACE.overlay, border: `1px solid ${LINE.control}` },
     ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: SURFACE.wellHover },
   },

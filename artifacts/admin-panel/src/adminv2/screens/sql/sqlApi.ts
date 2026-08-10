@@ -74,6 +74,12 @@ export async function executeMigrationFile(adminFetch: AdminFetch, filename: str
   return data.statements ?? [];
 }
 
+/** Writes the self-mark INSERT directly, without running the rest of the file. See the route's own doc comment. */
+export async function markMigrationRan(adminFetch: AdminFetch, filename: string): Promise<string> {
+  const data = await json<{ ranAt: string }>(await postJson(adminFetch, "/api/simulator/migrations/mark-ran", { filename }));
+  return data.ranAt;
+}
+
 // ── Saved scripts CRUD ─────────────────────────────────────────────────────────
 
 export interface SqlScriptInput {
