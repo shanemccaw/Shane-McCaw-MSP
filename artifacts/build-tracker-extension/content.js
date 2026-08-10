@@ -152,6 +152,8 @@ function buildPanel() {
     .progress-bar { height: 6px; border-radius: 3px; background: #292929; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 3px; transition: width 200ms ease; }
     .progress-note { font-size: 10px; color: #8f8c88; margin-top: 5px; }
+    .progress-siblings { display: block; font-size: 10.5px; color: #7fb4d8; margin-top: 4px; text-decoration: none; font-weight: 600; }
+    .progress-siblings:hover { text-decoration: underline; }
     /* Git #699 — a closed epic that still has open work underneath it, so it
        would otherwise be invisible everywhere else in the panel. Shown
        regardless of which chat/epic is currently in focus — this is the
@@ -920,17 +922,25 @@ function render() {
 
   if (focusEpic && !showAllOverride) {
     search.placeholder = "Search this epic's issues…";
-    renderProgress(currentChat.focusMilestone);
+    // Other epics sharing this milestone — the actual answer to "where are
+    // the other N items the progress bar counts" (Git #699/#712 follow-up:
+    // a passive disclaimer wasn't enough, Shane still couldn't tell WHERE
+    // the rest of the count lived). Computed client-side from data already
+    // in hand — no extra request.
+    const siblingEpics = (boardCache.data.epics ?? []).filter(
+      (e) => e.milestoneId === focusEpic.milestoneId && e.id !== focusEpic.id,
+    );
+    renderProgress(currentChat.focusMilestone, siblingEpics);
     renderFocused(currentChat, search.value);
   } else {
     search.placeholder = "Search…";
-    renderProgress(null);
+    renderProgress(null, []);
     renderCurrent(currentChat, focusEpic);
     renderList(search.value);
   }
 }
 
-function renderProgress(milestone) {
+function renderProgress(milestone, siblingEpics) {
   const { progress } = panelEls;
   if (!milestone) {
     progress.hidden = true;
@@ -940,6 +950,7 @@ function renderProgress(milestone) {
   progress.hidden = false;
   const { done, total, pct } = milestone.progress;
   const color = pct >= 100 ? "#7fae91" : "#f2ca63";
+  const siblings = siblingEpics ?? [];
   progress.innerHTML = `
     <div class="progress-label">
       <span>Milestone: ${escapeHtml(milestone.title)}</span>
@@ -947,7 +958,15 @@ function renderProgress(milestone) {
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%; background:${color};"></div></div>
     <div class="progress-note">Whole milestone, across every epic in it — not just this one.</div>
+    ${siblings.length > 0 ? `<a href="#" class="progress-siblings">${siblings.length} other epic${siblings.length === 1 ? "" : "s"} in this milestone — show them</a>` : ""}
   `;
+  const siblingsLink = progress.querySelector(".progress-siblings");
+  if (siblingsLink) {
+    siblingsLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      openNavigator({ milestone, epic: null });
+    });
+  }
 }
 
 /** The linked-epic-only view — read-only (already linked, nothing to click except sub-epics/search). */
