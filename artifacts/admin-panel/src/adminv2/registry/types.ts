@@ -354,6 +354,14 @@ export interface ContextualTabSpec {
  * tied to an issue, epic, or free-form category. It is not `document` (a
  * generated artefact) and not `lead` (a sales contact) — it is the
  * conversation reference that keeps build context addressable.
+ *
+ * `post` was added for the Content Studio screen (`screens/content-studio/`,
+ * Phase B of Git #601) — a LinkedIn post being composed or scheduled, with a
+ * status (Draft/Scheduled/Posted/Failed), a body and a scheduled time. No
+ * existing kind represents a schedulable content item: it is not `document`
+ * (a generated artefact, not authored and timed by a person) and not
+ * `campaign` (the marketing effort a post might belong to, not the post
+ * itself) — it is the individually schedulable unit of content.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -388,6 +396,7 @@ export const PEEK_KINDS = [
   "issue",
   "chatLink",
   "epic",
+  "post",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 

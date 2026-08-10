@@ -1,6 +1,7 @@
 /**
- * Content Studio body — Phase A scaffolding only (Git #681, epic #601).
- * Phase B lands the `post` peek (compose/edit), Phase C the Queue gallery.
+ * Content Studio body — Phase A scaffolding (Git #681, epic #601). Phase B
+ * (Git #682) landed the `post` peek Compose opens; this panel body stays an
+ * empty state until Phase C lands the real Queue gallery.
  */
 
 import { TEXT } from "../../theme";
@@ -13,8 +14,8 @@ function Stated({ children }: { children: React.ReactNode }) {
 export function ContentStudioBody() {
   return (
     <Stated>
-      Content Studio is scaffolded — Compose and the Queue gallery are wired to the ribbon, but there is nothing to
-      show here yet. The compose/edit peek and a real queue land in Phase B/C of #601.
+      Content Studio is scaffolded — Compose opens the real post peek to write and schedule, but the Queue gallery
+      button has nothing behind it yet and this panel stays empty. A real queue lands in Phase C of #601.
     </Stated>
   );
 }
