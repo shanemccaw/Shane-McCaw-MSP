@@ -133,12 +133,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 70,
+      order: 30,
       group: {
-        label: "Shared links",
-        large: [
+        label: "Gaps & cleanup",
+        small: [
           {
-            label: "Expiring soon",
+            label: "Links expiring soon",
             icon: AlertTriangle,
             intent: "open",
             color: ACCENT.amber,

@@ -417,7 +417,7 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 20,
+      order: 50,
       group: {
         label: "Triage",
         large: [
@@ -445,7 +445,7 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 30,
+      order: 60,
       group: {
         label: "The queue",
         large: [

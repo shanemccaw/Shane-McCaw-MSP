@@ -135,12 +135,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 50,
+      order: 30,
       group: {
-        label: "Services",
-        large: [
+        label: "Gaps & cleanup",
+        small: [
           {
-            label: "No price set",
+            label: "Services with no price set",
             icon: TriangleAlert,
             intent: "open",
             color: ACCENT.amber,

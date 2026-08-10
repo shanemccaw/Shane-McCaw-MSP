@@ -328,12 +328,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 50,
+      order: 20,
       group: {
-        label: "Deliveries",
-        large: [
+        label: "Needs a decision",
+        small: [
           {
-            label: "Overdue",
+            label: "Overdue deliveries",
             icon: AlertTriangle,
             intent: "open",
             color: ACCENT.amber,
@@ -343,9 +343,16 @@ registerScreen({
             gallery: overdueGallery,
           },
         ],
+      },
+    },
+    {
+      tab: "watch",
+      order: 40,
+      group: {
+        label: "Broken",
         small: [
           {
-            label: "Blocked",
+            label: "Blocked deliveries",
             icon: XCircle,
             intent: "open",
             color: ACCENT.danger,

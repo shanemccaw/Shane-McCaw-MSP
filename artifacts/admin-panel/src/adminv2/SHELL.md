@@ -82,6 +82,39 @@ Git and Run render inside an amber capsule that marks them as a developer set.
 `watch` is the "what needs me" tab — exceptions, dead letters, unrun migrations,
 overdue invoices — and it is the one place a live count belongs.
 
+### Group your `watch` (or any fixed-tab) contribution under a shared label
+
+`watch` in particular is fed by a dozen-plus unrelated screens, and if every
+screen gives its one alert its own `group.label`, you get a dozen 68px boxes —
+each with its own padding and divider — running wider than the ribbon.
+`groupsForFixedTab` (`registry/registry.ts`) merges contributions that share a
+`group.label` **on the same tab** into one physical box, concatenating their
+`combos`/`large`/`small`/`row` arrays; the merged box sorts at whichever
+contributor asked for the lowest `order`. This is an explicit opt-in — pick a
+label that names the theme, not your screen:
+
+```tsx
+ribbon: [{
+  tab: "watch",
+  order: 30,
+  group: {
+    label: "Gaps & cleanup",     // shared with endpoints/packages/services/etc.
+    small: [{ label: "Services with no price set", icon: TriangleAlert,
+      intent: "open", color: ACCENT.amber, liveKey: WATCH_UNPRICED_KEY, onSelect: goto }],
+  },
+}]
+```
+
+The current `watch` themes, in ribbon order: `Right now` (observability's own,
+most severe), `Needs a decision` (amber, waiting on a person), `Gaps & cleanup`
+(amber, configured-but-unused), `Broken` (danger, actually failing), `Triage`
+and `The queue` (observability's own action groups). Reuse one of these labels
+rather than inventing a new one unless your alert genuinely doesn't fit any of
+them — a new label means a new box, which is the thing this mechanism exists
+to avoid. Prefer `small` over `large` for anything joining a shared group:
+`large` is a 68px column meant for a group's one standout action, and a shared
+group's whole point is to hold several.
+
 ### Where actions belong
 
 Earlier guidance said to keep everything on `home` rather than adding tabs.

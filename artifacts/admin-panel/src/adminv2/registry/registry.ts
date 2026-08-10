@@ -107,18 +107,39 @@ export function screenForRoute(route: string): ScreenModule | undefined {
  *
  * `order` sorts first; registration order breaks ties, which keeps the ribbon
  * stable across reloads instead of following Map iteration luck.
+ *
+ * Contributions that share a `group.label` on the same tab are merged into one
+ * physical group box (their `combos`/`large`/`small`/`row` arrays concatenated
+ * in encounter order) rather than rendered as separate boxes. `watch` in
+ * particular had grown to 14 one-button boxes across 12 screens — each with
+ * its own padding and divider — and ran wider than the ribbon. A shared label
+ * is an explicit opt-in: unrelated screens keep unrelated labels and stay
+ * separate; screens contributing to the same theme (e.g. "Gaps & cleanup")
+ * land in the same box. The merged group sorts at the lowest `order` any of
+ * its contributors asked for.
  */
 export function groupsForFixedTab(tab: FixedTabId): RibbonGroup[] {
-  const contributions: Array<{ group: RibbonGroup; order: number; seq: number }> = [];
+  const merged = new Map<string, { group: RibbonGroup; order: number; seq: number }>();
   let seq = 0;
   for (const screen of screens.values()) {
     for (const contribution of screen.ribbon ?? []) {
       if (contribution.tab !== tab) continue;
-      contributions.push({ group: contribution.group, order: contribution.order ?? 100, seq: seq++ });
+      const order = contribution.order ?? 100;
+      const existing = merged.get(contribution.group.label);
+      if (!existing) {
+        merged.set(contribution.group.label, { group: { ...contribution.group }, order, seq: seq++ });
+        continue;
+      }
+      existing.group.combos = [...(existing.group.combos ?? []), ...(contribution.group.combos ?? [])];
+      existing.group.large = [...(existing.group.large ?? []), ...(contribution.group.large ?? [])];
+      existing.group.small = [...(existing.group.small ?? []), ...(contribution.group.small ?? [])];
+      existing.group.row = [...(existing.group.row ?? []), ...(contribution.group.row ?? [])];
+      existing.order = Math.min(existing.order, order);
     }
   }
-  contributions.sort((a, b) => a.order - b.order || a.seq - b.seq);
-  return contributions.map((c) => c.group);
+  return [...merged.values()]
+    .sort((a, b) => a.order - b.order || a.seq - b.seq)
+    .map((c) => c.group);
 }
 
 // ─── Peek dispatch ────────────────────────────────────────────────────────────

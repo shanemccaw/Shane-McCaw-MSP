@@ -391,7 +391,7 @@ describe("ribbon liveness", () => {
       .flatMap((r) => [...(r.group.large ?? []), ...(r.group.small ?? [])])
       .find((c) => c.gallery?.id === "endpoints");
     const gaps = (endpointsScreen.ribbon ?? [])
-      .flatMap((r) => [...(r.group.large ?? [])])
+      .flatMap((r) => [...(r.group.large ?? []), ...(r.group.small ?? [])])
       .find((c) => c.gallery?.id === "endpoint-gaps");
     expect(browse?.gallery).toBeTruthy();
     expect(browse!.gallery!.rows).toEqual([]);

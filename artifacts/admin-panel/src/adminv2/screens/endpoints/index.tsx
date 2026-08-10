@@ -174,12 +174,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 40,
+      order: 30,
       group: {
-        label: "Endpoints",
-        large: [
+        label: "Gaps & cleanup",
+        small: [
           {
-            label: "In no package",
+            label: "Endpoints in no package",
             icon: TriangleAlert,
             intent: "open",
             color: ACCENT.amber,

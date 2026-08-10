@@ -201,14 +201,15 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 45,
+      order: 40,
       group: {
-        label: "Documents",
-        large: [
+        label: "Broken",
+        small: [
           {
-            label: "Generations that failed",
+            label: "Failed generations",
             icon: TriangleAlert,
             intent: "open",
+            color: ACCENT.danger,
             liveKey: WATCH_FAILED_KEY,
             onSelect: showFailures,
             title: "AI generations that came back failed, among the most recently generated documents",

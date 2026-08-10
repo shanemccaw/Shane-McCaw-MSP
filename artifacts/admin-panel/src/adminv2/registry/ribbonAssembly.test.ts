@@ -226,6 +226,70 @@ describe("registry", () => {
     expect(groupsForFixedTab("home").map((g) => g.label)).toEqual(["Early", "Default", "Late"]);
   });
 
+  it("merges same-label contributions from different screens into one group box", () => {
+    registerScreen(
+      screen({
+        id: "a",
+        route: "/a",
+        ribbon: [
+          {
+            tab: "watch",
+            order: 40,
+            group: {
+              label: "Broken",
+              small: [{ label: "A's failures", icon: Boxes, intent: "open", onSelect: () => {} }],
+            },
+          },
+        ],
+      }),
+    );
+    registerScreen(
+      screen({
+        id: "b",
+        route: "/b",
+        ribbon: [
+          {
+            tab: "watch",
+            order: 90,
+            group: {
+              label: "Broken",
+              small: [{ label: "B's failures", icon: Boxes, intent: "open", onSelect: () => {} }],
+            },
+          },
+        ],
+      }),
+    );
+    const groups = groupsForFixedTab("watch");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.label).toBe("Broken");
+    expect(groups[0]!.small?.map((c) => c.label)).toEqual(["A's failures", "B's failures"]);
+  });
+
+  it("sorts a merged group at the lowest order any contributor supplied, and leaves differently-labelled groups separate", () => {
+    registerScreen(
+      screen({
+        id: "a",
+        route: "/a",
+        ribbon: [{ tab: "watch", order: 90, group: { label: "Shared" } }],
+      }),
+    );
+    registerScreen(
+      screen({
+        id: "b",
+        route: "/b",
+        ribbon: [{ tab: "watch", order: 50, group: { label: "Solo" } }],
+      }),
+    );
+    registerScreen(
+      screen({
+        id: "c",
+        route: "/c",
+        ribbon: [{ tab: "watch", order: 10, group: { label: "Shared" } }],
+      }),
+    );
+    expect(groupsForFixedTab("watch").map((g) => g.label)).toEqual(["Shared", "Solo"]);
+  });
+
   it("resolves a peek through whichever screen owns the kind", () => {
     registerScreen(
       screen({

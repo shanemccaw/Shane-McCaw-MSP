@@ -193,10 +193,10 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 65,
+      order: 40,
       group: {
-        label: "Trigger errors",
-        large: [
+        label: "Broken",
+        small: [
           {
             label: "Trigger errors",
             icon: AlertTriangle,

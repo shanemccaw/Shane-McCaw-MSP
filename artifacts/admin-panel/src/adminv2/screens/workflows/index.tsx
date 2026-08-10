@@ -267,12 +267,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 60,
+      order: 20,
       group: {
-        label: "Approvals",
-        large: [
+        label: "Needs a decision",
+        small: [
           {
-            label: "Waiting on you",
+            label: "Workflow approvals",
             icon: AlertTriangle,
             intent: "open",
             color: ACCENT.amber,

@@ -316,10 +316,10 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 40,
+      order: 30,
       group: {
-        label: "Packages",
-        large: [
+        label: "Gaps & cleanup",
+        small: [
           {
             label: "Packages that collect nothing",
             icon: PackageX,
@@ -330,8 +330,6 @@ registerScreen({
             onSelect: go(),
             gallery: silentGallery,
           },
-        ],
-        small: [
           {
             label: "Checks in no package",
             icon: Layers,

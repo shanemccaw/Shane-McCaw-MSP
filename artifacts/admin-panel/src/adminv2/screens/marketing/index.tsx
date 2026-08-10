@@ -141,12 +141,12 @@ registerScreen({
     },
     {
       tab: "watch",
-      order: 45,
+      order: 20,
       group: {
-        label: "Marketing",
-        large: [
+        label: "Needs a decision",
+        small: [
           {
-            label: "Waiting on you",
+            label: "Campaigns waiting on you",
             icon: FileText,
             intent: "open",
             color: waitingOnYouCount() > 0 ? ACCENT.amber : undefined,

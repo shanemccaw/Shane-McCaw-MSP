@@ -237,8 +237,8 @@ registerScreen({
       tab: "watch",
       order: 40,
       group: {
-        label: "Runs",
-        large: [
+        label: "Broken",
+        small: [
           {
             // Both are overridden at render time by `liveRibbon` once anything
             // has failed — see `runHistoryStore.syncWatchCount`. The resting
@@ -246,6 +246,7 @@ registerScreen({
             label: "Runs that failed",
             icon: Clock,
             intent: "open",
+            color: ACCENT.danger,
             liveKey: WATCH_FAILED_KEY,
             onSelect: showFailures,
             title: "Every command or query that came back failed",
