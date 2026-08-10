@@ -133,6 +133,21 @@ export function epicsForMilestone(milestoneId: number): EpicRow[] {
   );
 }
 
+/**
+ * True only if `epic` doesn't resolve to any real milestone by
+ * epicsForMilestone()'s own three-way match (own milestoneId, GitHub-number
+ * match, or inheriting from a child issue's milestone). Screens must use this
+ * — not a bare `!epic.milestoneId` check — when deciding what counts as
+ * "unassigned": an epic can pass through with milestoneId left null while
+ * still resolving to a milestone via inheritance, and a naive field check
+ * then renders it a second time in the unassigned bucket alongside its real
+ * nested spot under that milestone.
+ */
+export function epicIsUnassigned(epic: EpicRow): boolean {
+  const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+  return !milestones.some((m) => epicsForMilestone(m.id).some((e) => e.id === epic.id));
+}
+
 export function epicById(id: string | number): EpicRow | undefined {
   const epics = Array.isArray(state?.epics) ? state.epics : [];
   return epics.find((e) => e.id === Number(id));

@@ -18,7 +18,7 @@ import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import {
   getSnapshot, subscribe, milestoneById, epicsForMilestone,
   createMilestone, updateMilestone, deleteMilestone, assignEpicToMilestone,
-  selectMilestone, selectEpic
+  selectMilestone, selectEpic, epicIsUnassigned,
 } from "../build-tracker/buildTrackerStore";
 import type { MilestoneRow, EpicRow, MilestoneStatus } from "../build-tracker/buildTrackerTypes";
 
@@ -334,7 +334,7 @@ function GanttChart({
 function EpicAssignmentMatrix() {
   const state = useStore();
   const [query, setQuery] = useState("");
-  const unassignedEpics = state.epics.filter((e) => !e.milestoneId && e.status !== "closed");
+  const unassignedEpics = state.epics.filter((e) => epicIsUnassigned(e) && e.status !== "closed");
 
   if (unassignedEpics.length === 0) return null;
 

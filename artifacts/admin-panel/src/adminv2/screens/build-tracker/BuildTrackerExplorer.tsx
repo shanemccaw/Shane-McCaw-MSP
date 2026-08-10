@@ -33,6 +33,7 @@ import {
   unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
   deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
   formatIssueAge, trimMilestoneToCapacity, syncFromGitHub, assignEpicToMilestone,
+  epicIsUnassigned,
 } from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -658,7 +659,7 @@ export function BuildTrackerExplorer() {
   const visibleMilestones = state.milestones
     .filter(m => showClosed || m.status !== "closed")
     .filter(m => milestoneMatchesQuery(m, query));
-  const unassignedEpics = state.epics.filter(e => !e.milestoneId);
+  const unassignedEpics = state.epics.filter(epicIsUnassigned);
   const visibleEpics = unassignedEpics
     .filter(e => showClosed || e.status !== "closed")
     .filter(e => epicMatchesQuery(e, query));
