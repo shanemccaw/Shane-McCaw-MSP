@@ -72,12 +72,15 @@ If either the popup or the panel shows an error, it's almost always one of:
 wrong API base URL, wrong/unset token, or the api-server not reachable from
 your browser at that URL.
 
-The panel's ⟳ button does a **real GitHub sync** first, then reloads the
-board — not just a re-read of Build Tracker's own (possibly stale) database.
-That's what makes a freshly `in-flight`/`complete`-labeled issue (or its
-milestone/epic changes) show up here without going to the admin panel and
-clicking Sync GitHub yourself. It also means it can take a few seconds on a
-real repo — the panel shows "Syncing from GitHub…" while it runs.
+The panel's ⟳ button does a **quick sync** — it checks GitHub for just the
+issues currently visible in the panel (fast, usually under a second), not
+the whole repo. That's what makes a freshly `in-flight`/`complete`-labeled
+issue show up here without going to the admin panel yourself. It only
+updates issues Build Tracker already knows about, though — to discover a
+brand-new epic/issue/milestone, use the **"Full sync from GitHub"** link at
+the bottom of the panel instead, which does the same real whole-repo pull
+Build Tracker's own Sync button does (slower — pages through every issue in
+the repo — but that's the only way to catch something entirely new).
 
 ## What it does NOT do
 

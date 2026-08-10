@@ -148,6 +148,34 @@ async function syncGithub() {
   }
 }
 
+/**
+ * POSTs to /extension/quick-sync — a fast, targeted alternative to
+ * syncGithub() above (Git #695: the full sync was too slow just to catch a
+ * label change on issues already on screen). Fetches only the given issue
+ * numbers directly, no whole-repo pagination.
+ */
+async function quickSync(issueNumbers) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/quick-sync`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ issueNumbers }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -159,6 +187,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-sync-github") {
     void syncGithub().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-quick-sync") {
+    void quickSync(message.issueNumbers).then(sendResponse);
     return true;
   }
   return false;

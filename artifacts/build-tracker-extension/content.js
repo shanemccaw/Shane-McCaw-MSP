@@ -135,6 +135,12 @@ function buildPanel() {
       background: #292929; color: #f3f2f1; font-size: 12px; outline: none; flex: none;
     }
     .list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .footer { padding: 7px 12px; border-top: 1px solid #2e2e2e; flex: none; }
+    .footer button {
+      background: transparent; border: 0; color: #7fb4d8; font-size: 10.5px; cursor: pointer; padding: 0;
+    }
+    .footer button:hover { text-decoration: underline; }
+    .footer button:disabled { color: #6d6b69; cursor: default; text-decoration: none; }
     .milestone { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
       color: #f2ca63; margin: 10px 6px 4px; }
     .epic-row {
@@ -234,13 +240,16 @@ function buildPanel() {
     <div class="header">
       <span class="title">What am I working on?</span>
       <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
-      <button class="iconbtn" data-action="refresh" title="Sync from GitHub">⟳</button>
+      <button class="iconbtn" data-action="refresh" title="Quick sync — checks just the issues on screen">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
     <div class="progress" hidden></div>
     <div class="current"></div>
     <input class="search" placeholder="Search…" />
     <div class="list"></div>
+    <div class="footer">
+      <button type="button" data-action="full-sync">Full sync from GitHub (discover new items)</button>
+    </div>
   `;
   shadow.appendChild(panel);
 
@@ -283,7 +292,8 @@ function buildPanel() {
 
   tab.addEventListener("click", () => togglePanel(true));
   panel.querySelector('[data-action="close"]').addEventListener("click", () => togglePanel(false));
-  panel.querySelector('[data-action="refresh"]').addEventListener("click", () => void refreshFromGithub());
+  panel.querySelector('[data-action="refresh"]').addEventListener("click", () => void quickRefresh());
+  panel.querySelector('[data-action="full-sync"]').addEventListener("click", () => void fullSyncFromGithub());
   panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
   search.addEventListener("input", () => renderList(search.value));
 
@@ -473,16 +483,50 @@ async function loadBoard(force) {
   render();
 }
 
+/** GitHub issue numbers for whatever's actually on screen right now — the set quickRefresh() checks. */
+function visibleIssueNumbers() {
+  if (!boardCache) return [];
+  const { currentChat, issues } = boardCache.data;
+  const focusEpic = currentChat?.focusEpic;
+  const source = focusEpic && !showAllOverride ? (currentChat.focusEpicOpenIssues ?? []) : issues;
+  return Array.from(new Set(source.map((i) => i.githubNumber).filter((n) => typeof n === "number")));
+}
+
 /**
- * The Refresh button (Git #693) — a real pull from GitHub first, THEN a
- * board reload, not just loadBoard(true) re-reading Build Tracker's own DB.
- * Without the sync step a freshly in-flight/complete-labeled issue only
- * shows up here after Shane goes and clicks Build Tracker's own "Sync
- * GitHub" button — the whole point of a live indicator is that it's live.
+ * The Refresh button (Git #693, sped up in #695) — checks GitHub for just
+ * the issues currently visible in the panel, not the whole repo. Shane
+ * flagged the original full-sync-on-every-click as slow, which it is: a
+ * full sync pages through every issue in the repo to catch a label change
+ * on two or three he's already looking at. This is the fast path for that
+ * common case; "Full sync from GitHub" below is still there for when he
+ * actually needs to discover something new.
  */
-async function refreshFromGithub() {
+async function quickRefresh() {
   const { list } = buildPanel();
-  list.innerHTML = `<div class="empty">Syncing from GitHub…</div>`;
+  const numbers = visibleIssueNumbers();
+  if (numbers.length === 0) {
+    await loadBoard(true);
+    return;
+  }
+
+  list.innerHTML = `<div class="empty">Checking ${numbers.length} issue${numbers.length === 1 ? "" : "s"}…</div>`;
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+  if (!res?.ok) {
+    list.innerHTML = `<div class="empty">${escapeHtml(`Quick sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
+    return;
+  }
+  await loadBoard(true);
+}
+
+/**
+ * "Full sync from GitHub" footer link — the original behavior from #693: a
+ * real whole-repo pull, THEN a board reload. Needed to discover an epic/
+ * issue/milestone Build Tracker doesn't know about yet at all — quickRefresh()
+ * above only ever updates rows that already exist.
+ */
+async function fullSyncFromGithub() {
+  const { list } = buildPanel();
+  list.innerHTML = `<div class="empty">Full syncing from GitHub…</div>`;
 
   const syncRes = await chrome.runtime.sendMessage({ type: "build-tracker-sync-github" });
   if (!syncRes?.ok) {

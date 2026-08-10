@@ -736,6 +736,70 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
   }
 });
 
+/**
+ * POST /admin/build-tracker/extension/quick-sync
+ *
+ * A fast, targeted alternative to POST /github-sync for the extension's
+ * Refresh button (Git #695) — a full sync paginates the WHOLE repo just to
+ * catch a couple of label changes on issues Shane is already looking at,
+ * which he flagged as slow. This fetches only the given issue numbers
+ * directly from GitHub and updates just their title/description/labels/
+ * githubUrl in place, plus a one-way "closed wins" status push (same rule
+ * the full sync uses) — no epic/milestone discovery, no GitHub Projects v2
+ * status lookup (that's its own GraphQL round trip the full sync pays for;
+ * skipped here to stay fast). Never creates a row — an issue Build Tracker
+ * doesn't already know about needs a real full sync, not this; the panel's
+ * separate "Full sync" link is still there for that.
+ *
+ * Body: { issueNumbers: number[] } — deduped, capped at 30 per call.
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const { issueNumbers } = req.body as { issueNumbers?: number[] };
+  const numbers = Array.from(
+    new Set((issueNumbers ?? []).filter((n) => Number.isInteger(n))),
+  ).slice(0, 30);
+  if (numbers.length === 0) {
+    res.status(400).json({ error: "issueNumbers is required" });
+    return;
+  }
+
+  let updated = 0;
+  const failed: number[] = [];
+  for (const num of numbers) {
+    try {
+      const ghRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${num}`);
+      if (!ghRes.ok) { failed.push(num); continue; }
+      const gh = (await ghRes.json()) as GitHubIssuePayload;
+      const patch: Partial<typeof btIssuesTable.$inferInsert> = {
+        title: gh.title,
+        description: gh.body,
+        githubUrl: gh.html_url,
+        labels: gh.labels.map((l) => l.name),
+        updatedAt: new Date(),
+      };
+      if (gh.state === "closed") patch.status = "closed";
+
+      const result = await db
+        .update(btIssuesTable)
+        .set(patch)
+        .where(eq(btIssuesTable.githubNumber, num))
+        .returning({ id: btIssuesTable.id });
+      if (result.length > 0) updated++;
+    } catch (err) {
+      log.error({ err, num }, "quick-sync: single-issue fetch failed");
+      failed.push(num);
+    }
+  }
+
+  res.json({ updated, requested: numbers.length, failed });
+});
+
 /** PATCH /admin/build-tracker/chats/:id */
 router.patch("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
