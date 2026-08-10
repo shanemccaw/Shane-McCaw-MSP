@@ -180,7 +180,7 @@ function InProgressWorkPillDropdown() {
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", left: 0, width: 340,
           background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
-          borderRadius: 8, boxShadow: SHADOW.popover, zIndex: Z.dropdown,
+          borderRadius: 8, boxShadow: SHADOW.popover, zIndex: 9999,
           padding: 12, display: "flex", flexDirection: "column", gap: 10,
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${LINE.quiet}`, paddingBottom: 6 }}>
