@@ -9,7 +9,7 @@
  *   5. Quick Milestone creator modal.
  */
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import {
   Calendar, CheckCircle, Clock, Flag, GitBranch,
   GitPullRequest, Plus, Target, Sparkles, Filter, Eye, ChevronRight, X
@@ -660,6 +660,14 @@ export function ProjectManagementBody() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newTargetDate, setNewTargetDate] = useState("");
+
+  useEffect(() => {
+    function handleOpen() {
+      setShowCreateModal(true);
+    }
+    window.addEventListener("open-new-milestone-modal", handleOpen);
+    return () => window.removeEventListener("open-new-milestone-modal", handleOpen);
+  }, []);
 
   async function handleCreate() {
     if (!newTitle.trim()) return;

@@ -205,7 +205,46 @@ registerScreen({
       };
     }
 
-    if (!ctx.kind || !ctx.recordId) return null;
+    if (!ctx.kind || !ctx.recordId) {
+      return {
+        id: "build-tracker-tools",
+        label: "Build Tools",
+        groups: [
+          {
+            label: "Roadmap",
+            large: [
+              {
+                label: "Gantt & Roadmap",
+                icon: Target,
+                intent: "open",
+                color: ACCENT.amber,
+                onSelect: () => getShellApi()?.navigate("/project-management"),
+                title: "Open Gantt Chart and Milestone Roadmap",
+              },
+            ],
+          },
+          {
+            label: "Actions",
+            small: [
+              {
+                label: "Sync from GitHub",
+                icon: RefreshCw,
+                intent: "record",
+                onSelect: () => void syncFromGitHub(),
+              },
+              {
+                label: "Triage Issues",
+                icon: BookOpen,
+                intent: "record",
+                onSelect: () => {
+                  setTriageActive(true);
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
 
     if (ctx.kind === "epic") {
       const epic = epicById(Number(ctx.recordId));

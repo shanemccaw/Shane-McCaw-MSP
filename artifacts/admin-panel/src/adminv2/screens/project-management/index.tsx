@@ -1,15 +1,9 @@
-/**
- * Project Management studio screen module.
- *
- * Provides a dedicated Gantt chart, Milestone timeline, and Epic roadmap.
- * Registered at /project-management.
- */
-
-import { Flag, Target, Plus, Calendar } from "lucide-react";
+import { Flag, Target, Plus, Calendar, RefreshCw } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import { ProjectManagementBody } from "./ProjectManagementBody";
+import { syncFromGitHub } from "../build-tracker/buildTrackerStore";
 
 export const ROUTE = "/project-management";
 
@@ -38,6 +32,48 @@ registerScreen({
       },
     },
   ],
+
+  contextualTab: () => {
+    return {
+      id: "project-management-tools",
+      label: "Roadmap Tools",
+      groups: [
+        {
+          label: "Actions",
+          large: [
+            {
+              label: "New Milestone",
+              icon: Plus,
+              intent: "record",
+              color: ACCENT.amber,
+              onSelect: () => {
+                window.dispatchEvent(new CustomEvent("open-new-milestone-modal"));
+              },
+              title: "Create a new GitHub milestone",
+            },
+            {
+              label: "Sync from GitHub",
+              icon: RefreshCw,
+              intent: "record",
+              onSelect: () => void syncFromGitHub(),
+              title: "Pull latest milestones and issues from GitHub",
+            },
+          ],
+        },
+        {
+          label: "Navigation",
+          small: [
+            {
+              label: "Build Tracker",
+              icon: Flag,
+              intent: "open",
+              onSelect: () => getShellApi()?.navigate("/build-tracker"),
+            },
+          ],
+        },
+      ],
+    };
+  },
 
   render: () => <ProjectManagementBody />,
 });

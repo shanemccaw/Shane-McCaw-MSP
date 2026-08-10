@@ -176,23 +176,25 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       const docs = existing
         ? state.docs.map((d) => (d.id === action.doc.id ? { ...d, ...action.doc } : d))
         : [...state.docs, action.doc];
+      const isBuildRelated = action.doc.screenId === "build-tracker" || action.doc.screenId === "project-management";
       return {
         ...state,
         docs,
         activeDocId: action.doc.id,
         trail: action.trail ? pushTrail(state.trail, action.trail) : state.trail,
-        // Opening a record makes its contextual tab the useful one.
-        contextActive: action.doc.kind !== "screen",
+        // Opening a record or build-related studio screen makes its contextual tab active.
+        contextActive: isBuildRelated || action.doc.kind !== "screen",
         ribbonOpen: state.ribbonOpen,
       };
     }
 
     case "activateDoc": {
       const doc = state.docs.find((d) => d.id === action.id);
+      const isBuildRelated = doc?.screenId === "build-tracker" || doc?.screenId === "project-management";
       return {
         ...state,
         activeDocId: action.id,
-        contextActive: doc ? doc.kind !== "screen" : state.contextActive,
+        contextActive: isBuildRelated || (doc ? doc.kind !== "screen" : state.contextActive),
       };
     }
 
