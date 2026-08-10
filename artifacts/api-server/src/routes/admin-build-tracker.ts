@@ -203,19 +203,97 @@ router.post("/admin/build-tracker/milestones", requireAdmin, async (req: Request
     res.status(400).json({ error: "title is required" });
     return;
   }
+
+  let ghNumber: number | null = null;
+  if (process.env.GITHUB_TOKEN) {
+    try {
+      const ghRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description?.trim() || undefined,
+          due_on: targetDate ? `${targetDate}T23:59:59Z` : undefined,
+          state: status === "closed" ? "closed" : "open",
+        }),
+      });
+      if (ghRes.ok) {
+        const ghData = await ghRes.json();
+        ghNumber = ghData.number;
+      }
+    } catch (err) {
+      log.error({ err }, "Failed to create GitHub milestone remotely");
+    }
+  }
+
   const milestone = {
-    id: Date.now(),
+    id: ghNumber || Date.now(),
     title: title.trim(),
     description: description?.trim() || null,
     startDate: startDate || new Date().toISOString().split("T")[0],
     targetDate: targetDate || null,
     status: status || "open",
-    githubNumber: null,
+    githubNumber: ghNumber,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     epicCount: 0,
   };
   res.status(201).json(milestone);
+});
+
+/** PATCH /admin/build-tracker/milestones/:id — update title/description/status/dates */
+router.patch("/admin/build-tracker/milestones/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+
+  const { title, description, status, targetDate, startDate, githubNumber } = req.body as {
+    title?: string;
+    description?: string;
+    status?: string;
+    targetDate?: string;
+    startDate?: string;
+    githubNumber?: number;
+  };
+
+  const milestoneNumber = githubNumber || id;
+  if (process.env.GITHUB_TOKEN && milestoneNumber) {
+    try {
+      await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones/${milestoneNumber}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(title ? { title: title.trim() } : {}),
+          ...(description !== undefined ? { description: description?.trim() || null } : {}),
+          ...(targetDate !== undefined ? { due_on: targetDate ? `${targetDate}T23:59:59Z` : null } : {}),
+          ...(status ? { state: status === "closed" ? "closed" : "open" } : {}),
+        }),
+      });
+    } catch (err) {
+      log.error({ err, id }, "Failed to update remote GitHub milestone");
+    }
+  }
+
+  res.json({ id, title, description, status, startDate, targetDate });
+});
+
+/** DELETE /admin/build-tracker/milestones/:id */
+router.delete("/admin/build-tracker/milestones/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+
+  const githubNumber = req.query.githubNumber ? parseInt(req.query.githubNumber as string, 10) : undefined;
+  const milestoneNumber = githubNumber || id;
+
+  if (process.env.GITHUB_TOKEN && milestoneNumber) {
+    try {
+      await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones/${milestoneNumber}`, {
+        method: "PATCH",
+        body: JSON.stringify({ state: "closed" }),
+      });
+    } catch (err) {
+      log.error({ err, id }, "Failed to close remote GitHub milestone");
+    }
+  }
+
+  res.status(204).end();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -491,14 +569,16 @@ const GITHUB_OWNER = "shanemccaw";
 const GITHUB_REPO_NAME = "Shane-McCaw-MSP";
 const GITHUB_API = "https://api.github.com";
 
-async function ghFetch(path: string): Promise<Response> {
+async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("GITHUB_TOKEN env var not set");
   return fetch(`${GITHUB_API}${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
+      ...(init?.headers || {}),
     },
   });
 }
@@ -646,10 +726,35 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
     }
 
     debugLog += `Issues upserted into db: ${issuesUpserted}\n`;
+
+    // ── 5. Fetch GitHub Milestones ────────────────────────────────────────
+    let syncedMilestones: any[] = [];
+    try {
+      const msRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=all`);
+      if (msRes.ok) {
+        const ghMsList = await msRes.json();
+        syncedMilestones = ghMsList.map((m: any) => ({
+          id: m.number,
+          title: m.title,
+          description: m.description,
+          startDate: new Date().toISOString().split("T")[0],
+          targetDate: m.due_on ? m.due_on.split("T")[0] : null,
+          status: m.state,
+          githubNumber: m.number,
+          createdAt: m.created_at,
+          updatedAt: m.updated_at,
+          epicCount: m.open_issues + m.closed_issues,
+        }));
+        debugLog += `Milestones fetched from GitHub: ${syncedMilestones.length}\n`;
+      }
+    } catch (err) {
+      debugLog += `Fetching GitHub milestones failed: ${String(err)}\n`;
+    }
+
     await fs.writeFile(debugLogPath, debugLog, "utf-8");
 
-    log.info({ epicsUpserted, issuesUpserted }, "GitHub sync complete");
-    res.json({ epics: epicsUpserted, issues: issuesUpserted });
+    log.info({ epicsUpserted, issuesUpserted, milestoneCount: syncedMilestones.length }, "GitHub sync complete");
+    res.json({ epics: epicsUpserted, issues: issuesUpserted, milestones: syncedMilestones });
   } catch (err: any) {
     debugLog += `Sync failed with error: ${err instanceof Error ? err.stack : String(err)}\n`;
     await fs.writeFile(debugLogPath, debugLog, "utf-8");

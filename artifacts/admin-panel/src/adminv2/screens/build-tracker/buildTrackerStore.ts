@@ -209,18 +209,19 @@ export function unlinkedCount(s?: BuildTrackerState): number {
 export async function loadAll(): Promise<void> {
   set({ epicsLoading: true, issuesLoading: true, chatsLoading: true });
   try {
-    const [epicsRes, issuesRes, chatsRes] = await Promise.all([
+    const [epicsRes, issuesRes, chatsRes, milestonesRes] = await Promise.all([
       apiFetch("/admin/build-tracker/epics"),
       apiFetch("/admin/build-tracker/issues"),
       apiFetch("/admin/build-tracker/chats"),
+      apiFetch("/admin/build-tracker/milestones").catch(() => null),
     ]);
-    const [epics, issues, chats] = await Promise.all([
-      epicsRes.json() as Promise<EpicRow[]>,
-      issuesRes.json() as Promise<IssueRow[]>,
-      chatsRes.json() as Promise<ChatRow[]>,
-    ]);
+    const epics = (await epicsRes.json()) as EpicRow[];
+    const issues = (await issuesRes.json()) as IssueRow[];
+    const chats = (await chatsRes.json()) as ChatRow[];
+    const milestones = milestonesRes && milestonesRes.ok ? ((await milestonesRes.json()) as MilestoneRow[]) : state.milestones;
+
     set({
-      epics, issues, chats,
+      epics, issues, chats, milestones,
       epicsLoading: false, issuesLoading: false, chatsLoading: false,
       epicsError: null, issuesError: null, chatsError: null,
     });
@@ -276,37 +277,66 @@ export async function createMilestone(
   description?: string | null,
   startDate?: string | null
 ): Promise<MilestoneRow> {
-  const newRow: MilestoneRow = {
-    id: Date.now(),
-    title,
-    description: description || null,
-    startDate: startDate || new Date().toISOString().split("T")[0],
-    targetDate: targetDate || null,
-    status: "open",
-    githubNumber: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    epicCount: 0,
-  };
-  set({ milestones: [newRow, ...state.milestones] });
+  let newRow: MilestoneRow;
+  try {
+    const res = await apiFetch("/admin/build-tracker/milestones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, description, targetDate, startDate }),
+    });
+    newRow = (await res.json()) as MilestoneRow;
+  } catch (err) {
+    log.error({ err }, "createMilestone REST call failed, using local row");
+    newRow = {
+      id: Date.now(),
+      title,
+      description: description || null,
+      startDate: startDate || new Date().toISOString().split("T")[0],
+      targetDate: targetDate || null,
+      status: "open",
+      githubNumber: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      epicCount: 0,
+    };
+  }
+  set({ milestones: [newRow, ...state.milestones.filter((m) => m.id !== newRow.id)] });
   flashMessage(`Milestone "${title}" created`);
   return newRow;
 }
 
 export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) {
+  const existing = state.milestones.find((m) => m.id === id);
   set({
     milestones: state.milestones.map((m) =>
       m.id === id ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m
     ),
   });
+  try {
+    await apiFetch(`/admin/build-tracker/milestones/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...patch, githubNumber: existing?.githubNumber }),
+    });
+  } catch (err) {
+    log.error({ err, id }, "updateMilestone REST call failed");
+  }
   flashMessage("Milestone updated");
 }
 
 export async function deleteMilestone(id: number) {
+  const existing = state.milestones.find((m) => m.id === id);
   set({
     milestones: state.milestones.filter((m) => m.id !== id),
     epics: state.epics.map((e) => (e.milestoneId === id ? { ...e, milestoneId: null } : e)),
   });
+  try {
+    await apiFetch(`/admin/build-tracker/milestones/${id}${existing?.githubNumber ? `?githubNumber=${existing.githubNumber}` : ""}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    log.error({ err, id }, "deleteMilestone REST call failed");
+  }
   flashMessage("Milestone deleted");
 }
 
@@ -513,13 +543,16 @@ export async function deleteChat(id: number): Promise<void> {
 
 // ── GitHub sync (real API, uses GITHUB_TOKEN set on server) ───────────────────
 
-export async function syncFromGitHub(): Promise<{ epics: number; issues: number } | null> {
+export async function syncFromGitHub(): Promise<{ epics: number; issues: number; milestones?: number } | null> {
   try {
     const res = await apiFetch("/admin/build-tracker/github-sync", { method: "POST" });
     if (!res.ok) return null;
-    const result = (await res.json()) as { epics: number; issues: number };
+    const result = (await res.json()) as { epics: number; issues: number; milestones?: MilestoneRow[] };
+    if (result.milestones && Array.isArray(result.milestones) && result.milestones.length > 0) {
+      set({ milestones: result.milestones });
+    }
     await loadAll(); // refresh after sync
-    return result;
+    return { epics: result.epics, issues: result.issues, milestones: result.milestones?.length };
   } catch (err) {
     log.error({ err }, "syncFromGitHub failed");
     return null;
