@@ -284,8 +284,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 40,
+      tab: "catalog",
+      order: 20,
       group: {
         label: "Monitoring packages",
         large: [

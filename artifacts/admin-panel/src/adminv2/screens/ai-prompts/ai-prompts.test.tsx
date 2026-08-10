@@ -102,7 +102,7 @@ describe("registration", () => {
     const screenModule = getScreen("ai-prompts");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/ai-prompts");
-    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home"]));
+    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["content"]));
 
     const fixedCommands = (screenModule?.ribbon ?? []).flatMap((r) => [
       ...(r.group.large ?? []),

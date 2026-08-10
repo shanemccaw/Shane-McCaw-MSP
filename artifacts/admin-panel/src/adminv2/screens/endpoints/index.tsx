@@ -133,8 +133,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 20,
+      tab: "catalog",
+      order: 10,
       group: {
         label: "Endpoints",
         large: [

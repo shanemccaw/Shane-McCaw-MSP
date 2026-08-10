@@ -107,7 +107,7 @@ describe("registration", () => {
     const screenModule = getScreen("workflow-triggers");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/triggers");
-    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home", "watch"]));
+    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["automation", "watch"]));
 
     const fixedCommands = (screenModule?.ribbon ?? []).flatMap((r) => [...(r.group.large ?? []), ...(r.group.small ?? []), ...(r.group.row ?? [])]);
     expect(fixedCommands.length).toBeGreaterThan(0);

@@ -147,9 +147,9 @@ describe("registration", () => {
     }
   });
 
-  it("contributes only to home and watch", () => {
+  it("contributes only to catalog and watch", () => {
     const tabs = new Set((endpointsScreen.ribbon ?? []).map((r) => r.tab));
-    expect(tabs).toEqual(new Set(["home", "watch"]));
+    expect(tabs).toEqual(new Set(["catalog", "watch"]));
   });
 
   it("hangs the per-record actions off the contextual tab, and hand-authors no Back group", () => {

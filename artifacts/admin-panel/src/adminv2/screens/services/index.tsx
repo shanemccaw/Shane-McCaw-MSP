@@ -86,7 +86,7 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
+      tab: "catalog",
       order: 30,
       group: {
         label: "Services",

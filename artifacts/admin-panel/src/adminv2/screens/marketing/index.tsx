@@ -90,8 +90,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 45,
+      tab: "content",
+      order: 30,
       group: {
         label: "Marketing",
         large: [

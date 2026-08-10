@@ -94,8 +94,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 70,
+      tab: "content",
+      order: 40,
       group: {
         label: "Shared links",
         large: [

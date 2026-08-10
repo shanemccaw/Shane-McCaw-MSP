@@ -243,8 +243,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 60,
+      tab: "automation",
+      order: 10,
       group: {
         label: "Workflows",
         large: [

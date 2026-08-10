@@ -188,7 +188,7 @@ describe("registration", () => {
     const screenModule = getScreen("tenant-signals");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/tenant-signals");
-    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home"]));
+    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["automation"]));
     for (const contribution of screenModule!.ribbon ?? []) {
       expect(auditFixedTabIntents(contribution)).toEqual([]);
     }

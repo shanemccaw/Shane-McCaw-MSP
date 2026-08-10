@@ -143,7 +143,7 @@ describe("registration", () => {
     expect(module?.title).toBe("Monitoring Packages");
     // registerScreen throws on a `record` intent on a fixed tab, so reaching
     // here at all is the audit passing — this pins which tabs it touches.
-    expect(new Set(module?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home", "watch"]));
+    expect(new Set(module?.ribbon?.map((r) => r.tab))).toEqual(new Set(["catalog", "watch"]));
   });
 
   it("keeps every record-scoped command on the contextual tab, and only with a record open", async () => {

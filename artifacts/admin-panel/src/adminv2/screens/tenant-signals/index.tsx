@@ -83,8 +83,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 40,
+      tab: "automation",
+      order: 30,
       group: {
         label: "Signals",
         large: [

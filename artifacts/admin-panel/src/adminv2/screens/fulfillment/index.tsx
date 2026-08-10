@@ -297,8 +297,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 50,
+      tab: "automation",
+      order: 40,
       group: {
         label: "Fulfillment",
         large: [

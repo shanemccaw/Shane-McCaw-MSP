@@ -165,8 +165,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 70,
+      tab: "content",
+      order: 10,
       group: {
         label: "Documents",
         large: [

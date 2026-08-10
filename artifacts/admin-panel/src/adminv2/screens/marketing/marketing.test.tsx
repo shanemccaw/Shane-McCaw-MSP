@@ -102,7 +102,7 @@ describe("registration", () => {
     const screenModule = getScreen("marketing");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/marketing");
-    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home", "watch"]));
+    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["content", "watch"]));
 
     const fixedCommands = (screenModule?.ribbon ?? []).flatMap((r) => [...(r.group.large ?? []), ...(r.group.small ?? []), ...(r.group.row ?? [])]);
     expect(fixedCommands.length).toBeGreaterThan(0);

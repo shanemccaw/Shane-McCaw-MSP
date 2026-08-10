@@ -385,7 +385,7 @@ describe("registration", () => {
     const screenModule = getScreen("documents");
     expect(screenModule).toBeTruthy();
     expect(screenModule?.route).toBe("/documents");
-    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["home", "watch"]));
+    expect(new Set(screenModule?.ribbon?.map((r) => r.tab))).toEqual(new Set(["content", "watch"]));
 
     const allCommands = (screenModule?.ribbon ?? []).flatMap((r) => [
       ...(r.group.large ?? []),
@@ -450,7 +450,7 @@ describe("registration", () => {
 
   it("keeps the gallery rows live rather than freezing at module load", async () => {
     const screenModule = getScreen("documents")!;
-    const gallery = screenModule.ribbon?.find((r) => r.tab === "home")?.group.small?.[0]?.gallery;
+    const gallery = screenModule.ribbon?.find((r) => r.tab === "content")?.group.small?.[0]?.gallery;
     expect(gallery?.rows).toEqual([]);
 
     serveDocuments([row({ id: "16", title: "Renewal Pack", status: "failed" })]);

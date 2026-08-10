@@ -170,8 +170,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 65,
+      tab: "automation",
+      order: 20,
       group: {
         label: "Triggers",
         large: [

@@ -73,9 +73,10 @@ Everything below is optional and additive.
 
 ## 1. Contributing to a fixed ribbon tab
 
-Ten fixed tabs, and the list is closed:
+Thirteen fixed tabs, and the list is closed:
 
-`home` · `inbox` · `money` · `watch` · `ad` · `crm` · `view` | `git` · `run` · `build`
+`home` · `inbox` · `money` · `watch` · `ad` · `crm` · `catalog` · `automation` ·
+`content` · `view` | `git` · `run` · `build`
 
 Git and Run render inside an amber capsule that marks them as a developer set.
 `watch` is the "what needs me" tab — exceptions, dead letters, unrun migrations,

@@ -17,18 +17,43 @@ import type { LucideIcon } from "lucide-react";
 // ─── Ribbon ───────────────────────────────────────────────────────────────────
 
 /**
- * The ten fixed tabs. Home · Inbox · Money · Watch · Active Directory · CRM ·
- * View | Git · Run · Build.
+ * The thirteen fixed tabs. Home · Inbox · Money · Watch · Active Directory ·
+ * CRM · Catalog · Automation · Content · View | Git · Run · Build.
  *
  * This list is closed. A new screen does not get a new fixed tab — it
  * contributes groups to the tabs that already exist, and puts anything
  * record-specific on its contextual tab. Adding an entry here is a design
- * decision, not an implementation detail. `ad` and `crm` were carved out of
- * `home` because each had grown into a major group of its own (Active
- * Directory's MSP/user/group/OU commands, CRM's pipeline/lead commands) —
- * Home was becoming a dumping ground rather than a launcher.
+ * decision, not an implementation detail.
+ *
+ * `ad` and `crm` were carved out of `home` because each had grown into a
+ * major group of its own (Active Directory's MSP/user/group/OU commands,
+ * CRM's pipeline/lead commands). `catalog`, `automation` and `content` were
+ * carved out next for the same reason, once Home had accumulated eleven
+ * screens' worth of quick-open groups and Shane could no longer scan it —
+ * Prompt Center in particular was going unnoticed. The split:
+ *   - `catalog`: Endpoints → Monitoring Packages → Services, the sell-able
+ *     catalog hierarchy (an endpoint is a check, a package bundles
+ *     endpoints, a service sells a package).
+ *   - `automation`: Workflows, Workflow Triggers, Tenant Signals,
+ *     Fulfillment — the engine/automation side.
+ *   - `content`: Documents, AI Prompts, Marketing, Shared Links — things
+ *     that get written and shared.
  */
-export const FIXED_TAB_IDS = ["home", "inbox", "money", "watch", "ad", "crm", "view", "git", "run", "build"] as const;
+export const FIXED_TAB_IDS = [
+  "home",
+  "inbox",
+  "money",
+  "watch",
+  "ad",
+  "crm",
+  "catalog",
+  "automation",
+  "content",
+  "view",
+  "git",
+  "run",
+  "build",
+] as const;
 export type FixedTabId = (typeof FIXED_TAB_IDS)[number];
 
 export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
@@ -39,6 +64,12 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
   watch: "Watch",
   ad: "Active Directory",
   crm: "CRM",
+  /** Endpoints, Monitoring Packages, Services — the sell-able catalog hierarchy. */
+  catalog: "Catalog",
+  /** Workflows, Workflow Triggers, Tenant Signals, Fulfillment. */
+  automation: "Automation",
+  /** Documents, AI Prompts, Marketing, Shared Links. */
+  content: "Content",
   view: "View",
   git: "Git",
   run: "Run",
@@ -49,8 +80,19 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
 /** Git, Run and Build render inside the amber capsule that marks them as the developer set. */
 export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run", "build"];
 
-/** The seven ordinary tabs, in ribbon order. */
-export const MAIN_TAB_IDS: readonly FixedTabId[] = ["home", "inbox", "money", "watch", "ad", "crm", "view"];
+/** The ten ordinary tabs, in ribbon order. */
+export const MAIN_TAB_IDS: readonly FixedTabId[] = [
+  "home",
+  "inbox",
+  "money",
+  "watch",
+  "ad",
+  "crm",
+  "catalog",
+  "automation",
+  "content",
+  "view",
+];
 
 /**
  * What a ribbon command does. This is the type-level form of the rule in

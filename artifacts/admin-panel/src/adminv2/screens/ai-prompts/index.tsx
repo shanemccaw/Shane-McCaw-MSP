@@ -92,8 +92,8 @@ registerScreen({
 
   ribbon: [
     {
-      tab: "home",
-      order: 60,
+      tab: "content",
+      order: 20,
       group: {
         label: "AI Prompts",
         large: [
