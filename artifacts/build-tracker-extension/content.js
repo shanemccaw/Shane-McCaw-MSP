@@ -72,7 +72,9 @@ new MutationObserver(() => {
 // ── 2. Floating "What am I working on?" panel ──────────────────────────────
 
 let boardCache = null; // { data, fetchedAt }
-let panelEls = null; // { host, tab, panel, current, list, search }
+let panelEls = null; // { host, tab, panel, progress, current, list, search }
+/** True once the user explicitly asks to browse past a focused epic — reset on every new chat/link. */
+let showAllOverride = false;
 
 function buildPanel() {
   if (panelEls) return panelEls;
@@ -112,10 +114,22 @@ function buildPanel() {
       font-size: 13px; padding: 2px 6px; border-radius: 4px;
     }
     .iconbtn:hover { background: #292929; color: #fff; }
+    .progress { padding: 10px 12px 4px; flex: none; }
+    .progress[hidden] { display: none; }
+    .progress-label {
+      display: flex; justify-content: space-between; font-size: 11px; color: #c8c6c4;
+      margin-bottom: 5px; font-weight: 600;
+    }
+    .progress-bar { height: 6px; border-radius: 3px; background: #292929; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 200ms ease; }
     .current {
       padding: 8px 12px; font-size: 11px; color: #a19f9d; border-bottom: 1px solid #2e2e2e; flex: none;
     }
     .current.linked { color: #7fae91; }
+    .current a.showall {
+      color: #7fb4d8; margin-left: 8px; text-decoration: none; font-weight: 600;
+    }
+    .current a.showall:hover { text-decoration: underline; }
     .search {
       margin: 8px 12px; padding: 6px 8px; border-radius: 5px; border: 1px solid #3b3b3b;
       background: #292929; color: #f3f2f1; font-size: 12px; outline: none; flex: none;
@@ -153,12 +167,14 @@ function buildPanel() {
       <button class="iconbtn" data-action="refresh" title="Refresh">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
+    <div class="progress" hidden></div>
     <div class="current"></div>
     <input class="search" placeholder="Search…" />
     <div class="list"></div>
   `;
   shadow.appendChild(panel);
 
+  const progress = panel.querySelector(".progress");
   const current = panel.querySelector(".current");
   const list = panel.querySelector(".list");
   const search = panel.querySelector(".search");
@@ -179,7 +195,7 @@ function buildPanel() {
     panel.addEventListener(evt, (e) => e.stopPropagation());
   }
 
-  panelEls = { host, tab, panel, current, list, search };
+  panelEls = { host, tab, panel, progress, current, list, search };
   return panelEls;
 }
 
@@ -196,7 +212,7 @@ async function loadBoard(force) {
 
   const fresh = boardCache && Date.now() - boardCache.fetchedAt < BOARD_STALE_MS;
   if (!force && fresh) {
-    renderList(panelEls.search.value);
+    render();
     return;
   }
 
@@ -208,18 +224,107 @@ async function loadBoard(force) {
   }
 
   boardCache = { data: res.board, fetchedAt: Date.now() };
-  renderCurrent(res.board.currentChat);
-  renderList(panelEls.search.value);
+  render();
 }
 
-function renderCurrent(currentChat) {
+/**
+ * Dispatches between two very different views: a chat linked to an epic
+ * shows ONLY that epic and its own open issues (plus the milestone it
+ * belongs to, as a progress bar) — Shane's ask was explicit that seeing the
+ * whole board once a chat already has a home is just noise. Search only
+ * makes sense in the browse view, so it's hidden while focused.
+ */
+function render() {
+  if (!boardCache) return;
+  const { search, progress } = panelEls;
+  const currentChat = boardCache.data.currentChat;
+  const focusEpic = currentChat?.focusEpic ?? null;
+
+  if (focusEpic && !showAllOverride) {
+    search.style.display = "none";
+    renderProgress(currentChat.focusMilestone);
+    renderFocused(currentChat);
+  } else {
+    search.style.display = "";
+    renderProgress(null);
+    renderCurrent(currentChat, focusEpic);
+    renderList(search.value);
+  }
+}
+
+function renderProgress(milestone) {
+  const { progress } = panelEls;
+  if (!milestone) {
+    progress.hidden = true;
+    progress.innerHTML = "";
+    return;
+  }
+  progress.hidden = false;
+  const { done, total, pct } = milestone.progress;
+  const color = pct >= 100 ? "#7fae91" : "#f2ca63";
+  progress.innerHTML = `
+    <div class="progress-label">
+      <span>${escapeHtml(milestone.title)}</span>
+      <span>${done}/${total} · ${pct}%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%; background:${color};"></div></div>
+  `;
+}
+
+/** The linked-epic-only view — read-only (already linked, nothing to click). */
+function renderFocused(currentChat) {
+  const { current, list } = panelEls;
+  const epic = currentChat.focusEpic;
+
+  current.className = "current linked";
+  current.innerHTML = `Linked to Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Show everything</a>`;
+  current.querySelector(".showall").addEventListener("click", (e) => {
+    e.preventDefault();
+    showAllOverride = true;
+    render();
+  });
+
+  list.innerHTML = "";
+  const row = document.createElement("div");
+  row.className = "epic-row";
+  row.style.cursor = "default";
+  row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
+  list.appendChild(row);
+
+  const openIssues = currentChat.focusEpicOpenIssues ?? [];
+  if (openIssues.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No open issues on this epic.";
+    list.appendChild(empty);
+  } else {
+    for (const issue of openIssues) {
+      const irow = document.createElement("div");
+      irow.className = "issue-row";
+      irow.style.cursor = "default";
+      irow.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
+      list.appendChild(irow);
+    }
+  }
+}
+
+/** The full browse view's status line — same as before, plus a way back to a focused epic if one exists. */
+function renderCurrent(currentChat, focusEpic) {
   const { current } = panelEls;
   if (currentChat && (currentChat.issueId || currentChat.epicId)) {
-    current.textContent = `Linked to: ${currentChat.title}`;
-    current.classList.add("linked");
+    current.className = "current linked";
+    current.innerHTML = `Linked to: ${escapeHtml(currentChat.title)}`;
   } else {
+    current.className = "current";
     current.textContent = "Not linked yet — click an item below.";
-    current.classList.remove("linked");
+  }
+  if (focusEpic) {
+    current.innerHTML += `<a href="#" class="showall">Back to this chat's epic</a>`;
+    current.querySelector(".showall").addEventListener("click", (e) => {
+      e.preventDefault();
+      showAllOverride = false;
+      render();
+    });
   }
 }
 
@@ -316,6 +421,9 @@ async function linkTo(target, label) {
   if (res?.ok) {
     // The server only applies a link if the chat was still unlinked — re-fetch
     // so "Not linked yet" flips to the real result rather than assuming success.
+    // Drop back to the focused view for whatever just got linked, rather than
+    // staying on "Show everything" after the whole point was to link it.
+    showAllOverride = false;
     void loadBoard(true);
   } else {
     current.textContent = `Couldn't link: ${res?.error ?? "unknown error"}`;
@@ -324,6 +432,7 @@ async function linkTo(target, label) {
 }
 
 function onConversationChanged() {
+  showAllOverride = false;
   if (!panelEls || panelEls.panel.hidden) return;
   loadBoard(true);
 }

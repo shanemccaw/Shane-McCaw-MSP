@@ -10,6 +10,10 @@ An unpacked Edge/Chrome extension with two parts, both running on
    edge of the page. Expand it to see your open Milestones/Epics/Issues and
    click one to link the *current* chat to it, right there in the chat —
    no round-trip to Build Tracker needed to figure out where a chat belongs.
+   Once a chat is already linked to an epic, the panel switches to a
+   focused view — just that epic and its own open issues, plus a progress
+   bar for the milestone it belongs to — instead of the whole board. Click
+   "Show everything" to browse past it if you need to.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

@@ -619,12 +619,21 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
  * every open record for a repo this size is already a lot to render inside
  * claude.ai's own busy page.
  *
+ * When the chat resolves to an epic (directly via chat.epicId, or via
+ * chat.issueId's own epicId), the response also carries `focusEpic` + its
+ * open issues + its milestone's progress — resolved here rather than left
+ * for the panel to figure out, so "already linked → show just that epic" is
+ * one lookup, not client-side matching against the full board.
+ *
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Request, res: Response) => {
   const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId.trim() : "";
   try {
-    const [epics, issues, currentChatRows] = await Promise.all([
+    // Unfiltered — needed both for the open-work browse list below AND to
+    // compute real milestone progress, which has to count closed/done work
+    // too (a milestone with everything closed should read 100%, not 0/0).
+    const [allEpics, allIssues, currentChatRows] = await Promise.all([
       db
         .select({
           id: btEpicsTable.id,
@@ -634,7 +643,6 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           milestoneId: btEpicsTable.milestoneId,
         })
         .from(btEpicsTable)
-        .where(sql`${btEpicsTable.status} <> 'closed'`)
         .orderBy(asc(btEpicsTable.title)),
       db
         .select({
@@ -645,31 +653,75 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           epicId: btIssuesTable.epicId,
         })
         .from(btIssuesTable)
-        .where(sql`${btIssuesTable.status} NOT IN ('closed', 'done')`)
         .orderBy(asc(btIssuesTable.title)),
       conversationId
         ? db.select().from(btChatsTable).where(eq(btChatsTable.conversationId, conversationId)).limit(1)
         : Promise.resolve([]),
     ]);
 
+    const epics = allEpics.filter((e) => e.status !== "closed");
+    const issues = allIssues.filter((i) => i.status !== "closed" && i.status !== "done");
+
     // Milestones are GitHub-live here too, same as GET /milestones above —
     // there's no local bt_milestones table, only bt_epics.milestone_id
-    // pointing at a GitHub milestone number.
-    let milestones: Array<{ id: number; title: string; githubNumber: number | null; status: string }> = [];
+    // pointing at a GitHub milestone number (so, unlike epic/issue
+    // milestoneId elsewhere in this file, no id-vs-githubNumber ambiguity
+    // to resolve — every milestone here IS its GitHub number).
+    let milestones: Array<{
+      id: number; title: string; githubNumber: number | null; status: string;
+      progress: { done: number; total: number; pct: number };
+    }> = [];
     if (process.env.GITHUB_TOKEN) {
       try {
         const msRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=open`);
         if (msRes.ok) {
           const ghMsList = (await msRes.json()) as Array<{ number: number; title: string; state: string }>;
-          milestones = ghMsList.map((m) => ({ id: m.number, title: m.title, githubNumber: m.number, status: m.state }));
+          milestones = ghMsList.map((m) => {
+            const msEpics = allEpics.filter((e) => e.milestoneId === m.number);
+            let total = 0;
+            let done = 0;
+            for (const ep of msEpics) {
+              const epIssues = allIssues.filter((i) => i.epicId === ep.id);
+              if (epIssues.length === 0) {
+                total += 1;
+                if (ep.status === "closed") done += 1;
+              } else {
+                total += epIssues.length;
+                done += epIssues.filter((i) => i.status === "done" || i.status === "closed").length;
+              }
+            }
+            const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+            return { id: m.number, title: m.title, githubNumber: m.number, status: m.state, progress: { done, total, pct } };
+          });
         }
       } catch (err) {
         log.error({ err }, "GET /extension/board: GitHub milestones fetch failed");
       }
     }
 
-    const currentChat = currentChatRows[0]
-      ? { ...currentChatRows[0], claudeUrl: claudeUrl(currentChatRows[0].conversationId) }
+    const chatRow = currentChatRows[0] ?? null;
+    let focusEpic: typeof allEpics[number] | null = null;
+    let focusEpicOpenIssues: typeof allIssues = [];
+    let focusMilestone: (typeof milestones)[number] | null = null;
+
+    if (chatRow) {
+      let epicId = chatRow.epicId;
+      if (!epicId && chatRow.issueId) {
+        epicId = allIssues.find((i) => i.id === chatRow.issueId)?.epicId ?? null;
+      }
+      if (epicId) {
+        focusEpic = allEpics.find((e) => e.id === epicId) ?? null;
+        if (focusEpic) {
+          focusEpicOpenIssues = allIssues.filter(
+            (i) => i.epicId === focusEpic!.id && i.status !== "closed" && i.status !== "done",
+          );
+          focusMilestone = milestones.find((m) => m.githubNumber === focusEpic!.milestoneId) ?? null;
+        }
+      }
+    }
+
+    const currentChat = chatRow
+      ? { ...chatRow, claudeUrl: claudeUrl(chatRow.conversationId), focusEpic, focusEpicOpenIssues, focusMilestone }
       : null;
 
     res.json({ milestones, epics, issues, currentChat });
