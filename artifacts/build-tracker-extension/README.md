@@ -57,15 +57,19 @@ An unpacked Edge/Chrome extension with two parts, both running on
 
    The header's 🗄 and 💻 buttons open a **floaty SQL Runner** and **Deploy
    Console** — full read/write SQL, and shell commands (including free
-   text), against your **development server**. These aren't new backend
-   capability: they call the exact same already-shipped admin-panel routes
-   (`/api/simulator/sql/execute`, `/api/admin/simulator/deploy/*`) the admin
-   panel's own SQL Runner and Deploy Console screens already use, just
-   reachable without leaving claude.ai. Every Run button arms on the first
-   click and runs on the second, as a speedbump against a stray click — not
-   a real safety gate. **Do not point this extension's API base URL at a
-   production server** — anyone with the extension's bearer token gets full
-   database and shell access to whatever it's configured against.
+   text), against your **development server**, one click to run. These
+   aren't new backend capability: they call the exact same already-shipped
+   admin-panel routes (`/api/simulator/sql/execute`,
+   `/api/admin/simulator/deploy/*`) the admin panel's own SQL Runner and
+   Deploy Console screens already use, just reachable without leaving
+   claude.ai. Every result also lands straight in the chat composer, not
+   just the on-screen output — a plain, compact rendering (a header row +
+   one line per result row, not JSON — far fewer characters for the same
+   data) rather than the pretty-printed JSON shown in the floaty window
+   itself, so there's no copy/paste round-trip to hand a result to Claude.
+   **Do not point this extension's API base URL at a production server** —
+   anyone with the extension's bearer token gets full database and shell
+   access to whatever it's configured against.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

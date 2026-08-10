@@ -279,7 +279,6 @@ function buildPanel() {
       background: #292929; color: #f3f2f1; font-size: 12px; font-weight: 600; cursor: pointer;
     }
     .tool-run:hover { background: #333; }
-    .tool-run.armed { background: #7a2e24; border-color: #a8402f; color: #ffe0da; }
     .tool-output {
       flex: 1; min-height: 120px; overflow: auto; background: #141414; border: 1px solid #2e2e2e;
       border-radius: 6px; padding: 8px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
@@ -291,7 +290,6 @@ function buildPanel() {
       color: #c8c6c4; font-size: 11px; cursor: pointer;
     }
     .tool-op-btn:hover { background: #2e2e2e; }
-    .tool-op-btn.armed { background: #7a2e24; border-color: #a8402f; color: #ffe0da; }
   `;
   shadow.appendChild(style);
 
@@ -599,22 +597,23 @@ function issuePromptText(issue) {
 
 /**
  * Inserts (never sends — Shane's explicit ask, so it never reads as a bot
- * talking to Claude) a starter prompt into the composer, positioned at the
- * end of whatever's already typed there. Uses execCommand('insertText')
- * because that's what produces a real native `input` event with
- * inputType "insertText" — the same shape a real keystroke produces, which
- * is what makes React/ProseMirror-style editors (claude.ai's composer is one)
+ * talking to Claude) text into the composer, positioned at the end of
+ * whatever's already typed there. Uses execCommand('insertText') because
+ * that's what produces a real native `input` event with inputType
+ * "insertText" — the same shape a real keystroke produces, which is what
+ * makes React/ProseMirror-style editors (claude.ai's composer is one)
  * actually pick up the change instead of silently ignoring a plain
  * textContent write. Falls back to a manual insert + dispatched InputEvent
- * for the rare case execCommand is unsupported.
+ * for the rare case execCommand is unsupported. Shared by the issue-prompt
+ * buttons AND the SQL Runner/Deploy Console (Git #702 follow-up) — same
+ * "land it in the chat, don't make me copy/paste" need either way.
  */
-function insertPrompt(issue) {
+function insertTextIntoComposer(text) {
   const composer = findComposer();
   if (!composer) {
     window.alert("Couldn't find the chat box on this page — claude.ai's layout may have changed.");
-    return;
+    return false;
   }
-  const text = issuePromptText(issue);
 
   composer.focus();
   const sel = window.getSelection();
@@ -629,6 +628,11 @@ function insertPrompt(issue) {
     range.insertNode(document.createTextNode(text));
     composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
   }
+  return true;
+}
+
+function insertPrompt(issue) {
+  insertTextIntoComposer(issuePromptText(issue));
 }
 
 /**
@@ -1169,28 +1173,58 @@ function renderNavChats() {
   }
 }
 
-// ── Git #702: floaty SQL Runner + Deploy Console ────────────────────────────
+// ── Git #702 (+ follow-up): floaty SQL Runner + Deploy Console ─────────────
 // Both reuse existing, already-shipped admin routes (background.js's
 // runSql()/runDeploy()) — full read/write, no restrictions, Shane's explicit
-// choice for his own dev server. "Armed" is a lightweight one-click-then-
-// confirm speedbump against a stray Enter/click, not a real gate.
+// choice for his own dev server. Single click runs it — Shane: "please don't
+// make me click buttons twice, I'm building this so I can quickly get
+// through it, not add more gates." Every result also lands straight in the
+// composer, not just the on-screen output — "so I can send the results to
+// Claude chat when it's done... right now I run this, copy, paste, copy,
+// back, paste." The on-screen `.tool-output` stays pretty JSON (readable
+// here); what goes to the composer is a plain, compact rendering — pretty
+// JSON repeats every field name per row, which burns characters fast on a
+// real result set.
+
+const SQL_CHAT_ROW_LIMIT = 50;
+
+/** Plain pipe-table, not JSON — one header line, one line per row, no repeated field names. Far fewer characters for the same data. */
+function formatSqlResultForChat(query, statements) {
+  const parts = [`SQL: ${query}`];
+  for (const s of statements ?? []) {
+    if (!s.success) {
+      parts.push(`[${s.statementIndex}] FAILED (${s.executionMs}ms): ${s.error ?? "unknown error"}`);
+      continue;
+    }
+    if (!s.rows || s.rows.length === 0) {
+      parts.push(`[${s.statementIndex}] OK — ${s.rowCount} row(s), ${s.executionMs}ms`);
+      continue;
+    }
+    const fields = s.fields ?? Object.keys(s.rows[0]);
+    const shown = s.rows.slice(0, SQL_CHAT_ROW_LIMIT);
+    const lines = [
+      `[${s.statementIndex}] ${s.rowCount} row(s), ${s.executionMs}ms`,
+      fields.join(" | "),
+      ...shown.map((row) => fields.map((f) => String(row[f] ?? "")).join(" | ")),
+    ];
+    if (s.rows.length > shown.length) lines.push(`… ${s.rows.length - shown.length} more row(s) not shown`);
+    parts.push(lines.join("\n"));
+  }
+  return parts.join("\n\n");
+}
+
+/** Same idea for Deploy Console — raw command output, no JSON wrapper. */
+function formatDeployResultForChat(label, result) {
+  if (result?.steps) {
+    return [`$ ${label}`, ...result.steps.map((s) => `— ${s.label} —\n${s.output || "(no output)"}`)].join("\n\n");
+  }
+  return `$ ${label}\n${result?.output || "(no output)"}`;
+}
 
 function openSqlRunner() {
   const { sqlBackdrop } = buildPanel();
   sqlBackdrop.hidden = false;
   sqlBackdrop.querySelector(".tool-input").focus();
-}
-
-function armThenRun(btn, label, doRun) {
-  if (!btn.classList.contains("armed")) {
-    btn.classList.add("armed");
-    btn.textContent = "Click again to run";
-    setTimeout(() => { btn.classList.remove("armed"); btn.textContent = label; }, 4000);
-    return;
-  }
-  btn.classList.remove("armed");
-  btn.textContent = label;
-  void doRun();
 }
 
 function wireSqlRunner() {
@@ -1199,13 +1233,18 @@ function wireSqlRunner() {
   const output = sqlBackdrop.querySelector(".tool-output");
   const runBtn = sqlBackdrop.querySelector('[data-action="sql-run"]');
   runBtn.addEventListener("click", () => {
-    armThenRun(runBtn, "Run", async () => {
+    void (async () => {
       const query = input.value.trim();
       if (!query) return;
       output.textContent = "Running…";
       const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-sql", query });
-      output.textContent = res?.ok ? JSON.stringify(res.result, null, 2) : `Error: ${res?.error ?? "unknown error"}`;
-    });
+      if (!res?.ok) {
+        output.textContent = `Error: ${res?.error ?? "unknown error"}`;
+        return;
+      }
+      output.textContent = JSON.stringify(res.result, null, 2);
+      insertTextIntoComposer(formatSqlResultForChat(query, res.result?.statements));
+    })();
   });
 }
 
@@ -1231,19 +1270,22 @@ async function loadDeployOps() {
     btn.className = "tool-op-btn";
     btn.textContent = op.key;
     btn.title = (op.steps ?? []).join(" → ");
-    btn.addEventListener("click", () => {
-      armThenRun(btn, op.key, () => runDeployAction({ operationKey: op.key }));
-    });
+    btn.addEventListener("click", () => void runDeployAction({ operationKey: op.key, label: op.key }));
     opsEl.appendChild(btn);
   }
 }
 
-async function runDeployAction({ operationKey, freeCommand }) {
+async function runDeployAction({ operationKey, freeCommand, label }) {
   const { consoleBackdrop } = panelEls;
   const output = consoleBackdrop.querySelector(".tool-output");
-  output.textContent = `Running ${operationKey ?? freeCommand}…`;
+  output.textContent = `Running ${label}…`;
   const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-deploy", operationKey, freeCommand });
-  output.textContent = res?.ok ? JSON.stringify(res.result, null, 2) : `Error: ${res?.error ?? "unknown error"}`;
+  if (!res?.ok) {
+    output.textContent = `Error: ${res?.error ?? "unknown error"}`;
+    return;
+  }
+  output.textContent = JSON.stringify(res.result, null, 2);
+  insertTextIntoComposer(formatDeployResultForChat(label, res.result));
 }
 
 function wireDeployConsole() {
@@ -1251,11 +1293,9 @@ function wireDeployConsole() {
   const input = consoleBackdrop.querySelector(".tool-input");
   const runBtn = consoleBackdrop.querySelector('[data-action="console-run"]');
   runBtn.addEventListener("click", () => {
-    armThenRun(runBtn, "Run", () => {
-      const command = input.value.trim();
-      if (!command) return Promise.resolve();
-      return runDeployAction({ freeCommand: command });
-    });
+    const command = input.value.trim();
+    if (!command) return;
+    void runDeployAction({ freeCommand: command, label: command });
   });
 }
 
