@@ -58,27 +58,6 @@ PORT = "26059"
 BASE_PATH = "/portal/"
 
 [[workflows.workflow]]
-name = "artifacts/shane-mobile: expo"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/shane-mobile"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/shane-mobile run dev"
-cwd = "./artifacts/shane-mobile"
-waitForPort = 24323
-ensurePreviewReachable = "/"
-router = "expo-domain"
-
-[workflows.workflow.tasks.env]
-PORT = "24323"
-BASE_PATH = "/shane-mobile/"
-
-[[workflows.workflow]]
 name = "artifacts/admin-panel: web"
 author = "agent"
 mode = "sequential"
@@ -266,14 +245,6 @@ externalPort = 3002
 [[ports]]
 localPort = 22444
 externalPort = 3000
-
-[[ports]]
-localPort = 24323
-externalPort = 80
-
-[[ports]]
-localPort = 24324
-externalPort = 4200
 
 [[ports]]
 localPort = 26059
