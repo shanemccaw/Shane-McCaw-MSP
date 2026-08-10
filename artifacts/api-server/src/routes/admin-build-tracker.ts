@@ -139,6 +139,86 @@ router.delete("/admin/build-tracker/epics/:id", requireAdmin, async (req: Reques
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MILESTONES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /admin/build-tracker/milestones — sample or synced milestones */
+router.get("/admin/build-tracker/milestones", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const milestones = [
+      {
+        id: 1,
+        title: "v1.0 MSP Platform Launch",
+        description: "Complete remediation guide, EngageBay migration, and full live deployment.",
+        startDate: "2026-08-01",
+        targetDate: "2026-08-25",
+        status: "in_progress",
+        githubNumber: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        epicCount: 3,
+      },
+      {
+        id: 2,
+        title: "Q3 Security & Copilot Hardening",
+        description: "White-Glove Copilot adoption, PowerShell execution engine, and scanning suite.",
+        startDate: "2026-08-15",
+        targetDate: "2026-09-15",
+        status: "open",
+        githubNumber: 2,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        epicCount: 2,
+      },
+      {
+        id: 3,
+        title: "v1.1 Analytics & Marketing Integration",
+        description: "GA4 integration, Zoho API replacement, and LinkedIn campaign automation.",
+        startDate: "2026-09-01",
+        targetDate: "2026-09-30",
+        status: "open",
+        githubNumber: 3,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        epicCount: 2,
+      },
+    ];
+    res.json(milestones);
+  } catch (err) {
+    log.error({ err }, "GET /milestones failed");
+    res.status(500).json({ error: "Failed to load milestones" });
+  }
+});
+
+/** POST /admin/build-tracker/milestones */
+router.post("/admin/build-tracker/milestones", requireAdmin, async (req: Request, res: Response) => {
+  const { title, description, targetDate, startDate, status } = req.body as {
+    title?: string;
+    description?: string;
+    targetDate?: string;
+    startDate?: string;
+    status?: string;
+  };
+  if (!title?.trim()) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+  const milestone = {
+    id: Date.now(),
+    title: title.trim(),
+    description: description?.trim() || null,
+    startDate: startDate || new Date().toISOString().split("T")[0],
+    targetDate: targetDate || null,
+    status: status || "open",
+    githubNumber: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    epicCount: 0,
+  };
+  res.status(201).json(milestone);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ISSUES
 // ─────────────────────────────────────────────────────────────────────────────
 

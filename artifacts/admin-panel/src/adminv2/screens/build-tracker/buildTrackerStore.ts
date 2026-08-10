@@ -9,7 +9,7 @@
 
 import { logger } from "@/lib/logger";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
-import type { ChatRow, EpicRow, IssueRow, IssueStatus } from "./buildTrackerTypes";
+import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus } from "./buildTrackerTypes";
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -23,10 +23,12 @@ export interface BuildTrackerState {
   epics: EpicRow[];
   issues: IssueRow[];
   chats: ChatRow[];
+  milestones: MilestoneRow[];
 
   selectedEpicId: number | null;
   selectedIssueId: number | null;
   selectedChatId: number | null;
+  selectedMilestoneId: number | null;
 
   epicsLoading: boolean;
   issuesLoading: boolean;
@@ -43,14 +45,55 @@ export interface BuildTrackerState {
   triageShowAssigned: boolean;
 }
 
+const DEFAULT_MILESTONES: MilestoneRow[] = [
+  {
+    id: 1,
+    title: "v1.0 MSP Platform Launch",
+    description: "Complete remediation guide, EngageBay migration, and full live deployment.",
+    startDate: "2026-08-01",
+    targetDate: "2026-08-25",
+    status: "in_progress",
+    githubNumber: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    epicCount: 3,
+  },
+  {
+    id: 2,
+    title: "Q3 Security & Copilot Hardening",
+    description: "White-Glove Copilot adoption, PowerShell execution engine, and scanning suite.",
+    startDate: "2026-08-15",
+    targetDate: "2026-09-15",
+    status: "open",
+    githubNumber: 2,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    epicCount: 2,
+  },
+  {
+    id: 3,
+    title: "v1.1 Analytics & Marketing Integration",
+    description: "GA4 integration, Zoho API replacement, and LinkedIn campaign automation.",
+    startDate: "2026-09-01",
+    targetDate: "2026-09-30",
+    status: "open",
+    githubNumber: 3,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    epicCount: 2,
+  },
+];
+
 function initialState(): BuildTrackerState {
   return {
     epics: [],
     issues: [],
     chats: [],
+    milestones: DEFAULT_MILESTONES,
     selectedEpicId: null,
     selectedIssueId: null,
     selectedChatId: null,
+    selectedMilestoneId: null,
     epicsLoading: false,
     issuesLoading: false,
     chatsLoading: false,
@@ -99,6 +142,14 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
+
+export function milestoneById(id: string | number): MilestoneRow | undefined {
+  return state.milestones.find((m) => m.id === Number(id));
+}
+
+export function epicsForMilestone(milestoneId: number): EpicRow[] {
+  return state.epics.filter((e) => e.milestoneId === milestoneId);
+}
 
 export function epicById(id: string | number): EpicRow | undefined {
   return state.epics.find((e) => e.id === Number(id));
@@ -185,6 +236,10 @@ export async function loadAll(): Promise<void> {
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
+export function selectMilestone(id: number | null) {
+  set({ selectedMilestoneId: id, triageActive: false });
+}
+
 export function selectEpic(id: number | null) {
   set({ selectedEpicId: id, selectedIssueId: null, selectedChatId: null, triageActive: false });
 }
@@ -213,6 +268,64 @@ export function setTriageActive(active: boolean) {
 
 export function setTriageShowAssigned(show: boolean) {
   set({ triageShowAssigned: show });
+}
+
+export async function createMilestone(
+  title: string,
+  targetDate?: string | null,
+  description?: string | null,
+  startDate?: string | null
+): Promise<MilestoneRow> {
+  const newRow: MilestoneRow = {
+    id: Date.now(),
+    title,
+    description: description || null,
+    startDate: startDate || new Date().toISOString().split("T")[0],
+    targetDate: targetDate || null,
+    status: "open",
+    githubNumber: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    epicCount: 0,
+  };
+  set({ milestones: [newRow, ...state.milestones] });
+  flashMessage(`Milestone "${title}" created`);
+  return newRow;
+}
+
+export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) {
+  set({
+    milestones: state.milestones.map((m) =>
+      m.id === id ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m
+    ),
+  });
+  flashMessage("Milestone updated");
+}
+
+export async function deleteMilestone(id: number) {
+  set({
+    milestones: state.milestones.filter((m) => m.id !== id),
+    epics: state.epics.map((e) => (e.milestoneId === id ? { ...e, milestoneId: null } : e)),
+  });
+  flashMessage("Milestone deleted");
+}
+
+export async function assignEpicToMilestone(epicId: number, milestoneId: number | null) {
+  const updatedEpics = state.epics.map((e) => (e.id === epicId ? { ...e, milestoneId } : e));
+  const counts = new Map<number, number>();
+  for (const e of updatedEpics) {
+    if (e.milestoneId !== null && e.milestoneId !== undefined) {
+      counts.set(e.milestoneId, (counts.get(e.milestoneId) || 0) + 1);
+    }
+  }
+  set({
+    epics: updatedEpics,
+    milestones: state.milestones.map((m) => ({
+      ...m,
+      epicCount: counts.get(m.id) || 0,
+    })),
+  });
+  flashMessage("Epic milestone assignment updated");
 }
 
 function flashMessage(msg: string) {

@@ -39,6 +39,7 @@ import "./screens/documents";
 import "./screens/workflows";
 import "./screens/workflow-triggers";
 import "./screens/build-tracker";
+import "./screens/project-management";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own

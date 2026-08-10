@@ -199,6 +199,19 @@ function Dashboard() {
             </span>
           )}
           <button
+            onClick={() => {
+              const api = (window as any).__shellApi;
+              if (api) api.navigate("/project-management");
+            }}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
+              borderRadius: 6, border: `1px solid ${ACCENT.amber}`, background: `${ACCENT.amber}18`,
+              color: ACCENT.amber, fontFamily: FONT.sans, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            🎯 Gantt & Milestones Roadmap
+          </button>
+          <button
             onClick={() => void doSync()}
             disabled={syncing}
             style={{

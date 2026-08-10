@@ -5,9 +5,24 @@
 
 export type EpicStatus = "open" | "in_progress" | "closed";
 export type IssueStatus = "backlog" | "in_progress" | "done" | "closed";
+export type MilestoneStatus = "open" | "in_progress" | "closed";
+
+export interface MilestoneRow {
+  id: number;
+  title: string;
+  description: string | null;
+  startDate: string | null;
+  targetDate: string | null;
+  status: MilestoneStatus;
+  githubNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+  epicCount: number;
+}
 
 export interface EpicRow {
   id: number;
+  milestoneId?: number | null;
   title: string;
   description: string | null;
   status: EpicStatus;
