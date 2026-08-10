@@ -4014,8 +4014,11 @@ export const btEpicsTable = pgTable("bt_epics", {
   description:   text("description"),
   /** open | in_progress | closed */
   status:        text("status").notNull().default("open"),
-  /** Non-null when the epic was imported from GitHub. */
-  githubNumber:  integer("github_number"),
+  /** Non-null when the epic was imported from GitHub. Unique (nulls excepted)
+   * so GitHub sync can upsert by this column instead of delete-then-reinsert
+   * — the delete was destroying bt_chats.epic_id links via their own
+   * onDelete: "set null" foreign key on every sync (Git #693). */
+  githubNumber:  integer("github_number").unique(),
   milestoneId:   integer("milestone_id"),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -4032,7 +4035,8 @@ export const btIssuesTable = pgTable("bt_issues", {
   description:   text("description"),
   /** backlog | in_progress | done | closed */
   status:        text("status").notNull().default("backlog"),
-  githubNumber:  integer("github_number"),
+  /** Unique (nulls excepted) — same reason as bt_epics.github_number above. */
+  githubNumber:  integer("github_number").unique(),
   githubUrl:     text("github_url"),
   labels:        text("labels").array().notNull().default(sql`'{}'::text[]`),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

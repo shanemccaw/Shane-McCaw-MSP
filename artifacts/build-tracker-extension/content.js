@@ -233,7 +233,7 @@ function buildPanel() {
   panel.innerHTML = `
     <div class="header">
       <span class="title">What am I working on?</span>
-      <button class="iconbtn" data-action="refresh" title="Refresh">⟳</button>
+      <button class="iconbtn" data-action="refresh" title="Sync from GitHub">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
     <div class="progress" hidden></div>
@@ -282,7 +282,7 @@ function buildPanel() {
 
   tab.addEventListener("click", () => togglePanel(true));
   panel.querySelector('[data-action="close"]').addEventListener("click", () => togglePanel(false));
-  panel.querySelector('[data-action="refresh"]').addEventListener("click", () => loadBoard(true));
+  panel.querySelector('[data-action="refresh"]').addEventListener("click", () => void refreshFromGithub());
   search.addEventListener("input", () => renderList(search.value));
 
   // claude.ai listens for keystrokes on the document to auto-focus its own
@@ -406,6 +406,25 @@ async function loadBoard(force) {
 
   boardCache = { data: res.board, fetchedAt: Date.now() };
   render();
+}
+
+/**
+ * The Refresh button (Git #693) — a real pull from GitHub first, THEN a
+ * board reload, not just loadBoard(true) re-reading Build Tracker's own DB.
+ * Without the sync step a freshly in-flight/complete-labeled issue only
+ * shows up here after Shane goes and clicks Build Tracker's own "Sync
+ * GitHub" button — the whole point of a live indicator is that it's live.
+ */
+async function refreshFromGithub() {
+  const { list } = buildPanel();
+  list.innerHTML = `<div class="empty">Syncing from GitHub…</div>`;
+
+  const syncRes = await chrome.runtime.sendMessage({ type: "build-tracker-sync-github" });
+  if (!syncRes?.ok) {
+    list.innerHTML = `<div class="empty">${escapeHtml(`Sync failed: ${syncRes?.error ?? "unknown error"}`)}</div>`;
+    return;
+  }
+  await loadBoard(true);
 }
 
 /**

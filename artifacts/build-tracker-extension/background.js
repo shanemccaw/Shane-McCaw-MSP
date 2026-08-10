@@ -122,6 +122,32 @@ async function getBoard(conversationId) {
   }
 }
 
+/**
+ * POSTs to /github-sync — a real pull from GitHub, not just a re-read of
+ * Build Tracker's own (possibly stale) DB. The panel's Refresh button drives
+ * this (Git #693): without it, a freshly-applied in-flight/complete label
+ * only shows up here after Shane goes to the admin panel and clicks its own
+ * "Sync GitHub" button. Can take a few seconds on a real repo (paginated
+ * GitHub fetch) — the caller shows its own "Syncing…" state while this runs.
+ */
+async function syncGithub() {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/github-sync`;
+  try {
+    const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -129,6 +155,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-get-board") {
     void getBoard(message.conversationId).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-sync-github") {
+    void syncGithub().then(sendResponse);
     return true;
   }
   return false;

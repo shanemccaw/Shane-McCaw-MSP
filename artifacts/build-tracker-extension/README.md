@@ -68,6 +68,13 @@ If either the popup or the panel shows an error, it's almost always one of:
 wrong API base URL, wrong/unset token, or the api-server not reachable from
 your browser at that URL.
 
+The panel's ⟳ button does a **real GitHub sync** first, then reloads the
+board — not just a re-read of Build Tracker's own (possibly stale) database.
+That's what makes a freshly `in-flight`/`complete`-labeled issue (or its
+milestone/epic changes) show up here without going to the admin panel and
+clicking Sync GitHub yourself. It also means it can take a few seconds on a
+real repo — the panel shows "Syncing from GitHub…" while it runs.
+
 ## What it does NOT do
 
 - Doesn't read chat *content* — only the conversation ID (from the URL) and

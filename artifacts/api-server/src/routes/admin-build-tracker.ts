@@ -1265,8 +1265,15 @@ interface GitHubIssuePayload {
 import fs from "node:fs/promises";
 import path from "node:path";
 
-/** POST /admin/build-tracker/github-sync */
-router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Request, res: Response) => {
+/**
+ * POST /admin/build-tracker/github-sync
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ * — the extension's "Refresh" button (Git #693) triggers a real sync through
+ * this same route, not just a re-read of already-stale local data, so it
+ * needs the same bearer-token path every other extension-facing route uses.
+ */
+router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request, res: Response) => {
   if (!process.env.GITHUB_TOKEN) {
     res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
     return;
@@ -1357,10 +1364,14 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       previousIssueRows.filter((i) => i.githubNumber !== null).map((i) => [i.githubNumber!, i.status]),
     );
 
-    // Clear old synced records to prevent duplication or stale links
-    const issuesDeleted = await db.delete(btIssuesTable).where(sql`github_number IS NOT NULL`);
-    const epicsDeleted = await db.delete(btEpicsTable).where(sql`github_number IS NOT NULL`);
-    debugLog += `Clean up: deleted previous issues and epics\n`;
+    // Upsert by github_number (Git #693) rather than delete-then-reinsert —
+    // the old delete wiped every bt_epics/bt_issues row with a github_number
+    // on every sync, and bt_chats.epic_id/issue_id being ON DELETE SET NULL
+    // meant that silently unlinked every chat Shane had already matched to
+    // an epic/issue. Upserting keeps the same row `id` across syncs, so
+    // those links survive. Requires the unique index from Git #693's manual
+    // migration — ON CONFLICT has nothing to target without it.
+    debugLog += `Upserting by github_number instead of delete-then-reinsert (Git #693)\n`;
 
     // ── 3. Upsert Epics into bt_epics ────────────────────────────────────
     let epicsUpserted = 0;
@@ -1391,6 +1402,9 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
         status,
         githubNumber: pNum,
         milestoneId,
+      }).onConflictDoUpdate({
+        target: btEpicsTable.githubNumber,
+        set: { title, description, status, milestoneId, updatedAt: new Date() },
       });
       epicsUpserted++;
     }
@@ -1434,6 +1448,12 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
         githubNumber: gh.number,
         githubUrl: gh.html_url,
         labels,
+      }).onConflictDoUpdate({
+        target: btIssuesTable.githubNumber,
+        set: {
+          title: gh.title, description: gh.body, status: issueStatus, epicId,
+          milestoneId: issueMilestoneId, githubUrl: gh.html_url, labels, updatedAt: new Date(),
+        },
       });
       issuesUpserted++;
       if (issueStatus === "in_progress") inProgressIssueCount++;
