@@ -3989,6 +3989,7 @@ export const btEpicsTable = pgTable("bt_epics", {
   status:        text("status").notNull().default("open"),
   /** Non-null when the epic was imported from GitHub. */
   githubNumber:  integer("github_number"),
+  milestoneId:   integer("milestone_id"),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

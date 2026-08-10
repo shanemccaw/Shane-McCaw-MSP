@@ -64,6 +64,7 @@ router.get("/admin/build-tracker/epics", requireAdmin, async (_req: Request, res
         description:  btEpicsTable.description,
         status:       btEpicsTable.status,
         githubNumber: btEpicsTable.githubNumber,
+        milestoneId:  btEpicsTable.milestoneId,
         createdAt:    btEpicsTable.createdAt,
         updatedAt:    btEpicsTable.updatedAt,
         issueCount:   sql<number>`(SELECT COUNT(*) FROM bt_issues WHERE epic_id = ${btEpicsTable.id})::int`,
@@ -681,12 +682,14 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
       const description = ghEpic ? ghEpic.body : null;
       const status = (ghEpic && ghEpic.state === "closed") ? "closed" : "open";
+      const milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
 
       await db.insert(btEpicsTable).values({
         title,
         description,
         status,
         githubNumber: pNum,
+        milestoneId,
       });
       epicsUpserted++;
     }
