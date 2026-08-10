@@ -7,23 +7,22 @@
 
 import { Flag, Target, Plus, Calendar } from "lucide-react";
 import { ACCENT } from "../../theme";
-import { registerScreen } from "../../registry/screenRegistry";
-import { getShellApi } from "../../shell/shellApiSingleton";
+import { registerScreen } from "../../registry/registry";
+import { getShellApi } from "../../shell/ShellContext";
 import { ProjectManagementBody } from "./ProjectManagementBody";
 
 export const ROUTE = "/project-management";
 
 registerScreen({
   id: "project-management",
-  label: "Project Management",
+  title: "Project Management",
+  area: "build",
   route: ROUTE,
   icon: Target,
-  order: 17,
-  searchKeywords: ["gantt", "milestone", "timeline", "roadmap", "project", "management"],
 
   ribbon: [
     {
-      tabId: "build",
+      tab: "build",
       group: {
         label: "Project",
         large: [
