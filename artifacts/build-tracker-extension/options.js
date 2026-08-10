@@ -31,6 +31,14 @@ saveBtn.addEventListener("click", async () => {
     return;
   }
 
+  // Store the bare origin, not whatever was actually typed — background.js
+  // appends the endpoint paths itself (/api/admin/build-tracker/...), so a
+  // pasted-in full endpoint URL (e.g. copied straight from the ingest route's
+  // own doc comment) would otherwise get a second path glued onto it and
+  // 404/land on the wrong page. Reflect the cleaned-up value back into the
+  // field so it's obvious this happened, not silent.
+  apiBaseUrlEl.value = origin;
+
   // MV3: a service worker's fetch is only exempt from cross-origin
   // restrictions for origins the extension actually holds permission for.
   // Requested here, scoped to exactly this one origin — not every site the
@@ -41,8 +49,8 @@ saveBtn.addEventListener("click", async () => {
     return;
   }
 
-  await chrome.storage.local.set({ apiBaseUrl, ingestToken });
-  setStatus("Saved. Open a Claude chat to test it.", "ok");
+  await chrome.storage.local.set({ apiBaseUrl: origin, ingestToken });
+  setStatus(`Saved as ${origin}. Open a Claude chat to test it.`, "ok");
 });
 
 load();
