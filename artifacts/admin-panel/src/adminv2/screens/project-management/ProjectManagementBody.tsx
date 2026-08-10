@@ -161,8 +161,10 @@ function MilestoneCard({
 
 function GanttChart({
   focusedMilestoneId,
+  onSelectMilestone,
 }: {
   focusedMilestoneId: number | null;
+  onSelectMilestone: (id: number) => void;
 }) {
   const state = useStore();
   const milestones = focusedMilestoneId
@@ -222,16 +224,21 @@ function GanttChart({
           return (
             <div key={m.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {/* Milestone Row Header */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "220px 1fr",
-                gap: 12,
-                alignItems: "center",
-                background: `${SURFACE.well}99`,
-                padding: "8px 10px",
-                borderRadius: 6,
-                borderLeft: `3px solid ${STATUS_COLOR[m.status]}`,
-              }}>
+              <div
+                onClick={() => onSelectMilestone(m.id)}
+                title="Click to view & edit Milestone details"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "220px 1fr",
+                  gap: 12,
+                  alignItems: "center",
+                  background: `${SURFACE.well}99`,
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  borderLeft: `3px solid ${STATUS_COLOR[m.status]}`,
+                  cursor: "pointer",
+                }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
                   <Flag size={12} color={STATUS_COLOR[m.status]} style={{ flex: "none" }} />
                   <strong style={{ fontSize: 12, color: TEXT.primary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -382,11 +389,224 @@ function EpicAssignmentMatrix() {
   );
 }
 
+// ── Edit Milestone Modal ──────────────────────────────────────────────────────
+
+function EditMilestoneModal({
+  milestoneId,
+  onClose,
+}: {
+  milestoneId: number;
+  onClose: () => void;
+}) {
+  const state = useStore();
+  const milestone = milestoneById(milestoneId);
+
+  const [title, setTitle] = useState(milestone?.title ?? "");
+  const [desc, setDesc] = useState(milestone?.description ?? "");
+  const [status, setStatus] = useState<MilestoneStatus>(milestone?.status ?? "open");
+  const [startDate, setStartDate] = useState(milestone?.startDate ?? "");
+  const [targetDate, setTargetDate] = useState(milestone?.targetDate ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (!milestone) return null;
+
+  const assignedEpics = epicsForMilestone(milestoneId);
+  const unassignedEpics = state.epics.filter((e) => e.milestoneId !== milestoneId);
+
+  async function handleSave() {
+    await updateMilestone(milestoneId, {
+      title,
+      description: desc || null,
+      status,
+      startDate: startDate || null,
+      targetDate: targetDate || null,
+    });
+    onClose();
+  }
+
+  async function handleDelete() {
+    await deleteMilestone(milestoneId);
+    onClose();
+  }
+
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.65)", display: "flex", alignItems: "center",
+      justifyContent: "center", zIndex: 9999, padding: 20,
+    }}>
+      <div style={{
+        background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+        borderRadius: 8, padding: 24, width: "100%", maxWidth: 540,
+        display: "flex", flexDirection: "column", gap: 16, maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[status] }}>
+              Edit Milestone
+            </span>
+            <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: TEXT.primary }}>
+              {milestone.githubNumber ? `#${milestone.githubNumber} ` : ""}{milestone.title}
+            </h3>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: 0, color: TEXT.dim, cursor: "pointer" }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Status Switcher */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Status</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(["open", "in_progress", "closed"] as MilestoneStatus[]).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatus(st)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${status === st ? STATUS_COLOR[st] : LINE.control}`,
+                    background: status === st ? `${STATUS_COLOR[st]}22` : SURFACE.well,
+                    color: status === st ? STATUS_COLOR[st] : TEXT.quiet,
+                    cursor: "pointer", fontFamily: FONT.sans,
+                  }}
+                >
+                  {STATUS_LABEL[st]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              style={{
+                padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
+                border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={{
+                  padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
+                  border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Target Completion Date</label>
+              <input
+                type="date"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+                style={{
+                  padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
+                  border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Description</label>
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              rows={4}
+              style={{
+                padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
+                border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none", resize: "vertical",
+              }}
+            />
+          </div>
+
+          {/* Assigned Epics */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>
+              Assigned Epics ({assignedEpics.length})
+            </label>
+            {assignedEpics.length === 0 ? (
+              <p style={{ fontSize: 11.5, color: TEXT.dim, margin: 0 }}>No epics assigned to this milestone yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {assignedEpics.map((ep) => (
+                  <div key={ep.id} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "6px 10px", background: SURFACE.well, borderRadius: 5, border: `1px solid ${LINE.quiet}`,
+                    fontSize: 12, color: TEXT.primary,
+                  }}>
+                    <span>{ep.githubNumber ? `#${ep.githubNumber} ` : ""}{ep.title}</span>
+                    <button
+                      onClick={() => void assignEpicToMilestone(ep.id, null)}
+                      title="Unassign Epic"
+                      style={{ background: "transparent", border: 0, color: ACCENT.danger, cursor: "pointer", padding: 2 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 12, borderTop: `1px solid ${LINE.quiet}` }}>
+          <button
+            onClick={() => {
+              if (confirmDelete) void handleDelete();
+              else setConfirmDelete(true);
+            }}
+            style={{
+              padding: "6px 12px", borderRadius: 5, border: `1px solid ${ACCENT.danger}40`,
+              background: `${ACCENT.danger}15`, color: ACCENT.danger, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            {confirmDelete ? "Confirm Delete" : "Delete Milestone"}
+          </button>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "6px 14px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: "transparent", color: TEXT.quiet, fontSize: 12, cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void handleSave()}
+              style={{
+                padding: "6px 14px", borderRadius: 5, border: 0,
+                background: ACCENT.info, color: SURFACE.well, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 export function ProjectManagementBody() {
   const state = useStore();
   const [focusedMilestoneId, setFocusedMilestoneId] = useState<number | null>(null);
+  const [editingMilestoneId, setEditingMilestoneId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [newTitle, setNewTitle] = useState("");
@@ -462,17 +682,28 @@ export function ProjectManagementBody() {
               milestone={m}
               focused={focusedMilestoneId === m.id}
               onFocusToggle={() => setFocusedMilestoneId(focusedMilestoneId === m.id ? null : m.id)}
-              onSelect={() => selectMilestone(m.id)}
+              onSelect={() => setEditingMilestoneId(m.id)}
             />
           ))}
         </div>
       </div>
 
       {/* Gantt Chart */}
-      <GanttChart focusedMilestoneId={focusedMilestoneId} />
+      <GanttChart
+        focusedMilestoneId={focusedMilestoneId}
+        onSelectMilestone={(id) => setEditingMilestoneId(id)}
+      />
 
       {/* Epic Assignment Matrix */}
       <EpicAssignmentMatrix />
+
+      {/* Edit Milestone Modal */}
+      {editingMilestoneId !== null && (
+        <EditMilestoneModal
+          milestoneId={editingMilestoneId}
+          onClose={() => setEditingMilestoneId(null)}
+        />
+      )}
 
       {/* New Milestone Modal */}
       {showCreateModal && (
