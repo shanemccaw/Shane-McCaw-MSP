@@ -228,7 +228,7 @@ function Dashboard() {
   return (
     <div style={{ padding: 24, maxWidth: 1100, display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Top Banner */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 12 }}>
         <div>
           <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: ACCENT.amber }}>
             Build Tracker Studio
@@ -238,7 +238,7 @@ function Dashboard() {
           </h1>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => togglePollingGitHub()}
             title={state.pollingGitHub ? "Pause auto-sync from GitHub" : "Play: auto-sync from GitHub every 60s"}
