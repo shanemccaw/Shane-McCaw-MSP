@@ -32,6 +32,7 @@ import {
   IssueStatus, githubIssueUrl,
 } from "./buildTrackerTypes";
 import type { ChatRow, IssueRow } from "./buildTrackerTypes";
+import { PasteImportModal } from "./BuildTrackerPasteImport";
 
 function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -157,6 +158,7 @@ function ChatOpenChip({ chat }: { chat: ChatRow }) {
 
 function Dashboard() {
   const state = useStore();
+  const [pasteImportOpen, setPasteImportOpen] = useState(false);
 
   const openEpics      = state.epics.filter((e) => e.status === "open").length;
   const inProgressEpics = state.epics.filter((e) => e.status === "in_progress").length;
@@ -237,9 +239,21 @@ function Dashboard() {
             <RefreshCw size={13} style={state.syncingGitHub ? { animation: "bt-spin 0.9s linear infinite" } : undefined} />
             {state.syncingGitHub ? "Syncing…" : "Sync GitHub"}
           </button>
+          <button
+            onClick={() => setPasteImportOpen(true)}
+            title="Paste a Claude chat status-summary reply and match it against real tracker issues"
+            style={{
+              padding: "6px 14px", borderRadius: 6, border: `1px solid ${LINE.control}`,
+              background: SURFACE.well, color: TEXT.primary, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <Sparkles size={13} /> Paste from Claude
+          </button>
         </div>
       </div>
       <style>{"@keyframes bt-spin { to { transform: rotate(360deg); } }"}</style>
+      {pasteImportOpen && <PasteImportModal onClose={() => setPasteImportOpen(false)} />}
 
       {/* 2 Column Dashboard Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>

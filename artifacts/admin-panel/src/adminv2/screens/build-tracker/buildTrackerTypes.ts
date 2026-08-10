@@ -107,3 +107,19 @@ export const GITHUB_REPO = "shanemccaw/Shane-McCaw-MSP";
 export function githubIssueUrl(number: number): string {
   return `https://github.com/${GITHUB_REPO}/issues/${number}`;
 }
+
+// ── Paste import (AI-assisted) ─────────────────────────────────────────────
+
+/** One bullet extracted from a pasted status summary. */
+export interface PasteImportItem {
+  /** GitHub issue numbers this bullet referenced, expanded (ranges/slash-lists). */
+  numbers: number[];
+  /** The bullet's own text, with the leading issue-number reference(s) stripped. */
+  text: string;
+}
+
+/** One header/group extracted from a pasted status summary, in source order. */
+export interface PasteImportGroup {
+  label: string;
+  items: PasteImportItem[];
+}
