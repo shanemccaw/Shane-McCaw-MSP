@@ -333,9 +333,18 @@ function GanttChart({
 
 function EpicAssignmentMatrix() {
   const state = useStore();
+  const [query, setQuery] = useState("");
   const unassignedEpics = state.epics.filter((e) => !e.milestoneId);
 
   if (unassignedEpics.length === 0) return null;
+
+  const filtered = unassignedEpics.filter((ep) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase().trim().replace(/^#/, "");
+    const matchesNumber = ep.githubNumber !== null && String(ep.githubNumber).includes(q);
+    const matchesTitle = ep.title.toLowerCase().includes(q);
+    return matchesNumber || matchesTitle;
+  });
 
   return (
     <div style={{
@@ -347,44 +356,83 @@ function EpicAssignmentMatrix() {
       flexDirection: "column",
       gap: 12,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Sparkles size={14} color={ACCENT.amber} />
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
-          Quick Epic Assignment Matrix ({unassignedEpics.length} unassigned)
-        </h3>
-      </div>
-      <p style={{ margin: 0, fontSize: 11.5, color: TEXT.quiet }}>
-        Click any milestone pill to map unassigned Epics into project target dates instantly
-      </p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, marginTop: 4 }}>
-        {unassignedEpics.map((ep) => (
-          <div key={ep.id} style={{
-            padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
-            display: "flex", flexDirection: "column", gap: 8,
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: TEXT.primary }}>
-              {ep.githubNumber ? `#${ep.githubNumber} ` : ""}{ep.title}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {state.milestones.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => void assignEpicToMilestone(ep.id, m.id)}
-                  style={{
-                    padding: "3px 8px", borderRadius: 4, border: `1px solid ${LINE.control}`,
-                    background: SURFACE.card, color: TEXT.quiet, fontSize: 10.5, fontWeight: 600,
-                    cursor: "pointer", fontFamily: FONT.sans,
-                  }}
-                  title={`Map to "${m.title}"`}
-                >
-                  + {m.title}
-                </button>
-              ))}
-            </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Sparkles size={14} color={ACCENT.amber} />
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
+              Quick Epic Assignment Matrix ({unassignedEpics.length} unassigned)
+            </h3>
           </div>
-        ))}
+          <p style={{ margin: "2px 0 0", fontSize: 11.5, color: TEXT.quiet }}>
+            Click any milestone pill to map unassigned Epics into project target dates instantly
+          </p>
+        </div>
+
+        <div style={{ position: "relative", minWidth: 220 }}>
+          <input
+            type="text"
+            placeholder="Search epics by name or #..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "5px 24px 5px 8px",
+              borderRadius: 5,
+              background: SURFACE.well,
+              border: `1px solid ${LINE.control}`,
+              color: TEXT.primary,
+              fontFamily: FONT.sans,
+              fontSize: 11.5,
+              outline: "none",
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              style={{
+                position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                background: "transparent", border: 0, color: TEXT.caption, cursor: "pointer", padding: 0,
+              }}
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {filtered.length === 0 ? (
+        <p style={{ fontSize: 12, color: TEXT.dim, margin: "8px 0 0" }}>No unassigned epics match "{query}".</p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, marginTop: 4 }}>
+          {filtered.map((ep) => (
+            <div key={ep.id} style={{
+              padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+              display: "flex", flexDirection: "column", gap: 8,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: TEXT.primary }}>
+                {ep.githubNumber ? `#${ep.githubNumber} ` : ""}{ep.title}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {state.milestones.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => void assignEpicToMilestone(ep.id, m.id)}
+                    style={{
+                      padding: "3px 8px", borderRadius: 4, border: `1px solid ${LINE.control}`,
+                      background: SURFACE.card, color: TEXT.quiet, fontSize: 10.5, fontWeight: 600,
+                      cursor: "pointer", fontFamily: FONT.sans,
+                    }}
+                    title={`Map to "${m.title}"`}
+                  >
+                    + {m.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
