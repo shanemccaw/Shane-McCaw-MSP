@@ -15,6 +15,8 @@
 import { db, mspJobQueueTable, mspDlqStoreTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { captureDlqFailure } from "./dlq.ts";
+import { captureException } from "./exception-tracker.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 
@@ -182,6 +184,7 @@ export async function handleZohoBatchDrain(
           mspId: row.msp_id ?? undefined,
           customerId: row.customer_id ?? undefined,
         });
+        captureDlqFailure(row.job_type, `No Zoho job handler registered for job type: ${row.job_type}`);
         failed++;
         log.warn({ jobId: row.job_id, jobType: row.job_type }, "zoho-drain: no handler — parked in DLQ");
         return;
@@ -223,6 +226,7 @@ export async function handleZohoBatchDrain(
             mspId: row.msp_id ?? undefined,
             customerId: row.customer_id ?? undefined,
           });
+          void captureException(err instanceof Error ? err : new Error(errorMessage), { channel: "integration.zoho", source: "dlq" });
           failed++;
           log.error({ jobId: row.job_id, jobType: row.job_type, errorMessage }, "zoho-drain: exhausted retries — parked in DLQ");
         } else {

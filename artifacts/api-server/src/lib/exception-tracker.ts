@@ -3,10 +3,11 @@ import { createHash } from "crypto";
 import { db, exceptionGroupsTable, exceptionOccurrencesTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { getRequestContext } from "./request-context.ts";
+import { syncExceptionGroupToGitHub } from "./exception-github-sync.ts";
 
 interface CaptureOptions {
   channel: string;
-  source: "caught" | "uncaught";
+  source: "caught" | "uncaught" | "dlq";
 }
 
 // Code frames read the original source line into the group row. The server
@@ -94,7 +95,7 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
     const ctx = getRequestContext();
     const now = new Date();
 
-    await db
+    const [group] = await db
       .insert(exceptionGroupsTable)
       .values({
         fingerprint,
@@ -122,7 +123,8 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
           // whole point of suppression.
           status: sql`CASE WHEN ${exceptionGroupsTable.status} = 'resolved' THEN 'open' ELSE ${exceptionGroupsTable.status} END`,
         },
-      });
+      })
+      .returning();
 
     await db.insert(exceptionOccurrencesTable).values({
       fingerprint,
@@ -132,6 +134,12 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
       customerId: ctx?.customerId ?? null,
       occurredAt: now,
     });
+
+    // Fire-and-forget, deliberately not awaited: this is a live GitHub API
+    // call and must never add its latency to the capture path (especially
+    // the uncaughtException handler's 2s exit-race in app.ts). Production-
+    // gated and no-op without GITHUB_TOKEN — see its own doc comment.
+    if (group) void syncExceptionGroupToGitHub(group);
   } catch (captureErr) {
     // Never let exception tracking itself crash the app or recurse into logger.
     console.error("exception-tracker: capture failed", captureErr);

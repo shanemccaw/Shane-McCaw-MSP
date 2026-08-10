@@ -26,6 +26,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
+import { captureDlqFailure } from "./dlq.ts";
+import { captureException } from "./exception-tracker.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -179,6 +181,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
             mspId: row.msp_id ?? undefined,
             customerId: row.customer_id ?? undefined,
           });
+          captureDlqFailure(row.job_type, `No handler registered for job type: ${row.job_type}`);
           log.warn({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: no handler — parked in DLQ");
           return;
         }
@@ -223,6 +226,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
               mspId: row.msp_id ?? undefined,
               customerId: row.customer_id ?? undefined,
             });
+            void captureException(err instanceof Error ? err : new Error(errorMessage), { channel: "system.dlq", source: "dlq" });
             log.error({ jobId: row.job_id, jobType: row.job_type, errorMessage }, "msp-jobs: exhausted retries — parked in DLQ");
           } else {
             // Schedule retry with exponential back-off (2^attempt * 30s)

@@ -45,6 +45,7 @@ import { runWithRequestContext } from "./request-context.ts";
 import type { DispatchedEvent } from "./event-bus";
 import { isAIDependent, getAiCostOwner } from "./node-type-registry.js";
 import { checkAiAdmission, recordAiUsage } from "./ai-billing.js";
+import { captureDlqFailure } from "./dlq.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -507,6 +508,7 @@ async function routeToDlq(opts: {
       mspId: opts.tenantContext.mspId ?? undefined,
       customerId: opts.tenantContext.customerId ?? undefined,
     });
+    captureDlqFailure(`portal_wf.run.failed:${opts.workflowKey}`, opts.errorMessage, opts.errorStack);
     log.warn({ runId: opts.runId, workflowKey: opts.workflowKey }, "portal-wf: run routed to DLQ");
   } catch (err) {
     log.error({ err, runId: opts.runId }, "portal-wf: failed to route run to DLQ");

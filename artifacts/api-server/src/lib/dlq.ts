@@ -8,6 +8,7 @@
 import { db, mspDlqStoreTable } from "@workspace/db";
 import { eq, isNull, desc, and, sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { captureException } from "./exception-tracker.ts";
 const log = logger.child({ channel: "system.dlq" });
 
 export interface DlqEnqueueOptions {
@@ -24,6 +25,22 @@ export type DlqResolution = "replayed" | "discarded" | "manual";
 
 export interface DlqResolveOptions {
   resolution: DlqResolution;
+}
+
+/**
+ * Feeds a DLQ item into the same exception-tracker + GitHub-auto-file
+ * pipeline every other captured error goes through (fingerprinted/grouped
+ * by exception-tracker.ts, filed under Epic #530 by exception-github-sync.ts
+ * in production). Exported so the raw-insert call sites that can't route
+ * through enqueueDlq() (msp-jobs.ts's two sites run inside an existing `tx`,
+ * and enqueueDlq() always writes via the plain `db` handle) can still get
+ * the same treatment without duplicating this. Fire-and-forget — never
+ * await this from a DLQ write path, it must never add latency there.
+ */
+export function captureDlqFailure(eventType: string, errorMessage: string, errorStack?: string | null): void {
+  const err = new Error(errorMessage);
+  if (errorStack) err.stack = errorStack;
+  void captureException(err, { channel: "system.dlq", source: "dlq" });
 }
 
 /**
@@ -49,6 +66,7 @@ export async function enqueueDlq(opts: DlqEnqueueOptions): Promise<string | null
       { dlqId: row?.dlqId, eventType: opts.eventType },
       "dlq: item enqueued",
     );
+    captureDlqFailure(opts.eventType, opts.errorMessage, opts.errorStack);
 
     return row?.dlqId ?? null;
   } catch (err) {

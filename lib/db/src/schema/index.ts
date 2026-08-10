@@ -3774,6 +3774,11 @@ export const exceptionGroupsTable = pgTable("exception_groups", {
   suppressedAt: timestamp("suppressed_at", { withTimezone: true }),
   suppressedBy: integer("suppressed_by"),
   suppressionReason: text("suppression_reason"),
+  /** Set once this group has been auto-filed as a GitHub issue (production only) — see lib/exception-github-sync.ts. Null until then. */
+  githubIssueNumber: integer("github_issue_number"),
+  githubIssueUrl: text("github_issue_url"),
+  /** Last time a "this happened again" comment was posted — throttles re-notification so a hot-looping error doesn't spam the issue. */
+  githubLastNotifiedAt: timestamp("github_last_notified_at", { withTimezone: true }),
 }, (t) => [
   index("exception_groups_status_idx").on(t.status),
   index("exception_groups_last_seen_idx").on(t.lastSeenAt),

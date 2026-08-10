@@ -30,7 +30,11 @@ vi.mock("@workspace/db", () => {
     return {
       onConflictDoUpdate: (cfg: { target: unknown; set: Record<string, unknown> }) => {
         groupUpserts.push(cfg);
-        return Promise.resolve([]);
+        // Real Drizzle's .returning() resolves with the post-upsert row; the
+        // inserted `values` stand in for it here (exact match on the insert
+        // branch, a reasonable stand-in on the conflict branch — this mock
+        // doesn't model onConflictDoUpdate's SQL `set` actually applying).
+        return { returning: () => Promise.resolve([values]) };
       },
       // Also awaitable directly (the occurrence insert has no onConflict).
       then: (resolve: (v: unknown) => void) => resolve([]),
