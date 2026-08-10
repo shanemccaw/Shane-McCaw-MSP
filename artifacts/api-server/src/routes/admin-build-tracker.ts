@@ -648,6 +648,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         .select({
           id: btIssuesTable.id,
           title: btIssuesTable.title,
+          description: btIssuesTable.description,
           status: btIssuesTable.status,
           githubNumber: btIssuesTable.githubNumber,
           epicId: btIssuesTable.epicId,

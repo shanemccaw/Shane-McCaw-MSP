@@ -143,19 +143,27 @@ function buildPanel() {
     }
     .epic-row:hover { background: #292929; }
     .epic-row .pill { font-size: 9px; color: #8f8c88; }
+    /* A small boxed card, not a single truncated line — title can wrap to two
+       lines, and the two action buttons live in their own row underneath so
+       they don't fight the title for space at this panel's width. */
     .issue-row {
-      display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 22px; border-radius: 5px;
-      cursor: pointer; font-size: 12px; color: #c8c6c4;
+      display: flex; flex-direction: column; gap: 5px; padding: 7px 9px;
+      margin: 4px 0 4px 16px; border-radius: 6px; background: #242424;
+      border: 1px solid #2e2e2e; cursor: pointer; font-size: 12px; color: #c8c6c4;
     }
-    .issue-row:hover { background: #292929; color: #fff; }
-    .issue-row .issue-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .issue-row:hover { border-color: #3b3b3b; background: #272727; }
+    .issue-row .issue-top { display: flex; align-items: flex-start; gap: 6px; }
+    .issue-row .issue-text {
+      flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.35;
+    }
     /* "in-flight" GitHub label — Claude Code is actively working on this
        issue right now (see CLAUDE.md's "GitHub issue label sync"). A small
        glowing/pulsing dot, not a full tint — this is a "still moving" signal,
        lighter-weight than the finished "complete" state below. */
     .issue-row .dot {
       width: 7px; height: 7px; border-radius: 50%; background: #3fb950; flex: none;
-      animation: bt-pulse 1.6s ease-out infinite;
+      margin-top: 4px; animation: bt-pulse 1.6s ease-out infinite;
     }
     @keyframes bt-pulse {
       0%   { box-shadow: 0 0 0 0 rgba(63,185,80,.55); }
@@ -166,11 +174,51 @@ function buildPanel() {
        closed by Shane. A full green tint on the row, deliberately heavier
        than the in-flight dot since this is the "stop and look at this" state. */
     .issue-row.label-complete {
-      background: rgba(127,174,145,.16); color: #dff2e6;
+      background: rgba(127,174,145,.16); border-color: rgba(127,174,145,.35); color: #dff2e6;
     }
     .issue-row.label-complete:hover { background: rgba(127,174,145,.26); }
-    .issue-row .check { color: #7fae91; font-weight: 800; flex: none; }
+    .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
+    .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
+    .issue-row .ibtn {
+      width: 22px; height: 20px; border-radius: 4px; border: 0; background: transparent;
+      color: #8f8c88; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 12px; padding: 0;
+    }
+    .issue-row .ibtn:hover { background: #333; color: #fff; }
     .empty { padding: 16px 8px; font-size: 12px; color: #8f8c88; text-align: center; }
+
+    /* Details dialog — a proper centered modal, not squeezed into the 320px
+       panel, since reading a full description needs real width. */
+    .dlg-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 2147483647;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dlg-backdrop[hidden] { display: none; }
+    .dlg {
+      width: 420px; max-width: 90vw; max-height: 70vh; background: #1f1f1f;
+      border: 1px solid #3b3b3b; border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.5);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .dlg-header {
+      display: flex; align-items: flex-start; gap: 8px; padding: 14px 16px;
+      border-bottom: 1px solid #2e2e2e; flex: none;
+    }
+    .dlg-header .dlg-title { flex: 1; font-size: 14px; font-weight: 700; color: #fff; line-height: 1.4; }
+    .dlg-status { padding: 10px 16px 0; flex: none; }
+    .dlg-status .pill {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      padding: 3px 8px; border-radius: 10px; background: #292929; color: #a19f9d;
+    }
+    .dlg-body {
+      padding: 10px 16px 16px; overflow-y: auto; font-size: 12.5px; line-height: 1.6;
+      color: #d6d4d2; white-space: pre-wrap;
+    }
+    .dlg-expand {
+      margin: 0 16px 16px; padding: 6px 12px; border-radius: 6px; border: 1px solid #3b3b3b;
+      background: #292929; color: #7fb4d8; font-size: 11.5px; cursor: pointer; align-self: flex-start;
+      flex: none;
+    }
+    .dlg-expand[hidden] { display: none; }
   `;
   shadow.appendChild(style);
 
@@ -195,6 +243,38 @@ function buildPanel() {
   `;
   shadow.appendChild(panel);
 
+  const dlgBackdrop = document.createElement("div");
+  dlgBackdrop.className = "dlg-backdrop";
+  dlgBackdrop.hidden = true;
+  dlgBackdrop.innerHTML = `
+    <div class="dlg" role="dialog" aria-label="Issue details">
+      <div class="dlg-header">
+        <span class="dlg-title"></span>
+        <button class="iconbtn" data-action="dlg-close" title="Close">✕</button>
+      </div>
+      <div class="dlg-status"></div>
+      <div class="dlg-body"></div>
+      <button class="dlg-expand" hidden>Read more</button>
+    </div>
+  `;
+  shadow.appendChild(dlgBackdrop);
+
+  const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
+  const dlgStatus = dlgBackdrop.querySelector(".dlg-status");
+  const dlgBody = dlgBackdrop.querySelector(".dlg-body");
+  const dlgExpand = dlgBackdrop.querySelector(".dlg-expand");
+
+  const closeDetails = () => { dlgBackdrop.hidden = true; };
+  dlgBackdrop.querySelector('[data-action="dlg-close"]').addEventListener("click", closeDetails);
+  // Click the dimmed backdrop (not the dialog box itself) to dismiss.
+  dlgBackdrop.addEventListener("click", (e) => { if (e.target === dlgBackdrop) closeDetails(); });
+  for (const evt of ["keydown", "keyup", "keypress"]) {
+    dlgBackdrop.addEventListener(evt, (e) => {
+      e.stopPropagation();
+      if (evt === "keydown" && e.key === "Escape") closeDetails();
+    });
+  }
+
   const progress = panel.querySelector(".progress");
   const current = panel.querySelector(".current");
   const list = panel.querySelector(".list");
@@ -216,8 +296,88 @@ function buildPanel() {
     panel.addEventListener(evt, (e) => e.stopPropagation());
   }
 
-  panelEls = { host, tab, panel, progress, current, list, search };
+  panelEls = { host, tab, panel, progress, current, list, search, dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand };
   return panelEls;
+}
+
+/** Short first pass — long enough to be useful, short enough to actually be a "summary." */
+const SUMMARY_CHARS = 220;
+
+function openDetails(issue) {
+  const { dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand } = buildPanel();
+  dlgTitle.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
+  dlgStatus.innerHTML = issue.status
+    ? `<span class="pill">${escapeHtml(issue.status.replace(/_/g, " "))}</span>`
+    : "";
+
+  const desc = (issue.description ?? "").trim();
+  if (!desc) {
+    dlgBody.textContent = "No description.";
+    dlgExpand.hidden = true;
+  } else if (desc.length <= SUMMARY_CHARS) {
+    dlgBody.textContent = desc;
+    dlgExpand.hidden = true;
+  } else {
+    dlgBody.textContent = `${desc.slice(0, SUMMARY_CHARS).trim()}…`;
+    dlgExpand.hidden = false;
+    dlgExpand.textContent = "Read more";
+    dlgExpand.onclick = () => {
+      dlgBody.textContent = desc;
+      dlgExpand.hidden = true;
+    };
+  }
+
+  dlgBackdrop.hidden = false;
+}
+
+/**
+ * Finds claude.ai's own chat composer so a prompt can be inserted into it.
+ * Best-effort: claude.ai doesn't expose a stable id/data-testid this file can
+ * rely on, so this picks the largest visible contenteditable on the page —
+ * in practice always the composer, since nothing else on a chat page is both
+ * that large and directly editable. If claude.ai's layout changes this is
+ * the one function that needs revisiting.
+ */
+function findComposer() {
+  const candidates = Array.from(document.querySelectorAll('div[contenteditable="true"]')).filter(
+    (el) => el.offsetParent !== null,
+  );
+  candidates.sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight);
+  return candidates[0] ?? null;
+}
+
+/**
+ * Inserts (never sends — Shane's explicit ask, so it never reads as a bot
+ * talking to Claude) a starter prompt into the composer, positioned at the
+ * end of whatever's already typed there. Uses execCommand('insertText')
+ * because that's what produces a real native `input` event with
+ * inputType "insertText" — the same shape a real keystroke produces, which
+ * is what makes React/ProseMirror-style editors (claude.ai's composer is one)
+ * actually pick up the change instead of silently ignoring a plain
+ * textContent write. Falls back to a manual insert + dispatched InputEvent
+ * for the rare case execCommand is unsupported.
+ */
+function insertPrompt(issue) {
+  const composer = findComposer();
+  if (!composer) {
+    window.alert("Couldn't find the chat box on this page — claude.ai's layout may have changed.");
+    return;
+  }
+  const text = `Let's look at Git #${issue.githubNumber}...`;
+
+  composer.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(composer);
+  range.collapse(false); // end of existing content, not the start
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  const inserted = document.execCommand("insertText", false, text);
+  if (!inserted) {
+    range.insertNode(document.createTextNode(text));
+    composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+  }
 }
 
 function togglePanel(open) {
@@ -457,35 +617,68 @@ function issueLabelState(issue) {
 
 /**
  * One issue row, shared by the focused view and the full browse tree so the
- * in-flight dot / complete tint can't drift between the two places an issue
- * shows up. `onClick` omitted (focused view) means read-only — nothing to
- * link, it's already linked.
+ * in-flight dot / complete tint (and the two action buttons) can't drift
+ * between the two places an issue shows up. `onClick` omitted (focused view)
+ * means the row itself is read-only — nothing to link, it's already linked —
+ * but the Details/Prompt buttons still work regardless.
  */
 function buildIssueRow(issue, onClick) {
   const irow = document.createElement("div");
   const labelState = issueLabelState(issue);
   irow.className = "issue-row" + (labelState === "complete" ? " label-complete" : "");
   if (!onClick) irow.style.cursor = "default";
+  else irow.addEventListener("click", onClick);
+
+  const top = document.createElement("div");
+  top.className = "issue-top";
 
   const text = document.createElement("span");
   text.className = "issue-text";
   text.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
-  irow.appendChild(text);
+  top.appendChild(text);
 
   if (labelState === "in-flight") {
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.title = "Claude Code is actively working on this";
-    irow.appendChild(dot);
+    top.appendChild(dot);
   } else if (labelState === "complete") {
     const check = document.createElement("span");
     check.className = "check";
     check.textContent = "✓";
     check.title = "Confirmed done in code — awaiting your review";
-    irow.appendChild(check);
+    top.appendChild(check);
+  }
+  irow.appendChild(top);
+
+  const actions = document.createElement("div");
+  actions.className = "issue-actions";
+
+  const detailsBtn = document.createElement("button");
+  detailsBtn.type = "button";
+  detailsBtn.className = "ibtn";
+  detailsBtn.title = "View summary";
+  detailsBtn.textContent = "ⓘ";
+  detailsBtn.addEventListener("click", (e) => {
+    e.stopPropagation(); // don't also trigger the row's own link-click
+    openDetails(issue);
+  });
+  actions.appendChild(detailsBtn);
+
+  if (issue.githubNumber) {
+    const promptBtn = document.createElement("button");
+    promptBtn.type = "button";
+    promptBtn.className = "ibtn";
+    promptBtn.title = "Insert a prompt for this issue into the chat box (you send it)";
+    promptBtn.textContent = "➜";
+    promptBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      insertPrompt(issue);
+    });
+    actions.appendChild(promptBtn);
   }
 
-  if (onClick) irow.addEventListener("click", onClick);
+  irow.appendChild(actions);
   return irow;
 }
 
