@@ -334,7 +334,7 @@ function GanttChart({
 function EpicAssignmentMatrix() {
   const state = useStore();
   const [query, setQuery] = useState("");
-  const unassignedEpics = state.epics.filter((e) => !e.milestoneId);
+  const unassignedEpics = state.epics.filter((e) => !e.milestoneId && e.status !== "closed");
 
   if (unassignedEpics.length === 0) return null;
 
