@@ -878,14 +878,18 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
       const ghRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${num}`);
       if (!ghRes.ok) { failed.push(num); continue; }
       const gh = (await ghRes.json()) as GitHubIssuePayload;
+      const labels = gh.labels.map((l) => l.name);
       const patch: Partial<typeof btIssuesTable.$inferInsert> = {
         title: gh.title,
         description: gh.body,
         githubUrl: gh.html_url,
-        labels: gh.labels.map((l) => l.name),
+        labels,
         updatedAt: new Date(),
       };
+      // `complete` means done in code, not yet reviewed/closed by Shane —
+      // see the full sync's comment for the full story (Git #713 follow-up).
       if (gh.state === "closed") patch.status = "closed";
+      else if (labels.includes("complete")) patch.status = "done";
 
       const result = await db
         .update(btIssuesTable)
@@ -947,12 +951,19 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
 async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<void> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
   const labels = gh.labels.map((l) => l.name);
+  // `complete` means done in code, not yet reviewed/closed by Shane himself
+  // — see the full sync's matching comment above for the full story (Git
+  // #713 follow-up). Only ever WIDENS what counts as done locally; never
+  // touches the real GitHub state, and never downgrades an update back to
+  // "backlog" when neither signal applies (same as before this fix).
+  const derivedStatus: "closed" | "done" | null =
+    gh.state === "closed" ? "closed" : labels.includes("complete") ? "done" : null;
   await db
     .insert(btIssuesTable)
     .values({
       title: gh.title,
       description: gh.body,
-      status: gh.state === "closed" ? "closed" : "backlog",
+      status: derivedStatus ?? "backlog",
       epicId,
       milestoneId,
       githubNumber: gh.number,
@@ -968,7 +979,7 @@ async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<v
         milestoneId,
         githubUrl: gh.html_url,
         labels,
-        ...(gh.state === "closed" ? { status: "closed" as const } : {}),
+        ...(derivedStatus ? { status: derivedStatus } : {}),
         updatedAt: new Date(),
       },
     });
@@ -1781,14 +1792,27 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
       const parentNum = getParentNumber(gh.parent_issue_url);
       const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
       const previousStatus = previousIssueStatusByNumber.get(gh.number);
+      const labels = gh.labels.map((l) => l.name);
+      // Git #713 follow-up — Shane: "when I am closing them... you see the
+      // green shanemccaw added complete... then it goes away for our view.
+      // But then you see at the bottom right 'Close issue' — Git doesn't
+      // know it's actually closed." Per CLAUDE.md's own "GitHub issue label
+      // sync" convention, `complete` means Claude confirms the code is
+      // done — NOT that Shane has reviewed/closed it, which stays his own
+      // call, on his own schedule. Every progress number and every "open
+      // issues" list up to now only ever looked at GitHub's real
+      // open/closed state, so a `complete`-labeled-but-still-open issue
+      // counted as unfinished everywhere — this never auto-closes anything,
+      // it only teaches OUR local status field to recognize the label.
       const issueStatus: GhIssueStatus = gh.state === "closed"
         ? "closed"
-        : projectInProgress.has(gh.number)
-          ? "in_progress"
-          : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
-            ? previousStatus
-            : "backlog";
-      const labels = gh.labels.map((l) => l.name);
+        : labels.includes("complete")
+          ? "done"
+          : projectInProgress.has(gh.number)
+            ? "in_progress"
+            : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
+              ? previousStatus
+              : "backlog";
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
       await db.insert(btIssuesTable).values({
