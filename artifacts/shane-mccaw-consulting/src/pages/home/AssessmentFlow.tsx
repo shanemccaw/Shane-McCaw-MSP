@@ -2,7 +2,15 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./dsComponents";
 import { useConsentScopes } from "@/hooks/useConsentScopes";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { trackCheckoutStarted, trackCheckoutCompleted, identifyLead, trackEvent, getGa4ClientId } from "@/lib/analytics";
+import { usePersonalizationState } from "@/hooks/usePersonalizationState";
+import {
+  trackCheckoutStarted,
+  trackCheckoutCompleted,
+  identifyLead,
+  trackEvent,
+  getGa4ClientId,
+  getAnalyticsSessionId,
+} from "@/lib/analytics";
 
 /**
  * The real Copilot Readiness Assessment purchase flow, embedded on the Home
@@ -776,9 +784,55 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
   const [consentNonce, setConsentNonce] = useState(0);
 
   const { scopes, loading: scopesLoading } = useConsentScopes();
+  const personalization = usePersonalizationState();
 
   const setField = (key: keyof FlowForm, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  /**
+   * #678 — carry an email already captured upstream (quiz or a logged-in
+   * assessment session) forward onto this form, so a returning visitor never
+   * has to retype it. Never overwrites an in-progress edit: both the tier
+   * check and the eventual setForm re-check f.email at the moment they apply,
+   * since the quiz-tier fetch below is async and the visitor may have already
+   * started typing by the time it resolves.
+   *
+   * Assessment tier's email comes straight off context (AssessmentIdentity
+   * already carries it via /api/auth/refresh in PersonalizationProvider).
+   * Quiz tier's shared QuizIdentity deliberately excludes email for privacy
+   * (#621), so this calls GET /api/public/personalization/state directly —
+   * same endpoint Git #677 extended to return email for the quiz tier.
+   */
+  useEffect(() => {
+    if (personalization.loading || form.email) return;
+
+    if (personalization.tier === "assessment") {
+      const email = personalization.assessment?.email;
+      if (email) setForm((prev) => (prev.email ? prev : { ...prev, email }));
+      return;
+    }
+
+    if (personalization.tier !== "quiz") return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const sessionId = getAnalyticsSessionId();
+        const res = await fetch(`/api/public/personalization/state?sessionId=${encodeURIComponent(sessionId)}`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { tier?: string; email?: string };
+        if (cancelled || data.tier !== "quiz" || !data.email) return;
+        setForm((prev) => (prev.email ? prev : { ...prev, email: data.email as string }));
+      } catch {
+        // No prefill on failure — the field just stays blank.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personalization.loading, personalization.tier]);
 
   // Poll only while a consent grant is genuinely outstanding.
   const polling =
