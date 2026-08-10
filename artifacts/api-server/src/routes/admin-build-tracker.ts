@@ -651,6 +651,10 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           status: btIssuesTable.status,
           githubNumber: btIssuesTable.githubNumber,
           epicId: btIssuesTable.epicId,
+          // `in-flight`/`complete` labels (see CLAUDE.md's "GitHub issue
+          // label sync") ride along on this same real GitHub labels array —
+          // refreshed by the normal GitHub sync, not fetched live here.
+          labels: btIssuesTable.labels,
         })
         .from(btIssuesTable)
         .orderBy(asc(btIssuesTable.title)),

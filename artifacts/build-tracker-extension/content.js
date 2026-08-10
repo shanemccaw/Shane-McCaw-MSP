@@ -148,8 +148,29 @@ function buildPanel() {
       cursor: pointer; font-size: 12px; color: #c8c6c4;
     }
     .issue-row:hover { background: #292929; color: #fff; }
+    .issue-row .issue-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* "in-flight" GitHub label — Claude Code is actively working on this
+       issue right now (see CLAUDE.md's "GitHub issue label sync"). A small
+       glowing/pulsing dot, not a full tint — this is a "still moving" signal,
+       lighter-weight than the finished "complete" state below. */
+    .issue-row .dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #3fb950; flex: none;
+      animation: bt-pulse 1.6s ease-out infinite;
+    }
+    @keyframes bt-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(63,185,80,.55); }
+      70%  { box-shadow: 0 0 0 6px rgba(63,185,80,0); }
+      100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); }
+    }
+    /* "complete" GitHub label — code is done and confirmed, not yet reviewed/
+       closed by Shane. A full green tint on the row, deliberately heavier
+       than the in-flight dot since this is the "stop and look at this" state. */
+    .issue-row.label-complete {
+      background: rgba(127,174,145,.16); color: #dff2e6;
+    }
+    .issue-row.label-complete:hover { background: rgba(127,174,145,.26); }
+    .issue-row .check { color: #7fae91; font-weight: 800; flex: none; }
     .empty { padding: 16px 8px; font-size: 12px; color: #8f8c88; text-align: center; }
-    .linked-badge { color: #7fae91; font-size: 11px; margin-left: auto; }
   `;
   shadow.appendChild(style);
 
@@ -299,11 +320,7 @@ function renderFocused(currentChat) {
     list.appendChild(empty);
   } else {
     for (const issue of openIssues) {
-      const irow = document.createElement("div");
-      irow.className = "issue-row";
-      irow.style.cursor = "default";
-      irow.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
-      list.appendChild(irow);
+      list.appendChild(buildIssueRow(issue, null));
     }
   }
 }
@@ -381,11 +398,7 @@ function renderList(query) {
       list.appendChild(row);
 
       for (const issue of epicIssues) {
-        const irow = document.createElement("div");
-        irow.className = "issue-row";
-        irow.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
-        irow.addEventListener("click", () => linkTo({ issueId: issue.id }, issue.title));
-        list.appendChild(irow);
+        list.appendChild(buildIssueRow(issue, () => linkTo({ issueId: issue.id }, issue.title)));
       }
     }
   }
@@ -396,11 +409,8 @@ function renderList(query) {
     h.textContent = "No Epic";
     list.appendChild(h);
     for (const issue of filteredUnassigned) {
-      const irow = document.createElement("div");
-      irow.className = "issue-row";
+      const irow = buildIssueRow(issue, () => linkTo({ issueId: issue.id }, issue.title));
       irow.style.paddingLeft = "8px";
-      irow.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
-      irow.addEventListener("click", () => linkTo({ issueId: issue.id }, issue.title));
       list.appendChild(irow);
     }
   }
@@ -435,6 +445,48 @@ function onConversationChanged() {
   showAllOverride = false;
   if (!panelEls || panelEls.panel.hidden) return;
   loadBoard(true);
+}
+
+/** `complete` wins over `in-flight` if a row somehow carries both (stale sync mid-transition). */
+function issueLabelState(issue) {
+  const labels = issue.labels ?? [];
+  if (labels.includes("complete")) return "complete";
+  if (labels.includes("in-flight")) return "in-flight";
+  return null;
+}
+
+/**
+ * One issue row, shared by the focused view and the full browse tree so the
+ * in-flight dot / complete tint can't drift between the two places an issue
+ * shows up. `onClick` omitted (focused view) means read-only — nothing to
+ * link, it's already linked.
+ */
+function buildIssueRow(issue, onClick) {
+  const irow = document.createElement("div");
+  const labelState = issueLabelState(issue);
+  irow.className = "issue-row" + (labelState === "complete" ? " label-complete" : "");
+  if (!onClick) irow.style.cursor = "default";
+
+  const text = document.createElement("span");
+  text.className = "issue-text";
+  text.textContent = `${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}`;
+  irow.appendChild(text);
+
+  if (labelState === "in-flight") {
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.title = "Claude Code is actively working on this";
+    irow.appendChild(dot);
+  } else if (labelState === "complete") {
+    const check = document.createElement("span");
+    check.className = "check";
+    check.textContent = "✓";
+    check.title = "Confirmed done in code — awaiting your review";
+    irow.appendChild(check);
+  }
+
+  if (onClick) irow.addEventListener("click", onClick);
+  return irow;
 }
 
 function escapeHtml(str) {
