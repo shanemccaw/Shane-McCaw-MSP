@@ -76,13 +76,14 @@ type PanelLayout = {
   width: number;
   height: number;
   collapsed: boolean;
+  dismissed: boolean;
   tab: "state" | "network";
 };
 
 export function AdminDebugPanel() {
   const { user, accessToken } = useAuth();
   const [layout, setLayout] = useState<PanelLayout>(() => loadLayout());
-  const [dismissed, setDismissed] = useState(false);
+  const dismissed = layout.dismissed;
   const [entries, setEntries] = useState<NetworkEntry[]>(getNetworkLog);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [urlFilter, setUrlFilter] = useState("");
@@ -134,7 +135,7 @@ export function AdminDebugPanel() {
       <button
         type="button"
         data-testid="admin-debug-reopen"
-        onClick={() => setDismissed(false)}
+        onClick={() => setLayout((p) => ({ ...p, dismissed: false }))}
         className="fixed right-3 bottom-3 z-[300] flex items-center gap-1.5 rounded-full border border-primary/60 bg-primary/15 px-3 py-1.5 text-[11px] font-semibold text-primary shadow-lg backdrop-blur transition-colors hover:bg-primary/25"
         title="Reopen the admin debug panel"
       >
@@ -181,7 +182,7 @@ export function AdminDebugPanel() {
             type="button"
             data-testid="admin-debug-dismiss"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setDismissed(true)}
+            onClick={() => setLayout((p) => ({ ...p, dismissed: true }))}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             title="Hide panel"
           >
@@ -523,6 +524,7 @@ function loadLayout(): PanelLayout {
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
     collapsed: false,
+    dismissed: true,
     tab: "state",
   };
   try {
@@ -535,6 +537,7 @@ function loadLayout(): PanelLayout {
       width: numberOr(parsed.width, fallback.width),
       height: numberOr(parsed.height, fallback.height),
       collapsed: parsed.collapsed === true,
+      dismissed: typeof parsed.dismissed === "boolean" ? parsed.dismissed : true,
       tab: parsed.tab === "network" ? "network" : "state",
     });
   } catch {
