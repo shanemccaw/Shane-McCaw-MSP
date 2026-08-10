@@ -48,6 +48,25 @@ An unpacked Edge/Chrome extension with two parts, both running on
    in) and issues are listed by Git number, not alphabetically by title —
    with a lot of issues under one epic, alphabetical order was hard to scan.
 
+   While the panel is open it polls in the background instead of waiting for
+   a manual Refresh: every ~15s it quietly re-checks any `in-flight`-labeled
+   issue on screen, and every ~30s it re-syncs the currently focused epic to
+   catch anything newly added or closed. No loading flicker — it only
+   re-renders if something actually changed, and it pauses while a dialog is
+   open or the tab is backgrounded.
+
+   The header's 🗄 and 💻 buttons open a **floaty SQL Runner** and **Deploy
+   Console** — full read/write SQL, and shell commands (including free
+   text), against your **development server**. These aren't new backend
+   capability: they call the exact same already-shipped admin-panel routes
+   (`/api/simulator/sql/execute`, `/api/admin/simulator/deploy/*`) the admin
+   panel's own SQL Runner and Deploy Console screens already use, just
+   reachable without leaving claude.ai. Every Run button arms on the first
+   click and runs on the second, as a speedbump against a stray click — not
+   a real safety gate. **Do not point this extension's API base URL at a
+   production server** — anyone with the extension's bearer token gets full
+   database and shell access to whatever it's configured against.
+
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
 cookie, and even with one, claude.ai is a client-rendered SPA so the raw

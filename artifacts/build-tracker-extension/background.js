@@ -206,6 +206,82 @@ async function syncEpic(epicNumber) {
   }
 }
 
+/**
+ * Git #702 — floaty SQL Runner + Deploy Console. Both reuse EXISTING,
+ * already-shipped admin routes (the admin panel's own SQL Runner and Deploy
+ * Console) rather than new backend capability — see admin-engines.ts and
+ * admin-deploy-console.ts's own doc comments. Shane's development server,
+ * full read/write, by his explicit choice.
+ */
+async function runSql(query) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/simulator/sql/execute`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ query }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function listDeployOperations() {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/simulator/deploy/operations`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/** `operationKey` runs one whitelisted operation; `freeCommand` (if given instead) runs verbatim shell text through the real Deploy Console's free-text route. */
+async function runDeploy({ operationKey, freeCommand }) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const url = operationKey
+    ? `${base}/api/admin/simulator/deploy/${encodeURIComponent(operationKey)}`
+    : `${base}/api/admin/simulator/deploy/console`;
+  const body = operationKey ? undefined : JSON.stringify({ command: freeCommand });
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: operationKey
+        ? { Authorization: `Bearer ${ingestToken}` }
+        : { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body,
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -225,6 +301,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-sync-epic") {
     void syncEpic(message.epicNumber).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-run-sql") {
+    void runSql(message.query).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-list-deploy-ops") {
+    void listDeployOperations().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-run-deploy") {
+    void runDeploy({ operationKey: message.operationKey, freeCommand: message.freeCommand }).then(sendResponse);
     return true;
   }
   return false;

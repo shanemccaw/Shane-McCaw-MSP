@@ -8,7 +8,7 @@ import { splitSqlStatements } from "../lib/sql-statement-splitter";
 import { recordFailedSqlRun, recordSqlRun } from "../lib/run-history";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { executeMonitorCheck } from "../lib/monitor-executor";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.signals" });
@@ -1836,10 +1836,15 @@ async function executeRawSql(query: string): Promise<{ statements: StatementResu
 }
 
 /**
- * @route POST /api/admin/engines/simulator/sql/execute
+ * @route POST /api/simulator/sql/execute
  * @desc Executes SQL queries/CRUD scripts with performance timing & safety checks
+ *
+ * Git #702: also reachable via Shane's Build Tracker browser extension's
+ * floaty SQL Runner, same bearer-token pattern used elsewhere in Build
+ * Tracker — full read/write, no restrictions, by his own explicit choice
+ * after being walked through the risk. Development server, not production.
  */
-router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Response) => {
+router.post("/simulator/sql/execute", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   const startedAt = Date.now();
   const { query } = req.body ?? {};
 

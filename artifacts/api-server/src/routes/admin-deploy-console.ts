@@ -1,5 +1,12 @@
 import { Router, type Request, type Response } from "express";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
+
+// Git #702 — Shane's Build Tracker browser extension floats a Deploy Console
+// over claude.ai, reusing this exact route (not a new backend) with the same
+// bearer-token pattern already used elsewhere in Build Tracker. His own
+// words: "I'm already doing it with the existing console... just [wanted it]
+// on a different page." This is his development server, not production.
+const requireDeployAccess = requireAdminOrIngestToken();
 import { exec, execSync } from "child_process";
 import { logger } from "../lib/logger";
 import { recordDeployRun } from "../lib/run-history";
@@ -110,7 +117,7 @@ function runStep(step: DeployStep, workspaceRoot: string): Promise<StepResult> {
 
 // GET /admin/simulator/deploy/operations — lists the fixed whitelist so the
 // frontend never has to hardcode operation keys independently of the server.
-router.get("/admin/simulator/deploy/operations", requireAdmin, (_req: Request, res: Response) => {
+router.get("/admin/simulator/deploy/operations", requireDeployAccess, (_req: Request, res: Response) => {
   res.json({
     operations: Object.entries(DEPLOY_OPERATIONS).map(([key, steps]) => ({
       key,
@@ -131,7 +138,7 @@ router.get("/admin/simulator/deploy/operations", requireAdmin, (_req: Request, r
 // routes in registration order, not most-specific-first, so "console" would
 // otherwise be swallowed by ":operation" as an unrecognised whitelist key
 // and never reach this handler.
-router.post("/admin/simulator/deploy/console", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/simulator/deploy/console", requireDeployAccess, async (req: Request, res: Response) => {
   const command = typeof req.body?.command === "string" ? req.body.command.trim() : "";
   if (!command) {
     res.status(400).json({ ok: false, error: "No command given" });
@@ -173,7 +180,7 @@ router.post("/admin/simulator/deploy/console", requireAdmin, async (req: Request
 // POST /admin/simulator/deploy/:operation — runs one whitelisted operation.
 // :operation is validated against DEPLOY_OPERATIONS' keys and used only as a
 // lookup; the executed command string always comes from the whitelist entry.
-router.post("/admin/simulator/deploy/:operation", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/simulator/deploy/:operation", requireDeployAccess, async (req: Request, res: Response) => {
   const operation = String(req.params.operation);
   const steps = Object.prototype.hasOwnProperty.call(DEPLOY_OPERATIONS, operation)
     ? DEPLOY_OPERATIONS[operation]

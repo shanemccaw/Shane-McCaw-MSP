@@ -264,6 +264,34 @@ function buildPanel() {
       flex: none;
     }
     .dlg-expand[hidden] { display: none; }
+
+    /* Git #702 — SQL Runner / Deploy Console. Wider than the details dialog
+       since query text and command output both need real room. */
+    .dlg-wide { width: 640px; max-height: 80vh; }
+    .tool-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; overflow: hidden; flex: 1; min-height: 0; }
+    .tool-input {
+      width: 100%; min-height: 70px; resize: vertical; font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px; background: #141414; color: #e6e6e6; border: 1px solid #3b3b3b; border-radius: 6px;
+      padding: 8px; box-sizing: border-box;
+    }
+    .tool-run {
+      align-self: flex-start; padding: 6px 16px; border-radius: 6px; border: 1px solid #3b3b3b;
+      background: #292929; color: #f3f2f1; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .tool-run:hover { background: #333; }
+    .tool-run.armed { background: #7a2e24; border-color: #a8402f; color: #ffe0da; }
+    .tool-output {
+      flex: 1; min-height: 120px; overflow: auto; background: #141414; border: 1px solid #2e2e2e;
+      border-radius: 6px; padding: 8px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+      color: #c8c6c4; white-space: pre-wrap; margin: 0;
+    }
+    .tool-ops { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+    .tool-op-btn {
+      padding: 4px 10px; border-radius: 12px; border: 1px solid #3b3b3b; background: #242424;
+      color: #c8c6c4; font-size: 11px; cursor: pointer;
+    }
+    .tool-op-btn:hover { background: #2e2e2e; }
+    .tool-op-btn.armed { background: #7a2e24; border-color: #a8402f; color: #ffe0da; }
   `;
   shadow.appendChild(style);
 
@@ -280,6 +308,8 @@ function buildPanel() {
       <span class="title">What am I working on?</span>
       <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
       <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
+      <button class="iconbtn" data-action="sql" title="SQL Runner (dev server)">🗄</button>
+      <button class="iconbtn" data-action="console" title="Deploy Console (dev server)">💻</button>
       <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
@@ -346,6 +376,61 @@ function buildPanel() {
     });
   }
 
+  // Git #702 — floaty SQL Runner + Deploy Console, both reusing EXISTING
+  // admin routes (see background.js's runSql()/runDeploy() doc comment).
+  // Full read/write, no restrictions — Shane's explicit choice for his own
+  // dev server, after being walked through the risk. The "arm, then
+  // confirm" pattern on Run buttons here is a lightweight speedbump against
+  // a stray click, not a real gate — there is no query/command it blocks.
+  const sqlBackdrop = document.createElement("div");
+  sqlBackdrop.className = "dlg-backdrop";
+  sqlBackdrop.hidden = true;
+  sqlBackdrop.innerHTML = `
+    <div class="dlg dlg-wide" role="dialog" aria-label="SQL Runner">
+      <div class="dlg-header">
+        <span class="dlg-title">🗄 SQL Runner — dev server</span>
+        <button class="iconbtn" data-action="sql-close" title="Close">✕</button>
+      </div>
+      <div class="tool-body">
+        <textarea class="tool-input" placeholder="SELECT * FROM bt_epics LIMIT 20;" spellcheck="false"></textarea>
+        <button type="button" class="tool-run" data-action="sql-run">Run</button>
+        <pre class="tool-output">Results appear here.</pre>
+      </div>
+    </div>
+  `;
+  shadow.appendChild(sqlBackdrop);
+
+  const consoleBackdrop = document.createElement("div");
+  consoleBackdrop.className = "dlg-backdrop";
+  consoleBackdrop.hidden = true;
+  consoleBackdrop.innerHTML = `
+    <div class="dlg dlg-wide" role="dialog" aria-label="Deploy Console">
+      <div class="dlg-header">
+        <span class="dlg-title">💻 Deploy Console — dev server</span>
+        <button class="iconbtn" data-action="console-close" title="Close">✕</button>
+      </div>
+      <div class="tool-body">
+        <div class="tool-ops">Loading operations…</div>
+        <textarea class="tool-input" placeholder="Or type any shell command…" spellcheck="false"></textarea>
+        <button type="button" class="tool-run" data-action="console-run">Run</button>
+        <pre class="tool-output">Output appears here.</pre>
+      </div>
+    </div>
+  `;
+  shadow.appendChild(consoleBackdrop);
+
+  for (const [backdrop, closeAction] of [[sqlBackdrop, "sql-close"], [consoleBackdrop, "console-close"]]) {
+    const close = () => { backdrop.hidden = true; };
+    backdrop.querySelector(`[data-action="${closeAction}"]`).addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    for (const evt of ["keydown", "keyup", "keypress"]) {
+      backdrop.addEventListener(evt, (e) => {
+        e.stopPropagation();
+        if (evt === "keydown" && e.key === "Escape") close();
+      });
+    }
+  }
+
   const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
   const dlgStatus = dlgBackdrop.querySelector(".dlg-status");
   const dlgBody = dlgBackdrop.querySelector(".dlg-body");
@@ -374,6 +459,8 @@ function buildPanel() {
   panel.querySelector('[data-action="full-sync"]').addEventListener("click", () => void fullSyncFromGithub());
   panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
   panel.querySelector('[data-action="navigate"]').addEventListener("click", () => openNavigator());
+  panel.querySelector('[data-action="sql"]').addEventListener("click", () => openSqlRunner());
+  panel.querySelector('[data-action="console"]').addEventListener("click", () => openDeployConsole());
   // Git #700 — search now works in BOTH views (render() itself decides
   // which render*() to call), so this can't call renderList() directly
   // anymore or typing while focused on an epic would silently do nothing.
@@ -394,7 +481,10 @@ function buildPanel() {
     host, tab, panel, alertsEl, progress, current, list, search,
     dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand,
     navBackdrop, navTitle, navBody, navBackBtn,
+    sqlBackdrop, consoleBackdrop,
   };
+  wireSqlRunner();
+  wireDeployConsole();
   return panelEls;
 }
 
@@ -553,7 +643,12 @@ function togglePanel(open) {
   panel.hidden = !open;
   tab.style.display = open ? "none" : "block";
   void chrome.storage.local.set({ panelOpen: open });
-  if (open) loadBoard(false);
+  if (open) {
+    loadBoard(false);
+    startPolling();
+  } else {
+    stopPolling();
+  }
 }
 
 async function initPanelVisibility() {
@@ -561,7 +656,68 @@ async function initPanelVisibility() {
   togglePanel(panelOpen !== false); // default OPEN unless Shane explicitly closed it last time
 }
 
-async function loadBoard(force) {
+// ── Git #701: auto-poll instead of manual refresh ───────────────────────────
+// Shane: "poll Git instead of me having to hit refresh every time... ADHD, I
+// just want to look and see it going and be cool, not OCD click click click."
+// Runs in THIS content script, not the background service worker — a service
+// worker gets suspended between events in MV3, so a setInterval there isn't
+// reliable; a content script stays alive for as long as the tab itself is
+// open, which is exactly the lifetime this needs.
+const INFLIGHT_POLL_MS = 15_000;
+const EPIC_POLL_MS = 30_000;
+let inflightPollTimer = null;
+let epicPollTimer = null;
+
+function startPolling() {
+  stopPolling();
+  inflightPollTimer = setInterval(() => void pollInFlightIssues(), INFLIGHT_POLL_MS);
+  epicPollTimer = setInterval(() => void pollFocusedEpic(), EPIC_POLL_MS);
+}
+
+function stopPolling() {
+  clearInterval(inflightPollTimer);
+  clearInterval(epicPollTimer);
+  inflightPollTimer = null;
+  epicPollTimer = null;
+}
+
+/** Don't yank content out from under Shane while a dialog's open, the tab's backgrounded, or the panel's closed. */
+function pollingBlocked() {
+  if (!panelEls || panelEls.panel.hidden) return true;
+  if (document.hidden) return true;
+  if (!panelEls.dlgBackdrop.hidden || !panelEls.navBackdrop.hidden) return true;
+  return false;
+}
+
+/** Whichever issue list is actually on screen right now — focused epic's open issues, or the full browse list. */
+function currentIssueList() {
+  const focusEpic = boardCache?.data?.currentChat?.focusEpic;
+  if (focusEpic && !showAllOverride) return boardCache.data.currentChat.focusEpicOpenIssues ?? [];
+  return boardCache?.data?.issues ?? [];
+}
+
+/** Every 15s: quiet quick-sync of just the in-flight-labeled issues on screen — the ones actually likely to change soon. */
+async function pollInFlightIssues() {
+  if (pollingBlocked() || !boardCache) return;
+  const numbers = currentIssueList()
+    .filter((i) => (i.labels ?? []).includes("in-flight") && typeof i.githubNumber === "number")
+    .map((i) => i.githubNumber);
+  if (numbers.length === 0) return;
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+  if (res?.ok) await loadBoard(true, true);
+}
+
+/** Every 30s: quiet sync-epic of the focused epic — catches a brand-new or newly-closed sub-issue, not just label changes. */
+async function pollFocusedEpic() {
+  if (pollingBlocked() || !boardCache) return;
+  const focusEpic = boardCache.data.currentChat?.focusEpic;
+  if (!focusEpic || showAllOverride || !focusEpic.githubNumber) return;
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+  if (res?.ok) await loadBoard(true, true);
+}
+
+/** `quiet` skips the "Loading…" placeholder — for background polling (Git #701), where blanking the list every 15-30s would read as flicker, not a refresh. */
+async function loadBoard(force, quiet = false) {
   const conversationId = conversationIdFromUrl();
   const { list } = buildPanel();
   await loadDismissed();
@@ -572,10 +728,10 @@ async function loadBoard(force) {
     return;
   }
 
-  list.innerHTML = `<div class="empty">Loading…</div>`;
+  if (!quiet) list.innerHTML = `<div class="empty">Loading…</div>`;
   const res = await chrome.runtime.sendMessage({ type: "build-tracker-get-board", conversationId });
   if (!res?.ok) {
-    list.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load — check the extension's settings.")}</div>`;
+    if (!quiet) list.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load — check the extension's settings.")}</div>`;
     return;
   }
 
@@ -1011,6 +1167,96 @@ function renderNavChats() {
     }
     navBody.appendChild(row);
   }
+}
+
+// ── Git #702: floaty SQL Runner + Deploy Console ────────────────────────────
+// Both reuse existing, already-shipped admin routes (background.js's
+// runSql()/runDeploy()) — full read/write, no restrictions, Shane's explicit
+// choice for his own dev server. "Armed" is a lightweight one-click-then-
+// confirm speedbump against a stray Enter/click, not a real gate.
+
+function openSqlRunner() {
+  const { sqlBackdrop } = buildPanel();
+  sqlBackdrop.hidden = false;
+  sqlBackdrop.querySelector(".tool-input").focus();
+}
+
+function armThenRun(btn, label, doRun) {
+  if (!btn.classList.contains("armed")) {
+    btn.classList.add("armed");
+    btn.textContent = "Click again to run";
+    setTimeout(() => { btn.classList.remove("armed"); btn.textContent = label; }, 4000);
+    return;
+  }
+  btn.classList.remove("armed");
+  btn.textContent = label;
+  void doRun();
+}
+
+function wireSqlRunner() {
+  const { sqlBackdrop } = panelEls;
+  const input = sqlBackdrop.querySelector(".tool-input");
+  const output = sqlBackdrop.querySelector(".tool-output");
+  const runBtn = sqlBackdrop.querySelector('[data-action="sql-run"]');
+  runBtn.addEventListener("click", () => {
+    armThenRun(runBtn, "Run", async () => {
+      const query = input.value.trim();
+      if (!query) return;
+      output.textContent = "Running…";
+      const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-sql", query });
+      output.textContent = res?.ok ? JSON.stringify(res.result, null, 2) : `Error: ${res?.error ?? "unknown error"}`;
+    });
+  });
+}
+
+function openDeployConsole() {
+  const { consoleBackdrop } = buildPanel();
+  consoleBackdrop.hidden = false;
+  void loadDeployOps();
+}
+
+async function loadDeployOps() {
+  const { consoleBackdrop } = panelEls;
+  const opsEl = consoleBackdrop.querySelector(".tool-ops");
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-list-deploy-ops" });
+  if (!res?.ok) {
+    opsEl.textContent = `Couldn't load operations: ${res?.error ?? "unknown error"}`;
+    return;
+  }
+  const ops = res.result?.operations ?? [];
+  opsEl.innerHTML = "";
+  for (const op of ops) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tool-op-btn";
+    btn.textContent = op.key;
+    btn.title = (op.steps ?? []).join(" → ");
+    btn.addEventListener("click", () => {
+      armThenRun(btn, op.key, () => runDeployAction({ operationKey: op.key }));
+    });
+    opsEl.appendChild(btn);
+  }
+}
+
+async function runDeployAction({ operationKey, freeCommand }) {
+  const { consoleBackdrop } = panelEls;
+  const output = consoleBackdrop.querySelector(".tool-output");
+  output.textContent = `Running ${operationKey ?? freeCommand}…`;
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-deploy", operationKey, freeCommand });
+  output.textContent = res?.ok ? JSON.stringify(res.result, null, 2) : `Error: ${res?.error ?? "unknown error"}`;
+}
+
+function wireDeployConsole() {
+  const { consoleBackdrop } = panelEls;
+  const input = consoleBackdrop.querySelector(".tool-input");
+  const runBtn = consoleBackdrop.querySelector('[data-action="console-run"]');
+  runBtn.addEventListener("click", () => {
+    armThenRun(runBtn, "Run", () => {
+      const command = input.value.trim();
+      if (!command) return Promise.resolve();
+      return runDeployAction({ freeCommand: command });
+    });
+  });
 }
 
 async function linkTo(target, label) {

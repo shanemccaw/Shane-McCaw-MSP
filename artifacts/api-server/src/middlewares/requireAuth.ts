@@ -165,6 +165,35 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   });
 }
 
+/**
+ * Same admin session check as requireAdmin, but also accepts a static
+ * Bearer token so a background caller (Shane's Build Tracker browser
+ * extension — Git #702) can reach admin-only routes without a session
+ * cookie. Reuses BUILD_TRACKER_INGEST_TOKEN by default rather than minting
+ * a new secret per route — matches the ingestAuth pattern already used in
+ * admin-build-tracker.ts, just factored out here so other route files (the
+ * SQL Runner, the Deploy Console) can use the exact same check instead of
+ * each hand-rolling their own copy.
+ *
+ * Every route this guards is already fully attributable server-side by its
+ * own logging (SQL execute logs the query; the Deploy Console logs the
+ * command + records it in run history) — the token only widens WHO can
+ * reach the route, not what gets recorded once they do.
+ */
+export function requireAdminOrIngestToken(envVar = "BUILD_TRACKER_INGEST_TOKEN") {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const envToken = process.env[envVar];
+    if (envToken) {
+      const auth = req.headers.authorization ?? "";
+      if (auth === `Bearer ${envToken}`) {
+        next();
+        return;
+      }
+    }
+    requireAdmin(req, res, next);
+  };
+}
+
 // ── MSP role guard ─────────────────────────────────────────────────────────────
 /**
  * Require the user to have AT LEAST the specified MSP role.
