@@ -20,6 +20,32 @@ async function getConfig() {
 }
 
 /**
+ * Reads a response body as JSON, but never throws "Unexpected token '<'" at
+ * the caller — that error means the API base URL resolved to something that
+ * isn't actually the api-server (most often its own frontend's index.html,
+ * served with a 200 for any unrecognized path by the SPA's own dev server).
+ * Diagnosing that from a raw SyntaxError is opaque, so this reads the body as
+ * text first and gives a specific, actionable message when it looks like
+ * HTML rather than the generic parse error.
+ */
+async function readJson(res) {
+  const text = await res.text();
+  try {
+    return { ok: true, data: text ? JSON.parse(text) : null };
+  } catch {
+    if (/^\s*<(!doctype|html)/i.test(text)) {
+      return {
+        ok: false,
+        error:
+          "Got an HTML page back instead of JSON — the API base URL in Settings isn't reaching your api-server " +
+          "(it's landing on a page instead, e.g. the admin panel's own frontend). Double-check that URL.",
+      };
+    }
+    return { ok: false, error: `Response wasn't valid JSON: ${text.slice(0, 200)}` };
+  }
+}
+
+/**
  * POSTs to /chats/ingest. Used both for the passive title-sync (content.js's
  * own settle timer) and for the panel's "link this chat to X" click —
  * issueId/epicId are optional in both cases; the server only ever applies
@@ -53,14 +79,14 @@ async function ingestChat(conversationId, title, issueId, epicId) {
       }),
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      const err = `HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`;
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      const err = !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}`;
       await chrome.storage.local.set({ lastError: err });
       return { ok: false, error: err };
     }
 
-    const data = await res.json().catch(() => null);
+    const data = parsed.data;
     await chrome.storage.local.set({
       lastError: null,
       lastSyncAt: now,
@@ -86,12 +112,11 @@ async function getBoard(conversationId) {
   const url = `${base}/api/admin/build-tracker/extension/board?conversationId=${encodeURIComponent(conversationId ?? "")}`;
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return { ok: false, error: `HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}` };
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
     }
-    const data = await res.json();
-    return { ok: true, board: data };
+    return { ok: true, board: parsed.data };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
