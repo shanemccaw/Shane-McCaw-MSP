@@ -736,27 +736,25 @@ function EditMilestoneModal({
   const state = useStore();
   const milestone = milestoneById(milestoneId);
 
+  // Title/description are free text — batched into local state and
+  // auto-saved on blur so every keystroke doesn't fire a PATCH. Status and
+  // the two dates are discrete choices (a click, a date-picker pick), so
+  // they read straight from the store and save immediately on change —
+  // there is nothing here that needs a separate "Save Changes" click.
   const [title, setTitle] = useState(milestone?.title ?? "");
   const [desc, setDesc] = useState(milestone?.description ?? "");
-  const [status, setStatus] = useState<MilestoneStatus>(milestone?.status ?? "open");
-  const [startDate, setStartDate] = useState(milestone?.startDate ?? "");
-  const [targetDate, setTargetDate] = useState(milestone?.targetDate ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (!milestone) return null;
 
   const assignedEpics = epicsForMilestone(milestoneId);
-  const unassignedEpics = state.epics.filter((e) => e.milestoneId !== milestoneId);
+  const saving = state.savingIds.has(`milestone:${milestoneId}`);
 
-  async function handleSave() {
-    await updateMilestone(milestoneId, {
-      title,
-      description: desc || null,
-      status,
-      startDate: startDate || null,
-      targetDate: targetDate || null,
-    });
-    onClose();
+  function commitTitle() {
+    if (title !== milestone!.title) void updateMilestone(milestoneId, { title });
+  }
+  function commitDesc() {
+    if (desc !== (milestone!.description ?? "")) void updateMilestone(milestoneId, { description: desc || null });
   }
 
   async function handleDelete() {
@@ -777,8 +775,8 @@ function EditMilestoneModal({
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[status] }}>
-              Edit Milestone
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[milestone.status] }}>
+              Edit Milestone{saving ? " · Saving…" : ""}
             </span>
             <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: TEXT.primary }}>
               {milestone.githubNumber ? `#${milestone.githubNumber} ` : ""}{milestone.title}
@@ -789,20 +787,24 @@ function EditMilestoneModal({
           </button>
         </div>
 
+        {state.message && (
+          <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Status Switcher */}
+          {/* Status Switcher — saves immediately on click, no confirm step needed. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Status</label>
             <div style={{ display: "flex", gap: 6 }}>
               {(["open", "in_progress", "closed"] as MilestoneStatus[]).map((st) => (
                 <button
                   key={st}
-                  onClick={() => setStatus(st)}
+                  onClick={() => { if (milestone.status !== st) void updateMilestone(milestoneId, { status: st }); }}
                   style={{
                     padding: "4px 10px", borderRadius: 5, fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${status === st ? STATUS_COLOR[st] : LINE.control}`,
-                    background: status === st ? `${STATUS_COLOR[st]}22` : SURFACE.well,
-                    color: status === st ? STATUS_COLOR[st] : TEXT.quiet,
+                    border: `1px solid ${milestone.status === st ? STATUS_COLOR[st] : LINE.control}`,
+                    background: milestone.status === st ? `${STATUS_COLOR[st]}22` : SURFACE.well,
+                    color: milestone.status === st ? STATUS_COLOR[st] : TEXT.quiet,
                     cursor: "pointer", fontFamily: FONT.sans,
                   }}
                 >
@@ -812,12 +814,16 @@ function EditMilestoneModal({
             </div>
           </div>
 
+          {/* Title/Description are free text — save on blur. Status and the
+              dates below are discrete picks, so they save on change/click,
+              straight against the store, with no local draft state at all. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onBlur={commitTitle}
               style={{
                 padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
                 border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
@@ -830,8 +836,8 @@ function EditMilestoneModal({
               <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Start Date</label>
               <input
                 type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                value={milestone.startDate ?? ""}
+                onChange={(e) => void updateMilestone(milestoneId, { startDate: e.target.value || null })}
                 style={{
                   padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
                   border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
@@ -842,8 +848,8 @@ function EditMilestoneModal({
               <label style={{ fontSize: 11, fontWeight: 700, color: TEXT.caption }}>Target Completion Date</label>
               <input
                 type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
+                value={milestone.targetDate ?? ""}
+                onChange={(e) => void updateMilestone(milestoneId, { targetDate: e.target.value || null })}
                 style={{
                   padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
                   border: `1px solid ${LINE.control}`, color: TEXT.primary, fontSize: 12.5, outline: "none",
@@ -857,6 +863,7 @@ function EditMilestoneModal({
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
+              onBlur={commitDesc}
               rows={4}
               style={{
                 padding: "8px 10px", borderRadius: 5, background: SURFACE.well,
@@ -910,26 +917,17 @@ function EditMilestoneModal({
             {confirmDelete ? "Confirm Delete" : "Delete Milestone"}
           </button>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={onClose}
-              style={{
-                padding: "6px 14px", borderRadius: 5, border: `1px solid ${LINE.control}`,
-                background: "transparent", color: TEXT.quiet, fontSize: 12, cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => void handleSave()}
-              style={{
-                padding: "6px 14px", borderRadius: 5, border: 0,
-                background: ACCENT.info, color: SURFACE.well, fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}
-            >
-              Save Changes
-            </button>
-          </div>
+          {/* Everything above already saved itself — this just closes the
+              dialog, same as the X in the corner. */}
+          <button
+            onClick={onClose}
+            style={{
+              padding: "6px 14px", borderRadius: 5, border: 0,
+              background: ACCENT.info, color: SURFACE.well, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>

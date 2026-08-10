@@ -644,6 +644,7 @@ export async function createMilestone(
 }
 
 export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) {
+  const key = `milestone:${id}`;
   const existing = state.milestones.find((m) => m.id === id);
   if (existing) {
     const prevFields = Object.fromEntries(
@@ -658,6 +659,7 @@ export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) 
     milestones: state.milestones.map((m) =>
       m.id === id ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m
     ),
+    savingIds: new Set([...state.savingIds, key]),
   });
   try {
     await apiFetch(`/admin/build-tracker/milestones/${id}`, {
@@ -665,10 +667,15 @@ export async function updateMilestone(id: number, patch: Partial<MilestoneRow>) 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...patch, githubNumber: existing?.githubNumber }),
     });
+    flashMessage("Saved");
   } catch (err) {
     log.error({ err, id }, "updateMilestone REST call failed");
+    flashMessage("Couldn't save — try again", "error");
+  } finally {
+    const next = new Set(state.savingIds);
+    next.delete(key);
+    set({ savingIds: next });
   }
-  flashMessage("Milestone updated");
 }
 
 export async function deleteMilestone(id: number) {
@@ -770,6 +777,7 @@ export async function updateEpic(id: number, patch: Partial<EpicRow>, _skipUndo 
     flashMessage("Saved");
   } catch (err) {
     log.error({ err, id }, "updateEpic failed");
+    flashMessage("Couldn't save — try again", "error");
   } finally {
     const next = new Set(state.savingIds);
     next.delete(key);
@@ -839,6 +847,7 @@ export async function updateIssue(id: number, patch: Partial<IssueRow>, _skipUnd
     flashMessage("Saved");
   } catch (err) {
     log.error({ err, id }, "updateIssue failed");
+    flashMessage("Couldn't save — try again", "error");
   } finally {
     const next = new Set(state.savingIds);
     next.delete(key);
@@ -936,6 +945,7 @@ export async function updateChat(id: number, patch: Partial<ChatRow>, _skipUndo 
     flashMessage("Saved");
   } catch (err) {
     log.error({ err, id }, "updateChat failed");
+    flashMessage("Couldn't save — try again", "error");
   } finally {
     const next = new Set(state.savingIds);
     next.delete(key);

@@ -6,7 +6,7 @@
  */
 
 import { useSyncExternalStore, useState } from "react";
-import { Save, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import {
   getSnapshot, subscribe,
@@ -38,11 +38,13 @@ interface FieldProps {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  /** Fires on blur — this is the whole save mechanism. No separate Save button. */
+  onCommit?: () => void;
   area?: boolean;
   onOpenModal?: () => void;
 }
 
-function Field({ label, value, onChange, area, onOpenModal }: FieldProps) {
+function Field({ label, value, onChange, onCommit, area, onOpenModal }: FieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -64,6 +66,7 @@ function Field({ label, value, onChange, area, onOpenModal }: FieldProps) {
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onCommit}
           rows={12}
           style={{
             background: SURFACE.well, border: `1px solid ${LINE.control}`,
@@ -75,6 +78,7 @@ function Field({ label, value, onChange, area, onOpenModal }: FieldProps) {
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onCommit}
           style={{
             background: SURFACE.well, border: `1px solid ${LINE.control}`,
             borderRadius: 4, padding: "5px 8px", color: TEXT.primary,
@@ -126,23 +130,15 @@ function DescriptionModal({
   );
 }
 
-function SaveButton({ onClick, saving }: { onClick: () => void; saving?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={saving}
-      style={{
-        display: "flex", alignItems: "center", gap: 5,
-        padding: "5px 12px", borderRadius: 4, border: 0, cursor: "pointer",
-        background: ACCENT.info + "22", color: ACCENT.info,
-        fontFamily: FONT.sans, fontSize: 12, fontWeight: 600,
-        opacity: saving ? 0.5 : 1,
-      }}
-    >
-      <Save size={12} />
-      {saving ? "Saving…" : "Save"}
-    </button>
-  );
+/**
+ * Every field here auto-saves on blur/change — there is no Save button to
+ * forget to click. This is the only feedback that a save is in flight;
+ * `state.message` (rendered separately, in each panel below) confirms once
+ * it lands.
+ */
+function SavingHint({ saving }: { saving: boolean }) {
+  if (!saving) return null;
+  return <span style={{ fontSize: 11, color: TEXT.dim, fontFamily: FONT.sans }}>Saving…</span>;
 }
 
 // ── Epic properties ────────────────────────────────────────────────────────────
@@ -188,8 +184,20 @@ function EpicProperties({ id }: { id: number }) {
         ⏱️ Est. Remaining Work: <strong>{estHours} hours</strong> ({(estHours / 8).toFixed(1)} days)
       </div>
 
-      <Field label="Title" value={title} onChange={setTitle} />
-      <Field label="Description" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+      <Field
+        label="Title"
+        value={title}
+        onChange={setTitle}
+        onCommit={() => { if (title !== epic.title) void updateEpic(id, { title }); }}
+      />
+      <Field
+        label="Description"
+        value={desc}
+        onChange={setDesc}
+        onCommit={() => { if (desc !== (epic.description ?? "")) void updateEpic(id, { description: desc }); }}
+        area
+        onOpenModal={() => setModalOpen(true)}
+      />
 
       {modalOpen && (
         <DescriptionModal
@@ -199,10 +207,10 @@ function EpicProperties({ id }: { id: number }) {
         />
       )}
 
+      <SavingHint saving={saving} />
       {state.message && (
         <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
-      <SaveButton saving={saving} onClick={() => void updateEpic(id, { title, description: desc })} />
 
       <div style={{ fontSize: 11, color: TEXT.dim }}>
         <p style={{ margin: 0 }}>{epic.issueCount} issue{epic.issueCount !== 1 ? "s" : ""}</p>
@@ -286,6 +294,7 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => { if (title !== issue.title) void updateIssue(id, { title }); }}
           style={{
             background: SURFACE.well, border: `1px solid ${LINE.control}`,
             borderRadius: 4, padding: "5px 8px", color: TEXT.primary,
@@ -294,7 +303,14 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
         />
       </div>
 
-      <Field label="Description / Notes" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+      <Field
+        label="Description / Notes"
+        value={desc}
+        onChange={setDesc}
+        onCommit={() => { if (desc !== (issue.description ?? "")) void updateIssue(id, { description: desc }); }}
+        area
+        onOpenModal={() => setModalOpen(true)}
+      />
 
       {modalOpen && (
         <DescriptionModal
@@ -312,10 +328,10 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
         </a>
       )}
 
+      <SavingHint saving={saving} />
       {state.message && (
         <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
-      <SaveButton saving={saving} onClick={() => void updateIssue(id, { title, description: desc })} />
     </div>
   );
 }
@@ -351,9 +367,26 @@ function ChatProperties({ id }: { id: number }) {
         <span style={{ fontSize: 12, color: ACCENT.info, fontWeight: 600 }}>Open Chat in Claude</span>
       </a>
 
-      <Field label="Label" value={title} onChange={setTitle} />
-      <Field label="Category (if free-form)" value={category} onChange={setCategory} />
-      <Field label="Notes" value={notes} onChange={setNotes} area onOpenModal={() => setModalOpen(true)} />
+      <Field
+        label="Label"
+        value={title}
+        onChange={setTitle}
+        onCommit={() => { if (title !== chat.title) void updateChat(id, { title }); }}
+      />
+      <Field
+        label="Category (if free-form)"
+        value={category}
+        onChange={setCategory}
+        onCommit={() => { if (category !== (chat.category ?? "")) void updateChat(id, { category: category || null }); }}
+      />
+      <Field
+        label="Notes"
+        value={notes}
+        onChange={setNotes}
+        onCommit={() => { if (notes !== (chat.notes ?? "")) void updateChat(id, { notes: notes || null }); }}
+        area
+        onOpenModal={() => setModalOpen(true)}
+      />
 
       {modalOpen && (
         <DescriptionModal
@@ -363,10 +396,10 @@ function ChatProperties({ id }: { id: number }) {
         />
       )}
 
+      <SavingHint saving={saving} />
       {state.message && (
         <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
-      <SaveButton saving={saving} onClick={() => void updateChat(id, { title, notes: notes || null, category: category || null })} />
 
       <p style={{ fontSize: 10, color: TEXT.faintest, margin: 0, fontFamily: FONT.mono, wordBreak: "break-all" }}>
         {chat.conversationId}
@@ -384,6 +417,7 @@ function MilestoneProperties({ id }: { id: number }) {
   const [desc, setDesc] = useState(milestone?.description ?? "");
   const [targetDate, setTargetDate] = useState(milestone?.targetDate ?? "");
   const [modalOpen, setModalOpen] = useState(false);
+  const saving = state.savingIds.has(`milestone:${id}`);
 
   if (!milestone) return null;
 
@@ -424,9 +458,26 @@ function MilestoneProperties({ id }: { id: number }) {
         </button>
       </div>
 
-      <Field label="Title" value={title} onChange={setTitle} />
-      <Field label="Target Date" value={targetDate} onChange={setTargetDate} />
-      <Field label="Description" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+      <Field
+        label="Title"
+        value={title}
+        onChange={setTitle}
+        onCommit={() => { if (title !== milestone.title) void updateMilestone(id, { title }); }}
+      />
+      <Field
+        label="Target Date"
+        value={targetDate}
+        onChange={setTargetDate}
+        onCommit={() => { if (targetDate !== (milestone.targetDate ?? "")) void updateMilestone(id, { targetDate: targetDate || null }); }}
+      />
+      <Field
+        label="Description"
+        value={desc}
+        onChange={setDesc}
+        onCommit={() => { if (desc !== (milestone.description ?? "")) void updateMilestone(id, { description: desc || null }); }}
+        area
+        onOpenModal={() => setModalOpen(true)}
+      />
 
       {modalOpen && (
         <DescriptionModal
@@ -436,10 +487,10 @@ function MilestoneProperties({ id }: { id: number }) {
         />
       )}
 
+      <SavingHint saving={saving} />
       {state.message && (
         <p style={{ fontSize: 11, color: state.messageTone === "error" ? ACCENT.danger : ACCENT.green, margin: 0 }}>{state.message}</p>
       )}
-      <SaveButton onClick={() => void updateMilestone(id, { title, description: desc, targetDate })} />
     </div>
   );
 }
