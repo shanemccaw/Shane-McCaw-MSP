@@ -24,7 +24,7 @@ import {
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
   selectIssue, selectEpic, updateIssue, setTriageActive, syncFromGitHub,
-  estimateMilestoneHours, formatIssueAge, togglePollingGitHub,
+  estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -51,12 +51,15 @@ function StatusPill({ label, color }: { label: string; color: string }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: TEXT.caption, margin: 0 }}>
-        {title}
-      </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: TEXT.caption, margin: 0 }}>
+          {title}
+        </p>
+        {action}
+      </div>
       {children}
     </div>
   );
@@ -444,10 +447,13 @@ function EpicDetail({ id }: { id: number }) {
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
 
   if (!epic) return null;
   const epicId = epic.id; // capture before async closure
-  const issues = issuesForEpic(epicId);
+  const allIssues = issuesForEpic(epicId);
+  const issues = showClosed ? allIssues : allIssues.filter((i) => i.status !== "closed");
+  const blockedIssues = allIssues.filter(issueIsBlocked);
   const directChats = chatsForEpic(epicId).filter((c) => c.epicId === epicId && !c.issueId);
 
   async function handleNewIssue() {
@@ -482,9 +488,61 @@ function EpicDetail({ id }: { id: number }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {epic.description && <FormattedDescription text={epic.description} />}
 
-          <Section title={`Issues (${issues.length})`}>
+          {blockedIssues.length > 0 && (
+            <Section title={`🚫 Blocked (${blockedIssues.length})`}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {blockedIssues.map((issue) => {
+                  const issueChats = chatsForIssue(issue.id);
+                  return (
+                    <div key={issue.id} style={{
+                      padding: "8px 12px", borderRadius: 6,
+                      background: `${ACCENT.danger}10`, border: `1px solid ${ACCENT.danger}40`,
+                    }}>
+                      <button
+                        onClick={() => selectIssue(issue.id)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8, width: "100%",
+                          background: "transparent", border: 0, padding: 0, cursor: "pointer",
+                          textAlign: "left", fontFamily: FONT.sans,
+                        }}
+                      >
+                        <GitPullRequest size={13} color={ACCENT.danger} style={{ flex: "none" }} />
+                        <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
+                        </span>
+                      </button>
+                      {issueChats.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, paddingLeft: 21 }}>
+                          {issueChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
+          <Section
+            title={`Issues (${issues.length}${showClosed ? "" : " open"})`}
+            action={
+              <button
+                onClick={() => setShowClosed((s) => !s)}
+                style={{
+                  background: showClosed ? `${ACCENT.info}15` : "transparent",
+                  border: `1px solid ${showClosed ? ACCENT.info + "40" : LINE.control}`,
+                  cursor: "pointer", fontSize: 10.5, color: showClosed ? ACCENT.info : TEXT.dim,
+                  fontWeight: 600, padding: "2px 6px", borderRadius: 4, fontFamily: FONT.sans,
+                }}
+              >
+                {showClosed ? "Showing All" : "Open Only"}
+              </button>
+            }
+          >
             {issues.length === 0 ? (
-              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No issues yet</p>
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>
+                {allIssues.length === 0 ? "No issues yet" : "No open issues — change filter to see closed ones"}
+              </p>
             ) : (
               issues.map((issue) => (
                 <button

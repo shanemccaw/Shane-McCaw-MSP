@@ -18,13 +18,29 @@ import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import {
   getSnapshot, subscribe, milestoneById, epicsForMilestone,
   createMilestone, updateMilestone, deleteMilestone, assignEpicToMilestone,
-  selectMilestone, selectEpic, epicIsUnassigned,
+  selectMilestone, selectEpic, epicIsUnassigned, epicBubbleStatus,
+  type EpicBubbleStatus,
 } from "../build-tracker/buildTrackerStore";
 import type { MilestoneRow, EpicRow, MilestoneStatus } from "../build-tracker/buildTrackerTypes";
 
 function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
+
+/** Roadmap bubble colors — green done, red blocked, amber aged, blue ordinary open work. */
+const BUBBLE_COLOR: Record<EpicBubbleStatus, string> = {
+  done: ACCENT.greenSoft,
+  blocked: ACCENT.danger,
+  aged: ACCENT.amber,
+  open: ACCENT.info,
+};
+
+const BUBBLE_LABEL: Record<EpicBubbleStatus, string> = {
+  done: "Done",
+  blocked: "Blocked",
+  aged: "Aged — left behind a while",
+  open: "In progress",
+};
 
 export const STATUS_COLOR: Record<MilestoneStatus, string> = {
   open: ACCENT.info,
@@ -268,11 +284,15 @@ function GanttChart({
                 </div>
               </div>
 
-              {/* Epic Sub-rows */}
+              {/* Epic Sub-rows — each epic gets one clickable status bubble, not a
+                  fake timeline bar (there was never a real start/end date behind
+                  those bars — ep.id % 2 was just alternating placement). */}
               {mEpics.map((ep) => {
                 const epIssues = state.issues.filter((i) => i.epicId === ep.id);
                 const doneCount = epIssues.filter((i) => i.status === "done" || i.status === "closed").length;
                 const epPct = epIssues.length > 0 ? Math.round((doneCount / epIssues.length) * 100) : 0;
+                const bubbleStatus = epicBubbleStatus(ep);
+                const bubbleColor = BUBBLE_COLOR[bubbleStatus];
 
                 return (
                   <div key={ep.id} style={{
@@ -294,30 +314,24 @@ function GanttChart({
                       <span>{ep.githubNumber ? `#${ep.githubNumber} ` : ""}{ep.title}</span>
                     </div>
 
-                    <div style={{ position: "relative", height: 18, background: SURFACE.well, borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{
-                        position: "absolute",
-                        left: ep.id % 2 === 0 ? "10%" : "30%",
-                        width: "35%",
-                        height: "100%",
-                        background: `${ACCENT.info}20`,
-                        border: `1px solid ${ACCENT.info}66`,
-                        borderRadius: 3,
-                        display: "flex",
-                        alignItems: "center",
-                        fontSize: 10,
-                        fontWeight: 600,
-                        color: ACCENT.info,
-                        overflow: "hidden",
-                      }}>
-                        <div style={{
-                          height: "100%",
-                          background: ACCENT.info + "55",
-                          width: `${epPct}%`,
-                        }} />
-                        <span style={{ position: "absolute", left: 6 }}>{epPct}% ({doneCount}/{epIssues.length})</span>
-                      </div>
-                    </div>
+                    <button
+                      onClick={() => selectEpic(ep.id)}
+                      title={`${epPct}% done (${doneCount}/${epIssues.length}) — ${BUBBLE_LABEL[bubbleStatus]}`}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, height: 18,
+                        background: "transparent", border: 0, padding: 0, cursor: "pointer",
+                        fontFamily: FONT.sans,
+                      }}
+                    >
+                      <span style={{
+                        width: 15, height: 15, borderRadius: "50%", flex: "none",
+                        background: bubbleColor,
+                        boxShadow: bubbleStatus === "blocked" ? `0 0 0 3px ${bubbleColor}30` : "none",
+                      }} />
+                      <span style={{ fontSize: 10.5, color: TEXT.dim, fontFamily: FONT.mono }}>
+                        {epPct}% ({doneCount}/{epIssues.length})
+                      </span>
+                    </button>
                   </div>
                 );
               })}

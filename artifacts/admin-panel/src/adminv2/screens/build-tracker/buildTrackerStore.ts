@@ -186,6 +186,69 @@ export function issuesForEpic(epicId: number): IssueRow[] {
   return issues.filter((i) => i.epicId === epicId);
 }
 
+function openIssuesForEpic(epicId: number): IssueRow[] {
+  return issuesForEpic(epicId).filter((i) => i.status !== "done" && i.status !== "closed");
+}
+
+// ── Blocked / aged / done status (Roadmap bubbles, Epic page callouts) ────────
+// GitHub has no "blocked" or "aged" concept — these are read straight off a
+// GitHub label ("blocked") and elapsed time, the only two signals this data
+// model actually carries for it.
+
+const BLOCKED_LABEL = "blocked";
+/** How many days an open issue can sit untouched before counting as "aged". */
+const AGED_THRESHOLD_DAYS = 14;
+
+function daysSince(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0;
+  return (Date.now() - new Date(dateStr).getTime()) / 86_400_000;
+}
+
+/** True if `issue` carries a "blocked" GitHub label (case-insensitive). */
+export function issueIsBlocked(issue: IssueRow): boolean {
+  return issue.labels.some((l) => l.toLowerCase() === BLOCKED_LABEL);
+}
+
+/** True if `issue` is still open and has sat untouched past AGED_THRESHOLD_DAYS. */
+export function issueIsAged(issue: IssueRow): boolean {
+  if (issue.status === "done" || issue.status === "closed") return false;
+  return daysSince(issue.createdAt) >= AGED_THRESHOLD_DAYS;
+}
+
+/** True if `epic` has any open issue carrying the "blocked" label. */
+export function epicIsBlocked(epic: EpicRow): boolean {
+  return openIssuesForEpic(epic.id).some(issueIsBlocked);
+}
+
+/** True if `epic` itself is closed, or every one of its issues is done/closed. */
+export function epicIsDone(epic: EpicRow): boolean {
+  if (epic.status === "closed") return true;
+  const issues = issuesForEpic(epic.id);
+  return issues.length > 0 && issues.every((i) => i.status === "done" || i.status === "closed");
+}
+
+/** True if any open issue on `epic` is aged, or the epic itself hasn't moved in a while. */
+export function epicIsAged(epic: EpicRow): boolean {
+  const open = openIssuesForEpic(epic.id);
+  if (open.length === 0) return false;
+  return open.some(issueIsAged) || daysSince(epic.updatedAt) >= AGED_THRESHOLD_DAYS;
+}
+
+export type EpicBubbleStatus = "done" | "blocked" | "aged" | "open";
+
+/**
+ * Single-verdict status for an epic's Roadmap bubble. Priority: done wins
+ * outright (nothing left to be blocked or aged about); then blocked, the more
+ * actionable signal; then aged; "open" is the default for ordinary in-flight
+ * work.
+ */
+export function epicBubbleStatus(epic: EpicRow): EpicBubbleStatus {
+  if (epicIsDone(epic)) return "done";
+  if (epicIsBlocked(epic)) return "blocked";
+  if (epicIsAged(epic)) return "aged";
+  return "open";
+}
+
 export function chatsForIssue(issueId: number): ChatRow[] {
   const chats = Array.isArray(state?.chats) ? state.chats : [];
   return chats.filter((c) => c.issueId === issueId);

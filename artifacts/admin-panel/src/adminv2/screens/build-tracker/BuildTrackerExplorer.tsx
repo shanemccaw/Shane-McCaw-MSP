@@ -496,13 +496,25 @@ export function BuildTrackerExplorer() {
   const query = search.trim().toLowerCase();
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
+  // Select directly rather than relying only on openDoc()'s navigate-to-
+  // build-tracker-then-render(ctx)-selects-it chain: this Explorer is also
+  // the left panel on Project Management (project-management/index.tsx),
+  // whose own render() never looks at ctx at all, so that chain never fires
+  // there and clicking an epic did nothing visible. Calling selectEpic/
+  // selectIssue/selectChat here makes the right Properties panel (shared by
+  // both screens) react immediately regardless of which screen is active;
+  // openDoc() still runs alongside it for the doc tab + navigating into the
+  // full epic/issue view on Build Tracker.
   function handleEpic(id: number) {
+    selectEpic(id);
     getShellApi()?.openDoc({ kind: "epic", id: String(id), screenId: "build-tracker" });
   }
   function handleIssue(id: number) {
+    selectIssue(id);
     getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
   }
   function handleChat(id: number) {
+    selectChat(id);
     getShellApi()?.openDoc({ kind: "chatLink", id: String(id), screenId: "build-tracker" });
   }
 
@@ -658,7 +670,15 @@ export function BuildTrackerExplorer() {
 
   const visibleMilestones = state.milestones
     .filter(m => showClosed || m.status !== "closed")
-    .filter(m => milestoneMatchesQuery(m, query));
+    .filter(m => milestoneMatchesQuery(m, query))
+    .sort((a, b) => {
+      // Lowest GitHub # first; milestones with no GitHub number (locally
+      // created, never synced) sort after every numbered one.
+      if (a.githubNumber != null && b.githubNumber != null) return a.githubNumber - b.githubNumber;
+      if (a.githubNumber != null) return -1;
+      if (b.githubNumber != null) return 1;
+      return a.id - b.id;
+    });
   const unassignedEpics = state.epics.filter(epicIsUnassigned);
   const visibleEpics = unassignedEpics
     .filter(e => showClosed || e.status !== "closed")
