@@ -9,12 +9,13 @@
  * here; see SHELL.md.
  */
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useLocation } from "wouter";
 import { Redo2, RefreshCw, Save, Undo2 } from "lucide-react";
 import { ShellProvider, subRoute, useShell } from "./shell/ShellContext";
 import { Shell, NoScreen } from "./shell/Shell";
 import { logger } from "@/lib/logger";
+import { canUndo, undo, undoLabel, subscribe as btSubscribe, getSnapshot as btSnapshot } from "./screens/build-tracker/buildTrackerStore";
 
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
@@ -132,9 +133,12 @@ function ActiveScreen() {
   );
 }
 
-function AdminV2Inner() {
+function AdminShell() {
+  // Subscribe so the Undo button re-renders whenever the stack changes.
+  useSyncExternalStore(btSubscribe, btSnapshot);
+  const hasUndo = canUndo();
+  const undoHint = undoLabel();
   const [location] = useLocation();
-  const { openPalette } = useShell();
 
   return (
     <Shell
@@ -142,7 +146,13 @@ function AdminV2Inner() {
       mark="SM"
       quickActions={[
         { id: "save", label: "Save", icon: Save, onSelect: () => log.debug({ location }, "save") },
-        { id: "undo", label: "Undo", icon: Undo2, onSelect: () => log.debug("undo") },
+        {
+          id: "undo",
+          label: hasUndo ? `Undo: ${undoHint}` : "Undo",
+          icon: Undo2,
+          disabled: !hasUndo,
+          onSelect: () => void undo(),
+        },
         { id: "redo", label: "Redo", icon: Redo2, onSelect: () => log.debug("redo") },
         {
           id: "refresh",
@@ -193,7 +203,7 @@ export default function AdminV2() {
 
   return (
     <ShellProvider>
-      <AdminV2Inner />
+      <AdminShell />
     </ShellProvider>
   );
 }

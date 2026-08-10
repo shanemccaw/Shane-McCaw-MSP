@@ -19,6 +19,14 @@ export const WATCH_UNLINKED_KEY = "bt:unlinked";
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
+/** One reversible action pushed onto the undo stack. */
+interface UndoEntry {
+  /** Human-readable label shown in the Undo button tooltip. */
+  label: string;
+  /** Async function that reverses the action (no-arg, fire-and-forget). */
+  revert: () => Promise<void>;
+}
+
 export interface BuildTrackerState {
   epics: EpicRow[];
   issues: IssueRow[];
@@ -43,6 +51,27 @@ export interface BuildTrackerState {
   savingIds: Set<string>;
   triageActive: boolean;
   triageShowAssigned: boolean;
+}
+
+// ── Undo stack (module-level, max 20 entries) ─────────────────────────────────
+const MAX_UNDO = 20;
+let undoStack: UndoEntry[] = [];
+
+export function canUndo(): boolean { return undoStack.length > 0; }
+export function undoLabel(): string { return undoStack[undoStack.length - 1]?.label ?? ""; }
+
+function pushUndo(entry: UndoEntry) {
+  undoStack = [...undoStack.slice(-(MAX_UNDO - 1)), entry];
+  notify(); // so subscribers (AdminV2 Undo button) re-render
+}
+
+export async function undo(): Promise<void> {
+  const entry = undoStack[undoStack.length - 1];
+  if (!entry) return;
+  undoStack = undoStack.slice(0, -1);
+  notify();
+  flashMessage(`Undone: ${entry.label}`);
+  await entry.revert();
 }
 
 function initialState(): BuildTrackerState {
@@ -401,6 +430,12 @@ export async function deleteMilestone(id: number) {
 }
 
 export async function assignEpicToMilestone(epicId: number, milestoneId: number | null) {
+  const prevMilestoneId = state.epics.find((e) => e.id === epicId)?.milestoneId ?? null;
+  const epicTitle = state.epics.find((e) => e.id === epicId)?.title ?? `#${epicId}`;
+  const msTitle = milestoneId
+    ? (state.milestones.find((m) => m.id === milestoneId)?.title ?? `milestone ${milestoneId}`)
+    : "(unassigned)";
+
   const updatedEpics = state.epics.map((e) => (e.id === epicId ? { ...e, milestoneId } : e));
   const counts = new Map<number, number>();
   for (const e of updatedEpics) {
@@ -414,6 +449,11 @@ export async function assignEpicToMilestone(epicId: number, milestoneId: number 
       ...m,
       epicCount: counts.get(m.id) || 0,
     })),
+  });
+
+  pushUndo({
+    label: `Assign "${epicTitle}" → ${msTitle}`,
+    revert: () => assignEpicToMilestone(epicId, prevMilestoneId ?? null),
   });
 
   await updateEpic(epicId, { milestoneId });
@@ -518,7 +558,15 @@ export async function updateIssue(id: number, patch: Partial<IssueRow>): Promise
 }
 
 export async function cycleIssueStatus(id: number, next: IssueStatus): Promise<void> {
+  const prev = state.issues.find((i) => i.id === id)?.status;
+  const title = state.issues.find((i) => i.id === id)?.title ?? `#${id}`;
   set({ issues: state.issues.map((i) => i.id === id ? { ...i, status: next } : i) });
+  if (prev !== undefined && prev !== next) {
+    pushUndo({
+      label: `"${title}" status ${prev} → ${next}`,
+      revert: () => cycleIssueStatus(id, prev as IssueStatus),
+    });
+  }
   await updateIssue(id, { status: next });
 }
 
