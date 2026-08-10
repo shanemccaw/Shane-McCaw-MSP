@@ -165,6 +165,89 @@ export function unlinkedCount(s?: BuildTrackerState): number {
   ).length;
 }
 
+// ── Velocity & Work Estimation Helpers ────────────────────────────────────────
+
+/** Returns average hours taken to complete an issue based on closed timestamps (defaulting to 3.5h). */
+export function calculateAverageIssueHours(): number {
+  const closedIssues = state.issues.filter((i) => i.status === "done" || i.status === "closed");
+  if (closedIssues.length === 0) return 3.5;
+
+  let totalMs = 0;
+  let count = 0;
+  for (const i of closedIssues) {
+    if (i.createdAt && (i.closedAt || i.updatedAt)) {
+      const start = new Date(i.createdAt).getTime();
+      const end = new Date(i.closedAt || i.updatedAt).getTime();
+      if (end > start) {
+        totalMs += end - start;
+        count++;
+      }
+    }
+  }
+  if (count === 0) return 3.5;
+  const avgHours = totalMs / count / (1000 * 60 * 60);
+  return Math.max(1, Math.round(avgHours * 10) / 10);
+}
+
+/** Formats how long an issue/epic has been open (e.g. "2d 4h open" or "45m"). */
+export function formatIssueAge(createdAt?: string | null, closedAt?: string | null): string {
+  if (!createdAt) return "New";
+  const start = new Date(createdAt).getTime();
+  const end = closedAt ? new Date(closedAt).getTime() : Date.now();
+  const diffMs = Math.max(0, end - start);
+
+  const mins = Math.floor(diffMs / (1000 * 60));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+/** Returns estimated remaining hours for an epic based on its open issues. */
+export function estimateEpicHours(epicId: number): number {
+  const openIssues = issuesForEpic(epicId).filter((i) => i.status !== "done" && i.status !== "closed");
+  const avgH = calculateAverageIssueHours();
+  return Math.round(openIssues.length * avgH * 10) / 10;
+}
+
+/** Returns estimated remaining hours & days for a milestone. */
+export function estimateMilestoneHours(milestoneId: number): { openIssues: number; totalHours: number; totalDays: number } {
+  const epics = epicsForMilestone(milestoneId);
+  let openIssuesCount = 0;
+  for (const ep of epics) {
+    const issues = issuesForEpic(ep.id).filter((i) => i.status !== "done" && i.status !== "closed");
+    openIssuesCount += issues.length;
+  }
+  const avgH = calculateAverageIssueHours();
+  const totalHours = Math.round(openIssuesCount * avgH * 10) / 10;
+  const totalDays = Math.round((totalHours / 8) * 10) / 10;
+  return { openIssues: openIssuesCount, totalHours, totalDays };
+}
+
+/** Auto-unassigns epics that exceed the milestone's target capacity days (e.g. 5 days). */
+export async function trimMilestoneToCapacity(milestoneId: number, maxDays: number = 5): Promise<number> {
+  const epics = epicsForMilestone(milestoneId);
+  const maxHours = maxDays * 8;
+
+  let currentHours = 0;
+  let unassignedCount = 0;
+
+  for (const ep of epics) {
+    const epHours = estimateEpicHours(ep.id);
+    if (currentHours + epHours > maxHours && epHours > 0) {
+      await assignEpicToMilestone(ep.id, null);
+      unassignedCount++;
+    } else {
+      currentHours += epHours;
+    }
+  }
+
+  flashMessage(`Capacity trimmed: unassigned ${unassignedCount} epic(s) exceeding ${maxDays}-day capacity.`);
+  return unassignedCount;
+}
+
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 export async function loadAll(): Promise<void> {

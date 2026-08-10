@@ -12,9 +12,10 @@
 import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
-  GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash,
+  GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash, Sparkles,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
+import { getShellApi } from "../../shell/ShellContext";
 import {
   getSnapshot, subscribe,
   epicById, issueById, chatById,
@@ -22,6 +23,7 @@ import {
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
   selectIssue, selectEpic, updateIssue, setTriageActive, syncFromGitHub,
+  estimateMilestoneHours, formatIssueAge,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -183,75 +185,161 @@ function Dashboard() {
     </div>
   );
 
+  const agingIssues = state.issues
+    .filter((i) => i.status !== "done" && i.status !== "closed")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .slice(0, 5);
+
+  const activeMilestones = state.milestones.filter((m) => m.status !== "closed");
+
   return (
-    <div style={{ padding: 24, maxWidth: 680, display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={{ padding: 24, maxWidth: 1100, display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Top Banner */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT.bright }}>Build Tracker</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: TEXT.dim }}>
-            Organise Claude chats against GitHub epics and issues.
-          </p>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: ACCENT.amber }}>
+            Build Tracker Studio
+          </span>
+          <h1 style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, color: TEXT.bright }}>
+            Build Overview & Issue Pipeline
+          </h1>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {syncResult && (
-            <span style={{ fontSize: 11, color: ACCENT.green }}>
-              ✓ {syncResult.epics} epics · {syncResult.issues} issues synced
-            </span>
-          )}
+
+        <div style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={() => {
-              const api = (window as any).__shellApi;
-              if (api) api.navigate("/project-management");
-            }}
+            onClick={() => setTriageActive(true)}
             style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-              borderRadius: 6, border: `1px solid ${ACCENT.amber}`, background: `${ACCENT.amber}18`,
-              color: ACCENT.amber, fontFamily: FONT.sans, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              padding: "6px 14px", borderRadius: 6, border: 0,
+              background: ACCENT.info, color: SURFACE.well, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
             }}
           >
-            🎯 Gantt & Milestones Roadmap
+            <Sparkles size={14} /> Start Triage Mode
           </button>
           <button
-            onClick={() => void doSync()}
-            disabled={syncing}
+            onClick={() => void syncFromGitHub()}
             style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-              borderRadius: 6, border: `1px solid ${LINE.control}`, background: SURFACE.well,
-              color: TEXT.quiet, fontFamily: FONT.sans, fontSize: 12, cursor: syncing ? "default" : "pointer",
-              opacity: syncing ? 0.5 : 1,
+              padding: "6px 14px", borderRadius: 6, border: `1px solid ${LINE.control}`,
+              background: SURFACE.well, color: TEXT.primary, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
             }}
           >
-            <RefreshCw size={13} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
-            {syncing ? "Syncing…" : "Sync from GitHub"}
-          </button>
-          <button
-            onClick={() => void loadAll()}
-            style={{
-              display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
-              borderRadius: 6, border: `1px solid ${LINE.control}`, background: SURFACE.well,
-              color: TEXT.quiet, fontFamily: FONT.sans, fontSize: 12, cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={12} />
+            <RefreshCw size={13} /> Sync GitHub
           </button>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        {statCard(<GitBranch size={13} />, "Open Epics",      openEpics,      ACCENT.info)}
-        {statCard(<Clock size={13} />,     "In Progress",     activeIssues,   ACCENT.amber)}
-        {statCard(<AlertCircle size={13} />, "Needs Triage",  unlinked,       ACCENT.danger)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        {statCard(<GitPullRequest size={13} />, "Backlog",    backlogIssues,  TEXT.dim)}
-        {statCard(<CheckCircle size={13} />,    "Done",       doneIssues,     ACCENT.green)}
-        {statCard(<Archive size={13} />,        "Epics Active", inProgressEpics, ACCENT.amber)}
-      </div>
+      {/* 2 Column Dashboard Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>
+        {/* Left Column: Summary Cards & Aging Issues */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {statCard(<GitBranch size={13} />, "Open Epics",      openEpics,      ACCENT.info)}
+            {statCard(<Clock size={13} />,     "In Progress",     activeIssues,   ACCENT.amber)}
+            {statCard(<AlertCircle size={13} />, "Needs Triage",  unlinked,       ACCENT.danger)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {statCard(<GitPullRequest size={13} />, "Backlog",    backlogIssues,  TEXT.dim)}
+            {statCard(<CheckCircle size={13} />,    "Done",       doneIssues,     ACCENT.green)}
+            {statCard(<Archive size={13} />,        "Epics Active", inProgressEpics, ACCENT.amber)}
+          </div>
 
-      <div style={{ height: 1, background: LINE.quiet }} />
-      <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>
-        Select an epic or issue in the left panel, or use <kbd style={{ fontSize: 10, padding: "1px 5px", background: SURFACE.well, borderRadius: 3, border: `1px solid ${LINE.control}` }}>Ctrl K</kbd> to search everything.
-      </p>
+          {/* Aging Issues Widget */}
+          <div style={{ padding: 16, background: SURFACE.card, borderRadius: 8, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: ACCENT.amber }}>
+                ⏳ Oldest / Aging Open Issues
+              </span>
+              <span style={{ fontSize: 10.5, color: TEXT.dim }}>Open Longest</span>
+            </div>
+
+            {agingIssues.length === 0 ? (
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No open issues found!</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {agingIssues.map((iss) => (
+                  <div
+                    key={iss.id}
+                    onClick={() => selectIssue(iss.id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "8px 10px", background: SURFACE.well, borderRadius: 6, border: `1px solid ${LINE.control}`,
+                      cursor: "pointer", transition: "border-color 150ms",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.control; }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                      <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[iss.status]} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {iss.githubNumber ? `#${iss.githubNumber} ` : ""}{iss.title}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <StatusPill label={ISSUE_STATUS_LABEL[iss.status]} color={ISSUE_STATUS_COLOR[iss.status]} />
+                      <span style={{ fontSize: 10, color: ACCENT.amber, fontWeight: 700, fontFamily: FONT.sans }}>
+                        {formatIssueAge(iss.createdAt, iss.closedAt)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Active Milestones & Quick Roadmap Progress */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: 16, background: SURFACE.card, borderRadius: 8, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: ACCENT.info }}>
+                🎯 Active Milestones Roadmap
+              </span>
+              <button
+                onClick={() => getShellApi()?.navigate("/project-management")}
+                style={{
+                  background: "transparent", border: 0, color: ACCENT.info, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: FONT.sans,
+                }}
+              >
+                Full Gantt ↗
+              </button>
+            </div>
+
+            {activeMilestones.length === 0 ? (
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No active milestones in GitHub.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {activeMilestones.map((m) => {
+                  const est = estimateMilestoneHours(m.id);
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => getShellApi()?.navigate("/project-management")}
+                      style={{
+                        padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                        cursor: "pointer", display: "flex", flexDirection: "column", gap: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.bright }}>
+                          {m.githubNumber ? `#${m.githubNumber} ` : ""}{m.title}
+                        </span>
+                        <span style={{ fontSize: 10, color: ACCENT.amber, fontWeight: 700 }}>
+                          Est: {est.totalDays}d
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: TEXT.caption }}>
+                        <span>{est.openIssues} open issues</span>
+                        <span>{m.targetDate ? `Target: ${m.targetDate}` : "No target date"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

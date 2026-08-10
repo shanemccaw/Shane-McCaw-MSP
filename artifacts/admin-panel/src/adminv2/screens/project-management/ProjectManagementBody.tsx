@@ -26,13 +26,13 @@ function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-const STATUS_COLOR: Record<MilestoneStatus, string> = {
+export const STATUS_COLOR: Record<MilestoneStatus, string> = {
   open: ACCENT.info,
   in_progress: ACCENT.amber,
   closed: ACCENT.greenSoft,
 };
 
-const STATUS_LABEL: Record<MilestoneStatus, string> = {
+export const STATUS_LABEL: Record<MilestoneStatus, string> = {
   open: "Open",
   in_progress: "In Progress",
   closed: "Completed",

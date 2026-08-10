@@ -21,11 +21,20 @@ import {
   Folder,
   FolderOpen,
   AlertCircle,
+  Flag,
+  Sparkles,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
-import { getSnapshot, subscribe, selectEpic, selectIssue, selectChat, issuesForEpic, chatsForIssue, chatsForEpic, chatsForCategory, freeFormCategories, unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus, deleteIssue, updateChat, deleteChat } from "./buildTrackerStore";
+import {
+  getSnapshot, subscribe, selectEpic, selectIssue, selectChat, selectMilestone,
+  issuesForEpic, chatsForIssue, chatsForEpic, chatsForCategory, freeFormCategories,
+  unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
+  deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
+  formatIssueAge, trimMilestoneToCapacity, syncFromGitHub,
+} from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
-import type { ChatRow, EpicRow, IssueRow } from "./buildTrackerTypes";
+import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
+import type { ChatRow, EpicRow, IssueRow, MilestoneRow } from "./buildTrackerTypes";
 import { useContextMenu, ContextMenu } from "../../shell/ContextMenu";
 import { getShellApi } from "../../shell/ShellContext";
 
@@ -116,6 +125,9 @@ function IssueNode({
           {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
         </span>
         <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
+        <span style={{ fontSize: 9.5, color: TEXT.caption, fontFamily: FONT.sans, marginLeft: 2 }}>
+          {formatIssueAge(issue.createdAt, issue.closedAt)}
+        </span>
         {chats.length > 0 && (
           <span style={{ fontSize: 10, color: ACCENT.info, marginLeft: 2 }}>
             💬{chats.length}
@@ -131,6 +143,103 @@ function IssueNode({
           onContextMenu={(e) => onChatContextMenu(e, c)}
         />
       ))}
+    </div>
+  );
+}
+
+// ── Milestone row ──────────────────────────────────────────────────────────────
+
+function MilestoneNode({
+  milestone,
+  selectedMilestoneId,
+  selectedEpicId,
+  selectedIssueId,
+  selectedChatId,
+  onMilestoneSelect,
+  onEpic,
+  onIssue,
+  onChat,
+  showClosed,
+  onMilestoneContextMenu,
+  onEpicContextMenu,
+  onIssueContextMenu,
+  onChatContextMenu,
+}: {
+  milestone: MilestoneRow;
+  selectedMilestoneId: number | null;
+  selectedEpicId: number | null;
+  selectedIssueId: number | null;
+  selectedChatId: number | null;
+  onMilestoneSelect: (id: number) => void;
+  onEpic: (id: number) => void;
+  onIssue: (id: number) => void;
+  onChat: (id: number) => void;
+  showClosed: boolean;
+  onMilestoneContextMenu: (e: React.MouseEvent, milestone: MilestoneRow) => void;
+  onEpicContextMenu: (e: React.MouseEvent, epic: EpicRow) => void;
+  onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
+  onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const epics = epicsForMilestone(milestone.id);
+  const visibleEpics = showClosed ? epics : epics.filter((e) => e.status !== "closed");
+  const est = estimateMilestoneHours(milestone.id);
+  const isSelected = selectedMilestoneId === milestone.id;
+
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <button
+        onClick={() => { onMilestoneSelect(milestone.id); setOpen((o) => !o); }}
+        onContextMenu={(e) => onMilestoneContextMenu(e, milestone)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          width: "100%", padding: "5px 8px",
+          background: isSelected ? `${ACCENT.amber}22` : SURFACE.well,
+          border: `1px solid ${isSelected ? ACCENT.amber : LINE.quiet}`,
+          borderRadius: 5, cursor: "pointer", textAlign: "left",
+        }}
+      >
+        <Flag size={12} color={STATUS_COLOR[milestone.status]} style={{ flex: "none" }} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? TEXT.bright : TEXT.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {milestone.githubNumber ? `#${milestone.githubNumber} ` : ""}{milestone.title}
+            </span>
+            <StatusPill label={STATUS_LABEL[milestone.status]} color={STATUS_COLOR[milestone.status]} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: TEXT.caption, marginTop: 2 }}>
+            <span>{visibleEpics.length} epics</span>
+            <span>·</span>
+            <span>Est: {est.totalDays}d ({est.totalHours}h)</span>
+          </div>
+        </div>
+        <span style={{ color: TEXT.dim }}>{open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}</span>
+      </button>
+
+      {open && (
+        <div style={{ paddingLeft: 6, borderLeft: `2px solid ${ACCENT.amber}35`, marginLeft: 6, marginTop: 4 }}>
+          {visibleEpics.length === 0 ? (
+            <p style={{ fontSize: 11, color: TEXT.dim, padding: "3px 8px", margin: 0 }}>No epics in milestone</p>
+          ) : (
+            visibleEpics.map((e) => (
+              <EpicNode
+                key={e.id}
+                epic={e}
+                selectedEpicId={selectedEpicId}
+                selectedIssueId={selectedIssueId}
+                selectedChatId={selectedChatId}
+                onEpic={onEpic}
+                onIssue={onIssue}
+                onChat={onChat}
+                showClosed={showClosed}
+                onEpicContextMenu={onEpicContextMenu}
+                onIssueContextMenu={onIssueContextMenu}
+                onChatContextMenu={onChatContextMenu}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -415,6 +524,25 @@ export function BuildTrackerExplorer() {
     openMenu(e, items, `Issue actions for ${issue.title}`);
   }
 
+  function onMilestoneContextMenu(e: React.MouseEvent, milestone: MilestoneRow) {
+    const items = [
+      {
+        label: "Edit Milestone...",
+        onSelect: () => selectMilestone(milestone.id)
+      },
+      {
+        label: "Trim Capacity (Fit to 5 Days)",
+        onSelect: () => void trimMilestoneToCapacity(milestone.id, 5)
+      },
+      {
+        label: "Sync from GitHub",
+        onSelect: () => void syncFromGitHub()
+      }
+    ];
+
+    openMenu(e, items, `Milestone actions for ${milestone.title}`);
+  }
+
   function onChatContextMenu(e: React.MouseEvent, chat: ChatRow) {
     const items = [
       {
@@ -450,7 +578,9 @@ export function BuildTrackerExplorer() {
     );
   }
 
-  const visibleEpics = showClosed ? state.epics : state.epics.filter(e => e.status !== "closed");
+  const visibleMilestones = showClosed ? state.milestones : state.milestones.filter(m => m.status !== "closed");
+  const unassignedEpics = state.epics.filter(e => !e.milestoneId);
+  const visibleEpics = showClosed ? unassignedEpics : unassignedEpics.filter(e => e.status !== "closed");
   const noEpicIssues = state.issues.filter((i) => i.epicId === null);
   const visibleNoEpicIssues = showClosed ? noEpicIssues : noEpicIssues.filter((i) => i.status !== "closed");
 
@@ -480,30 +610,67 @@ export function BuildTrackerExplorer() {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", flex: 1 }}>
-        {/* Epics */}
-        {visibleEpics.length === 0 ? (
+        {/* Milestones Vertical Timeline */}
+        {visibleMilestones.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: ACCENT.amber, textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 4px", margin: "0 0 6px", display: "flex", alignItems: "center", gap: 4 }}>
+              <Flag size={11} color={ACCENT.amber} /> Milestones ({visibleMilestones.length})
+            </p>
+            {visibleMilestones.map((m) => (
+              <MilestoneNode
+                key={m.id}
+                milestone={m}
+                selectedMilestoneId={state.selectedMilestoneId}
+                selectedEpicId={state.selectedEpicId}
+                selectedIssueId={state.selectedIssueId}
+                selectedChatId={state.selectedChatId}
+                onMilestoneSelect={(id) => selectMilestone(id)}
+                onEpic={handleEpic}
+                onIssue={handleIssue}
+                onChat={handleChat}
+                showClosed={showClosed}
+                onMilestoneContextMenu={onMilestoneContextMenu}
+                onEpicContextMenu={onEpicContextMenu}
+                onIssueContextMenu={onIssueContextMenu}
+                onChatContextMenu={onChatContextMenu}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Unassigned / Standalone Epics */}
+        {visibleEpics.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            {visibleMilestones.length > 0 && (
+              <p style={{ fontSize: 10, fontWeight: 700, color: TEXT.caption, textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 4px", margin: "0 0 4px" }}>
+                Unassigned Epics ({visibleEpics.length})
+              </p>
+            )}
+            {visibleEpics.map((e) => (
+              <EpicNode
+                key={e.id}
+                epic={e}
+                selectedEpicId={state.selectedEpicId}
+                selectedIssueId={state.selectedIssueId}
+                selectedChatId={state.selectedChatId}
+                onEpic={handleEpic}
+                onIssue={handleIssue}
+                onChat={handleChat}
+                showClosed={showClosed}
+                onEpicContextMenu={onEpicContextMenu}
+                onIssueContextMenu={onIssueContextMenu}
+                onChatContextMenu={onChatContextMenu}
+              />
+            ))}
+          </div>
+        )}
+
+        {visibleMilestones.length === 0 && visibleEpics.length === 0 && (
           <div style={{ padding: "12px 8px", fontSize: 12, color: TEXT.dim, textAlign: "center" }}>
             <GitBranch size={20} color={TEXT.faintest} style={{ marginBottom: 6 }} />
-            <p style={{ margin: 0 }}>No open epics</p>
-            {state.epics.length > 0 && <p style={{ margin: "4px 0 0", fontSize: 11, color: TEXT.faintest }}>Change filter to see closed epics</p>}
+            <p style={{ margin: 0 }}>No open milestones or epics</p>
+            {state.epics.length > 0 && <p style={{ margin: "4px 0 0", fontSize: 11, color: TEXT.faintest }}>Change filter to see closed items</p>}
           </div>
-        ) : (
-          visibleEpics.map((e) => (
-            <EpicNode
-              key={e.id}
-              epic={e}
-              selectedEpicId={state.selectedEpicId}
-              selectedIssueId={state.selectedIssueId}
-              selectedChatId={state.selectedChatId}
-              onEpic={handleEpic}
-              onIssue={handleIssue}
-              onChat={handleChat}
-              showClosed={showClosed}
-              onEpicContextMenu={onEpicContextMenu}
-              onIssueContextMenu={onIssueContextMenu}
-              onChatContextMenu={onChatContextMenu}
-            />
-          ))
         )}
 
         {visibleNoEpicIssues.length > 0 && (

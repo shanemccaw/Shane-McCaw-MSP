@@ -10,14 +10,16 @@ import { Save, ExternalLink } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import {
   getSnapshot, subscribe,
-  epicById, issueById, chatById,
-  updateEpic, updateIssue, updateChat,
-  cycleIssueStatus,
+  epicById, issueById, chatById, milestoneById,
+  updateEpic, updateIssue, updateChat, updateMilestone,
+  cycleIssueStatus, estimateEpicHours, estimateMilestoneHours, formatIssueAge,
+  trimMilestoneToCapacity,
 } from "./buildTrackerStore";
 import {
   ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, ISSUE_STATUS_NEXT,
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
 } from "./buildTrackerTypes";
+import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
 import type { EpicStatus, IssueStatus } from "./buildTrackerTypes";
 
 function useStore() {
@@ -158,20 +160,32 @@ function EpicProperties({ id }: { id: number }) {
   const statusCycle: EpicStatus[] = ["open", "in_progress", "closed"];
   const nextStatus = statusCycle[(statusCycle.indexOf(epic.status) + 1) % statusCycle.length];
 
+  const estHours = estimateEpicHours(id);
+  const ageStr = formatIssueAge(epic.createdAt, epic.closedAt);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Label>Epic</Label>
-        <button
-          onClick={() => void updateEpic(id, { status: nextStatus })}
-          style={{
-            fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-            padding: "2px 6px", borderRadius: 3, border: 0, cursor: "pointer",
-            background: `${EPIC_STATUS_COLOR[epic.status]}22`, color: EPIC_STATUS_COLOR[epic.status],
-          }}
-        >
-          {EPIC_STATUS_LABEL[epic.status]} →
-        </button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Label>Epic</Label>
+          <button
+            onClick={() => void updateEpic(id, { status: nextStatus })}
+            style={{
+              fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+              padding: "2px 6px", borderRadius: 3, border: 0, cursor: "pointer",
+              background: `${EPIC_STATUS_COLOR[epic.status]}22`, color: EPIC_STATUS_COLOR[epic.status],
+            }}
+          >
+            {EPIC_STATUS_LABEL[epic.status]} →
+          </button>
+        </div>
+        <span style={{ fontSize: 10, color: TEXT.caption, fontFamily: FONT.sans, fontWeight: 600 }}>
+          Open {ageStr}
+        </span>
+      </div>
+
+      <div style={{ padding: "6px 8px", borderRadius: 5, background: SURFACE.well, border: `1px solid ${LINE.quiet}`, fontSize: 11, color: TEXT.quiet }}>
+        ⏱️ Est. Remaining Work: <strong>{estHours} hours</strong> ({(estHours / 8).toFixed(1)} days)
       </div>
 
       <Field label="Title" value={title} onChange={setTitle} />
@@ -227,20 +241,27 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
     alert("Copied Claude research prompt to clipboard!");
   }
 
+  const ageStr = formatIssueAge(issue.createdAt, issue.closedAt);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Label>Issue</Label>
-        <button
-          onClick={() => void cycleIssueStatus(id, next)}
-          style={{
-            fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-            padding: "2px 6px", borderRadius: 3, border: 0, cursor: "pointer",
-            background: `${ISSUE_STATUS_COLOR[issue.status]}22`, color: ISSUE_STATUS_COLOR[issue.status],
-          }}
-        >
-          {ISSUE_STATUS_LABEL[issue.status]} →
-        </button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Label>Issue</Label>
+          <button
+            onClick={() => void cycleIssueStatus(id, next)}
+            style={{
+              fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+              padding: "2px 6px", borderRadius: 3, border: 0, cursor: "pointer",
+              background: `${ISSUE_STATUS_COLOR[issue.status]}22`, color: ISSUE_STATUS_COLOR[issue.status],
+            }}
+          >
+            {ISSUE_STATUS_LABEL[issue.status]} →
+          </button>
+        </div>
+        <span style={{ fontSize: 10, color: TEXT.caption, fontFamily: FONT.sans, fontWeight: 600 }}>
+          {issue.status === "closed" || issue.status === "done" ? "Done in " : "Open "} {ageStr}
+        </span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -349,18 +370,84 @@ function ChatProperties({ id }: { id: number }) {
   );
 }
 
+// ── Milestone properties ──────────────────────────────────────────────────────
+
+function MilestoneProperties({ id }: { id: number }) {
+  const milestone = milestoneById(id);
+  const [title, setTitle] = useState(milestone?.title ?? "");
+  const [desc, setDesc] = useState(milestone?.description ?? "");
+  const [targetDate, setTargetDate] = useState(milestone?.targetDate ?? "");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  if (!milestone) return null;
+
+  const est = estimateMilestoneHours(id);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Label>Milestone</Label>
+        <span style={{
+          fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+          padding: "2px 6px", borderRadius: 3,
+          background: `${STATUS_COLOR[milestone.status]}22`, color: STATUS_COLOR[milestone.status],
+        }}>
+          {STATUS_LABEL[milestone.status]}
+        </span>
+      </div>
+
+      <div style={{ padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: ACCENT.amber }}>
+          ⏱️ Math Velocity Estimate
+        </span>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+          {est.totalDays} Days ({est.totalHours} hours)
+        </div>
+        <span style={{ fontSize: 11, color: TEXT.quiet }}>
+          {est.openIssues} open issue(s) remaining
+        </span>
+        <button
+          onClick={() => void trimMilestoneToCapacity(id, 5)}
+          style={{
+            marginTop: 6, padding: "4px 8px", borderRadius: 4, border: `1px solid ${ACCENT.amber}40`,
+            background: `${ACCENT.amber}15`, color: ACCENT.amber, fontSize: 11, fontWeight: 600,
+            cursor: "pointer", fontFamily: FONT.sans,
+          }}
+        >
+          ✂️ Trim to 5-Day Capacity
+        </button>
+      </div>
+
+      <Field label="Title" value={title} onChange={setTitle} />
+      <Field label="Target Date" value={targetDate} onChange={setTargetDate} />
+      <Field label="Description" value={desc} onChange={setDesc} area onOpenModal={() => setModalOpen(true)} />
+
+      {modalOpen && (
+        <DescriptionModal
+          title={`Milestone #${milestone.githubNumber ?? "Local"}: ${milestone.title}`}
+          value={desc}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+
+      <SaveButton onClick={() => void updateMilestone(id, { title, description: desc, targetDate })} />
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 export function BuildTrackerProperties() {
   const state = useStore();
 
+  if (state.selectedMilestoneId !== null) return <MilestoneProperties id={state.selectedMilestoneId} />;
   if (state.selectedChatId !== null) return <ChatProperties id={state.selectedChatId} />;
   if (state.selectedIssueId !== null) return <IssueProperties id={state.selectedIssueId} />;
   if (state.selectedEpicId !== null) return <EpicProperties id={state.selectedEpicId} />;
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: TEXT.dim, fontSize: 12, padding: 16, textAlign: "center" }}>
-      Select an epic, issue, or chat to edit it here.
+      Select a milestone, epic, issue, or chat to edit it here.
     </div>
   );
 }

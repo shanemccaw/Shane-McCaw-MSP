@@ -29,6 +29,7 @@ export interface EpicRow {
   githubNumber: number | null;
   createdAt: string;
   updatedAt: string;
+  closedAt?: string | null;
   issueCount: number;
   chatCount: number;
 }
@@ -44,6 +45,7 @@ export interface IssueRow {
   labels: string[];
   createdAt: string;
   updatedAt: string;
+  closedAt?: string | null;
   chatCount: number;
 }
 

@@ -5,6 +5,9 @@ import { getShellApi } from "../../shell/ShellContext";
 import { ProjectManagementBody } from "./ProjectManagementBody";
 import { syncFromGitHub } from "../build-tracker/buildTrackerStore";
 
+import { BuildTrackerExplorer } from "../build-tracker/BuildTrackerExplorer";
+import { BuildTrackerProperties } from "../build-tracker/BuildTrackerProperties";
+
 export const ROUTE = "/project-management";
 
 registerScreen({
@@ -76,4 +79,7 @@ registerScreen({
   },
 
   render: () => <ProjectManagementBody />,
+
+  left:  { title: "Milestones & Epics", render: () => <BuildTrackerExplorer /> },
+  right: { title: "Properties",         render: () => <BuildTrackerProperties /> },
 });
