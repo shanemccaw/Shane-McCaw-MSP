@@ -89,7 +89,7 @@ router.get("/public/personalization/state", publicLimiter, async (req: Request, 
     // `quizType IS NOT NULL` keeps this a quiz-taken signal: `lead_staging` also
     // holds contact-form/purchase leads, which must stay "cold" here.
     const [lead] = await db
-      .select({ id: leadStagingTable.id, quizType: leadStagingTable.quizType })
+      .select({ id: leadStagingTable.id, quizType: leadStagingTable.quizType, email: leadStagingTable.email })
       .from(leadStagingTable)
       .where(and(
         eq(leadStagingTable.email, email),
@@ -103,11 +103,18 @@ router.get("/public/personalization/state", publicLimiter, async (req: Request, 
       return;
     }
 
+    // Git #677: email is resolved server-side from the lead row (not echoed back from
+    // the visitor_identities lookup above) so it always matches the record `leadId`
+    // actually points at. Included in this response for a Phase 2/3 caller (#678/#679)
+    // to prefill a form field directly — deliberately NOT added to the shared client-side
+    // QuizIdentity type (usePersonalizationState.ts), which stays email-free by design
+    // since it's read broadly across the site (chat bubble, engagement offers, nudges).
     res.json({
       tier: "quiz",
       leadId: lead.id,
       quizType: lead.quizType,
       resendToken: makeResendToken(lead.id),
+      email: lead.email,
     });
   } catch (err) {
     log.error({ err }, "GET /public/personalization/state error");
