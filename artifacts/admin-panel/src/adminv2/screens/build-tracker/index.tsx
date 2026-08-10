@@ -21,7 +21,7 @@
 
 import {
   BookOpen, GitBranch, GitPullRequest, MessageSquare, Plus,
-  RefreshCw, AlertCircle, ExternalLink, Trash2,
+  RefreshCw, AlertCircle, ExternalLink, Trash2, Target,
 } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
