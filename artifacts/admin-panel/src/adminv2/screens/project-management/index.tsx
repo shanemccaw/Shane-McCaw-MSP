@@ -1,9 +1,9 @@
-import { Flag, Target, Plus, Calendar, RefreshCw } from "lucide-react";
+import { Flag, Target, Plus, Calendar, RefreshCw, Clock } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import { ProjectManagementBody } from "./ProjectManagementBody";
-import { syncFromGitHub } from "../build-tracker/buildTrackerStore";
+import { syncFromGitHub, MILESTONE_ETA_KEY, openHeadlineMilestone } from "../build-tracker/buildTrackerStore";
 
 import { BuildTrackerExplorer } from "../build-tracker/BuildTrackerExplorer";
 import { BuildTrackerProperties } from "../build-tracker/BuildTrackerProperties";
@@ -30,6 +30,17 @@ registerScreen({
             color: ACCENT.amber,
             onSelect: () => getShellApi()?.navigate(ROUTE),
             title: "Open ADHD-friendly Project Gantt Chart & Milestone Timeline",
+          },
+          {
+            label: "Milestone ETA",
+            icon: Clock,
+            intent: "open",
+            liveKey: MILESTONE_ETA_KEY,
+            onSelect: () => {
+              openHeadlineMilestone();
+              getShellApi()?.navigate("/build-tracker");
+            },
+            title: "Estimated time to completion for the milestone you're tracking — recalculates as issues are added, closed, or reassigned",
           },
         ],
       },

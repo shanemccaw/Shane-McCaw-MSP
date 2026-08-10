@@ -8,6 +8,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { ACCENT } from "../../theme";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
 import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus } from "./buildTrackerTypes";
@@ -20,6 +21,8 @@ const SCREEN_ID = "build-tracker";
 // ── Live ribbon key ────────────────────────────────────────────────────────────
 /** Key for the Watch-tab "Unlinked chats" live count. */
 export const WATCH_UNLINKED_KEY = "bt:unlinked";
+/** Key for the Build tab's always-visible "Milestone: est. time left" button — see syncMilestoneEtaRibbon(). */
+export const MILESTONE_ETA_KEY = "bt:milestone-eta";
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +89,9 @@ type Listener = () => void;
 let adminFetchRef: AdminFetch | null = null;
 const listeners = new Set<Listener>();
 
+/** Milestone id the live ETA ribbon button currently represents — see syncMilestoneEtaRibbon(). */
+let headlineMilestoneId: number | null = null;
+
 function notify() {
   for (const fn of listeners) fn();
 }
@@ -98,6 +104,7 @@ export function subscribe(fn: Listener): () => void {
 
 function set(patch: Partial<BuildTrackerState>) {
   state = { ...state, ...patch };
+  syncMilestoneEtaRibbon();
   notify();
 }
 
@@ -266,6 +273,70 @@ export function estimateMilestoneHours(milestoneId: number): { openIssues: numbe
   const totalHours = Math.round(openIssuesCount * avgH * 10) / 10;
   const totalDays = Math.round((totalHours / 8) * 10) / 10;
   return { openIssues: openIssuesCount, totalHours, totalDays };
+}
+
+/**
+ * Keeps the Build tab's always-visible "Milestone: est. time left" ribbon
+ * button current — the Money-tab-style live figure Shane asked for so the
+ * estimateMilestoneHours() math doesn't stay buried a click away. Runs from
+ * the store's single `set()` choke point, so every mutator (issue/epic
+ * create, delete, status change, milestone reassignment, GitHub sync, or
+ * just clicking a different milestone in the Explorer) recalculates it for
+ * free — nothing here needs its own separate call site.
+ *
+ * Picks the currently-selected milestone if one is open; otherwise the open
+ * milestone with the nearest target date (undated milestones sort last), so
+ * the button always has something real to show, not just when a milestone
+ * happens to be selected.
+ */
+function syncMilestoneEtaRibbon(): void {
+  const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+  const open = milestones.filter((m) => m.status !== "closed");
+
+  if (open.length === 0) {
+    headlineMilestoneId = null;
+    setLiveRibbonValue(MILESTONE_ETA_KEY, null);
+    return;
+  }
+
+  const selected = state.selectedMilestoneId != null
+    ? open.find((m) => m.id === state.selectedMilestoneId)
+    : undefined;
+  const milestone = selected ?? [...open].sort((a, b) => {
+    if (a.targetDate && b.targetDate) return a.targetDate.localeCompare(b.targetDate);
+    if (a.targetDate) return -1;
+    if (b.targetDate) return 1;
+    return a.id - b.id;
+  })[0];
+
+  headlineMilestoneId = milestone.id;
+
+  const est = estimateMilestoneHours(milestone.id);
+  const title = milestone.title.length > 20 ? `${milestone.title.slice(0, 19)}…` : milestone.title;
+
+  if (est.openIssues === 0) {
+    setLiveRibbonValue(MILESTONE_ETA_KEY, { label: `${title}: all done`, color: ACCENT.greenSoft });
+    return;
+  }
+
+  const etaText = est.totalDays >= 1 ? `${est.totalDays}d` : `${est.totalHours}h`;
+  let color: string = ACCENT.info;
+  if (milestone.targetDate) {
+    const daysLeft = (new Date(milestone.targetDate).getTime() - Date.now()) / 86_400_000;
+    if (daysLeft < 0) color = ACCENT.danger;
+    else if (daysLeft < est.totalDays) color = ACCENT.amber;
+    else color = ACCENT.greenSoft;
+  }
+
+  setLiveRibbonValue(MILESTONE_ETA_KEY, {
+    label: `${title}: ~${etaText} left (${est.openIssues} open)`,
+    color,
+  });
+}
+
+/** Selects whichever milestone the live ETA ribbon button is currently showing — its onSelect. */
+export function openHeadlineMilestone(): void {
+  if (headlineMilestoneId != null) selectMilestone(headlineMilestoneId);
 }
 
 /** Auto-unassigns epics that exceed the milestone's target capacity days (e.g. 5 days). */
