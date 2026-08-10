@@ -82,6 +82,22 @@ Git and Run render inside an amber capsule that marks them as a developer set.
 `watch` is the "what needs me" tab — exceptions, dead letters, unrun migrations,
 overdue invoices — and it is the one place a live count belongs.
 
+### Where actions belong
+
+Earlier guidance said to keep everything on `home` rather than adding tabs.
+That over-bloated `home` into a dumping ground and is superseded. The rule now:
+
+- **A major area gets its own fixed tab for its actions.** If `money`, `crm`,
+  `catalog`, etc. owns a family of actions, those groups register on that
+  area's tab, not on `home`.
+- **The primary action for that area is also mirrored on `home`.** One group,
+  usually just the single most-reached-for command, so `home` stays a fast
+  launch point without becoming a copy of every other tab.
+- Everything an area contributes still has to satisfy the intent rule below —
+  `open` / `create` / `global` only, never `record`. Mirroring onto `home`
+  does not relax that; it is the same command registered twice with the same
+  intent.
+
 ```tsx
 registerScreen({
   // ...
