@@ -266,7 +266,7 @@ function EpicDetail({ id }: { id: number }) {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 680, display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ padding: 24, maxWidth: 1000, display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -280,84 +280,101 @@ function EpicDetail({ id }: { id: number }) {
             )}
           </div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>{epic.title}</h1>
-          {epic.description && (
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: TEXT.quiet, lineHeight: 1.5 }}>{epic.description}</p>
-          )}
         </div>
       </div>
 
-      {directChats.length > 0 && (
-        <Section title={`Chats on this epic (${directChats.length})`}>
-          {directChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
-        </Section>
-      )}
+      {/* Two Column Layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "start" }}>
+        {/* Left Column: Description, Issues, Delete button */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {epic.description && (
+            <div style={{ background: SURFACE.card, padding: 16, borderRadius: 8, border: `1px solid ${LINE.quiet}` }}>
+              <p style={{ margin: 0, fontSize: 13.5, color: TEXT.quiet, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{epic.description}</p>
+            </div>
+          )}
 
-      <Section title={`Issues (${issues.length})`}>
-        {issues.length === 0 ? (
-          <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No issues yet</p>
-        ) : (
-          issues.map((issue) => (
-            <button
-              key={issue.id}
-              onClick={() => selectIssue(issue.id)}
-              style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
-                cursor: "pointer", width: "100%", textAlign: "left",
-                fontFamily: FONT.sans,
-                transition: "border-color 150ms",
+          <Section title={`Issues (${issues.length})`}>
+            {issues.length === 0 ? (
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No issues yet</p>
+            ) : (
+              issues.map((issue) => (
+                <button
+                  key={issue.id}
+                  onClick={() => selectIssue(issue.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                    background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                    cursor: "pointer", width: "100%", textAlign: "left",
+                    fontFamily: FONT.sans,
+                    transition: "border-color 150ms",
+                    marginBottom: 6,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+                >
+                  <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
+                  <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
+                  </span>
+                  <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
+                  {issue.chatCount > 0 && (
+                    <span style={{ fontSize: 11, color: ACCENT.info, marginLeft: 4 }}>💬{issue.chatCount}</span>
+                  )}
+                </button>
+              ))
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <input
+                placeholder="New issue title…"
+                value={newIssueTitle}
+                onChange={(e) => setNewIssueTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleNewIssue(); }}
+                style={{
+                  flex: 1, padding: "6px 10px", borderRadius: 5,
+                  background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  color: TEXT.primary, fontFamily: FONT.sans, fontSize: 12, outline: "none",
+                }}
+              />
+              <button
+                onClick={() => void handleNewIssue()}
+                disabled={adding || !newIssueTitle.trim()}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
+                  borderRadius: 5, border: 0, background: `${ACCENT.info}22`, color: ACCENT.info,
+                  fontFamily: FONT.sans, fontSize: 12, cursor: "pointer",
+                  opacity: adding || !newIssueTitle.trim() ? 0.4 : 1,
+                }}
+              >
+                <Plus size={13} /> Add
+              </button>
+            </div>
+          </Section>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <ActionBtn
+              danger
+              onClick={() => {
+                if (confirmDelete) void deleteEpic(id);
+                else setConfirmDelete(true);
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
             >
-              <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
-              <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
-              </span>
-              <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
-              {issue.chatCount > 0 && (
-                <span style={{ fontSize: 11, color: ACCENT.info, marginLeft: 4 }}>💬{issue.chatCount}</span>
-              )}
-            </button>
-          ))
-        )}
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <input
-            placeholder="New issue title…"
-            value={newIssueTitle}
-            onChange={(e) => setNewIssueTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleNewIssue(); }}
-            style={{
-              flex: 1, padding: "6px 10px", borderRadius: 5,
-              background: SURFACE.well, border: `1px solid ${LINE.control}`,
-              color: TEXT.primary, fontFamily: FONT.sans, fontSize: 12, outline: "none",
-            }}
-          />
-          <button
-            onClick={() => void handleNewIssue()}
-            disabled={adding || !newIssueTitle.trim()}
-            style={{
-              display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
-              borderRadius: 5, border: 0, background: `${ACCENT.info}22`, color: ACCENT.info,
-              fontFamily: FONT.sans, fontSize: 12, cursor: "pointer",
-              opacity: adding || !newIssueTitle.trim() ? 0.4 : 1,
-            }}
-          >
-            <Plus size={13} /> Add
-          </button>
+              {confirmDelete ? "Delete — press again" : "Delete Epic"}
+            </ActionBtn>
+          </div>
         </div>
-      </Section>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <ActionBtn
-          danger
-          onClick={() => {
-            if (confirmDelete) void deleteEpic(id);
-            else setConfirmDelete(true);
-          }}
-        >
-          {confirmDelete ? "Delete — press again" : "Delete Epic"}
-        </ActionBtn>
+        {/* Right Column: Chats */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <Section title={`Chats on this epic (${directChats.length})`}>
+            {directChats.length === 0 ? (
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No chats linked yet</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {directChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
+              </div>
+            )}
+          </Section>
+        </div>
       </div>
     </div>
   );
