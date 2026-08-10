@@ -339,12 +339,27 @@ registerScreen({
             ? [
                 {
                   label: "Assign Epic",
-                  small: openEpics.map((e) => ({
-                    label: e.githubNumber ? `#${e.githubNumber} ${e.title}` : e.title,
-                    icon: GitBranch,
-                    intent: "record" as const,
-                    onSelect: () => void updateIssue(issue.id, { epicId: e.id }),
-                  })),
+                  large: [
+                    {
+                      label: "Assign Epic",
+                      icon: GitBranch,
+                      intent: "record" as const,
+                      onSelect: () => {},
+                      gallery: {
+                        id: `assign-epic-gallery-${issue.id}`,
+                        title: "Assign Issue to Epic",
+                        searchable: true,
+                        searchPlaceholder: "Search epics...",
+                        rows: openEpics.map((e) => ({
+                          id: String(e.id),
+                          tile: e.githubNumber ? `#${e.githubNumber}` : "EP",
+                          name: e.title,
+                          sub: `Epic Status: ${e.status}`,
+                          onSelect: () => void updateIssue(issue.id, { epicId: e.id }),
+                        })),
+                      },
+                    },
+                  ],
                 },
               ]
             : []),
