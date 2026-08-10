@@ -18,7 +18,7 @@ import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
   GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash, Sparkles,
-  Play, Pause, ClipboardPaste, CalendarRange,
+  Play, Pause, ClipboardPaste, CalendarRange, ArrowLeft,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
@@ -30,13 +30,14 @@ import {
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
   selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, setTriageActive, syncFromGitHub,
   estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
+  setDashboardFilter, type DashboardFilter,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
   ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, ISSUE_STATUS_NEXT,
   IssueStatus, githubIssueUrl,
 } from "./buildTrackerTypes";
-import type { ChatRow, IssueRow } from "./buildTrackerTypes";
+import type { ChatRow, EpicRow, IssueRow } from "./buildTrackerTypes";
 import { PasteImportModal } from "./BuildTrackerPasteImport";
 import { IterationAssignModal } from "./BuildTrackerIterationAssign";
 import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -195,18 +196,26 @@ function Dashboard() {
   const doneIssues     = state.issues.filter((i) => i.status === "done" || i.status === "closed").length;
   const unlinked       = unlinkedChats().length;
 
-  const statCard = (icon: React.ReactNode, label: string, value: number, color: string) => (
-    <div style={{
-      display: "flex", flexDirection: "column", gap: 4, padding: "14px 18px",
-      background: SURFACE.card, border: `1px solid ${LINE.quiet}`, borderRadius: 8,
-      borderTop: `2px solid ${color}`,
-    }}>
+  const statCard = (icon: React.ReactNode, label: string, value: number, color: string, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="av2-card"
+      style={{
+        display: "flex", flexDirection: "column", gap: 4, padding: "14px 18px",
+        background: SURFACE.card, border: `1px solid ${LINE.quiet}`, borderRadius: 8,
+        borderTop: `2px solid ${color}`, cursor: "pointer", textAlign: "left",
+        fontFamily: FONT.sans, transition: "border-color 150ms, transform 100ms",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 6, color }}>
         {icon}
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
       </div>
       <span style={{ fontSize: 28, fontWeight: 800, color: TEXT.bright, fontFamily: FONT.mono }}>{value}</span>
-    </div>
+    </button>
   );
 
   const agingIssues = state.issues
@@ -300,14 +309,20 @@ function Dashboard() {
         {/* Left Column: Summary Cards & Aging Issues */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {statCard(<GitBranch size={13} />, "Open Epics",      openEpics,      ACCENT.info)}
-            {statCard(<Clock size={13} />,     "In Progress",     activeIssues,   ACCENT.amber)}
-            {statCard(<AlertCircle size={13} />, "Needs Triage",  unlinked,       ACCENT.danger)}
+            {statCard(<GitBranch size={13} />, "Open Epics",      openEpics,      ACCENT.info,
+              () => setDashboardFilter({ kind: "epics", statuses: ["open"], label: "Open Epics" }))}
+            {statCard(<Clock size={13} />,     "In Progress",     activeIssues,   ACCENT.amber,
+              () => setDashboardFilter({ kind: "issues", statuses: ["in_progress"], label: "In Progress" }))}
+            {statCard(<AlertCircle size={13} />, "Needs Triage",  unlinked,       ACCENT.danger,
+              () => setTriageActive(true))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {statCard(<GitPullRequest size={13} />, "Backlog",    backlogIssues,  TEXT.dim)}
-            {statCard(<CheckCircle size={13} />,    "Done",       doneIssues,     ACCENT.green)}
-            {statCard(<Archive size={13} />,        "Epics Active", inProgressEpics, ACCENT.amber)}
+            {statCard(<GitPullRequest size={13} />, "Backlog",    backlogIssues,  TEXT.dim,
+              () => setDashboardFilter({ kind: "issues", statuses: ["backlog"], label: "Backlog" }))}
+            {statCard(<CheckCircle size={13} />,    "Done",       doneIssues,     ACCENT.green,
+              () => setDashboardFilter({ kind: "issues", statuses: ["done", "closed"], label: "Done" }))}
+            {statCard(<Archive size={13} />,        "Epics Active", inProgressEpics, ACCENT.amber,
+              () => setDashboardFilter({ kind: "epics", statuses: ["in_progress"], label: "Epics Active" }))}
           </div>
 
           {/* Aging Issues Widget */}
@@ -1204,6 +1219,100 @@ function TriageView() {
   );
 }
 
+// ── Filtered list (Dashboard stat card drill-in) ─────────────────────────────
+
+/**
+ * What a Dashboard stat card opens into — every card except "Needs Triage"
+ * (which opens the dedicated Triage Mode instead, since that workflow
+ * already exists and does more than a plain list would). Reuses the exact
+ * same `epics`/`issues` arrays and status checks the Dashboard already
+ * counts with, so a card's number and its list can never disagree.
+ */
+function FilteredListView({ filter }: { filter: DashboardFilter }) {
+  const state = useStore();
+
+  const epicRows: EpicRow[] = filter.kind === "epics"
+    ? state.epics.filter((e) => filter.statuses.includes(e.status))
+    : [];
+  const issueRows: IssueRow[] = filter.kind === "issues"
+    ? state.issues.filter((i) => filter.statuses.includes(i.status))
+    : [];
+  const rows = filter.kind === "epics" ? epicRows : issueRows;
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1000, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          onClick={() => setDashboardFilter(null)}
+          title="Back to Dashboard"
+          style={{
+            display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
+            borderRadius: 6, border: `1px solid ${LINE.control}`, background: SURFACE.well,
+            color: TEXT.quiet, fontFamily: FONT.sans, fontSize: 12, cursor: "pointer",
+          }}
+        >
+          <ArrowLeft size={13} /> Dashboard
+        </button>
+        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: TEXT.bright }}>
+          {filter.label} <span style={{ color: TEXT.dim, fontWeight: 600 }}>({rows.length})</span>
+        </h1>
+      </div>
+
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12.5, color: TEXT.dim, margin: 0 }}>Nothing here right now.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {filter.kind === "epics" && epicRows.map((epic) => (
+            <button
+              key={epic.id}
+              onClick={() => selectEpic(epic.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                cursor: "pointer", width: "100%", textAlign: "left", fontFamily: FONT.sans,
+                transition: "border-color 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+            >
+              <GitBranch size={14} color={EPIC_STATUS_COLOR[epic.status]} style={{ flex: "none" }} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}
+              </span>
+              <StatusPill label={EPIC_STATUS_LABEL[epic.status]} color={EPIC_STATUS_COLOR[epic.status]} />
+              <span style={{ fontSize: 11, color: TEXT.caption }}>{epic.issueCount} issue{epic.issueCount !== 1 ? "s" : ""}</span>
+            </button>
+          ))}
+          {filter.kind === "issues" && issueRows.map((issue) => (
+            <button
+              key={issue.id}
+              onClick={() => selectIssue(issue.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                cursor: "pointer", width: "100%", textAlign: "left", fontFamily: FONT.sans,
+                transition: "border-color 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+            >
+              <GitPullRequest size={14} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
+              </span>
+              <StatusPill label={ISSUE_STATUS_LABEL[issue.status]} color={ISSUE_STATUS_COLOR[issue.status]} />
+              <span style={{ fontSize: 10.5, color: ACCENT.amber, fontWeight: 700, fontFamily: FONT.sans, flexShrink: 0 }}>
+                {formatIssueAge(issue.createdAt, issue.closedAt)}
+              </span>
+              {issue.chatCount > 0 && <span style={{ fontSize: 11, color: ACCENT.info, flexShrink: 0 }}>💬{issue.chatCount}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 export function BuildTrackerBody() {
@@ -1220,5 +1329,6 @@ export function BuildTrackerBody() {
   if (state.selectedIssueId !== null) return <IssueDetail id={state.selectedIssueId} />;
   if (state.selectedEpicId !== null) return <EpicDetail id={state.selectedEpicId} />;
   if (state.selectedMilestoneId !== null) return <MilestoneDetail id={state.selectedMilestoneId} />;
+  if (state.dashboardFilter) return <FilteredListView filter={state.dashboardFilter} />;
   return <Dashboard />;
 }

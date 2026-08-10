@@ -12,7 +12,18 @@ import { ACCENT } from "../../theme";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
 import { getShellApi } from "../../shell/ShellContext";
-import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus, IterationOption } from "./buildTrackerTypes";
+import type { ChatRow, EpicRow, EpicStatus, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus, IterationOption } from "./buildTrackerTypes";
+
+/**
+ * What the Dashboard's stat cards drill into — "Open Epics"/"In Progress"/
+ * etc. are all a filtered list of the same epics/issues arrays the Dashboard
+ * already counts, not a separate fetch. Kept as one discriminated union
+ * rather than a raw status string so a card can filter on more than one
+ * status at once ("Done" is `done` OR `closed`).
+ */
+export type DashboardFilter =
+  | { kind: "epics"; statuses: EpicStatus[]; label: string }
+  | { kind: "issues"; statuses: IssueStatus[]; label: string };
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -78,6 +89,8 @@ export interface BuildTrackerState {
   savingIds: Set<string>;
   triageActive: boolean;
   triageShowAssigned: boolean;
+  /** Set by clicking a Dashboard stat card; cleared by selecting a record or leaving the list. */
+  dashboardFilter: DashboardFilter | null;
 
   /** True while a GitHub sync is in flight — see syncFromGitHub()/SYNC_GITHUB_KEY. */
   syncingGitHub: boolean;
@@ -106,6 +119,7 @@ function initialState(): BuildTrackerState {
     savingIds: new Set(),
     triageActive: false,
     triageShowAssigned: false,
+    dashboardFilter: null,
     syncingGitHub: false,
     pollingGitHub: false,
   };
@@ -593,23 +607,28 @@ export async function loadAll(): Promise<void> {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function selectMilestone(id: number | null) {
-  set({ selectedMilestoneId: id, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, triageActive: false });
+  set({ selectedMilestoneId: id, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
 }
 
 export function selectEpic(id: number | null) {
-  set({ selectedEpicId: id, selectedMilestoneId: null, selectedIssueId: null, selectedChatId: null, triageActive: false });
+  set({ selectedEpicId: id, selectedMilestoneId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
 }
 
 export function selectIssue(id: number | null) {
-  set({ selectedIssueId: id, selectedMilestoneId: null, selectedChatId: null, triageActive: false });
+  set({ selectedIssueId: id, selectedMilestoneId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
 }
 
 export function selectChat(id: number | null) {
-  set({ selectedChatId: id, selectedMilestoneId: null, triageActive: false });
+  set({ selectedChatId: id, selectedMilestoneId: null, triageActive: false, dashboardFilter: null });
+}
+
+/** Drills the Dashboard into a filtered list — see `DashboardFilter`'s own doc comment. Pass null to return to the Dashboard. */
+export function setDashboardFilter(filter: DashboardFilter | null) {
+  set({ dashboardFilter: filter, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, selectedMilestoneId: null, triageActive: false });
 }
 
 export function setTriageActive(active: boolean) {
-  set({ triageActive: active });
+  set({ triageActive: active, dashboardFilter: active ? null : state.dashboardFilter });
   if (active) {
     const api = (window as any).__shellApi;
     if (api) {
