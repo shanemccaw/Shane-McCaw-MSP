@@ -1031,7 +1031,7 @@ export function statFromMetricResult(
 }
 
 /** Real license-seat figures for one tenant, or null when they can't be sourced. */
-interface SeatFigures {
+export interface SeatFigures {
   provisioned: number;
   unassigned: number;
   annualWasteDollars: number | null;
@@ -1053,8 +1053,12 @@ interface SeatFigures {
  * has always been priced-estate-only. `resolvePaidSeatFigures` puts the two counts
  * on that same footing, so all three describe one estate — see license-waste-source.ts
  * for why `sku_price_reference` is the authority on "paid" and not a capacity heuristic.
+ *
+ * Exported (#639) so `diagnostics-runner.ts` can turn this SAME real figure into a
+ * scored finding — it must never independently recompute it, or the document's
+ * narrated dollar figure and the finding that scores the pillar could disagree.
  */
-async function resolveSeatFigures(tenantId: string): Promise<SeatFigures | null> {
+export async function resolveSeatFigures(tenantId: string): Promise<SeatFigures | null> {
   const seats = await resolvePaidSeatFigures(tenantId);
   if (!seats) return null;
 

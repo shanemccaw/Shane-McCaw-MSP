@@ -34,6 +34,8 @@ import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
+import { resolveSeatFigures, type SeatFigures } from "./war-room-pillar-stats";
+import { DEFAULT_LICENSE_WASTE_CHECK_KEY } from "./license-waste-source";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -305,6 +307,88 @@ function buildRecommendation(result: CheckResult): Record<string, unknown> | nul
   }
 
   return Object.keys(rec).length > 0 ? rec : null;
+}
+
+// ── Real license-waste finding (#639) ──────────────────────────────────────────
+//
+// `resolveSeatFigures`'s arithmetic (paid seats provisioned/unassigned, priced-
+// estate-only per #333) already renders correctly in the Licensing Alignment
+// document — but nothing ever turned it into a finding row, so a tenant with
+// severe real waste still scored a clean, green Licensing pillar next to a
+// document narrating the dollar figure directly. The registry's declared
+// `cost:license-waste-estimate` check was never backed by a real monitor_checks
+// row (see license-waste-source.ts's header), so no severity_rules-driven finding
+// could ever fire for it — this is the missing link, not a new computation.
+//
+// Reuses `DEFAULT_LICENSE_WASTE_CHECK_KEY` as the finding's `checkKey` rather
+// than the real `/subscribedSkus` check the arithmetic happened to read from
+// this run (`seats.checkKey`, kept in `extractedProperties.sourceCheckKey` for
+// traceability): that constant is already the platform's one declared identity
+// for this cross-check-derived figure (the dashboard registry's own
+// `licensing.wasteEstimateBreakdown` metric names the same key), and its `cost:`
+// domain prefix already resolves to the Licensing/War Room pillar via
+// `WAR_ROOM_PILLAR_CHECK_DOMAINS` with no new mapping required.
+
+/**
+ * Severe vs. merely present waste. Half or more of a tenant's paid, priced seats
+ * sitting unassigned is a real, severe result (the confirmed #639 tenant was
+ * 24 of 25 — 96%); any smaller nonzero amount is still real spend, just not the
+ * "pillar should never have read green" case the issue reported. A policy
+ * threshold, not something derived from the data — revisit if Shane's definition
+ * of "severe" differs.
+ */
+export function classifyLicenseWasteSeverity(
+  unassigned: number,
+  provisioned: number,
+): "critical" | "warning" {
+  if (provisioned > 0 && unassigned / provisioned >= 0.5) return "critical";
+  return "warning";
+}
+
+/**
+ * Pure: turn one tenant's real seat figures into a finding row, or null when
+ * there is genuinely nothing to report — zero unassigned paid seats is a real
+ * clean result, not a gap, and must render as one rather than a fabricated
+ * finding. Exported for its own test, same reasoning as `buildFindingTitle`.
+ */
+export function buildLicenseWasteFinding(
+  seats: SeatFigures,
+): Pick<
+  typeof mspDiagnosticFindingsTable.$inferInsert,
+  "checkKey" | "checkLabel" | "severity" | "title" | "description" | "recommendation" | "extractedProperties"
+> | null {
+  if (seats.unassigned <= 0) return null;
+
+  const severity = classifyLicenseWasteSeverity(seats.unassigned, seats.provisioned);
+  const dollars = seats.annualWasteDollars;
+  const title =
+    dollars != null
+      ? `${seats.unassigned} of ${seats.provisioned} paid license seats unassigned — ~$${dollars.toLocaleString("en-US")}/year in recoverable spend`
+      : `${seats.unassigned} of ${seats.provisioned} paid license seats unassigned`;
+  const description =
+    dollars != null
+      ? `This tenant's own subscription data (checked via ${seats.checkKey}) shows ${seats.unassigned} paid, priced license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to — an estimated $${dollars.toLocaleString("en-US")} a year at list price. Free and trial SKUs are excluded; only seats with a real price on file are counted.`
+      : `This tenant's own subscription data (checked via ${seats.checkKey}) shows ${seats.unassigned} paid license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to. Free and trial SKUs are excluded; only seats with a real price on file are counted. No dollar figure could be priced for these seats.`;
+
+  return {
+    checkKey: DEFAULT_LICENSE_WASTE_CHECK_KEY,
+    checkLabel: DEFAULT_LICENSE_WASTE_CHECK_KEY,
+    severity,
+    title,
+    description,
+    recommendation: {
+      action: "Reassign or reclaim unused paid license seats",
+      priority: severity === "critical" ? 1 : 2,
+      category: "licensing",
+      signalKey: DEFAULT_LICENSE_WASTE_CHECK_KEY,
+    },
+    extractedProperties: {
+      unassignedPaidSeats: seats.unassigned,
+      provisionedPaidSeats: seats.provisioned,
+      annualWasteDollars: seats.annualWasteDollars,
+      sourceCheckKey: seats.checkKey,
+    },
+  };
 }
 
 // ── HTML report generator ─────────────────────────────────────────────────────
@@ -654,6 +738,30 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         },
         checkStatus: checkResult.status,
       });
+    }
+
+    // #639 — the real per-tenant license-waste figure, from the same resolver
+    // the Licensing Alignment document itself reads its numbers from (never a
+    // second, independently-computed figure that could disagree with it).
+    // Best-effort: a failure here must not fail the whole run, and an unpriceable
+    // or genuinely clean estate is a real result — null/empty, not guessed.
+    try {
+      const seatFigures = await resolveSeatFigures(resolvedTenantId);
+      const wasteFinding = seatFigures ? buildLicenseWasteFinding(seatFigures) : null;
+      if (wasteFinding) {
+        findingRows.push({
+          runId,
+          mspId,
+          customerId,
+          checkStatus: null,
+          ...wasteFinding,
+        });
+      }
+    } catch (err) {
+      log.warn(
+        { err, runId, resolvedTenantId },
+        "diagnostics-runner: license-waste finding computation failed — omitted, not guessed",
+      );
     }
 
     let findingsCount = 0;

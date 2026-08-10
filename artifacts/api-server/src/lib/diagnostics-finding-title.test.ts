@@ -36,6 +36,8 @@ vi.mock("./monitor-executor", () => ({ executeMonitoringPackage: vi.fn() }));
 vi.mock("./workflow-executor", () => ({ emitWorkflowEvent: vi.fn() }));
 vi.mock("./cio-narrative-generator", () => ({ generateCioNarrative: vi.fn() }));
 vi.mock("./doc-gate-coverage", () => ({ evaluateDocGateCoverage: vi.fn() }));
+vi.mock("./war-room-pillar-stats", () => ({ resolveSeatFigures: vi.fn() }));
+vi.mock("./license-waste-source", () => ({ DEFAULT_LICENSE_WASTE_CHECK_KEY: "cost:license-waste-estimate" }));
 vi.mock("./sse-channels", () => ({
   broadcastDiagnosticsRunProgress: vi.fn(),
   broadcastDiagnosticsRunComplete: vi.fn(),
