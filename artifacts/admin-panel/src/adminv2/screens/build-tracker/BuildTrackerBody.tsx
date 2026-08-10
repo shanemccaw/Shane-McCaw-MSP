@@ -28,7 +28,7 @@ import {
   issuesForEpic, chatsForIssue, chatsForEpic, epicsForMilestone,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
-  selectIssue, selectEpic, selectMilestone, updateIssue, setTriageActive, syncFromGitHub,
+  selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, setTriageActive, syncFromGitHub,
   estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
 } from "./buildTrackerStore";
 import {
@@ -69,6 +69,26 @@ function Section({ title, action, children }: { title: string; action?: React.Re
         {action}
       </div>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Shown instead of a blank centre column when a detail view's own id no
+ * longer resolves to a record — e.g. a doc tab left open from before the
+ * record was deleted elsewhere (see `buildTrackerStore.ts`'s `deleteEpic`/
+ * `deleteIssue`/`deleteChat` — they now close their own doc on delete, but
+ * this is the backstop for any other way a stale id could reach here, rather
+ * than the four detail views each silently `return null`-ing into an empty
+ * screen). Clears the selection so the very next render falls back to the
+ * Dashboard instead of staying stuck showing this.
+ */
+function NotFound({ kind, onGone }: { kind: string; onGone: () => void }) {
+  return (
+    <div style={{ padding: 40, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+      <AlertCircle size={28} color={TEXT.dim} />
+      <p style={{ margin: 0, fontSize: 13, color: TEXT.dim }}>This {kind} no longer exists — it may have been deleted.</p>
+      <ActionBtn onClick={onGone}>Back to Dashboard</ActionBtn>
     </div>
   );
 }
@@ -479,7 +499,7 @@ function MilestoneDetail({ id }: { id: number }) {
   const milestone = milestoneById(id);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  if (!milestone) return null;
+  if (!milestone) return <NotFound kind="milestone" onGone={() => selectMilestone(null)} />;
   const milestoneId = milestone.id;
   const epics = epicsForMilestone(milestoneId);
   const est = estimateMilestoneHours(milestoneId);
@@ -576,7 +596,7 @@ function EpicDetail({ id }: { id: number }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
 
-  if (!epic) return null;
+  if (!epic) return <NotFound kind="epic" onGone={() => selectEpic(null)} />;
   const epicId = epic.id; // capture before async closure
   const allIssues = issuesForEpic(epicId);
   const issues = showClosed ? allIssues : allIssues.filter((i) => i.status !== "closed");
@@ -764,7 +784,7 @@ function IssueDetail({ id }: { id: number }) {
   const [addingChat, setAddingChat] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  if (!issue) return null;
+  if (!issue) return <NotFound kind="issue" onGone={() => selectIssue(null)} />;
   const issueId = issue.id; // capture before async closure
   const chats = chatsForIssue(issueId);
   const next = ISSUE_STATUS_NEXT[issue.status];
@@ -890,7 +910,7 @@ function IssueDetail({ id }: { id: number }) {
 
 function ChatDetail({ id }: { id: number }) {
   const chat = chatById(id);
-  if (!chat) return null;
+  if (!chat) return <NotFound kind="chat link" onGone={() => selectChat(null)} />;
   return (
     <div style={{ padding: 24, maxWidth: 600, display: "flex", flexDirection: "column", gap: 16 }}>
       <div>

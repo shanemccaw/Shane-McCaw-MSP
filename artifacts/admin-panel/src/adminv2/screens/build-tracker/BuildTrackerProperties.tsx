@@ -14,6 +14,7 @@ import {
   updateEpic, updateIssue, updateChat, updateMilestone,
   cycleIssueStatus, estimateEpicHours, estimateMilestoneHours, formatIssueAge,
   trimMilestoneToCapacity,
+  selectEpic, selectIssue, selectChat, selectMilestone,
 } from "./buildTrackerStore";
 import {
   ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, ISSUE_STATUS_NEXT,
@@ -141,6 +142,24 @@ function SavingHint({ saving }: { saving: boolean }) {
   return <span style={{ fontSize: 11, color: TEXT.dim, fontFamily: FONT.sans }}>Saving…</span>;
 }
 
+/** Same backstop as `BuildTrackerBody.tsx`'s own `NotFound` — see its doc comment. */
+function PropertiesNotFound({ kind, onGone }: { kind: string; onGone: () => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, padding: 16, textAlign: "center" }}>
+      <span style={{ color: TEXT.dim, fontSize: 12 }}>This {kind} no longer exists.</span>
+      <button
+        onClick={onGone}
+        style={{
+          padding: "5px 12px", borderRadius: 4, border: `1px solid ${LINE.control}`,
+          background: "transparent", color: TEXT.quiet, fontFamily: FONT.sans, fontSize: 12, cursor: "pointer",
+        }}
+      >
+        Back to Dashboard
+      </button>
+    </div>
+  );
+}
+
 // ── Epic properties ────────────────────────────────────────────────────────────
 
 function EpicProperties({ id }: { id: number }) {
@@ -151,7 +170,7 @@ function EpicProperties({ id }: { id: number }) {
   const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`epic:${id}`);
 
-  if (!epic) return null;
+  if (!epic) return <PropertiesNotFound kind="epic" onGone={() => selectEpic(null)} />;
 
   const statusCycle: EpicStatus[] = ["open", "in_progress", "closed"];
   const nextStatus = statusCycle[(statusCycle.indexOf(epic.status) + 1) % statusCycle.length];
@@ -231,7 +250,7 @@ function IssueProperties({ id }: { id: number }) {
   const [copied, setCopied] = useState(false);
   const saving = state.savingIds.has(`issue:${id}`);
 
-  if (!issue) return null;
+  if (!issue) return <PropertiesNotFound kind="issue" onGone={() => selectIssue(null)} />;
 
   const next = ISSUE_STATUS_NEXT[issue.status];
 
@@ -347,7 +366,7 @@ function ChatProperties({ id }: { id: number }) {
   const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`chat:${id}`);
 
-  if (!chat) return null;
+  if (!chat) return <PropertiesNotFound kind="chat link" onGone={() => selectChat(null)} />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 12 }}>
@@ -419,7 +438,7 @@ function MilestoneProperties({ id }: { id: number }) {
   const [modalOpen, setModalOpen] = useState(false);
   const saving = state.savingIds.has(`milestone:${id}`);
 
-  if (!milestone) return null;
+  if (!milestone) return <PropertiesNotFound kind="milestone" onGone={() => selectMilestone(null)} />;
 
   const est = estimateMilestoneHours(id);
 

@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger";
 import { ACCENT } from "../../theme";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
+import { getShellApi } from "../../shell/ShellContext";
 import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus, IterationOption } from "./buildTrackerTypes";
 
 const log = logger.child({ channel: "admin.build-tracker" });
@@ -32,6 +33,23 @@ export const SYNC_GITHUB_KEY = "bt:sync-github";
 function pushUndo(entry: Parameters<typeof _pushUndo>[1]): void {
   _pushUndo(SCREEN_ID, entry);
   // notify() is handled inside undoStore
+}
+
+/**
+ * Closes a deleted record's own doc tab, if one is open.
+ *
+ * Deleting a record already clears it from `state.selectedXId`, but a doc tab
+ * opened via `openDoc({kind: "epic"/"issue"/"chatLink", ...})` (peek "Open",
+ * Explorer click, palette record) is a *separate* thing the shell tracks and
+ * survives the delete untouched. Left alone, that stale tab still resolves —
+ * clicking back onto it re-selects the now-gone id (`index.tsx`'s `render(ctx)`
+ * re-sync guard) and every detail view's own `if (!x) return null` blanks the
+ * whole centre column. Closing it here, at the one place every deletion path
+ * (contextual tab, peek, Explorer context menu, inline detail-view button) goes
+ * through, means no call site can forget it.
+ */
+function closeRecordDoc(kind: "epic" | "issue" | "chatLink", id: number): void {
+  getShellApi()?.dispatch({ type: "closeDoc", id: `${kind}:${id}` });
 }
 
 
@@ -689,6 +707,7 @@ export async function deleteMilestone(id: number) {
   set({
     milestones: state.milestones.filter((m) => m.id !== id),
     epics: state.epics.map((e) => (e.milestoneId === id ? { ...e, milestoneId: null } : e)),
+    selectedMilestoneId: state.selectedMilestoneId === id ? null : state.selectedMilestoneId,
   });
   try {
     await apiFetch(`/admin/build-tracker/milestones/${id}${existing?.githubNumber ? `?githubNumber=${existing.githubNumber}` : ""}`, {
@@ -800,6 +819,7 @@ export async function deleteEpic(id: number): Promise<void> {
       issues: state.issues.map((i) => i.epicId === id ? { ...i, epicId: null } : i),
       selectedEpicId: state.selectedEpicId === id ? null : state.selectedEpicId,
     });
+    closeRecordDoc("epic", id);
   } catch (err) {
     log.error({ err, id }, "deleteEpic failed");
   }
@@ -883,6 +903,7 @@ export async function deleteIssue(id: number): Promise<void> {
       chats: state.chats.map((c) => c.issueId === id ? { ...c, issueId: null } : c),
       selectedIssueId: state.selectedIssueId === id ? null : state.selectedIssueId,
     });
+    closeRecordDoc("issue", id);
   } catch (err) {
     log.error({ err, id }, "deleteIssue failed");
   }
@@ -967,6 +988,7 @@ export async function deleteChat(id: number): Promise<void> {
       chats: state.chats.filter((c) => c.id !== id),
       selectedChatId: state.selectedChatId === id ? null : state.selectedChatId,
     });
+    closeRecordDoc("chatLink", id);
     setLiveRibbonValue(WATCH_UNLINKED_KEY, { label: String(unlinkedCount()) });
   } catch (err) {
     log.error({ err, id }, "deleteChat failed");
