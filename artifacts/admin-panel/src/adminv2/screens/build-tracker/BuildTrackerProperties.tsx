@@ -114,10 +114,10 @@ function DescriptionModal({
           </button>
         </div>
         <div style={{
-          overflowY: "auto", fontSize: 13, color: TEXT.primary,
+          overflowY: "auto", fontSize: 13.5, color: TEXT.primary,
           lineHeight: 1.6, background: SURFACE.well, padding: 16,
           borderRadius: 6, border: `1px solid ${LINE.control}`,
-          fontFamily: FONT.mono, whiteSpace: "pre-wrap", flex: 1,
+          fontFamily: FONT.sans, whiteSpace: "pre-wrap", flex: 1,
         }}>
           {value || "No content."}
         </div>

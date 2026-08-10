@@ -344,6 +344,89 @@ function Dashboard() {
   );
 }
 
+// ── ADHD Skimmable Formatted Description Component ─────────────────────────────
+
+function FormattedDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!text || !text.trim()) return null;
+
+  const rawLines = text.split("\n").map((l) => l.trim());
+  const nonBlank = rawLines.filter((l) => l.length > 0);
+  const summary = nonBlank[0] || "";
+
+  // Checklist items (- [ ] or - [x] or * or -)
+  const taskLines = rawLines.filter((l) => /^[-*]\s*/.test(l));
+  const doneTasks = taskLines.filter((l) => /^[-*]\s*\[[xX]\]/.test(l)).length;
+  const totalTasks = taskLines.length;
+
+  const isLong = nonBlank.length > 3 || text.length > 220;
+
+  return (
+    <div style={{
+      background: SURFACE.card, padding: 16, borderRadius: 8,
+      border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 12,
+    }}>
+      {/* Executive Summary Header */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
+            padding: "2px 7px", borderRadius: 4, background: `${ACCENT.amber}20`, color: ACCENT.amber,
+          }}>
+            ⚡ Executive Summary
+          </span>
+          {isLong && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                background: "transparent", border: 0, color: ACCENT.info, fontSize: 11,
+                fontWeight: 600, cursor: "pointer", fontFamily: FONT.sans,
+              }}
+            >
+              {expanded ? "▲ Hide Full Text" : "▼ Expand Full Details"}
+            </button>
+          )}
+        </div>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: TEXT.bright, lineHeight: 1.5 }}>
+          {summary}
+        </p>
+      </div>
+
+      {/* Task Checklist Bar */}
+      {totalTasks > 0 && (
+        <div style={{ padding: "10px 12px", background: SURFACE.well, borderRadius: 6, border: `1px solid ${LINE.control}`, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 }}>
+            <span style={{ fontWeight: 700, color: TEXT.caption, textTransform: "uppercase" }}>
+              Checklist ({doneTasks}/{totalTasks} done)
+            </span>
+            <span style={{ fontWeight: 700, color: doneTasks === totalTasks ? ACCENT.green : ACCENT.amber }}>
+              {Math.round((doneTasks / totalTasks) * 100)}%
+            </span>
+          </div>
+          <div style={{ height: 5, borderRadius: 3, background: LINE.control, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", width: `${(doneTasks / totalTasks) * 100}%`,
+              background: doneTasks === totalTasks ? ACCENT.green : ACCENT.amber,
+              transition: "width 200ms ease",
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* Collapsible Body */}
+      {(!isLong || expanded) && nonBlank.length > 1 && (
+        <div style={{
+          fontSize: 13, color: TEXT.quiet, lineHeight: 1.6, whiteSpace: "pre-wrap",
+          paddingTop: 10, borderTop: `1px solid ${LINE.quiet}`, fontFamily: FONT.sans,
+        }}>
+          {nonBlank.slice(1).join("\n\n")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Epic detail ────────────────────────────────────────────────────────────────
 
 function EpicDetail({ id }: { id: number }) {
@@ -388,11 +471,7 @@ function EpicDetail({ id }: { id: number }) {
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "start" }}>
         {/* Left Column: Description, Issues, Delete button */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {epic.description && (
-            <div style={{ background: SURFACE.card, padding: 16, borderRadius: 8, border: `1px solid ${LINE.quiet}` }}>
-              <p style={{ margin: 0, fontSize: 13.5, color: TEXT.quiet, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{epic.description}</p>
-            </div>
-          )}
+          {epic.description && <FormattedDescription text={epic.description} />}
 
           <Section title={`Issues (${issues.length})`}>
             {issues.length === 0 ? (
@@ -519,12 +598,8 @@ function IssueDetail({ id }: { id: number }) {
             </a>
           )}
         </div>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT.bright }}>{issue.title}</h1>
-        {issue.description && (
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: TEXT.quiet, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-            {issue.description}
-          </p>
-        )}
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: TEXT.bright, marginBottom: 12 }}>{issue.title}</h1>
+        {issue.description && <FormattedDescription text={issue.description} />}
         {issue.labels.length > 0 && (
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
             {issue.labels.map((l) => (
