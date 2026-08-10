@@ -669,6 +669,26 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
     debugLog += `parent_issue_url found count: ${parentIssueUrlFound}\n`;
     debugLog += `Unique parent numbers identified: ${Array.from(parentNumbers).join(", ")}\n`;
 
+    // GitHub only knows "open"/"closed" — "in_progress" and "done" are local-only
+    // refinements this tool invented on top of that. Read them before the wipe
+    // below so a re-sync doesn't silently discard work-in-progress tracking:
+    // an issue/epic keeps its local status as long as GitHub still shows it
+    // open; the moment GitHub shows it closed, "closed" wins regardless.
+    const previousEpicRows = await db
+      .select({ githubNumber: btEpicsTable.githubNumber, status: btEpicsTable.status })
+      .from(btEpicsTable)
+      .where(sql`github_number IS NOT NULL`);
+    const previousEpicStatusByNumber = new Map(
+      previousEpicRows.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.status]),
+    );
+    const previousIssueRows = await db
+      .select({ githubNumber: btIssuesTable.githubNumber, status: btIssuesTable.status })
+      .from(btIssuesTable)
+      .where(sql`github_number IS NOT NULL`);
+    const previousIssueStatusByNumber = new Map(
+      previousIssueRows.filter((i) => i.githubNumber !== null).map((i) => [i.githubNumber!, i.status]),
+    );
+
     // Clear old synced records to prevent duplication or stale links
     const issuesDeleted = await db.delete(btIssuesTable).where(sql`github_number IS NOT NULL`);
     const epicsDeleted = await db.delete(btEpicsTable).where(sql`github_number IS NOT NULL`);
@@ -682,7 +702,10 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const ghEpic = issueMapByNumber.get(pNum);
       const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
       const description = ghEpic ? ghEpic.body : null;
-      const status = (ghEpic && ghEpic.state === "closed") ? "closed" : "open";
+      const previousStatus = previousEpicStatusByNumber.get(pNum);
+      const status = (ghEpic && ghEpic.state === "closed")
+        ? "closed"
+        : previousStatus === "in_progress" ? "in_progress" : "open";
       
       let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
       if (milestoneId === null) {
@@ -720,7 +743,12 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
 
       const parentNum = getParentNumber(gh.parent_issue_url);
       const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
-      const issueStatus: GhIssueStatus = gh.state === "closed" ? "closed" : "backlog";
+      const previousStatus = previousIssueStatusByNumber.get(gh.number);
+      const issueStatus: GhIssueStatus = gh.state === "closed"
+        ? "closed"
+        : (previousStatus === "in_progress" || previousStatus === "done")
+          ? previousStatus
+          : "backlog";
       const labels = gh.labels.map((l) => l.name);
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
