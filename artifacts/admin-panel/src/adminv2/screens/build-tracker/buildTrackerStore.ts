@@ -300,6 +300,74 @@ export function chatsForEpic(epicId: number): ChatRow[] {
   );
 }
 
+/** The milestone `epic` resolves to via epicsForMilestone()'s own three-way match, or undefined if unassigned. */
+export function milestoneForEpic(epicId: number): MilestoneRow | undefined {
+  const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+  return milestones.find((m) => epicsForMilestone(m.id).some((e) => e.id === epicId));
+}
+
+/**
+ * Every chat reachable from `milestoneId` — the union of chatsForEpic() over
+ * every epic assigned to it (already covers each epic's own issues), plus
+ * chatsForIssue() for any standalone issue (no epic) assigned to it directly.
+ * No ChatRow.milestoneId exists — chats can't be linked to a milestone
+ * directly, only reached by walking down to its epics/issues.
+ */
+export function chatsForMilestone(milestoneId: number): ChatRow[] {
+  const milestone = milestoneById(milestoneId);
+  const seen = new Set<number>();
+  const chats: ChatRow[] = [];
+  const add = (row: ChatRow) => { if (!seen.has(row.id)) { seen.add(row.id); chats.push(row); } };
+
+  for (const epic of epicsForMilestone(milestoneId)) {
+    for (const c of chatsForEpic(epic.id)) add(c);
+  }
+  const standaloneIssues = (Array.isArray(state?.issues) ? state.issues : []).filter(
+    (i) => i.epicId === null && (
+      i.milestoneId === milestoneId ||
+      (milestone?.githubNumber != null && String(i.milestoneId) === String(milestone.githubNumber))
+    ),
+  );
+  for (const issue of standaloneIssues) {
+    for (const c of chatsForIssue(issue.id)) add(c);
+  }
+  return chats;
+}
+
+/**
+ * Chats for `issue`, falling back to its epic's chats, then that epic's
+ * milestone's chats, when the issue itself has none linked — 99% of the
+ * time the epic already has one. A standalone issue (no epic) falls back
+ * straight to whatever milestone it's directly assigned to. Returns the
+ * first non-empty list found.
+ */
+export function chatsForIssueWithFallback(issue: IssueRow): ChatRow[] {
+  const own = chatsForIssue(issue.id);
+  if (own.length > 0) return own;
+  if (issue.epicId != null) {
+    const epicChats = chatsForEpic(issue.epicId);
+    if (epicChats.length > 0) return epicChats;
+    const milestone = milestoneForEpic(issue.epicId);
+    return milestone ? chatsForMilestone(milestone.id) : [];
+  }
+  if (issue.milestoneId != null) {
+    const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+    const milestone = milestones.find(
+      (m) => m.id === issue.milestoneId || (m.githubNumber != null && String(m.githubNumber) === String(issue.milestoneId)),
+    );
+    if (milestone) return chatsForMilestone(milestone.id);
+  }
+  return [];
+}
+
+/** Chats for `epic`, falling back to its milestone's chats when the epic itself has none linked. */
+export function chatsForEpicWithFallback(epic: EpicRow): ChatRow[] {
+  const own = chatsForEpic(epic.id);
+  if (own.length > 0) return own;
+  const milestone = milestoneForEpic(epic.id);
+  return milestone ? chatsForMilestone(milestone.id) : [];
+}
+
 export function unlinkedChats(): ChatRow[] {
   const chats = Array.isArray(state?.chats) ? state.chats : [];
   return chats.filter(

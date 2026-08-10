@@ -56,12 +56,20 @@ const barStyle: CSSProperties = {
 import { useSyncExternalStore } from "react";
 import {
   getSnapshot, subscribe, createChat, selectIssue, selectEpic,
+  chatsForIssue, chatsForEpic, chatsForIssueWithFallback, chatsForEpicWithFallback,
 } from "../screens/build-tracker/buildTrackerStore";
+import type { ChatRow } from "../screens/build-tracker/buildTrackerTypes";
 import { getShellApi } from "./ShellContext";
 
 function InProgressWorkItem({
-  title, id, type, githubNumber,
-}: { title: string; id: number; type: "epic" | "issue"; githubNumber?: number | null }) {
+  title, id, type, githubNumber, chats, isFallback,
+}: {
+  title: string; id: number; type: "epic" | "issue"; githubNumber?: number | null;
+  /** Own chats if it has any; otherwise the epic's, or failing that the milestone's — see chatsForIssueWithFallback()/chatsForEpicWithFallback(). */
+  chats: ChatRow[];
+  /** True when `chats` came from that fallback, not the item's own link — shown so it's clear the chat isn't literally about this item. */
+  isFallback: boolean;
+}) {
   const [chatInput, setChatInput] = useState("");
   const [linked, setLinked] = useState(false);
 
@@ -111,31 +119,57 @@ function InProgressWorkItem({
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <input
-          placeholder="Paste Claude chat URL or ID..."
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void handleLink(); }}
-          style={{
-            flex: 1, padding: "4px 8px", borderRadius: 4,
-            background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
-            color: TEXT.primary, fontFamily: FONT.sans, fontSize: 11, outline: "none",
-          }}
-        />
-        <button
-          onClick={() => void handleLink()}
-          disabled={!chatInput.trim()}
-          style={{
-            padding: "4px 8px", borderRadius: 4, border: 0,
-            background: linked ? ACCENT.green : ACCENT.info,
-            color: SURFACE.well, fontSize: 11, fontWeight: 700, cursor: !chatInput.trim() ? "default" : "pointer",
-            fontFamily: FONT.sans, opacity: !chatInput.trim() ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4,
-          }}
-        >
-          {linked ? "✓ Linked!" : "Link Chat"}
-        </button>
-      </div>
+      {chats.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {isFallback && (
+            <span style={{ fontSize: 9.5, color: TEXT.dim, fontStyle: "italic" }}>
+              No chat linked here — showing the {type === "issue" ? "epic's" : "milestone's"} chat
+            </span>
+          )}
+          {chats.map((c) => (
+            <a
+              key={c.id}
+              href={c.claudeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 4,
+                background: `${ACCENT.info}12`, border: `1px solid ${ACCENT.info}30`,
+                color: TEXT.primary, fontSize: 11, fontFamily: FONT.sans, textDecoration: "none",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              💬 {c.title === c.conversationId ? `Chat ${c.conversationId.slice(0, 12)}…` : c.title}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            placeholder="Paste Claude chat URL or ID..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleLink(); }}
+            style={{
+              flex: 1, padding: "4px 8px", borderRadius: 4,
+              background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+              color: TEXT.primary, fontFamily: FONT.sans, fontSize: 11, outline: "none",
+            }}
+          />
+          <button
+            onClick={() => void handleLink()}
+            disabled={!chatInput.trim()}
+            style={{
+              padding: "4px 8px", borderRadius: 4, border: 0,
+              background: linked ? ACCENT.green : ACCENT.info,
+              color: SURFACE.well, fontSize: 11, fontWeight: 700, cursor: !chatInput.trim() ? "default" : "pointer",
+              fontFamily: FONT.sans, opacity: !chatInput.trim() ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            {linked ? "✓ Linked!" : "Link Chat"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -195,10 +229,16 @@ function InProgressWorkPillDropdown() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 380, overflowY: "auto" }}>
             {inProgressEpics.map((e) => (
-              <InProgressWorkItem key={`epic-${e.id}`} id={e.id} title={e.title} type="epic" githubNumber={e.githubNumber} />
+              <InProgressWorkItem
+                key={`epic-${e.id}`} id={e.id} title={e.title} type="epic" githubNumber={e.githubNumber}
+                chats={chatsForEpicWithFallback(e)} isFallback={chatsForEpic(e.id).length === 0}
+              />
             ))}
             {inProgressIssues.map((i) => (
-              <InProgressWorkItem key={`issue-${i.id}`} id={i.id} title={i.title} type="issue" githubNumber={i.githubNumber} />
+              <InProgressWorkItem
+                key={`issue-${i.id}`} id={i.id} title={i.title} type="issue" githubNumber={i.githubNumber}
+                chats={chatsForIssueWithFallback(i)} isFallback={chatsForIssue(i.id).length === 0}
+              />
             ))}
           </div>
         </div>
