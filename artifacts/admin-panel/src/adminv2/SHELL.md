@@ -485,3 +485,99 @@ contract, that file should fail.
   generic modal, the right-click context menu, the sale celebration, the
   floating console, and the tenant-detail sheet. All are in
   `Admin Shell.dc.html` if and when a screen needs one.
+---
+
+## 8. Undo / Redo
+
+Every mutating action in the app should be reversible. The **Undo** and **Redo**
+buttons at the top of the title bar are screen-aware: they operate on the
+undo/redo stack of whichever screen is currently active.
+
+### The store
+
+```ts
+// src/adminv2/shell/undoStore.ts
+import { pushUndo, clearHistory } from "../../shell/undoStore";
+```
+
+`pushUndo(screenId, entry)` is the only call you need in almost every case.
+`screenId` must match the `id` you passed to `registerScreen()`.
+
+### Recipe — wrap every mutation
+
+```ts
+const SCREEN_ID = "my-screen"; // matches registerScreen({ id: "my-screen", ... })
+
+export async function updateFoo(id: number, patch: Partial<FooRow>, _skipUndo = false) {
+  const existing = state.foos.find((f) => f.id === id);
+
+  // 1. Capture the previous values of exactly the fields being changed
+  if (!_skipUndo && existing) {
+    const prevFields = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, (existing as any)[k]])
+    ) as Partial<FooRow>;
+    pushUndo(SCREEN_ID, {
+      label: `Edit "${existing.name}"`,
+      revert: () => updateFoo(id, prevFields, true), // _skipUndo prevents stack growth
+    });
+  }
+
+  // 2. Apply the mutation
+  // …
+}
+```
+
+For **create → delete** pairs:
+```ts
+// create: undo by deleting the new record
+pushUndo(SCREEN_ID, {
+  label: `Create foo "${title}"`,
+  revert: async () => { await deleteFoo(newRow.id); },
+});
+
+// delete: undo by recreating the record
+const snapshot = state.foos.find((f) => f.id === id);
+pushUndo(SCREEN_ID, {
+  label: `Delete foo "${snapshot?.name}"`,
+  revert: async () => { await createFoo(snapshot!.title /*, …other fields */); },
+});
+```
+
+### Rules
+
+| Rule | Why |
+|---|---|
+| Pass `_skipUndo = true` when calling from inside `revert` | Prevents the undo of an undo from pushing a third entry |
+| `revert` must return `Promise<void>` | The shell awaits it and shows a flash on completion |
+| Call `clearHistory(SCREEN_ID)` after a full sync/refresh | Stale undo entries point at IDs that may no longer exist |
+| Labels should be specific: `Edit "Sprint 1"`, not `Edit milestone` | The user reads the label before clicking — make it count |
+| Stack depth is capped at 20 per screen | Older entries silently drop when the cap is exceeded |
+
+### Redo
+
+Redo is automatic: `undo()` moves the entry to the redo stack; `redo()` moves it
+back and calls the same `revert()` function. **Your screen gets redo for free with
+no extra work** — do not try to build a separate redo mechanism.
+
+### Clearing history
+
+After a GitHub sync or a full `loadAll()` refresh, call `clearHistory(SCREEN_ID)`
+so stale entries referring to now-deleted IDs cannot be triggered:
+
+```ts
+import { clearHistory } from "../../shell/undoStore";
+
+export async function syncFromGitHub() {
+  // …sync…
+  await loadAll();
+  clearHistory(SCREEN_ID); // stale undo entries are now meaningless
+}
+```
+
+### Files
+
+| path | what |
+|---|---|
+| `shell/undoStore.ts` | The store — `pushUndo`, `undo`, `redo`, `canUndo`, `canRedo`, `undoLabel`, `redoLabel`, `clearHistory` |
+| `AdminV2.tsx` `AdminShell` | Subscribes and wires the title-bar buttons |
+| `screens/build-tracker/buildTrackerStore.ts` | Reference implementation covering every mutation type |

@@ -9,9 +9,13 @@
 
 import { logger } from "@/lib/logger";
 import { setLiveRibbonValue } from "../../shell/liveRibbon";
+import { pushUndo as _pushUndo, clearHistory } from "../../shell/undoStore";
 import type { ChatRow, EpicRow, IssueRow, IssueStatus, MilestoneRow, MilestoneStatus } from "./buildTrackerTypes";
 
 const log = logger.child({ channel: "admin.build-tracker" });
+
+/** Screen id that keys the universal undo/redo stacks. */
+const SCREEN_ID = "build-tracker";
 
 // ── Live ribbon key ────────────────────────────────────────────────────────────
 /** Key for the Watch-tab "Unlinked chats" live count. */
@@ -19,13 +23,12 @@ export const WATCH_UNLINKED_KEY = "bt:unlinked";
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-/** One reversible action pushed onto the undo stack. */
-interface UndoEntry {
-  /** Human-readable label shown in the Undo button tooltip. */
-  label: string;
-  /** Async function that reverses the action (no-arg, fire-and-forget). */
-  revert: () => Promise<void>;
+/** Push one undoable action onto the universal undo store for this screen. */
+function pushUndo(entry: Parameters<typeof _pushUndo>[1]): void {
+  _pushUndo(SCREEN_ID, entry);
+  // notify() is handled inside undoStore
 }
+
 
 export interface BuildTrackerState {
   epics: EpicRow[];
@@ -51,27 +54,6 @@ export interface BuildTrackerState {
   savingIds: Set<string>;
   triageActive: boolean;
   triageShowAssigned: boolean;
-}
-
-// ── Undo stack (module-level, max 20 entries) ─────────────────────────────────
-const MAX_UNDO = 20;
-let undoStack: UndoEntry[] = [];
-
-export function canUndo(): boolean { return undoStack.length > 0; }
-export function undoLabel(): string { return undoStack[undoStack.length - 1]?.label ?? ""; }
-
-function pushUndo(entry: UndoEntry) {
-  undoStack = [...undoStack.slice(-(MAX_UNDO - 1)), entry];
-  notify(); // so subscribers (AdminV2 Undo button) re-render
-}
-
-export async function undo(): Promise<void> {
-  const entry = undoStack[undoStack.length - 1];
-  if (!entry) return;
-  undoStack = undoStack.slice(0, -1);
-  notify();
-  flashMessage(`Undone: ${entry.label}`);
-  await entry.revert();
 }
 
 function initialState(): BuildTrackerState {
@@ -726,6 +708,7 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
       set({ milestones: result.milestones });
     }
     await loadAll(); // refresh after sync
+    clearHistory(SCREEN_ID); // stale undo entries are now meaningless
     return { epics: result.epics, issues: result.issues, milestones: result.milestones?.length };
   } catch (err) {
     log.error({ err }, "syncFromGitHub failed");

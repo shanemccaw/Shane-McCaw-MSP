@@ -15,7 +15,13 @@ import { Redo2, RefreshCw, Save, Undo2 } from "lucide-react";
 import { ShellProvider, subRoute, useShell } from "./shell/ShellContext";
 import { Shell, NoScreen } from "./shell/Shell";
 import { logger } from "@/lib/logger";
-import { canUndo, undo, undoLabel, subscribe as btSubscribe, getSnapshot as btSnapshot } from "./screens/build-tracker/buildTrackerStore";
+import {
+  subscribe as undoSubscribe,
+  getSnapshot as undoSnapshot,
+  canUndo, canRedo, undoLabel, redoLabel,
+  undo, redo,
+} from "./shell/undoStore";
+import { screenForRoute } from "./registry/registry";
 
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/git";
@@ -134,11 +140,23 @@ function ActiveScreen() {
 }
 
 function AdminShell() {
-  // Subscribe so the Undo button re-renders whenever the stack changes.
-  useSyncExternalStore(btSubscribe, btSnapshot);
-  const hasUndo = canUndo();
-  const undoHint = undoLabel();
+  // Re-render whenever undo stacks change (any screen).
+  useSyncExternalStore(undoSubscribe, undoSnapshot);
+  const { state } = useShell();
   const [location] = useLocation();
+
+  // Derive the active screen id: prefer the open doc's screenId,
+  // fall back to the current URL segment so it works even when no doc is open.
+  const activeDoc = state.docs.find((d) => d.id === state.activeDocId);
+  const activeScreenId: string =
+    activeDoc?.screenId ??
+    screenForRoute(subRoute(location))?.id ??
+    "";
+
+  const hasUndo = canUndo(activeScreenId);
+  const hasRedo = canRedo(activeScreenId);
+  const undoHint = undoLabel(activeScreenId);
+  const redoHint = redoLabel(activeScreenId);
 
   return (
     <Shell
@@ -151,9 +169,15 @@ function AdminShell() {
           label: hasUndo ? `Undo: ${undoHint}` : "Undo",
           icon: Undo2,
           disabled: !hasUndo,
-          onSelect: () => void undo(),
+          onSelect: () => void undo(activeScreenId),
         },
-        { id: "redo", label: "Redo", icon: Redo2, onSelect: () => log.debug("redo") },
+        {
+          id: "redo",
+          label: hasRedo ? `Redo: ${redoHint}` : "Redo",
+          icon: Redo2,
+          disabled: !hasRedo,
+          onSelect: () => void redo(activeScreenId),
+        },
         {
           id: "refresh",
           label: "Refresh",
