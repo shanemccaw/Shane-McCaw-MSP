@@ -96,6 +96,24 @@ registerScreen({
     if (ctx.kind === "chatLink" && ctx.recordId && state.selectedChatId !== Number(ctx.recordId)) {
       selectChat(Number(ctx.recordId));
     }
+    // The plain "Build Tracker" doc carries no record context (ctx.kind is
+    // undefined) — e.g. clicking the ribbon button, or switching back to an
+    // already-open Build Tracker tab after opening an epic/issue in its own
+    // doc. Without this, a selection left over from that other doc (or from
+    // before the tab was switched away from) keeps rendering here forever,
+    // since BuildTrackerBody's root picks the selected record over the
+    // Dashboard with no way to know this render has no record of its own.
+    if (
+      !ctx.kind &&
+      (state.selectedEpicId !== null ||
+        state.selectedIssueId !== null ||
+        state.selectedChatId !== null ||
+        state.selectedMilestoneId !== null ||
+        state.triageActive ||
+        state.dashboardFilter !== null)
+    ) {
+      selectEpic(null);
+    }
     return <BuildTrackerBody />;
   },
 
