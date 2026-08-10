@@ -25,6 +25,7 @@ import {
   Sparkles,
   Search,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import {
@@ -105,23 +106,48 @@ function StatusPill({ label, color }: { label: string; color: string }) {
 
 function ChatChip({ chat, selected, onSelect, onContextMenu }: { chat: ChatRow; selected: boolean; onSelect: () => void; onContextMenu?: (e: React.MouseEvent) => void }) {
   return (
-    <button
-      onClick={onSelect}
-      onContextMenu={onContextMenu}
-      title={chat.claudeUrl}
+    <div
       style={{
-        display: "flex", alignItems: "center", gap: 5,
-        width: "100%", padding: "3px 8px 3px 28px",
-        background: selected ? `${ACCENT.info}18` : "transparent",
-        border: 0, borderRadius: 3, cursor: "pointer", textAlign: "left",
+        display: "flex", alignItems: "center", gap: 2,
         borderLeft: selected ? `2px solid ${ACCENT.info}` : "2px solid transparent",
+        background: selected ? `${ACCENT.info}18` : "transparent",
+        borderRadius: 3,
       }}
     >
-      <MessageSquare size={11} color={ACCENT.info} style={{ flex: "none", opacity: 0.7 }} />
-      <span style={{ fontSize: 11.5, color: selected ? TEXT.primary : TEXT.quiet, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {chat.title === chat.conversationId ? chat.conversationId.slice(0, 18) + "…" : chat.title}
-      </span>
-    </button>
+      <button
+        onClick={onSelect}
+        onContextMenu={onContextMenu}
+        title={chat.claudeUrl}
+        style={{
+          display: "flex", alignItems: "center", gap: 5, minWidth: 0,
+          flex: 1, padding: "3px 4px 3px 26px",
+          background: "transparent", border: 0, cursor: "pointer", textAlign: "left",
+        }}
+      >
+        <MessageSquare size={11} color={ACCENT.info} style={{ flex: "none", opacity: 0.7 }} />
+        <span style={{ fontSize: 11.5, color: selected ? TEXT.primary : TEXT.quiet, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {chat.title === chat.conversationId ? chat.conversationId.slice(0, 18) + "…" : chat.title}
+        </span>
+      </button>
+      {/* One-click open — the whole reason this tracker exists is to reach the
+          chat, so don't make reaching it cost a navigate-then-click detour. */}
+      <a
+        href={chat.claudeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        title="Open this chat in Claude"
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flex: "none", width: 20, height: 20, marginRight: 4, borderRadius: 3,
+          color: TEXT.faintest,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT.info; e.currentTarget.style.background = `${ACCENT.info}18`; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = TEXT.faintest; e.currentTarget.style.background = "transparent"; }}
+      >
+        <ExternalLink size={10} />
+      </a>
+    </div>
   );
 }
 

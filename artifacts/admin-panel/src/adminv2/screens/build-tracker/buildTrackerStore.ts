@@ -23,7 +23,8 @@ import type { ChatRow, EpicRow, EpicStatus, IssueRow, IssueStatus, MilestoneRow,
  */
 export type DashboardFilter =
   | { kind: "epics"; statuses: EpicStatus[]; label: string }
-  | { kind: "issues"; statuses: IssueStatus[]; label: string };
+  | { kind: "issues"; statuses: IssueStatus[]; label: string }
+  | { kind: "chats"; scope: "all" | "unlinked"; label: string };
 
 const log = logger.child({ channel: "admin.build-tracker" });
 
@@ -89,6 +90,14 @@ export interface BuildTrackerState {
   savingIds: Set<string>;
   triageActive: boolean;
   triageShowAssigned: boolean;
+  /**
+   * True while cycling through unlinked chats to link/categorize them —
+   * separate from `triageActive`, which is the Issue→Epic triage flow. The
+   * Dashboard's old "Needs Triage" card showed the unlinked-*chat* count but
+   * opened Issue triage, a flow with no chat awareness at all — this is the
+   * real chat-linking flow that card now opens instead.
+   */
+  chatTriageActive: boolean;
   /** Set by clicking a Dashboard stat card; cleared by selecting a record or leaving the list. */
   dashboardFilter: DashboardFilter | null;
 
@@ -119,6 +128,7 @@ function initialState(): BuildTrackerState {
     savingIds: new Set(),
     triageActive: false,
     triageShowAssigned: false,
+    chatTriageActive: false,
     dashboardFilter: null,
     syncingGitHub: false,
     pollingGitHub: false,
@@ -639,42 +649,69 @@ export async function loadAll(): Promise<void> {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function selectMilestone(id: number | null) {
-  set({ selectedMilestoneId: id, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
+  set({ selectedMilestoneId: id, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, chatTriageActive: false, dashboardFilter: null });
 }
 
 export function selectEpic(id: number | null) {
-  set({ selectedEpicId: id, selectedMilestoneId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
+  set({ selectedEpicId: id, selectedMilestoneId: null, selectedIssueId: null, selectedChatId: null, triageActive: false, chatTriageActive: false, dashboardFilter: null });
 }
 
 export function selectIssue(id: number | null) {
-  set({ selectedIssueId: id, selectedMilestoneId: null, selectedChatId: null, triageActive: false, dashboardFilter: null });
+  set({ selectedIssueId: id, selectedMilestoneId: null, selectedChatId: null, triageActive: false, chatTriageActive: false, dashboardFilter: null });
 }
 
 export function selectChat(id: number | null) {
-  set({ selectedChatId: id, selectedMilestoneId: null, triageActive: false, dashboardFilter: null });
+  set({ selectedChatId: id, selectedMilestoneId: null, triageActive: false, chatTriageActive: false, dashboardFilter: null });
 }
 
 /** Drills the Dashboard into a filtered list — see `DashboardFilter`'s own doc comment. Pass null to return to the Dashboard. */
 export function setDashboardFilter(filter: DashboardFilter | null) {
-  set({ dashboardFilter: filter, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, selectedMilestoneId: null, triageActive: false });
+  set({ dashboardFilter: filter, selectedEpicId: null, selectedIssueId: null, selectedChatId: null, selectedMilestoneId: null, triageActive: false, chatTriageActive: false });
 }
 
-export function setTriageActive(active: boolean) {
-  set({ triageActive: active, dashboardFilter: active ? null : state.dashboardFilter });
-  if (active) {
-    const api = (window as any).__shellApi;
-    if (api) {
-      if (!api.state.contextActive) {
-        api.dispatch({ type: "selectContextTab" });
-      } else if (!api.state.ribbonOpen) {
-        api.dispatch({ type: "toggleRibbon" });
-      }
+function activateRibbonContext(): void {
+  const api = (window as any).__shellApi;
+  if (api) {
+    if (!api.state.contextActive) {
+      api.dispatch({ type: "selectContextTab" });
+    } else if (!api.state.ribbonOpen) {
+      api.dispatch({ type: "toggleRibbon" });
     }
   }
 }
 
+export function setTriageActive(active: boolean) {
+  set({ triageActive: active, chatTriageActive: false, dashboardFilter: active ? null : state.dashboardFilter });
+  if (active) activateRibbonContext();
+}
+
 export function setTriageShowAssigned(show: boolean) {
   set({ triageShowAssigned: show });
+}
+
+/** Opens/exits the chat-linking triage flow — see `chatTriageActive`'s own doc comment on `BuildTrackerState`. */
+export function setChatTriageActive(active: boolean) {
+  set({ chatTriageActive: active, triageActive: false, dashboardFilter: active ? null : state.dashboardFilter });
+  if (active) activateRibbonContext();
+}
+
+/**
+ * Where a chat currently lands — the single source of truth for the
+ * destination badge shown wherever a chat is listed (All Chats, chat
+ * triage), so it can never drift from the same issueId/epicId/category
+ * fields the rest of the store already keys off of.
+ */
+export function chatDestination(chat: ChatRow): string {
+  if (chat.issueId != null) {
+    const issue = issueById(chat.issueId);
+    return issue ? `Issue: ${issue.githubNumber ? `#${issue.githubNumber} ` : ""}${issue.title}` : `Issue #${chat.issueId}`;
+  }
+  if (chat.epicId != null) {
+    const epic = epicById(chat.epicId);
+    return epic ? `Epic: ${epic.githubNumber ? `#${epic.githubNumber} ` : ""}${epic.title}` : `Epic #${chat.epicId}`;
+  }
+  if (chat.category) return `Category: ${chat.category}`;
+  return "Unlinked — needs triage";
 }
 
 export async function createMilestone(

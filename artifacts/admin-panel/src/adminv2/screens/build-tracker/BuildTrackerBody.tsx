@@ -28,9 +28,9 @@ import {
   issuesForEpic, chatsForIssue, chatsForEpic, epicsForMilestone,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
-  selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, setTriageActive, syncFromGitHub,
+  selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, updateChat, setTriageActive, syncFromGitHub,
   estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
-  setDashboardFilter, type DashboardFilter,
+  setDashboardFilter, setChatTriageActive, chatDestination, type DashboardFilter,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -298,6 +298,17 @@ function Dashboard() {
           >
             <CalendarRange size={13} /> Assign Iteration
           </button>
+          <button
+            onClick={() => setDashboardFilter({ kind: "chats", scope: "all", label: "All Chats" })}
+            title="Every Claude chat linked in Build Tracker, and exactly where each one landed"
+            style={{
+              padding: "6px 14px", borderRadius: 6, border: `1px solid ${ACCENT.info}40`,
+              background: `${ACCENT.info}18`, color: ACCENT.info, fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <MessageSquare size={13} /> All Chats ({state.chats.length})
+          </button>
         </div>
       </div>
       <style>{"@keyframes bt-spin { to { transform: rotate(360deg); } }"}</style>
@@ -313,8 +324,8 @@ function Dashboard() {
               () => setDashboardFilter({ kind: "epics", statuses: ["open"], label: "Open Epics" }))}
             {statCard(<Clock size={13} />,     "In Progress",     activeIssues,   ACCENT.amber,
               () => setDashboardFilter({ kind: "issues", statuses: ["in_progress"], label: "In Progress" }))}
-            {statCard(<AlertCircle size={13} />, "Needs Triage",  unlinked,       ACCENT.danger,
-              () => setTriageActive(true))}
+            {statCard(<AlertCircle size={13} />, "Unlinked Chats",  unlinked,       ACCENT.danger,
+              () => setChatTriageActive(true))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {statCard(<GitPullRequest size={13} />, "Backlog",    backlogIssues,  TEXT.dim,
@@ -1219,6 +1230,279 @@ function TriageView() {
   );
 }
 
+// ── Chat triage (linking flow) ────────────────────────────────────────────────
+
+/**
+ * Cycles through unlinked chats and lets you link each to an issue or epic,
+ * or give it a free-form category — the real chat-linking flow. The
+ * Dashboard's "Unlinked Chats" card and the Watch tab's "Unlinked chats"
+ * button both open this now, not `TriageView` (Issue→Epic triage, a
+ * different flow that has never touched a chat).
+ */
+function ChatTriageView() {
+  const state = useStore();
+  const chats = unlinkedChats();
+  const [index, setIndex] = useState(0);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
+
+  const currentIndex = Math.max(0, Math.min(index, chats.length - 1));
+  const chat = chats[currentIndex];
+
+  if (chats.length === 0) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        <div style={{ fontSize: 48 }}>🎉</div>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>All chats linked!</h1>
+        <p style={{ margin: 0, fontSize: 14, color: TEXT.dim, maxWidth: 400 }}>
+          Every chat you've added has somewhere to live. Nothing left to sort.
+        </p>
+        <button
+          onClick={() => setChatTriageActive(false)}
+          style={{
+            marginTop: 8, padding: "8px 16px", borderRadius: 6, border: 0,
+            background: ACCENT.info, color: SURFACE.well, fontWeight: 600,
+            cursor: "pointer", fontFamily: FONT.sans, fontSize: 13,
+          }}
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  async function handleLinkIssue(issueId: number) {
+    if (!chat) return;
+    await updateChat(chat.id, { issueId, epicId: null, category: null });
+    setIndex(0);
+    setSearch("");
+  }
+
+  async function handleLinkEpic(epicId: number) {
+    if (!chat) return;
+    await updateChat(chat.id, { epicId, issueId: null, category: null });
+    setIndex(0);
+    setSearch("");
+  }
+
+  async function handleSetCategory() {
+    if (!chat || !category.trim()) return;
+    await updateChat(chat.id, { category: category.trim(), issueId: null, epicId: null });
+    setCategory("");
+    setIndex(0);
+  }
+
+  async function handleDelete() {
+    if (!chat) return;
+    if (window.confirm(`Delete chat link "${chat.title}"?`)) {
+      await deleteChat(chat.id);
+      setIndex(0);
+    }
+  }
+
+  const query = search.trim().toLowerCase();
+  const matchingIssues = state.issues
+    .filter((i) => i.status !== "closed" && i.status !== "done")
+    .filter((i) => !query || i.title.toLowerCase().includes(query) || (i.githubNumber && String(i.githubNumber).includes(query.replace(/^#/, ""))))
+    .slice(0, 30);
+  const matchingEpics = state.epics
+    .filter((e) => e.status !== "closed")
+    .filter((e) => !query || e.title.toLowerCase().includes(query) || (e.githubNumber && String(e.githubNumber).includes(query.replace(/^#/, ""))))
+    .slice(0, 30);
+
+  return (
+    <div style={{ padding: 24, maxWidth: 900, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: ACCENT.info }}>
+            Chat Triage
+          </span>
+          <h1 style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 800, color: TEXT.bright }}>
+            Where does this chat go?
+          </h1>
+        </div>
+        <button
+          onClick={() => setChatTriageActive(false)}
+          style={{
+            padding: "5px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+            background: "transparent", color: TEXT.dim, cursor: "pointer",
+            fontFamily: FONT.sans, fontSize: 11.5,
+          }}
+        >
+          Exit
+        </button>
+      </div>
+
+      {/* Progress Bar */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: TEXT.caption }}>
+          <span>{chats.length} unlinked chat{chats.length !== 1 ? "s" : ""}</span>
+          <span>{currentIndex + 1} of {chats.length}</span>
+        </div>
+        <div style={{ height: 6, background: SURFACE.well, borderRadius: 3, overflow: "hidden" }}>
+          <div style={{
+            height: "100%", background: ACCENT.info, borderRadius: 3,
+            width: `${((currentIndex + 1) / chats.length) * 100}%`,
+            transition: "width 200ms ease",
+          }} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 24, alignItems: "start" }}>
+        {/* Left: the chat itself — read it first */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              disabled={currentIndex === 0}
+              style={{
+                padding: "6px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.card, color: TEXT.quiet, fontSize: 12, fontWeight: 600,
+                fontFamily: FONT.sans, cursor: currentIndex === 0 ? "default" : "pointer",
+                opacity: currentIndex === 0 ? 0.4 : 1,
+              }}
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setIndex((i) => Math.min(chats.length - 1, i + 1))}
+              disabled={currentIndex === chats.length - 1}
+              style={{
+                padding: "6px 12px", borderRadius: 5, border: `1px solid ${LINE.control}`,
+                background: SURFACE.card, color: TEXT.quiet, fontSize: 12, fontWeight: 600,
+                fontFamily: FONT.sans, cursor: currentIndex === chats.length - 1 ? "default" : "pointer",
+                opacity: currentIndex === chats.length - 1 ? 0.4 : 1,
+              }}
+            >
+              Skip / Next
+            </button>
+          </div>
+
+          <div style={{
+            padding: 20, background: SURFACE.card, borderRadius: 8,
+            border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 12,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <MessageSquare size={15} color={ACCENT.info} />
+              <span style={{ fontSize: 11.5, fontFamily: FONT.mono, color: TEXT.dim }}>
+                {chat.conversationId.slice(0, 18)}…
+              </span>
+            </div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: TEXT.primary, lineHeight: 1.4 }}>
+              {chat.title === chat.conversationId ? "Untitled chat" : chat.title}
+            </h2>
+            <a
+              href={chat.claudeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                padding: "10px 14px", borderRadius: 6, textDecoration: "none",
+                background: `${ACCENT.info}20`, border: `1px solid ${ACCENT.info}45`,
+                color: ACCENT.info, fontWeight: 700, fontSize: 13, fontFamily: FONT.sans,
+              }}
+            >
+              <ExternalLink size={14} /> Open this chat in Claude to see what it's about
+            </a>
+          </div>
+
+          <button
+            onClick={() => void handleDelete()}
+            style={{
+              padding: "6px 12px", borderRadius: 5, border: `1px solid ${ACCENT.danger}30`,
+              background: `${ACCENT.danger}12`, color: ACCENT.danger, fontSize: 12, fontWeight: 600,
+              fontFamily: FONT.sans, cursor: "pointer", alignSelf: "flex-start",
+            }}
+          >
+            Delete this chat link
+          </button>
+        </div>
+
+        {/* Right: link it somewhere */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Section title="Give it a free-form category">
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                placeholder='e.g. "Marketing", "Planning"'
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleSetCategory(); }}
+                style={{
+                  flex: 1, padding: "8px 12px", borderRadius: 6, border: `1px solid ${LINE.control}`,
+                  background: SURFACE.well, color: TEXT.primary, fontSize: 12.5, fontFamily: FONT.sans, outline: "none",
+                }}
+              />
+              <button
+                onClick={() => void handleSetCategory()}
+                disabled={!category.trim()}
+                style={{
+                  padding: "8px 14px", borderRadius: 6, border: 0, background: `${ACCENT.info}22`,
+                  color: ACCENT.info, fontFamily: FONT.sans, fontSize: 12.5, fontWeight: 600,
+                  cursor: "pointer", opacity: category.trim() ? 1 : 0.4,
+                }}
+              >
+                Set
+              </button>
+            </div>
+          </Section>
+
+          <Section title="Or link it to an Issue / Epic">
+            <input
+              type="text"
+              placeholder="Search by name or Git #…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%", padding: "8px 12px", borderRadius: 6, border: `1px solid ${LINE.control}`,
+                background: SURFACE.well, color: TEXT.primary, fontSize: 12.5, fontFamily: FONT.sans, outline: "none",
+              }}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 380, overflowY: "auto", paddingRight: 4, marginTop: 8 }}>
+              {matchingIssues.length === 0 && matchingEpics.length === 0 && (
+                <p style={{ fontSize: 12, color: TEXT.dim, margin: "8px 0" }}>No matching issues or epics.</p>
+              )}
+              {matchingIssues.map((i) => (
+                <button
+                  key={`issue-${i.id}`}
+                  onClick={() => void handleLinkIssue(i.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                    borderRadius: 6, border: `1px solid ${LINE.control}`, background: SURFACE.well,
+                    cursor: "pointer", fontFamily: FONT.sans, textAlign: "left", flexShrink: 0,
+                  }}
+                >
+                  <GitPullRequest size={13} color={ISSUE_STATUS_COLOR[i.status]} style={{ flex: "none" }} />
+                  <span style={{ flex: 1, fontSize: 12.5, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {i.githubNumber ? `#${i.githubNumber} ` : ""}{i.title}
+                  </span>
+                  <StatusPill label={ISSUE_STATUS_LABEL[i.status]} color={ISSUE_STATUS_COLOR[i.status]} />
+                </button>
+              ))}
+              {matchingEpics.map((e) => (
+                <button
+                  key={`epic-${e.id}`}
+                  onClick={() => void handleLinkEpic(e.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                    borderRadius: 6, border: `1px solid ${LINE.control}`, background: SURFACE.well,
+                    cursor: "pointer", fontFamily: FONT.sans, textAlign: "left", flexShrink: 0,
+                  }}
+                >
+                  <GitBranch size={13} color={EPIC_STATUS_COLOR[e.status]} style={{ flex: "none" }} />
+                  <span style={{ flex: 1, fontSize: 12.5, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.githubNumber ? `#${e.githubNumber} ` : ""}{e.title}
+                  </span>
+                  <StatusPill label={EPIC_STATUS_LABEL[e.status]} color={EPIC_STATUS_COLOR[e.status]} />
+                </button>
+              ))}
+            </div>
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Filtered list (Dashboard stat card drill-in) ─────────────────────────────
 
 /**
@@ -1237,7 +1521,10 @@ function FilteredListView({ filter }: { filter: DashboardFilter }) {
   const issueRows: IssueRow[] = filter.kind === "issues"
     ? state.issues.filter((i) => filter.statuses.includes(i.status))
     : [];
-  const rows = filter.kind === "epics" ? epicRows : issueRows;
+  const chatRows: ChatRow[] = filter.kind === "chats"
+    ? (filter.scope === "unlinked" ? unlinkedChats() : state.chats)
+    : [];
+  const rows = filter.kind === "epics" ? epicRows : filter.kind === "issues" ? issueRows : chatRows;
 
   return (
     <div style={{ padding: 24, maxWidth: 1000, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1307,6 +1594,26 @@ function FilteredListView({ filter }: { filter: DashboardFilter }) {
               {issue.chatCount > 0 && <span style={{ fontSize: 11, color: ACCENT.info, flexShrink: 0 }}>💬{issue.chatCount}</span>}
             </button>
           ))}
+          {filter.kind === "chats" && chatRows.map((chat) => (
+            <div key={chat.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <button
+                onClick={() => {
+                  if (chat.issueId != null) selectIssue(chat.issueId);
+                  else if (chat.epicId != null) selectEpic(chat.epicId);
+                  else selectChat(chat.id);
+                }}
+                style={{
+                  alignSelf: "flex-start", background: "transparent", border: 0, padding: 0,
+                  cursor: "pointer", fontFamily: FONT.sans, fontSize: 10.5, fontWeight: 700,
+                  color: chat.issueId != null || chat.epicId != null ? ACCENT.info : chat.category ? TEXT.dim : ACCENT.amber,
+                  textDecoration: "underline",
+                }}
+              >
+                {chatDestination(chat)}
+              </button>
+              <ChatOpenChip chat={chat} />
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1319,6 +1626,7 @@ export function BuildTrackerBody() {
   const state = useStore();
 
   if (state.triageActive) return <TriageView />;
+  if (state.chatTriageActive) return <ChatTriageView />;
 
   if (state.selectedChatId !== null) {
     const chat = chatById(state.selectedChatId);

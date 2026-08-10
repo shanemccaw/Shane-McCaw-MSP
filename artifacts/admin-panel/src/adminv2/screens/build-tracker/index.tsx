@@ -39,6 +39,7 @@ import {
   updateEpic, updateIssue, updateChat,
   deleteEpic, deleteIssue, deleteChat,
   syncFromGitHub, loadAll, setTriageActive, setTriageShowAssigned,
+  setChatTriageActive, setDashboardFilter,
   WATCH_UNLINKED_KEY, SYNC_GITHUB_KEY,
 } from "./buildTrackerStore";
 import {
@@ -110,6 +111,7 @@ registerScreen({
         state.selectedChatId !== null ||
         state.selectedMilestoneId !== null ||
         state.triageActive ||
+        state.chatTriageActive ||
         state.dashboardFilter !== null)
     ) {
       selectEpic(null);
@@ -154,6 +156,13 @@ registerScreen({
               if (title?.trim()) void createIssue(title.trim(), null);
             },
           },
+          {
+            label: "All Chats",
+            icon: MessageSquare,
+            intent: "open",
+            onSelect: () => { goto(); setDashboardFilter({ kind: "chats", scope: "all", label: "All Chats" }); },
+            title: "Every Claude chat linked in Build Tracker, and exactly where each one landed",
+          },
         ],
       },
     },
@@ -182,21 +191,22 @@ registerScreen({
         ],
       },
     },
-    // ── Watch tab: unlinked chats needing triage ─────────────────────────────
+    // ── Watch tab: unlinked chats needing triage, stacked into the shared
+    // "Needs a decision" group so it doesn't get its own 68px box. ───────────
     {
       tab: "watch",
-      order: 50,
+      order: 20,
       group: {
-        label: "Build Tracker",
-        large: [
+        label: "Needs a decision",
+        small: [
           {
             label: "Unlinked chats",
             icon: MessageSquare,
             intent: "open",
             color: unlinkedCount() > 0 ? ACCENT.amber : undefined,
             liveKey: WATCH_UNLINKED_KEY,
-            onSelect: goto,
-            title: "Chats ingested but not yet assigned to an epic, issue, or category",
+            onSelect: () => { goto(); setChatTriageActive(true); },
+            title: "Chats ingested but not yet linked to an epic, issue, or category — opens straight into linking them",
           },
         ],
       },
@@ -206,6 +216,25 @@ registerScreen({
   // ── Contextual tab: Tools ──────────────────────────────────────────────────
   contextualTab: (ctx) => {
     const state = getSnapshot();
+    if (state.chatTriageActive) {
+      return {
+        id: "chat-triage-tools",
+        label: "Chat Triage",
+        groups: [
+          {
+            label: "Actions",
+            large: [
+              {
+                label: "Exit Chat Triage",
+                icon: RefreshCw,
+                intent: "record",
+                onSelect: () => setChatTriageActive(false),
+              },
+            ],
+          },
+        ],
+      };
+    }
     if (state.triageActive) {
       return {
         id: "triage-tools",
@@ -240,10 +269,64 @@ registerScreen({
     }
 
     if (!ctx.kind || !ctx.recordId) {
+      const s = getSnapshot();
+      const quickLinkRows = [
+        ...s.issues
+          .filter((i) => i.status !== "closed" && i.status !== "done")
+          .map((i) => ({
+            id: `qi-${i.id}`,
+            group: "Issues",
+            tile: i.githubNumber ? `#${i.githubNumber}` : "IS",
+            name: i.title,
+            head: i.githubNumber ? `#${i.githubNumber}` : undefined,
+            sub: ISSUE_STATUS_LABEL[i.status],
+            onSelect: () => {
+              selectIssue(i.id);
+              getShellApi()?.openDoc({ kind: "issue", id: String(i.id), screenId: "build-tracker" });
+              const cid = window.prompt(`Paste Claude conversation ID or URL to link to Issue "${i.title}":`);
+              if (cid?.trim()) void createChat(cid.trim(), cid.trim(), i.id, null, null);
+            },
+          })),
+        ...s.epics
+          .filter((e) => e.status !== "closed")
+          .map((e) => ({
+            id: `qe-${e.id}`,
+            group: "Epics",
+            tile: e.githubNumber ? `#${e.githubNumber}` : "EP",
+            name: e.title,
+            head: e.githubNumber ? `#${e.githubNumber}` : undefined,
+            sub: EPIC_STATUS_LABEL[e.status],
+            onSelect: () => {
+              selectEpic(e.id);
+              getShellApi()?.openDoc({ kind: "epic", id: String(e.id), screenId: "build-tracker" });
+              const cid = window.prompt(`Paste Claude conversation ID or URL to link to Epic "${e.title}":`);
+              if (cid?.trim()) void createChat(cid.trim(), cid.trim(), null, e.id, null);
+            },
+          })),
+      ];
       return {
         id: "build-tracker-tools",
         label: "Build Tools",
         groups: [
+          {
+            label: "Quick Link",
+            large: [
+              {
+                label: "Find by Git #",
+                icon: MessageSquare,
+                intent: "record",
+                onSelect: () => {},
+                title: "Type a Git # (or title) to jump straight to it and link a Claude chat",
+                gallery: {
+                  id: "quick-link-gallery",
+                  title: "Type a Git # to jump + link a chat",
+                  searchable: true,
+                  searchPlaceholder: "Git #, e.g. 681…",
+                  rows: quickLinkRows,
+                },
+              },
+            ],
+          },
           {
             label: "Roadmap",
             large: [
