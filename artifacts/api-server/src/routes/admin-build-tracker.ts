@@ -410,9 +410,10 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
     // "done" are local refinements this tool invented on top of that. Without
     // this, a local status change never reached GitHub at all: Sync only ever
     // pulled FROM GitHub, so closing/reopening an issue here silently diverged
-    // from the real issue on GitHub forever, even after a resync. The separate
-    // Projects v2 "Status" board field (In Progress/Done/etc, a GraphQL-only
-    // concept the REST state above can't touch) gets pushed too.
+    // from the real issue on GitHub forever, even after a resync. The
+    // "status:*" label (the confirmed-real signal — see statusFromLabels'
+    // comment) gets pushed too, and so does the Projects v2 "Status" board
+    // field as a secondary attempt, in case a given issue also tracks one.
     if (process.env.GITHUB_TOKEN && ghNum && status !== undefined) {
       try {
         await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${ghNum}`, {
@@ -422,6 +423,7 @@ router.patch("/admin/build-tracker/issues/:id", requireAdmin, async (req: Reques
       } catch (err) {
         log.error({ err, id, ghNum, status }, "Failed to push issue status to GitHub issue");
       }
+      await pushStatusLabel(ghNum, row?.labels ?? [], status);
       await pushStatusToProjects(ghNum, status);
     }
 
@@ -864,6 +866,79 @@ function getParentNumber(url: string | null | undefined): number | null {
 
 type GhIssueStatus = "backlog" | "in_progress" | "done" | "closed";
 
+// ── "status:*" labels — the REAL signal, confirmed live ──────────────────────
+// Shane found this by inspecting the raw GitHub API response directly: issues
+// already carry labels like "status:in-progress" (66 matches on his repo) —
+// NOT a Projects v2 board field. This is plain REST data the sync already
+// fetches (`gh.labels`), so it needs no GraphQL call at all and is far more
+// reliable than the Projects v2 heuristic above (kept as a secondary signal
+// below this one — harmless if a given issue also happens to have a matching
+// Projects Status field, since this label check runs first).
+
+const STATUS_LABEL_PREFIX = "status:";
+
+/** local status -> the label suffix to push. "In Progress"/"Done" naming confirmed; the rest are this tool's own vocabulary, kebab-cased to match. */
+const LOCAL_STATUS_TO_LABEL_SUFFIX: Record<string, string> = {
+  backlog: "backlog",
+  open: "backlog",
+  in_progress: "in-progress",
+  done: "done",
+  closed: "closed",
+};
+
+/** label suffix (lowercased) -> local status, the reverse of the map above plus a couple of tolerated aliases. */
+const LABEL_SUFFIX_TO_LOCAL_STATUS: Record<string, GhIssueStatus> = {
+  backlog: "backlog",
+  todo: "backlog",
+  "in-progress": "in_progress",
+  in_progress: "in_progress",
+  done: "done",
+  closed: "closed",
+};
+
+/** First "status:*" label on `labels` that maps to a known local status, or null if none match. */
+function statusFromLabels(labels: Array<{ name: string }>): GhIssueStatus | null {
+  for (const label of labels) {
+    const name = label.name.trim().toLowerCase();
+    if (!name.startsWith(STATUS_LABEL_PREFIX)) continue;
+    const mapped = LABEL_SUFFIX_TO_LOCAL_STATUS[name.slice(STATUS_LABEL_PREFIX.length)];
+    if (mapped) return mapped;
+  }
+  return null;
+}
+
+/**
+ * Adds the "status:<localStatus>" label to `issueNumber` and removes any
+ * OTHER "status:*" label already on it (an issue should carry at most one),
+ * using `currentLabels` — the last-synced label set already on hand, so this
+ * needs no extra GitHub read before writing. Best-effort like every other
+ * GitHub-write call site in this file: logs and returns on failure, never
+ * blocks the local write the PATCH has already committed.
+ */
+async function pushStatusLabel(issueNumber: number, currentLabels: string[], localStatus: string): Promise<void> {
+  const suffix = LOCAL_STATUS_TO_LABEL_SUFFIX[localStatus];
+  if (!suffix) return;
+  const target = `${STATUS_LABEL_PREFIX}${suffix}`;
+  const stale = currentLabels.filter((l) => l.toLowerCase().startsWith(STATUS_LABEL_PREFIX) && l.toLowerCase() !== target);
+  const alreadyCorrect = currentLabels.some((l) => l.toLowerCase() === target);
+  try {
+    for (const staleLabel of stale) {
+      await ghFetch(
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/labels/${encodeURIComponent(staleLabel)}`,
+        { method: "DELETE" },
+      );
+    }
+    if (!alreadyCorrect) {
+      await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/labels`, {
+        method: "POST",
+        body: JSON.stringify({ labels: [target] }),
+      });
+    }
+  } catch (err) {
+    log.error({ err, issueNumber, localStatus }, "pushStatusLabel failed");
+  }
+}
+
 interface GitHubIssuePayload {
   number: number;
   title: string;
@@ -989,11 +1064,22 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
       const description = ghEpic ? ghEpic.body : null;
       const previousStatus = previousEpicStatusByNumber.get(pNum);
+      // An epic is itself a GitHub issue, so it can carry a "status:*" label
+      // too — just not written back yet (bt_epics has no local labels column
+      // to compute a stale-label diff from without an extra live fetch; the
+      // read side costs nothing since ghEpic.labels is already in hand).
+      // EpicStatus has no "backlog"/"done" of its own — "backlog" reads as
+      // the epic's "open", "done" as its "closed" (no separate not-closed-
+      // but-done concept for epics).
+      const rawLabelStatus = ghEpic ? statusFromLabels(ghEpic.labels) : null;
+      const epicLabelStatus = rawLabelStatus === "backlog" ? "open" : rawLabelStatus === "done" ? "closed" : rawLabelStatus;
       const status = (ghEpic && ghEpic.state === "closed")
         ? "closed"
-        : projectInProgress.has(pNum)
-          ? "in_progress"
-          : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
+        : epicLabelStatus
+          ? epicLabelStatus
+          : projectInProgress.has(pNum)
+            ? "in_progress"
+            : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
       
       let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
       if (milestoneId === null) {
@@ -1025,6 +1111,7 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
 
     // ── 4. Upsert Child and Standalone Issues into bt_issues ──────────────
     let issuesUpserted = 0;
+    let inProgressIssueCount = 0;
     for (const gh of fetchedIssues) {
       // Epics themselves are saved in bt_epics, not bt_issues
       if (parentNumbers.has(gh.number)) continue;
@@ -1032,13 +1119,16 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const parentNum = getParentNumber(gh.parent_issue_url);
       const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
       const previousStatus = previousIssueStatusByNumber.get(gh.number);
+      const labelStatus = statusFromLabels(gh.labels);
       const issueStatus: GhIssueStatus = gh.state === "closed"
         ? "closed"
-        : projectInProgress.has(gh.number)
-          ? "in_progress"
-          : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
-            ? previousStatus
-            : "backlog";
+        : labelStatus
+          ? labelStatus
+          : projectInProgress.has(gh.number)
+            ? "in_progress"
+            : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
+              ? previousStatus
+              : "backlog";
       const labels = gh.labels.map((l) => l.name);
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
@@ -1053,6 +1143,7 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
         labels,
       });
       issuesUpserted++;
+      if (issueStatus === "in_progress") inProgressIssueCount++;
     }
 
     debugLog += `Issues upserted into db: ${issuesUpserted}\n`;
@@ -1088,6 +1179,12 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       epics: epicsUpserted,
       issues: issuesUpserted,
       milestones: syncedMilestones,
+      // The REAL final count after every signal (status:* label, then
+      // Projects v2, then preserved local state) — what the diagnostics
+      // below are checked against, not projectStatus.inProgressCount alone,
+      // since a label-driven result should never be reported as "0 In
+      // Progress" just because the Projects v2 signal itself was empty.
+      inProgressIssueCount,
       projectStatus: {
         error: projectStatus.error,
         issuesScanned: projectStatus.issuesScanned,

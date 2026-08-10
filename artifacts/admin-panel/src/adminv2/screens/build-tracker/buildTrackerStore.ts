@@ -925,6 +925,7 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
     }
     const result = (await res.json()) as {
       epics: number; issues: number; milestones?: MilestoneRow[];
+      inProgressIssueCount?: number;
       projectStatus?: {
         error: string | null;
         issuesScanned: number;
@@ -942,18 +943,23 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
     const milestoneCount = result.milestones?.length ?? 0;
     const headline = `Synced from GitHub: ${result.epics} epic${result.epics === 1 ? "" : "s"}, ${result.issues} issue${result.issues === 1 ? "" : "s"}${milestoneCount ? `, ${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}` : ""}`;
 
-    // Surfaced here rather than left in server logs (the previous attempt at
-    // this, f9d80c3c, came back all-zero In Progress with no way to tell why
-    // from outside a live server) — one Sync click now shows exactly what
-    // the GitHub Projects read actually saw.
+    // Surfaced here rather than left in server logs (the first attempt at
+    // this, f9d80c3c, came back all-zero with no way to tell why from
+    // outside a live server). Checked against inProgressIssueCount — the
+    // REAL final count after the status:* label / Projects v2 / preserved-
+    // local signals — not projectStatus.inProgressCount alone, since a
+    // label-driven result is a real success even when Projects v2 itself
+    // found nothing.
     const ps = result.projectStatus;
-    if (ps?.error) {
+    if ((result.inProgressIssueCount ?? 0) > 0) {
+      flashMessage(headline);
+    } else if (ps?.error) {
       flashMessage(`${headline} — GitHub Projects status unavailable: ${ps.error}`, "error");
-    } else if (ps && ps.inProgressCount === 0) {
+    } else if (ps) {
       const note = ps.issuesWithStatusField === 0
         ? `no issue has a "Status" Projects field value GitHub returned at all (checked ${ps.issuesScanned}, ${ps.issuesWithProjectItems} linked to a project)`
-        : `saw these Status values instead: ${ps.distinctStatusValues.join(", ") || "(none)"}`;
-      flashMessage(`${headline} — 0 In Progress: ${note}`, "error");
+        : `Projects saw these Status values instead: ${ps.distinctStatusValues.join(", ") || "(none)"}`;
+      flashMessage(`${headline} — 0 In Progress (no "status:*" label matched either): ${note}`, "error");
     } else {
       flashMessage(headline);
     }
