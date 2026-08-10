@@ -76,6 +76,35 @@ let panelEls = null; // { host, tab, panel, progress, current, list, search }
 /** True once the user explicitly asks to browse past a focused epic — reset on every new chat/link. */
 let showAllOverride = false;
 
+/**
+ * Rows Shane has clicked ✕ on — "complete" issues that are done with (he's
+ * already sent the "landed" prompt, or otherwise doesn't need to see it
+ * anymore) but that otherwise stick around in the panel forever, since
+ * nothing else ever removes a row. Keyed by githubNumber and persisted in
+ * chrome.storage.local so a dismissal survives a reload/re-sync, not just
+ * this page view.
+ */
+let dismissedIssues = new Set();
+let dismissedLoaded = false;
+
+async function loadDismissed() {
+  if (dismissedLoaded) return;
+  const { dismissedIssues: stored } = await chrome.storage.local.get("dismissedIssues");
+  dismissedIssues = new Set(stored ?? []);
+  dismissedLoaded = true;
+}
+
+function isDismissed(issue) {
+  return issue.githubNumber != null && dismissedIssues.has(issue.githubNumber);
+}
+
+async function dismissIssue(issue) {
+  if (issue.githubNumber == null) return;
+  dismissedIssues.add(issue.githubNumber);
+  await chrome.storage.local.set({ dismissedIssues: Array.from(dismissedIssues) });
+  render();
+}
+
 function buildPanel() {
   if (panelEls) return panelEls;
 
@@ -465,6 +494,7 @@ function togglePanel(open) {
 async function loadBoard(force) {
   const conversationId = conversationIdFromUrl();
   const { list } = buildPanel();
+  await loadDismissed();
 
   const fresh = boardCache && Date.now() - boardCache.fetchedAt < BOARD_STALE_MS;
   if (!force && fresh) {
@@ -489,7 +519,9 @@ function visibleIssueNumbers() {
   const { currentChat, issues } = boardCache.data;
   const focusEpic = currentChat?.focusEpic;
   const source = focusEpic && !showAllOverride ? (currentChat.focusEpicOpenIssues ?? []) : issues;
-  return Array.from(new Set(source.map((i) => i.githubNumber).filter((n) => typeof n === "number")));
+  return Array.from(
+    new Set(source.filter((i) => !isDismissed(i)).map((i) => i.githubNumber).filter((n) => typeof n === "number")),
+  );
 }
 
 /**
@@ -600,7 +632,7 @@ function renderFocused(currentChat) {
   row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
   list.appendChild(row);
 
-  const openIssues = currentChat.focusEpicOpenIssues ?? [];
+  const openIssues = (currentChat.focusEpicOpenIssues ?? []).filter((i) => !isDismissed(i));
   if (openIssues.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
@@ -645,6 +677,7 @@ function renderList(query) {
   const issuesByEpic = new Map();
   const unassignedIssues = [];
   for (const issue of issues) {
+    if (isDismissed(issue)) continue;
     if (issue.epicId == null) { unassignedIssues.push(issue); continue; }
     if (!issuesByEpic.has(issue.epicId)) issuesByEpic.set(issue.epicId, []);
     issuesByEpic.get(issue.epicId).push(issue);
@@ -814,6 +847,23 @@ function buildIssueRow(issue, onClick) {
       insertPrompt(issue);
     });
     actions.appendChild(promptBtn);
+  }
+
+  // Only a `complete` row gets a dismiss button — nothing removes a still-open
+  // row, since there's nothing to "clean up" until the work is actually done.
+  // Multiple builds running at once meant these piled up with no way to clear
+  // them (Shane: "sometimes they get left behind when doing multiple at a time").
+  if (isComplete) {
+    const dismissBtn = document.createElement("button");
+    dismissBtn.type = "button";
+    dismissBtn.className = "ibtn";
+    dismissBtn.title = "Dismiss — hide this from the panel";
+    dismissBtn.textContent = "✕";
+    dismissBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void dismissIssue(issue);
+    });
+    actions.appendChild(dismissBtn);
   }
 
   irow.appendChild(actions);

@@ -17,7 +17,12 @@ An unpacked Edge/Chrome extension with two parts, both running on
    issue's row is a single click to tell Claude it landed (inserts
    `"<number> landed"` into the composer — you press Enter); the header's
    📋 button copies Claude's last code block straight to your clipboard,
-   since the panel sits over claude.ai's own per-block copy button.
+   since the panel sits over claude.ai's own per-block copy button. A
+   `complete` row also gets a ✕ button to dismiss it once you're done with
+   it — handy when several builds finish around the same time and the panel
+   fills up with rows you've already acted on. Dismissed rows stay hidden
+   (stored locally in the extension, not in Build Tracker) until you clear
+   the extension's storage.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
