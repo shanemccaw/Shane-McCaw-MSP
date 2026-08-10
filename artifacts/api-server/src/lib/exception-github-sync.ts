@@ -1,5 +1,5 @@
 /**
- * Auto-files exception_groups as GitHub issues, production only.
+ * Auto-files exception_groups as GitHub issues, DEV ONLY.
  *
  * Shane's ask: every DLQ item / caught exception / uncaught exception
  * currently just sits silently in the database. Wrap capture so it also
@@ -13,9 +13,15 @@
  * (routes/ shouldn't be a dependency of lib/) — small, self-contained REST
  * client here instead of importing across that boundary.
  *
- * Gated on isProductionEnvironment(): filing real GitHub issues from every
- * dev-workspace error would make Epic #530 useless noise, and there's
- * nothing in a Replit dev workspace worth tracking there anyway.
+ * Gated to SKIP in production (the inverse of most isProductionEnvironment()
+ * gates in this codebase, e.g. MFA enforcement): Shane's production tenant
+ * genuinely cannot reach GitHub — no GITHUB_TOKEN there, no git — the exact
+ * same constraint that made the Git tab and the Build Tracker/Project
+ * Management screens themselves devOnly (registry/types.ts's `devOnly`
+ * flag, "Gate Git/Build tabs devOnly" commit). Calling the GitHub API from
+ * production would just be a guaranteed failure on top of whatever error
+ * this was trying to report — worse than not filing anything. This only
+ * ever runs from a dev workspace, where GITHUB_TOKEN is actually set.
  *
  * Uses console.error, not the shared `logger` — exception-tracker.ts calls
  * into this module, and logger.ts's own pino hook calls into
@@ -141,13 +147,15 @@ async function commentAgain(group: ExceptionGroup): Promise<boolean> {
 /**
  * Syncs `group` to GitHub: files a new issue under Epic #530 if it's never
  * been filed, or posts a throttled "happened again" comment on the
- * already-filed issue otherwise. Production only; a complete no-op in dev
- * (including when GITHUB_TOKEN isn't set). Never throws — always call this
- * with `void`, never `await`, from a capture path: it must never add GitHub
- * API latency to the thing it's instrumenting.
+ * already-filed issue otherwise. Dev-workspace only — a complete no-op in
+ * production (Shane's production tenant has no path to GitHub at all, see
+ * this module's own header comment) and a no-op without GITHUB_TOKEN set
+ * even in dev. Never throws — always call this with `void`, never `await`,
+ * from a capture path: it must never add GitHub API latency to the thing
+ * it's instrumenting.
  */
 export async function syncExceptionGroupToGitHub(group: ExceptionGroup): Promise<void> {
-  if (!isProductionEnvironment()) return;
+  if (isProductionEnvironment()) return;
   if (!process.env.GITHUB_TOKEN) return;
   if (group.status === "suppressed") return; // Shane explicitly doesn't want to hear about this one.
 

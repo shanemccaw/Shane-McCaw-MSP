@@ -137,8 +137,9 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
 
     // Fire-and-forget, deliberately not awaited: this is a live GitHub API
     // call and must never add its latency to the capture path (especially
-    // the uncaughtException handler's 2s exit-race in app.ts). Production-
-    // gated and no-op without GITHUB_TOKEN — see its own doc comment.
+    // the uncaughtException handler's 2s exit-race in app.ts). Dev-only
+    // (production has no path to GitHub at all) and no-op without
+    // GITHUB_TOKEN — see its own doc comment.
     if (group) void syncExceptionGroupToGitHub(group);
   } catch (captureErr) {
     // Never let exception tracking itself crash the app or recurse into logger.
