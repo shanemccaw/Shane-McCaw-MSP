@@ -723,17 +723,27 @@ export function ProjectManagementBody() {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }} data-noscrollbar="true">
-          {state.milestones.map((m) => (
-            <MilestoneCard
-              key={m.id}
-              milestone={m}
-              focused={focusedMilestoneId === m.id}
-              onFocusToggle={() => setFocusedMilestoneId(focusedMilestoneId === m.id ? null : m.id)}
-              onSelect={() => setEditingMilestoneId(m.id)}
-            />
-          ))}
-        </div>
+        {state.milestones.length === 0 ? (
+          <div style={{
+            padding: "16px 20px", borderRadius: 8, background: SURFACE.card, border: `1px solid ${LINE.quiet}`,
+            fontSize: 12.5, color: TEXT.quiet, display: "flex", alignItems: "center", gap: 10
+          }}>
+            <Flag size={14} color={ACCENT.info} />
+            <span>No Milestones in GitHub yet. Click <strong>"+ New Milestone"</strong> to create your first GitHub milestone!</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }} data-noscrollbar="true">
+            {state.milestones.map((m) => (
+              <MilestoneCard
+                key={m.id}
+                milestone={m}
+                focused={focusedMilestoneId === m.id}
+                onFocusToggle={() => setFocusedMilestoneId(focusedMilestoneId === m.id ? null : m.id)}
+                onSelect={() => setEditingMilestoneId(m.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Gantt Chart */}

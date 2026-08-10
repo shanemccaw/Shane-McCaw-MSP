@@ -45,51 +45,12 @@ export interface BuildTrackerState {
   triageShowAssigned: boolean;
 }
 
-const DEFAULT_MILESTONES: MilestoneRow[] = [
-  {
-    id: 1,
-    title: "v1.0 MSP Platform Launch",
-    description: "Complete remediation guide, EngageBay migration, and full live deployment.",
-    startDate: "2026-08-01",
-    targetDate: "2026-08-25",
-    status: "in_progress",
-    githubNumber: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    epicCount: 3,
-  },
-  {
-    id: 2,
-    title: "Q3 Security & Copilot Hardening",
-    description: "White-Glove Copilot adoption, PowerShell execution engine, and scanning suite.",
-    startDate: "2026-08-15",
-    targetDate: "2026-09-15",
-    status: "open",
-    githubNumber: 2,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    epicCount: 2,
-  },
-  {
-    id: 3,
-    title: "v1.1 Analytics & Marketing Integration",
-    description: "GA4 integration, Zoho API replacement, and LinkedIn campaign automation.",
-    startDate: "2026-09-01",
-    targetDate: "2026-09-30",
-    status: "open",
-    githubNumber: 3,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    epicCount: 2,
-  },
-];
-
 function initialState(): BuildTrackerState {
   return {
     epics: [],
     issues: [],
     chats: [],
-    milestones: DEFAULT_MILESTONES,
+    milestones: [],
     selectedEpicId: null,
     selectedIssueId: null,
     selectedChatId: null,
