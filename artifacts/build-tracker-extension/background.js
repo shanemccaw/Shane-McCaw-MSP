@@ -176,6 +176,36 @@ async function quickSync(issueNumbers) {
   }
 }
 
+/**
+ * POSTs to /extension/sync-epic — Git #698: quickSync() above only refreshes
+ * issue NUMBERS it's already given, so a brand-new sub-issue added to an
+ * epic on GitHub never shows up in the panel until a full sync. This calls
+ * GitHub's own sub-issues list for one epic (a single request) so newly
+ * added children get pulled in too, not just refreshed. Used by the panel's
+ * Refresh button whenever the current chat is focused on one epic.
+ */
+async function syncEpic(epicNumber) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/sync-epic`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ epicNumber }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -191,6 +221,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-quick-sync") {
     void quickSync(message.issueNumbers).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-sync-epic") {
+    void syncEpic(message.epicNumber).then(sendResponse);
     return true;
   }
   return false;

@@ -831,6 +831,110 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
   res.json({ updated, requested: numbers.length, failed });
 });
 
+/**
+ * POST /admin/build-tracker/extension/sync-epic
+ *
+ * Git #698 — Shane, after #695's quick-sync: "When I sync you should sync
+ * the entire epic so I dont have to sync the whole thing again to get new
+ * items in that one epic." Quick-sync only refreshes issue numbers it's
+ * handed — a brand-new sub-issue GitHub-side never shows up until the slow
+ * full repo sync. This calls GitHub's own sub-issues endpoint for ONE epic
+ * (a single request, not a full-repo page-through) so newly added children
+ * get discovered too, not just refreshed.
+ *
+ * Body: { epicNumber: number }
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const { epicNumber } = req.body as { epicNumber?: number };
+  if (!Number.isInteger(epicNumber)) {
+    res.status(400).json({ error: "epicNumber is required" });
+    return;
+  }
+
+  try {
+    const epicRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${epicNumber}`);
+    if (!epicRes.ok) {
+      res.status(404).json({ error: `Epic #${epicNumber} not found on GitHub` });
+      return;
+    }
+    const ghEpic = (await epicRes.json()) as GitHubIssuePayload;
+    const epicMilestoneId = ghEpic.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
+
+    const [epicRow] = await db
+      .insert(btEpicsTable)
+      .values({
+        title: ghEpic.title,
+        description: ghEpic.body,
+        status: ghEpic.state === "closed" ? "closed" : "open",
+        githubNumber: epicNumber,
+        milestoneId: epicMilestoneId,
+      })
+      .onConflictDoUpdate({
+        target: btEpicsTable.githubNumber,
+        set: {
+          title: ghEpic.title,
+          description: ghEpic.body,
+          // "closed wins" one-way push, same rule quick-sync uses — never
+          // downgrades a locally-tracked "in_progress" back to "open" here.
+          ...(ghEpic.state === "closed" ? { status: "closed" as const } : {}),
+          milestoneId: epicMilestoneId,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: btEpicsTable.id });
+
+    const subRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${epicNumber}/sub_issues`);
+    if (!subRes.ok) {
+      res.status(502).json({ error: `Couldn't fetch sub-issues for #${epicNumber} from GitHub` });
+      return;
+    }
+    const subIssues = (await subRes.json()) as GitHubIssuePayload[];
+
+    let upserted = 0;
+    for (const gh of subIssues) {
+      if (gh.pull_request) continue;
+      const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
+      const labels = gh.labels.map((l) => l.name);
+      await db
+        .insert(btIssuesTable)
+        .values({
+          title: gh.title,
+          description: gh.body,
+          status: gh.state === "closed" ? "closed" : "backlog",
+          epicId: epicRow.id,
+          milestoneId: issueMilestoneId,
+          githubNumber: gh.number,
+          githubUrl: gh.html_url,
+          labels,
+        })
+        .onConflictDoUpdate({
+          target: btIssuesTable.githubNumber,
+          set: {
+            title: gh.title,
+            description: gh.body,
+            epicId: epicRow.id,
+            milestoneId: issueMilestoneId,
+            githubUrl: gh.html_url,
+            labels,
+            ...(gh.state === "closed" ? { status: "closed" as const } : {}),
+            updatedAt: new Date(),
+          },
+        });
+      upserted++;
+    }
+
+    res.json({ epicNumber, issuesUpserted: upserted, issuesFound: subIssues.length });
+  } catch (err) {
+    log.error({ err, epicNumber }, "POST /extension/sync-epic failed");
+    res.status(500).json({ error: "Epic sync failed" });
+  }
+});
+
 /** PATCH /admin/build-tracker/chats/:id */
 router.patch("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
@@ -1355,6 +1459,7 @@ interface GitHubIssuePayload {
   } | null;
   labels: Array<{ name: string }>;
   pull_request?: unknown;
+  milestone?: { number: number; id: number } | null;
 }
 
 import fs from "node:fs/promises";

@@ -85,15 +85,28 @@ If either the popup or the panel shows an error, it's almost always one of:
 wrong API base URL, wrong/unset token, or the api-server not reachable from
 your browser at that URL.
 
-The panel's ⟳ button does a **quick sync** — it checks GitHub for just the
-issues currently visible in the panel (fast, usually under a second), not
-the whole repo. That's what makes a freshly `in-flight`/`complete`-labeled
-issue show up here without going to the admin panel yourself. It only
-updates issues Build Tracker already knows about, though — to discover a
-brand-new epic/issue/milestone, use the **"Full sync from GitHub"** link at
-the bottom of the panel instead, which does the same real whole-repo pull
-Build Tracker's own Sync button does (slower — pages through every issue in
-the repo — but that's the only way to catch something entirely new).
+The panel's ⟳ button syncs differently depending on what's showing:
+
+- **Focused on one epic** (the normal case): it syncs that WHOLE epic —
+  one GitHub request for the epic issue itself plus GitHub's own sub-issues
+  list for it — so a brand-new sub-issue added on GitHub shows up here too,
+  not just label changes on issues Build Tracker already knew about.
+- **Browsing everything**: it checks GitHub for just the issues currently
+  visible in the panel (fast, no whole-repo pagination) — this mode covers
+  multiple epics at once, so a per-epic sync doesn't apply.
+
+Either way it's still not a whole-repo sync — to discover a brand-new
+epic/issue/milestone Build Tracker has never seen at all, use the
+**"Full sync from GitHub"** link at the bottom of the panel instead, which
+does the same real whole-repo pull Build Tracker's own Sync button does
+(slower — pages through every issue in the repo — but that's the only way
+to catch something entirely new to Build Tracker).
+
+The progress bar at the top of the focused view is **milestone-wide** —
+every epic in that milestone, not just the one you're looking at — while
+the issue list right below it is only this epic's own open issues. A
+number like "13/21" up top next to only 2 rows below it isn't a bug: most
+of that milestone's work just lives in other epics.
 
 ## What it does NOT do
 

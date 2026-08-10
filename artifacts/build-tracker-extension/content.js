@@ -151,6 +151,7 @@ function buildPanel() {
     }
     .progress-bar { height: 6px; border-radius: 3px; background: #292929; overflow: hidden; }
     .progress-fill { height: 100%; border-radius: 3px; transition: width 200ms ease; }
+    .progress-note { font-size: 10px; color: #8f8c88; margin-top: 5px; }
     .current {
       padding: 8px 12px; font-size: 11px; color: #a19f9d; border-bottom: 1px solid #2e2e2e; flex: none;
     }
@@ -270,7 +271,7 @@ function buildPanel() {
       <span class="title">What am I working on?</span>
       <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
       <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
-      <button class="iconbtn" data-action="refresh" title="Quick sync — checks just the issues on screen">⟳</button>
+      <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
     <div class="progress" hidden></div>
@@ -590,6 +591,24 @@ function visibleIssueNumbers() {
  */
 async function quickRefresh() {
   const { list } = buildPanel();
+  const focusEpic = boardCache?.data?.currentChat?.focusEpic;
+
+  // Git #698: focused on one epic → sync THAT epic for real, discovering any
+  // new sub-issues GitHub-side, not just refreshing the numbers already on
+  // screen — "I dont have to sync the whole thing again to get new items in
+  // that one epic." Only makes sense with a single epic in view; the browse
+  // view (multiple epics/issues at once) keeps the numbers-only quick-sync.
+  if (focusEpic && !showAllOverride && focusEpic.githubNumber) {
+    list.innerHTML = `<div class="empty">Syncing epic "${escapeHtml(focusEpic.title)}"…</div>`;
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+    if (!res?.ok) {
+      list.innerHTML = `<div class="empty">${escapeHtml(`Epic sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
+      return;
+    }
+    await loadBoard(true);
+    return;
+  }
+
   const numbers = visibleIssueNumbers();
   if (numbers.length === 0) {
     await loadBoard(true);
@@ -660,10 +679,11 @@ function renderProgress(milestone) {
   const color = pct >= 100 ? "#7fae91" : "#f2ca63";
   progress.innerHTML = `
     <div class="progress-label">
-      <span>${escapeHtml(milestone.title)}</span>
+      <span>Milestone: ${escapeHtml(milestone.title)}</span>
       <span>${done}/${total} · ${pct}%</span>
     </div>
     <div class="progress-bar"><div class="progress-fill" style="width:${pct}%; background:${color};"></div></div>
+    <div class="progress-note">Whole milestone, across every epic in it — not just this one.</div>
   `;
 }
 
@@ -688,10 +708,15 @@ function renderFocused(currentChat) {
   list.appendChild(row);
 
   const openIssues = (currentChat.focusEpicOpenIssues ?? []).filter((i) => !isDismissed(i));
+  const heading = document.createElement("div");
+  heading.className = "milestone";
+  heading.textContent = `This epic's open issues (${openIssues.length})`;
+  list.appendChild(heading);
+
   if (openIssues.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "No open issues on this epic.";
+    empty.textContent = "No open issues on this epic — the milestone progress above covers other epics too.";
     list.appendChild(empty);
   } else {
     for (const issue of openIssues) {
