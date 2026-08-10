@@ -11,7 +11,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { useLocation } from "wouter";
-import { Redo2, RefreshCw, Save, Undo2 } from "lucide-react";
+import { House, Redo2, RefreshCw, Undo2 } from "lucide-react";
 import { ShellProvider, subRoute, useShell } from "./shell/ShellContext";
 import { Shell, NoScreen } from "./shell/Shell";
 import { logger } from "@/lib/logger";
@@ -142,7 +142,7 @@ function ActiveScreen() {
 function AdminShell() {
   // Re-render whenever undo stacks change (any screen).
   useSyncExternalStore(undoSubscribe, undoSnapshot);
-  const { state } = useShell();
+  const { state, navigate } = useShell();
   const [location] = useLocation();
 
   // Derive the active screen id: prefer the open doc's screenId,
@@ -163,7 +163,7 @@ function AdminShell() {
       productName="Simulator Studio"
       mark="SM"
       quickActions={[
-        { id: "save", label: "Save", icon: Save, onSelect: () => log.debug({ location }, "save") },
+        { id: "home", label: "Pick up where you left off", icon: House, onSelect: () => navigate("/") },
         {
           id: "undo",
           label: hasUndo ? `Undo: ${undoHint}` : "Undo",
