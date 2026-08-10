@@ -174,6 +174,22 @@ describe("shell chrome", () => {
     render(<Harness />);
     expect(screen.getByTestId("left-body")).toBeTruthy();
   });
+
+  it("falls back to the quick-nav Explorer once every doc is closed, rather than leaving the last screen's", async () => {
+    render(<Harness />);
+    // The route auto-opens a "screen:endpoints" doc; wait for that effect to
+    // settle so there is something real to close.
+    const closeBtn = await screen.findByRole("button", { name: "Close M365 Endpoints" });
+    expect(screen.getByTestId("left-body")).toBeTruthy();
+
+    fireEvent.click(closeBtn);
+
+    // `activeScreen` still resolves from the URL (unchanged by closing a doc),
+    // so a naive `activeScreen?.left` check would keep rendering Endpoints'
+    // Explorer here even though the centre column has fallen back to NoScreen.
+    expect(screen.queryByTestId("left-body")).toBeNull();
+    expect(screen.getByPlaceholderText("Filter actions & destinations...")).toBeTruthy();
+  });
 });
 
 describe("documents and the contextual tab", () => {

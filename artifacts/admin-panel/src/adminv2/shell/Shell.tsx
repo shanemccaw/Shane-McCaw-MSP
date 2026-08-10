@@ -73,6 +73,15 @@ export function Shell({
 
   const bottomTabs = activeScreen?.bottom ?? [];
 
+  // `activeScreen` tracks the URL route, not whether any doc is actually
+  // open — closing every doc (closeAllDocs, or closing the last one) leaves
+  // the route, and so `activeScreen`, pointing at whatever screen you were
+  // last on. AdminV2 already treats `state.docs.length === 0` as "show
+  // NoScreen" for the centre column; the side panels have to agree, or the
+  // Explorer/Properties panels keep rendering the screen you left rather
+  // than the quick-nav/empty state that actually matches what's on screen.
+  const noDocOpen = !activeScreen || state.docs.length === 0;
+
   return (
     <div
       className="av2 dark"
@@ -110,14 +119,14 @@ export function Shell({
           side="left"
           open={state.left}
           width={state.leftWidth}
-          title={activeScreen?.left?.title ?? "Start Something"}
+          title={!noDocOpen ? (activeScreen?.left?.title ?? "Start Something") : "Start Something"}
           dragging={state.drag === "left"}
           onToggle={() => dispatch({ type: "togglePanel", panel: "left" })}
           onResize={(size) => dispatch({ type: "setPanelSize", panel: "left", size })}
           onDragStart={() => dispatch({ type: "startDrag", panel: "left" })}
           onDragEnd={() => dispatch({ type: "endDrag" })}
         >
-          {activeScreen?.left ? activeScreen.left.render() : <StartSomethingExplorer />}
+          {!noDocOpen && activeScreen?.left ? activeScreen.left.render() : <StartSomethingExplorer />}
         </SidePanel>
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -161,14 +170,14 @@ export function Shell({
           side="right"
           open={state.right}
           width={state.rightWidth}
-          title={activeScreen?.right?.title ?? "Properties"}
+          title={!noDocOpen ? (activeScreen?.right?.title ?? "Properties") : "Properties"}
           dragging={state.drag === "right"}
           onToggle={() => dispatch({ type: "togglePanel", panel: "right" })}
           onResize={(size) => dispatch({ type: "setPanelSize", panel: "right", size })}
           onDragStart={() => dispatch({ type: "startDrag", panel: "right" })}
           onDragEnd={() => dispatch({ type: "endDrag" })}
         >
-          {activeScreen?.right ? activeScreen.right.render() : null}
+          {!noDocOpen && activeScreen?.right ? activeScreen.right.render() : null}
         </SidePanel>
       </div>
 
