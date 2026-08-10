@@ -13,6 +13,7 @@ import { useSyncExternalStore, useState } from "react";
 import {
   ExternalLink, MessageSquare, Plus, RefreshCw, GitBranch,
   GitPullRequest, AlertCircle, CheckCircle, Clock, Archive, Trash, Sparkles,
+  Play, Pause,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
@@ -23,7 +24,7 @@ import {
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
   selectIssue, selectEpic, updateIssue, setTriageActive, syncFromGitHub,
-  estimateMilestoneHours, formatIssueAge,
+  estimateMilestoneHours, formatIssueAge, togglePollingGitHub,
 } from "./buildTrackerStore";
 import {
   EPIC_STATUS_COLOR, EPIC_STATUS_LABEL,
@@ -196,6 +197,20 @@ function Dashboard() {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => togglePollingGitHub()}
+            title={state.pollingGitHub ? "Pause auto-sync from GitHub" : "Play: auto-sync from GitHub every 60s"}
+            style={{
+              padding: "6px 14px", borderRadius: 6,
+              border: `1px solid ${state.pollingGitHub ? ACCENT.amber : LINE.control}`,
+              background: state.pollingGitHub ? `${ACCENT.amber}18` : SURFACE.well,
+              color: state.pollingGitHub ? ACCENT.amber : TEXT.primary, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {state.pollingGitHub ? <Pause size={13} /> : <Play size={13} />}
+            {state.pollingGitHub ? "Pause" : "Play"}
+          </button>
           <button
             onClick={() => setTriageActive(true)}
             style={{

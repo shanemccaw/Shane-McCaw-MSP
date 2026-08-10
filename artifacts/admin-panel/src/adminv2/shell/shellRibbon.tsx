@@ -46,37 +46,45 @@ export function shellGroupsForTab(tab: FixedTabId, deps: ShellRibbonDeps): Ribbo
           },
         ],
       },
-      {
-        label: "Build Studio",
-        large: [
-          {
-            label: "Build Tracker",
-            icon: GitBranch,
-            intent: "open",
-            color: ACCENT.info,
-            onSelect: () => getShellApi()?.navigate("/build-tracker"),
-            title: "Open Build Tracker",
-          },
-          {
-            label: "Roadmap & Milestones",
-            icon: Flag,
-            intent: "open",
-            color: ACCENT.amber,
-            onSelect: () => getShellApi()?.navigate("/project-management"),
-            title: "Open Roadmap & Milestones Gantt Chart",
-          },
-        ],
-        small: [
-          {
-            label: "Sync GitHub",
-            icon: RefreshCw,
-            intent: "record",
-            liveKey: SYNC_GITHUB_KEY,
-            onSelect: () => void syncFromGitHub(),
-            title: "Sync latest Milestones and Epics from GitHub",
-          },
-        ],
-      },
+      // Build Tracker/Project Management are devOnly screens (registry/types.ts) —
+      // unregistered outside import.meta.env.DEV, so their routes 404 in
+      // production. This group would dead-end into that if it stayed visible,
+      // so it is gated the same way rather than living on as a broken link.
+      ...(import.meta.env.DEV
+        ? [
+            {
+              label: "Build Studio",
+              large: [
+                {
+                  label: "Build Tracker",
+                  icon: GitBranch,
+                  intent: "open" as const,
+                  color: ACCENT.info,
+                  onSelect: () => getShellApi()?.navigate("/build-tracker"),
+                  title: "Open Build Tracker",
+                },
+                {
+                  label: "Roadmap & Milestones",
+                  icon: Flag,
+                  intent: "open" as const,
+                  color: ACCENT.amber,
+                  onSelect: () => getShellApi()?.navigate("/project-management"),
+                  title: "Open Roadmap & Milestones Gantt Chart",
+                },
+              ],
+              small: [
+                {
+                  label: "Sync GitHub",
+                  icon: RefreshCw,
+                  intent: "record" as const,
+                  liveKey: SYNC_GITHUB_KEY,
+                  onSelect: () => void syncFromGitHub(),
+                  title: "Sync latest Milestones and Epics from GitHub",
+                },
+              ],
+            },
+          ]
+        : []),
     ];
   }
 

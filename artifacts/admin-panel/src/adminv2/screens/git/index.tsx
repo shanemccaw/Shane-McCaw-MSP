@@ -53,6 +53,7 @@ registerScreen({
   area: "git",
   icon: GitBranch,
   route: "/git",
+  devOnly: true,
   render: () => <GitConsoleBody />,
   ribbon: [
     {

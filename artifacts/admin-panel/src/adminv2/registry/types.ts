@@ -609,4 +609,17 @@ export interface ScreenModule {
   left?: PanelSpec;
   right?: PanelSpec;
   bottom?: BottomPanelTab[];
+
+  /**
+   * True for a screen that only works against a local dev checkout — raw git
+   * commands, a filesystem-backed deploy console, GitHub-token-gated sync —
+   * and is genuinely broken in the deployed production tenant, not just
+   * hidden for tidiness. `registerScreen()` skips registering it entirely
+   * outside `import.meta.env.DEV`, so it contributes no route, no ribbon
+   * group, no palette entry, no peek — nothing for a production session to
+   * ever reach. Do not use this for a screen that still works in production
+   * (e.g. one that just runs against real tenant data); it belongs on a
+   * normal tab in that case.
+   */
+  devOnly?: boolean;
 }

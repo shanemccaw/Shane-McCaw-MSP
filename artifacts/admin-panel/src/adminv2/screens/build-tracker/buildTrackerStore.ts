@@ -63,6 +63,8 @@ export interface BuildTrackerState {
 
   /** True while a GitHub sync is in flight — see syncFromGitHub()/SYNC_GITHUB_KEY. */
   syncingGitHub: boolean;
+  /** True while the Play/Pause auto-sync poll (startPollingGitHub) is running. */
+  pollingGitHub: boolean;
 }
 
 function initialState(): BuildTrackerState {
@@ -87,6 +89,7 @@ function initialState(): BuildTrackerState {
     triageActive: false,
     triageShowAssigned: false,
     syncingGitHub: false,
+    pollingGitHub: false,
   };
 }
 
@@ -839,4 +842,45 @@ export async function syncFromGitHub(): Promise<{ epics: number; issues: number;
     set({ syncingGitHub: false });
     setLiveRibbonValue(SYNC_GITHUB_KEY, null);
   }
+}
+
+// ── GitHub auto-poll (Play/Pause) ──────────────────────────────────────────────
+
+/** How often the Play/Pause poll re-syncs while running. */
+const POLL_INTERVAL_MS = 60_000;
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Starts polling GitHub on an interval — syncFromGitHub() once immediately,
+ * then again every POLL_INTERVAL_MS, until stopPollingGitHub() is called.
+ *
+ * Dev-only, the same as the Build screen that hosts its Play/Pause button
+ * (registry/types.ts's `devOnly`) — checked again here directly rather than
+ * only trusting that the screen is unreachable in production, since a
+ * background timer is exactly the kind of thing that should refuse to start
+ * on its own rather than assume its caller was already gated.
+ */
+export function startPollingGitHub(): void {
+  if (!import.meta.env.DEV) {
+    log.warn("startPollingGitHub called outside dev mode — ignored");
+    return;
+  }
+  if (state.pollingGitHub) return;
+  set({ pollingGitHub: true });
+  void syncFromGitHub();
+  pollTimer = setInterval(() => void syncFromGitHub(), POLL_INTERVAL_MS);
+}
+
+export function stopPollingGitHub(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  set({ pollingGitHub: false });
+}
+
+export function togglePollingGitHub(): void {
+  if (state.pollingGitHub) stopPollingGitHub();
+  else startPollingGitHub();
 }

@@ -16,6 +16,7 @@ registerScreen({
   area: "build",
   route: ROUTE,
   icon: Target,
+  devOnly: true,
 
   ribbon: [
     {

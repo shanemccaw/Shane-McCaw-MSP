@@ -52,6 +52,18 @@ export function auditFixedTabIntents(contribution: RibbonContribution): string[]
  * they drifted. Failing at load makes the drift impossible to ship.
  */
 export function registerScreen(screen: ScreenModule): void {
+  // A devOnly screen (raw git, a filesystem-backed deploy console, GitHub-token
+  // sync) is genuinely broken in the deployed production tenant, not merely
+  // hidden — so it is skipped before it can contribute a route, ribbon group,
+  // palette entry, or peek. import.meta.env.DEV is a Vite build-time constant
+  // (true only under `vite dev`), the same flag the marketing site's own
+  // [DEBUG] gating already uses, so this is dead code eliminated from the
+  // production bundle, not a runtime toggle someone could flip live.
+  if (screen.devOnly && !import.meta.env.DEV) {
+    log.debug({ screen: screen.id }, "skipped devOnly screen outside dev mode");
+    return;
+  }
+
   if (screens.has(screen.id)) {
     throw new ShellContractError(
       `Screen "${screen.id}" is already registered. Screen ids must be unique.`,

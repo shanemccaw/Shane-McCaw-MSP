@@ -82,6 +82,7 @@ registerScreen({
   area: "build-tracker",
   icon: BookOpen,
   route: ROUTE,
+  devOnly: true,
 
   render: (ctx) => {
     const state = getSnapshot();
