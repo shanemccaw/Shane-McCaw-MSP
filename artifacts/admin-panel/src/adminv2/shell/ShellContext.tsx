@@ -163,12 +163,23 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const navigate = useCallback(
     (route: string) => {
-      setLocation(`${ADMINV2_BASE}${route === "/" ? "" : route}`);
+      const screen = screenForRoute(route);
+      if (screen) {
+        openDocRef.current({ kind: "screen", id: screen.id, screenId: screen.id, label: screen.title });
+      } else {
+        setLocation(`${ADMINV2_BASE}${route === "/" ? "" : route}`);
+      }
     },
     [setLocation],
   );
 
   const activeScreen = useMemo(() => screenForRoute(subRoute(location)), [location]);
+
+  useEffect(() => {
+    if (activeScreen && docsRef.current.length === 0) {
+      openDocRef.current({ kind: "screen", id: activeScreen.id, screenId: activeScreen.id, label: activeScreen.title });
+    }
+  }, [activeScreen]);
 
   // Kept in a ref so `openDoc` does not have to re-create itself whenever the
   // route changes, which would re-render every screen that memoises on it.
