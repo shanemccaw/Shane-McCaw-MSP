@@ -15,6 +15,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { getAnalyticsSessionId } from "@/lib/analytics";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { ChatCTA } from "@/components/ChatCTA";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useCatalog, type MonitoringTier, type RetainerTier, type ConfigPackTier, type AssessmentOffer } from "@/hooks/useCatalog";
+import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -458,6 +460,41 @@ export default function Checkout() {
     resolver: zodResolver(guestInfoSchema),
     defaultValues: { name: "", email: "", company: "", industry: "", termsAccepted: false },
   });
+
+  // Git #679 (Phase 3 of #621): prefill the guest-info email from a real, identity-sourced
+  // source — quiz or assessment tier — so a visitor who already gave their email at the
+  // quiz or the onboarding form doesn't have to re-type it here. This takes precedence over
+  // GUEST_INFO_CACHE_PREFIX above: that cache only exists to survive an in-page refresh
+  // *within* checkout and is never read into the form directly (only into `guestInfo` state
+  // on the Stripe/consent-return paths, which skip the guest-info step entirely) — so a real
+  // identity match never has a stale cached value to actually fight over. Never overwrites a
+  // value the visitor has already typed.
+  const { tier: personalizationTier, loading: personalizationLoading, assessment, quiz } = usePersonalizationState();
+  useEffect(() => {
+    if (step !== "guest-info" || personalizationLoading) return;
+    if (form.getValues("email") || form.formState.dirtyFields.email) return;
+
+    if (personalizationTier === "assessment" && assessment?.email) {
+      form.setValue("email", assessment.email);
+      return;
+    }
+
+    if (personalizationTier === "quiz" && quiz) {
+      let cancelled = false;
+      fetch(`/api/public/personalization/state?sessionId=${encodeURIComponent(getAnalyticsSessionId())}`)
+        .then((res) => (res.ok ? (res.json() as Promise<{ email?: string }>) : null))
+        .then((data) => {
+          if (cancelled || !data?.email) return;
+          if (form.getValues("email") || form.formState.dirtyFields.email) return;
+          form.setValue("email", data.email);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+    return undefined;
+  }, [step, personalizationTier, personalizationLoading, assessment, quiz, form]);
 
   // Use the recovered seat count when returning from consent (URL stripped by navigate).
   // Falls back to URL param value on the fresh/direct path.
