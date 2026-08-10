@@ -27,8 +27,11 @@
  *
  * Seats come from `resolvePaidSeatFigures` (license-waste-source.ts) — the
  * same real, already-wired paid-seat count the Licensing pillar card uses.
- * `null` when this tenant's paid seat count cannot be sourced, in which case
- * the addon is omitted entirely rather than priced against a guess.
+ * Git #632: when this tenant's paid seat count cannot be sourced at all, the
+ * addon is no longer omitted — it prices against the lowest real remaining
+ * seat band (SMB, `NO_SEAT_COUNT_FALLBACK_SEATS`) instead, matching the
+ * Architect Retainer's own no-seats fallback below. `null` is now reserved
+ * for the genuinely unpriceable case: no usable monitoring_tier rows at all.
  *
  * ARCHITECT RETAINER
  * ------------------
@@ -48,11 +51,13 @@
  * this resolution (still in the catalog, just not queried here) per Shane's
  * explicit scope note — not deleted, not deactivated.
  *
- * When no real seat count is sourced, all three tiers are still returned
- * (unlike Monitoring, which omits the whole addon) — a retainer is a flat
- * monthly service the customer can pick manually; there is simply no
- * seat-matched default to pre-select, so `defaultTierId` falls back to the
- * lowest band (Essentials).
+ * When no real seat count is sourced, all three tiers are still returned — a
+ * retainer is a flat monthly service the customer can pick manually; there is
+ * simply no seat-matched default to pre-select, so `defaultTierId` falls back
+ * to the lowest band (Essentials). Git #632: Tenant Monitoring now follows
+ * this same no-unsellable-addon principle for its own no-seats case, via
+ * `NO_SEAT_COUNT_FALLBACK_SEATS` rather than an all-tiers list (Monitoring's
+ * design only ever exposes its one recommended tier, see Git #609 above).
  *
  * Git #609: `defaultOn` is now always `true` — live-testing showed the prior
  * "enable the addon, THEN pick a tier" flow was a two-step opt-in for
@@ -84,6 +89,16 @@ const ARCHITECT_RETAINER_SLUGS = [
   "architect-growth-retainer",
   "architect-enterprise-retainer",
 ] as const;
+
+/**
+ * Git #632 — the lowest real remaining seat band's floor (SMB, 26 seats; #595
+ * retired Micro), used ONLY to price Tenant Monitoring when this tenant's real
+ * paid seat count could not be sourced at all. This is a fallback for the "no
+ * seat count sourced" case specifically — a real limit on pricing PRECISION,
+ * not a reason to make the addon unsellable, matching the principle
+ * `resolveArchitectRetainerAddon` already follows for its own tier picker.
+ */
+const NO_SEAT_COUNT_FALLBACK_SEATS = 26;
 
 export interface ResolvedAddonTier {
   readonly id: string;
@@ -159,8 +174,10 @@ const TIER_LABEL_ORDER: Readonly<Record<string, number>> = { basic: 0, enhanced:
 
 /**
  * The real Tenant Monitoring add-on, priced for this tenant's real seat
- * count, or `null` when there is no honest way to price it — no seat count
- * sourced, or the catalog carries no usable monitoring_tier rows.
+ * count — or, per Git #632, the SMB-band fallback seat count when no real
+ * seat count was sourced, so the addon stays sellable. `null` only when
+ * there is no honest way to price it at all: no `tenantGuid`, or the catalog
+ * carries no usable monitoring_tier rows.
  */
 export async function resolveTenantMonitoringAddon(
   tenantGuid: string | null,
@@ -168,10 +185,18 @@ export async function resolveTenantMonitoringAddon(
   if (!tenantGuid) return null;
 
   const seatFigures = await resolvePaidSeatFigures(tenantGuid);
-  const seats = seatFigures?.provisioned ?? 0;
-  if (!seatFigures || seats <= 0) {
-    log.info({ tenantGuid }, "sow-monitoring-addon: no real paid seat count — Tenant Monitoring add-on omitted");
-    return null;
+  const sourcedSeats = seatFigures?.provisioned ?? 0;
+  const noSeatCountSourced = !seatFigures || sourcedSeats <= 0;
+  // Git #632: no seat count sourced is a precision gap, not an unsellable
+  // one — price against the lowest real remaining seat band (SMB) rather
+  // than omitting the whole addon, same principle as the Architect Retainer's
+  // Essentials fallback below.
+  const seats = noSeatCountSourced ? NO_SEAT_COUNT_FALLBACK_SEATS : sourcedSeats;
+  if (noSeatCountSourced) {
+    log.info(
+      { tenantGuid },
+      "sow-monitoring-addon: no real paid seat count — Tenant Monitoring priced at the SMB floor as a safe fallback",
+    );
   }
 
   // Git #595: visibility filter is required, not optional — a row set to

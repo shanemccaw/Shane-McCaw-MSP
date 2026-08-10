@@ -79,9 +79,30 @@ describe("resolveTenantMonitoringAddon", () => {
     expect(await resolveTenantMonitoringAddon(null)).toBeNull();
   });
 
-  it("null when this tenant's paid seat count cannot be sourced", async () => {
+  it("Git #632: falls back to the SMB seat band (26 seats) rather than omitting itself when no real seat count is sourced", async () => {
     mockSeatFigures = null;
-    expect(await resolveTenantMonitoringAddon("tenant-guid")).toBeNull();
+    mockResultQueue = [
+      [
+        monitoringRow({ typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: 1000, pricePerUserMonth: "0.75" } }),
+        monitoringRow({ typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } }),
+        monitoringRow({ typeAttributes: { tenantTierLabel: "Premium", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.60" } }),
+      ],
+    ];
+    const addon = await resolveTenantMonitoringAddon("tenant-guid");
+    expect(addon).not.toBeNull();
+    expect(addon!.tiers[0]!.label).toBe("Enhanced");
+    expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(26 * 1.1);
+    expect(addon!.defaultOn).toBe(true);
+  });
+
+  it("Git #632: same SMB fallback when seat figures resolve but provisioned is 0", async () => {
+    mockSeatFigures = { provisioned: 0 };
+    mockResultQueue = [
+      [monitoringRow({ typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } })],
+    ];
+    const addon = await resolveTenantMonitoringAddon("tenant-guid");
+    expect(addon).not.toBeNull();
+    expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(26 * 1.1);
   });
 
   it("Git #609: resolves to Enhanced's real seat-matched price ONLY — Basic/Premium are priced internally but never exposed as alternatives", async () => {
