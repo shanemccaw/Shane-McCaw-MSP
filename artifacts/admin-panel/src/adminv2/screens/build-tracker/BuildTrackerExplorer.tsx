@@ -23,6 +23,8 @@ import {
   AlertCircle,
   Flag,
   Sparkles,
+  Search,
+  X,
 } from "lucide-react";
 import { ACCENT, FONT, LINE, SURFACE, TEXT } from "../../theme";
 import {
@@ -41,6 +43,48 @@ import { getShellApi } from "../../shell/ShellContext";
 
 function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+// ── Search matching ──────────────────────────────────────────────────────────
+// `q` is already trimmed + lowercased by the root before it reaches any of
+// these. A leading "#" is stripped so "#556" and "556" match the same rows.
+
+function matchesQuery(q: string, title: string, num?: number | null, id?: number): boolean {
+  if (!q) return true;
+  if (title.toLowerCase().includes(q)) return true;
+  const bare = q.replace(/^#/, "");
+  if (!bare) return false;
+  if (num != null && String(num).includes(bare)) return true;
+  if (id != null && String(id) === bare) return true;
+  return false;
+}
+
+function chatMatchesQuery(chat: ChatRow, q: string): boolean {
+  if (!q) return true;
+  if (chat.title.toLowerCase().includes(q)) return true;
+  if (chat.conversationId.toLowerCase().includes(q)) return true;
+  const bare = q.replace(/^#/, "");
+  return bare !== "" && String(chat.id) === bare;
+}
+
+function issueMatchesQuery(issue: IssueRow, q: string): boolean {
+  if (!q) return true;
+  if (matchesQuery(q, issue.title, issue.githubNumber, issue.id)) return true;
+  return chatsForIssue(issue.id).some((c) => chatMatchesQuery(c, q));
+}
+
+function epicMatchesQuery(epic: EpicRow, q: string): boolean {
+  if (!q) return true;
+  if (matchesQuery(q, epic.title, epic.githubNumber, epic.id)) return true;
+  if (issuesForEpic(epic.id).some((i) => issueMatchesQuery(i, q))) return true;
+  const directChats = chatsForEpic(epic.id).filter((c) => c.epicId === epic.id && !c.issueId);
+  return directChats.some((c) => chatMatchesQuery(c, q));
+}
+
+function milestoneMatchesQuery(milestone: MilestoneRow, q: string): boolean {
+  if (!q) return true;
+  if (matchesQuery(q, milestone.title, milestone.githubNumber, milestone.id)) return true;
+  return epicsForMilestone(milestone.id).some((e) => epicMatchesQuery(e, q));
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
@@ -90,6 +134,7 @@ function IssueNode({
   onChat,
   onIssueContextMenu,
   onChatContextMenu,
+  query,
 }: {
   issue: IssueRow;
   selectedIssueId: number | null;
@@ -98,9 +143,10 @@ function IssueNode({
   onChat: (id: number) => void;
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
+  query: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const chats = chatsForIssue(issue.id);
+  const [open, setOpen] = useState(query.length > 0);
+  const chats = chatsForIssue(issue.id).filter((c) => chatMatchesQuery(c, query));
   const isSelected = selectedIssueId === issue.id;
 
   return (
@@ -164,6 +210,7 @@ function MilestoneNode({
   onEpicContextMenu,
   onIssueContextMenu,
   onChatContextMenu,
+  query,
 }: {
   milestone: MilestoneRow;
   selectedMilestoneId: number | null;
@@ -179,10 +226,13 @@ function MilestoneNode({
   onEpicContextMenu: (e: React.MouseEvent, epic: EpicRow) => void;
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
+  query: string;
 }) {
   const [open, setOpen] = useState(true);
-  const epics = epicsForMilestone(milestone.id);
-  const visibleEpics = showClosed ? epics : epics.filter((e) => e.status !== "closed");
+  const epics = epicsForMilestone(milestone.id)
+    .filter((e) => showClosed || e.status !== "closed")
+    .filter((e) => epicMatchesQuery(e, query));
+  const visibleEpics = epics;
   const est = estimateMilestoneHours(milestone.id);
   const isSelected = selectedMilestoneId === milestone.id;
 
@@ -223,7 +273,7 @@ function MilestoneNode({
           ) : (
             visibleEpics.map((e) => (
               <EpicNode
-                key={e.id}
+                key={`${e.id}:${query ? "s" : "n"}`}
                 epic={e}
                 selectedEpicId={selectedEpicId}
                 selectedIssueId={selectedIssueId}
@@ -235,6 +285,7 @@ function MilestoneNode({
                 onEpicContextMenu={onEpicContextMenu}
                 onIssueContextMenu={onIssueContextMenu}
                 onChatContextMenu={onChatContextMenu}
+                query={query}
               />
             ))
           )}
@@ -258,6 +309,7 @@ function EpicNode({
   onEpicContextMenu,
   onIssueContextMenu,
   onChatContextMenu,
+  query,
 }: {
   epic: EpicRow;
   selectedEpicId: number | null;
@@ -270,11 +322,16 @@ function EpicNode({
   onEpicContextMenu: (e: React.MouseEvent, epic: EpicRow) => void;
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
+  query: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const issues = issuesForEpic(epic.id);
-  const visibleIssues = showClosed ? issues : issues.filter((i) => i.status !== "closed");
-  const directChats = chatsForEpic(epic.id).filter((c) => c.epicId === epic.id && !c.issueId);
+  const [open, setOpen] = useState(query.length > 0);
+  const issues = issuesForEpic(epic.id)
+    .filter((i) => showClosed || i.status !== "closed")
+    .filter((i) => issueMatchesQuery(i, query));
+  const visibleIssues = issues;
+  const directChats = chatsForEpic(epic.id)
+    .filter((c) => c.epicId === epic.id && !c.issueId)
+    .filter((c) => chatMatchesQuery(c, query));
   const isSelected = selectedEpicId === epic.id;
 
   return (
@@ -303,7 +360,7 @@ function EpicNode({
         <div style={{ paddingLeft: 4 }}>
           {visibleIssues.map((i) => (
             <IssueNode
-              key={i.id}
+              key={`${i.id}:${query ? "s" : "n"}`}
               issue={i}
               selectedIssueId={selectedIssueId}
               selectedChatId={selectedChatId}
@@ -311,13 +368,16 @@ function EpicNode({
               onChat={onChat}
               onIssueContextMenu={onIssueContextMenu}
               onChatContextMenu={onChatContextMenu}
+              query={query}
             />
           ))}
           {directChats.map((c) => (
             <ChatChip key={c.id} chat={c} selected={selectedChatId === c.id} onSelect={() => onChat(c.id)} onContextMenu={(e) => onChatContextMenu(e, c)} />
           ))}
           {visibleIssues.length === 0 && directChats.length === 0 && (
-            <p style={{ fontSize: 11, color: TEXT.faintest, padding: "2px 8px 2px 24px", margin: 0 }}>No issues yet</p>
+            <p style={{ fontSize: 11, color: TEXT.faintest, padding: "2px 8px 2px 24px", margin: 0 }}>
+              {query ? "No matches" : "No issues yet"}
+            </p>
           )}
         </div>
       )}
@@ -335,6 +395,7 @@ function NoEpicNode({
   onChat,
   onIssueContextMenu,
   onChatContextMenu,
+  query,
 }: {
   issues: IssueRow[];
   selectedIssueId: number | null;
@@ -343,8 +404,9 @@ function NoEpicNode({
   onChat: (id: number) => void;
   onIssueContextMenu: (e: React.MouseEvent, issue: IssueRow) => void;
   onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void;
+  query: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(query.length > 0);
 
   return (
     <div>
@@ -372,7 +434,7 @@ function NoEpicNode({
         <div style={{ paddingLeft: 4 }}>
           {issues.map((i) => (
             <IssueNode
-              key={i.id}
+              key={`${i.id}:${query ? "s" : "n"}`}
               issue={i}
               selectedIssueId={selectedIssueId}
               selectedChatId={selectedChatId}
@@ -380,6 +442,7 @@ function NoEpicNode({
               onChat={onChat}
               onIssueContextMenu={onIssueContextMenu}
               onChatContextMenu={onChatContextMenu}
+              query={query}
             />
           ))}
         </div>
@@ -395,9 +458,10 @@ function CategoryNode({
   selectedChatId,
   onChat,
   onChatContextMenu,
-}: { category: string; selectedChatId: number | null; onChat: (id: number) => void; onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void }) {
-  const [open, setOpen] = useState(false);
-  const chats = chatsForCategory(category);
+  query,
+}: { category: string; selectedChatId: number | null; onChat: (id: number) => void; onChatContextMenu: (e: React.MouseEvent, chat: ChatRow) => void; query: string }) {
+  const [open, setOpen] = useState(query.length > 0);
+  const chats = chatsForCategory(category).filter((c) => chatMatchesQuery(c, query));
   return (
     <div>
       <button
@@ -427,6 +491,8 @@ export function BuildTrackerExplorer() {
   const unlinked = unlinkedChats();
   const categories = freeFormCategories();
   const [showClosed, setShowClosed] = useState(false);
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   function handleEpic(id: number) {
@@ -589,14 +655,54 @@ export function BuildTrackerExplorer() {
     );
   }
 
-  const visibleMilestones = showClosed ? state.milestones : state.milestones.filter(m => m.status !== "closed");
+  const visibleMilestones = state.milestones
+    .filter(m => showClosed || m.status !== "closed")
+    .filter(m => milestoneMatchesQuery(m, query));
   const unassignedEpics = state.epics.filter(e => !e.milestoneId);
-  const visibleEpics = showClosed ? unassignedEpics : unassignedEpics.filter(e => e.status !== "closed");
+  const visibleEpics = unassignedEpics
+    .filter(e => showClosed || e.status !== "closed")
+    .filter(e => epicMatchesQuery(e, query));
   const noEpicIssues = state.issues.filter((i) => i.epicId === null);
-  const visibleNoEpicIssues = showClosed ? noEpicIssues : noEpicIssues.filter((i) => i.status !== "closed");
+  const visibleNoEpicIssues = noEpicIssues
+    .filter(i => showClosed || i.status !== "closed")
+    .filter(i => issueMatchesQuery(i, query));
+  const visibleCategories = categories.filter(
+    (cat) => matchesQuery(query, cat) || chatsForCategory(cat).some((c) => chatMatchesQuery(c, query)),
+  );
+  const visibleUnlinked = unlinked.filter((c) => chatMatchesQuery(c, query));
+  const noResults = !!query
+    && visibleMilestones.length === 0 && visibleEpics.length === 0 && visibleNoEpicIssues.length === 0
+    && visibleCategories.length === 0 && visibleUnlinked.length === 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Search Box */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "6px 8px", borderBottom: `1px solid ${LINE.control}`,
+        background: SURFACE.well, flexShrink: 0,
+      }}>
+        <Search size={12} color={TEXT.dim} style={{ flex: "none" }} />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by #, name…"
+          style={{
+            flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none",
+            fontSize: 11.5, color: TEXT.primary, fontFamily: FONT.sans,
+          }}
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            title="Clear search"
+            style={{ background: "transparent", border: 0, cursor: "pointer", padding: 2, display: "flex", flex: "none" }}
+          >
+            <X size={12} color={TEXT.dim} />
+          </button>
+        )}
+      </div>
+
       {/* Filter Bar */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -619,6 +725,13 @@ export function BuildTrackerExplorer() {
           {showClosed ? "Showing All" : "Open Only"}
         </button>
       </div>
+
+      {noResults && (
+        <div style={{ padding: "12px 8px", fontSize: 12, color: TEXT.dim, textAlign: "center" }}>
+          <Search size={20} color={TEXT.faintest} style={{ marginBottom: 6 }} />
+          <p style={{ margin: 0 }}>No matches for "{search.trim()}"</p>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 4px", overflowY: "auto", flex: 1 }}>
         {/* Milestones Vertical Timeline */}
@@ -644,6 +757,7 @@ export function BuildTrackerExplorer() {
                 onEpicContextMenu={onEpicContextMenu}
                 onIssueContextMenu={onIssueContextMenu}
                 onChatContextMenu={onChatContextMenu}
+                query={query}
               />
             ))}
           </div>
@@ -659,7 +773,7 @@ export function BuildTrackerExplorer() {
             )}
             {visibleEpics.map((e) => (
               <EpicNode
-                key={e.id}
+                key={`${e.id}:${query ? "s" : "n"}`}
                 epic={e}
                 selectedEpicId={state.selectedEpicId}
                 selectedIssueId={state.selectedIssueId}
@@ -671,12 +785,13 @@ export function BuildTrackerExplorer() {
                 onEpicContextMenu={onEpicContextMenu}
                 onIssueContextMenu={onIssueContextMenu}
                 onChatContextMenu={onChatContextMenu}
+                query={query}
               />
             ))}
           </div>
         )}
 
-        {visibleMilestones.length === 0 && visibleEpics.length === 0 && (
+        {!query && visibleMilestones.length === 0 && visibleEpics.length === 0 && (
           <div style={{ padding: "12px 8px", fontSize: 12, color: TEXT.dim, textAlign: "center" }}>
             <GitBranch size={20} color={TEXT.faintest} style={{ marginBottom: 6 }} />
             <p style={{ margin: 0 }}>No open milestones or epics</p>
@@ -693,28 +808,29 @@ export function BuildTrackerExplorer() {
             onChat={handleChat}
             onIssueContextMenu={onIssueContextMenu}
             onChatContextMenu={onChatContextMenu}
+            query={query}
           />
         )}
       </div>
 
       {/* Free-form / categorised chats */}
-      {(categories.length > 0 || unlinked.length > 0) && (
+      {(visibleCategories.length > 0 || visibleUnlinked.length > 0) && (
         <>
           <div style={{ height: 1, background: LINE.quiet, margin: "8px 4px" }} />
           <p style={{ fontSize: 10, fontWeight: 700, color: TEXT.caption, textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 8px", margin: "0 0 4px" }}>
             Free-form
           </p>
-          {categories.map((cat) => (
-            <CategoryNode key={cat} category={cat} selectedChatId={state.selectedChatId} onChat={handleChat} onChatContextMenu={onChatContextMenu} />
+          {visibleCategories.map((cat) => (
+            <CategoryNode key={`${cat}:${query ? "s" : "n"}`} category={cat} selectedChatId={state.selectedChatId} onChat={handleChat} onChatContextMenu={onChatContextMenu} query={query} />
           ))}
-          {unlinked.length > 0 && (
+          {visibleUnlinked.length > 0 && (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px" }}>
                 <AlertCircle size={11} color={ACCENT.amber} />
                 <span style={{ fontSize: 12, color: ACCENT.amber, fontWeight: 600 }}>Needs triage</span>
-                <span style={{ fontSize: 10, color: ACCENT.amber, marginLeft: "auto" }}>{unlinked.length}</span>
+                <span style={{ fontSize: 10, color: ACCENT.amber, marginLeft: "auto" }}>{visibleUnlinked.length}</span>
               </div>
-              {unlinked.map((c) => (
+              {visibleUnlinked.map((c) => (
                 <ChatChip key={c.id} chat={c} selected={state.selectedChatId === c.id} onSelect={() => handleChat(c.id)} onContextMenu={(e) => onChatContextMenu(e, c)} />
               ))}
             </div>
