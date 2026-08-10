@@ -13,7 +13,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
    Once a chat is already linked to an epic, the panel switches to a
    focused view — just that epic and its own open issues, plus a progress
    bar for the milestone it belongs to — instead of the whole board. Click
-   "Show everything" to browse past it if you need to.
+   "Show everything" to browse past it if you need to. A `complete`-labeled
+   issue's row is a single click to tell Claude it landed (inserts
+   `"<number> landed"` into the composer — you press Enter); the header's
+   📋 button copies Claude's last code block straight to your clipboard,
+   since the panel sits over claude.ai's own per-block copy button.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

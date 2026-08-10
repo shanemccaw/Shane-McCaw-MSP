@@ -99,7 +99,7 @@ function buildPanel() {
       user-select: none;
     }
     .panel {
-      position: fixed; top: 40px; right: 0; bottom: 40px; width: 320px;
+      position: fixed; top: 40px; right: 0; bottom: 40px; width: 272px;
       background: #1f1f1f; border-left: 1px solid #3b3b3b; box-shadow: -4px 0 16px rgba(0,0,0,.4);
       display: flex; flex-direction: column; color: #f3f2f1;
     }
@@ -233,6 +233,7 @@ function buildPanel() {
   panel.innerHTML = `
     <div class="header">
       <span class="title">What am I working on?</span>
+      <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
       <button class="iconbtn" data-action="refresh" title="Sync from GitHub">⟳</button>
       <button class="iconbtn" data-action="close" title="Close">✕</button>
     </div>
@@ -283,6 +284,7 @@ function buildPanel() {
   tab.addEventListener("click", () => togglePanel(true));
   panel.querySelector('[data-action="close"]').addEventListener("click", () => togglePanel(false));
   panel.querySelector('[data-action="refresh"]').addEventListener("click", () => void refreshFromGithub());
+  panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
   search.addEventListener("input", () => renderList(search.value));
 
   // claude.ai listens for keystrokes on the document to auto-focus its own
@@ -331,6 +333,58 @@ function openDetails(issue) {
 }
 
 /**
+ * Copies the most recent code block Claude wrote — Shane's own workflow is
+ * "Claude gives me a copy block with build instructions, I copy it into a
+ * new Claude Code session" — straight to the clipboard. Exists because this
+ * panel sits fixed over the right edge of the page, which covers claude.ai's
+ * own per-block copy button; this sidesteps hunting around the panel for it
+ * entirely rather than just narrowing the panel and hoping it still fits.
+ * Best-effort like findComposer() below: grabs the last <pre> in document
+ * order, since that's always the most recent message's code block.
+ */
+async function copyLastCodeBlock() {
+  const btn = panelEls.panel.querySelector('[data-action="copy-last"]');
+  const blocks = document.querySelectorAll("pre");
+  const last = blocks[blocks.length - 1];
+  if (!last) {
+    flashButton(btn, "✗");
+    return;
+  }
+  const text = (last.innerText ?? last.textContent ?? "").trim();
+  const ok = await copyText(text);
+  flashButton(btn, ok ? "✓" : "✗");
+}
+
+/** navigator.clipboard.writeText first; a hidden-textarea + execCommand fallback if that's blocked. */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function flashButton(btn, symbol, ms = 1300) {
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.textContent = symbol;
+  setTimeout(() => { btn.textContent = original; }, ms);
+}
+
+/**
  * Finds claude.ai's own chat composer so a prompt can be inserted into it.
  * Best-effort: claude.ai doesn't expose a stable id/data-testid this file can
  * rely on, so this picks the largest visible contenteditable on the page —
@@ -344,6 +398,17 @@ function findComposer() {
   );
   candidates.sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight);
   return candidates[0] ?? null;
+}
+
+/**
+ * `complete` means Claude Code already confirmed this landed — Shane's own
+ * follow-up workflow is typing "687 landed" back at the Claude he's talking
+ * to, so it can check and close it out. Everything else gets the original
+ * "come look at this" starter instead.
+ */
+function issuePromptText(issue) {
+  if (issueLabelState(issue) === "complete") return `${issue.githubNumber} landed`;
+  return `Let's look at Git #${issue.githubNumber}...`;
 }
 
 /**
@@ -363,7 +428,7 @@ function insertPrompt(issue) {
     window.alert("Couldn't find the chat box on this page — claude.ai's layout may have changed.");
     return;
   }
-  const text = `Let's look at Git #${issue.githubNumber}...`;
+  const text = issuePromptText(issue);
 
   composer.focus();
   const sel = window.getSelection();
@@ -638,15 +703,23 @@ function issueLabelState(issue) {
  * One issue row, shared by the focused view and the full browse tree so the
  * in-flight dot / complete tint (and the two action buttons) can't drift
  * between the two places an issue shows up. `onClick` omitted (focused view)
- * means the row itself is read-only — nothing to link, it's already linked —
- * but the Details/Prompt buttons still work regardless.
+ * means the row itself would otherwise be read-only — nothing to link, it's
+ * already linked — EXCEPT a `complete`-labeled row, which becomes a single
+ * big "tell Claude this landed" click target instead of doing nothing: the
+ * whole point of showing it green is that there's now exactly one useful
+ * thing left to do with it, so clicking the row itself does it (Shane: "I
+ * should be able to just click that topic"). The Details/Prompt buttons
+ * still work regardless, and still stopPropagation so they never also
+ * trigger whatever the row itself does.
  */
 function buildIssueRow(issue, onClick) {
   const irow = document.createElement("div");
   const labelState = issueLabelState(issue);
-  irow.className = "issue-row" + (labelState === "complete" ? " label-complete" : "");
-  if (!onClick) irow.style.cursor = "default";
-  else irow.addEventListener("click", onClick);
+  const isComplete = labelState === "complete";
+  irow.className = "issue-row" + (isComplete ? " label-complete" : "");
+  const rowClick = onClick ?? (isComplete ? () => insertPrompt(issue) : null);
+  if (!rowClick) irow.style.cursor = "default";
+  else irow.addEventListener("click", rowClick);
 
   const top = document.createElement("div");
   top.className = "issue-top";
@@ -661,11 +734,11 @@ function buildIssueRow(issue, onClick) {
     dot.className = "dot";
     dot.title = "Claude Code is actively working on this";
     top.appendChild(dot);
-  } else if (labelState === "complete") {
+  } else if (isComplete) {
     const check = document.createElement("span");
     check.className = "check";
     check.textContent = "✓";
-    check.title = "Confirmed done in code — awaiting your review";
+    check.title = "Confirmed done in code — click to tell Claude it landed";
     top.appendChild(check);
   }
   irow.appendChild(top);
@@ -679,7 +752,7 @@ function buildIssueRow(issue, onClick) {
   detailsBtn.title = "View summary";
   detailsBtn.textContent = "ⓘ";
   detailsBtn.addEventListener("click", (e) => {
-    e.stopPropagation(); // don't also trigger the row's own link-click
+    e.stopPropagation(); // don't also trigger the row's own click
     openDetails(issue);
   });
   actions.appendChild(detailsBtn);
@@ -688,7 +761,9 @@ function buildIssueRow(issue, onClick) {
     const promptBtn = document.createElement("button");
     promptBtn.type = "button";
     promptBtn.className = "ibtn";
-    promptBtn.title = "Insert a prompt for this issue into the chat box (you send it)";
+    promptBtn.title = isComplete
+      ? `Tell Claude "${issue.githubNumber} landed" (inserted, you press Enter)`
+      : "Insert a prompt for this issue into the chat box (you send it)";
     promptBtn.textContent = "➜";
     promptBtn.addEventListener("click", (e) => {
       e.stopPropagation();
