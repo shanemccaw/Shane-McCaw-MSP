@@ -9,6 +9,7 @@ import {
 import { useLocation, useSearch } from "wouter";
 import {
   ChevronRight,
+  LayoutGrid,
   LogOut,
   PanelRightOpen,
   Pin,
@@ -973,6 +974,18 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
                 <span className="flex-1 text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-widest truncate">
                   Admin Console
                 </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => navigate("/adminv2")}
+                      aria-label="Go to Admin V2"
+                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground\70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Admin V2</TooltipContent>
+                </Tooltip>
                 {propsCollapsed && (
                   <Tooltip>
                     <TooltipTrigger asChild>
