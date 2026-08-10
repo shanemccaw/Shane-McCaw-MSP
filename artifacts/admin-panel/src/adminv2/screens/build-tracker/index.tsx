@@ -52,6 +52,20 @@ function goto() {
   getShellApi()?.navigate(ROUTE);
 }
 
+/**
+ * "All epics"/"All issues" — returns to the Dashboard overview, not just the
+ * route. `goto()` alone no-ops here: these buttons live on a record's own
+ * contextual tab, so the route is already `/build-tracker`. Worse, this
+ * screen's `render(ctx)` re-selects the record straight from the active
+ * doc's kind/recordId on every render, so a bare `selectEpic(null)` would be
+ * immediately overwritten. Switching the active doc to the plain "screen"
+ * doc changes what `ctx` resolves to, so that guard no longer fires.
+ */
+function goToDashboard() {
+  selectEpic(null);
+  getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker" });
+}
+
 function openIssue(id: number) {
   selectIssue(id);
   getShellApi()?.openDoc({ kind: "issue", id: String(id), screenId: "build-tracker" });
@@ -301,7 +315,7 @@ registerScreen({
           {
             label: "Navigate",
             small: [
-              { label: "All epics", icon: BookOpen, intent: "open", onSelect: goto },
+              { label: "All epics", icon: BookOpen, intent: "open", onSelect: goToDashboard },
               ...(epic.githubNumber
                 ? [{ label: "GitHub Milestone", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${epic.githubNumber}`, "_blank") }]
                 : []),
@@ -438,7 +452,7 @@ registerScreen({
           {
             label: "Navigate",
             small: [
-              { label: "All issues", icon: BookOpen, intent: "open", onSelect: goto },
+              { label: "All issues", icon: BookOpen, intent: "open", onSelect: goToDashboard },
               ...(issue.githubUrl
                 ? [{ label: "GitHub Issue", icon: ExternalLink, intent: "open" as const, onSelect: () => window.open(issue.githubUrl!, "_blank") }]
                 : []),
