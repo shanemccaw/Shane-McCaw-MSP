@@ -168,6 +168,17 @@ function buildPanel() {
   panel.querySelector('[data-action="refresh"]').addEventListener("click", () => loadBoard(true));
   search.addEventListener("input", () => renderList(search.value));
 
+  // claude.ai listens for keystrokes on the document to auto-focus its own
+  // chat composer ("type anywhere to start typing") — keyboard events are
+  // composed, so they bubble straight out of this shadow root to that
+  // listener same as any other DOM event, and every keystroke in our search
+  // box was getting redirected into claude.ai's own input instead. Stopping
+  // propagation here (on the panel, so it covers every field inside it, not
+  // just this one) keeps every keystroke typed inside the panel local to it.
+  for (const evt of ["keydown", "keyup", "keypress"]) {
+    panel.addEventListener(evt, (e) => e.stopPropagation());
+  }
+
   panelEls = { host, tab, panel, current, list, search };
   return panelEls;
 }
