@@ -390,7 +390,7 @@ export async function createMilestone(
     };
   }
   set({ milestones: [newRow, ...state.milestones.filter((m) => m.id !== newRow.id)] });
-  pushUndo({ label: `Create milestone "${title}"`, revert: () => deleteMilestone(newRow.id) });
+  pushUndo({ label: `Create milestone "${title}"`, revert: async () => { await deleteMilestone(newRow.id); } });
   flashMessage(`Milestone "${title}" created`);
   return newRow;
 }
@@ -428,7 +428,7 @@ export async function deleteMilestone(id: number) {
   if (existing) {
     pushUndo({
       label: `Delete milestone "${existing.title}"`,
-      revert: () => createMilestone(existing.title, existing.targetDate, existing.description, existing.startDate),
+      revert: async () => { await createMilestone(existing.title, existing.targetDate, existing.description, existing.startDate); },
     });
   }
   set({
@@ -492,7 +492,7 @@ export async function createEpic(title: string): Promise<EpicRow | null> {
     });
     const row = (await res.json()) as EpicRow;
     set({ epics: [{ ...row, issueCount: 0, chatCount: 0 }, ...state.epics] });
-    pushUndo({ label: `Create epic "${title}"`, revert: () => deleteEpic(row.id) });
+    pushUndo({ label: `Create epic "${title}"`, revert: async () => { await deleteEpic(row.id); } });
     return row;
   } catch (err) {
     log.error({ err }, "createEpic failed");
@@ -534,7 +534,7 @@ export async function deleteEpic(id: number): Promise<void> {
   if (existing) {
     pushUndo({
       label: `Delete epic "${existing.title}"`,
-      revert: () => createEpic(existing.title),
+      revert: async () => { await createEpic(existing.title); },
     });
   }
   try {
@@ -561,7 +561,7 @@ export async function createIssue(title: string, epicId: number | null = null): 
     const row = (await res.json()) as IssueRow;
     const withCount = { ...row, chatCount: 0 };
     set({ issues: [withCount, ...state.issues] });
-    pushUndo({ label: `Create issue "${title}"`, revert: () => deleteIssue(row.id) });
+    pushUndo({ label: `Create issue "${title}"`, revert: async () => { await deleteIssue(row.id); } });
     return withCount;
   } catch (err) {
     log.error({ err }, "createIssue failed");
@@ -616,7 +616,7 @@ export async function deleteIssue(id: number): Promise<void> {
   if (existing) {
     pushUndo({
       label: `Delete issue "${existing.title}"`,
-      revert: () => createIssue(existing.title, existing.epicId),
+      revert: async () => { await createIssue(existing.title, existing.epicId); },
     });
   }
   try {
@@ -657,7 +657,7 @@ export async function createChat(conversationId: string, title: string, issueId:
     const row = (await res.json()) as ChatRow;
     set({ chats: [row, ...state.chats] });
     setLiveRibbonValue(WATCH_UNLINKED_KEY, { label: String(unlinkedCount()) });
-    pushUndo({ label: `Link chat "${cleanTitle}"`, revert: () => deleteChat(row.id) });
+    pushUndo({ label: `Link chat "${cleanTitle}"`, revert: async () => { await deleteChat(row.id); } });
     return row;
   } catch (err) {
     log.error({ err }, "createChat failed");
@@ -700,7 +700,7 @@ export async function deleteChat(id: number): Promise<void> {
   if (existing) {
     pushUndo({
       label: `Delete chat "${existing.title}"`,
-      revert: () => createChat(existing.conversationId, existing.title, existing.issueId, existing.epicId, existing.category ?? null),
+      revert: async () => { await createChat(existing.conversationId, existing.title, existing.issueId, existing.epicId, existing.category ?? null); },
     });
   }
   try {
