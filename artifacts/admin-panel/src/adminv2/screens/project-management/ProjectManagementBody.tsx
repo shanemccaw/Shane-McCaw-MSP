@@ -21,7 +21,7 @@ import {
   getSnapshot, subscribe, milestoneById, epicsForMilestone, issuesForEpic,
   createMilestone, updateMilestone, deleteMilestone, assignEpicToMilestone,
   selectMilestone, selectEpic, epicIsUnassigned, epicBubbleStatus,
-  epicCardState, issueCardState, formatIssueAge,
+  epicCardState, issueCardState, formatIssueAge, estimateEpicHours, epicIsDone,
   type EpicBubbleStatus, type EpicCardState, type IssueCardState,
 } from "../build-tracker/buildTrackerStore";
 import { githubIssueUrl } from "../build-tracker/buildTrackerTypes";
@@ -45,6 +45,40 @@ const BUBBLE_LABEL: Record<EpicBubbleStatus, string> = {
   aged: "Aged — left behind a while",
   open: "In progress",
 };
+
+// ── Gantt bar timeframe ─────────────────────────────────────────────────────
+// The Gantt's own time axis (its header row below) is a fixed Aug 1 – Sep 30
+// 2026 window, not read from any real date — there is no stored "sprint
+// window" this app tracks. An epic's bar is positioned on that same fixed
+// window using the one real date it does have (createdAt) plus a real
+// estimate of what's left (estimateEpicHours(), the same velocity math the
+// Milestone page's own estimate already uses): closed epics show their real
+// created→closed span; open ones show created→(today + estimated remaining
+// days), so the bar's length actually reflects how much work is left, not a
+// decorative placeholder.
+
+const GANTT_AXIS_START = Date.parse("2026-08-01T00:00:00Z");
+const GANTT_AXIS_END = Date.parse("2026-10-01T00:00:00Z"); // exclusive — covers through Sep 30
+const GANTT_AXIS_SPAN = GANTT_AXIS_END - GANTT_AXIS_START;
+
+function axisPct(ms: number): number {
+  return Math.min(100, Math.max(0, ((ms - GANTT_AXIS_START) / GANTT_AXIS_SPAN) * 100));
+}
+
+function shortDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Real created→(closed | today+estimate) span for one epic, clamped onto the fixed axis window. */
+function epicGanttSpan(epic: EpicRow): { leftPct: number; widthPct: number; startMs: number; endMs: number } {
+  const startMs = Date.parse(epic.createdAt);
+  const endMs = epicIsDone(epic)
+    ? Date.parse(epic.closedAt ?? epic.updatedAt)
+    : Date.now() + (estimateEpicHours(epic.id) / 8) * 86_400_000;
+  const leftPct = axisPct(startMs);
+  const rightPct = axisPct(Math.max(endMs, startMs + 86_400_000)); // at least one visible day wide
+  return { leftPct, widthPct: Math.max(2, rightPct - leftPct), startMs, endMs };
+}
 
 // ── Milestone Timeline card — capsule colors/labels ────────────────────────────
 
@@ -513,15 +547,16 @@ function GanttChart({
                 </div>
               </div>
 
-              {/* Epic Sub-rows — each epic gets one clickable status bubble, not a
-                  fake timeline bar (there was never a real start/end date behind
-                  those bars — ep.id % 2 was just alternating placement). */}
+              {/* Epic Sub-rows — a bar spanning the epic's real created→(closed or
+                  today+estimate) timeframe on the fixed Aug–Sep axis above, colored
+                  by the same blocked/aged/done/open verdict the bubbles used. */}
               {mEpics.map((ep) => {
                 const epIssues = state.issues.filter((i) => i.epicId === ep.id);
                 const doneCount = epIssues.filter((i) => i.status === "done" || i.status === "closed").length;
                 const epPct = epIssues.length > 0 ? Math.round((doneCount / epIssues.length) * 100) : 0;
                 const bubbleStatus = epicBubbleStatus(ep);
-                const bubbleColor = BUBBLE_COLOR[bubbleStatus];
+                const barColor = BUBBLE_COLOR[bubbleStatus];
+                const span = epicGanttSpan(ep);
 
                 return (
                   <div key={ep.id} style={{
@@ -543,24 +578,33 @@ function GanttChart({
                       <span>{ep.githubNumber ? `#${ep.githubNumber} ` : ""}{ep.title}</span>
                     </div>
 
-                    <button
-                      onClick={() => selectEpic(ep.id)}
-                      title={`${epPct}% done (${doneCount}/${epIssues.length}) — ${BUBBLE_LABEL[bubbleStatus]}`}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, height: 18,
-                        background: "transparent", border: 0, padding: 0, cursor: "pointer",
-                        fontFamily: FONT.sans,
-                      }}
-                    >
-                      <span style={{
-                        width: 15, height: 15, borderRadius: "50%", flex: "none",
-                        background: bubbleColor,
-                        boxShadow: bubbleStatus === "blocked" ? `0 0 0 3px ${bubbleColor}30` : "none",
-                      }} />
-                      <span style={{ fontSize: 10.5, color: TEXT.dim, fontFamily: FONT.mono }}>
-                        {epPct}% ({doneCount}/{epIssues.length})
-                      </span>
-                    </button>
+                    <div style={{ position: "relative", height: 18, background: SURFACE.well, borderRadius: 3, overflow: "hidden" }}>
+                      <div
+                        onClick={() => selectEpic(ep.id)}
+                        title={`${epPct}% done (${doneCount}/${epIssues.length}) — ${BUBBLE_LABEL[bubbleStatus]} — ${shortDate(span.startMs)} → ${shortDate(span.endMs)}`}
+                        style={{
+                          position: "absolute",
+                          left: `${span.leftPct}%`,
+                          width: `${span.widthPct}%`,
+                          height: "100%",
+                          background: `${barColor}20`,
+                          border: `1px solid ${barColor}66`,
+                          borderRadius: 3,
+                          display: "flex",
+                          alignItems: "center",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: barColor,
+                          overflow: "hidden",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ height: "100%", background: `${barColor}55`, width: `${epPct}%` }} />
+                        <span style={{ position: "absolute", left: 6, whiteSpace: "nowrap" }}>
+                          {epPct}% ({doneCount}/{epIssues.length})
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
