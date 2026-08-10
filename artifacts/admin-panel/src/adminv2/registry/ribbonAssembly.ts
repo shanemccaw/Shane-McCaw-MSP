@@ -5,6 +5,13 @@
  * to get where I am and it's a new icon." So the way back is not something each
  * screen draws — it is spliced into every contextual tab at the same position,
  * by this module, and screens cannot opt out.
+ *
+ * The Back group lands **last**, not second. It used to sit at index 1, but a
+ * record's resolved name is unbounded length and that pushed real,
+ * frequently-used actions further right (or off-screen) depending on how long
+ * the trail's labels happened to be that day — the exact instability this
+ * design otherwise exists to prevent. Last position means a screen's own
+ * groups are never at the mercy of trail label length.
  */
 
 import { ArrowLeft, Search } from "lucide-react";
@@ -98,19 +105,16 @@ export function backGroupFrom(
   };
 }
 
-/** The Back group is spliced in here — second, always. */
-export const BACK_GROUP_POSITION = 1;
-
 /**
  * Assembles a contextual tab's final group list.
  *
  * This is the only place a contextual tab's groups are put together. Screens
  * hand over their own groups and never see the Back group; splicing it here is
- * what guarantees the trail sits in the same place on Endpoint Tools, Script
- * Tools, Pipeline Tools, Observe Tools and everything built later.
+ * what guarantees the trail sits in the same place — last — on Endpoint Tools,
+ * Script Tools, Pipeline Tools, Observe Tools and everything built later.
  *
- * If a screen supplies no groups at all, Back still lands at index 0 rather
- * than being dropped — the group must exist for the tab to be usable.
+ * Last, always, so the screen's own groups render at a stable position
+ * regardless of how long the trail's resolved labels are.
  */
 export function assembleContextualGroups(
   spec: ContextualTabSpec,
@@ -120,7 +124,6 @@ export function assembleContextualGroups(
 ): RibbonGroup[] {
   const groups = [...spec.groups];
   const back = backGroupFrom(trail, onSearchEverything, currentKey);
-  const at = Math.min(BACK_GROUP_POSITION, groups.length);
-  groups.splice(at, 0, back);
+  groups.push(back);
   return groups;
 }

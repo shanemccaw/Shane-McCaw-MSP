@@ -3,7 +3,6 @@ import { Boxes } from "lucide-react";
 import {
   assembleContextualGroups,
   backGroupFrom,
-  BACK_GROUP_POSITION,
   pushTrail,
   TRAIL_MAX,
   type TrailEntry,
@@ -108,13 +107,13 @@ describe("contextual tab assembly", () => {
     ],
   };
 
-  it("splices Back in at position 2, never position 1", () => {
+  it("puts Back last, never among the screen's own groups", () => {
     const groups = assembleContextualGroups(spec, [entry("here"), entry("prev")], () => {});
-    expect(groups.map((g) => g.label)).toEqual(["Request", "Back", "Rules", "Share"]);
-    expect(groups[BACK_GROUP_POSITION]!.label).toBe("Back");
+    expect(groups.map((g) => g.label)).toEqual(["Request", "Rules", "Share", "Back"]);
+    expect(groups.at(-1)!.label).toBe("Back");
   });
 
-  it("puts Back at the same index for every contextual tab", () => {
+  it("puts Back last for every contextual tab, regardless of how many groups the screen supplies", () => {
     const other: ContextualTabSpec = {
       id: "script-tools",
       label: "Script Tools",
@@ -122,7 +121,8 @@ describe("contextual tab assembly", () => {
     };
     const a = assembleContextualGroups(spec, [], () => {});
     const b = assembleContextualGroups(other, [], () => {});
-    expect(a.findIndex((g) => g.label === "Back")).toBe(b.findIndex((g) => g.label === "Back"));
+    expect(a.at(-1)!.label).toBe("Back");
+    expect(b.at(-1)!.label).toBe("Back");
   });
 
   it("still includes Back when the screen supplies no groups", () => {

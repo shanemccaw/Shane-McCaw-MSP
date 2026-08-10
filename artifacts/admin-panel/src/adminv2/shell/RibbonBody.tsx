@@ -114,7 +114,26 @@ function CommandButton({
         color={color ?? TEXT.quiet}
         style={{ flex: "none" }}
       />
-      <span style={{ textWrap: "pretty" } as CSSProperties}>{label}</span>
+      <span
+        style={
+          variant === "large"
+            ? ({
+                textWrap: "pretty",
+                maxWidth: 62,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              } as CSSProperties)
+            : ({
+                maxWidth: 150,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              } as CSSProperties)
+        }
+      >
+        {label}
+      </span>
       {command.live !== undefined && command.live !== "" && (
         <span
           style={{
