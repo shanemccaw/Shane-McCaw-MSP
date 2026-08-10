@@ -96,6 +96,27 @@ function generateRefreshToken(): string {
 }
 
 /**
+ * Real entitlement: has this account ever actually been granted a service —
+ * a paid checkout, a genuinely free-tier checkout, or an admin-assigned
+ * client — regardless of role or password state. This is the same invariant
+ * every OTHER legitimate account-setup email in this codebase already checks
+ * before issuing one (portal-checkout-free.ts's claim-free flow only mails a
+ * setup link once client_services rows exist; admin-clients.ts's resend-invite
+ * only ever targets a client an admin already assigned services to). A
+ * consent-time Prospect row (passwordHash null, created before payment even
+ * starts) has nothing in client_services yet and must not be able to complete
+ * account setup through either door (#656).
+ */
+async function hasRealEntitlement(userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: clientServicesTable.id })
+    .from(clientServicesTable)
+    .where(eq(clientServicesTable.clientUserId, userId))
+    .limit(1);
+  return !!row;
+}
+
+/**
  * Write an auth audit log entry. Non-fatal — errors are silently swallowed
  * so a broken DB state never interrupts an auth flow.
  */
@@ -524,6 +545,21 @@ router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, r
     return;
   }
 
+  // The token being valid only proves it was issued and not yet used — it says
+  // nothing about whether this account was ever actually granted anything.
+  // Re-verify entitlement here, at the moment a password + session are about to
+  // be handed out, so this holds regardless of how or when the token got
+  // issued (#656 — forgot-password used to issue these to any passwordless
+  // account with no payment/entitlement check at all).
+  if (!(await hasRealEntitlement(record.userId))) {
+    log.warn(
+      { userId: record.userId },
+      "setup-password: REFUSED — account has no client_services entitlement yet (#656)",
+    );
+    res.status(409).json({ error: "account_not_entitled" });
+    return;
+  }
+
   const passwordHash = await bcrypt.hash(password, 12);
 
   await db.update(usersTable)
@@ -656,6 +692,19 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
   if (!user) return;
 
   if (!user.passwordHash) {
+    // A passwordless account is not automatically an account mid-setup — a
+    // consent-time Prospect who never paid is passwordless too, and forgot-
+    // password used to hand it the exact same account-setup link as a real
+    // buyer (#656). Only issue one once client_services shows this account was
+    // actually granted something.
+    if (!(await hasRealEntitlement(user.id))) {
+      log.warn(
+        { userId: user.id },
+        "forgot-password: REFUSED to issue an account-setup link — account has no client_services entitlement yet (#656)",
+      );
+      return;
+    }
+
     const { randomBytes } = await import("crypto");
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
