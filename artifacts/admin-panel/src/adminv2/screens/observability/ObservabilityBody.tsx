@@ -16,8 +16,10 @@
  */
 
 import { useEffect, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
+import { Copy } from "lucide-react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY, SURFACE, TEXT } from "../../theme";
 import { ContextMenu, useContextMenu } from "../../shell/ContextMenu";
+import { getShellApi } from "../../shell/ShellContext";
 import {
   codeFrameLines,
   dayLabel,
@@ -29,6 +31,7 @@ import {
 } from "./observabilityFormat";
 import {
   copyPayload,
+  copyText,
   getSnapshot,
   health,
   loadDlq,
@@ -79,6 +82,45 @@ function Pill({ text, tone }: { text: string; tone: string }) {
     >
       {text}
     </span>
+  );
+}
+
+/** One label/value row inside an expanded alert firing's detail panel. */
+function DetailLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", gap: 8, fontSize: 11.5 }}>
+      <span style={{ flex: "none", width: 132, color: TEXT.faint }}>{label}</span>
+      <span style={{ flex: 1, minWidth: 0, color: TEXT.soft, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+}
+
+/** Small icon-only button that copies `text` to the clipboard, for sitting inside an error box. */
+function CopyIconButton({ text, label = "Copied." }: { text: string; label?: string }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        copyText(text, label);
+      }}
+      title="Copy to clipboard"
+      style={{
+        flex: "none",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 22,
+        height: 22,
+        padding: 0,
+        borderRadius: 5,
+        border: `1px solid ${LINE.control}`,
+        background: "transparent",
+        color: TEXT.faint,
+        cursor: "pointer",
+      }}
+    >
+      <Copy size={12} />
+    </button>
   );
 }
 
@@ -320,6 +362,7 @@ function RulesView({ state }: { state: ObservabilityState }) {
   const selected = state.rules.find((r) => r.id === state.selectedRuleId) ?? null;
   const events = selected ? state.events.filter((e) => e.ruleId === selected.id) : [];
   const { menu, open, close } = useContextMenu();
+  const [expandedEventId, setExpandedEventId] = useState<number | null>(null);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "stretch" }}>
@@ -457,9 +500,12 @@ function RulesView({ state }: { state: ObservabilityState }) {
           )}
           {events.map((event) => {
             const done = Boolean(event.resolvedAt);
+            const expanded = expandedEventId === event.id;
+            const isDlq = event.conditionType === "dlq_backlog";
             return (
               <div
                 key={event.id}
+                onClick={() => setExpandedEventId(expanded ? null : event.id)}
                 onContextMenu={(e) =>
                   open(
                     e,
@@ -481,6 +527,7 @@ function RulesView({ state }: { state: ObservabilityState }) {
                   borderRadius: 8,
                   border: `1px solid ${done ? LINE.base : "rgba(229,122,122,.35)"}`,
                   background: SURFACE.card,
+                  cursor: "pointer",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
@@ -492,7 +539,10 @@ function RulesView({ state }: { state: ObservabilityState }) {
                     {whenLabel(event.firedAt)}
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginTop: 7 }}>
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginTop: 7 }}
+                >
                   <Pill text={done ? "resolved" : "open"} tone={done ? ACCENT.greenBright : ACCENT.danger} />
                   <span style={{ flex: "none", whiteSpace: "nowrap", fontSize: 11, color: TEXT.meta }}>
                     {`${event.deliveredEmail ? "emailed" : "no email"}${event.deliveredPush ? " · pushed" : ""}`}
@@ -510,6 +560,53 @@ function RulesView({ state }: { state: ObservabilityState }) {
                     onSelect={() => void openIncidentFrom("an alert", event.summary, normaliseSeverity(event.severity))}
                   />
                 </div>
+                {expanded && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      marginTop: 9,
+                      paddingTop: 9,
+                      borderTop: `1px solid ${LINE.quiet}`,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 5,
+                      cursor: "default",
+                    }}
+                  >
+                    <DetailLine label="Rule key" value={event.ruleKey} />
+                    <DetailLine label="Condition" value={event.conditionType ?? "unknown"} />
+                    <DetailLine
+                      label="Value that tripped it"
+                      value={`${event.conditionValue} (rule fires above the configured threshold)`}
+                    />
+                    <DetailLine label="Scope" value={event.mspId ? `MSP #${event.mspId}` : "platform-wide"} />
+                    <DetailLine label="Alert event ID" value={event.alertEventId} />
+                    {event.resolvedBy && <DetailLine label="Resolved by" value={event.resolvedBy} />}
+                    {event.deepLinkPath && <DetailLine label="Deep link" value={event.deepLinkPath} />}
+                    <div style={{ marginTop: 2 }}>
+                      <CopyIconButton
+                        text={[
+                          `Summary: ${event.summary}`,
+                          `Rule key: ${event.ruleKey}`,
+                          `Condition: ${event.conditionType ?? "unknown"}`,
+                          `Value: ${event.conditionValue}`,
+                          `Scope: ${event.mspId ? `MSP #${event.mspId}` : "platform-wide"}`,
+                          `Alert event ID: ${event.alertEventId}`,
+                          `Fired at: ${event.firedAt}`,
+                        ].join("\n")}
+                        label="Alert details copied."
+                      />
+                    </div>
+                    {isDlq && (
+                      <div style={{ marginTop: 4 }}>
+                        <QuietButton
+                          label="View the stuck jobs behind this (Dead Letters tab)"
+                          onSelect={() => openView("dlq")}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -640,9 +737,15 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
       ) : (
         <Detail>
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontFamily: FONT.mono, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
-              {selected.errorName}
-            </span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: FONT.mono, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
+                {selected.errorName}
+              </span>
+              <CopyIconButton
+                text={`${selected.errorName}: ${selected.errorMessage}${selected.stackSample ? `\n\n${selected.stackSample}` : ""}`}
+                label="Error copied."
+              />
+            </div>
             <span style={{ fontSize: 12.5, color: TEXT.soft }}>{selected.errorMessage}</span>
             <span style={{ fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.groupLabel }}>
               {selected.file
@@ -828,6 +931,8 @@ function ExceptionsView({ state }: { state: ObservabilityState }) {
 
 function IncidentsView({ state }: { state: ObservabilityState }) {
   const { menu, open, close } = useContextMenu();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [resolveArmed, setResolveArmed] = useState(false);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -844,7 +949,7 @@ function IncidentsView({ state }: { state: ObservabilityState }) {
       >
         <span style={{ fontSize: 12, color: TEXT.groupLabel }}>
           Hand-written, and shown on the public status page. Nothing here is created automatically — an alert or an
-          exception only becomes an incident when you say so.
+          exception only becomes an incident when you say so. Click one open to see everything and act on it.
         </span>
         <LoadState loading={state.incidentsLoading} error={state.incidentsError} onRetry={() => void loadIncidents()} />
         {!state.incidentsLoading && !state.incidentsError && state.incidents.length === 0 && (
@@ -852,52 +957,119 @@ function IncidentsView({ state }: { state: ObservabilityState }) {
             No incidents have ever been written. The status page shows nothing but green.
           </span>
         )}
-        {state.incidents.map((incident) => (
-          <div
-            key={incident.id}
-            onClick={() => selectIncident(incident.id)}
-            onContextMenu={(e) =>
-              open(
-                e,
-                [
-                  // "Mark resolved" is deliberately not here: the peek gates the same
-                  // write behind `confirm: true` because it publishes to the public
-                  // status page, and a context menu has no confirm step to route
-                  // through — see this screen's incidentPeek() and the
-                  // TenantSignalsBody precedent this sweep follows.
-                  ...(incident.status !== "identified"
-                    ? [{ label: "Mark identified", onSelect: () => void updateIncident(incident.id, { status: "identified" }) }]
-                    : []),
-                  ...(incident.status !== "monitoring"
-                    ? [{ label: "Mark monitoring", onSelect: () => void updateIncident(incident.id, { status: "monitoring" }) }]
-                    : []),
-                ],
-                `Actions for incident ${incident.title}`,
-              )
-            }
-            style={{
-              padding: "13px 15px",
-              borderRadius: 8,
-              cursor: "pointer",
-              border: `1px solid ${incident.id === state.selectedIncidentId ? LINE.hover : LINE.base}`,
-              background: SURFACE.card,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-              <Pill text={incident.severity} tone={severityTone(incident.severity)} />
-              <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 13, fontWeight: 600, color: TEXT.primary }}>
-                {incident.title}
+        {state.incidents.map((incident) => {
+          const expanded = expandedId === incident.id;
+          return (
+            <div
+              key={incident.id}
+              onClick={() => {
+                selectIncident(incident.id);
+                setResolveArmed(false);
+                setExpandedId(expanded ? null : incident.id);
+              }}
+              onContextMenu={(e) =>
+                open(
+                  e,
+                  [
+                    // "Mark resolved" is deliberately not here: it publishes to the
+                    // public status page, and a context menu has no confirm step to
+                    // route through — the expanded panel below gates it behind a
+                    // press-twice arm instead, same as DlqView's Discard.
+                    ...(incident.status !== "identified"
+                      ? [{ label: "Mark identified", onSelect: () => void updateIncident(incident.id, { status: "identified" }) }]
+                      : []),
+                    ...(incident.status !== "monitoring"
+                      ? [{ label: "Mark monitoring", onSelect: () => void updateIncident(incident.id, { status: "monitoring" }) }]
+                      : []),
+                  ],
+                  `Actions for incident ${incident.title}`,
+                )
+              }
+              style={{
+                padding: "13px 15px",
+                borderRadius: 8,
+                cursor: "pointer",
+                border: `1px solid ${incident.id === state.selectedIncidentId ? LINE.hover : LINE.base}`,
+                background: SURFACE.card,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+                <Pill text={incident.severity} tone={severityTone(incident.severity)} />
+                <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 13, fontWeight: 600, color: TEXT.primary }}>
+                  {incident.title}
+                </span>
+                <Pill text={incident.status} tone={incidentStatusTone(incident.status)} />
+              </div>
+              <span style={{ display: "block", marginTop: 6, fontSize: 12, color: TEXT.quieter }}>
+                {incident.description}
               </span>
-              <Pill text={incident.status} tone={incidentStatusTone(incident.status)} />
+              <span style={{ display: "block", marginTop: 6, fontSize: 11.5, color: TEXT.meta }}>
+                {`opened ${whenLabel(incident.startedAt)} · updated ${whenLabel(incident.updatedAt)}`}
+              </span>
+              {expanded && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 10,
+                    borderTop: `1px solid ${LINE.quiet}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    cursor: "default",
+                  }}
+                >
+                  <DetailLine label="Incident ID" value={String(incident.id)} />
+                  <DetailLine label="Started" value={whenLabel(incident.startedAt)} />
+                  <DetailLine label="Last updated" value={whenLabel(incident.updatedAt)} />
+                  <DetailLine
+                    label="Resolved"
+                    value={incident.resolvedAt ? whenLabel(incident.resolvedAt) : "still running"}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginTop: 4 }}>
+                    <CopyIconButton
+                      text={`${incident.title}\n\n${incident.description}\n\nSeverity: ${incident.severity} · Status: ${incident.status}`}
+                      label="Incident copied."
+                    />
+                    <QuietButton
+                      label="Edit title, description, severity"
+                      title="Opens the properties panel — this is what customers read on the public status page"
+                      onSelect={() => getShellApi()?.openPeek("incident", String(incident.id))}
+                    />
+                    {incident.status !== "identified" && (
+                      <QuietButton
+                        label="Mark identified"
+                        onSelect={() => void updateIncident(incident.id, { status: "identified" })}
+                      />
+                    )}
+                    {incident.status !== "monitoring" && (
+                      <QuietButton
+                        label="Mark monitoring"
+                        onSelect={() => void updateIncident(incident.id, { status: "monitoring" })}
+                      />
+                    )}
+                    <div style={{ flex: 1, minWidth: 4 }} />
+                    {incident.status !== "resolved" && (
+                      <QuietButton
+                        label={resolveArmed ? "Mark resolved — press again" : "Mark resolved"}
+                        tone="primary"
+                        title="Publishes to the public status page"
+                        onSelect={() => {
+                          if (!resolveArmed) {
+                            setResolveArmed(true);
+                            return;
+                          }
+                          setResolveArmed(false);
+                          void updateIncident(incident.id, { status: "resolved" });
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <span style={{ display: "block", marginTop: 6, fontSize: 12, color: TEXT.quieter }}>
-              {incident.description}
-            </span>
-            <span style={{ display: "block", marginTop: 6, fontSize: 11.5, color: TEXT.meta }}>
-              {`opened ${whenLabel(incident.startedAt)} · updated ${whenLabel(incident.updatedAt)}`}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <ContextMenu menu={menu} onClose={close} />
     </div>
@@ -1008,7 +1180,12 @@ function DlqView({ state }: { state: ObservabilityState }) {
             <span style={{ fontFamily: FONT.mono, fontSize: 14, fontWeight: 700, color: TEXT.primary }}>
               {selected.eventType}
             </span>
-            <span style={{ fontSize: 12.5, color: ACCENT_TEXT.danger }}>{selected.errorMessage}</span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: ACCENT_TEXT.danger, wordBreak: "break-word" }}>
+                {selected.errorMessage}
+              </span>
+              <CopyIconButton text={selected.errorMessage} label="Error message copied." />
+            </div>
             <span style={{ fontSize: 11.5, color: TEXT.groupLabel }}>
               {`${selected.customerName ?? "no customer"} · ${selected.attemptCount} attempts · failed ${whenLabel(selected.lastAttemptAt)}`}
             </span>
@@ -1050,7 +1227,10 @@ function DlqView({ state }: { state: ObservabilityState }) {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Caption>Payload</Caption>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Caption>Payload</Caption>
+              <CopyIconButton text={JSON.stringify(selected.payload, null, 2)} label="Payload copied." />
+            </div>
             <div
               style={{
                 padding: "11px 13px",
@@ -1070,7 +1250,10 @@ function DlqView({ state }: { state: ObservabilityState }) {
 
           {selected.errorStack && (
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <Caption>Stack</Caption>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Caption>Stack</Caption>
+                <CopyIconButton text={selected.errorStack} label="Stack trace copied." />
+              </div>
               <span style={{ fontFamily: FONT.mono, fontSize: 11.5, color: TEXT.dim, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
                 {selected.errorStack}
               </span>

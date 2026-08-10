@@ -572,10 +572,14 @@ export async function retryAllDlq(): Promise<void> {
 export function copyPayload(dlqId: string): void {
   const item = state.dlq.find((d) => d.dlqId === dlqId);
   if (!item) return;
-  const text = JSON.stringify(item.payload, null, 2);
+  copyText(JSON.stringify(item.payload, null, 2), "Payload copied.");
+}
+
+/** Generic clipboard copy for any error box's text — the DLQ payload helper above generalised. */
+export function copyText(text: string, savedMessage = "Copied."): void {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
   void navigator.clipboard.writeText(text).then(
-    () => say("Payload copied."),
+    () => say(savedMessage),
     () => {
       /* clipboard access denied — not worth an error line */
     },
