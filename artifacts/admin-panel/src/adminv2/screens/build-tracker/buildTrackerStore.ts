@@ -105,50 +105,59 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
 export function milestoneById(id: string | number): MilestoneRow | undefined {
-  return state.milestones.find((m) => m.id === Number(id));
+  const milestones = Array.isArray(state?.milestones) ? state.milestones : [];
+  return milestones.find((m) => m.id === Number(id));
 }
 
 export function epicsForMilestone(milestoneId: number): EpicRow[] {
   const m = milestoneById(milestoneId);
   const msNum = m?.githubNumber ?? milestoneId;
-  return state.epics.filter(
+  const epics = Array.isArray(state?.epics) ? state.epics : [];
+  const issues = Array.isArray(state?.issues) ? state.issues : [];
+  return epics.filter(
     (e) =>
       e.milestoneId === milestoneId ||
       (m && m.githubNumber !== null && m.githubNumber !== undefined && (e.milestoneId === m.githubNumber || String(e.milestoneId) === String(m.githubNumber))) ||
-      state.issues.some((i) => i.epicId === e.id && (i.milestoneId === milestoneId || i.milestoneId === msNum))
+      issues.some((i) => i.epicId === e.id && (i.milestoneId === milestoneId || i.milestoneId === msNum))
   );
 }
 
 export function epicById(id: string | number): EpicRow | undefined {
-  return state.epics.find((e) => e.id === Number(id));
+  const epics = Array.isArray(state?.epics) ? state.epics : [];
+  return epics.find((e) => e.id === Number(id));
 }
 
 export function issueById(id: string | number): IssueRow | undefined {
-  return state.issues.find((i) => i.id === Number(id));
+  const issues = Array.isArray(state?.issues) ? state.issues : [];
+  return issues.find((i) => i.id === Number(id));
 }
 
 export function chatById(id: string | number): ChatRow | undefined {
-  return state.chats.find((c) => c.id === Number(id));
+  const chats = Array.isArray(state?.chats) ? state.chats : [];
+  return chats.find((c) => c.id === Number(id));
 }
 
 export function issuesForEpic(epicId: number): IssueRow[] {
-  return state.issues.filter((i) => i.epicId === epicId);
+  const issues = Array.isArray(state?.issues) ? state.issues : [];
+  return issues.filter((i) => i.epicId === epicId);
 }
 
 export function chatsForIssue(issueId: number): ChatRow[] {
-  return state.chats.filter((c) => c.issueId === issueId);
+  const chats = Array.isArray(state?.chats) ? state.chats : [];
+  return chats.filter((c) => c.issueId === issueId);
 }
 
 export function chatsForEpic(epicId: number): ChatRow[] {
-  // Chats directly on the epic (no issue) OR chats on any of the epic's issues
+  const chats = Array.isArray(state?.chats) ? state.chats : [];
   const issueIds = new Set(issuesForEpic(epicId).map((i) => i.id));
-  return state.chats.filter(
+  return chats.filter(
     (c) => c.epicId === epicId || (c.issueId !== null && issueIds.has(c.issueId)),
   );
 }
 
 export function unlinkedChats(): ChatRow[] {
-  return state.chats.filter(
+  const chats = Array.isArray(state?.chats) ? state.chats : [];
+  return chats.filter(
     (c) => c.issueId === null && c.epicId === null && !c.category,
   );
 }

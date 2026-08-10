@@ -145,8 +145,11 @@ function InProgressWorkPillDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const inProgressEpics = state.epics.filter((e) => e.status === "in_progress");
-  const inProgressIssues = state.issues.filter((i) => i.status === "in_progress");
+  const epics = Array.isArray(state?.epics) ? state.epics : [];
+  const issues = Array.isArray(state?.issues) ? state.issues : [];
+
+  const inProgressEpics = epics.filter((e) => e.status === "in_progress");
+  const inProgressIssues = issues.filter((i) => i.status === "in_progress");
   const totalCount = inProgressEpics.length + inProgressIssues.length;
 
   useEffect(() => {

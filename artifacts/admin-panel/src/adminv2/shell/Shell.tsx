@@ -337,12 +337,16 @@ export function NoScreen() {
   const [migrationDone, setMigrationDone] = useState<string | null>(null);
 
   const recents = state.trail.slice(0, 8);
+  const epics = Array.isArray(buildState?.epics) ? buildState.epics : [];
+  const issues = Array.isArray(buildState?.issues) ? buildState.issues : [];
+  const milestones = Array.isArray(buildState?.milestones) ? buildState.milestones : [];
+
   const unlinked = unlinkedChats().length;
-  const noEpicIssues = buildState.issues.filter((i) => i.epicId === null && i.status !== "closed" && i.status !== "done").length;
-  const inProgressEpics = buildState.epics.filter((e) => e.status === "in_progress").length;
-  const inProgressIssues = buildState.issues.filter((i) => i.status === "in_progress").length;
+  const noEpicIssues = issues.filter((i) => i.epicId === null && i.status !== "closed" && i.status !== "done").length;
+  const inProgressEpics = epics.filter((e) => e.status === "in_progress").length;
+  const inProgressIssues = issues.filter((i) => i.status === "in_progress").length;
   const inProgressTotal = inProgressEpics + inProgressIssues;
-  const activeMilestones = buildState.milestones.filter((m) => m.status !== "closed");
+  const activeMilestones = milestones.filter((m) => m.status !== "closed");
 
   const pendingMigrations = sqlState.migrations.filter((m) => !m.ranAt);
   const activeCampaigns = marketingState.campaigns.filter((c) => c.status === "active" || c.status === "draft");
