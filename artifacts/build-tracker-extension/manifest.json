@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Build Tracker Chat Sync",
+  "version": "1.0.0",
+  "description": "Sends the Claude chat you're on (conversation ID + title) to your Build Tracker's ingest endpoint, so it shows up ready to link instead of a bare ID you have to paste in by hand.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/chat/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"],
+  "optional_host_permissions": ["<all_urls>"],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

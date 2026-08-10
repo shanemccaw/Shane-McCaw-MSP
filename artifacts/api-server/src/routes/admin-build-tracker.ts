@@ -515,23 +515,36 @@ router.post("/admin/build-tracker/chats", requireAdmin, async (req: Request, res
  * POST /admin/build-tracker/chats/ingest
  *
  * Browser-extension webhook. Payload:
- *   { "conversation_id": "13e012ad-5aa8-401a-9905-dcb0ec545147" }
+ *   { "conversation_id": "13e012ad-5aa8-401a-9905-dcb0ec545147", "title"?: "..." }
  *
- * Creates a stub chat record (title = conversation_id, unlinked). If the
- * conversation_id already exists, returns the existing record with 200 so
- * the extension can call it idempotently on every page load.
+ * `title` is optional and meant to be `document.title` read straight off the
+ * live claude.ai tab by the extension — there's no server-side way to get a
+ * conversation's real title (claude.ai has no public API for it, and a plain
+ * HTTP GET on the chat URL 403s without the user's session cookie anyway,
+ * confirmed directly rather than assumed). The extension is the one place
+ * that's already inside an authenticated, JS-rendered page, so it's the only
+ * realistic source for this.
+ *
+ * Creates a stub chat record (title = given title, or conversation_id if
+ * none was sent) if the conversation_id is new. If it already exists: a
+ * non-empty title is applied ONLY when the stored title still equals the
+ * conversation_id (i.e. nobody has renamed it since) — never overwrites a
+ * title Shane already edited by hand. Always returns 200 with the current
+ * record either way, so the extension can call it idempotently on every page
+ * load/title change without needing to track what it already sent.
  *
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id } = req.body as { conversation_id?: string };
+  const { conversation_id, title } = req.body as { conversation_id?: string; title?: string };
   if (!conversation_id?.trim()) {
     res.status(400).json({ error: "conversation_id is required" });
     return;
   }
   const id = conversation_id.trim();
+  const incomingTitle = title?.trim() || null;
   try {
-    // Upsert: if already exists return it, otherwise insert stub.
+    // Upsert: if already exists, maybe backfill its title; otherwise insert stub.
     const existing = await db
       .select()
       .from(btChatsTable)
@@ -539,18 +552,27 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
       .limit(1);
 
     if (existing.length > 0) {
-      const row = existing[0];
-      log.debug({ conversationId: id }, "ingest: already exists");
+      let row = existing[0];
+      if (incomingTitle && row.title === row.conversationId) {
+        [row] = await db
+          .update(btChatsTable)
+          .set({ title: incomingTitle, updatedAt: new Date() })
+          .where(eq(btChatsTable.id, row.id))
+          .returning();
+        log.info({ conversationId: id }, "ingest: backfilled title on existing stub");
+      } else {
+        log.debug({ conversationId: id }, "ingest: already exists");
+      }
       res.json({ ...row, claudeUrl: claudeUrl(row.conversationId), created: false });
       return;
     }
 
     const [row] = await db
       .insert(btChatsTable)
-      .values({ conversationId: id, title: id })
+      .values({ conversationId: id, title: incomingTitle ?? id })
       .returning();
 
-    log.info({ conversationId: id }, "ingest: new chat stub created");
+    log.info({ conversationId: id, hadTitle: !!incomingTitle }, "ingest: new chat stub created");
     res.status(201).json({ ...row, claudeUrl: claudeUrl(row.conversationId), created: true });
   } catch (err) {
     log.error({ err, conversationId: id }, "POST /chats/ingest failed");

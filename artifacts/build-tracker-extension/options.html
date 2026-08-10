@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Build Tracker Chat Sync — Settings</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    background: #1f1f1f;
+    color: #f3f2f1;
+    padding: 24px;
+    max-width: 480px;
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.hint { font-size: 12px; color: #a19f9d; margin: 4px 0 16px; line-height: 1.5; }
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8f8c88;
+    margin: 14px 0 4px;
+  }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 5px;
+    border: 1px solid #3b3b3b;
+    background: #292929;
+    color: #f3f2f1;
+    font-size: 13px;
+  }
+  button {
+    margin-top: 18px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 0;
+    background: #0f6cbd;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #status { margin-top: 12px; font-size: 12px; }
+  .ok { color: #7fae91; }
+  .err { color: #e57a7a; }
+</style>
+</head>
+<body>
+  <h1>Build Tracker Chat Sync</h1>
+  <p class="hint">
+    Sends the conversation ID and title of the Claude chat you're on to your Build
+    Tracker's ingest endpoint, so it shows up ready to link instead of a bare
+    conversation ID you have to paste in yourself.
+  </p>
+
+  <label for="apiBaseUrl">API base URL</label>
+  <input id="apiBaseUrl" type="url" placeholder="https://your-app-domain.example.com" />
+
+  <label for="ingestToken">Ingest token</label>
+  <input id="ingestToken" type="password" placeholder="BUILD_TRACKER_INGEST_TOKEN value" />
+
+  <button id="save">Save &amp; grant access</button>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
