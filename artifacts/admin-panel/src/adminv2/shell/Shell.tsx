@@ -315,6 +315,12 @@ export function StartSomethingExplorer() {
   );
 }
 
+import * as sqlStore from "../screens/sql/sqlStore";
+import * as deployStore from "../screens/git/deployStore";
+import { findDeployOperation } from "../screens/git/deployOperations";
+import * as inboxStore from "../screens/inbox/inboxStore";
+import * as marketingStore from "../screens/marketing/marketingStore";
+
 /**
  * What the centre column shows when nothing is open — the bare `/adminv2`
  * root, or after closing the last doc.
@@ -322,14 +328,37 @@ export function StartSomethingExplorer() {
 export function NoScreen() {
   const { state } = useShell();
   const buildState = useSyncExternalStore(subscribe, getSnapshot);
-  const recents = state.trail.slice(0, 8);
+  const sqlState = useSyncExternalStore(sqlStore.subscribe, sqlStore.getSnapshot);
+  const deployState = useSyncExternalStore(deployStore.subscribe, deployStore.getSnapshot);
+  const inboxState = useSyncExternalStore(inboxStore.subscribe, inboxStore.getSnapshot);
+  const marketingState = useSyncExternalStore(marketingStore.subscribe, marketingStore.getSnapshot);
 
+  const [executingMigration, setExecutingMigration] = useState<string | null>(null);
+  const [migrationDone, setMigrationDone] = useState<string | null>(null);
+
+  const recents = state.trail.slice(0, 8);
   const unlinked = unlinkedChats().length;
   const noEpicIssues = buildState.issues.filter((i) => i.epicId === null && i.status !== "closed" && i.status !== "done").length;
   const inProgressEpics = buildState.epics.filter((e) => e.status === "in_progress").length;
   const inProgressIssues = buildState.issues.filter((i) => i.status === "in_progress").length;
   const inProgressTotal = inProgressEpics + inProgressIssues;
   const activeMilestones = buildState.milestones.filter((m) => m.status !== "closed");
+
+  const pendingMigrations = sqlState.migrations.filter((m) => !m.ranAt);
+  const activeCampaigns = marketingState.campaigns.filter((c) => c.status === "active" || c.status === "draft");
+
+  async function handleRunMigration(filename: string) {
+    setExecutingMigration(filename);
+    try {
+      await sqlStore.runMigrationFile(filename);
+      setMigrationDone(filename);
+      setTimeout(() => setMigrationDone(null), 3000);
+    } catch {
+      /* handled in store */
+    } finally {
+      setExecutingMigration(null);
+    }
+  }
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", justifyContent: "center", padding: "36px 24px" }}>
@@ -490,6 +519,129 @@ export function NoScreen() {
                     <span>{m.targetDate ? m.targetDate : "No date"}</span>
                   </div>
                 ))}
+              </div>
+
+              {/* SQL Script Migrations Rollup */}
+              <div
+                style={{
+                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  display: "flex", flexDirection: "column", gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>🛠️</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                      {sqlState.migrations.length} DB Migration Scripts
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "sql", screenId: "sql", label: "SQL Runner" })}
+                    style={{ background: "transparent", border: 0, padding: 0, fontSize: 11, color: ACCENT.info, fontWeight: 700, cursor: "pointer", fontFamily: FONT.sans }}
+                  >
+                    SQL Console ↗
+                  </button>
+                </div>
+
+                {sqlState.migrations.slice(0, 3).map((m) => {
+                  const isDone = migrationDone === m.filename;
+                  const isBusy = executingMigration === m.filename;
+                  return (
+                    <div key={m.filename} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, background: SURFACE.card, padding: "5px 8px", borderRadius: 4, border: `1px solid ${LINE.quiet}` }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: TEXT.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        {m.filename}
+                      </span>
+                      <button
+                        onClick={() => void handleRunMigration(m.filename)}
+                        disabled={isBusy}
+                        style={{
+                          padding: "3px 8px", borderRadius: 4, border: 0,
+                          background: isDone ? ACCENT.green : ACCENT.info,
+                          color: SURFACE.well, fontSize: 10.5, fontWeight: 700, cursor: isBusy ? "default" : "pointer",
+                          fontFamily: FONT.sans, opacity: isBusy ? 0.6 : 1, flexShrink: 0,
+                        }}
+                      >
+                        {isDone ? "✓ Executed!" : isBusy ? "Running..." : "▶ Run Script"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Git & Deploy Sync Card */}
+              <div
+                style={{
+                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>🐙</span>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                      Git & Deployment Console
+                    </span>
+                    <span style={{ fontSize: 11, color: TEXT.caption }}>
+                      1-click pull latest changes from remote
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => {
+                      const op = findDeployOperation("git-pull");
+                      if (op) deployStore.runOperation(op);
+                    }}
+                    style={{
+                      padding: "4px 8px", borderRadius: 4, border: 0,
+                      background: ACCENT.green, color: SURFACE.well, fontSize: 11, fontWeight: 700,
+                      cursor: "pointer", fontFamily: FONT.sans,
+                    }}
+                  >
+                    ⚡ Git Pull
+                  </button>
+                  <button
+                    onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "git", screenId: "git", label: "Git Console" })}
+                    style={{
+                      padding: "4px 8px", borderRadius: 4, border: `1px solid ${LINE.quiet}`,
+                      background: SURFACE.card, color: TEXT.primary, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", fontFamily: FONT.sans,
+                    }}
+                  >
+                    Git ↗
+                  </button>
+                </div>
+              </div>
+
+              {/* Inbox & Marketing Quick Rollup */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div
+                  onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "inbox", screenId: "inbox", label: "Inbox" })}
+                  style={{
+                    padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>📬</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT.primary }}>Inbox</span>
+                  </div>
+                  <span style={{ fontSize: 10.5, color: ACCENT.info, fontWeight: 700 }}>Open ↗</span>
+                </div>
+
+                <div
+                  onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "ad", screenId: "ad", label: "Marketing" })}
+                  style={{
+                    padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>📢</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT.primary }}>Marketing</span>
+                  </div>
+                  <span style={{ fontSize: 10.5, color: ACCENT.info, fontWeight: 700 }}>View ↗</span>
+                </div>
               </div>
 
             </div>
