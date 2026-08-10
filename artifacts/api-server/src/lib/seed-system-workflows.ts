@@ -2745,6 +2745,120 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Content Studio LinkedIn Dispatcher (Phase F, Git #686) ────────────────
+  {
+    name: "__system__: Content Studio LinkedIn Dispatcher",
+    description:
+      "Runs every 5 minutes. Per-record fan-out over content_posts: fan_out_query " +
+      "selects every row with status = 'scheduled' AND scheduled_for <= NOW(), firing " +
+      "one run per due post with { id, body } as the payload. Posts via the existing " +
+      "post_linkedin node (LINKEDIN_ACCESS_TOKEN/LINKEDIN_ORG_ID, UGC Posts API) — " +
+      "reused as-is, not reimplemented. On success, a sql_query node marks the row " +
+      "'posted'. On failure, the workflow engine's own retry node re-runs post_linkedin " +
+      "up to 3 times with a 60s delay between attempts (its 'error' edge target, per the " +
+      "engine's documented retry/backoff mechanism — see triggerScheduledWorkflows()'s " +
+      "doc comment and the retry node's own implementation in this file's sibling " +
+      "workflow-executor.ts); once exhausted, its 'exhausted' edge marks the row 'failed' " +
+      "and creates an operator notification, matching the DLQ/escalation pattern every " +
+      "other seeded workflow with a failure path uses (create_notification). Marking the " +
+      "row 'failed' is also what makes it stop reappearing in this same trigger's next " +
+      "fan-out — the query only ever selects 'scheduled' rows, so once status moves to " +
+      "'posted' or 'failed' the row is naturally excluded going forward. " +
+      "content_posts itself and the admin CRUD around it (create/edit/delete, never " +
+      "posting) are owned by contentStudioStore.ts / admin-content-studio.ts — this " +
+      "workflow is the only thing that ever calls LinkedIn.",
+    triggerType: "schedule",
+    cron: "*/5 * * * *",
+    triggerEnabled: true,
+    fanOutMode: "per_record",
+    fanOutQuery: "SELECT id, body FROM content_posts WHERE status = 'scheduled' AND scheduled_for <= NOW()",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Scheduled Post Due (fan-out)" },
+        },
+        {
+          id: "post",
+          type: "post_linkedin",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "post_linkedin",
+            label: "Post to LinkedIn",
+            postBody: "{{body}}",
+          },
+        },
+        {
+          id: "mark_posted",
+          type: "sql_query",
+          position: { x: 150, y: 340 },
+          data: {
+            nodeType: "sql_query",
+            label: "Mark Posted",
+            query: "UPDATE content_posts SET status = 'posted', updated_at = NOW() WHERE id = $1::int",
+            params: ["{{id}}"],
+          },
+        },
+        {
+          id: "end_ok",
+          type: "end",
+          position: { x: 150, y: 480 },
+          data: { nodeType: "end", label: "Posted" },
+        },
+        {
+          id: "retry",
+          type: "retry",
+          position: { x: 500, y: 340 },
+          data: {
+            nodeType: "retry",
+            label: "Retry LinkedIn Post",
+            maxAttempts: 3,
+            delaySeconds: 60,
+          },
+        },
+        {
+          id: "mark_failed",
+          type: "sql_query",
+          position: { x: 500, y: 480 },
+          data: {
+            nodeType: "sql_query",
+            label: "Mark Failed",
+            query: "UPDATE content_posts SET status = 'failed', updated_at = NOW() WHERE id = $1::int",
+            params: ["{{id}}"],
+          },
+        },
+        {
+          id: "notify_operator",
+          type: "create_notification",
+          position: { x: 500, y: 620 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: LinkedIn Post Failed",
+            title: "LinkedIn post #{{id}} failed after retries",
+            body: "Content Studio post {{id}} failed to publish to LinkedIn after 3 attempts. Check it in Content Studio's Queue and retry or edit it manually.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_failed",
+          type: "end",
+          position: { x: 500, y: 760 },
+          data: { nodeType: "end", label: "Failed — operator notified" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "post" },
+        { id: "e2", source: "post", target: "mark_posted" },
+        { id: "e3", source: "post", target: "retry", sourceHandle: "error" },
+        { id: "e4", source: "mark_posted", target: "end_ok" },
+        { id: "e5", source: "retry", target: "mark_failed", sourceHandle: "exhausted" },
+        { id: "e6", source: "mark_failed", target: "notify_operator" },
+        { id: "e7", source: "notify_operator", target: "end_failed" },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {

@@ -1964,6 +1964,28 @@ export const campaignAssetsTable = pgTable("campaign_assets", {
 export type InsertCampaignAsset = typeof campaignAssetsTable.$inferInsert;
 export type CampaignAsset = typeof campaignAssetsTable.$inferSelect;
 
+// Content Studio — LinkedIn post scheduling (Phase F, Git #686, epic #601).
+// Backs contentStudioStore.ts's admin-panel store: status/body/scheduledFor
+// map straight onto the `post` peek's fields, and the id round-trips as a
+// string on the client side the same way campaign ids do. engagementSnapshot
+// stays null until Community Management API access exists — nothing in this
+// phase writes it.
+export const contentPostsTable = pgTable("content_posts", {
+  id: serial("id").primaryKey(),
+  body: text("body").notNull().default(""),
+  mediaRefs: jsonb("media_refs").$type<string[]>().notNull().default([]),
+  status: text("status", { enum: ["draft", "scheduled", "posted", "failed"] }).notNull().default("draft"),
+  scheduledFor: timestamp("scheduled_for"),
+  platform: text("platform").notNull().default("linkedin"),
+  aiGenerated: boolean("ai_generated").notNull().default(false),
+  engagementSnapshot: jsonb("engagement_snapshot").$type<Record<string, unknown> | null>().default(null),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertContentPost = typeof contentPostsTable.$inferInsert;
+export type ContentPost = typeof contentPostsTable.$inferSelect;
+
 export const quizPainSignalConfigTable = pgTable("quiz_pain_signal_config", {
   id: serial("id").primaryKey(),
   quizTypePainMap: jsonb("quiz_type_pain_map").$type<Record<string, string[]>>().notNull().default({}),

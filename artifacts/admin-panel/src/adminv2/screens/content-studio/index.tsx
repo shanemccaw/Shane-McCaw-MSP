@@ -3,12 +3,15 @@
  *
  * Phase A of Git #601's build plan (posted as a comment on #601) was
  * scaffolding only (Git #681): registration, ribbon, empty-state body.
- * Phase B (Git #682) landed the `post` peek Compose opens, with in-memory
- * state in `contentStudioStore.ts`. Phase C (Git #683) landed the real Queue
- * gallery. This file now also carries Phase D (Git #684) — palette commands
- * and the Watch tab's "Failed posts" wiring. Phase E adds undo/redo, Phase F
- * the scheduling backend (a real `content_posts` table replacing the
- * in-memory store), Phase G optional in-peek AI Assist.
+ * Phase B (Git #682) landed the `post` peek Compose opens. Phase C (Git
+ * #683) landed the real Queue gallery. Phase D (Git #684) added palette
+ * commands and the Watch tab's "Failed posts" wiring. Phase E (Git #685)
+ * wrapped every mutation with undo/redo. Phase F (Git #686) swapped
+ * `contentStudioStore.ts`'s in-memory array for a real `content_posts`
+ * table and the seeded LinkedIn dispatcher workflow — every call site below
+ * that used to call the store synchronously now awaits/voids a promise, but
+ * the peek/gallery/palette/undo *shapes* are unchanged. Phase G is optional
+ * in-peek AI Assist.
  *
  * Per SHELL.md's updated Home rule (section 1): `content` owns the actions,
  * `home` gets one mirrored primary command — Compose, here — not a second
@@ -42,8 +45,9 @@ const ROUTE = "/content-studio";
 
 /** Always starts a fresh draft — Queue rows reopen an existing one via `openPeek("post", id)` instead. */
 function compose(): void {
-  const post = createDraftPost();
-  getShellApi()?.openPeek("post", post.id);
+  void createDraftPost().then((post) => {
+    if (post) getShellApi()?.openPeek("post", post.id);
+  });
 }
 
 /** First line of the body, or a stated placeholder for a still-blank draft — never an empty row name. */
@@ -197,12 +201,12 @@ registerScreen({
         tag: STATUS_LABEL[post.status],
         tagTone: STATUS_TONE[post.status],
         edits: [
-          { key: "body", label: "Body", value: post.body, area: true, mono: false, onChange: (next) => updatePostField(post.id, { body: next }) },
-          { key: "scheduledFor", label: "Scheduled for", value: post.scheduledFor, onChange: (next) => updatePostField(post.id, { scheduledFor: next }) },
+          { key: "body", label: "Body", value: post.body, area: true, mono: false, onChange: (next) => void updatePostField(post.id, { body: next }) },
+          { key: "scheduledFor", label: "Scheduled for", value: post.scheduledFor, onChange: (next) => void updatePostField(post.id, { scheduledFor: next }) },
         ],
         actions: [
-          { label: "Schedule", tone: "primary", onSelect: () => schedulePost(post.id) },
-          { label: "Delete", tone: "danger", confirm: true, onSelect: () => deletePost(post.id) },
+          { label: "Schedule", tone: "primary", onSelect: () => void schedulePost(post.id) },
+          { label: "Delete", tone: "danger", confirm: true, onSelect: () => void deletePost(post.id) },
         ],
       };
     },

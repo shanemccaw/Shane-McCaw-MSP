@@ -101,6 +101,10 @@ import { FulfillmentFetchBridge } from "./screens/fulfillment/FulfillmentFetchBr
 // Watch tab's live "waiting on you" count — see MarketingFetchBridge.tsx's
 // doc comment.
 import { MarketingFetchBridge } from "./screens/marketing/MarketingFetchBridge";
+// Same reasoning again, for the content tab's "Queue" gallery and the Watch
+// tab's live "Failed posts" count — see ContentStudioFetchBridge.tsx's doc
+// comment.
+import { ContentStudioFetchBridge } from "./screens/content-studio/ContentStudioFetchBridge";
 // Same reasoning again, for the Home tab's "Open a prompt"/"Drafts pending"
 // galleries and the synchronous `prompt` peek resolver — see
 // AiPromptsFetchBridge.tsx's doc comment.
@@ -205,6 +209,7 @@ function AdminShell() {
       <RunHistoryFetchBridge />
       <FulfillmentFetchBridge />
       <MarketingFetchBridge />
+      <ContentStudioFetchBridge />
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />
       <DocumentsFetchBridge />
