@@ -4000,6 +4000,7 @@ export type BtEpic       = typeof btEpicsTable.$inferSelect;
 export const btIssuesTable = pgTable("bt_issues", {
   id:            serial("id").primaryKey(),
   epicId:        integer("epic_id").references(() => btEpicsTable.id, { onDelete: "set null" }),
+  milestoneId:   integer("milestone_id"),
   title:         text("title").notNull(),
   description:   text("description"),
   /** backlog | in_progress | done | closed */

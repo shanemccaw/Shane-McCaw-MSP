@@ -308,6 +308,7 @@ router.get("/admin/build-tracker/issues", requireAdmin, async (req: Request, res
       .select({
         id:           btIssuesTable.id,
         epicId:       btIssuesTable.epicId,
+        milestoneId:  btIssuesTable.milestoneId,
         title:        btIssuesTable.title,
         description:  btIssuesTable.description,
         status:       btIssuesTable.status,
@@ -682,7 +683,14 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const title = ghEpic ? ghEpic.title : `Epic #${pNum}`;
       const description = ghEpic ? ghEpic.body : null;
       const status = (ghEpic && ghEpic.state === "closed") ? "closed" : "open";
-      const milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
+      
+      let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
+      if (milestoneId === null) {
+        const childWithMs = fetchedIssues.find((i) => getParentNumber(i.parent_issue_url) === pNum && i.milestone);
+        if (childWithMs?.milestone) {
+          milestoneId = childWithMs.milestone.number ?? childWithMs.milestone.id;
+        }
+      }
 
       await db.insert(btEpicsTable).values({
         title,
@@ -714,12 +722,14 @@ router.post("/admin/build-tracker/github-sync", requireAdmin, async (_req: Reque
       const epicId = parentNum !== null ? (epicIdByGithubNumber.get(parentNum) ?? null) : null;
       const issueStatus: GhIssueStatus = gh.state === "closed" ? "closed" : "backlog";
       const labels = gh.labels.map((l) => l.name);
+      const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
 
       await db.insert(btIssuesTable).values({
         title: gh.title,
         description: gh.body,
         status: issueStatus,
         epicId,
+        milestoneId: issueMilestoneId,
         githubNumber: gh.number,
         githubUrl: gh.html_url,
         labels,

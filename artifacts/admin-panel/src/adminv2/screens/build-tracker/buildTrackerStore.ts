@@ -110,10 +110,12 @@ export function milestoneById(id: string | number): MilestoneRow | undefined {
 
 export function epicsForMilestone(milestoneId: number): EpicRow[] {
   const m = milestoneById(milestoneId);
+  const msNum = m?.githubNumber ?? milestoneId;
   return state.epics.filter(
     (e) =>
       e.milestoneId === milestoneId ||
-      (m && m.githubNumber !== null && m.githubNumber !== undefined && e.milestoneId === m.githubNumber)
+      (m && m.githubNumber !== null && m.githubNumber !== undefined && (e.milestoneId === m.githubNumber || String(e.milestoneId) === String(m.githubNumber))) ||
+      state.issues.some((i) => i.epicId === e.id && (i.milestoneId === milestoneId || i.milestoneId === msNum))
   );
 }
 
