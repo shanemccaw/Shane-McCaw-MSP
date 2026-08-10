@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import type { ChapterDatum } from "./chapterData";
 import { useParallax, useReveal } from "./useScrollFx";
+import { Button } from "./dsComponents";
 
 /** How far down the viewport the line sits that decides which chapter "owns" the
  * stage. Slightly above centre so the wordmark changes as a section's heading
@@ -302,6 +303,16 @@ export function PillarChapter({
             <p style={{ fontSize: 15, lineHeight: 1.65, color: "#cbd5e1", margin: 0, fontStyle: "italic" }}>{chapter.quote}</p>
           </div>
         )}
+
+        {/* #667: Clarity heatmap showed visitors bailing right around here (33%
+            scroll depth, hottest at Licensing) with no low-friction path forward
+            until the far-later #assessment section. Same anchor-to-#assessment
+            mechanism as the header's "Get Your Real Score" button. */}
+        <div style={{ marginTop: 28 }}>
+          <Button as="a" href="#assessment" size="sm">
+            Run your scan for {chapter.name}
+          </Button>
+        </div>
       </div>
     </article>
   );
