@@ -48,21 +48,28 @@ const editorSurfaceTheme = EditorView.theme(
   {
     "&": { backgroundColor: SURFACE.app, height: "100%" },
     ".cm-scroller": { fontFamily: FONT.mono, fontSize: "12.5px" },
-    ".cm-content": { backgroundColor: SURFACE.app, caretColor: "#fff" },
+    // No backgroundColor here, on purpose — see the note below. `&`'s own
+    // background already shows through `.cm-content` (which paints nothing
+    // of its own by default), so this still isn't a white box.
+    ".cm-content": { caretColor: "#fff" },
     ".cm-gutters": { backgroundColor: SURFACE.app, borderRight: `1px solid ${LINE.subtle}`, color: TEXT.faintest },
     ".cm-activeLine": { backgroundColor: "rgba(255,255,255,.03)" },
     ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,.03)" },
-    // oneDark's own selection color reads as near-invisible against this
-    // theme's darker `.cm-content` background. oneDark paints selection
-    // through THREE different paths depending on focus/drawSelection state —
-    // the drawn overlay (`.cm-selectionBackground`, both the plain and the
-    // focused-nested-under-`.cm-selectionLayer` form) *and* the browser's
-    // native `::selection` pseudo-element — so all three need overriding
-    // together, matching oneDark's own selector exactly, or whichever path
-    // is actually live falls through to its barely-visible default.
-    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-      backgroundColor: `${ACCENT.info}4d !important`,
-    },
+    // The actual reason selection stayed invisible through two color-only
+    // fix attempts: CodeMirror's selection/cursor layers (`.cm-selectionLayer`,
+    // `.cm-cursorLayer`) are DOM siblings of `.cm-content` appended straight
+    // to `.cm-scroller` with a NEGATIVE z-index (`@codemirror/view`'s
+    // `LayerView` — layer.above is false for selection, so it sinks behind
+    // everything else in the stacking context `.cm-scroller` establishes),
+    // deliberately so the highlight paints *behind* the text glyphs. That
+    // only works when `.cm-content` itself has no background of its own —
+    // giving it one (as this override used to, redundantly matching `&`'s
+    // background) paints an opaque layer ABOVE those negative-z-index layers,
+    // fully hiding the selection rectangle no matter what color it was set
+    // to. No color override was ever going to fix that — the fix is not
+    // painting over the layer in the first place.
+    ".cm-selectionBackground": { backgroundColor: `${ACCENT.info}4d` },
+    "&.cm-focused .cm-selectionBackground": { backgroundColor: `${ACCENT.info}66` },
     ".cm-tooltip, .cm-tooltip-autocomplete": { backgroundColor: SURFACE.overlay, border: `1px solid ${LINE.control}` },
     ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: SURFACE.wellHover },
   },
