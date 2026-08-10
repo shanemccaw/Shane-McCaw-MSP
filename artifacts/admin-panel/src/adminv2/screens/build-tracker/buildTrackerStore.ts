@@ -511,15 +511,15 @@ export function selectMilestone(id: number | null) {
 }
 
 export function selectEpic(id: number | null) {
-  set({ selectedEpicId: id, selectedIssueId: null, selectedChatId: null, triageActive: false });
+  set({ selectedEpicId: id, selectedMilestoneId: null, selectedIssueId: null, selectedChatId: null, triageActive: false });
 }
 
 export function selectIssue(id: number | null) {
-  set({ selectedIssueId: id, selectedChatId: null, triageActive: false });
+  set({ selectedIssueId: id, selectedMilestoneId: null, selectedChatId: null, triageActive: false });
 }
 
 export function selectChat(id: number | null) {
-  set({ selectedChatId: id, triageActive: false });
+  set({ selectedChatId: id, selectedMilestoneId: null, triageActive: false });
 }
 
 export function setTriageActive(active: boolean) {

@@ -3,10 +3,15 @@
  *
  * What's shown depends on what's selected in the explorer:
  *   • Nothing selected   → Dashboard (summary counts)
+ *   • Milestone selected → Milestone detail (description + assigned epics + velocity estimate)
  *   • Epic selected      → Epic detail (description + issue list)
  *   • Issue selected     → Issue detail — Claude chats AT THE TOP as clickable chips,
  *                          then description, labels, status, GitHub link
  *   • Chat selected      → redirects back to issue or shows standalone chat detail
+ *
+ * The four selectedXId fields are mutually exclusive — selecting one clears
+ * the other three (see selectMilestone/selectEpic/selectIssue/selectChat in
+ * buildTrackerStore.ts) so this dispatch order only matters as a fallback.
  */
 
 import { useSyncExternalStore, useState } from "react";
@@ -19,11 +24,11 @@ import { ACCENT, FONT, LINE, METRICS, SURFACE, TEXT } from "../../theme";
 import { getShellApi } from "../../shell/ShellContext";
 import {
   getSnapshot, subscribe,
-  epicById, issueById, chatById,
-  issuesForEpic, chatsForIssue, chatsForEpic,
+  epicById, issueById, chatById, milestoneById,
+  issuesForEpic, chatsForIssue, chatsForEpic, epicsForMilestone,
   unlinkedChats, loadAll, createIssue, createChat,
-  cycleIssueStatus, deleteIssue, deleteEpic, deleteChat,
-  selectIssue, selectEpic, updateIssue, setTriageActive, syncFromGitHub,
+  cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
+  selectIssue, selectEpic, selectMilestone, updateIssue, setTriageActive, syncFromGitHub,
   estimateMilestoneHours, formatIssueAge, togglePollingGitHub, issueIsBlocked,
 } from "./buildTrackerStore";
 import {
@@ -33,6 +38,7 @@ import {
 } from "./buildTrackerTypes";
 import type { ChatRow, IssueRow } from "./buildTrackerTypes";
 import { PasteImportModal } from "./BuildTrackerPasteImport";
+import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL } from "../project-management/ProjectManagementBody";
 
 function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -449,6 +455,99 @@ function FormattedDescription({ text }: { text: string }) {
           {nonBlank.slice(1).join("\n\n")}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Milestone detail ──────────────────────────────────────────────────────────
+
+function MilestoneDetail({ id }: { id: number }) {
+  const milestone = milestoneById(id);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (!milestone) return null;
+  const milestoneId = milestone.id;
+  const epics = epicsForMilestone(milestoneId);
+  const est = estimateMilestoneHours(milestoneId);
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1000, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: TEXT.caption }}>Milestone</p>
+            <StatusPill label={MILESTONE_STATUS_LABEL[milestone.status]} color={MILESTONE_STATUS_COLOR[milestone.status]} />
+            {milestone.githubNumber && (
+              <a href={`https://github.com/shanemccaw/Shane-McCaw-MSP/milestone/${milestone.githubNumber}`} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 11, color: ACCENT.info, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                <ExternalLink size={11} /> #{milestone.githubNumber}
+              </a>
+            )}
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: TEXT.bright }}>{milestone.title}</h1>
+        </div>
+      </div>
+
+      {/* Two Column Layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "start" }}>
+        {/* Left Column: Description, Epics, Delete button */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {milestone.description && <FormattedDescription text={milestone.description} />}
+
+          <Section title={`Epics (${epics.length})`}>
+            {epics.length === 0 ? (
+              <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No epics assigned yet</p>
+            ) : (
+              epics.map((epic) => (
+                <button
+                  key={epic.id}
+                  onClick={() => selectEpic(epic.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                    background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                    cursor: "pointer", width: "100%", textAlign: "left",
+                    fontFamily: FONT.sans,
+                    transition: "border-color 150ms",
+                    marginBottom: 6,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+                >
+                  <GitBranch size={13} color={EPIC_STATUS_COLOR[epic.status]} style={{ flex: "none" }} />
+                  <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}
+                  </span>
+                  <StatusPill label={EPIC_STATUS_LABEL[epic.status]} color={EPIC_STATUS_COLOR[epic.status]} />
+                </button>
+              ))
+            )}
+          </Section>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <ActionBtn
+              danger
+              onClick={() => {
+                if (confirmDelete) void deleteMilestone(milestoneId);
+                else setConfirmDelete(true);
+              }}
+            >
+              {confirmDelete ? "Delete — press again" : "Delete Milestone"}
+            </ActionBtn>
+          </div>
+        </div>
+
+        {/* Right Column: Estimate */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <Section title="Velocity Estimate">
+            <div style={{ padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.quiet}`, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
+                {est.totalDays} Days ({est.totalHours} hours)
+              </div>
+              <span style={{ fontSize: 11, color: TEXT.quiet }}>{est.openIssues} open issue(s) remaining</span>
+            </div>
+          </Section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1086,5 +1185,6 @@ export function BuildTrackerBody() {
   }
   if (state.selectedIssueId !== null) return <IssueDetail id={state.selectedIssueId} />;
   if (state.selectedEpicId !== null) return <EpicDetail id={state.selectedEpicId} />;
+  if (state.selectedMilestoneId !== null) return <MilestoneDetail id={state.selectedMilestoneId} />;
   return <Dashboard />;
 }
