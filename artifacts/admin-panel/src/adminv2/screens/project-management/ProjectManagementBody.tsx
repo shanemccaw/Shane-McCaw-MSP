@@ -160,14 +160,24 @@ function MilestoneCard({
         <span>{epics.length} Epics • {percent}% done</span>
       </div>
 
-      {/* Progress Bar */}
-      <div style={{ height: 4, background: SURFACE.well, borderRadius: 2, overflow: "hidden" }}>
-        <div style={{
-          height: "100%",
-          background: percent === 100 ? ACCENT.greenSoft : ACCENT.info,
-          width: `${percent}%`,
-          transition: "width 200ms ease",
-        }} />
+      {/* Bubble progress — one clickable bubble per epic, not an aggregate fill bar. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {epics.map((ep) => {
+          const bubbleStatus = epicBubbleStatus(ep);
+          return (
+            <button
+              key={ep.id}
+              onClick={(e) => { e.stopPropagation(); selectEpic(ep.id); }}
+              title={`${ep.title} — ${BUBBLE_LABEL[bubbleStatus]}`}
+              style={{
+                width: 12, height: 12, borderRadius: "50%", flex: "none",
+                border: 0, padding: 0, cursor: "pointer",
+                background: BUBBLE_COLOR[bubbleStatus],
+                boxShadow: bubbleStatus === "blocked" ? `0 0 0 2px ${BUBBLE_COLOR[bubbleStatus]}35` : "none",
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );

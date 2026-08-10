@@ -494,6 +494,8 @@ export function BuildTrackerExplorer() {
   const [showClosed, setShowClosed] = useState(false);
   const [search, setSearch] = useState("");
   const query = search.trim().toLowerCase();
+  const [milestonesOpen, setMilestonesOpen] = useState(true);
+  const [unassignedOpen, setUnassignedOpen] = useState(true);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   // Select directly rather than relying only on openDoc()'s navigate-to-
@@ -758,10 +760,21 @@ export function BuildTrackerExplorer() {
         {/* Milestones Vertical Timeline */}
         {visibleMilestones.length > 0 && (
           <div style={{ marginBottom: 8 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: ACCENT.amber, textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 4px", margin: "0 0 6px", display: "flex", alignItems: "center", gap: 4 }}>
-              <Flag size={11} color={ACCENT.amber} /> Milestones ({visibleMilestones.length})
-            </p>
-            {visibleMilestones.map((m) => (
+            <button
+              onClick={() => setMilestonesOpen((o) => !o)}
+              style={{
+                display: "flex", alignItems: "center", gap: 4, width: "100%",
+                background: "transparent", border: 0, cursor: "pointer",
+                padding: "0 4px", margin: "0 0 6px", fontFamily: FONT.sans,
+              }}
+            >
+              {milestonesOpen ? <ChevronDown size={11} color={ACCENT.amber} /> : <ChevronRight size={11} color={ACCENT.amber} />}
+              <Flag size={11} color={ACCENT.amber} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: ACCENT.amber, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Milestones ({visibleMilestones.length})
+              </span>
+            </button>
+            {milestonesOpen && visibleMilestones.map((m) => (
               <MilestoneNode
                 key={m.id}
                 milestone={m}
@@ -788,11 +801,21 @@ export function BuildTrackerExplorer() {
         {visibleEpics.length > 0 && (
           <div style={{ marginTop: 4 }}>
             {visibleMilestones.length > 0 && (
-              <p style={{ fontSize: 10, fontWeight: 700, color: TEXT.caption, textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 4px", margin: "0 0 4px" }}>
-                Unassigned Epics ({visibleEpics.length})
-              </p>
+              <button
+                onClick={() => setUnassignedOpen((o) => !o)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4, width: "100%",
+                  background: "transparent", border: 0, cursor: "pointer",
+                  padding: "0 4px", margin: "0 0 4px", fontFamily: FONT.sans,
+                }}
+              >
+                {unassignedOpen ? <ChevronDown size={10} color={TEXT.caption} /> : <ChevronRight size={10} color={TEXT.caption} />}
+                <span style={{ fontSize: 10, fontWeight: 700, color: TEXT.caption, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Unassigned Epics ({visibleEpics.length})
+                </span>
+              </button>
             )}
-            {visibleEpics.map((e) => (
+            {(unassignedOpen || visibleMilestones.length === 0) && visibleEpics.map((e) => (
               <EpicNode
                 key={`${e.id}:${query ? "s" : "n"}`}
                 epic={e}
