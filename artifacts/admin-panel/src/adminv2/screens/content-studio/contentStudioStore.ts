@@ -40,6 +40,17 @@ export const STATUS_TONE: Record<PostStatus, string> = {
   failed: ACCENT.danger,
 };
 
+/** The Queue gallery's row tile for a status with no scheduled-time fragment to show instead — see `index.tsx`'s `tileFor`. */
+export const STATUS_CODE: Record<PostStatus, string> = {
+  draft: "DFT",
+  scheduled: "SCH",
+  posted: "PST",
+  failed: "FLD",
+};
+
+/** Draft → Scheduled → Posted → Failed — the Queue gallery's fixed band order (`index.tsx`'s `contentQueueRows`). */
+export const STATUS_ORDER: PostStatus[] = ["draft", "scheduled", "posted", "failed"];
+
 interface ContentStudioState {
   posts: Post[];
 }
