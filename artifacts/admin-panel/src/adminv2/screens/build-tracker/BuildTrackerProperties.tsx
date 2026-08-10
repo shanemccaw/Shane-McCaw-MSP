@@ -220,6 +220,7 @@ function IssueProperties({ id }: { id: number }) {
   const [title, setTitle] = useState(issue?.title ?? "");
   const [desc, setDesc]   = useState(issue?.description ?? "");
   const [modalOpen, setModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const saving = state.savingIds.has(`issue:${id}`);
 
   if (!issue) return null;
@@ -238,7 +239,8 @@ ${issue.description || "No description provided."}
 Please find the relevant files, analyze the requirements, and suggest a clear implementation plan.`;
 
     navigator.clipboard.writeText(prose);
-    alert("Copied Claude research prompt to clipboard!");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   const ageStr = formatIssueAge(issue.createdAt, issue.closedAt);
@@ -270,12 +272,15 @@ Please find the relevant files, analyze the requirements, and suggest a clear im
           <button
             onClick={handleCopyProse}
             style={{
-              padding: "3px 6px", borderRadius: 4, border: `1px solid ${ACCENT.amber}40`,
-              background: `${ACCENT.amber}15`, color: ACCENT.amber, fontSize: 10,
-              cursor: "pointer", fontFamily: FONT.sans, fontWeight: 700,
+              padding: "3px 6px", borderRadius: 4,
+              border: `1px solid ${copied ? ACCENT.green : ACCENT.amber}40`,
+              background: `${copied ? ACCENT.green : ACCENT.amber}15`,
+              color: copied ? ACCENT.green : ACCENT.amber,
+              fontSize: 10, cursor: "pointer", fontFamily: FONT.sans, fontWeight: 700,
+              transition: "all 150ms ease",
             }}
           >
-            📋 Copy Claude research prompt
+            {copied ? "✓ Copied to clipboard!" : "📋 Copy Claude research prompt"}
           </button>
         </div>
         <input
