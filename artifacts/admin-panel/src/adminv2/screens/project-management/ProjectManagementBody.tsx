@@ -438,7 +438,14 @@ function MilestoneCard({
 
 // ── Interactive Gantt Chart ───────────────────────────────────────────────────
 
-function GanttChart({
+/**
+ * Also reused by `BuildTrackerBody.tsx`'s `MilestoneDetail` — Shane asked for
+ * a milestone's own page to be "basically like the Milestones & Roadmap now
+ * with a Gantt etc, scoped to that one milestone," and `focusedMilestoneId`
+ * already does exactly that scoping, so this is the same component rather
+ * than a second Gantt implementation to keep in sync.
+ */
+export function GanttChart({
   focusedMilestoneId,
   onSelectMilestone,
 }: {

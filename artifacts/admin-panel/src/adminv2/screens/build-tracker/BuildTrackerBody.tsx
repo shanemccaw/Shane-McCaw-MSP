@@ -25,7 +25,7 @@ import { getShellApi } from "../../shell/ShellContext";
 import {
   getSnapshot, subscribe,
   epicById, issueById, chatById, milestoneById,
-  issuesForEpic, chatsForIssue, chatsForEpic, epicsForMilestone,
+  issuesForEpic, chatsForIssue, chatsForEpic, chatsForEpicWithFallback, epicsForMilestone,
   unlinkedChats, loadAll, createIssue, createChat,
   cycleIssueStatus, deleteIssue, deleteEpic, deleteChat, deleteMilestone,
   selectIssue, selectEpic, selectMilestone, selectChat, updateIssue, updateChat, setTriageActive, syncFromGitHub,
@@ -40,7 +40,7 @@ import {
 import type { ChatRow, EpicRow, IssueRow } from "./buildTrackerTypes";
 import { PasteImportModal } from "./BuildTrackerPasteImport";
 import { IterationAssignModal } from "./BuildTrackerIterationAssign";
-import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL } from "../project-management/ProjectManagementBody";
+import { STATUS_COLOR as MILESTONE_STATUS_COLOR, STATUS_LABEL as MILESTONE_STATUS_LABEL, GanttChart } from "../project-management/ProjectManagementBody";
 
 function useStore() {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -548,6 +548,10 @@ function MilestoneDetail({ id }: { id: number }) {
         </div>
       </div>
 
+      {/* Gantt & Roadmap, scoped to just this milestone — the same component
+          /project-management shows for everything, focused down to one row. */}
+      <GanttChart focusedMilestoneId={milestoneId} onSelectMilestone={() => {}} />
+
       {/* Two Column Layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "start" }}>
         {/* Left Column: Description, Epics, Delete button */}
@@ -558,28 +562,39 @@ function MilestoneDetail({ id }: { id: number }) {
             {epics.length === 0 ? (
               <p style={{ fontSize: 12, color: TEXT.dim, margin: 0 }}>No epics assigned yet</p>
             ) : (
-              epics.map((epic) => (
-                <button
-                  key={epic.id}
-                  onClick={() => selectEpic(epic.id)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                    background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
-                    cursor: "pointer", width: "100%", textAlign: "left",
-                    fontFamily: FONT.sans,
-                    transition: "border-color 150ms",
-                    marginBottom: 6,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
-                >
-                  <GitBranch size={13} color={EPIC_STATUS_COLOR[epic.status]} style={{ flex: "none" }} />
-                  <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}
-                  </span>
-                  <StatusPill label={EPIC_STATUS_LABEL[epic.status]} color={EPIC_STATUS_COLOR[epic.status]} />
-                </button>
-              ))
+              epics.map((epic) => {
+                // Shane creates one chat per Epic — falls back to the
+                // milestone's own pooled chats only if this epic has none of
+                // its own directly linked (chatsForEpicWithFallback).
+                const epicChats = chatsForEpicWithFallback(epic);
+                return (
+                  <div key={epic.id} style={{ marginBottom: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button
+                      onClick={() => selectEpic(epic.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                        background: SURFACE.card, borderRadius: 6, border: `1px solid ${LINE.quiet}`,
+                        cursor: "pointer", width: "100%", textAlign: "left",
+                        fontFamily: FONT.sans,
+                        transition: "border-color 150ms",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT.amber; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE.quiet; }}
+                    >
+                      <GitBranch size={13} color={EPIC_STATUS_COLOR[epic.status]} style={{ flex: "none" }} />
+                      <span style={{ flex: 1, fontSize: 13, color: TEXT.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {epic.githubNumber ? `#${epic.githubNumber} ` : ""}{epic.title}
+                      </span>
+                      <StatusPill label={EPIC_STATUS_LABEL[epic.status]} color={EPIC_STATUS_COLOR[epic.status]} />
+                    </button>
+                    {epicChats.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 22 }}>
+                        {epicChats.map((c) => <ChatOpenChip key={c.id} chat={c} />)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </Section>
 
