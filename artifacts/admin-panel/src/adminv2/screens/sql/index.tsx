@@ -32,7 +32,7 @@
  * past due.
  */
 
-import { AlertTriangle, CheckCheck, Copy, Database, FileJson, FileWarning, Layers, Play, Plus, Table2, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCheck, Copy, Database, FileJson, FileWarning, Layers, Play, Plus, Table2, Terminal, Trash2 } from "lucide-react";
 import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
@@ -45,6 +45,7 @@ import {
   duplicateScript,
   getSnapshot,
   markMigrationAsRan,
+  openFloatingSql,
   patchScript,
   runMigrationFile,
   runQueryText,
@@ -147,6 +148,13 @@ registerScreen({
         ],
         small: [
           { label: "New query", icon: Plus, intent: "create", onSelect: newQuery },
+          {
+            label: "Floating console",
+            icon: Terminal,
+            intent: "open",
+            onSelect: openFloatingSql,
+            title: "Run a quick query from anywhere, without opening the SQL Runner screen",
+          },
           {
             label: "Migrations to run",
             icon: Layers,
@@ -388,6 +396,15 @@ registerScreen({
         sub: "Blank script in the SQL Runner",
         area: "sql",
         run: newQuery,
+      },
+      {
+        id: "act:sql-floating-console",
+        type: "action",
+        kind: "run",
+        name: "Open the SQL Console",
+        sub: "Run a quick query from anywhere, without opening the SQL Runner screen",
+        area: "sql",
+        run: openFloatingSql,
       },
     ];
 

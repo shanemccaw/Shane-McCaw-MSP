@@ -30,7 +30,7 @@ import {
   updateSqlScript,
   type SqlScriptInput,
 } from "./sqlApi";
-import { EMPTY_SQL_OUTPUT, type MigrationFile, type SavedScript, type SchemaTable, type SqlOutput } from "./sqlTypes";
+import { EMPTY_SQL_OUTPUT, type MigrationFile, type SavedScript, type SchemaTable, type SqlOutput, type SqlStatementResult } from "./sqlTypes";
 // The "run" tab's Auto copy group needs its toggle/format buttons to update
 // the instant you click them, not on the next incidental ribbon re-render —
 // see that file's doc comment. `screens/money/moneyStore.ts` is the other
@@ -43,6 +43,26 @@ import { setLiveRibbonValue } from "../../shell/liveRibbon";
 import { runHistoryChanged } from "../run-history/runHistoryStore";
 
 export type ResultView = "table" | "json";
+
+export type FloatingSqlStatus = "running" | "ok" | "failed";
+
+/**
+ * One run made from the floating SQL console — its own lightweight
+ * transcript, same shape/purpose as `deployStore.ts`'s `DeployTranscriptEntry`
+ * for the floating Deploy Console. Deliberately not the same thing as
+ * `SqlStoreState.output` (the docked editor's *last* run only) — the floating
+ * console can run several queries in a row without ever opening a doc, and
+ * wants to show all of them, the same way the Deploy Console's own floating
+ * transcript does.
+ */
+export interface FloatingSqlEntry {
+  id: string;
+  query: string;
+  status: FloatingSqlStatus;
+  statements: SqlStatementResult[] | null;
+  error: string | null;
+  startedAt: number;
+}
 
 export interface SqlStoreState {
   scripts: SavedScript[];
@@ -73,6 +93,11 @@ export interface SqlStoreState {
   saving: boolean;
   deletingId: number | null;
   lastMessage: string | null;
+
+  /** The floating quick-query console — see `FloatingSqlConsole.tsx`'s doc comment. */
+  floatingOpen: boolean;
+  floatingInput: string;
+  floatingTranscript: FloatingSqlEntry[];
 }
 
 /** Keys this store owns in the shared live-ribbon overlay. See `screens/sql/index.tsx`'s `liveKey` usage. */
@@ -118,6 +143,10 @@ let state: SqlStoreState = {
   saving: false,
   deletingId: null,
   lastMessage: null,
+
+  floatingOpen: false,
+  floatingInput: "",
+  floatingTranscript: [],
 };
 
 const listeners = new Set<Listener>();
@@ -290,6 +319,66 @@ export function setResultView(view: ResultView): void {
   setState({ resultView: view });
 }
 
+// ── Floating quick-query console ────────────────────────────────────────────
+// Same open/close/toggle/input shape as `deployStore.ts`'s floating console —
+// a hover-anywhere way to run one query without navigating to `/sql` first.
+
+export function openFloatingSql(): void {
+  setState({ floatingOpen: true });
+}
+
+export function closeFloatingSql(): void {
+  setState({ floatingOpen: false });
+}
+
+export function toggleFloatingSql(): void {
+  setState({ floatingOpen: !state.floatingOpen });
+}
+
+export function setFloatingInput(value: string): void {
+  setState({ floatingInput: value });
+}
+
+function updateFloatingEntry(id: string, patch: Partial<FloatingSqlEntry>): void {
+  setState({ floatingTranscript: state.floatingTranscript.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+}
+
+let nextFloatingId = 0;
+
+/**
+ * Runs one query from the floating console — its own transcript, not the
+ * docked editor's single `output`/`resultView` (see `FloatingSqlEntry`'s doc
+ * comment). Still reports into Run History exactly like every other way SQL
+ * runs here (`runStatements`'s own comment on why that choke point exists),
+ * so a query fired from the floating console shows up in Run History and the
+ * sidekick the same as one run from the editor.
+ */
+export async function runFloatingQuery(queryText?: string): Promise<void> {
+  const query = (queryText ?? state.floatingInput).trim();
+  if (!query || !adminFetchRef) return;
+
+  const id = `float-${++nextFloatingId}`;
+  const entry: FloatingSqlEntry = { id, query, status: "running", statements: null, error: null, startedAt: Date.now() };
+  setState({
+    floatingOpen: true,
+    floatingInput: queryText === undefined ? "" : state.floatingInput,
+    floatingTranscript: [...state.floatingTranscript, entry],
+  });
+
+  try {
+    const statements = await executeSql(adminFetchRef, query);
+    updateFloatingEntry(id, { status: "ok", statements });
+  } catch (err) {
+    updateFloatingEntry(id, { status: "failed", error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    runHistoryChanged();
+  }
+}
+
+export function clearFloatingTranscript(): void {
+  setState({ floatingTranscript: [] });
+}
+
 function syncAutoCopyRibbon(): void {
   setLiveRibbonValue(SQL_RIBBON_KEYS.autoCopyToggle, { active: state.autoCopy });
   setLiveRibbonValue(SQL_RIBBON_KEYS.autoCopyTable, { active: state.autoCopy && state.autoCopyFormat === "table" });
@@ -418,5 +507,8 @@ export function resetSqlStore(): void {
     saving: false,
     deletingId: null,
     lastMessage: null,
+    floatingOpen: false,
+    floatingInput: "",
+    floatingTranscript: [],
   };
 }

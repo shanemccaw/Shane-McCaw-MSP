@@ -54,6 +54,7 @@ import "./screens/project-management";
 // of route"; this is a direct, documented workaround, the same shape as
 // `getShellApi()` in `ShellContext.tsx`.
 import { FloatingDeployConsole } from "./screens/git/FloatingDeployConsole";
+import { FloatingSqlConsole } from "./screens/sql/FloatingSqlConsole";
 // Same reasoning as FloatingDeployConsole, for the CRM screen's fetch bridge
 // — see CrmFetchBridge.tsx's doc comment.
 import { CrmFetchBridge } from "./screens/crm/CrmFetchBridge";
@@ -190,6 +191,7 @@ function AdminShell() {
     >
       <ActiveScreen />
       <FloatingDeployConsole />
+      <FloatingSqlConsole />
       <CrmFetchBridge />
       <AdAuthBridge />
       <MoneyFetchBridge />
