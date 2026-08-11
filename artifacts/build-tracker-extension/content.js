@@ -14,6 +14,27 @@
  * own CSP would block it); this file only extracts data and messages it over.
  */
 
+/**
+ * Every chrome.runtime.sendMessage() call in this file expects an
+ * {ok, ...} result back from background.js — but if the background
+ * service worker gets suspended/restarted, or a long-running call (a slow
+ * SQL query, a multi-minute pnpm build via the Deploy Console) outlives it,
+ * the message channel can close before any response arrives. That surfaces
+ * as an UNCAUGHT promise rejection ("the message channel closed before a
+ * response was received"), a different failure shape than the {ok:false}
+ * result every caller here already handles. This wrapper folds that
+ * rejection into the same {ok:false, error} shape so nothing has to special-
+ * case it — always use this instead of calling chrome.runtime.sendMessage
+ * directly.
+ */
+async function sendMessageSafe(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (err) {
+    return { ok: false, error: `Extension messaging failed: ${err?.message ?? String(err)}` };
+  }
+}
+
 const CONVERSATION_ID_RE = /\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 const SETTLE_DELAY_MS = 1500;
 const PLACEHOLDER_TITLES = new Set(["", "new chat", "claude"]);
@@ -47,7 +68,7 @@ function scheduleTitleSync() {
   sendTimer = setTimeout(() => {
     const title = currentSettledTitle();
     if (!title) return; // not settled yet
-    chrome.runtime.sendMessage({ type: "build-tracker-ingest", conversationId, title });
+    sendMessageSafe({ type: "build-tracker-ingest", conversationId, title });
   }, SETTLE_DELAY_MS);
 }
 
@@ -786,7 +807,7 @@ async function closeIssueAndAnnounce(issue) {
   if (issue.id == null) return;
   setSyncing(true);
   try {
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-close-issue", issueId: issue.id });
+    const res = await sendMessageSafe({ type: "build-tracker-close-issue", issueId: issue.id });
     if (!res?.ok) {
       console.warn("[Build Tracker] failed to close issue on GitHub:", res?.error);
       return;
@@ -822,7 +843,7 @@ async function reopenIssue(issue) {
   if (issue.id == null) return;
   setSyncing(true);
   try {
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-reopen-issue", issueId: issue.id });
+    const res = await sendMessageSafe({ type: "build-tracker-reopen-issue", issueId: issue.id });
     if (!res?.ok) {
       window.alert(`Couldn't reopen #${issue.githubNumber}: ${res?.error ?? "unknown error"}`);
       return;
@@ -987,7 +1008,7 @@ async function pollInFlightIssues() {
   if (numbers.length === 0) return;
   setSyncing(true);
   try {
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+    const res = await sendMessageSafe({ type: "build-tracker-quick-sync", issueNumbers: numbers });
     if (res?.ok) await loadBoard(true, true);
     // A failed background sync used to disappear silently — no error anywhere,
     // making it indistinguishable from "nothing changed yet." At least log it.
@@ -1004,7 +1025,7 @@ async function pollFocusedEpic() {
   if (!focusEpic || showAllOverride || !focusEpic.githubNumber) return;
   setSyncing(true);
   try {
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+    const res = await sendMessageSafe({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
     if (res?.ok) await loadBoard(true, true);
     else console.warn("[Build Tracker] background epic sync failed:", res?.error);
   } finally {
@@ -1025,7 +1046,7 @@ async function loadBoard(force, quiet = false) {
   }
 
   if (!quiet) list.innerHTML = `<div class="empty">Loading…</div>`;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-get-board", conversationId });
+  const res = await sendMessageSafe({ type: "build-tracker-get-board", conversationId });
   if (!res?.ok) {
     if (!quiet) list.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load — check the extension's settings.")}</div>`;
     return;
@@ -1070,7 +1091,7 @@ async function quickRefresh() {
     // "Syncing…"/"Checking N…" placeholders (Shane: "minimize flash") are
     // gone, replaced by the header's spinner + indicator.
     if (focusEpic && !showAllOverride && focusEpic.githubNumber) {
-      const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
+      const res = await sendMessageSafe({ type: "build-tracker-sync-epic", epicNumber: focusEpic.githubNumber });
       if (!res?.ok) {
         list.innerHTML = `<div class="empty">${escapeHtml(`Epic sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
         return;
@@ -1085,7 +1106,7 @@ async function quickRefresh() {
       return;
     }
 
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-quick-sync", issueNumbers: numbers });
+    const res = await sendMessageSafe({ type: "build-tracker-quick-sync", issueNumbers: numbers });
     if (!res?.ok) {
       list.innerHTML = `<div class="empty">${escapeHtml(`Quick sync failed: ${res?.error ?? "unknown error"}`)}</div>`;
       return;
@@ -1106,7 +1127,7 @@ async function fullSyncFromGithub() {
   const { list } = buildPanel();
   setSyncing(true);
   try {
-    const syncRes = await chrome.runtime.sendMessage({ type: "build-tracker-sync-github" });
+    const syncRes = await sendMessageSafe({ type: "build-tracker-sync-github" });
     if (!syncRes?.ok) {
       list.innerHTML = `<div class="empty">${escapeHtml(`Sync failed: ${syncRes?.error ?? "unknown error"}`)}</div>`;
       return;
@@ -1163,7 +1184,7 @@ function renderAlerts() {
         resyncBtn.disabled = true;
         setSyncing(true);
         try {
-          const res = await chrome.runtime.sendMessage({ type: "build-tracker-sync-epic", epicNumber: a.githubNumber });
+          const res = await sendMessageSafe({ type: "build-tracker-sync-epic", epicNumber: a.githubNumber });
           if (!res?.ok) {
             window.alert(`Couldn't resync #${a.githubNumber}: ${res?.error ?? "unknown error"}`);
             return;
@@ -1605,7 +1626,7 @@ function wireSqlRunner() {
       const query = input.value.trim();
       if (!query) return;
       output.textContent = "Running…";
-      const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-sql", query });
+      const res = await sendMessageSafe({ type: "build-tracker-run-sql", query });
       if (!res?.ok) {
         output.textContent = `Error: ${res?.error ?? "unknown error"}`;
         return;
@@ -1625,7 +1646,7 @@ function openDeployConsole() {
 async function loadDeployOps() {
   const { consoleBackdrop } = panelEls;
   const opsEl = consoleBackdrop.querySelector(".tool-ops");
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-list-deploy-ops" });
+  const res = await sendMessageSafe({ type: "build-tracker-list-deploy-ops" });
   if (!res?.ok) {
     opsEl.textContent = `Couldn't load operations: ${res?.error ?? "unknown error"}`;
     return;
@@ -1647,7 +1668,7 @@ async function runDeployAction({ operationKey, freeCommand, label }) {
   const { consoleBackdrop } = panelEls;
   const output = consoleBackdrop.querySelector(".tool-output");
   output.textContent = `Running ${label}…`;
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-run-deploy", operationKey, freeCommand });
+  const res = await sendMessageSafe({ type: "build-tracker-run-deploy", operationKey, freeCommand });
   if (!res?.ok) {
     output.textContent = `Error: ${res?.error ?? "unknown error"}`;
     return;
@@ -1675,7 +1696,7 @@ async function linkTo(target, label) {
   if (!conversationId) return;
   const { current } = panelEls;
   current.textContent = `Linking to ${label}…`;
-  const res = await chrome.runtime.sendMessage({
+  const res = await sendMessageSafe({
     type: "build-tracker-ingest",
     conversationId,
     title: currentSettledTitle() || undefined,
@@ -1775,7 +1796,7 @@ function buildIssueRow(issue, onClick) {
     const gotoBtn = document.createElement("button");
     gotoBtn.type = "button";
     gotoBtn.className = "ibtn";
-    gotoBtn.title = `Go to the chat this issue is linked to: "${linkedChat.title}"`;
+    gotoBtn.title = `Go to the linked chat: "${linkedChat.title}"`;
     gotoBtn.textContent = "💬";
     gotoBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1941,7 +1962,7 @@ async function onIssueRefHover(e) {
 
   let info = issueRefCache.get(num);
   if (!info) {
-    const res = await chrome.runtime.sendMessage({ type: "build-tracker-lookup-issue", number: Number(num) });
+    const res = await sendMessageSafe({ type: "build-tracker-lookup-issue", number: Number(num) });
     info = res?.ok ? res.result : { error: res?.error ?? "Not found" };
     issueRefCache.set(num, info);
   }
@@ -1967,9 +1988,27 @@ async function onIssueRefHover(e) {
  * just an epic match) — works even after the issue's since closed, since
  * the server resolves that against every issue, not just open ones.
  */
+/**
+ * Shane: "I am not seeing these new buttons" — because a chat almost never
+ * links to one SPECIFIC issue in practice: linking only ever happens by
+ * clicking an EPIC row (the focused view's own issue rows have no "link
+ * this chat to just this issue" action at all), so the exact-issue match
+ * this started with almost never fires. Falls back to the issue's EPIC's
+ * own linked chat — the realistic common case, not a rare exception — and
+ * picks the most recently updated one if more than one chat is linked to
+ * that epic.
+ */
 function findChatForIssueNumber(num) {
   const n = Number(num);
-  return (boardCache?.data?.chats ?? []).find((c) => c.issueGithubNumber === n) ?? null;
+  const chats = boardCache?.data?.chats ?? [];
+  const direct = chats.find((c) => c.issueGithubNumber === n);
+  if (direct) return direct;
+
+  const issue = (boardCache?.data?.issues ?? []).find((i) => i.githubNumber === n);
+  if (issue?.epicId == null) return null;
+  const epicChats = chats.filter((c) => c.epicId === issue.epicId);
+  epicChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return epicChats[0] ?? null;
 }
 
 function goToChatButtonHtml(chat) {
@@ -2032,7 +2071,7 @@ async function toggleIssueStateFromTooltip(info, num) {
   const newState = wasClosed ? "open" : "closed";
   btn.disabled = true;
   btn.textContent = "…";
-  const res = await chrome.runtime.sendMessage({ type: "build-tracker-set-issue-state", number: Number(num), state: newState });
+  const res = await sendMessageSafe({ type: "build-tracker-set-issue-state", number: Number(num), state: newState });
   if (!res?.ok) {
     btn.disabled = false;
     btn.textContent = wasClosed ? "Reopen" : "Close";
