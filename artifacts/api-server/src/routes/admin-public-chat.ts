@@ -1,10 +1,11 @@
 /**
- * Public AI Chat — admin review queue (PULL-BASED).
+ * Public AI Chat — admin review queue.
  *
- * These endpoints are how Shane reviews public-chat conversations on his own
- * schedule. This is the ONLY way a flagged conversation reaches him: he checks the
- * queue. Nothing here (or in public-chat.ts) pushes — no email, notification,
- * web-push, or SSE — by deliberate personal-safety design.
+ * This is how Shane reviews public-chat conversations — this queue is the record.
+ * Since #726/#719, a legitimate escalation also queues a real Zoho Desk ticket and
+ * fires a web-push notification (never email — see public-chat.ts's docblock), but
+ * these endpoints themselves remain read/status-update only; the queue list here is
+ * still where the actual conversation transcript lives and gets reviewed.
  *
  * Routes (all requireAdmin):
  *   GET   /api/admin/public-chat/stats

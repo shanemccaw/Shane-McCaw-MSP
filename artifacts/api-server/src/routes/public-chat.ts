@@ -14,11 +14,15 @@
  * rather than a bare string; rows written before that hold a string and are read
  * through toContentBlocks(), so no backfill or DDL was required.
  *
- * Escalation is PULL-BASED ONLY. When the assistant sees genuine purchase/service
+ * Escalation (#726, part of #719): when the assistant sees genuine purchase/service
  * intent or a real business question only Shane can answer, it flags the conversation
- * (needsReview) so it lands in an admin queue Shane reviews on his own schedule.
- * NOTHING in this route pushes — no email, no notification, no web-push, no SSE. That
- * is a deliberate personal-safety requirement; do not add a push path here.
+ * (needsReview — kept as the conversation's own audit trail, read by the admin queue)
+ * AND queues a real Zoho Desk ticket via the same enqueueEscalationTicket() job
+ * support-chat.ts's authenticated side already built (#89) — reused, not rebuilt. On
+ * ticket confirmation the job fires a web-push notification to admins (pushNotify),
+ * never an email: `notifyEmails` is always empty for this path. That stays a
+ * deliberate personal-safety requirement — this route still never emails a visitor's
+ * conversation anywhere, it only pushes a heads-up to Shane's own devices.
  *
  * This route is authenticated customers' opposite number: paying/authenticated users
  * are served by the separate portal support chat (support-chat.ts), which is out of
@@ -37,6 +41,7 @@ import {
   type PublicChatStoredMessage,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { enqueueEscalationTicket } from "../lib/zoho-desk.ts";
 import { logger } from "../lib/logger.ts";
 import {
   buildAssistantContent,
@@ -193,8 +198,9 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
   const lastUser = [...incoming].reverse().find((m) => m.role === "user");
   // The guardrail detector runs on the visitor's PLAIN TEXT — flattened from
   // whichever content shape arrived, so a block-shaped turn is screened exactly
-  // as a legacy string one was.
-  const personal = detectPersonalTopic(contentToText(lastUser?.content));
+  // as a legacy string one was. Reused below for the escalation ticket body.
+  const lastUserText = contentToText(lastUser?.content);
+  const personal = detectPersonalTopic(lastUserText);
 
   // ── Guardrail backstop (deterministic, model-independent) ───────────────────
   // If the latest user turn is about Shane personally, we NEVER call the model and
@@ -320,6 +326,41 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
         requestSummary: structured?.requestSummary ?? null,
         userAgent,
       });
+    }
+
+    // Real Zoho Desk ticket on a legitimate escalation (#726, part of #719) —
+    // fires only on the turn that actually triggered it, mirroring
+    // support-chat.ts's escalateToAdmin(): one ticket per escalation event,
+    // not a re-queue on every later message in an already-flagged
+    // conversation. A contact email is required to create the Desk contact
+    // the ticket attaches to; [FLAG_FOR_REVIEW:...] can fire on its own with
+    // no structured request captured yet (e.g. needs_shane/explicit_request
+    // with no name+email given), so one may genuinely not be on record yet —
+    // in that case the ticket is skipped and needsReview alone carries the
+    // audit trail, same as before this change.
+    if (escalateThisTurn) {
+      const contactEmail = structured?.contactEmail ?? existing?.contactEmail ?? null;
+      if (contactEmail) {
+        const contactName = structured?.contactName ?? existing?.contactName ?? undefined;
+        const title = `Public chat escalation from ${contactName ?? contactEmail}`;
+        const description = `Question: "${lastUserText.slice(0, 300)}${lastUserText.length > 300 ? "…" : ""}"\n\nAI reply: ${visibleReply.trim().slice(0, 300)}`;
+        enqueueEscalationTicket({
+          subject: title,
+          description,
+          contactEmail,
+          contactName,
+          notifyEmails: [],
+          notifySubject: title,
+          pushNotify: true,
+        }).catch((err) => {
+          log.error({ err, sessionId }, "public-chat: failed to queue Zoho Desk escalation ticket");
+        });
+      } else {
+        log.info(
+          { sessionId, reviewReason: nextReviewReason },
+          "public-chat: escalation with no contact email on record — Zoho Desk ticket skipped, needsReview flag still set",
+        );
+      }
     }
   } catch (err) {
     // Storage failure must not break the visitor's chat — log and still reply.

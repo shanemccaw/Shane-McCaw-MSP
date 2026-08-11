@@ -253,6 +253,17 @@ function requireString(payload: Record<string, unknown>, key: string, nodeType: 
 }
 
 /**
+ * Push-only signal for the public-chat escalation path (#726, part of #719).
+ * admin-public-chat.ts has no per-conversation deep-link route — its review
+ * queue (admin-panel's `ChatQueue.tsx`, mounted at `/pipeline/chat-queue` via
+ * PipelineWorkspace) is list-only, same as every other pipeline workspace
+ * page since the old per-id detail pages (e.g. `/crm/leads/:id`) were
+ * deleted. This is the closest existing admin route, not a per-conversation
+ * link — Shane finds the specific flagged conversation from the queue list.
+ */
+const PUBLIC_CHAT_REVIEW_LINK_PATH = "/pipeline/chat-queue";
+
+/**
  * zoho_desk_create_ticket's handler. Resolves (or upserts) the contact inline
  * rather than depending on a separately queued zoho_desk_upsert_contact job
  * having already run first — job execution order within a drain batch is not
@@ -269,6 +280,13 @@ function requireString(payload: Record<string, unknown>, key: string, nodeType: 
  * job exhausts its retries and lands in the DLQ, no notification email is
  * ever sent — visible only via the DLQ / error logs, same as every other
  * Zoho write's failure mode.
+ *
+ * `pushNotify: true` (set by enqueueEscalationTicket() for the public-chat
+ * escalation path only, #726/#719 — support-chat's call never sets it) fires
+ * a web-push notification instead, from this same "after the ticket is
+ * confirmed created" point, for the same reason: a real ticket reference
+ * beats a dead-end pointer. Public chat is deliberately push-only, never
+ * emailed — see public-chat.ts's own docblock.
  */
 async function handleCreateTicketJob(payload: Record<string, unknown>, mspId: number | undefined): Promise<Record<string, unknown>> {
   const departmentId =
@@ -297,18 +315,31 @@ async function handleCreateTicketJob(payload: Record<string, unknown>, mspId: nu
   const notifyEmails = Array.isArray(payload.notifyEmails)
     ? payload.notifyEmails.filter((e): e is string => typeof e === "string" && e.length > 0)
     : [];
+  const pushNotify = payload.pushNotify === true;
 
-  if (notifyEmails.length > 0) {
+  if (notifyEmails.length > 0 || pushNotify) {
     const notifySubject = typeof payload.notifySubject === "string" && payload.notifySubject ? payload.notifySubject : "Support escalation";
     const ticketRef = ticket.ticketNumber ? `ticket #${ticket.ticketNumber}` : `ticket ${ticket.zohoId}`;
-    const linkLine = ticket.webUrl
-      ? `<p><a href="${ticket.webUrl}">Open ${ticketRef} in Zoho Desk</a></p>`
-      : `<p>Open Zoho Desk and look up ${ticketRef} to respond.</p>`;
-    const html = `<p>${notifySubject}</p><p>A Zoho Desk ticket was created for this escalation.</p>${linkLine}`;
 
-    const { sendEmail } = await import("./mailer.ts");
-    for (const to of notifyEmails) {
-      void sendEmail(to, notifySubject, html, { templateName: "support-escalation" });
+    if (notifyEmails.length > 0) {
+      const linkLine = ticket.webUrl
+        ? `<p><a href="${ticket.webUrl}">Open ${ticketRef} in Zoho Desk</a></p>`
+        : `<p>Open Zoho Desk and look up ${ticketRef} to respond.</p>`;
+      const html = `<p>${notifySubject}</p><p>A Zoho Desk ticket was created for this escalation.</p>${linkLine}`;
+
+      const { sendEmail } = await import("./mailer.ts");
+      for (const to of notifyEmails) {
+        void sendEmail(to, notifySubject, html, { templateName: "support-escalation" });
+      }
+    }
+
+    if (pushNotify) {
+      const { sendWebPushToAdmins } = await import("./web-push.ts");
+      void sendWebPushToAdmins({
+        title: "New chat escalation",
+        body: `${notifySubject} — ${ticketRef}`,
+        linkPath: PUBLIC_CHAT_REVIEW_LINK_PATH,
+      });
     }
   }
 
@@ -387,12 +418,16 @@ export async function enqueueZohoDeskWrite(
 }
 
 /**
- * Support Chat escalation's sole entry point (support-chat.ts's
- * escalateToAdmin()). Queues one zoho_desk_create_ticket job carrying
- * `notifyEmails`/`notifySubject`, which handleCreateTicketJob above reads to
- * send the admin-notification email itself once the ticket is confirmed
- * created — see that function's docblock for why the email is sent from the
- * job, not from this request-path call.
+ * Support Chat escalation's entry point (support-chat.ts's
+ * escalateToAdmin()) AND Public Chat escalation's entry point
+ * (public-chat.ts, #726/#719). Queues one zoho_desk_create_ticket job
+ * carrying `notifyEmails`/`notifySubject`, which handleCreateTicketJob above
+ * reads to send the admin-notification email itself once the ticket is
+ * confirmed created — see that function's docblock for why the email is sent
+ * from the job, not from this request-path call. `pushNotify` is the same
+ * pattern for a web-push instead of an email — support-chat.ts never sets it
+ * (it stays email-only); public-chat.ts sets it with an empty `notifyEmails`
+ * (push-only, never emailed).
  */
 export interface EnqueueEscalationTicketInput {
   subject: string;
@@ -402,6 +437,7 @@ export interface EnqueueEscalationTicketInput {
   localUserId?: number;
   notifyEmails: string[];
   notifySubject: string;
+  pushNotify?: boolean;
 }
 
 export async function enqueueEscalationTicket(
