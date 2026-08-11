@@ -1291,6 +1291,34 @@ function buildQueueItemRow(item) {
     actions.appendChild(cancelBtn);
     row.appendChild(actions);
   }
+  // Git #801 — Shane: "796 is stuck in the queue even though it's done
+  // and closed." The watcher's own completion tracking is in-memory only
+  // (a Process handle per running build) - restarting the watcher throws
+  // that away for anything already `running`, orphaning the row forever
+  // since nothing is left to report its completion. Manual escape hatch,
+  // reusing the exact endpoint the watcher itself calls.
+  if (item.status === "running") {
+    const actions = document.createElement("div");
+    actions.className = "issue-actions";
+    const markDoneBtn = document.createElement("button");
+    markDoneBtn.type = "button";
+    markDoneBtn.className = "ibtn";
+    markDoneBtn.title = "Mark this done by hand — use if the watcher lost track of it (e.g. after a restart)";
+    markDoneBtn.textContent = "✓ Mark Done";
+    markDoneBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      markDoneBtn.disabled = true;
+      const res = await sendMessageSafe({ type: "build-tracker-mark-queue-item-complete", id: item.id, exitCode: 0 });
+      markDoneBtn.disabled = false;
+      if (!res?.ok) {
+        window.alert(`Couldn't mark done: ${res?.error ?? "unknown error"}`);
+        return;
+      }
+      void loadQueue(true);
+    });
+    actions.appendChild(markDoneBtn);
+    row.appendChild(actions);
+  }
   return row;
 }
 

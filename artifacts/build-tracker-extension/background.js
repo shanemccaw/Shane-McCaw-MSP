@@ -416,6 +416,38 @@ async function listQueue() {
   }
 }
 
+/**
+ * Git #801 — Shane: "796 is stuck in the queue even though it's done and
+ * closed." Root cause: build-queue-watcher.ps1 tracks completion entirely
+ * in its own in-memory Process handles - restarting the watcher (e.g. to
+ * pick up a script fix) throws that tracking away for anything already
+ * `running`, permanently orphaning the row since nothing is left to ever
+ * call /complete for it. Reuses the SAME endpoint the watcher itself calls
+ * (POST /extension/queue/:id/complete has no restriction to watcher-only
+ * callers) as a manual escape hatch for exactly this situation.
+ */
+async function markQueueItemComplete(id, exitCode) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/queue/${encodeURIComponent(id)}/complete`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ exitCode }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 async function cancelQueueItem(id) {
   const { apiBaseUrl, ingestToken } = await getConfig();
   if (!apiBaseUrl || !ingestToken) {
@@ -558,6 +590,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-cancel-queue-item") {
     void cancelQueueItem(message.id).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-mark-queue-item-complete") {
+    void markQueueItemComplete(message.id, message.exitCode).then(sendResponse);
     return true;
   }
   if (message?.type === "build-tracker-set-issue-state") {
