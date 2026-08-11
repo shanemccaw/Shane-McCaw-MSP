@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -253,21 +254,21 @@ namespace BuildConsole
 
         private Microsoft.Web.WebView2.Wpf.WebView2 GetActiveWebView()
         {
-            if (EditorTabs.SelectedItem is TabItem ti && ti.Content is Microsoft.Web.WebView2.Wpf.WebView2 wv)
+            if (EditorTabs.SelectedItem is TabItem ti)
             {
-                return wv;
+                if (ti.Content is Microsoft.Web.WebView2.Wpf.WebView2 wvDirect)
+                    return wvDirect;
+
+                if (ti.Content is Panel panel)
+                {
+                    foreach (var child in panel.Children)
+                    {
+                        if (child is Microsoft.Web.WebView2.Wpf.WebView2 wvChild)
+                            return wvChild;
+                    }
+                }
             }
             return ClaudeWebView;
-        }
-
-        private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (e.Source == EditorTabs)
-            {
-                var wv = GetActiveWebView();
-                UrlStatusText.Text = wv.Source?.ToString() ?? string.Empty;
-                UpdateZoomDisplay();
-            }
         }
 
         private void ActivityBar_QuickNavRequested(object? sender, string url)
@@ -278,15 +279,44 @@ namespace BuildConsole
                 var u when u.Contains("/portal/")      => ("Customer Portal", "\uE77B"),
                 _                                      => ("Marketing Site", "\uE774")
             };
-            OpenWebTab(title, url, glyph);
+            OpenWebTab(url, title, glyph);
         }
 
-        public void OpenWebTab(string title, string url, string glyph)
+        private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // If tab with this URL is already open, switch to it
+            if (e.Source == EditorTabs)
+            {
+                try
+                {
+                    var wv = GetActiveWebView();
+                    UrlStatusText.Text = wv.Source?.ToString() ?? string.Empty;
+                    UpdateZoomDisplay();
+                }
+                catch { }
+            }
+        }
+
+        private void LeftSidebar_StopRecordingRequested(object? sender, EventArgs e)
+        {
+            var wv = GetActiveWebView();
+            if (wv != null && wv.CoreWebView2 != null)
+            {
+                wv.ExecuteScriptAsync("window.__isRecordingUI = false;");
+            }
+        }
+
+        private void LeftSidebar_PlayTestRequested(object? sender, (string url, List<Controls.AutomationAction> steps) e)
+        {
+            var runner = new AutomationRunnerWindow(e.url, e.steps);
+            runner.Show();
+        }
+
+        public void OpenWebTab(string url, string title, string glyph)
+        {
+            // Deduplicate if already open
             foreach (TabItem item in EditorTabs.Items)
             {
-                if (item.Tag is string existingUrl && string.Equals(existingUrl, url, StringComparison.OrdinalIgnoreCase))
+                if (item.Tag is string tagUrl && string.Equals(tagUrl, url, StringComparison.OrdinalIgnoreCase))
                 {
                     EditorTabs.SelectedItem = item;
                     return;
@@ -344,11 +374,109 @@ namespace BuildConsole
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
 
+            // Browser navigation toolbar bar
+            var navBar = new Grid
+            {
+                Background = (Brush)FindResource("MantleBrush"),
+                Height = 36
+            };
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Back
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Forward
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Refresh
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // URL Address Box
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Go
+
+            var btnBack = new Button
+            {
+                Content = new TextBlock { Text = "\uE72B", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                Style = (Style)FindResource("IconButton"),
+                Width = 28, Height = 28, Margin = new Thickness(4, 4, 2, 4), ToolTip = "Back"
+            };
+            btnBack.Click += (s, e) => { if (wv.CanGoBack) wv.GoBack(); };
+
+            var btnForward = new Button
+            {
+                Content = new TextBlock { Text = "\uE72A", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                Style = (Style)FindResource("IconButton"),
+                Width = 28, Height = 28, Margin = new Thickness(0, 4, 2, 4), ToolTip = "Forward"
+            };
+            btnForward.Click += (s, e) => { if (wv.CanGoForward) wv.GoForward(); };
+
+            var btnRefresh = new Button
+            {
+                Content = new TextBlock { Text = "\uE72C", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                Style = (Style)FindResource("IconButton"),
+                Width = 28, Height = 28, Margin = new Thickness(0, 4, 6, 4), ToolTip = "Refresh"
+            };
+            btnRefresh.Click += (s, e) => wv.Reload();
+
+            var urlBox = new TextBox
+            {
+                Text = url,
+                FontSize = 12,
+                Height = 26,
+                Margin = new Thickness(0, 4, 0, 4),
+                Padding = new Thickness(8, 2, 8, 2),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource("BaseBrush"),
+                Foreground = (Brush)FindResource("TextBrush"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource("Surface0Brush")
+            };
+
+            Action navigateUrl = () =>
+            {
+                string target = urlBox.Text.Trim();
+                if (!target.StartsWith("http://") && !target.StartsWith("https://"))
+                    target = "https://" + target;
+                try { wv.Source = new Uri(target); } catch { }
+            };
+
+            urlBox.KeyDown += (s, e) =>
+            {
+                if (e.Key == System.Windows.Input.Key.Enter) navigateUrl();
+            };
+
+            var btnGo = new Button
+            {
+                Content = new TextBlock { Text = "\uE751", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                Style = (Style)FindResource("IconButton"),
+                Width = 28, Height = 28, Margin = new Thickness(4, 4, 4, 4), ToolTip = "Go to URL"
+            };
+            btnGo.Click += (s, e) => navigateUrl();
+
+            Grid.SetColumn(btnBack, 0);
+            Grid.SetColumn(btnForward, 1);
+            Grid.SetColumn(btnRefresh, 2);
+            Grid.SetColumn(urlBox, 3);
+            Grid.SetColumn(btnGo, 4);
+
+            navBar.Children.Add(btnBack);
+            navBar.Children.Add(btnForward);
+            navBar.Children.Add(btnRefresh);
+            navBar.Children.Add(urlBox);
+            navBar.Children.Add(btnGo);
+
+            wv.SourceChanged += (s, e) =>
+            {
+                urlBox.Text = wv.Source?.ToString() ?? string.Empty;
+            };
+
+            var webContainer = new Grid();
+            webContainer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            webContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            Grid.SetRow(navBar, 0);
+            Grid.SetRow(wv, 1);
+
+            webContainer.Children.Add(navBar);
+            webContainer.Children.Add(wv);
+
             var newTab = new TabItem
             {
                 Tag = url,
                 Header = headerPanel,
-                Content = wv
+                Content = webContainer
             };
 
             closeBtn.Click += (s, e) =>

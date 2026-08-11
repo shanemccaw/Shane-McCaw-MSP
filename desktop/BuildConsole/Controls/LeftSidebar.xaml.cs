@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -6,6 +7,19 @@ using System.Windows.Media;
 
 namespace BuildConsole.Controls
 {
+    public class AutomationAction
+    {
+        public int Index { get; set; }
+        public string IndexStr => $"#{Index}";
+        public string ActionType { get; set; } = "click";
+        public string ActionTypeUpper => ActionType.ToUpper();
+        public string Selector { get; set; } = string.Empty;
+        public string TagName { get; set; } = "div";
+        public string Value { get; set; } = string.Empty;
+        public Visibility ValueVisibility => string.IsNullOrEmpty(Value) ? Visibility.Collapsed : Visibility.Visible;
+        public string Timestamp { get; set; } = DateTime.Now.ToString("HH:mm:ss");
+    }
+
     public partial class LeftSidebar : UserControl
     {
         private string _currentView = "Chats";
@@ -36,6 +50,59 @@ namespace BuildConsole.Controls
             }
         }
 
+        public event EventHandler<string>? StartRecordingRequested;
+        public event EventHandler? StopRecordingRequested;
+        public event EventHandler<(string url, List<AutomationAction> steps)>? PlayTestRequested;
+
+        private bool _isRecording = false;
+        public readonly List<AutomationAction> RecordedSteps = new();
+
+        public void AddRecordedStep(string actionType, string selector, string tagName, string val)
+        {
+            var action = new AutomationAction
+            {
+                Index = RecordedSteps.Count + 1,
+                ActionType = actionType,
+                Selector = selector,
+                TagName = tagName,
+                Value = val
+            };
+            RecordedSteps.Add(action);
+            AutomationStepsList.Items.Add(action);
+        }
+
+        private void BtnRecordTest_Click(object sender, RoutedEventArgs e)
+        {
+            _isRecording = !_isRecording;
+            if (_isRecording)
+            {
+                BtnRecordTest.Content = "■ Stop";
+                RecordingBadge.Visibility = Visibility.Visible;
+                StartRecordingRequested?.Invoke(this, AutomationTargetUrl.Text);
+            }
+            else
+            {
+                BtnRecordTest.Content = "● Record";
+                RecordingBadge.Visibility = Visibility.Collapsed;
+                StopRecordingRequested?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private void BtnPlayTest_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRecording)
+            {
+                BtnRecordTest_Click(sender, e);
+            }
+            PlayTestRequested?.Invoke(this, (AutomationTargetUrl.Text, RecordedSteps));
+        }
+
+        private void BtnClearSteps_Click(object sender, RoutedEventArgs e)
+        {
+            RecordedSteps.Clear();
+            AutomationStepsList.Items.Clear();
+        }
+
         /// <summary>Returns the currently displayed view name.</summary>
         public string GetCurrentView() => _currentView;
 
@@ -43,22 +110,24 @@ namespace BuildConsole.Controls
         public void SwitchView(string view)
         {
             _currentView = view;
-            ChatsView.Visibility    = view == "Chats"    ? Visibility.Visible : Visibility.Collapsed;
-            ExplorerView.Visibility = view == "Explorer" ? Visibility.Visible : Visibility.Collapsed;
-            SearchView.Visibility   = view == "Search"   ? Visibility.Visible : Visibility.Collapsed;
-            GitView.Visibility      = view == "Git"      ? Visibility.Visible : Visibility.Collapsed;
-            SettingsView.Visibility = view == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+            ChatsView.Visibility      = view == "Chats"      ? Visibility.Visible : Visibility.Collapsed;
+            ExplorerView.Visibility   = view == "Explorer"   ? Visibility.Visible : Visibility.Collapsed;
+            SearchView.Visibility     = view == "Search"     ? Visibility.Visible : Visibility.Collapsed;
+            GitView.Visibility        = view == "Git"        ? Visibility.Visible : Visibility.Collapsed;
+            SettingsView.Visibility   = view == "Settings"   ? Visibility.Visible : Visibility.Collapsed;
+            AutomationView.Visibility = view == "Automation" ? Visibility.Visible : Visibility.Collapsed;
 
-            HeaderTitle.Text = view.ToUpperInvariant();
+            HeaderTitle.Text = view == "Automation" ? "UI AUTOMATION" : view.ToUpperInvariant();
 
             // Adjust the New button tooltip to match the active view
             BtnNewItem.ToolTip = view switch
             {
-                "Chats"    => "New Chat",
-                "Explorer" => "New File",
-                "Search"   => "Search",
-                "Git"      => "Commit",
-                _          => "New"
+                "Chats"      => "New Chat",
+                "Explorer"   => "New File",
+                "Search"     => "Search",
+                "Git"        => "Commit",
+                "Automation" => "New Test",
+                _            => "New"
             };
 
             if (view == "Explorer" && ExplorerTree.Items.Count == 0)

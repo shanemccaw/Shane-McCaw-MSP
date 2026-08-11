@@ -44,6 +44,14 @@
                     <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
 
+                <RadioButton x:Name="BtnAutomation"
+                             GroupName="ActivityBar"
+                             Style="{StaticResource ActivityBarButton}"
+                             Checked="Btn_Checked" Tag="Automation"
+                             ToolTip="UI Automation Suite">
+                    <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                </RadioButton>
+
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 

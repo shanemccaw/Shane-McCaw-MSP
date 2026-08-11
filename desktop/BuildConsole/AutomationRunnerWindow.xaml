@@ -1,0 +1,70 @@
+<Window x:Class="BuildConsole.AutomationRunnerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="⚡ UI Automation Runner — Standalone Execution"
+        Height="760" Width="1150"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BaseBrush}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/> <!-- Test Telemetry Sidebar -->
+            <ColumnDefinition Width="5"/>   <!-- Splitter -->
+            <ColumnDefinition Width="*"/>   <!-- Independent WebView2 -->
+        </Grid.ColumnDefinitions>
+
+        <!-- ── Left Telemetry Panel ── -->
+        <Border Grid.Column="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel LastChildFill="True">
+                
+                <!-- Status Header -->
+                <Border DockPanel.Dock="Top"
+                        Background="{StaticResource CrustBrush}"
+                        BorderBrush="{StaticResource Surface0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="12,10">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="⚡ TEST TELEMETRY" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock x:Name="TxtStatusBadge" Text="● READY" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                        <TextBlock x:Name="TxtTargetUrl" Text="https://..." FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Action Controls -->
+                <Border DockPanel.Dock="Top" Padding="10,8" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BtnRunAgain" Grid.Column="0" Content="▶ Re-run Test" Style="{StaticResource PrimaryButton}" Margin="0,0,4,0" Click="BtnRunAgain_Click"/>
+                        <Button x:Name="BtnClose" Grid.Column="1" Content="✕ Close" Margin="4,0,0,0" Click="BtnClose_Click"/>
+                    </Grid>
+                </Border>
+
+                <!-- Steps Progress List -->
+                <Border DockPanel.Dock="Top" Padding="10,6" Background="{StaticResource MantleBrush}">
+                    <TextBlock Text="Step Execution Telemetry" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
+                </Border>
+
+                <ScrollViewer DockPanel.Dock="Bottom" VerticalScrollBarVisibility="Auto" Padding="10,6">
+                    <StackPanel x:Name="TelemetryLogContainer"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Splitter -->
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource Surface0Brush}"/>
+
+        <!-- ── Right Test Execution WebView2 ── -->
+        <Grid Grid.Column="2">
+            <wv2:WebView2 x:Name="TestRunnerWebView"/>
+        </Grid>
+    </Grid>
+</Window>

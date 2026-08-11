@@ -307,6 +307,55 @@
                 </StackPanel>
             </Grid>
 
+            <!-- ══════════════════════════════════
+                 UI AUTOMATION VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="AutomationView" Visibility="Collapsed">
+                <DockPanel Margin="10,8">
+                    <!-- Control buttons & URL entry -->
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="Target Website URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="AutomationTargetUrl" Height="26" FontSize="12" Padding="6,3"
+                                 Text="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/"/>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnRecordTest" Grid.Column="0" Margin="0,0,4,0" Content="● Record" Style="{StaticResource PrimaryButton}" Click="BtnRecordTest_Click"/>
+                            <Button x:Name="BtnPlayTest" Grid.Column="1" Margin="4,0,0,0" Content="▶ Play Test" Click="BtnPlayTest_Click"/>
+                        </Grid>
+
+                        <Button x:Name="BtnClearSteps" Margin="0,6,0,0" Content="🗑 Clear Actions" Click="BtnClearSteps_Click"/>
+
+                        <Border x:Name="RecordingBadge" Background="#31F38BA8" CornerRadius="4" Padding="6,4" Margin="0,8,0,0" Visibility="Collapsed">
+                            <TextBlock Text="● RECORDING IN PROGRESS..." FontSize="10" FontWeight="Bold" Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Actions List -->
+                    <TextBlock DockPanel.Dock="Top" Text="Recorded Test Actions" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" Margin="0,4,0,4"/>
+
+                    <ListBox x:Name="AutomationStepsList" Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,2">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding IndexStr}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                            <TextBlock Text="{Binding ActionTypeUpper}" FontWeight="SemiBold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock Text="{Binding Selector}" FontSize="11" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Value}" FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis" Visibility="{Binding ValueVisibility}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Grid>
+
         </DockPanel>
     </Border>
 </UserControl>
