@@ -1,77 +1,310 @@
-<Window x:Class="BuildConsole.MainWindow"
+<ribbon:RibbonWindow x:Class="BuildConsole.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:BuildConsole"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:ribbon="clr-namespace:System.Windows.Controls.Ribbon;assembly=System.Windows.Controls.Ribbon"
         mc:Ignorable="d"
         Title="BuildConsole" Height="900" Width="1600"
         WindowStartupLocation="CenterScreen">
 
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <!-- Left: chats / board list (placeholder) -->
-            <ColumnDefinition Width="220" MinWidth="160" />
-            <!-- Splitter -->
-            <ColumnDefinition Width="4" />
-            <!-- Middle: Claude.ai WebView2 -->
-            <ColumnDefinition Width="*" />
-            <!-- Splitter -->
-            <ColumnDefinition Width="4" />
-            <!-- Right: build queue panel (placeholder) -->
-            <ColumnDefinition Width="300" MinWidth="200" />
-        </Grid.ColumnDefinitions>
+    <DockPanel LastChildFill="True">
 
-        <!-- ── LEFT PANEL: chats / board list placeholder ── -->
-        <Border Grid.Column="0"
-                Background="#1E1E2E"
-                BorderBrush="#313244"
-                BorderThickness="0,0,1,0">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
-                <TextBlock Text="📋"
-                           FontSize="32"
-                           HorizontalAlignment="Center" />
-                <TextBlock Text="Boards / Chats"
-                           FontSize="12"
-                           Foreground="#CDD6F4"
-                           HorizontalAlignment="Center"
-                           Margin="0,6,0,0" />
-            </StackPanel>
-        </Border>
+        <!-- ══════════════════════════════════════════════════════
+             RIBBON
+             ══════════════════════════════════════════════════════ -->
+        <ribbon:Ribbon DockPanel.Dock="Top"
+                       Title="BuildConsole">
 
-        <!-- Draggable splitter between Left and Middle -->
-        <GridSplitter Grid.Column="1"
-                      HorizontalAlignment="Stretch"
-                      Background="#313244"
-                      ShowsPreview="False" />
+            <!-- ── Application Menu (File button) ── -->
+            <ribbon:Ribbon.ApplicationMenu>
+                <ribbon:RibbonApplicationMenu SmallImageSource="{x:Null}"
+                                              KeyTip="F">
+                    <ribbon:RibbonApplicationMenuItem Header="New Session"
+                                                      KeyTip="N"
+                                                      ImageSource="{x:Null}" />
+                    <ribbon:RibbonApplicationMenuItem Header="Open Project…"
+                                                      KeyTip="O"
+                                                      ImageSource="{x:Null}" />
+                    <ribbon:RibbonSeparator />
+                    <ribbon:RibbonApplicationMenuItem Header="Settings"
+                                                      KeyTip="S"
+                                                      ImageSource="{x:Null}" />
+                    <ribbon:RibbonSeparator />
+                    <ribbon:RibbonApplicationMenuItem Header="Exit"
+                                                      KeyTip="X"
+                                                      ImageSource="{x:Null}"
+                                                      Click="MenuExit_Click" />
+                </ribbon:RibbonApplicationMenu>
+            </ribbon:Ribbon.ApplicationMenu>
 
-        <!-- ── MIDDLE PANEL: Claude.ai ── -->
-        <wv2:WebView2 x:Name="ClaudeWebView"
-                      Grid.Column="2"
-                      Source="https://claude.ai" />
+            <!-- ── Quick Access Toolbar ── -->
+            <ribbon:Ribbon.QuickAccessToolBar>
+                <ribbon:RibbonQuickAccessToolBar>
+                    <ribbon:RibbonButton x:Name="QatNavBack"
+                                         Label="Back"
+                                         KeyTip="B"
+                                         Click="NavBack_Click"
+                                         SmallImageSource="{x:Null}"
+                                         ToolTip="Navigate Back" />
+                    <ribbon:RibbonButton x:Name="QatNavForward"
+                                         Label="Forward"
+                                         KeyTip="F"
+                                         Click="NavForward_Click"
+                                         SmallImageSource="{x:Null}"
+                                         ToolTip="Navigate Forward" />
+                    <ribbon:RibbonButton x:Name="QatRefresh"
+                                         Label="Refresh"
+                                         KeyTip="R"
+                                         Click="NavRefresh_Click"
+                                         SmallImageSource="{x:Null}"
+                                         ToolTip="Reload Page" />
+                </ribbon:RibbonQuickAccessToolBar>
+            </ribbon:Ribbon.QuickAccessToolBar>
 
-        <!-- Draggable splitter between Middle and Right -->
-        <GridSplitter Grid.Column="3"
-                      HorizontalAlignment="Stretch"
-                      Background="#313244"
-                      ShowsPreview="False" />
+            <!-- ════════════════════════════════
+                 TAB 1 — HOME
+                 ════════════════════════════════ -->
+            <ribbon:RibbonTab Header="Home" KeyTip="H">
 
-        <!-- ── RIGHT PANEL: build queue placeholder ── -->
-        <Border Grid.Column="4"
-                Background="#1E1E2E"
-                BorderBrush="#313244"
-                BorderThickness="1,0,0,0">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
-                <TextBlock Text="⚙️"
-                           FontSize="32"
-                           HorizontalAlignment="Center" />
-                <TextBlock Text="Build Queue"
-                           FontSize="12"
-                           Foreground="#CDD6F4"
-                           HorizontalAlignment="Center"
-                           Margin="0,6,0,0" />
-            </StackPanel>
-        </Border>
-    </Grid>
-</Window>
+                <!-- Group: Navigation -->
+                <ribbon:RibbonGroup Header="Navigation">
+                    <ribbon:RibbonButton x:Name="BtnBack"
+                                         Label="Back"
+                                         KeyTip="B"
+                                         Click="NavBack_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Navigate back in Claude" />
+                    <ribbon:RibbonButton x:Name="BtnForward"
+                                         Label="Forward"
+                                         KeyTip="F"
+                                         Click="NavForward_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Navigate forward in Claude" />
+                    <ribbon:RibbonButton x:Name="BtnRefresh"
+                                         Label="Refresh"
+                                         KeyTip="R"
+                                         Click="NavRefresh_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Reload page" />
+                </ribbon:RibbonGroup>
+
+                <!-- Group: Claude -->
+                <ribbon:RibbonGroup Header="Claude">
+                    <ribbon:RibbonButton x:Name="BtnNewChat"
+                                         Label="New Chat"
+                                         KeyTip="N"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Open a new Claude conversation" />
+                    <ribbon:RibbonButton x:Name="BtnProjects"
+                                         Label="Projects"
+                                         KeyTip="P"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Browse Claude Projects" />
+                </ribbon:RibbonGroup>
+
+                <!-- Group: Build Queue -->
+                <ribbon:RibbonGroup Header="Build Queue">
+                    <ribbon:RibbonButton x:Name="BtnQueueRun"
+                                         Label="Run"
+                                         KeyTip="U"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Start the build watcher" />
+                    <ribbon:RibbonButton x:Name="BtnQueueStop"
+                                         Label="Stop"
+                                         KeyTip="S"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Stop the build watcher" />
+                    <ribbon:RibbonButton x:Name="BtnQueueClear"
+                                         Label="Clear"
+                                         KeyTip="C"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Clear the build queue" />
+                </ribbon:RibbonGroup>
+
+            </ribbon:RibbonTab>
+
+            <!-- ════════════════════════════════
+                 TAB 2 — VIEW
+                 ════════════════════════════════ -->
+            <ribbon:RibbonTab Header="View" KeyTip="V">
+
+                <!-- Group: Panels -->
+                <ribbon:RibbonGroup Header="Panels">
+                    <ribbon:RibbonToggleButton x:Name="BtnToggleLeft"
+                                               Label="Boards Panel"
+                                               KeyTip="L"
+                                               IsChecked="True"
+                                               Click="ToggleLeftPanel_Click"
+                                               SmallImageSource="{x:Null}"
+                                               LargeImageSource="{x:Null}"
+                                               ToolTip="Show / hide the boards &amp; chats panel" />
+                    <ribbon:RibbonToggleButton x:Name="BtnToggleRight"
+                                               Label="Queue Panel"
+                                               KeyTip="R"
+                                               IsChecked="True"
+                                               Click="ToggleRightPanel_Click"
+                                               SmallImageSource="{x:Null}"
+                                               LargeImageSource="{x:Null}"
+                                               ToolTip="Show / hide the build queue panel" />
+                </ribbon:RibbonGroup>
+
+                <!-- Group: Layout -->
+                <ribbon:RibbonGroup Header="Layout">
+                    <ribbon:RibbonButton x:Name="BtnResetLayout"
+                                         Label="Reset Layout"
+                                         KeyTip="E"
+                                         Click="ResetLayout_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Reset all pane widths to defaults" />
+                </ribbon:RibbonGroup>
+
+                <!-- Group: Zoom -->
+                <ribbon:RibbonGroup Header="Zoom">
+                    <ribbon:RibbonButton x:Name="BtnZoomIn"
+                                         Label="Zoom In"
+                                         KeyTip="I"
+                                         Click="ZoomIn_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Zoom the WebView in" />
+                    <ribbon:RibbonButton x:Name="BtnZoomOut"
+                                         Label="Zoom Out"
+                                         KeyTip="O"
+                                         Click="ZoomOut_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Zoom the WebView out" />
+                    <ribbon:RibbonButton x:Name="BtnZoomReset"
+                                         Label="100%"
+                                         KeyTip="Z"
+                                         Click="ZoomReset_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Reset zoom to 100%" />
+                </ribbon:RibbonGroup>
+
+            </ribbon:RibbonTab>
+
+            <!-- ════════════════════════════════
+                 TAB 3 — TOOLS
+                 ════════════════════════════════ -->
+            <ribbon:RibbonTab Header="Tools" KeyTip="T">
+
+                <!-- Group: Developer -->
+                <ribbon:RibbonGroup Header="Developer">
+                    <ribbon:RibbonButton x:Name="BtnDevTools"
+                                         Label="DevTools"
+                                         KeyTip="D"
+                                         Click="OpenDevTools_Click"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Open WebView2 developer tools" />
+                </ribbon:RibbonGroup>
+
+                <!-- Group: Connection -->
+                <ribbon:RibbonGroup Header="Connection">
+                    <ribbon:RibbonButton x:Name="BtnTestApi"
+                                         Label="Test API"
+                                         KeyTip="A"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Ping the build-queue API endpoint" />
+                    <ribbon:RibbonButton x:Name="BtnConnSettings"
+                                         Label="Endpoints"
+                                         KeyTip="E"
+                                         SmallImageSource="{x:Null}"
+                                         LargeImageSource="{x:Null}"
+                                         ToolTip="Configure API endpoints" />
+                </ribbon:RibbonGroup>
+
+            </ribbon:RibbonTab>
+
+        </ribbon:Ribbon>
+        <!-- ══ END RIBBON ══ -->
+
+
+        <!-- ══════════════════════════════════════════════════════
+             THREE-PANE CONTENT AREA
+             ══════════════════════════════════════════════════════ -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <!-- Left: chats / board list (placeholder) -->
+                <ColumnDefinition x:Name="ColLeft" Width="220" MinWidth="0" />
+                <!-- Splitter -->
+                <ColumnDefinition Width="4" />
+                <!-- Middle: Claude.ai WebView2 -->
+                <ColumnDefinition Width="*" />
+                <!-- Splitter -->
+                <ColumnDefinition Width="4" />
+                <!-- Right: build queue panel (placeholder) -->
+                <ColumnDefinition x:Name="ColRight" Width="300" MinWidth="0" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── LEFT PANEL: chats / board list placeholder ── -->
+            <Border x:Name="LeftPanel"
+                    Grid.Column="0"
+                    Background="#1E1E2E"
+                    BorderBrush="#313244"
+                    BorderThickness="0,0,1,0">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
+                    <TextBlock Text="📋"
+                               FontSize="32"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="Boards / Chats"
+                               FontSize="12"
+                               Foreground="#CDD6F4"
+                               HorizontalAlignment="Center"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Draggable splitter between Left and Middle -->
+            <GridSplitter Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          Background="#313244"
+                          ShowsPreview="False" />
+
+            <!-- ── MIDDLE PANEL: Claude.ai ── -->
+            <wv2:WebView2 x:Name="ClaudeWebView"
+                          Grid.Column="2"
+                          Source="https://claude.ai" />
+
+            <!-- Draggable splitter between Middle and Right -->
+            <GridSplitter Grid.Column="3"
+                          HorizontalAlignment="Stretch"
+                          Background="#313244"
+                          ShowsPreview="False" />
+
+            <!-- ── RIGHT PANEL: build queue placeholder ── -->
+            <Border x:Name="RightPanel"
+                    Grid.Column="4"
+                    Background="#1E1E2E"
+                    BorderBrush="#313244"
+                    BorderThickness="1,0,0,0">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
+                    <TextBlock Text="⚙️"
+                               FontSize="32"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="Build Queue"
+                               FontSize="12"
+                               Foreground="#CDD6F4"
+                               HorizontalAlignment="Center"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+    </DockPanel>
+</ribbon:RibbonWindow>
