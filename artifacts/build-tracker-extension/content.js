@@ -310,6 +310,36 @@ function buildPanel() {
        (rather than a background tint) so it reads as "this one" even when
        label-complete's green tint also applies to the same row. */
     .epic-row.current-chat-epic { border-left: 3px solid #0f6cbd; padding-left: 5px; }
+    /* Git #784 — Shane: "put a red blocked box around it... when the block
+       is removed, make it a different color so I know I can go start it
+       again." A wrapper around the row + its "blocked by" note, not a class
+       on the row itself, since the note needs its own line underneath. */
+    .blocked-wrap {
+      border: 1px solid rgba(229,122,122,.5); border-radius: 6px; margin: 4px 0 4px 0;
+      background: rgba(229,122,122,.08);
+    }
+    .blocked-wrap.nested { margin-left: 18px; }
+    .blocked-wrap .epic-row, .blocked-wrap .issue-row { margin: 0; border: none; background: transparent; }
+    .blocked-note {
+      padding: 3px 9px 6px; font-size: 11px; color: #e5a3a3; display: flex;
+      align-items: center; justify-content: space-between; gap: 6px;
+    }
+    /* The moment a block clears — a distinct blue/purple so it visually
+       reads as "different" from both the red it just was and the plain
+       amber in-flight dot, specifically so Shane notices it changed. */
+    .just-unblocked-wrap {
+      border: 1px solid rgba(167,139,250,.55); border-radius: 6px; margin: 4px 0 4px 0;
+      background: rgba(167,139,250,.12);
+    }
+    .just-unblocked-wrap .epic-row, .just-unblocked-wrap .issue-row { margin: 0; border: none; background: transparent; }
+    .just-unblocked-note {
+      padding: 3px 9px 6px; font-size: 11px; color: #c9b8fb; display: flex;
+      align-items: center; justify-content: space-between; gap: 6px;
+    }
+    .just-unblocked-note button, .blocked-note button {
+      background: none; border: 1px solid currentColor; border-radius: 4px; color: inherit;
+      font-size: 10px; padding: 1px 6px; cursor: pointer; flex: none;
+    }
     .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
     .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
     .issue-row .ibtn {
@@ -1027,6 +1057,17 @@ let inProgressCache = null; // { issues, fetchedAt }
 const IN_PROGRESS_STALE_MS = 20_000; // roughly matches the 15s poll cadence below
 
 /**
+ * Git #784 — Shane: "when the block is removed, make it a different color
+ * so I know I can go start it again." Detecting THAT transition (was
+ * blocked, now isn't) needs a memory of the previous poll's blocked set,
+ * not just the current one. In-memory only — resets on a page reload,
+ * same tradeoff as every other "just noticed" signal in this file.
+ */
+let previousBlockedNumbers = new Set();
+/** githubNumbers flagged "just unblocked" until Shane clicks the ✓ to acknowledge — see renderInProgressList(). */
+let recentlyUnblockedNumbers = new Set();
+
+/**
  * Deliberately does NOT bail out when the ip panel is hidden — a "Mark in
  * progress" click on an epic anywhere (the main panel, browse view) needs
  * to refresh this cache so the ▶/✓ button state is correct THE NEXT time
@@ -1049,6 +1090,15 @@ async function loadInProgress(force) {
     return;
   }
   inProgressCache = { issues: res.result?.issues ?? [], fetchedAt: Date.now() };
+  // Git #784 — a number that was blocked last poll and isn't anymore just
+  // got unblocked; flag it until Shane acknowledges it in renderInProgressList().
+  const currentBlockedNumbers = new Set(
+    inProgressCache.issues.filter((i) => i.isBlocked).map((i) => i.githubNumber),
+  );
+  for (const num of previousBlockedNumbers) {
+    if (!currentBlockedNumbers.has(num)) recentlyUnblockedNumbers.add(num);
+  }
+  previousBlockedNumbers = currentBlockedNumbers;
   renderInProgressList();
   updateCodeBlockButtonStates();
 }
@@ -1093,6 +1143,84 @@ async function markTodoDone(item, btn) {
     return;
   }
   await loadInProgress(true);
+}
+
+/** Git #784 — a red box around a blocked row, with a note naming exactly what it's waiting on. */
+function wrapBlockedRow(item, rowEl, nested) {
+  const wrap = document.createElement("div");
+  wrap.className = "blocked-wrap" + (nested ? " nested" : "");
+  wrap.appendChild(rowEl);
+  const note = document.createElement("div");
+  note.className = "blocked-note";
+  const b = item.blockedBy;
+  const span = document.createElement("span");
+  span.textContent = b
+    ? `🔴 Blocked by #${b.number}: ${b.title}${(b.state === "closed" || b.complete) ? " — looks done, check it" : ""}`
+    : "🔴 Blocked — no GitHub dependency set yet";
+  note.appendChild(span);
+  wrap.appendChild(note);
+  return wrap;
+}
+
+/** The moment a block clears — Shane: "make it a different color so I know I can go start it again." Stays flagged until he clicks ✓. */
+function wrapJustUnblockedRow(item, rowEl, nested) {
+  const wrap = document.createElement("div");
+  wrap.className = "just-unblocked-wrap" + (nested ? " nested" : "");
+  wrap.appendChild(rowEl);
+  const note = document.createElement("div");
+  note.className = "just-unblocked-note";
+  const span = document.createElement("span");
+  span.textContent = "🔓 Unblocked — go start it";
+  note.appendChild(span);
+  const ackBtn = document.createElement("button");
+  ackBtn.type = "button";
+  ackBtn.textContent = "✓ Got it";
+  ackBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    recentlyUnblockedNumbers.delete(item.githubNumber);
+    renderInProgressList();
+  });
+  note.appendChild(ackBtn);
+  wrap.appendChild(note);
+  return wrap;
+}
+
+/**
+ * Git #784 — Shane: "nest the build under what it's waiting on." Renders
+ * `items` via `buildRowFn(item) -> rowEl`, placing a blocked item directly
+ * under its blocker's row (indented) WHEN the blocker is also present in
+ * this same section — issue-blocks-issue or epic-blocks-epic. A blocker
+ * living in a different section (e.g. an epic blocking a plain issue) still
+ * gets its full blocked-by note, just not nested under it — reaching across
+ * the Epics/Issues section boundary is a reasonable follow-up, not part of
+ * this first pass.
+ */
+function renderSectionWithBlocking(container, items, buildRowFn) {
+  const byNumber = new Map(items.map((i) => [i.githubNumber, i]));
+  const childrenOf = new Map(); // blockerNumber -> item[]
+  const topLevel = [];
+  for (const item of items) {
+    const blockerNum = item.isBlocked ? (item.blockedBy?.number ?? null) : null;
+    if (blockerNum != null && blockerNum !== item.githubNumber && byNumber.has(blockerNum)) {
+      if (!childrenOf.has(blockerNum)) childrenOf.set(blockerNum, []);
+      childrenOf.get(blockerNum).push(item);
+    } else {
+      topLevel.push(item);
+    }
+  }
+  const renderOne = (item, nested) => {
+    const rowEl = buildRowFn(item);
+    const justUnblocked = !item.isBlocked && recentlyUnblockedNumbers.has(item.githubNumber);
+    if (item.isBlocked) {
+      container.appendChild(wrapBlockedRow(item, rowEl, nested));
+    } else if (justUnblocked) {
+      container.appendChild(wrapJustUnblockedRow(item, rowEl, nested));
+    } else {
+      container.appendChild(rowEl);
+    }
+    for (const child of childrenOf.get(item.githubNumber) ?? []) renderOne(child, true);
+  };
+  for (const item of topLevel) renderOne(item, false);
 }
 
 function renderInProgressList() {
@@ -1160,7 +1288,7 @@ function renderInProgressList() {
     // resolves the current chat's own epic (self-or-parent, same as every
     // other epic lookup in this file) — no extra request needed.
     const currentEpicNumber = boardCache?.data?.currentChat?.focusEpic?.githubNumber ?? null;
-    for (const item of epicItems) {
+    renderSectionWithBlocking(ipList, epicItems, (item) => {
       const chat = chatForEpicId(item.epic?.id);
       const isComplete = (item.labels ?? []).includes("complete");
       const isCurrent = currentEpicNumber != null && item.githubNumber === currentEpicNumber;
@@ -1175,8 +1303,8 @@ function renderInProgressList() {
         row.style.cursor = "default";
         row.title = `${currentNote}No chat linked to this epic yet`;
       }
-      ipList.appendChild(row);
-    }
+      return row;
+    });
   }
 
   if (issueItems.length > 0) {
@@ -1184,12 +1312,12 @@ function renderInProgressList() {
     h.className = "milestone";
     h.textContent = `Issues (${issueItems.length})`;
     ipList.appendChild(h);
-    for (const item of issueItems) {
-      ipList.appendChild(buildIssueRow(
+    renderSectionWithBlocking(ipList, issueItems, (item) =>
+      buildIssueRow(
         { githubNumber: item.githubNumber, title: item.title, labels: item.labels, epicId: item.epic?.id ?? null },
         null,
-      ));
-    }
+      ),
+    );
   }
 }
 

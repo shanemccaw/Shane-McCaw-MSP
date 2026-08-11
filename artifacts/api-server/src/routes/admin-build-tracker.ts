@@ -1222,9 +1222,13 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
     // "Shane To-Do" (Git #744 follow-up) rides along in this same merged
     // fetch — an action-for-Shane issue shows up in its own section below,
     // same "ask GitHub directly, not the local DB" reasoning as the rest of
-    // this endpoint.
+    // this endpoint. "blocked" (Git #784) rides along the same way — a
+    // blocked build has its in-flight label swapped for blocked (per
+    // CLAUDE.md's own workflow rule), so without fetching this label
+    // separately a blocked build would silently vanish from the panel
+    // entirely instead of showing up flagged.
     const collectedByNumber = new Map<number, GitHubIssuePayload>();
-    for (const label of ["in-flight", "complete", "Shane To-Do"]) {
+    for (const label of ["in-flight", "complete", "Shane To-Do", "blocked"]) {
       let page = 1;
       while (page <= 5) {
         const ghRes = await ghFetch(
@@ -1269,6 +1273,42 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
       : [];
     const epicByNumber = new Map(epicRows.map((e) => [e.githubNumber, e]));
 
+    // Git #784 — Shane: "if you are blocked and have to wait, update the Git
+    // issue with a label 'blocked'... what would be great is if it could
+    // tell us what build it was waiting for." CLAUDE.md's new workflow rule
+    // has the agent set a REAL GitHub blocked-by dependency, not just the
+    // label — resolved here, per blocked item, into the specific issue it's
+    // waiting on so the panel can nest it and show whether that wait is
+    // actually over yet.
+    type BlockedByInfo = { number: number; title: string; state: string; complete: boolean };
+    const blockedByMap = new Map<number, BlockedByInfo | null>();
+    for (const gh of collected) {
+      if (!gh.labels.some((l) => l.name === "blocked")) continue;
+      try {
+        const depRes = await ghFetch(
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${gh.number}/dependencies/blocked_by`,
+        );
+        if (!depRes.ok) { blockedByMap.set(gh.number, null); continue; }
+        const deps = (await depRes.json()) as Array<{
+          number: number; title: string; state: string; labels?: Array<{ name: string }>;
+        }>;
+        const first = deps[0];
+        blockedByMap.set(
+          gh.number,
+          first
+            ? {
+                number: first.number,
+                title: first.title,
+                state: first.state,
+                complete: (first.labels ?? []).some((l) => l.name === "complete"),
+              }
+            : null,
+        );
+      } catch {
+        blockedByMap.set(gh.number, null);
+      }
+    }
+
     const issues = collected.map((gh) => {
       const lookupNum = lookupNumberFor(gh);
       const epic = lookupNum !== null ? (epicByNumber.get(lookupNum) ?? null) : null;
@@ -1282,6 +1322,8 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
         epic,
         isTodo: labels.includes("Shane To-Do"),
         sqlPath: sqlPathFor(gh),
+        isBlocked: labels.includes("blocked"),
+        blockedBy: blockedByMap.get(gh.number) ?? null,
       };
     });
 
