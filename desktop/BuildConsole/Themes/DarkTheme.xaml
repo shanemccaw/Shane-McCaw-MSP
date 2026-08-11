@@ -34,41 +34,175 @@
     <!-- ══════════════════════════════════════════════════════════════════
          MENU BAR
          ══════════════════════════════════════════════════════════════════ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         MENU BAR & SUBMENU POPUPS (DARK MODE)
+         ══════════════════════════════════════════════════════════════════ -->
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="{x:Type Separator}">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="4,4,4,4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Background="{StaticResource Surface0Brush}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="{x:Type Menu}">
         <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
         <Setter Property="BorderThickness" Value="0,0,0,1"/>
         <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
-        <Setter Property="Padding"         Value="0"/>
+        <Setter Property="Padding"         Value="4,2"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
         <Setter Property="FontSize"        Value="13"/>
-    </Style>
-
-    <Style TargetType="{x:Type MenuItem}">
-        <Setter Property="Background"      Value="Transparent"/>
-        <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding"         Value="10,6"/>
-        <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
-        <Style.Triggers>
-            <Trigger Property="IsHighlighted" Value="True">
-                <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
-            </Trigger>
-            <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Foreground" Value="{StaticResource Surface2Brush}"/>
-            </Trigger>
-        </Style.Triggers>
     </Style>
 
     <Style TargetType="{x:Type ContextMenu}">
-        <Setter Property="Background"      Value="{StaticResource Surface0Brush}"/>
+        <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource Surface1Brush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding"         Value="2"/>
-        <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="Padding"         Value="4"/>
+        <Setter Property="HasDropShadow"   Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ContextMenu}">
+                    <Border Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="2">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type MenuItem}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize"   Value="13"/>
+        <Setter Property="Padding"    Value="10,6"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type MenuItem}">
+                    <Grid x:Name="RootGrid" Background="{TemplateBinding Background}">
+                        
+                        <!-- 1. TopLevelHeader (File, View, Claude, Build, etc. on Menu Bar) -->
+                        <Border x:Name="TopLevelHeaderBorder"
+                                Background="Transparent"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="HeaderContent"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Submenu Popup -->
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               PopupAnimation="Fade"
+                               Placement="Bottom">
+                            <Border x:Name="SubmenuBorder"
+                                    Background="{StaticResource MantleBrush}"
+                                    BorderBrush="{StaticResource Surface1Brush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="4"
+                                    Margin="0,2,0,0">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </Popup>
+
+                        <!-- 2. SubmenuItem (Items inside dropdown) -->
+                        <Border x:Name="SubmenuItemBorder"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                CornerRadius="3"
+                                Padding="8,6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20"/>  <!-- Icon / Checkmark -->
+                                    <ColumnDefinition Width="*"/>   <!-- Header -->
+                                    <ColumnDefinition Width="Auto"/><!-- InputGestureText -->
+                                    <ColumnDefinition Width="16"/>  <!-- Submenu Arrow -->
+                                </Grid.ColumnDefinitions>
+
+                                <ContentPresenter x:Name="IconPresenter"
+                                                  Grid.Column="0"
+                                                  ContentSource="Icon"
+                                                  Width="14" Height="14"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Left"/>
+
+                                <ContentPresenter x:Name="SubHeaderContent"
+                                                  Grid.Column="1"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center"
+                                                  Margin="4,0,16,0"/>
+
+                                <TextBlock x:Name="GestureText"
+                                           Grid.Column="2"
+                                           Text="{TemplateBinding InputGestureText}"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Margin="12,0,4,0"/>
+
+                                <TextBlock x:Name="SubArrow"
+                                           Grid.Column="3"
+                                           Text="▸"
+                                           Visibility="Collapsed"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"/>
+                            </Grid>
+                        </Border>
+
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <!-- Role: SubmenuItem or SubmenuHeader -->
+                        <Trigger Property="Role" Value="SubmenuItem">
+                            <Setter TargetName="TopLevelHeaderBorder" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="SubmenuItemBorder" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="SubmenuHeader">
+                            <Setter TargetName="TopLevelHeaderBorder" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="SubmenuItemBorder" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="SubArrow" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                        </Trigger>
+
+                        <!-- Hover / Highlighted Triggers -->
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="TopLevelHeaderBorder" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                            <Setter TargetName="SubmenuItemBorder" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                        </Trigger>
+
+                        <!-- Submenu Open Trigger for Top Level -->
+                        <Trigger Property="IsSubmenuOpen" Value="True">
+                            <Setter TargetName="TopLevelHeaderBorder" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                        </Trigger>
+
+                        <!-- Disabled Trigger -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Surface2Brush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
