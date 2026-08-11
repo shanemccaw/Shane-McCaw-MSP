@@ -342,6 +342,11 @@ function buildPanel() {
     /* Git #702 — SQL Runner / Deploy Console. Wider than the details dialog
        since query text and command output both need real room. */
     .dlg-wide { width: 640px; max-height: 80vh; }
+    .tool-chat-toggle {
+      display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+      color: #a19f9d; flex: none; cursor: pointer; user-select: none;
+    }
+    .tool-chat-toggle input { margin: 0; cursor: pointer; }
     .tool-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; overflow: hidden; flex: 1; min-height: 0; }
     .tool-input {
       width: 100%; min-height: 70px; resize: vertical; font-family: ui-monospace, Consolas, monospace;
@@ -467,6 +472,7 @@ function buildPanel() {
     <div class="dlg dlg-wide" role="dialog" aria-label="SQL Runner">
       <div class="dlg-header">
         <span class="dlg-title">🗄 SQL Runner — dev server</span>
+        <label class="tool-chat-toggle"><input type="checkbox" data-action="sql-chat-toggle" checked /> Send to chat</label>
         <button class="iconbtn" data-action="sql-close" title="Close">✕</button>
       </div>
       <div class="tool-body">
@@ -485,6 +491,7 @@ function buildPanel() {
     <div class="dlg dlg-wide" role="dialog" aria-label="Deploy Console">
       <div class="dlg-header">
         <span class="dlg-title">💻 Deploy Console — dev server</span>
+        <label class="tool-chat-toggle"><input type="checkbox" data-action="console-chat-toggle" checked /> Send to chat</label>
         <button class="iconbtn" data-action="console-close" title="Close">✕</button>
       </div>
       <div class="tool-body">
@@ -1576,11 +1583,23 @@ function openSqlRunner() {
   sqlBackdrop.querySelector(".tool-input").focus();
 }
 
+/** Loads a persisted checkbox preference and keeps it saved on every change — shared by both consoles' "Send to chat" toggle. */
+function wireChatToggle(checkbox, storageKey) {
+  chrome.storage.local.get(storageKey).then((stored) => {
+    checkbox.checked = stored[storageKey] !== false; // default ON, matches the original always-insert behavior
+  });
+  checkbox.addEventListener("change", () => {
+    void chrome.storage.local.set({ [storageKey]: checkbox.checked });
+  });
+}
+
 function wireSqlRunner() {
   const { sqlBackdrop } = panelEls;
   const input = sqlBackdrop.querySelector(".tool-input");
   const output = sqlBackdrop.querySelector(".tool-output");
   const runBtn = sqlBackdrop.querySelector('[data-action="sql-run"]');
+  const chatToggle = sqlBackdrop.querySelector('[data-action="sql-chat-toggle"]');
+  wireChatToggle(chatToggle, "sqlSendToChat");
   runBtn.addEventListener("click", () => {
     void (async () => {
       const query = input.value.trim();
@@ -1592,7 +1611,7 @@ function wireSqlRunner() {
         return;
       }
       output.textContent = JSON.stringify(res.result, null, 2);
-      insertTextIntoComposer(formatSqlResultForChat(query, res.result?.statements));
+      if (chatToggle.checked) insertTextIntoComposer(formatSqlResultForChat(query, res.result?.statements));
     })();
   });
 }
@@ -1634,13 +1653,16 @@ async function runDeployAction({ operationKey, freeCommand, label }) {
     return;
   }
   output.textContent = JSON.stringify(res.result, null, 2);
-  insertTextIntoComposer(formatDeployResultForChat(label, res.result));
+  const chatToggle = consoleBackdrop.querySelector('[data-action="console-chat-toggle"]');
+  if (chatToggle.checked) insertTextIntoComposer(formatDeployResultForChat(label, res.result));
 }
 
 function wireDeployConsole() {
   const { consoleBackdrop } = panelEls;
   const input = consoleBackdrop.querySelector(".tool-input");
   const runBtn = consoleBackdrop.querySelector('[data-action="console-run"]');
+  const chatToggle = consoleBackdrop.querySelector('[data-action="console-chat-toggle"]');
+  wireChatToggle(chatToggle, "consoleSendToChat");
   runBtn.addEventListener("click", () => {
     const command = input.value.trim();
     if (!command) return;
