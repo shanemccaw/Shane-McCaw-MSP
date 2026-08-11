@@ -296,6 +296,11 @@ function buildPanel() {
       background: rgba(127,174,145,.16); border-color: rgba(127,174,145,.35); color: #dff2e6;
     }
     .issue-row.label-complete:hover { background: rgba(127,174,145,.26); }
+    /* Same green treatment for an epic row in the In Progress panel — Git
+       #723 follow-up: a complete-labeled epic should stay visible (just
+       highlighted), not disappear until actually closed. */
+    .epic-row.label-complete { background: rgba(127,174,145,.16); border: 1px solid rgba(127,174,145,.35); }
+    .epic-row.label-complete:hover { background: rgba(127,174,145,.26); }
     .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
     .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
     .issue-row .ibtn {
@@ -891,10 +896,7 @@ function toggleInProgressPanel(open) {
   ipPanel.hidden = !open;
   ipTab.style.display = open ? "none" : "block";
   void chrome.storage.local.set({ inProgressPanelOpen: open });
-  if (open) {
-    if (boardCache) renderInProgressPanel();
-    else loadBoard(false); // no board fetched yet at all (main panel never opened this session)
-  }
+  if (open) void loadInProgress(false);
   syncPollingState();
 }
 
@@ -913,19 +915,90 @@ function syncPollingState() {
   else stopPolling();
 }
 
-/** Every `in-flight`-labeled issue Build Tracker currently knows about, GLOBAL — not scoped to whichever epic the main panel happens to be focused on. Reuses buildIssueRow() as-is (its in-flight dot + Details/prompt buttons already do the right thing). */
-function renderInProgressPanel() {
+/**
+ * Git #723 follow-up — Shane: "The In Progress panel should show me
+ * everything in progress not just what Epic chat I am currently looking
+ * at." Sourced straight from GitHub's `in-flight` label repo-wide (the
+ * /extension/in-progress endpoint), completely independent of boardCache
+ * — this session's syncs have all been targeted (one epic, one issue at a
+ * time), so other concurrent sessions' in-flight work was never pulled
+ * into the local DB at all and would've been invisible if this still read
+ * from there. Cached with its own staleness window, same shape as
+ * loadBoard()'s.
+ */
+let inProgressCache = null; // { issues, fetchedAt }
+const IN_PROGRESS_STALE_MS = 20_000; // roughly matches the 15s poll cadence below
+
+async function loadInProgress(force) {
+  if (!panelEls || panelEls.ipPanel.hidden) return;
+  const fresh = inProgressCache && Date.now() - inProgressCache.fetchedAt < IN_PROGRESS_STALE_MS;
+  if (!force && fresh) {
+    renderInProgressList();
+    return;
+  }
+  const res = await sendMessageSafe({ type: "build-tracker-list-in-progress" });
+  if (!res?.ok) {
+    panelEls.ipList.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load")}</div>`;
+    return;
+  }
+  inProgressCache = { issues: res.result?.issues ?? [], fetchedAt: Date.now() };
+  renderInProgressList();
+}
+
+/**
+ * Epics and plain issues render differently — an epic entry is its own
+ * unit of work (Shane: "I tend to work 2-3 epics at a time... I should be
+ * able to mark those Epics as in progress"), a plain issue reuses
+ * buildIssueRow() as-is (its in-flight dot + Details/prompt buttons
+ * already do the right thing).
+ */
+function renderInProgressList() {
   if (!panelEls || panelEls.ipPanel.hidden) return;
   const { ipList } = panelEls;
-  const issues = (boardCache?.data?.issues ?? []).filter((i) => (i.labels ?? []).includes("in-flight"));
+  const items = inProgressCache?.issues ?? [];
 
   ipList.innerHTML = "";
-  if (issues.length === 0) {
+  if (items.length === 0) {
     ipList.innerHTML = `<div class="empty">Nothing in flight right now.</div>`;
     return;
   }
-  for (const issue of issues) {
-    ipList.appendChild(buildIssueRow(issue, null));
+
+  const epicItems = items.filter((i) => i.isEpic);
+  const issueItems = items.filter((i) => !i.isEpic);
+
+  if (epicItems.length > 0) {
+    const h = document.createElement("div");
+    h.className = "milestone";
+    h.textContent = `Epics (${epicItems.length})`;
+    ipList.appendChild(h);
+    for (const item of epicItems) {
+      const chat = chatForEpicId(item.epic?.id);
+      const isComplete = (item.labels ?? []).includes("complete");
+      const row = document.createElement("div");
+      row.className = "epic-row" + (isComplete ? " label-complete" : "");
+      row.innerHTML = `<span>${isComplete ? "✓ " : ""}${escapeHtml(item.title)}</span><span class="pill">#${item.githubNumber}</span>`;
+      if (chat) {
+        row.title = `Go to: "${chat.title}"`;
+        row.addEventListener("click", () => { location.href = chat.claudeUrl; });
+      } else {
+        row.style.cursor = "default";
+        row.title = "No chat linked to this epic yet";
+      }
+      ipList.appendChild(row);
+    }
+  }
+
+  if (issueItems.length > 0) {
+    const h = document.createElement("div");
+    h.className = "milestone";
+    h.textContent = `Issues (${issueItems.length})`;
+    ipList.appendChild(h);
+    for (const item of issueItems) {
+      ipList.appendChild(buildIssueRow(
+        { githubNumber: item.githubNumber, title: item.title, labels: item.labels, epicId: item.epic?.id ?? null },
+        null,
+      ));
+    }
   }
 }
 
@@ -938,20 +1011,32 @@ function renderInProgressPanel() {
 // open, which is exactly the lifetime this needs.
 const INFLIGHT_POLL_MS = 15_000;
 const EPIC_POLL_MS = 30_000;
+const IN_PROGRESS_POLL_MS = 15_000;
 let inflightPollTimer = null;
 let epicPollTimer = null;
+let inProgressPollTimer = null;
 
 function startPolling() {
   stopPolling();
   inflightPollTimer = setInterval(() => void pollInFlightIssues(), INFLIGHT_POLL_MS);
   epicPollTimer = setInterval(() => void pollFocusedEpic(), EPIC_POLL_MS);
+  inProgressPollTimer = setInterval(() => void pollInProgressList(), IN_PROGRESS_POLL_MS);
 }
 
 function stopPolling() {
   clearInterval(inflightPollTimer);
   clearInterval(epicPollTimer);
+  clearInterval(inProgressPollTimer);
   inflightPollTimer = null;
   epicPollTimer = null;
+  inProgressPollTimer = null;
+}
+
+/** Keeps the left In Progress panel's own GitHub-sourced list fresh — independent of boardCache, so this works even if the main panel's never been opened this session. */
+async function pollInProgressList() {
+  if (pollingBlocked()) return;
+  if (!panelEls || panelEls.ipPanel.hidden) return;
+  await loadInProgress(true);
 }
 
 // Switching tabs to close something on GitHub, then back, is the exact
@@ -965,6 +1050,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   void pollInFlightIssues();
   void pollFocusedEpic();
+  void pollInProgressList();
 });
 
 /**
@@ -1222,7 +1308,6 @@ function render() {
   const focusEpic = currentChat?.focusEpic ?? null;
 
   renderAlerts();
-  renderInProgressPanel();
 
   if (focusEpic && !showAllOverride) {
     search.placeholder = "Search this epic's issues…";
@@ -1274,6 +1359,38 @@ function renderProgress(milestone, siblingEpics) {
 }
 
 /** The linked-epic-only view — read-only (already linked, nothing to click except sub-epics/search). */
+/**
+ * Git #723 follow-up — Shane: "I tend to work 2-3 epics at a time... I
+ * should be able to mark those Epics as in progress... This means you need
+ * to also add a quick button to the Epic to set its status to In
+ * Progress." Applies the real `in-flight` GitHub label directly to the
+ * epic issue — same label plain issues already use, so it's picked up by
+ * the exact same /extension/in-progress endpoint with zero extra plumbing.
+ * Shared by every place an epic shows up (focused view's own header,
+ * browse view's epic rows).
+ */
+function buildMarkInProgressButton(githubNumber) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ibtn";
+  btn.title = "Mark in progress — shows up in the left In Progress panel";
+  btn.textContent = "▶";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    btn.disabled = true;
+    const res = await sendMessageSafe({ type: "build-tracker-toggle-label", number: githubNumber, label: "in-flight", add: true });
+    btn.disabled = false;
+    if (!res?.ok) {
+      window.alert(`Couldn't mark #${githubNumber} in progress: ${res?.error ?? "unknown error"}`);
+      return;
+    }
+    btn.textContent = "✓";
+    btn.title = "Marked in progress";
+    if (panelEls?.ipPanel && !panelEls.ipPanel.hidden) void loadInProgress(true);
+  });
+  return btn;
+}
+
 function renderFocused(currentChat, query) {
   const { current, list } = panelEls;
   const epic = currentChat.focusEpic;
@@ -1292,6 +1409,7 @@ function renderFocused(currentChat, query) {
   row.className = "epic-row";
   row.style.cursor = "default";
   row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
+  if (epic.githubNumber) row.appendChild(buildMarkInProgressButton(epic.githubNumber));
   list.appendChild(row);
 
   // Sub-epics (Git #699) — an issue under this epic that itself has
@@ -1411,6 +1529,7 @@ function renderList(query) {
       const row = document.createElement("div");
       row.className = "epic-row";
       row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
+      if (epic.githubNumber) row.appendChild(buildMarkInProgressButton(epic.githubNumber));
       row.addEventListener("click", () => linkTo({ epicId: epic.id }, epic.title));
       list.appendChild(row);
 
@@ -1877,7 +1996,7 @@ function buildIssueRow(issue, onClick) {
   // Git #728 follow-up — "I only know their Issue number... how do I get
   // back to their chat." Same lookup the hover card uses; only shown when a
   // chat is actually linked (most issues aren't linked to any one chat).
-  const linkedChat = issue.githubNumber != null ? findChatForIssueNumber(issue.githubNumber) : null;
+  const linkedChat = issue.githubNumber != null ? findChatForIssueNumber(issue.githubNumber, issue.epicId) : null;
   if (linkedChat) {
     const gotoBtn = document.createElement("button");
     gotoBtn.type = "button";
@@ -2066,6 +2185,15 @@ async function onIssueRefHover(e) {
  * bundles close+announce — the tooltip works for ANY #N, not just
  * complete-labeled rows, so Shane picks whichever (or both) fits.
  */
+/** The most recently updated chat linked to a given LOCAL epic id, or null if none. Shared by an epic's own chat lookup and an issue's fallback-to-its-epic lookup below. */
+function chatForEpicId(epicId) {
+  if (epicId == null) return null;
+  const chats = boardCache?.data?.chats ?? [];
+  const epicChats = chats.filter((c) => c.epicId === epicId);
+  epicChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return epicChats[0] ?? null;
+}
+
 /**
  * Git #728 follow-up — Shane: "I do something and while builds are going I
  * go to a new chat... now I have builds done... I only know their Issue
@@ -2073,28 +2201,25 @@ async function onIssueRefHover(e) {
  * linked to that GitHub number (board's `chats[].issueGithubNumber`, not
  * just an epic match) — works even after the issue's since closed, since
  * the server resolves that against every issue, not just open ones.
- */
-/**
+ *
  * Shane: "I am not seeing these new buttons" — because a chat almost never
  * links to one SPECIFIC issue in practice: linking only ever happens by
  * clicking an EPIC row (the focused view's own issue rows have no "link
  * this chat to just this issue" action at all), so the exact-issue match
  * this started with almost never fires. Falls back to the issue's EPIC's
- * own linked chat — the realistic common case, not a rare exception — and
- * picks the most recently updated one if more than one chat is linked to
- * that epic.
+ * own linked chat — the realistic common case, not a rare exception.
+ * `epicIdHint`, when the caller already knows it (e.g. the In Progress
+ * panel's own /extension/in-progress result), skips the boardCache lookup
+ * entirely — needed for issues that aren't locally tracked at all.
  */
-function findChatForIssueNumber(num) {
+function findChatForIssueNumber(num, epicIdHint) {
   const n = Number(num);
   const chats = boardCache?.data?.chats ?? [];
   const direct = chats.find((c) => c.issueGithubNumber === n);
   if (direct) return direct;
 
-  const issue = (boardCache?.data?.issues ?? []).find((i) => i.githubNumber === n);
-  if (issue?.epicId == null) return null;
-  const epicChats = chats.filter((c) => c.epicId === issue.epicId);
-  epicChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-  return epicChats[0] ?? null;
+  const epicId = epicIdHint ?? (boardCache?.data?.issues ?? []).find((i) => i.githubNumber === n)?.epicId ?? null;
+  return chatForEpicId(epicId);
 }
 
 function goToChatButtonHtml(chat) {
@@ -2108,7 +2233,7 @@ function wireGoToChatButton(container, chat) {
 
 function renderIssueTooltip(info, num) {
   const { issueTooltip } = panelEls;
-  const chat = findChatForIssueNumber(num);
+  const chat = findChatForIssueNumber(num, info?.epic?.id);
   if (info?.error) {
     // A failed lookup still shouldn't be a dead end — "Ask Claude"/"Go to
     // Chat" don't need any of the fetched data (Close/Reopen does, so

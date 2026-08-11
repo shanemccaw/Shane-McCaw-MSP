@@ -343,6 +343,29 @@ async function setIssueState(number, state) {
   }
 }
 
+/** POSTs /extension/toggle-label — the epic "Mark In Progress" quick button (Git #723 follow-up), works for any issue or epic by number. */
+async function toggleLabel(number, label, add) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/toggle-label`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ number, label, add }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /** GETs /extension/issue-lookup — powers the hover card for any #N the content script finds in a claude.ai message. */
 async function lookupIssue(number) {
   const { apiBaseUrl, ingestToken } = await getConfig();
@@ -350,6 +373,25 @@ async function lookupIssue(number) {
     return { ok: false, error: "Not configured — open the extension's Options page." };
   }
   const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/issue-lookup?number=${encodeURIComponent(number)}`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/** GETs /extension/in-progress — every in-flight issue repo-wide, straight from GitHub's own label, not Build Tracker's local sync (Git #723 follow-up). */
+async function listInProgress() {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/in-progress`;
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
     const parsed = await readJson(res);
@@ -405,6 +447,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-lookup-issue") {
     void lookupIssue(message.number).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-list-in-progress") {
+    void listInProgress().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-toggle-label") {
+    void toggleLabel(message.number, message.label, message.add).then(sendResponse);
     return true;
   }
   if (message?.type === "build-tracker-set-issue-state") {

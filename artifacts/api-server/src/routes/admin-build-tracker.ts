@@ -17,7 +17,7 @@
 
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, btEpicsTable, btIssuesTable, btChatsTable } from "@workspace/db";
-import { eq, desc, asc, isNull, sql, and } from "drizzle-orm";
+import { eq, desc, asc, isNull, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -1090,6 +1090,147 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
   } catch (err) {
     log.error({ err, number }, "GET /extension/issue-lookup failed");
     res.status(500).json({ error: "Lookup failed" });
+  }
+});
+
+/**
+ * GET /admin/build-tracker/extension/in-progress
+ *
+ * Git #723 follow-up — Shane: "The In Progress panel should show me
+ * everything in progress not just what Epic chat I am currently looking
+ * at." The panel already filtered its issue list GLOBALLY, not by current
+ * epic — the real gap was that it only ever read Build Tracker's own
+ * synced DB, and this session's syncs have all been TARGETED (a specific
+ * epic, a specific issue), never a full repo pull. Other concurrent
+ * sessions' in-flight work (different epics entirely) was simply never
+ * pulled into bt_issues at all, so it couldn't show up no matter how the
+ * filtering logic worked. This reads straight from GitHub's own
+ * `in-flight` label instead — repo-wide, regardless of what's synced
+ * locally — same "bypass the local DB, ask GitHub directly" pattern
+ * issue-lookup already uses.
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  try {
+    // Git #723 follow-up (3) — Shane: "when the build agent sets the label
+    // Done its disappearing from the left In Progress panel... It should
+    // stay there highlighted green — then ONLY go away once the issue is
+    // Closed totally." The bookend workflow REMOVES in-flight and ADDS
+    // complete on completion (CLAUDE.md's own label-sync rule), so a
+    // query for only `labels=in-flight` lost the issue the instant it
+    // finished — before Shane ever reviewed/closed it. GitHub's issues-list
+    // `labels` param is an AND filter, not OR, so this needs two separate
+    // fetches (one per label) merged and deduped by number — the client
+    // already knows how to render a complete-labeled row green
+    // (buildIssueRow's own isComplete styling), it just needs the row to
+    // still be IN the list.
+    const collectedByNumber = new Map<number, GitHubIssuePayload>();
+    for (const label of ["in-flight", "complete"]) {
+      let page = 1;
+      while (page <= 5) {
+        const ghRes = await ghFetch(
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues?state=open&labels=${label}&per_page=100&page=${page}`,
+        );
+        if (!ghRes.ok) break;
+        const pageIssues = (await ghRes.json()) as GitHubIssuePayload[];
+        for (const gh of pageIssues) if (!gh.pull_request) collectedByNumber.set(gh.number, gh);
+        if (pageIssues.length < 100) break;
+        page++;
+      }
+    }
+    const collected = Array.from(collectedByNumber.values());
+
+    // Git #723 follow-up (2) — Shane: "I tend to work 2-3 epics at a time...
+    // I should be able to mark those Epics as in progress [and see them
+    // here too]." An epic in-flight-labeled directly is already included
+    // above (this endpoint doesn't discriminate issue vs. epic, just checks
+    // the label) — it just needs its OWN chat resolved, not a parent's.
+    // "Which epic does this row's chat come from" is: itself, if this row
+    // IS an epic; its parent, otherwise — one unified lookup number either
+    // way, batched into a single query.
+    const isEpicRow = (gh: GitHubIssuePayload) => !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0);
+    const lookupNumberFor = (gh: GitHubIssuePayload) => (isEpicRow(gh) ? gh.number : getParentNumber(gh.parent_issue_url));
+
+    const lookupNums = Array.from(
+      new Set(collected.map(lookupNumberFor).filter((n): n is number => n !== null)),
+    );
+    const epicRows = lookupNums.length > 0
+      ? await db
+          .select({ id: btEpicsTable.id, title: btEpicsTable.title, githubNumber: btEpicsTable.githubNumber })
+          .from(btEpicsTable)
+          .where(inArray(btEpicsTable.githubNumber, lookupNums))
+      : [];
+    const epicByNumber = new Map(epicRows.map((e) => [e.githubNumber, e]));
+
+    const issues = collected.map((gh) => {
+      const lookupNum = lookupNumberFor(gh);
+      const epic = lookupNum !== null ? (epicByNumber.get(lookupNum) ?? null) : null;
+      return {
+        githubNumber: gh.number,
+        title: gh.title,
+        labels: gh.labels.map((l) => l.name),
+        githubUrl: gh.html_url,
+        isEpic: isEpicRow(gh),
+        epic,
+      };
+    });
+
+    res.json({ issues });
+  } catch (err) {
+    log.error({ err }, "GET /extension/in-progress failed");
+    res.status(500).json({ error: "Failed to list in-progress issues" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/extension/toggle-label
+ *
+ * Git #723 follow-up — Shane: "you need to also add a quick button to the
+ * Epic to set its status to In Progress." Applies/removes a real GitHub
+ * label by NUMBER directly (epic or plain issue, doesn't matter which —
+ * same as set-issue-state) so an epic marked this way immediately shows up
+ * in GET /extension/in-progress above, no separate "epic status" concept
+ * to keep in sync. Uses GitHub's dedicated add/remove-label endpoints
+ * (not a full PATCH replacing the whole labels array) so a concurrent
+ * label change elsewhere can never get clobbered by a stale read.
+ *
+ * Body: { number: number, label: string, add: boolean }
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.post("/admin/build-tracker/extension/toggle-label", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const { number, label, add } = req.body as { number?: number; label?: string; add?: boolean };
+  if (!Number.isInteger(number) || !label || typeof add !== "boolean") {
+    res.status(400).json({ error: "number, label, and add (boolean) are required" });
+    return;
+  }
+  try {
+    const ghRes = add
+      ? await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}/labels`, {
+          method: "POST",
+          body: JSON.stringify({ labels: [label] }),
+        })
+      : await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}/labels/${encodeURIComponent(label)}`, {
+          method: "DELETE",
+        });
+    // A 404 on DELETE just means the label wasn't there to begin with —
+    // that's the desired end state either way, not a real failure.
+    if (!ghRes.ok && !(!add && ghRes.status === 404)) {
+      res.status(502).json({ error: `GitHub rejected the label update for #${number}` });
+      return;
+    }
+    res.json({ number, label, add });
+  } catch (err) {
+    log.error({ err, number, label, add }, "POST /extension/toggle-label failed");
+    res.status(500).json({ error: "Failed to update label" });
   }
 });
 

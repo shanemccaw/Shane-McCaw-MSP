@@ -86,11 +86,20 @@ An unpacked Edge/Chrome extension with two parts, both running on
 
 3. **A second "In Progress" panel, docked at the left edge** — a small green
    tab, independent of the main panel (either can be open without the
-   other). Lists every `in-flight`-labeled issue Build Tracker knows about
-   GLOBALLY, not scoped to whichever epic the main panel is focused on —
-   for when you've collapsed claude.ai's own left sidebar and want that
-   space to show what's actively building, at a glance, without opening
-   anything else.
+   other). Lists every `in-flight`- or `complete`-labeled OPEN issue and
+   epic repo-wide, read straight from GitHub's own labels — not Build
+   Tracker's local sync (this session's syncs are all targeted, so other
+   concurrent sessions' work was never pulled in locally) and not scoped to
+   whichever epic the main panel is focused on. A `complete`-labeled row
+   stays visible with the same green highlight the rest of the panel uses,
+   instead of disappearing the moment it's marked done — it only drops off
+   once the issue is actually closed. Epics get their own section, each
+   with a **▶ Mark in progress** button (applies the real `in-flight`
+   label directly, same one issues use) for "I work 2-3 epics at a time"
+   — click one in the list to jump straight to its linked chat. For when
+   you've collapsed claude.ai's own left sidebar and want that space
+   showing what's actively building, at a glance, without opening anything
+   else.
 4. **#N hover cards** — every `#123`-style reference Claude writes in a chat
    message gets a dotted underline; hover it to see the real title, open/
    closed state, and labels, fetched straight from GitHub (not just
