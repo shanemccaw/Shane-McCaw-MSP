@@ -1038,6 +1038,7 @@ async function loadInProgress(force) {
   const fresh = inProgressCache && Date.now() - inProgressCache.fetchedAt < IN_PROGRESS_STALE_MS;
   if (!force && fresh) {
     renderInProgressList();
+    updateCodeBlockButtonStates();
     return;
   }
   const res = await sendMessageSafe({ type: "build-tracker-list-in-progress" });
@@ -1049,6 +1050,7 @@ async function loadInProgress(force) {
   }
   inProgressCache = { issues: res.result?.issues ?? [], fetchedAt: Date.now() };
   renderInProgressList();
+  updateCodeBlockButtonStates();
 }
 
 /**
@@ -2791,8 +2793,55 @@ function tryInsertPrefillFromUrl() {
   tryInsert();
 }
 
+/**
+ * Git #783 — Shane: "If its already in flight, change the button to
+ * disabled and In Flight. If its Done, change the button to disabled &
+ * Done." A build-prompt block's --title flag (or, failing that, the first
+ * bare #N in the text) is treated as the issue/epic it's for; its real
+ * label state comes from the SAME inProgressCache the left panel already
+ * polls every 15s (Git #701), so this stays current without its own fetch.
+ */
+function extractReferencedIssueNumber(text) {
+  const { flags } = extractLeadingFlags(text);
+  if (flags.title && /^\d+$/.test(flags.title)) return parseInt(flags.title, 10);
+  const m = text.match(/#(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Every "Send to Builder" button tied to a detected issue/epic number — kept in sync by updateCodeBlockButtonStates() on every inProgressCache refresh. */
+let codeBlockSmartButtons = [];
+
+function applyCodeBlockButtonState(entry) {
+  const item = (inProgressCache?.issues ?? []).find((i) => i.githubNumber === entry.number);
+  const state = issueLabelState({ labels: item?.labels ?? [] });
+  const { btn } = entry;
+  if (state === "complete") {
+    btn.disabled = true;
+    btn.textContent = "✓ Done";
+    btn.style.background = "rgba(127,174,145,.18)";
+    btn.style.color = "#9fd4b3";
+    btn.style.cursor = "default";
+  } else if (state === "in-flight") {
+    btn.disabled = true;
+    btn.textContent = "⏳ In Flight";
+    btn.style.background = "rgba(242,202,99,.14)";
+    btn.style.color = "#f2ca63";
+    btn.style.cursor = "default";
+  } else {
+    btn.disabled = false;
+    btn.textContent = "🚀 Send to Builder";
+    btn.style.background = "#242424";
+    btn.style.color = "#d6d4d2";
+    btn.style.cursor = "pointer";
+  }
+}
+
+function updateCodeBlockButtonStates() {
+  for (const entry of codeBlockSmartButtons) applyCodeBlockButtonState(entry);
+}
+
 /** Shared by both the above- and below-block bars (Git #777) so the two never drift apart in styling/behavior. */
-function buildCodeBlockButtonBar(kind, text, marginSide) {
+function buildCodeBlockButtonBar(kind, text, marginSide, referencedNumber) {
   const bar = document.createElement("div");
   bar.style.cssText = `display: flex; justify-content: flex-end; margin-${marginSide}: 4px;`;
   const btn = document.createElement("button");
@@ -2801,13 +2850,18 @@ function buildCodeBlockButtonBar(kind, text, marginSide) {
   btn.style.cssText =
     "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
     "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
-  btn.addEventListener("mouseenter", () => { btn.style.background = "#2e2e2e"; });
-  btn.addEventListener("mouseleave", () => { btn.style.background = "#242424"; });
+  btn.addEventListener("mouseenter", () => { if (!btn.disabled) btn.style.background = "#2e2e2e"; });
+  btn.addEventListener("mouseleave", () => { if (!btn.disabled) btn.style.background = "#242424"; });
   btn.addEventListener("click", () => {
     if (kind === "sql") loadTextIntoSqlRunner(text);
     else void sendToBuilder(text);
   });
   bar.appendChild(btn);
+  if (kind === "prompt" && referencedNumber != null) {
+    const entry = { number: referencedNumber, btn };
+    codeBlockSmartButtons.push(entry);
+    applyCodeBlockButtonState(entry);
+  }
   return bar;
 }
 
@@ -2820,11 +2874,12 @@ function scanForCodeBlockButtons(root) {
     if (!text) continue;
 
     const kind = classifyCodeBlock(text);
-    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "bottom"), pre);
+    const referencedNumber = kind === "prompt" ? extractReferencedIssueNumber(text) : null;
+    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "bottom", referencedNumber), pre);
     // Git #777 — Shane: "can you put the Send to Builder at the bottom of
     // the copy block too?" A long build prompt means scrolling all the way
     // back up just to click the button he already read past.
-    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "top"), pre.nextSibling);
+    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "top", referencedNumber), pre.nextSibling);
   }
 }
 
