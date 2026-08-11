@@ -2,12 +2,22 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace BuildConsole
 {
+    public class TabSwitcherCard
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public string Glyph { get; set; } = "\uE8BD";
+        public string IndexTag { get; set; } = "Tab 1";
+        public int TabIndex { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -71,6 +81,155 @@ namespace BuildConsole
                 DwmSetWindowAttribute(hwnd, 19, ref darkMode, sizeof(int)); // Fallback for older Win10 builds
             }
             catch { }
+        }
+
+        // ── Window Preview Key Handlers for Ctrl+Tab ─────────────────────────
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                bool isReverse = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+                ShowTabSwitcher(isReverse);
+            }
+            else if (TabSwitcherOverlay.Visibility == Visibility.Visible)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    HideTabSwitcher(confirmSelection: false);
+                }
+                else if (e.Key == Key.Return)
+                {
+                    e.Handled = true;
+                    HideTabSwitcher(confirmSelection: true);
+                }
+                else if (e.Key == Key.Down)
+                {
+                    e.Handled = true;
+                    CycleTabSwitcher(forward: true);
+                }
+                else if (e.Key == Key.Up)
+                {
+                    e.Handled = true;
+                    CycleTabSwitcher(forward: false);
+                }
+            }
+        }
+
+        private void Window_PreviewKeyUp(object sender, KeyEventArgs e)
+        {
+            if (TabSwitcherOverlay.Visibility == Visibility.Visible)
+            {
+                if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl)
+                {
+                    HideTabSwitcher(confirmSelection: true);
+                }
+            }
+        }
+
+        private void ShowTabSwitcher(bool isReverse = false)
+        {
+            var cards = new System.Collections.Generic.List<TabSwitcherCard>();
+            int count = EditorTabs.Items.Count;
+            if (count == 0) return;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (EditorTabs.Items[i] is TabItem item)
+                {
+                    string url = item.Tag?.ToString() ?? string.Empty;
+                    string title = ExtractTabTitle(item);
+                    string glyph = ExtractTabGlyph(url);
+
+                    cards.Add(new TabSwitcherCard
+                    {
+                        Title = title,
+                        Url = url,
+                        Glyph = glyph,
+                        IndexTag = $"Ctrl+{(i + 1) % 10}",
+                        TabIndex = i
+                    });
+                }
+            }
+
+            TabSwitcherList.ItemsSource = cards;
+            TabSwitcherCountText.Text = $"{count} document{(count == 1 ? "" : "s")}";
+
+            int currentIdx = Math.Max(0, EditorTabs.SelectedIndex);
+            int nextIdx = (currentIdx + (isReverse ? -1 : 1) + count) % count;
+
+            if (TabSwitcherOverlay.Visibility != Visibility.Visible)
+            {
+                TabSwitcherOverlay.Visibility = Visibility.Visible;
+            }
+
+            TabSwitcherList.SelectedIndex = nextIdx;
+            if (TabSwitcherList.SelectedItem != null)
+                TabSwitcherList.ScrollIntoView(TabSwitcherList.SelectedItem);
+        }
+
+        private void CycleTabSwitcher(bool forward)
+        {
+            int count = TabSwitcherList.Items.Count;
+            if (count == 0) return;
+
+            int newIdx = (TabSwitcherList.SelectedIndex + (forward ? 1 : -1) + count) % count;
+            TabSwitcherList.SelectedIndex = newIdx;
+            if (TabSwitcherList.SelectedItem != null)
+                TabSwitcherList.ScrollIntoView(TabSwitcherList.SelectedItem);
+        }
+
+        private void HideTabSwitcher(bool confirmSelection)
+        {
+            if (confirmSelection && TabSwitcherList.SelectedItem is TabSwitcherCard card)
+            {
+                EditorTabs.SelectedIndex = card.TabIndex;
+            }
+
+            TabSwitcherOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void OpenTabSwitcher_Click(object sender, RoutedEventArgs e)
+        {
+            ShowTabSwitcher(isReverse: false);
+        }
+
+        private void TabSwitcherOverlay_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            HideTabSwitcher(confirmSelection: false);
+        }
+
+        private void TabSwitcherCard_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            HideTabSwitcher(confirmSelection: true);
+        }
+
+        private static string ExtractTabTitle(TabItem tab)
+        {
+            if (tab.Header is StackPanel sp)
+            {
+                foreach (var child in sp.Children)
+                {
+                    if (child is TextBlock tb && tb.FontFamily?.Source != "Segoe MDL2 Assets")
+                    {
+                        return tb.Text;
+                    }
+                }
+            }
+            return tab.Header?.ToString() ?? "Document";
+        }
+
+        private static string ExtractTabGlyph(string url)
+        {
+            return url switch
+            {
+                var u when u.Contains("/admin-panel/") => "\uE7EF",
+                var u when u.Contains("/portal/")      => "\uE77B",
+                var u when u.Contains("claude.ai")     => "\uE8BD",
+                _                                      => "\uE774"
+            };
         }
 
         private Microsoft.Web.WebView2.Wpf.WebView2 GetActiveWebView()

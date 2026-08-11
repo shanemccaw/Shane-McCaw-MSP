@@ -9,247 +9,354 @@
         mc:Ignorable="d"
         Title="BuildConsole" Height="960" Width="1680"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BaseBrush}">
+        Background="{StaticResource BaseBrush}"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewKeyUp="Window_PreviewKeyUp">
 
-    <DockPanel LastChildFill="True">
+    <Grid>
+        <DockPanel LastChildFill="True">
 
-        <!-- ══════════════════════════════════════════════════════════════
-             MENU BAR
-             ══════════════════════════════════════════════════════════════ -->
-        <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_File">
-                <MenuItem Header="New Chat"    InputGestureText="Ctrl+N"/>
-                <MenuItem Header="Open Session…"/>
-                <Separator/>
-                <MenuItem Header="Settings"/>
-                <Separator/>
-                <MenuItem Header="Exit" Click="MenuExit_Click"/>
-            </MenuItem>
+            <!-- ══════════════════════════════════════════════════════════════
+                 MENU BAR
+                 ══════════════════════════════════════════════════════════════ -->
+            <Menu DockPanel.Dock="Top">
+                <MenuItem Header="_File">
+                    <MenuItem Header="New Chat"    InputGestureText="Ctrl+N"/>
+                    <MenuItem Header="Open Session…"/>
+                    <Separator/>
+                    <MenuItem Header="Settings"/>
+                    <Separator/>
+                    <MenuItem Header="Exit" Click="MenuExit_Click"/>
+                </MenuItem>
 
-            <MenuItem Header="_View">
-                <MenuItem Header="Toggle Sidebar"      Click="ToggleSidebar_Click" InputGestureText="Ctrl+B"/>
-                <MenuItem Header="Toggle Queue Panel"  Click="ToggleQueuePanel_Click"/>
-                <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
-                <Separator/>
-                <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
-                <Separator/>
-                <MenuItem Header="Zoom In"             Click="ZoomIn_Click"    InputGestureText="Ctrl++"/>
-                <MenuItem Header="Zoom Out"            Click="ZoomOut_Click"   InputGestureText="Ctrl+-"/>
-                <MenuItem Header="Reset Zoom"          Click="ZoomReset_Click" InputGestureText="Ctrl+0"/>
-            </MenuItem>
+                <MenuItem Header="_View">
+                    <MenuItem Header="Switch Tab…"        Click="OpenTabSwitcher_Click" InputGestureText="Ctrl+Tab"/>
+                    <Separator/>
+                    <MenuItem Header="Toggle Sidebar"      Click="ToggleSidebar_Click" InputGestureText="Ctrl+B"/>
+                    <MenuItem Header="Toggle Queue Panel"  Click="ToggleQueuePanel_Click"/>
+                    <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
+                    <Separator/>
+                    <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Zoom In"             Click="ZoomIn_Click"    InputGestureText="Ctrl++"/>
+                    <MenuItem Header="Zoom Out"            Click="ZoomOut_Click"   InputGestureText="Ctrl+-"/>
+                    <MenuItem Header="Reset Zoom"          Click="ZoomReset_Click" InputGestureText="Ctrl+0"/>
+                </MenuItem>
 
-            <MenuItem Header="_Claude">
-                <MenuItem Header="New Conversation"/>
-                <MenuItem Header="Open Projects"/>
-                <Separator/>
-                <MenuItem Header="Back"    Click="NavBack_Click"    InputGestureText="Alt+Left"/>
-                <MenuItem Header="Forward" Click="NavForward_Click" InputGestureText="Alt+Right"/>
-                <MenuItem Header="Reload"  Click="NavRefresh_Click" InputGestureText="F5"/>
-            </MenuItem>
+                <MenuItem Header="_Claude">
+                    <MenuItem Header="New Conversation"/>
+                    <MenuItem Header="Open Projects"/>
+                    <Separator/>
+                    <MenuItem Header="Back"    Click="NavBack_Click"    InputGestureText="Alt+Left"/>
+                    <MenuItem Header="Forward" Click="NavForward_Click" InputGestureText="Alt+Right"/>
+                    <MenuItem Header="Reload"  Click="NavRefresh_Click" InputGestureText="F5"/>
+                </MenuItem>
 
-            <MenuItem Header="_Build">
-                <MenuItem Header="Start Watcher"/>
-                <MenuItem Header="Stop Watcher"/>
-                <MenuItem Header="Clear Queue"/>
-                <Separator/>
-                <MenuItem Header="Refresh Queue"/>
-            </MenuItem>
+                <MenuItem Header="_Build">
+                    <MenuItem Header="Start Watcher"/>
+                    <MenuItem Header="Stop Watcher"/>
+                    <MenuItem Header="Clear Queue"/>
+                    <Separator/>
+                    <MenuItem Header="Refresh Queue"/>
+                </MenuItem>
 
-            <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
-                <MenuItem Header="Open Terminal"        Click="OpenTerminal_Click"   InputGestureText="Ctrl+`"/>
-                <Separator/>
-                <MenuItem Header="git status"           Click="GitChip_Click" Tag="git status"/>
-                <MenuItem Header="git pull"             Click="GitChip_Click" Tag="git pull"/>
-                <MenuItem Header="git push"             Click="GitChip_Click" Tag="git push"/>
-                <MenuItem Header="git log"              Click="GitChip_Click" Tag="git log --oneline -20"/>
-                <MenuItem Header="git stash"            Click="GitChip_Click" Tag="git stash"/>
-                <Separator/>
-                <MenuItem Header="dotnet build"         Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
-            </MenuItem>
+                <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
+                    <MenuItem Header="Open Terminal"        Click="OpenTerminal_Click"   InputGestureText="Ctrl+`"/>
+                    <Separator/>
+                    <MenuItem Header="git status"           Click="GitChip_Click" Tag="git status"/>
+                    <MenuItem Header="git pull"             Click="GitChip_Click" Tag="git pull"/>
+                    <MenuItem Header="git push"             Click="GitChip_Click" Tag="git push"/>
+                    <MenuItem Header="git log"              Click="GitChip_Click" Tag="git log --oneline -20"/>
+                    <MenuItem Header="git stash"            Click="GitChip_Click" Tag="git stash"/>
+                    <Separator/>
+                    <MenuItem Header="dotnet build"         Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
+                </MenuItem>
 
-            <MenuItem Header="_SQL" Click="OpenSql_Click">
-                <MenuItem Header="Open SQL Runner"      Click="OpenSql_Click" InputGestureText="Ctrl+Shift+S"/>
-                <Separator/>
-                <MenuItem Header="New Connection"/>
-            </MenuItem>
+                <MenuItem Header="_SQL" Click="OpenSql_Click">
+                    <MenuItem Header="Open SQL Runner"      Click="OpenSql_Click" InputGestureText="Ctrl+Shift+S"/>
+                    <Separator/>
+                    <MenuItem Header="New Connection"/>
+                </MenuItem>
 
-            <MenuItem Header="_Help">
-                <MenuItem Header="About BuildConsole"/>
-                <MenuItem Header="Open DevTools" Click="OpenDevTools_Click"/>
-            </MenuItem>
-        </Menu>
+                <MenuItem Header="_Help">
+                    <MenuItem Header="About BuildConsole"/>
+                    <MenuItem Header="Open DevTools" Click="OpenDevTools_Click"/>
+                </MenuItem>
+            </Menu>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             STATUS BAR
-             ══════════════════════════════════════════════════════════════ -->
-        <StatusBar DockPanel.Dock="Bottom">
-            <StatusBar.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>  <!-- nav dot + status -->
-                            <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                            <ColumnDefinition Width="Auto"/>  <!-- URL -->
-                            <ColumnDefinition Width="*"/>     <!-- spring -->
-                            <ColumnDefinition Width="Auto"/>  <!-- zoom -->
-                            <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                            <ColumnDefinition Width="Auto"/>  <!-- queue -->
-                            <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                            <ColumnDefinition Width="Auto"/>  <!-- clock -->
-                        </Grid.ColumnDefinitions>
-                    </Grid>
-                </ItemsPanelTemplate>
-            </StatusBar.ItemsPanel>
+            <!-- ══════════════════════════════════════════════════════════════
+                 STATUS BAR
+                 ══════════════════════════════════════════════════════════════ -->
+            <StatusBar DockPanel.Dock="Bottom">
+                <StatusBar.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>  <!-- nav dot + status -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- URL -->
+                                <ColumnDefinition Width="*"/>     <!-- spring -->
+                                <ColumnDefinition Width="Auto"/>  <!-- zoom -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- queue -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- clock -->
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+                    </ItemsPanelTemplate>
+                </StatusBar.ItemsPanel>
 
-            <StatusBarItem Grid.Column="0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse x:Name="StatusDot" Width="8" Height="8"
-                             Fill="{StaticResource GreenBrush}"
-                             Margin="2,0,6,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="NavStatusText" Text="Ready" VerticalAlignment="Center"/>
-                </StackPanel>
-            </StatusBarItem>
-            <Separator Grid.Column="1"/>
-            <StatusBarItem Grid.Column="2">
-                <TextBlock x:Name="UrlStatusText"
-                           Text="https://claude.ai"
-                           Foreground="{StaticResource Subtext1Brush}"
-                           MaxWidth="520"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center"/>
-            </StatusBarItem>
-            <StatusBarItem Grid.Column="4">
-                <TextBlock x:Name="ZoomText" Text="100%" VerticalAlignment="Center"/>
-            </StatusBarItem>
-            <Separator Grid.Column="5"/>
-            <StatusBarItem Grid.Column="6">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse x:Name="QueueDot" Width="8" Height="8"
-                             Fill="{StaticResource Surface2Brush}"
-                             Margin="0,0,6,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="QueueStatusText" Text="Queue: idle" VerticalAlignment="Center"/>
-                </StackPanel>
-            </StatusBarItem>
-            <Separator Grid.Column="7"/>
-            <StatusBarItem Grid.Column="8" Padding="6,0,10,0">
-                <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
-            </StatusBarItem>
-        </StatusBar>
+                <StatusBarItem Grid.Column="0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="StatusDot" Width="8" Height="8"
+                                 Fill="{StaticResource GreenBrush}"
+                                 Margin="2,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="NavStatusText" Text="Ready" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="1"/>
+                <StatusBarItem Grid.Column="2">
+                    <TextBlock x:Name="UrlStatusText"
+                               Text="https://claude.ai"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               MaxWidth="520"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center"/>
+                </StatusBarItem>
+                <StatusBarItem Grid.Column="4">
+                    <TextBlock x:Name="ZoomText" Text="100%" VerticalAlignment="Center"/>
+                </StatusBarItem>
+                <Separator Grid.Column="5"/>
+                <StatusBarItem Grid.Column="6">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="QueueDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="QueueStatusText" Text="Queue: idle" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="7"/>
+                <StatusBarItem Grid.Column="8" Padding="6,0,10,0">
+                    <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
+                </StatusBarItem>
+            </StatusBar>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             MAIN LAYOUT GRID
-             ══════════════════════════════════════════════════════════════ -->
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <!-- Activity bar -->
-                <ColumnDefinition x:Name="ColActivityBar" Width="48"/>
-                <!-- Left sidebar -->
-                <ColumnDefinition x:Name="ColSidebar" Width="260" MinWidth="0"/>
-                <!-- Left splitter -->
-                <ColumnDefinition Width="4"/>
-                <!-- Main editor area -->
-                <ColumnDefinition Width="*" MinWidth="200"/>
-                <!-- Right splitter -->
-                <ColumnDefinition Width="4"/>
-                <!-- Build queue -->
-                <ColumnDefinition x:Name="ColQueue" Width="300" MinWidth="0"/>
-            </Grid.ColumnDefinitions>
+            <!-- ══════════════════════════════════════════════════════════════
+                 MAIN LAYOUT GRID
+                 ══════════════════════════════════════════════════════════════ -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Activity bar -->
+                    <ColumnDefinition x:Name="ColActivityBar" Width="48"/>
+                    <!-- Left sidebar -->
+                    <ColumnDefinition x:Name="ColSidebar" Width="260" MinWidth="0"/>
+                    <!-- Left splitter -->
+                    <ColumnDefinition Width="4"/>
+                    <!-- Main editor area -->
+                    <ColumnDefinition Width="*" MinWidth="200"/>
+                    <!-- Right splitter -->
+                    <ColumnDefinition Width="4"/>
+                    <!-- Build queue -->
+                    <ColumnDefinition x:Name="ColQueue" Width="300" MinWidth="0"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- ── Activity Bar ── -->
-            <ctrl:ActivityBar x:Name="ActivityBar"
-                              Grid.Column="0"
-                              ActiveViewChanged="ActivityBar_ActiveViewChanged"/>
+                <!-- ── Activity Bar ── -->
+                <ctrl:ActivityBar x:Name="ActivityBar"
+                                  Grid.Column="0"
+                                  ActiveViewChanged="ActivityBar_ActiveViewChanged"/>
 
-            <!-- ── Left Sidebar ── -->
-            <ctrl:LeftSidebar x:Name="LeftSidebar" Grid.Column="1"/>
+                <!-- ── Left Sidebar ── -->
+                <ctrl:LeftSidebar x:Name="LeftSidebar" Grid.Column="1"/>
 
-            <!-- Splitter: sidebar ↔ center -->
-            <GridSplitter Grid.Column="2"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          ShowsPreview="False"/>
-
-            <!-- ── CENTER AREA: editor tabs + bottom panel ── -->
-            <Grid Grid.Column="3">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="120"/>  <!-- editor tabs -->
-                    <RowDefinition x:Name="RowBottomSplitter" Height="4"/>  <!-- splitter -->
-                    <RowDefinition x:Name="RowBottom" Height="0" MinHeight="0"/>  <!-- bottom panel -->
-                </Grid.RowDefinitions>
-
-                <!-- ── Editor tab control ── -->
-                <TabControl x:Name="EditorTabs"
-                            Grid.Row="0"
-                            BorderThickness="0"
-                            SelectionChanged="EditorTabs_SelectionChanged">
-
-                    <!-- Claude.ai tab -->
-                    <TabItem Tag="https://claude.ai">
-                        <TabItem.Header>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                           Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Claude.ai"
-                                           FontSize="13"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,8,0"/>
-                                <Ellipse Width="6" Height="6"
-                                         Fill="{StaticResource BlueBrush}"
-                                         VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </TabItem.Header>
-                        <wv2:WebView2 x:Name="ClaudeWebView"
-                                      Source="https://claude.ai"/>
-                    </TabItem>
-
-                </TabControl>
-
-                <!-- Bottom panel splitter (hidden when panel is collapsed) -->
-                <GridSplitter x:Name="BottomSplitter"
-                              Grid.Row="1"
+                <!-- Splitter: sidebar ↔ center -->
+                <GridSplitter Grid.Column="2"
                               HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch"
-                              ShowsPreview="False"
-                              Visibility="Collapsed"/>
+                              ShowsPreview="False"/>
 
-                <!-- ── Bottom panel (Build Log / Terminal / SQL / Output) ── -->
-                <TabControl x:Name="BottomTabs"
-                            Grid.Row="2"
-                            BorderThickness="0,1,0,0"
-                            Visibility="Collapsed">
+                <!-- ── CENTER AREA: editor tabs + bottom panel ── -->
+                <Grid Grid.Column="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="120"/>  <!-- editor tabs -->
+                        <RowDefinition x:Name="RowBottomSplitter" Height="4"/>  <!-- splitter -->
+                        <RowDefinition x:Name="RowBottom" Height="0" MinHeight="0"/>  <!-- bottom panel -->
+                    </Grid.RowDefinitions>
 
-                    <TabItem Header="Build Log">
-                        <ctrl:BuildLogView x:Name="BuildLogView"/>
-                    </TabItem>
+                    <!-- ── Editor tab control ── -->
+                    <TabControl x:Name="EditorTabs"
+                                Grid.Row="0"
+                                BorderThickness="0"
+                                SelectionChanged="EditorTabs_SelectionChanged">
 
-                    <TabItem Header="Terminal">
-                        <ctrl:TerminalView x:Name="TerminalView"/>
-                    </TabItem>
+                        <!-- Claude.ai tab -->
+                        <TabItem Tag="https://claude.ai">
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                               Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Claude.ai"
+                                               FontSize="13"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <Ellipse Width="6" Height="6"
+                                             Fill="{StaticResource BlueBrush}"
+                                             VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                            <wv2:WebView2 x:Name="ClaudeWebView"
+                                          Source="https://claude.ai"/>
+                        </TabItem>
 
-                    <TabItem Header="SQL Runner">
-                        <ctrl:SqlRunnerView x:Name="SqlRunnerView"/>
-                    </TabItem>
+                    </TabControl>
 
-                    <TabItem Header="Output">
-                        <TextBox IsReadOnly="True"
-                                 Style="{StaticResource TerminalOutputBox}"
-                                 Text="[Output] Build console output appears here."
-                                 VerticalScrollBarVisibility="Auto"/>
-                    </TabItem>
+                    <!-- Bottom panel splitter (hidden when panel is collapsed) -->
+                    <GridSplitter x:Name="BottomSplitter"
+                                  Grid.Row="1"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  ShowsPreview="False"
+                                  Visibility="Collapsed"/>
 
-                </TabControl>
+                    <!-- ── Bottom panel (Build Log / Terminal / SQL / Output) ── -->
+                    <TabControl x:Name="BottomTabs"
+                                Grid.Row="2"
+                                BorderThickness="0,1,0,0"
+                                Visibility="Collapsed">
+
+                        <TabItem Header="Build Log">
+                            <ctrl:BuildLogView x:Name="BuildLogView"/>
+                        </TabItem>
+
+                        <TabItem Header="Terminal">
+                            <ctrl:TerminalView x:Name="TerminalView"/>
+                        </TabItem>
+
+                        <TabItem Header="SQL Runner">
+                            <ctrl:SqlRunnerView x:Name="SqlRunnerView"/>
+                        </TabItem>
+
+                        <TabItem Header="Output">
+                            <TextBox IsReadOnly="True"
+                                     Style="{StaticResource TerminalOutputBox}"
+                                     Text="[Output] Build console output appears here."
+                                     VerticalScrollBarVisibility="Auto"/>
+                        </TabItem>
+
+                    </TabControl>
+                </Grid>
+
+                <!-- Splitter: center ↔ queue -->
+                <GridSplitter Grid.Column="4"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              ShowsPreview="False"/>
+
+                <!-- ── Build Queue Panel ── -->
+                <ctrl:BuildQueuePanel x:Name="BuildQueuePanel" Grid.Column="5"/>
+
             </Grid>
 
-            <!-- Splitter: center ↔ queue -->
-            <GridSplitter Grid.Column="4"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          ShowsPreview="False"/>
+        </DockPanel>
 
-            <!-- ── Build Queue Panel ── -->
-            <ctrl:BuildQueuePanel x:Name="BuildQueuePanel" Grid.Column="5"/>
+        <!-- ══════════════════════════════════════════════════════════════
+             TAB SWITCHER OVERLAY (Ctrl+Tab / Win+Tab style preview)
+             ══════════════════════════════════════════════════════════════ -->
+        <Grid x:Name="TabSwitcherOverlay"
+              Visibility="Collapsed"
+              Background="#95000000"
+              Panel.ZIndex="2000"
+              MouseDown="TabSwitcherOverlay_MouseDown">
+            <Border Width="560"
+                    MaxHeight="480"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface1Brush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="16"
+                    MouseDown="TabSwitcherCard_MouseDown">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.6" Color="#000000"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>  <!-- Header -->
+                        <RowDefinition Height="Auto"/>  <!-- Divider -->
+                        <RowDefinition Height="*"/>     <!-- List -->
+                        <RowDefinition Height="Auto"/>  <!-- Footer -->
+                    </Grid.RowDefinitions>
 
+                    <DockPanel Grid.Row="0" Margin="4,0,4,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="OPEN DOCUMENTS" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TabSwitcherCountText" DockPanel.Dock="Right" Text="0 tabs"
+                                   FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </DockPanel>
+
+                    <Separator Grid.Row="1" Margin="0,0,0,8"/>
+
+                    <!-- Tab Cards List -->
+                    <ListBox x:Name="TabSwitcherList"
+                             Grid.Row="2"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Margin="0"
+                             Padding="0">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Setter Property="Margin" Value="0,2"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="32"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Glyph}"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                               Foreground="{StaticResource BlueBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}"/>
+                                        <TextBlock Text="{Binding Url}" FontSize="11"
+                                                   Foreground="{StaticResource Subtext1Brush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="2"
+                                            Background="{StaticResource Surface0Brush}"
+                                            CornerRadius="3" Padding="6,2"
+                                            VerticalAlignment="Center" Margin="8,0,0,0">
+                                        <TextBlock Text="{Binding IndexTag}"
+                                                   FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Footer hint -->
+                    <Border Grid.Row="3" Margin="4,12,4,0" Padding="0,8,0,0"
+                            BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0">
+                        <DockPanel>
+                            <TextBlock Text="Release Ctrl or press Enter to select  •  Esc to cancel"
+                                       FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                            <TextBlock DockPanel.Dock="Right" Text="Ctrl+Tab ⇆"
+                                       FontSize="11" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
-
-    </DockPanel>
+    </Grid>
 </Window>
