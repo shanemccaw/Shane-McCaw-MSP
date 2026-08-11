@@ -305,6 +305,11 @@ function buildPanel() {
        highlighted), not disappear until actually closed. */
     .epic-row.label-complete { background: rgba(127,174,145,.16); border: 1px solid rgba(127,174,145,.35); }
     .epic-row.label-complete:hover { background: rgba(127,174,145,.26); }
+    /* Git #770 — Shane: "if there are more than one Epic listed... highlight
+       the Epic of the chat that is currently loaded." A left accent bar
+       (rather than a background tint) so it reads as "this one" even when
+       label-complete's green tint also applies to the same row. */
+    .epic-row.current-chat-epic { border-left: 3px solid #0f6cbd; padding-left: 5px; }
     .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
     .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
     .issue-row .ibtn {
@@ -1103,18 +1108,25 @@ function renderInProgressList() {
     h.className = "milestone";
     h.textContent = `Epics (${epicItems.length})`;
     ipList.appendChild(h);
+    // Git #770 — Shane: "if there are more than One Epic listed... highlight
+    // the Epic of the chat that is currently loaded." The server already
+    // resolves the current chat's own epic (self-or-parent, same as every
+    // other epic lookup in this file) — no extra request needed.
+    const currentEpicNumber = boardCache?.data?.currentChat?.focusEpic?.githubNumber ?? null;
     for (const item of epicItems) {
       const chat = chatForEpicId(item.epic?.id);
       const isComplete = (item.labels ?? []).includes("complete");
+      const isCurrent = currentEpicNumber != null && item.githubNumber === currentEpicNumber;
       const row = document.createElement("div");
-      row.className = "epic-row" + (isComplete ? " label-complete" : "");
-      row.innerHTML = `<span>${isComplete ? "✓ " : ""}${escapeHtml(item.title)}</span><span class="pill">#${item.githubNumber}</span>`;
+      row.className = "epic-row" + (isComplete ? " label-complete" : "") + (isCurrent ? " current-chat-epic" : "");
+      row.innerHTML = `<span>${isComplete ? "✓ " : ""}${escapeHtml(item.title)}</span><span class="pill">${isCurrent ? "● " : ""}#${item.githubNumber}</span>`;
+      const currentNote = isCurrent ? "Your current chat is linked to this epic. " : "";
       if (chat) {
-        row.title = `Go to: "${chat.title}"`;
+        row.title = `${currentNote}Go to: "${chat.title}"`;
         row.addEventListener("click", () => { location.href = chat.claudeUrl; });
       } else {
         row.style.cursor = "default";
-        row.title = "No chat linked to this epic yet";
+        row.title = `${currentNote}No chat linked to this epic yet`;
       }
       ipList.appendChild(row);
     }
@@ -2167,8 +2179,17 @@ async function linkTo(target, label) {
 function onConversationChanged() {
   showAllOverride = false;
   manualEpicView = null;
-  if (!panelEls || panelEls.panel.hidden) return;
-  loadBoard(true);
+  if (!panelEls) return;
+  if (!panelEls.panel.hidden) {
+    loadBoard(true);
+  } else if (!panelEls.ipPanel.hidden) {
+    // Git #770 — the left In Progress panel's current-chat-epic highlight
+    // reads boardCache.data.currentChat too now, so a chat switch with only
+    // the left panel open (main panel closed) still needs a fresh board
+    // fetch, or the highlight would keep showing the PREVIOUS chat's epic.
+    // Quiet - no "Loading…" flash since the main list is hidden anyway.
+    loadBoard(true, true).then(() => renderInProgressList());
+  }
 }
 
 /** `complete` wins over `in-flight` if a row somehow carries both (stale sync mid-transition). */
