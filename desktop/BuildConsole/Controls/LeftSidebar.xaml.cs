@@ -27,6 +27,15 @@ namespace BuildConsole.Controls
             }
         }
 
+        private void ExplorerTree_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+        {
+            if (ExplorerScrollViewer != null)
+            {
+                ExplorerScrollViewer.ScrollToVerticalOffset(ExplorerScrollViewer.VerticalOffset - e.Delta);
+                e.Handled = true;
+            }
+        }
+
         /// <summary>Returns the currently displayed view name.</summary>
         public string GetCurrentView() => _currentView;
 
@@ -74,7 +83,8 @@ namespace BuildConsole.Controls
             var item = new TreeViewItem
             {
                 Tag = dir.FullName,
-                Header = CreateHeaderPanel("\uE838", dir.Name, FrozenBrush(0xFA, 0xB3, 0x87), isBold: true)
+                Header = CreateHeaderPanel("\uE838", dir.Name, FrozenBrush(0xFA, 0xB3, 0x87), isBold: true),
+                ContextMenu = CreateExplorerContextMenu(dir.FullName, isDirectory: true)
             };
 
             item.Items.Add(new TreeViewItem { Header = "Loading..." });
@@ -126,9 +136,45 @@ namespace BuildConsole.Controls
             var item = new TreeViewItem
             {
                 Tag = file.FullName,
-                Header = CreateHeaderPanel(icon, file.Name, color, isBold: false)
+                Header = CreateHeaderPanel(icon, file.Name, color, isBold: false),
+                ContextMenu = CreateExplorerContextMenu(file.FullName, isDirectory: false)
             };
             return item;
+        }
+
+        private ContextMenu CreateExplorerContextMenu(string path, bool isDirectory)
+        {
+            var cm = new ContextMenu();
+
+            if (!isDirectory)
+            {
+                var miOpen = new MenuItem { Header = "Open" };
+                miOpen.Click += (s, e) => FileSelected?.Invoke(this, path);
+                cm.Items.Add(miOpen);
+            }
+
+            var miCopyPath = new MenuItem { Header = "Copy Path" };
+            miCopyPath.Click += (s, e) => Clipboard.SetText(path);
+            cm.Items.Add(miCopyPath);
+
+            var miReveal = new MenuItem { Header = "Reveal in File Explorer" };
+            miReveal.Click += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", isDirectory ? $"\"{path}\"" : $"/select,\"{path}\"");
+                }
+                catch { }
+            };
+            cm.Items.Add(miReveal);
+
+            cm.Items.Add(new Separator());
+
+            var miRefresh = new MenuItem { Header = "Refresh Explorer" };
+            miRefresh.Click += (s, e) => LoadWorkspaceExplorer(RootWorkspacePath);
+            cm.Items.Add(miRefresh);
+
+            return cm;
         }
 
         private StackPanel CreateHeaderPanel(string iconText, string text, Brush foreground, bool isBold)

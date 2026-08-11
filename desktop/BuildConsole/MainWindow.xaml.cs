@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -435,6 +436,47 @@ namespace BuildConsole
                 VerticalAlignment = VerticalAlignment.Center
             };
 
+            // Right-click context menu on tab header
+            var tabContextMenu = new ContextMenu();
+            var miCloseThis = new MenuItem { Header = "Close Tab" };
+            miCloseThis.Click += (s, e) =>
+            {
+                if (headerPanel.Parent is TabItem ti)
+                {
+                    EditorTabs.Items.Remove(ti);
+                    if (EditorTabs.Items.Count > 0)
+                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                }
+            };
+
+            var miCloseOthers = new MenuItem { Header = "Close Other Tabs" };
+            miCloseOthers.Click += (s, e) =>
+            {
+                if (headerPanel.Parent is TabItem ti)
+                {
+                    var toRemove = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(EditorTabs.Items.OfType<TabItem>(), t => t != ti && t != ClaudeWebView.Parent));
+                    foreach (var t in toRemove) EditorTabs.Items.Remove(t);
+                }
+            };
+
+            var miCloseAll = new MenuItem { Header = "Close All Tabs" };
+            miCloseAll.Click += (s, e) =>
+            {
+                var toRemove = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(EditorTabs.Items.OfType<TabItem>(), t => t != ClaudeWebView.Parent));
+                foreach (var t in toRemove) EditorTabs.Items.Remove(t);
+            };
+
+            var miCopyTabPath = new MenuItem { Header = "Copy File Path" };
+            miCopyTabPath.Click += (s, e) => Clipboard.SetText(filePath);
+
+            tabContextMenu.Items.Add(miCloseThis);
+            tabContextMenu.Items.Add(miCloseOthers);
+            tabContextMenu.Items.Add(miCloseAll);
+            tabContextMenu.Items.Add(new Separator());
+            tabContextMenu.Items.Add(miCopyTabPath);
+
+            headerPanel.ContextMenu = tabContextMenu;
+
             headerPanel.Children.Add(iconBlock);
             headerPanel.Children.Add(titleBlock);
             headerPanel.Children.Add(closeBtn);
@@ -457,7 +499,7 @@ namespace BuildConsole
             }
             else
             {
-                // Rich HTML Viewer in WebView2 for JSON, Markdown, Code
+                // Rich HTML Viewer / Monaco Code Editor in WebView2
                 string fileText;
                 try
                 {
@@ -475,6 +517,7 @@ namespace BuildConsole
                     try
                     {
                         await wv.EnsureCoreWebView2Async();
+                        wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                         wv.NavigateToString(htmlContent);
                     }
                     catch { }
@@ -506,127 +549,166 @@ namespace BuildConsole
         private static string GenerateViewerHtml(string filePath, string fileText, string ext)
         {
             string safePath = System.Net.WebUtility.HtmlEncode(filePath);
-            string safeContent = System.Net.WebUtility.HtmlEncode(fileText);
             long fileBytes = 0;
             try { fileBytes = new FileInfo(filePath).Length; } catch {}
             string sizeStr = fileBytes > 1024 * 1024 ? $"{fileBytes / (1024.0 * 1024.0):F2} MB" : fileBytes > 1024 ? $"{fileBytes / 1024.0:F1} KB" : $"{fileBytes} B";
+            string codeJson = System.Text.Json.JsonSerializer.Serialize(fileText);
 
-            if (ext == ".json")
+            if (ext == ".md")
             {
-                return $@"<!DOCTYPE html>
-<html>
-<head>
-<meta charset=""utf-8"">
-<style>
-  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: 'Segoe UI', Consolas, monospace; margin: 0; padding: 0; }}
-  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'Segoe UI', sans-serif; position: sticky; top: 0; z-index: 100; }}
-  .path {{ color: #89B4FA; font-weight: 600; }}
-  .badge {{ background-color: #313244; color: #A6E3A1; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
-  .container {{ padding: 16px; white-space: pre-wrap; font-family: Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.5; }}
-  .string {{ color: #A6E3A1; }}
-  .number {{ color: #FAB387; }}
-  .boolean {{ color: #CBA6F7; }}
-  .null {{ color: #F38BA8; }}
-  .key {{ color: #89B4FA; font-weight: 600; }}
-</style>
-</head>
-<body>
-  <div class=""toolbar"">
-    <span class=""path"">⚙ JSON Viewer — {safePath}</span>
-    <span class=""badge"">{sizeStr}</span>
-  </div>
-  <div class=""container"" id=""json-body""></div>
-  <script>
-    function syntaxHighlight(json) {{
-      if (typeof json !== 'string') {{ json = JSON.stringify(json, undefined, 2); }}
-      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return json.replace(/(""(\\u[a-zA-Z0-9]{{4}}|\\[^u]|[^\\""])*""(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {{
-        var cls = 'number';
-        if (/^""/.test(match)) {{
-          if (/:$/.test(match)) {{ cls = 'key'; }} else {{ cls = 'string'; }}
-        }} else if (/true|false/.test(match)) {{ cls = 'boolean'; }}
-        else if (/null/.test(match)) {{ cls = 'null'; }}
-        return '<span class=""' + cls + '"">' + match + '</span>';
-      }});
-    }}
-    try {{
-      var raw = `{fileText.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$").Replace("\r", "").Replace("\n", "\\n")}`;
-      var parsed = JSON.parse(raw);
-      document.getElementById('json-body').innerHTML = syntaxHighlight(JSON.stringify(parsed, null, 2));
-    }} catch (e) {{
-      document.getElementById('json-body').innerHTML = syntaxHighlight(`{safeContent.Replace("`", "\\`").Replace("\r", "").Replace("\n", "\\n")}`);
-    }}
-  </script>
-</body>
-</html>";
-            }
-            else if (ext == ".md")
-            {
-                return $@"<!DOCTYPE html>
+                string mdTemplate = @"<!DOCTYPE html>
 <html>
 <head>
 <meta charset=""utf-8"">
 <script src=""https://cdn.jsdelivr.net/npm/marked/marked.min.js""></script>
 <style>
-  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; line-height: 1.6; }}
-  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; position: sticky; top: 0; z-index: 100; }}
-  .path {{ color: #94E2D5; font-weight: 600; }}
-  .badge {{ background-color: #313244; color: #89B4FA; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
-  .content {{ padding: 24px 32px; max-width: 960px; margin: 0 auto; }}
-  h1, h2, h3, h4, h5, h6 {{ color: #89B4FA; border-bottom: 1px solid #313244; padding-bottom: 6px; margin-top: 24px; }}
-  h1 {{ color: #CBA6F7; }}
-  a {{ color: #89B4FA; text-decoration: none; }}
-  a:hover {{ text-decoration: underline; }}
-  code {{ background-color: #181825; color: #A6E3A1; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px; }}
-  pre {{ background-color: #181825; border: 1px solid #313244; padding: 14px; border-radius: 6px; overflow-x: auto; }}
-  pre code {{ background: none; padding: 0; color: #CDD6F4; }}
-  blockquote {{ border-left: 4px solid #CBA6F7; margin: 12px 0; padding: 4px 16px; background-color: #181825; color: #BAC2DE; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
-  th, td {{ border: 1px solid #313244; padding: 8px 12px; text-align: left; }}
-  th {{ background-color: #181825; color: #89B4FA; }}
-  tr:nth-child(even) {{ background-color: #181825; }}
-  hr {{ border: none; border-top: 1px solid #313244; margin: 24px 0; }}
+  body { background-color: #1E1E2E; color: #CDD6F4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; line-height: 1.6; }
+  .toolbar { background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; position: sticky; top: 0; z-index: 100; }
+  .path { color: #94E2D5; font-weight: 600; }
+  .badge { background-color: #313244; color: #89B4FA; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .content { padding: 24px 32px; max-width: 960px; margin: 0 auto; }
+  h1, h2, h3, h4, h5, h6 { color: #89B4FA; border-bottom: 1px solid #313244; padding-bottom: 6px; margin-top: 24px; }
+  h1 { color: #CBA6F7; }
+  a { color: #89B4FA; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background-color: #181825; color: #A6E3A1; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px; }
+  pre { background-color: #181825; border: 1px solid #313244; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; color: #CDD6F4; }
+  blockquote { border-left: 4px solid #CBA6F7; margin: 12px 0; padding: 4px 16px; background-color: #181825; color: #BAC2DE; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #313244; padding: 8px 12px; text-align: left; }
+  th { background-color: #181825; color: #89B4FA; }
+  tr:nth-child(even) { background-color: #181825; }
+  hr { border: none; border-top: 1px solid #313244; margin: 24px 0; }
 </style>
 </head>
 <body>
   <div class=""toolbar"">
-    <span class=""path"">📝 Markdown Preview — {safePath}</span>
-    <span class=""badge"">{sizeStr}</span>
+    <span class=""path"">📝 Markdown Preview — __PATH__</span>
+    <span class=""badge"">__SIZE__</span>
   </div>
   <div class=""content"" id=""markdown-body""></div>
   <script>
-    var rawMd = `{fileText.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$").Replace("\r", "").Replace("\n", "\\n")}`;
-    if (typeof marked !== 'undefined') {{
+    var rawMd = __CODE__;
+    if (typeof marked !== 'undefined') {
       document.getElementById('markdown-body').innerHTML = marked.parse(rawMd);
-    }} else {{
+    } else {
       document.getElementById('markdown-body').innerHTML = '<pre>' + rawMd.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
-    }}
+    }
   </script>
 </body>
 </html>";
+                return mdTemplate.Replace("__PATH__", safePath).Replace("__SIZE__", sizeStr).Replace("__CODE__", codeJson);
             }
-            else
-            {
-                return $@"<!DOCTYPE html>
+
+            // Monaco Code Editor for TypeScript (.ts, .tsx), JS, C#, XAML, JSON, CSS, etc.
+            string lang = GetMonacoLanguage(ext);
+            string monacoTemplate = @"<!DOCTYPE html>
 <html>
 <head>
-<meta charset=""utf-8"">
-<style>
-  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: Consolas, 'Courier New', monospace; margin: 0; padding: 0; font-size: 13px; line-height: 1.5; }}
-  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'Segoe UI', sans-serif; position: sticky; top: 0; z-index: 100; }}
-  .path {{ color: #CBA6F7; font-weight: 600; }}
-  .badge {{ background-color: #313244; color: #89B4FA; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
-  .code-container {{ padding: 16px; white-space: pre; overflow-x: auto; }}
-</style>
+  <meta charset=""utf-8"">
+  <link rel=""stylesheet"" data-name=""vs/editor/editor.main"" href=""https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.css"">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #1E1E2E; font-family: 'Segoe UI', sans-serif; }
+    #toolbar { height: 32px; background-color: #181825; border-bottom: 1px solid #313244; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 12px; box-sizing: border-box; }
+    .path { color: #89B4FA; font-weight: 600; }
+    .badge { background-color: #313244; color: #A6E3A1; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    #editor-container { width: 100%; height: calc(100% - 32px); }
+  </style>
 </head>
 <body>
-  <div class=""toolbar"">
-    <span class=""path"">📄 Code Viewer — {safePath}</span>
-    <span class=""badge"">{sizeStr}</span>
+  <div id=""toolbar"">
+    <span class=""path"">⚛ __PATH__</span>
+    <span class=""badge"">__SIZE__  •  Ctrl+F Find  •  Ctrl+G Go to Line</span>
   </div>
-  <div class=""code-container""><code>{safeContent}</code></div>
+  <div id=""editor-container""></div>
+
+  <script src=""https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js""></script>
+  <script>
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function() {
+      monaco.editor.defineTheme('catppuccin-mocha', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: '', background: '1E1E2E', foreground: 'CDD6F4' },
+          { token: 'keyword', foreground: 'CBA6F7', fontStyle: 'bold' },
+          { token: 'string', foreground: 'A6E3A1' },
+          { token: 'number', foreground: 'FAB387' },
+          { token: 'comment', foreground: '6C7086', fontStyle: 'italic' },
+          { token: 'type', foreground: '89B4FA' },
+          { token: 'identifier', foreground: '89DCEB' }
+        ],
+        colors: {
+          'editor.background': '#1E1E2E',
+          'editor.foreground': '#CDD6F4',
+          'editorLineNumber.foreground': '#585B70',
+          'editorLineNumber.activeForeground': '#89B4FA',
+          'editor.selectionBackground': '#45475A',
+          'editor.lineHighlightBackground': '#181825',
+          'editorCursor.foreground': '#89B4FA'
+        }
+      });
+
+      var editor = monaco.editor.create(document.getElementById('editor-container'), {
+        value: __CODE__,
+        language: '__LANG__',
+        theme: 'catppuccin-mocha',
+        lineNumbers: 'on',
+        renderLineHighlight: 'all',
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        fontSize: 13,
+        fontFamily: 'Consolas, ""Courier New"", monospace',
+        contextmenu: true,
+        minimap: { enabled: true }
+      });
+    });
+  </script>
 </body>
 </html>";
+
+            return monacoTemplate.Replace("__PATH__", safePath)
+                                 .Replace("__SIZE__", sizeStr)
+                                 .Replace("__LANG__", lang)
+                                 .Replace("__CODE__", codeJson);
+        }
+
+        private static string GetMonacoLanguage(string ext)
+        {
+            switch (ext.ToLowerInvariant())
+            {
+                case ".ts":
+                case ".tsx":
+                    return "typescript";
+                case ".js":
+                case ".jsx":
+                    return "javascript";
+                case ".cs":
+                    return "csharp";
+                case ".xaml":
+                case ".xml":
+                case ".html":
+                case ".htm":
+                case ".csproj":
+                    return "xml";
+                case ".css":
+                    return "css";
+                case ".json":
+                    return "json";
+                case ".md":
+                    return "markdown";
+                case ".sql":
+                    return "sql";
+                case ".yaml":
+                case ".yml":
+                    return "yaml";
+                case ".ps1":
+                case ".bat":
+                case ".sh":
+                    return "powershell";
+                default:
+                    return "plaintext";
             }
         }
 

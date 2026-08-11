@@ -234,12 +234,14 @@
                     </Border>
 
                     <!-- TreeView of Repository Files -->
-                    <ScrollViewer DockPanel.Dock="Top"
+                    <ScrollViewer x:Name="ExplorerScrollViewer"
+                                  DockPanel.Dock="Top"
                                   VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
+                                  HorizontalScrollBarVisibility="Auto"
                                   Padding="0,4">
                         <TreeView x:Name="ExplorerTree"
                                   BorderThickness="0"
+                                  PreviewMouseWheel="ExplorerTree_PreviewMouseWheel"
                                   SelectedItemChanged="ExplorerTree_SelectedItemChanged"/>
                     </ScrollViewer>
                 </DockPanel>
