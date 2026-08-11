@@ -1,0 +1,76 @@
+<UserControl x:Class="BuildConsole.Controls.TerminalView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="{StaticResource CrustBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- quick-command chips -->
+            <RowDefinition Height="*"/>     <!-- output -->
+            <RowDefinition Height="Auto"/>  <!-- input bar -->
+        </Grid.RowDefinitions>
+
+        <!-- ── Quick-command chips ── -->
+        <Border Grid.Row="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,5">
+            <WrapPanel Orientation="Horizontal">
+                <Button Content="git status"  Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git status"/>
+                <Button Content="git log"     Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git log --oneline -20"/>
+                <Button Content="git pull"    Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git pull"/>
+                <Button Content="git push"    Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git push"/>
+                <Button Content="git fetch"   Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git fetch --all"/>
+                <Button Content="git stash"   Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git stash"/>
+                <Button Content="git diff"    Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git diff"/>
+                <Button Content="git branch"  Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git branch -a"/>
+                <Button Content="dotnet build" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="dotnet build --configuration Release"/>
+            </WrapPanel>
+        </Border>
+
+        <!-- ── Terminal output ── -->
+        <TextBox x:Name="OutputBox"
+                 Grid.Row="1"
+                 Style="{StaticResource TerminalOutputBox}"
+                 Text="BuildConsole Terminal&#x0A;Type a command or click a chip above.&#x0A;&#x0A;C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP&gt; "
+                 VerticalScrollBarVisibility="Auto"
+                 IsReadOnly="True"/>
+
+        <!-- ── Input bar ── -->
+        <Border Grid.Row="2"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,1,0,0"
+                Padding="8,5">
+            <DockPanel>
+                <!-- Prompt label -->
+                <TextBlock DockPanel.Dock="Left"
+                           Text="&gt;"
+                           FontFamily="Cascadia Code, Consolas"
+                           FontSize="13"
+                           Foreground="{StaticResource GreenBrush}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"/>
+                <!-- Send button -->
+                <Button DockPanel.Dock="Right"
+                        Content="&#xE768;"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="14"
+                        Style="{StaticResource IconButton}"
+                        ToolTip="Run (Enter)"
+                        Click="Send_Click"
+                        Margin="6,0,0,0"/>
+                <!-- Command input -->
+                <TextBox x:Name="InputBox"
+                         FontFamily="Cascadia Code, Consolas"
+                         FontSize="13"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{StaticResource TextBrush}"
+                         CaretBrush="{StaticResource BlueBrush}"
+                         VerticalContentAlignment="Center"
+                         KeyDown="InputBox_KeyDown"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

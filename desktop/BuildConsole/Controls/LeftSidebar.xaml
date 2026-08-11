@@ -1,0 +1,266 @@
+<UserControl x:Class="BuildConsole.Controls.LeftSidebar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="180">
+
+    <Border Background="{StaticResource MantleBrush}"
+            BorderBrush="{StaticResource Surface0Brush}"
+            BorderThickness="0,0,1,0">
+        <DockPanel LastChildFill="True">
+
+            <!-- ── Section header ── -->
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,8">
+                <DockPanel>
+                    <TextBlock x:Name="HeaderTitle"
+                               Text="CHATS"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               VerticalAlignment="Center"/>
+                    <StackPanel DockPanel.Dock="Right"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right">
+                        <Button x:Name="BtnNewItem"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="New Chat"
+                                Content="&#xE710;"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Padding="4"/>
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="Collapse All"
+                                Content="&#xF0A9;"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                Padding="4"
+                                Click="CollapseAll_Click"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- ══════════════════════════════════
+                 CHATS VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="ChatsView" DockPanel.Dock="Top">
+                <DockPanel>
+                    <!-- Search box -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="8,6">
+                        <TextBox x:Name="ChatSearch"
+                                 Height="26"
+                                 Padding="6,4"
+                                 FontSize="12"
+                                 Text="">
+                            <TextBox.Style>
+                                <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+                                    <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                    </Border>
+
+                    <!-- Chat tree -->
+                    <ScrollViewer DockPanel.Dock="Top"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="0,4">
+                        <TreeView x:Name="ChatsTree" BorderThickness="0">
+
+                            <!-- Today -->
+                            <TreeViewItem IsExpanded="True">
+                                <TreeViewItem.Header>
+                                    <TextBlock Text="TODAY"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="0,4,0,2"/>
+                                </TreeViewItem.Header>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="IDE-style layout for BuildConsole" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Office Ribbon + dark mode" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                            </TreeViewItem>
+
+                            <!-- Yesterday -->
+                            <TreeViewItem IsExpanded="True">
+                                <TreeViewItem.Header>
+                                    <TextBlock Text="YESTERDAY"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="0,8,0,2"/>
+                                </TreeViewItem.Header>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource MauveBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Create WPF skeleton + WebView2" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource MauveBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Build queue API design" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                            </TreeViewItem>
+
+                            <!-- Last week -->
+                            <TreeViewItem IsExpanded="False">
+                                <TreeViewItem.Header>
+                                    <TextBlock Text="LAST WEEK"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="0,8,0,2"/>
+                                </TreeViewItem.Header>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="MSP Platform database schema" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Stripe integration for resellers" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Alert engine migration planning" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Admin panel layout fixes" FontSize="13" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                            </TreeViewItem>
+
+                        </TreeView>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
+
+            <!-- ══════════════════════════════════
+                 EXPLORER VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="ExplorerView" Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TreeView>
+                        <TreeViewItem Header="Platform Build" IsExpanded="True">
+                            <TreeViewItem Header="desktop/BuildConsole"/>
+                            <TreeViewItem Header="services/api"/>
+                            <TreeViewItem Header="Eyecons"/>
+                            <TreeViewItem Header="Eyecons-Admin"/>
+                        </TreeViewItem>
+                        <TreeViewItem Header="Boards" IsExpanded="False">
+                            <TreeViewItem Header="Build Tracker"/>
+                            <TreeViewItem Header="MSP Roadmap"/>
+                        </TreeViewItem>
+                    </TreeView>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- ══════════════════════════════════
+                 SEARCH VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="SearchView" Visibility="Collapsed">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="8,8">
+                        <TextBox Height="26" Padding="6,4" FontSize="12"
+                                 VerticalContentAlignment="Center"/>
+                    </Border>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Type to search chats…"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               Margin="0,24,0,0"/>
+                </DockPanel>
+            </Grid>
+
+            <!-- ══════════════════════════════════
+                 GIT VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="GitView" Visibility="Collapsed">
+                <DockPanel>
+                    <!-- Branch badge -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{StaticResource Surface0Brush}"
+                            CornerRadius="4"
+                            Padding="10,6"
+                            Margin="8,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets"
+                                       FontSize="14" Foreground="{StaticResource BlueBrush}" Margin="0,0,8,0"/>
+                            <TextBlock Text="main" FontSize="13" Foreground="{StaticResource TextBrush}"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- Staged changes placeholder -->
+                    <TreeViewItem DockPanel.Dock="Top" Header="STAGED (0)" IsExpanded="True"/>
+                    <TreeViewItem DockPanel.Dock="Top" Header="CHANGES (0)" IsExpanded="True"/>
+                </DockPanel>
+            </Grid>
+
+            <!-- ══════════════════════════════════
+                 SETTINGS VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="SettingsView" Visibility="Collapsed">
+                <StackPanel Margin="12">
+                    <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                    <TextBlock Text="Claude endpoint" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox Text="https://claude.ai" Height="26" FontSize="12" Margin="0,0,0,12"/>
+                    <TextBlock Text="API base URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox Text="http://localhost:3000" Height="26" FontSize="12" Margin="0,0,0,12"/>
+                    <TextBlock Text="Theme" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <ComboBox Height="26" FontSize="12">
+                        <ComboBoxItem Content="Catppuccin Mocha" IsSelected="True"/>
+                        <ComboBoxItem Content="Catppuccin Latte"/>
+                        <ComboBoxItem Content="One Dark Pro"/>
+                    </ComboBox>
+                </StackPanel>
+            </Grid>
+
+        </DockPanel>
+    </Border>
+</UserControl>
