@@ -86,6 +86,24 @@
   <button id="saveBuilder">Save builder defaults</button>
   <div id="builderStatus"></div>
 
+  <p class="hint" style="margin-top: 24px;">
+    "+ New chat for this epic" — shown on the Browse Epics screen when an
+    epic has no chat linked yet. Opens the project URL below in a new tab,
+    pre-filled with "Epic #N" plus (optional) a token you paste in below —
+    <strong>not</strong> a server secret, just whatever short-lived text you
+    want handed to the new chat. Leave the token blank to only prefill the
+    epic reference.
+  </p>
+
+  <label for="epicChatProjectUrl">New chat project URL</label>
+  <input id="epicChatProjectUrl" type="url" placeholder="https://claude.ai/cowork/project/&lt;id&gt;" />
+
+  <label for="epicChatToken">New chat prefill token (optional)</label>
+  <input id="epicChatToken" type="password" placeholder="Pasted after the epic line — leave blank to skip" />
+
+  <button id="saveEpicChat">Save new-chat defaults</button>
+  <div id="epicChatStatus"></div>
+
   <script src="options.js"></script>
 </body>
 </html>

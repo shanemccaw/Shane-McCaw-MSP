@@ -36,6 +36,8 @@ async function sendMessageSafe(message) {
 }
 
 const CONVERSATION_ID_RE = /\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+/** Query param carrying openNewEpicChat()'s prefill text through to a fresh tab — see tryInsertPrefillFromUrl(). */
+const EPIC_CHAT_PREFILL_PARAM = "bt_prefill";
 const SETTLE_DELAY_MS = 1500;
 const PLACEHOLDER_TITLES = new Set(["", "new chat", "claude"]);
 /** Board data older than this refetches on next panel expand, rather than reusing a stale list. */
@@ -1578,6 +1580,22 @@ function renderFocused(currentChat, query, isManual) {
       manualEpicView = null;
       render();
     });
+    // Git #769 — Shane: "if a chat is not yet added to that Epic... give me
+    // a link to create a new chat associated to my project." No chat found
+    // for this epic (chatForEpicId) means the whole point of Browse Epics
+    // (finding work with nowhere to go yet) is unmet without this.
+    if (!chatForEpicId(epic.id)) {
+      const newChatLink = document.createElement("a");
+      newChatLink.href = "#";
+      newChatLink.className = "showall";
+      newChatLink.textContent = "+ New chat for this epic";
+      newChatLink.title = "Opens a new chat in your Build Tracker project, pre-filled with this epic";
+      newChatLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        void openNewEpicChat(epic);
+      });
+      current.appendChild(newChatLink);
+    }
   } else {
     current.innerHTML = `Linked to Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Show everything</a>`;
     current.querySelector(".showall").addEventListener("click", (e) => {
@@ -2607,6 +2625,69 @@ async function sendToBuilder(prompt) {
   window.location.href = `mybuilder://open?${params.toString()}`;
 }
 
+/**
+ * Git #769 — Shane: on the Browse Epics screen, an epic with no chat linked
+ * yet should offer a link straight to a new chat in his Build Tracker
+ * project, pre-filled with "Epic #N" and (his explicit, repeated ask) a
+ * token he pastes in himself. That token is NOT the server's own
+ * GITHUB_TOKEN (never exposed to the browser) — it's a separate,
+ * purpose-scoped PAT Shane configures himself in this extension's Options
+ * page and rotates/invalidates on his own schedule, stored only in
+ * chrome.storage.local (this browser profile, never transmitted anywhere
+ * except the claude.ai tab HE explicitly opens).
+ */
+async function openNewEpicChat(epic) {
+  const { epicChatProjectUrl, epicChatToken } = await chrome.storage.local.get([
+    "epicChatProjectUrl", "epicChatToken",
+  ]);
+  if (!epicChatProjectUrl) {
+    window.alert('Set a "New chat project URL" in the extension\'s Options page first.');
+    return;
+  }
+  let url;
+  try {
+    url = new URL(epicChatProjectUrl);
+  } catch {
+    window.alert("The configured New chat project URL isn't valid.");
+    return;
+  }
+  const label = epic.githubNumber != null ? `Epic #${epic.githubNumber}` : `Epic ${epic.title}`;
+  const text = epicChatToken ? `${label}\r\n${epicChatToken}` : label;
+  url.searchParams.set(EPIC_CHAT_PREFILL_PARAM, text);
+  window.open(url.toString(), "_blank");
+}
+
+/**
+ * The other half of openNewEpicChat() above — runs on EVERY page load
+ * (including the fresh https://claude.ai/cowork/project/... tab that opens
+ * to), checks for a bt_prefill param left in the URL, and once the
+ * composer actually exists (a brand-new tab needs the whole SPA to boot
+ * first, so this polls rather than assuming it's ready immediately) inserts
+ * it via the same insertTextIntoComposer() the Send to Builder/SQL buttons
+ * already use. Strips the param afterward so a reload/back doesn't
+ * re-insert it.
+ */
+function tryInsertPrefillFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const text = params.get(EPIC_CHAT_PREFILL_PARAM);
+  if (!text) return;
+  let attempts = 0;
+  const maxAttempts = 30; // ~15s at 500ms — a fresh tab's SPA boot is slower than an already-open one
+  const tryInsert = () => {
+    attempts++;
+    const composer = findComposer();
+    if (composer) {
+      insertTextIntoComposer(text);
+      const url = new URL(window.location.href);
+      url.searchParams.delete(EPIC_CHAT_PREFILL_PARAM);
+      history.replaceState(null, "", url.toString());
+      return;
+    }
+    if (attempts < maxAttempts) setTimeout(tryInsert, 500);
+  };
+  tryInsert();
+}
+
 function scanForCodeBlockButtons(root) {
   const blocks = root.querySelectorAll ? root.querySelectorAll("pre") : [];
   for (const pre of blocks) {
@@ -2656,3 +2737,4 @@ scheduleIssueRefScan(); // catch whatever's already on the page (e.g. a hard rel
 buildPanel();
 void initPanelVisibility();
 void initInProgressVisibility();
+tryInsertPrefillFromUrl();

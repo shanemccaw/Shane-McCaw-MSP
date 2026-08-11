@@ -9,15 +9,26 @@ const builderCwdEl = document.getElementById("builderCwd");
 const builderStatusEl = document.getElementById("builderStatus");
 const saveBuilderBtn = document.getElementById("saveBuilder");
 
+const epicChatProjectUrlEl = document.getElementById("epicChatProjectUrl");
+const epicChatTokenEl = document.getElementById("epicChatToken");
+const epicChatStatusEl = document.getElementById("epicChatStatus");
+const saveEpicChatBtn = document.getElementById("saveEpicChat");
+
 async function load() {
-  const { apiBaseUrl, ingestToken, builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
+  const {
+    apiBaseUrl, ingestToken, builderModel, builderEffort, builderCwd,
+    epicChatProjectUrl, epicChatToken,
+  } = await chrome.storage.local.get([
     "apiBaseUrl", "ingestToken", "builderModel", "builderEffort", "builderCwd",
+    "epicChatProjectUrl", "epicChatToken",
   ]);
   if (apiBaseUrl) apiBaseUrlEl.value = apiBaseUrl;
   if (ingestToken) ingestTokenEl.value = ingestToken;
   if (builderModel) builderModelEl.value = builderModel;
   if (builderEffort) builderEffortEl.value = builderEffort;
   if (builderCwd) builderCwdEl.value = builderCwd;
+  if (epicChatProjectUrl) epicChatProjectUrlEl.value = epicChatProjectUrl;
+  if (epicChatToken) epicChatTokenEl.value = epicChatToken;
 }
 
 function setStatus(text, tone) {
@@ -72,6 +83,15 @@ saveBuilderBtn.addEventListener("click", async () => {
   });
   builderStatusEl.textContent = "Saved.";
   builderStatusEl.className = "ok";
+});
+
+saveEpicChatBtn.addEventListener("click", async () => {
+  await chrome.storage.local.set({
+    epicChatProjectUrl: epicChatProjectUrlEl.value.trim(),
+    epicChatToken: epicChatTokenEl.value.trim(),
+  });
+  epicChatStatusEl.textContent = "Saved.";
+  epicChatStatusEl.className = "ok";
 });
 
 load();
