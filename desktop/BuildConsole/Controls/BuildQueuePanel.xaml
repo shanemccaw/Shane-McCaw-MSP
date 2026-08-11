@@ -28,10 +28,14 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Refresh"
-                                Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Padding="4"/>
+                                Padding="4">
+                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Add Item"
-                                Content="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="14" Padding="4"/>
+                                Padding="4">
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                     </StackPanel>
                 </DockPanel>
             </Border>

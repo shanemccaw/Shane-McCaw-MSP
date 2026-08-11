@@ -799,4 +799,32 @@
         <Setter Property="Padding"                  Value="6,0"/>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════════════
+         TOOLTIP (DARK MODE)
+         ══════════════════════════════════════════════════════════════════ -->
+    <Style TargetType="{x:Type ToolTip}">
+        <Setter Property="Background"      Value="{StaticResource Surface0Brush}"/>
+        <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderBrush"     Value="{StaticResource Surface1Brush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding"         Value="8,5"/>
+        <Setter Property="FontSize"        Value="12"/>
+        <Setter Property="FontFamily"      Value="Segoe UI"/>
+        <Setter Property="HasDropShadow"   Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToolTip}">
+                    <Border Background="{StaticResource Surface0Brush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}"
+                            TextElement.Foreground="{StaticResource TextBrush}">
+                        <ContentPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

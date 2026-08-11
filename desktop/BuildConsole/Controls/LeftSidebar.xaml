@@ -27,17 +27,15 @@
                         <Button x:Name="BtnNewItem"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="New Chat"
-                                Content="&#xE710;"
-                                FontFamily="Segoe MDL2 Assets"
-                                FontSize="14"
-                                Padding="4"/>
+                                Padding="4">
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Collapse All"
-                                Content="&#xF0A9;"
-                                FontFamily="Segoe MDL2 Assets"
-                                FontSize="14"
                                 Padding="4"
-                                Click="CollapseAll_Click"/>
+                                Click="CollapseAll_Click">
+                            <TextBlock Text="&#xE74B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                     </StackPanel>
                 </DockPanel>
             </Border>
