@@ -340,6 +340,13 @@ function buildPanel() {
       background: none; border: 1px solid currentColor; border-radius: 4px; color: inherit;
       font-size: 10px; padding: 1px 6px; cursor: pointer; flex: none;
     }
+    /* Git #790 — queued-build rows, same issue-row shape with a status-colored left accent so queued/running/done/failed read apart at a glance. */
+    .queue-item-meta { font-size: 11px; color: #a19f9d; }
+    .queue-item-row.queue-status-queued  { border-left: 3px solid #8f8c88; }
+    .queue-item-row.queue-status-running { border-left: 3px solid #f2ca63; }
+    .queue-item-row.queue-status-done    { border-left: 3px solid #7fae91; opacity: .75; }
+    .queue-item-row.queue-status-failed  { border-left: 3px solid #e57a7a; }
+    .queue-item-row.queue-status-canceled { border-left: 3px solid #5a5856; opacity: .6; }
     .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
     .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
     .issue-row .ibtn {
@@ -1023,7 +1030,7 @@ function toggleInProgressPanel(open) {
   ipPanel.hidden = !open;
   ipTab.style.display = open ? "none" : "block";
   void chrome.storage.local.set({ inProgressPanelOpen: open });
-  if (open) void loadInProgress(false);
+  if (open) { void loadInProgress(false); void loadQueue(false); }
   syncPollingState();
 }
 
@@ -1101,6 +1108,24 @@ async function loadInProgress(force) {
   previousBlockedNumbers = currentBlockedNumbers;
   renderInProgressList();
   updateCodeBlockButtonStates();
+}
+
+/**
+ * Git #790 — the "📋 Queue" button's list, same cache/poll shape as
+ * inProgressCache above. Deliberately its own cache/request, not merged
+ * into loadInProgress()'s — a queue with nothing running yet has nothing to
+ * do with GitHub's in-flight label at all.
+ */
+let queueCache = null; // { items, fetchedAt }
+const QUEUE_STALE_MS = 15_000;
+
+async function loadQueue(force) {
+  const fresh = queueCache && Date.now() - queueCache.fetchedAt < QUEUE_STALE_MS;
+  if (!force && fresh) { renderInProgressList(); return; }
+  const res = await sendMessageSafe({ type: "build-tracker-list-queue" });
+  if (!res?.ok) return;
+  queueCache = { items: res.result?.items ?? [], fetchedAt: Date.now() };
+  renderInProgressList();
 }
 
 /**
@@ -1223,15 +1248,69 @@ function renderSectionWithBlocking(container, items, buildRowFn) {
   for (const item of topLevel) renderOne(item, false);
 }
 
+const QUEUE_STATUS_LABEL = {
+  queued: "⏳ Queued",
+  running: "▶ Running",
+  done: "✓ Done",
+  failed: "✕ Failed",
+  canceled: "— Canceled",
+};
+
+/** Git #790 — one row in the "📋 Queued Builds" section; a Cancel button only while it's still actually cancelable. */
+function buildQueueItemRow(item) {
+  const row = document.createElement("div");
+  row.className = "issue-row queue-item-row queue-status-" + item.status;
+  const meta = [QUEUE_STATUS_LABEL[item.status] ?? item.status];
+  if (item.blockedByNumber != null) meta.push(`waiting on #${item.blockedByNumber}`);
+  if (item.status === "failed" && item.exitCode != null) meta.push(`exit code ${item.exitCode}`);
+  row.innerHTML =
+    `<div class="issue-top"><span class="issue-text">${escapeHtml(item.title)}</span></div>` +
+    `<div class="queue-item-meta">${escapeHtml(meta.join(" · "))}</div>`;
+  if (item.status === "queued") {
+    const actions = document.createElement("div");
+    actions.className = "issue-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "ibtn";
+    cancelBtn.textContent = "✕ Cancel";
+    cancelBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      cancelBtn.disabled = true;
+      const res = await sendMessageSafe({ type: "build-tracker-cancel-queue-item", id: item.id });
+      cancelBtn.disabled = false;
+      if (!res?.ok) {
+        window.alert(`Couldn't cancel: ${res?.error ?? "unknown error"}`);
+        return;
+      }
+      void loadQueue(true);
+    });
+    actions.appendChild(cancelBtn);
+    row.appendChild(actions);
+  }
+  return row;
+}
+
 function renderInProgressList() {
   if (!panelEls || panelEls.ipPanel.hidden) return;
   const { ipList } = panelEls;
   const items = inProgressCache?.issues ?? [];
+  // Git #790 — queued builds render as their own section regardless of
+  // whether anything's actually in-flight yet (a fresh queue with nothing
+  // running is the NORMAL state right after queuing several builds).
+  const queueItems = queueCache?.items ?? [];
 
   ipList.innerHTML = "";
-  if (items.length === 0) {
+  if (items.length === 0 && queueItems.length === 0) {
     ipList.innerHTML = `<div class="empty">Nothing in flight right now.</div>`;
     return;
+  }
+
+  if (queueItems.length > 0) {
+    const h = document.createElement("div");
+    h.className = "milestone";
+    h.textContent = `📋 Queued Builds (${queueItems.length})`;
+    ipList.appendChild(h);
+    for (const item of queueItems) ipList.appendChild(buildQueueItemRow(item));
   }
 
   // Git #744 follow-up — Shane: "add a new label 'Shane To-Do'... In our
@@ -1356,6 +1435,7 @@ async function pollInProgressList() {
   if (pollingBlocked()) return;
   if (!panelEls || panelEls.ipPanel.hidden) return;
   await loadInProgress(true);
+  await loadQueue(true);
 }
 
 // Switching tabs to close something on GitHub, then back, is the exact
@@ -2854,6 +2934,44 @@ async function sendToBuilder(prompt) {
 }
 
 /**
+ * Git #790 — the "📋 Queue" button's handler. Same flag parsing as
+ * sendToBuilder() (a leading --model/--effort/--cwd line still works
+ * exactly the same way), plus a new --blocked-by <number> flag specific to
+ * queuing — a build launched right now can't usefully declare "wait for
+ * X," but a QUEUED one can, since the watcher won't claim it until X clears.
+ */
+async function queueBuildFromBlock(prompt, referencedNumber, btn) {
+  const { builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
+    "builderModel", "builderEffort", "builderCwd",
+  ]);
+  const { flags, rest } = extractLeadingFlags(prompt);
+  const model = flags.model || builderModel || null;
+  const effort = flags.effort || builderEffort || null;
+  const cwd = flags.cwd || builderCwd || null;
+  const blockedByNumber = flags["blocked-by"] && /^\d+$/.test(flags["blocked-by"])
+    ? parseInt(flags["blocked-by"], 10)
+    : null;
+  const title = flags.title
+    ? (referencedNumber != null ? `#${referencedNumber} — ${flags.title}` : flags.title)
+    : (referencedNumber != null ? `#${referencedNumber}` : rest.split("\n")[0].slice(0, 80));
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  const res = await sendMessageSafe({
+    type: "build-tracker-queue-build",
+    item: { title, prompt: rest, model, effort, cwd, githubNumber: referencedNumber, blockedByNumber },
+  });
+  btn.disabled = false;
+  if (!res?.ok) {
+    window.alert(`Couldn't queue build: ${res?.error ?? "unknown error"}`);
+    return;
+  }
+  btn.textContent = "✓ Queued";
+  setTimeout(() => { btn.textContent = original; }, 2000);
+  void loadQueue(true);
+}
+
+/**
  * Git #769 — Shane: on the Browse Epics screen, an epic with no chat linked
  * yet should offer a link straight to a new chat in his Build Tracker
  * project, pre-filled with "Epic #N" and (his explicit, repeated ask) a
@@ -2971,7 +3089,7 @@ function updateCodeBlockButtonStates() {
 /** Shared by both the above- and below-block bars (Git #777) so the two never drift apart in styling/behavior. */
 function buildCodeBlockButtonBar(kind, text, marginSide, referencedNumber) {
   const bar = document.createElement("div");
-  bar.style.cssText = `display: flex; justify-content: flex-end; margin-${marginSide}: 4px;`;
+  bar.style.cssText = `display: flex; justify-content: flex-end; gap: 6px; margin-${marginSide}: 4px;`;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = kind === "sql" ? "🗄 Load into SQL Runner" : "🚀 Send to Builder";
@@ -2989,6 +3107,23 @@ function buildCodeBlockButtonBar(kind, text, marginSide, referencedNumber) {
     const entry = { number: referencedNumber, btn };
     codeBlockSmartButtons.push(entry);
     applyCodeBlockButtonState(entry);
+  }
+  // Git #790 — Shane: "if we could really build me a true queued up
+  // build... that would speed up my development time like mad." An
+  // alternative to launching right now: park it on the queue instead, for
+  // scripts/build-queue-watcher.ps1 to pick up when a slot frees.
+  if (kind === "prompt") {
+    const queueBtn = document.createElement("button");
+    queueBtn.type = "button";
+    queueBtn.textContent = "📋 Queue";
+    queueBtn.title = "Add to the build queue instead of launching now";
+    queueBtn.style.cssText =
+      "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
+      "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
+    queueBtn.addEventListener("mouseenter", () => { queueBtn.style.background = "#2e2e2e"; });
+    queueBtn.addEventListener("mouseleave", () => { queueBtn.style.background = "#242424"; });
+    queueBtn.addEventListener("click", () => void queueBuildFromBlock(text, referencedNumber, queueBtn));
+    bar.appendChild(queueBtn);
   }
   return bar;
 }

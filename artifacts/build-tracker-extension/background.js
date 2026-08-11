@@ -368,6 +368,72 @@ async function toggleLabel(number, label, add) {
   }
 }
 
+/**
+ * Git #790 — Shane: "if we could really build me a true queued up build...
+ * that would speed up my development time like mad." queueBuild() POSTs a
+ * new item; listQueue() GETs the panel's own display list. The watcher
+ * (scripts/build-queue-watcher.ps1) talks to /extension/queue/next and
+ * /complete directly over HTTP with its own token — it isn't a browser
+ * extension, so it can't go through this file at all.
+ */
+async function queueBuild(item) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/queue`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify(item),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function listQueue() {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/queue`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function cancelQueueItem(id) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/queue/${encodeURIComponent(id)}`;
+  try {
+    const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /** GETs /extension/issue-lookup — powers the hover card for any #N the content script finds in a claude.ai message. */
 async function lookupIssue(number) {
   const { apiBaseUrl, ingestToken } = await getConfig();
@@ -480,6 +546,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-toggle-label") {
     void toggleLabel(message.number, message.label, message.add).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-queue-build") {
+    void queueBuild(message.item).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-list-queue") {
+    void listQueue().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-cancel-queue-item") {
+    void cancelQueueItem(message.id).then(sendResponse);
     return true;
   }
   if (message?.type === "build-tracker-set-issue-state") {

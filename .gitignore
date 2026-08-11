@@ -55,4 +55,8 @@ data/uploads/documents/*.pdf
 attached_assets/*.txt
 artifacts/api-server/src/lib/workflow-executor.ts
 CLAUDE.md
-artifacts/shane-mccaw-consulting/public/sitemap.xml 
+artifacts/shane-mccaw-consulting/public/sitemap.xml
+
+# Git #790 — build-queue-watcher.ps1's own config holds the same ingest
+# token the extension's Options page does; only the .example template ships.
+scripts/build-queue-watcher.config.json

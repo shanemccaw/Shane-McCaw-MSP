@@ -4072,4 +4072,36 @@ export const btChatsTable = pgTable("bt_chats", {
 export type InsertBtChat = typeof btChatsTable.$inferInsert;
 export type BtChat       = typeof btChatsTable.$inferSelect;
 
+/**
+ * Git #790 — Shane: "if we could really build me a true queued up build...
+ * that would speed up my development time like mad." A build he's not
+ * ready to launch yet (or is deliberately queuing behind another one) sits
+ * here until `scripts/build-queue-watcher.ps1` (a persistent local watcher
+ * he runs on his own machine) claims it and launches a real Claude Code
+ * session via the same mechanism `run-claude.ps1` uses for mybuilder://.
+ */
+export const btBuildQueueTable = pgTable("bt_build_queue", {
+  id:              serial("id").primaryKey(),
+  title:           text("title").notNull(),
+  prompt:          text("prompt").notNull(),
+  model:           text("model"),
+  effort:          text("effort"),
+  cwd:             text("cwd"),
+  /** GitHub issue number this build is itself FOR, if any — lets the panel reuse the same epic/issue linking the rest of this file already does. */
+  githubNumber:    integer("github_number"),
+  /** GitHub issue number this build can't start until closed/complete — null means ready to run as soon as a slot frees up. */
+  blockedByNumber: integer("blocked_by_number"),
+  /** queued | running | done | failed | canceled */
+  status:          text("status").notNull().default("queued"),
+  /** Set by the watcher the moment it claims this row — the source of truth for "is this actually running right now," since a watcher can be killed/restarted without the DB ever finding out otherwise. */
+  claimedAt:       timestamp("claimed_at", { withTimezone: true }),
+  completedAt:     timestamp("completed_at", { withTimezone: true }),
+  exitCode:        integer("exit_code"),
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertBtBuildQueueItem = typeof btBuildQueueTable.$inferInsert;
+export type BtBuildQueueItem       = typeof btBuildQueueTable.$inferSelect;
+
 export * from "./msp";

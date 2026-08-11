@@ -114,6 +114,15 @@ An unpacked Edge/Chrome extension with two parts, both running on
    button loads that file's real text straight into the SQL Runner, ready
    to run. A **✓ Done** button removes the label and closes the issue on
    GitHub in one click, once the action's actually been taken.
+
+   A `blocked`-labeled item nests directly under whatever it's actually
+   waiting on (GitHub's own real "blocked by" dependency, not a comment) in
+   a red box, when the blocker is also visible in the same list — see
+   CLAUDE.md's own "blocked" workflow rule for how that dependency gets
+   set. The moment that dependency clears, the row flips to a purple
+   "unblocked — go start it" box until clicked away. A **📋 Queued Builds**
+   section (see "Build queue" below) sits above everything else, since a
+   build with nowhere to run yet is its own kind of thing too.
 4. **#N hover cards** — every `#123`-style reference Claude writes in a chat
    message gets a dotted underline; hover it to see the real title, open/
    closed state, and labels, fetched straight from GitHub (not just
@@ -154,6 +163,24 @@ An unpacked Edge/Chrome extension with two parts, both running on
    repo's own `scripts/run-claude.ps1` (so a `git pull` keeps it current —
    no separate copy to fall out of date). It launches `claude.exe` with the
    decoded prompt as a positional argument plus `--name`/`--model`/`--effort`.
+   Every prompt block also gets a **📋 Queue** button next to Send to
+   Builder — parks it on the build queue instead of launching immediately
+   (a leading `--blocked-by N` flag makes it wait on issue `#N`). See
+   "Build queue" below for what actually runs it.
+
+### Build queue
+
+Queuing a build (the 📋 button above, or a direct `POST .../extension/queue`)
+writes it to `bt_build_queue` — nothing launches on its own from a browser
+tab, since the extension only runs while a claude.ai tab is open.
+`scripts/build-queue-watcher.ps1` is a separate, persistent local script
+Shane runs in its own terminal window: polls the queue, checks each item's
+real GitHub blocker (if any) has actually cleared, and launches ready ones
+via the same mechanism `run-claude.ps1` uses — up to a configurable
+concurrency cap (`build-queue-watcher.config.json`, copy from the
+`.example` template and fill in the same `apiBaseUrl`/`ingestToken` as the
+extension's Options page). Each concurrent build gets its own visible
+window rather than sharing the watcher's own console.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

@@ -16,7 +16,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, btEpicsTable, btIssuesTable, btChatsTable } from "@workspace/db";
+import { db, btEpicsTable, btIssuesTable, btChatsTable, btBuildQueueTable } from "@workspace/db";
 import { eq, desc, asc, isNull, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -1331,6 +1331,180 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
   } catch (err) {
     log.error({ err }, "GET /extension/in-progress failed");
     res.status(500).json({ error: "Failed to list in-progress issues" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/extension/queue
+ *
+ * Git #790 — Shane: "if we could really build me a true queued up build...
+ * that would speed up my development time like mad." Adds one build to the
+ * queue; `scripts/build-queue-watcher.ps1` (a persistent local watcher
+ * Shane runs on his own machine) polls GET .../queue/next below and
+ * launches it for real once it's ready.
+ *
+ * Body: { title, prompt, model?, effort?, cwd?, githubNumber?, blockedByNumber? }
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
+  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber } = req.body as {
+    title?: string;
+    prompt?: string;
+    model?: string | null;
+    effort?: string | null;
+    cwd?: string | null;
+    githubNumber?: number | null;
+    blockedByNumber?: number | null;
+  };
+  if (!title?.trim() || !prompt?.trim()) {
+    res.status(400).json({ error: "title and prompt are required" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .insert(btBuildQueueTable)
+      .values({
+        title: title.trim(),
+        prompt,
+        model: model?.trim() || null,
+        effort: effort?.trim() || null,
+        cwd: cwd?.trim() || null,
+        githubNumber: typeof githubNumber === "number" ? githubNumber : null,
+        blockedByNumber: typeof blockedByNumber === "number" ? blockedByNumber : null,
+      })
+      .returning();
+    res.status(201).json(row);
+  } catch (err) {
+    log.error({ err }, "POST /extension/queue failed");
+    res.status(500).json({ error: "Failed to queue build" });
+  }
+});
+
+/**
+ * GET /admin/build-tracker/extension/queue
+ *
+ * Every non-terminal-for-long queue row, for the extension's own panel
+ * display — done/failed/canceled ones roll off after
+ * QUEUE_TERMINAL_VISIBLE_MS so the list doesn't grow forever, but stay long
+ * enough for Shane to actually see a build finished before it disappears.
+ */
+const QUEUE_TERMINAL_VISIBLE_MS = 30 * 60 * 1000;
+router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Request, res: Response) => {
+  try {
+    const cutoff = new Date(Date.now() - QUEUE_TERMINAL_VISIBLE_MS);
+    const rows = await db
+      .select()
+      .from(btBuildQueueTable)
+      .where(sql`status IN ('queued','running') OR updated_at > ${cutoff}`)
+      .orderBy(asc(btBuildQueueTable.createdAt));
+    res.json({ items: rows });
+  } catch (err) {
+    log.error({ err }, "GET /extension/queue failed");
+    res.status(500).json({ error: "Failed to list queue" });
+  }
+});
+
+/**
+ * GET /admin/build-tracker/extension/queue/next?limit=N
+ *
+ * The watcher's own poll — claims up to `limit` ready rows (status=queued,
+ * and either no blocker or a blocker that's actually closed/complete on
+ * GitHub for real, not just locally assumed) and marks them `running`
+ * atomically (the UPDATE's own `WHERE status = 'queued'` guards against a
+ * double-claim if this ever polls faster than a previous claim lands).
+ * `limit` is the watcher's own free-slot count (its configured max
+ * concurrent minus however many it's already running) — this route has no
+ * concurrency opinion of its own, the watcher owns that entirely.
+ */
+router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: Request, res: Response) => {
+  const limit = Math.max(0, Math.min(20, parseInt(String(req.query.limit ?? "1"), 10) || 0));
+  if (limit === 0) { res.json({ items: [] }); return; }
+  try {
+    const queued = await db
+      .select()
+      .from(btBuildQueueTable)
+      .where(eq(btBuildQueueTable.status, "queued"))
+      .orderBy(asc(btBuildQueueTable.createdAt));
+
+    const ready: typeof queued = [];
+    for (const item of queued) {
+      if (ready.length >= limit) break;
+      if (item.blockedByNumber == null) { ready.push(item); continue; }
+      const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(item.blockedByNumber) : null;
+      const blockerCleared = !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
+      if (blockerCleared) ready.push(item);
+    }
+    if (ready.length === 0) { res.json({ items: [] }); return; }
+
+    const claimed = await db
+      .update(btBuildQueueTable)
+      .set({ status: "running", claimedAt: new Date(), updatedAt: new Date() })
+      .where(and(
+        inArray(btBuildQueueTable.id, ready.map((r) => r.id)),
+        eq(btBuildQueueTable.status, "queued"),
+      ))
+      .returning();
+    res.json({ items: claimed });
+  } catch (err) {
+    log.error({ err }, "GET /extension/queue/next failed");
+    res.status(500).json({ error: "Failed to claim next queue item(s)" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/extension/queue/:id/complete
+ *
+ * The watcher calls this once the claude.exe process it launched for this
+ * row actually exits — exitCode 0 means `done`, anything else `failed`, so
+ * Shane can tell a queued build that silently errored apart from one that
+ * actually finished, from the panel alone.
+ *
+ * Body: { exitCode: number }
+ */
+router.post("/admin/build-tracker/extension/queue/:id/complete", ingestAuth, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  const { exitCode } = req.body as { exitCode?: number };
+  try {
+    const [row] = await db
+      .update(btBuildQueueTable)
+      .set({
+        status: exitCode === 0 ? "done" : "failed",
+        exitCode: typeof exitCode === "number" ? exitCode : null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(btBuildQueueTable.id, id))
+      .returning();
+    if (!row) { res.status(404).json({ error: "not found" }); return; }
+    res.json(row);
+  } catch (err) {
+    log.error({ err, id }, "POST /extension/queue/:id/complete failed");
+    res.status(500).json({ error: "Failed to mark queue item complete" });
+  }
+});
+
+/**
+ * DELETE /admin/build-tracker/extension/queue/:id
+ *
+ * Cancels a QUEUED item only — once the watcher's claimed it (`running`),
+ * canceling here wouldn't actually stop the already-launched claude.exe
+ * process, so that'd be a lie the UI shouldn't tell.
+ */
+router.delete("/admin/build-tracker/extension/queue/:id", ingestAuth, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  try {
+    const [row] = await db
+      .update(btBuildQueueTable)
+      .set({ status: "canceled", updatedAt: new Date() })
+      .where(and(eq(btBuildQueueTable.id, id), eq(btBuildQueueTable.status, "queued")))
+      .returning();
+    if (!row) { res.status(409).json({ error: "Only a still-queued item can be canceled" }); return; }
+    res.json(row);
+  } catch (err) {
+    log.error({ err, id }, "DELETE /extension/queue/:id failed");
+    res.status(500).json({ error: "Failed to cancel queue item" });
   }
 });
 
