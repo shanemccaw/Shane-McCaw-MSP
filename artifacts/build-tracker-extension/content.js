@@ -473,7 +473,7 @@ function buildPanel() {
   navBackdrop.querySelector('[data-action="nav-close"]').addEventListener("click", closeNavigator);
   navBackdrop.querySelector('[data-action="nav-back"]').addEventListener("click", () => navBack());
   navBackdrop.addEventListener("click", (e) => { if (e.target === navBackdrop) closeNavigator(); });
-  for (const evt of ["keydown", "keyup", "keypress"]) {
+  for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
     navBackdrop.addEventListener(evt, (e) => {
       e.stopPropagation();
       if (evt === "keydown" && e.key === "Escape") closeNavigator();
@@ -529,7 +529,7 @@ function buildPanel() {
     const close = () => { backdrop.hidden = true; };
     backdrop.querySelector(`[data-action="${closeAction}"]`).addEventListener("click", close);
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
-    for (const evt of ["keydown", "keyup", "keypress"]) {
+    for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
       backdrop.addEventListener(evt, (e) => {
         e.stopPropagation();
         if (evt === "keydown" && e.key === "Escape") close();
@@ -576,7 +576,7 @@ function buildPanel() {
   const ipList = ipPanel.querySelector(".ip-list");
   ipTab.addEventListener("click", () => toggleInProgressPanel(true));
   ipPanel.querySelector('[data-action="ip-close"]').addEventListener("click", () => toggleInProgressPanel(false));
-  for (const evt of ["keydown", "keyup", "keypress"]) {
+  for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
     ipPanel.addEventListener(evt, (e) => e.stopPropagation());
   }
 
@@ -589,7 +589,7 @@ function buildPanel() {
   dlgBackdrop.querySelector('[data-action="dlg-close"]').addEventListener("click", closeDetails);
   // Click the dimmed backdrop (not the dialog box itself) to dismiss.
   dlgBackdrop.addEventListener("click", (e) => { if (e.target === dlgBackdrop) closeDetails(); });
-  for (const evt of ["keydown", "keyup", "keypress"]) {
+  for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
     dlgBackdrop.addEventListener(evt, (e) => {
       e.stopPropagation();
       if (evt === "keydown" && e.key === "Escape") closeDetails();
@@ -618,14 +618,18 @@ function buildPanel() {
   // anymore or typing while focused on an epic would silently do nothing.
   search.addEventListener("input", () => render());
 
-  // claude.ai listens for keystrokes on the document to auto-focus its own
-  // chat composer ("type anywhere to start typing") — keyboard events are
-  // composed, so they bubble straight out of this shadow root to that
-  // listener same as any other DOM event, and every keystroke in our search
-  // box was getting redirected into claude.ai's own input instead. Stopping
-  // propagation here (on the panel, so it covers every field inside it, not
-  // just this one) keeps every keystroke typed inside the panel local to it.
-  for (const evt of ["keydown", "keyup", "keypress"]) {
+  // claude.ai listens for keystrokes (and, separately, paste — Git #738
+  // follow-up: Shane pasting into the floaty SQL Runner landed in the
+  // claude.ai composer instead, because "paste" was missing from this list
+  // entirely; keydown/keyup/keypress alone don't cover it, it's its own
+  // event) on the document to auto-focus its own chat composer ("type
+  // anywhere to start typing") — these events are composed, so they bubble
+  // straight out of this shadow root to that listener same as any other DOM
+  // event, and every keystroke/paste in one of our own inputs was getting
+  // redirected into claude.ai's own composer instead. Stopping propagation
+  // here (on the panel, so it covers every field inside it, not just one)
+  // keeps everything typed or pasted inside the panel local to it.
+  for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
     panel.addEventListener(evt, (e) => e.stopPropagation());
   }
 
