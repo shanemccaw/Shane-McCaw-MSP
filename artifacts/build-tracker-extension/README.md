@@ -75,6 +75,8 @@ An unpacked Edge/Chrome extension with two parts, both running on
    one line per result row, not JSON — far fewer characters for the same
    data) rather than the pretty-printed JSON shown in the floaty window
    itself, so there's no copy/paste round-trip to hand a result to Claude.
+   For SQL specifically, only the results go to the composer — not the
+   query itself, since it's already sitting right there in the SQL Runner.
    Each console has its own **"Send to chat"** checkbox (top of the dialog,
    on by default, remembered across reopens) for the times you just want to
    poke at something without dropping it into the conversation.

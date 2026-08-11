@@ -1570,9 +1570,16 @@ function renderNavChats() {
 
 const SQL_CHAT_ROW_LIMIT = 50;
 
-/** Plain pipe-table, not JSON — one header line, one line per row, no repeated field names. Far fewer characters for the same data. */
-function formatSqlResultForChat(query, statements) {
-  const parts = [`SQL: ${query}`];
+/**
+ * Plain pipe-table, not JSON — one header line, one line per row, no
+ * repeated field names. Far fewer characters for the same data. No query
+ * text either (Git #739 follow-up — Shane: "we dont need to send the SQL
+ * we ran back, just the results") — he's already looking at the query he
+ * typed, in the SQL Runner right above the output; results are the only
+ * part worth handing to Claude.
+ */
+function formatSqlResultForChat(statements) {
+  const parts = [];
   for (const s of statements ?? []) {
     if (!s.success) {
       parts.push(`[${s.statementIndex}] FAILED (${s.executionMs}ms): ${s.error ?? "unknown error"}`);
@@ -1637,7 +1644,7 @@ function wireSqlRunner() {
         return;
       }
       output.textContent = JSON.stringify(res.result, null, 2);
-      if (chatToggle.checked) insertTextIntoComposer(formatSqlResultForChat(query, res.result?.statements));
+      if (chatToggle.checked) insertTextIntoComposer(formatSqlResultForChat(res.result?.statements));
     })();
   });
 }
