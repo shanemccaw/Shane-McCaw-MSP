@@ -17,72 +17,158 @@
         <DockPanel LastChildFill="True">
 
             <!-- ══════════════════════════════════════════════════════════════
-                 MENU BAR
+                 ANTIGRAVITY UNIFIED TOP TITLE BAR
                  ══════════════════════════════════════════════════════════════ -->
-            <Menu DockPanel.Dock="Top">
-                <MenuItem Header="_File">
-                    <MenuItem Header="New Chat"    InputGestureText="Ctrl+N"/>
-                    <MenuItem Header="Open Session…"/>
-                    <Separator/>
-                    <MenuItem Header="Settings"/>
-                    <Separator/>
-                    <MenuItem Header="Exit" Click="MenuExit_Click"/>
-                </MenuItem>
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Height="36">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/> <!-- Logo + Menus -->
+                        <ColumnDefinition Width="*"/>    <!-- Centered Document / Project Title -->
+                        <ColumnDefinition Width="Auto"/> <!-- Quick Action Buttons -->
+                    </Grid.ColumnDefinitions>
 
-                <MenuItem Header="_View">
-                    <MenuItem Header="Switch Tab…"        Click="OpenTabSwitcher_Click" InputGestureText="Ctrl+Tab"/>
-                    <Separator/>
-                    <MenuItem Header="Toggle Sidebar"      Click="ToggleSidebar_Click" InputGestureText="Ctrl+B"/>
-                    <MenuItem Header="Toggle Queue Panel"  Click="ToggleQueuePanel_Click"/>
-                    <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
-                    <Separator/>
-                    <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
-                    <Separator/>
-                    <MenuItem Header="Zoom In"             Click="ZoomIn_Click"    InputGestureText="Ctrl++"/>
-                    <MenuItem Header="Zoom Out"            Click="ZoomOut_Click"   InputGestureText="Ctrl+-"/>
-                    <MenuItem Header="Reset Zoom"          Click="ZoomReset_Click" InputGestureText="Ctrl+0"/>
-                </MenuItem>
+                    <!-- Left: Logo + Menu Bar -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Antigravity Logo Icon -->
+                        <Border Width="24" Height="24"
+                                Margin="8,0,4,0"
+                                Background="#1A89B4FA"
+                                CornerRadius="4"
+                                VerticalAlignment="Center"
+                                ToolTip="Antigravity IDE">
+                            <TextBlock Text="▲"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource BlueBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
 
-                <MenuItem Header="_Claude">
-                    <MenuItem Header="New Conversation"/>
-                    <MenuItem Header="Open Projects"/>
-                    <Separator/>
-                    <MenuItem Header="Back"    Click="NavBack_Click"    InputGestureText="Alt+Left"/>
-                    <MenuItem Header="Forward" Click="NavForward_Click" InputGestureText="Alt+Right"/>
-                    <MenuItem Header="Reload"  Click="NavRefresh_Click" InputGestureText="F5"/>
-                </MenuItem>
+                        <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                            <MenuItem Header="_File">
+                                <MenuItem Header="New Chat"        InputGestureText="Ctrl+N"/>
+                                <MenuItem Header="Open Session…"/>
+                                <Separator/>
+                                <MenuItem Header="Settings"/>
+                                <Separator/>
+                                <MenuItem Header="Exit"            Click="MenuExit_Click"/>
+                            </MenuItem>
 
-                <MenuItem Header="_Build">
-                    <MenuItem Header="Start Watcher"/>
-                    <MenuItem Header="Stop Watcher"/>
-                    <MenuItem Header="Clear Queue"/>
-                    <Separator/>
-                    <MenuItem Header="Refresh Queue"/>
-                </MenuItem>
+                            <MenuItem Header="_Edit">
+                                <MenuItem Header="Undo"            InputGestureText="Ctrl+Z"/>
+                                <MenuItem Header="Redo"            InputGestureText="Ctrl+Y"/>
+                                <Separator/>
+                                <MenuItem Header="Cut"             InputGestureText="Ctrl+X"/>
+                                <MenuItem Header="Copy"            InputGestureText="Ctrl+C"/>
+                                <MenuItem Header="Paste"           InputGestureText="Ctrl+V"/>
+                            </MenuItem>
 
-                <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
-                    <MenuItem Header="Open Terminal"        Click="OpenTerminal_Click"   InputGestureText="Ctrl+`"/>
-                    <Separator/>
-                    <MenuItem Header="git status"           Click="GitChip_Click" Tag="git status"/>
-                    <MenuItem Header="git pull"             Click="GitChip_Click" Tag="git pull"/>
-                    <MenuItem Header="git push"             Click="GitChip_Click" Tag="git push"/>
-                    <MenuItem Header="git log"              Click="GitChip_Click" Tag="git log --oneline -20"/>
-                    <MenuItem Header="git stash"            Click="GitChip_Click" Tag="git stash"/>
-                    <Separator/>
-                    <MenuItem Header="dotnet build"         Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
-                </MenuItem>
+                            <MenuItem Header="_Selection">
+                                <MenuItem Header="Select All"      InputGestureText="Ctrl+A"/>
+                            </MenuItem>
 
-                <MenuItem Header="_SQL" Click="OpenSql_Click">
-                    <MenuItem Header="Open SQL Runner"      Click="OpenSql_Click" InputGestureText="Ctrl+Shift+S"/>
-                    <Separator/>
-                    <MenuItem Header="New Connection"/>
-                </MenuItem>
+                            <MenuItem Header="_View">
+                                <MenuItem Header="Switch Tab…"        Click="OpenTabSwitcher_Click" InputGestureText="Ctrl+Tab"/>
+                                <Separator/>
+                                <MenuItem Header="Toggle Sidebar"      Click="ToggleSidebar_Click" InputGestureText="Ctrl+B"/>
+                                <MenuItem Header="Toggle Queue Panel"  Click="ToggleQueuePanel_Click"/>
+                                <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
+                                <Separator/>
+                                <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Zoom In"             Click="ZoomIn_Click"    InputGestureText="Ctrl++"/>
+                                <MenuItem Header="Zoom Out"            Click="ZoomOut_Click"   InputGestureText="Ctrl+-"/>
+                                <MenuItem Header="Reset Zoom"          Click="ZoomReset_Click" InputGestureText="Ctrl+0"/>
+                            </MenuItem>
 
-                <MenuItem Header="_Help">
-                    <MenuItem Header="About BuildConsole"/>
-                    <MenuItem Header="Open DevTools" Click="OpenDevTools_Click"/>
-                </MenuItem>
-            </Menu>
+                            <MenuItem Header="_Go">
+                                <MenuItem Header="Go to File…"     InputGestureText="Ctrl+P"/>
+                                <MenuItem Header="Switch Tab…"     InputGestureText="Ctrl+Tab" Click="OpenTabSwitcher_Click"/>
+                            </MenuItem>
+
+                            <MenuItem Header="_Run">
+                                <MenuItem Header="Start Build"     Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
+                                <MenuItem Header="Run Verification"/>
+                            </MenuItem>
+
+                            <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
+                                <MenuItem Header="Open Terminal"   Click="OpenTerminal_Click" InputGestureText="Ctrl+`"/>
+                                <Separator/>
+                                <MenuItem Header="git status"      Click="GitChip_Click" Tag="git status"/>
+                                <MenuItem Header="git pull"        Click="GitChip_Click" Tag="git pull"/>
+                                <MenuItem Header="git push"        Click="GitChip_Click" Tag="git push"/>
+                                <MenuItem Header="git log"         Click="GitChip_Click" Tag="git log --oneline -20"/>
+                                <MenuItem Header="git stash"       Click="GitChip_Click" Tag="git stash"/>
+                                <Separator/>
+                                <MenuItem Header="dotnet build"    Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
+                            </MenuItem>
+
+                            <MenuItem Header="_Help">
+                                <MenuItem Header="About BuildConsole"/>
+                                <MenuItem Header="Open DevTools"   Click="OpenDevTools_Click"/>
+                            </MenuItem>
+                        </Menu>
+                    </StackPanel>
+
+                    <!-- Center: Project & Active Document Title -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Shane McCaw MSP"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"/>
+                        <TextBlock Text=" • "
+                                   FontSize="12"
+                                   Foreground="{StaticResource Surface2Brush}"/>
+                        <TextBlock Text="Antigravity IDE"
+                                   FontSize="12"
+                                   Foreground="{StaticResource Subtext0Brush}"/>
+                        <TextBlock x:Name="ActiveDocTitleText"
+                                   Text=" - Claude.ai"
+                                   FontSize="12"
+                                   Foreground="{StaticResource BlueBrush}"/>
+                    </StackPanel>
+
+                    <!-- Right: Quick Action Buttons -->
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="0,0,8,0">
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="Toggle Primary Side Bar (Ctrl+B)"
+                                Click="ToggleSidebar_Click"
+                                Padding="6,4">
+                            <TextBlock Text="&#xE899;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="Toggle Panel (Ctrl+`)"
+                                Click="ToggleBottomPanel_Click"
+                                Padding="6,4">
+                            <TextBlock Text="&#xE90A;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="Toggle Secondary Side Bar"
+                                Click="ToggleQueuePanel_Click"
+                                Padding="6,4">
+                            <TextBlock Text="&#xE89A;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="Developer Tools"
+                                Click="OpenDevTools_Click"
+                                Padding="6,4"
+                                Margin="4,0,0,0">
+                            <TextBlock Text="&#xE7BE;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource MauveBrush}"/>
+                        </Button>
+                    </StackPanel>
+
+                </Grid>
+            </Border>
 
             <!-- ══════════════════════════════════════════════════════════════
                  STATUS BAR
