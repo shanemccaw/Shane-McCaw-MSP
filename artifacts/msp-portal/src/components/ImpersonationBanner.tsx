@@ -1,14 +1,32 @@
 import React from "react";
-import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 
+/**
+ * Git #797 — persistent "viewing as" indicator, visible whenever
+ * isImpersonating is true regardless of how the session got there (the
+ * URL-token new-tab flow OR TenantSwitcherFloaty's in-place switch). Exit
+ * restores the real admin session in place via #796's returnToAdmin() — no
+ * tab-close, no hard navigate, so it works the same for both entry paths.
+ *
+ * Known gap: returnToAdmin() only restores a session it stashed itself (the
+ * FIRST switchToTenant() call in a given tab). A tab opened purely via the
+ * URL-token boot flow (e.g. admin-panel's ViewAsSwitcher window.open, which
+ * never calls switchToTenant()) has nothing stashed, so Exit no-ops there —
+ * unchanged from that entry point's pre-existing behavior of never having a
+ * working in-place return either. Not fixed here; out of this phase's scope.
+ */
 export function ImpersonationBanner({ email }: { email: string }) {
+  const { accessToken, returnToAdmin } = useAuth();
+
   const handleExit = () => {
-    if (window.opener) {
-      window.close();
-    } else {
-      // Adjust the exit route as needed for MSP portal
-      window.location.href = "/admin-panel/msp/clients";
-    }
+    reportClientEvent(
+      accessToken,
+      "ImpersonationBannerExit",
+      "Exited impersonation via banner",
+      "auth.impersonation",
+    );
+    void returnToAdmin();
   };
 
   return (
