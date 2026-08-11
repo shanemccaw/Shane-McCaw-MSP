@@ -46,7 +46,7 @@ namespace BuildConsole
             _clockTimer.Start();
             ClockText.Text = DateTime.Now.ToString("HH:mm:ss");
 
-            // WebView2 events
+            // Initial WebView2 events
             ClaudeWebView.NavigationStarting  += WebView_NavigationStarting;
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
             ClaudeWebView.SourceChanged       += WebView_SourceChanged;
@@ -73,12 +73,115 @@ namespace BuildConsole
             catch { }
         }
 
+        private Microsoft.Web.WebView2.Wpf.WebView2 GetActiveWebView()
+        {
+            if (EditorTabs.SelectedItem is TabItem ti && ti.Content is Microsoft.Web.WebView2.Wpf.WebView2 wv)
+            {
+                return wv;
+            }
+            return ClaudeWebView;
+        }
+
+        private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source == EditorTabs)
+            {
+                var wv = GetActiveWebView();
+                UrlStatusText.Text = wv.Source?.ToString() ?? string.Empty;
+                UpdateZoomDisplay();
+            }
+        }
+
         private void ActivityBar_QuickNavRequested(object? sender, string url)
         {
-            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            var (title, glyph) = url switch
             {
-                ClaudeWebView.Source = uri;
+                var u when u.Contains("/admin-panel/") => ("Admin Center", "\uE7EF"),
+                var u when u.Contains("/portal/")      => ("Customer Portal", "\uE77B"),
+                _                                      => ("Marketing Site", "\uE774")
+            };
+            OpenWebTab(title, url, glyph);
+        }
+
+        public void OpenWebTab(string title, string url, string glyph)
+        {
+            // If tab with this URL is already open, switch to it
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string existingUrl && string.Equals(existingUrl, url, StringComparison.OrdinalIgnoreCase))
+                {
+                    EditorTabs.SelectedItem = item;
+                    return;
+                }
             }
+
+            // Tab header panel
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var iconBlock = new TextBlock
+            {
+                Text = glyph,
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("BlueBrush")
+            };
+
+            var titleBlock = new TextBlock
+            {
+                Text = title,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("TextBrush")
+            };
+
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 10,
+                Padding = new Thickness(3, 1, 3, 1),
+                Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = "Close Tab",
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            // WebView2 content
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                Source = new Uri(url)
+            };
+
+            wv.NavigationStarting  += WebView_NavigationStarting;
+            wv.NavigationCompleted += WebView_NavigationCompleted;
+            wv.SourceChanged       += WebView_SourceChanged;
+
+            var newTab = new TabItem
+            {
+                Tag = url,
+                Header = headerPanel,
+                Content = wv
+            };
+
+            closeBtn.Click += (s, e) =>
+            {
+                EditorTabs.Items.Remove(newTab);
+                if (EditorTabs.Items.Count > 0)
+                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+            };
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
         }
 
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
@@ -119,16 +222,20 @@ namespace BuildConsole
         {
             NavStatusText.Text = e.IsSuccess ? "Ready" : $"Error {(int)e.WebErrorStatus}";
             StatusDot.Fill     = e.IsSuccess ? DotReady : DotError;
-            UrlStatusText.Text = ClaudeWebView.Source?.ToString() ?? string.Empty;
+            var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2 ?? GetActiveWebView();
+            UrlStatusText.Text = activeWv.Source?.ToString() ?? string.Empty;
         }
 
         private void WebView_SourceChanged(
             object? sender,
             Microsoft.Web.WebView2.Core.CoreWebView2SourceChangedEventArgs e)
-            => UrlStatusText.Text = ClaudeWebView.Source?.ToString() ?? string.Empty;
+        {
+            var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2 ?? GetActiveWebView();
+            UrlStatusText.Text = activeWv.Source?.ToString() ?? string.Empty;
+        }
 
         private void UpdateZoomDisplay()
-            => ZoomText.Text = $"{ClaudeWebView.ZoomFactor:P0}";
+            => ZoomText.Text = $"{GetActiveWebView().ZoomFactor:P0}";
 
         // ── Menu: File ────────────────────────────────────────────────────────
         private void MenuExit_Click(object sender, RoutedEventArgs e)
@@ -185,31 +292,40 @@ namespace BuildConsole
         // ── Menu: View → Zoom ─────────────────────────────────────────────────
         private void ZoomIn_Click(object sender, RoutedEventArgs e)
         {
-            ClaudeWebView.ZoomFactor = Math.Min(ClaudeWebView.ZoomFactor + 0.1, 3.0);
+            var wv = GetActiveWebView();
+            wv.ZoomFactor = Math.Min(wv.ZoomFactor + 0.1, 3.0);
             UpdateZoomDisplay();
         }
 
         private void ZoomOut_Click(object sender, RoutedEventArgs e)
         {
-            ClaudeWebView.ZoomFactor = Math.Max(ClaudeWebView.ZoomFactor - 0.1, 0.25);
+            var wv = GetActiveWebView();
+            wv.ZoomFactor = Math.Max(wv.ZoomFactor - 0.1, 0.25);
             UpdateZoomDisplay();
         }
 
         private void ZoomReset_Click(object sender, RoutedEventArgs e)
         {
-            ClaudeWebView.ZoomFactor = 1.0;
+            var wv = GetActiveWebView();
+            wv.ZoomFactor = 1.0;
             UpdateZoomDisplay();
         }
 
         // ── Menu: Claude ──────────────────────────────────────────────────────
         private void NavBack_Click(object sender, RoutedEventArgs e)
-        { if (ClaudeWebView.CanGoBack) ClaudeWebView.GoBack(); }
+        {
+            var wv = GetActiveWebView();
+            if (wv.CanGoBack) wv.GoBack();
+        }
 
         private void NavForward_Click(object sender, RoutedEventArgs e)
-        { if (ClaudeWebView.CanGoForward) ClaudeWebView.GoForward(); }
+        {
+            var wv = GetActiveWebView();
+            if (wv.CanGoForward) wv.GoForward();
+        }
 
         private void NavRefresh_Click(object sender, RoutedEventArgs e)
-            => ClaudeWebView.Reload();
+            => GetActiveWebView().Reload();
 
         // ── Menu: Terminal ────────────────────────────────────────────────────
         private void OpenTerminal_Click(object sender, RoutedEventArgs e)
@@ -228,6 +344,6 @@ namespace BuildConsole
 
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
-            => ClaudeWebView.CoreWebView2?.OpenDevToolsWindow();
+            => GetActiveWebView().CoreWebView2?.OpenDevToolsWindow();
     }
 }

@@ -178,12 +178,17 @@
                 </Grid.RowDefinitions>
 
                 <!-- ── Editor tab control ── -->
-                <TabControl x:Name="EditorTabs" Grid.Row="0" BorderThickness="0">
+                <TabControl x:Name="EditorTabs"
+                            Grid.Row="0"
+                            BorderThickness="0"
+                            SelectionChanged="EditorTabs_SelectionChanged">
 
                     <!-- Claude.ai tab -->
-                    <TabItem>
+                    <TabItem Tag="https://claude.ai">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="Claude.ai"
                                            FontSize="13"
                                            VerticalAlignment="Center"
