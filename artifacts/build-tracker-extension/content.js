@@ -852,13 +852,16 @@ function insertTextIntoComposer(text) {
 /**
  * Git #772 — Shane: "can the add-on manipulate the name of the chat? I
  * currently manually rename them to the Git ID of the Epic they are
- * working on." Clicking claude.ai's own title button (`aria-label`
- * ends in ", rename chat" — confirmed from Shane's own inspected HTML)
- * swaps it for an editable text box; unlike the composer, we don't have the
- * HTML of THAT box, so this looks for whatever input/contenteditable
- * appears afterward rather than a guessed selector, and commits with Enter
- * the same way a real user would. Best-effort — Shane needs to confirm this
- * actually works, since the input-appears-after-click step is unverified.
+ * working on." Clicking claude.ai's own title button (`aria-label` ends in
+ * ", rename chat") swaps it for a real `<input data-testid="name-chat">` —
+ * confirmed directly from Shane's own DevTools inspection (Git #775
+ * follow-up: the FIRST attempt's generic container-scoped search never
+ * found it, and console commands kept losing it because switching focus to
+ * DevTools itself blurs — and apparently discards — the field, so this had
+ * to be nailed down via a `setTimeout` + `document.activeElement` capture
+ * instead of a live inspect). Searched document-wide rather than scoped to
+ * the trigger button's own container, in case it renders as a sibling/
+ * portal rather than a true child.
  */
 async function renameCurrentChat(newTitle) {
   const container = document.querySelector('[data-testid="chat-title-split"]');
@@ -869,7 +872,8 @@ async function renameCurrentChat(newTitle) {
   let field = null;
   for (let i = 0; i < 10 && !field; i++) {
     await new Promise((resolve) => setTimeout(resolve, 150));
-    field = container.querySelector('input, textarea, [contenteditable="true"]');
+    field = document.querySelector('input[data-testid="name-chat"]')
+      ?? container.querySelector('input, textarea, [contenteditable="true"]');
   }
   if (!field) return false;
 
