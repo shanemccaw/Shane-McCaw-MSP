@@ -6,7 +6,7 @@
   with the decoded prompt.
 
 .PARAMETER Uri
-  The full mybuilder://open?q=...&title=...&model=...&effort=...&cwd=...
+  The full mybuilder://open?q=...&title=...&model=...&effort=...&cwd=...&mode=...
   string, passed verbatim as %1 by the registered registry command.
 #>
 param(
@@ -65,6 +65,7 @@ $title  = $params["title"]
 $model  = $params["model"]
 $effort = $params["effort"]
 $cwd    = $params["cwd"]
+$mode   = $params["mode"]
 
 if (-not $prompt) {
   Write-Error "No prompt (q=) found in URI: $Uri"
@@ -90,11 +91,12 @@ if (-not (Test-Path $claudeExe)) {
 # Windows happened to start cmd.exe in.
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if ($cwd -and (Test-Path $cwd)) {
-  Set-Location $cwd
+  $effectiveCwd = $cwd
 } else {
   if ($cwd) { Write-Warning "cwd '$cwd' does not exist - falling back to the repo root instead." }
-  Set-Location $repoRoot
+  $effectiveCwd = $repoRoot
 }
+Set-Location $effectiveCwd
 
 # Also labels the terminal window itself, in addition to --name below - lets
 # Shane tell multiple builder windows apart at a glance.
@@ -112,6 +114,16 @@ $claudeArgs = @()
 if ($title)  { $claudeArgs += @("--name", $title) }
 if ($model)  { $claudeArgs += @("--model", $model) }
 if ($effort) { $claudeArgs += @("--effort", $effort) }
+# Git #768 - Shane: "is there a switch we can use to set the mode to auto
+# mode on so I do not have to confirm everything it does." --permission-mode
+# is a real, confirmed-safe claude.exe flag (distinct from the much riskier
+# --dangerously-skip-permissions) - defaults to "auto" for anything launched
+# through this button, since the whole point of Send to Builder is a
+# hands-off launch. A mode= URI param (from a leading --mode flag on the
+# prompt itself) still overrides it when Shane wants a stricter mode for one
+# specific prompt.
+$permissionMode = if ($mode) { $mode } else { "auto" }
+$claudeArgs += @("--permission-mode", $permissionMode)
 $claudeArgs += $prompt
 
 # Overwritten every run - so if the prompt still doesn't land right, this
@@ -121,4 +133,8 @@ $claudeArgs += $prompt
   Set-Content -Path (Join-Path $env:TEMP "mybuilder-last-run.log") -Encoding utf8
 
 $escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgument $_ }) -join ' '
-Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -NoNewWindow -Wait
+# Passed explicitly rather than relying on Start-Process inheriting the
+# Set-Location above - confirmed correct either way on Shane's PS 5.1
+# (tested directly), but explicit beats implicit for something this easy to
+# get wrong on a different machine/PowerShell version.
+Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -WorkingDirectory $effectiveCwd -NoNewWindow -Wait

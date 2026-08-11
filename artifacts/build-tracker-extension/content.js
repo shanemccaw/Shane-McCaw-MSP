@@ -2594,10 +2594,16 @@ async function sendToBuilder(prompt) {
   const model = flags.model || builderModel;
   const effort = flags.effort || builderEffort;
   const cwd = flags.cwd || builderCwd;
+  // Git #768 - a leading --mode flag (e.g. --mode manual) overrides
+  // run-claude.ps1's own default of --permission-mode auto for one specific
+  // prompt; no Options-page default needed since "auto" is already the
+  // baseline on the runner side.
+  const mode = flags.mode;
   if (title) params.set("title", title);
   if (model) params.set("model", model);
   if (effort) params.set("effort", effort);
   if (cwd) params.set("cwd", cwd);
+  if (mode) params.set("mode", mode);
   window.location.href = `mybuilder://open?${params.toString()}`;
 }
 
