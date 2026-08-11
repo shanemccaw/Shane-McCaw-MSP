@@ -671,13 +671,22 @@ export function resolveScopeHeadline(isPreview: boolean, stepCount: number, pill
  * carry a command — a contradiction the overview row already refuses to
  * reproduce by deriving its own figure. The live standfirst derives too, so the
  * two halves of the same page cannot disagree.
+ *
+ * THE CLOSING PROMISE CHANGED IN #730. It used to say progress was "kept while
+ * this page is open", which was the literal truth of ticks held in React state.
+ * They are now stored per customer in `remediation_tracker_steps`, so the
+ * sentence states that instead — and states its real limit in the same breath,
+ * because a tick is the customer's own claim rather than anything this platform
+ * observed. The preview branch keeps the design's original wording: that
+ * fixture's ticks really are session-only.
  */
 export function resolveStandfirst(isPreview: boolean, stepCount: number, scriptedCount: number): string {
   if (isPreview) return REMEDIATION_GUIDE.standfirst;
   return (
     `This is a runbook. ${stepCount} steps, ${scriptedCount} of them scripted, with the exact console path, the ` +
     "PowerShell to run, what to watch for, and how to confirm each one worked. Tick them off as you go — your " +
-    "progress is kept while this page is open."
+    "progress is saved to your account and is here when you come back. A tick records what you say you have done; " +
+    "confirming it landed is what a re-scan is for."
   );
 }
 

@@ -258,6 +258,11 @@ export default defineConfig({
       // sniffed from the command text (insert...returning is the case that
       // proves it), and a failed write never breaks the run it was logging.
       "src/lib/run-history.test.ts",
+      // #730 — the Remediation Tracker's persistent per-step state: the route's
+      // step-id list has not drifted from the guide's own catalogue, and
+      // `completed_at` is a server fact that un-ticking clears rather than a
+      // client-supplied value that outlives the claim it recorded.
+      "src/routes/portal-remediation-tracker.test.ts",
     ],
     coverage: {
       provider: "v8",

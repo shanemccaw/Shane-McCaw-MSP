@@ -3499,3 +3499,74 @@ export const remediationKnowledgeBaseTable = pgTable("remediation_knowledge_base
 
 export type RemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseTable.$inferSelect;
 export type InsertRemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseTable.$inferInsert;
+
+// ── Remediation Tracker — persistent per-step state (#730, epic #647) ─────────
+//
+// One row per (customer, remediation-guide step). This is the table the Full
+// Remediation Guide's tick boxes actually write to: before #730 the ticks were
+// React state that died with the tab, and `RemediationGuideBody.tsx` said so in
+// its own header comment and in the document's standfirst.
+//
+// WHAT A ROW MEANS, AND WHAT IT DOES NOT
+// --------------------------------------
+// A row is the CUSTOMER'S OWN CLAIM about a step, and nothing more. It is not
+// evidence that the change landed in their tenant, and no scoring, gate or
+// score anywhere reads it. The platform's own answer to "did this really
+// happen" stays what it has always been: a re-scan. That distinction is why
+// `status` is deliberately not called `verified`, and why the verification
+// state Phase C (#732) will add is a SEPARATE field rather than another value
+// of this one — a re-verified step and a step somebody ticked are different
+// facts and must never collapse into each other.
+//
+// SCOPED TO THE CUSTOMER, NOT THE USER. Remediation is a shared engagement
+// record: the customer's second admin, and Shane looking at the same account,
+// must see one tracker rather than a private copy each. `updated_by_user_id`
+// keeps the "who last touched this" trail that per-user rows would otherwise
+// have carried.
+//
+// STEP IDS ARE THE GUIDE'S OWN. "s1" … "s30", the ids in
+// `previewRemediationGuide.ts` / `remediationLiveGuide.ts`, which the guide's
+// own tests already freeze. They are stored as opaque text rather than as a
+// foreign key because the step catalogue is a tested `.ts` module, not a table
+// (see remediationLiveGuide.ts's own note on why the mapping does not live in
+// `config_pack_templates`).
+//
+// A MISSING ROW IS THE DEFAULT, NOT A GAP. Nothing pre-seeds thirty rows per
+// customer; a step with no row is `not_started`, which is what an untouched
+// tracker is. The API resolves the absence, so a customer who has never opened
+// the guide costs nothing.
+export const REMEDIATION_TRACKER_STEP_STATUS = ["not_started", "completed"] as const;
+export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
+
+export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps", {
+  id: serial("id").primaryKey(),
+  /**
+   * tenants.id — the JWT's `customerId` claim, the same id space
+   * `msp_diagnostic_runs.customer_id` uses. No FK, matching that table's own
+   * deliberate choice (see the Phase 7 audit note there).
+   */
+  customerId: integer("customer_id").notNull(),
+  /** "s1" … "s30" — the remediation guide's own step ids. */
+  stepId: text("step_id").notNull(),
+  /**
+   * Phase A's whole vocabulary. Phase B (#731) widens it with the design's real
+   * action set (self-resolve, defer, Shane-handles, already-handled,
+   * not-applicable) — deliberately a plain text column with no CHECK, the same
+   * convention `content_posts.status` follows, so that widening is a code
+   * change rather than another migration Shane has to run.
+   */
+  status: text("status", { enum: REMEDIATION_TRACKER_STEP_STATUS }).notNull().default("not_started"),
+  /** When this step last became `completed`. NULL whenever it is not. */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** users.id of whoever last changed this row. Nullable for rows written by anything but a person. */
+  updatedByUserId: integer("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // The tracker's only real read ("this customer's whole tracker") and its only
+  // real write ("upsert this one step") both go through this pair.
+  uniqueIndex("remediation_tracker_steps_customer_step_idx").on(t.customerId, t.stepId),
+]);
+
+export type RemediationTrackerStep = typeof remediationTrackerStepsTable.$inferSelect;
+export type InsertRemediationTrackerStep = typeof remediationTrackerStepsTable.$inferInsert;

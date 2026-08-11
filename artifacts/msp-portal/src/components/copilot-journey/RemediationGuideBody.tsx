@@ -5,20 +5,29 @@
  * reads. Thirty steps, each with the console path, the command, the caution and
  * the verification; ticking one off is the whole interaction.
  *
- * WHERE THE TICKS LIVE, AND WHY NOT ON THE SERVER
- * -----------------------------------------------
- * Progress is component state, held for as long as the page is open, and the
- * standfirst says exactly that ("your progress is kept while this page is
- * open"). It is deliberately not persisted:
+ * WHERE THE TICKS LIVE (#730)
+ * ---------------------------
+ * On a LIVE tenant they are persisted, per customer, in
+ * `remediation_tracker_steps` — `useRemediationTracker()` reads and writes them
+ * through `/api/portal/remediation-tracker`, and this component takes the whole
+ * of that state as an optional `progress` prop rather than owning it. A reload,
+ * a re-login or a second admin on the account all see the same tracker.
  *
- *   • There is no table for it. Inventing one would mean a schema change and a
- *     migration for a checkbox, and this environment cannot verify either.
- *   • A tick is a claim that a real change landed in a real tenant. Storing that
- *     durably, where it would be read back weeks later as "done", makes the
- *     platform an unverified record of remediation it never observed. The
- *     honest version of that claim is a re-scan, which the platform already has.
+ * That reverses this file's original position, which was that a checkbox did
+ * not justify a table. It does: the epic (#647) is explicit that ongoing,
+ * persistent progress against this runbook is the thing the customer is paying
+ * for once they sign, and ticks that die with the tab are not that.
  *
- * So the ticks are a reading aid for one sitting, and the copy promises no more.
+ * WHAT DID NOT CHANGE is the honesty rule underneath it. A tick is the
+ * customer's own claim that they did a step; it is not evidence the change
+ * landed in their tenant, and nothing in this platform's scoring, gate or
+ * readiness maths reads it. The re-scan remains the only thing that can confirm
+ * the work, and the live standfirst now says both halves of that out loud.
+ *
+ * PREVIEW IS UNCHANGED. `?preview=design` renders the design's Halden Materials
+ * fixture against a tenant that does not exist, so it keeps the original
+ * session-only `useState` ticks and the design's own "kept while this page is
+ * open" copy — there is no account to save a fictional tenant's progress to.
  *
  * NOTHING HERE EXECUTES. Every command is offered to copy, never to run: the
  * platform holds no write consent for these operations against a customer
@@ -79,6 +88,7 @@ import {
   type StepEvidence,
 } from "./remediationLiveGuide.ts";
 import { buildProvenance, checkDomainLabel } from "./liveReportBlocks.ts";
+import { useRemediationTracker, type RemediationTrackerState } from "./useRemediationTracker.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
@@ -470,22 +480,35 @@ export function RemediationGuideBody({
   onOpenSow,
   isPreview = true,
   live,
+  progress,
 }: {
   readonly onOpenSow?: () => void;
   /** Default `true` so every existing (preview) call site is unchanged. */
   readonly isPreview?: boolean;
   /** Required when `isPreview` is `false`. */
   readonly live?: { readonly view: JourneyView };
+  /**
+   * The persisted tracker (#730), supplied by `LiveRemediationGuideBody`.
+   * Absent on the design preview, which falls back to the session-only ticks
+   * below — there is no account to save a fictional tenant's progress to.
+   */
+  readonly progress?: RemediationTrackerState;
 }) {
-  const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(() => new Set());
-  const toggle = useCallback((id: string) => {
-    setDoneIds((prev) => {
+  // The session-only fallback. Still the real state on `?preview=design`, and
+  // still declared unconditionally because hooks cannot be called behind a
+  // branch; `progress` simply wins when it is there.
+  const [sessionDoneIds, setSessionDoneIds] = useState<ReadonlySet<string>>(() => new Set());
+  const sessionToggle = useCallback((id: string) => {
+    setSessionDoneIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
   }, []);
+
+  const doneIds = progress ? progress.doneIds : sessionDoneIds;
+  const toggle = progress ? progress.toggle : sessionToggle;
 
   const view = !isPreview && live ? live.view : null;
   const tenant = view ? view.tenant : PREVIEW_TENANT;
@@ -503,7 +526,11 @@ export function RemediationGuideBody({
     () => (view ? steps.filter((s) => s.code !== undefined).length : REMEDIATION_SCRIPTED_COUNT),
     [view, steps],
   );
-  const done = doneIds.size;
+  // Counted over the steps actually on screen rather than off `doneIds.size`:
+  // the stored state is keyed by step id and the rendered guide is the only
+  // authority on which ids exist, so an id the guide no longer holds must not
+  // inflate "N of 30 complete".
+  const done = useMemo(() => steps.reduce((n, s) => (doneIds.has(s.id) ? n + 1 : n), 0), [steps, doneIds]);
   const accent = reportAccent(null);
   const scannedOn = tenant.scannedOn ?? "";
   const prelude = view ? LIVE_PRELUDE : REMEDIATION_PRELUDE;
@@ -600,6 +627,25 @@ export function RemediationGuideBody({
             {`${done} of ${total} steps complete`}
           </span>
         </div>
+        {/*
+          The save state, and only when there is something to say. A failed
+          write has already been rolled back by the hook, so the boxes on screen
+          match what is stored — this line exists so a customer is told the
+          write did not land rather than left to assume it did.
+        */}
+        {progress && (progress.error !== null || progress.saving) ? (
+          <span
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: progress.error !== null ? SEVERITY_ON_DARK.critical : INK.micro,
+            }}
+          >
+            {progress.error !== null
+              ? "Your last change could not be saved, so it has been undone here. Check your connection and try again."
+              : "Saving…"}
+          </span>
+        ) : null}
       </div>
 
       <div
@@ -837,13 +883,16 @@ export function RemediationGuideBody({
  * ------------------------------------------------------------------ */
 
 /**
- * No fetch of its own, unlike `LiveStatementOfWorkBody`.
+ * Everything this document READS is already on the journey's view.
  *
  * The SOW needs a scope and a price, which live behind two endpoints of their
  * own. This guide needs findings, stat counts, a readiness score and a scan
- * date — all of which are already on the journey's view by the time any
- * document renders. Adding a fetch here would be a second round trip for data
- * the caller is holding.
+ * date — all of which the caller is already holding by the time any document
+ * renders, so none of that is fetched again here.
+ *
+ * The one fetch this component does make is for what the customer WRITES: the
+ * tracker state (#730), which is theirs rather than the scan's and so cannot be
+ * on a payload computed from their last run.
  */
 export function LiveRemediationGuideBody({
   view,
@@ -852,5 +901,9 @@ export function LiveRemediationGuideBody({
   readonly view: JourneyView;
   readonly onOpenSow?: () => void;
 }) {
-  return <RemediationGuideBody isPreview={false} live={{ view }} onOpenSow={onOpenSow} />;
+  // The one exception to "no fetch of its own" (#730): the tick state is the
+  // customer's, not the scan's, so it is the only thing on this document the
+  // journey's view cannot already be holding.
+  const progress = useRemediationTracker();
+  return <RemediationGuideBody isPreview={false} live={{ view }} onOpenSow={onOpenSow} progress={progress} />;
 }

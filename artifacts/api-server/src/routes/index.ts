@@ -136,6 +136,7 @@ import mspPlanSelfServiceRouter from "./msp-plan-self-service";
 import mspPartnerRevenueRouter from "./msp-partner-revenue";
 import mspAuditLogRouter from "./msp-audit-log";
 import portalThemePreferenceRouter from "./portal-theme-preference";
+import portalRemediationTrackerRouter from "./portal-remediation-tracker";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
 import adminMonitorCheckRunsRouter from "./admin-monitor-check-runs";
@@ -366,6 +367,7 @@ router.use(mspPlanSelfServiceRouter);
 router.use(mspPartnerRevenueRouter);
 router.use(mspAuditLogRouter);
 router.use(portalThemePreferenceRouter);
+router.use(portalRemediationTrackerRouter);
 router.use(adminNavPinsRouter);
 router.use(supportChatRouter);
 // Mounted before adminMonitorChecksRouter so the single-endpoint execution
