@@ -2233,6 +2233,12 @@ async function linkTo(target, label) {
     title: currentSettledTitle() || undefined,
     issueId: target.issueId,
     epicId: target.epicId,
+    // Git #781 — Shane: "when I click on the Epic in a chat I already had
+    // it's supposed to assign the chat to that epic... not working." The
+    // server's non-clobbering rule (meant for the passive title-sync call)
+    // was silently no-op'ing this explicit click too. This IS the deliberate
+    // relink action the server's own doc comment says should be allowed.
+    force: true,
   });
   if (res?.ok) {
     // The server only applies a link if the chat was still unlinked — re-fetch

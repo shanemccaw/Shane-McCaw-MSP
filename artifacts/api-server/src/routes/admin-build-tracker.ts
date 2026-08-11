@@ -538,10 +538,16 @@ router.post("/admin/build-tracker/chats", requireAdmin, async (req: Request, res
  * panel (GET /extension/board below) — Shane picking "this chat is about
  * that issue" while still inside the chat, instead of triaging it later.
  * Same non-clobbering rule as title: applied ONLY when the chat is currently
- * unlinked (no issueId AND no epicId set yet). If he already decided this
- * chat belongs somewhere else, re-sending a different id here is a no-op for
- * linking — relinking stays a deliberate action inside Build Tracker itself,
- * not something a background sync call can silently override.
+ * unlinked (no issueId AND no epicId set yet) — UNLESS `force` is set. Git
+ * #781 (Shane: "when I click on the Epic in a chat I already had it's
+ * supposed to assign the chat to that epic... not working") — the
+ * non-clobbering rule was written to stop the PASSIVE title-sync call
+ * (content.js's settle timer, fires on every tab-title change with no
+ * intent behind it) from silently relinking a chat, but it was ALSO
+ * blocking the panel's own explicit "link to this epic" click, which is a
+ * deliberate Shane action and should win. `force: true` is sent only by
+ * that click path — the passive title-sync call never sends it, so it
+ * keeps its original non-clobbering behavior unchanged.
  *
  * Creates a stub chat record (title = given title, or conversation_id if
  * none was sent; issueId/epicId applied as given) if the conversation_id is
@@ -554,11 +560,12 @@ router.post("/admin/build-tracker/chats", requireAdmin, async (req: Request, res
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id, title, issueId, epicId } = req.body as {
+  const { conversation_id, title, issueId, epicId, force } = req.body as {
     conversation_id?: string;
     title?: string;
     issueId?: number | null;
     epicId?: number | null;
+    force?: boolean;
   };
   if (!conversation_id?.trim()) {
     res.status(400).json({ error: "conversation_id is required" });
@@ -580,7 +587,10 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
       let row = existing[0];
       const patch: Partial<typeof btChatsTable.$inferInsert> = {};
       if (incomingTitle && row.title === row.conversationId) patch.title = incomingTitle;
-      if ((incomingIssueId !== null || incomingEpicId !== null) && row.issueId === null && row.epicId === null) {
+      if (
+        (incomingIssueId !== null || incomingEpicId !== null) &&
+        (force || (row.issueId === null && row.epicId === null))
+      ) {
         patch.issueId = incomingIssueId;
         patch.epicId = incomingIssueId ? null : incomingEpicId;
       }

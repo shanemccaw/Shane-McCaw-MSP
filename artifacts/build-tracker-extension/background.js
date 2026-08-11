@@ -47,13 +47,14 @@ async function readJson(res) {
 
 /**
  * POSTs to /chats/ingest. Used both for the passive title-sync (content.js's
- * own settle timer) and for the panel's "link this chat to X" click —
- * issueId/epicId are optional in both cases; the server only ever applies
- * them to a chat that's still unlinked, so sending them opportunistically on
- * every title-sync call is harmless, not just on an explicit link click.
+ * own settle timer) and for the panel's "link this chat to X" click. Git
+ * #781 — those two need different clobbering rules: the passive call must
+ * never override a link Shane already made, but the explicit click SHOULD
+ * (that's the whole point of clicking it). `force` is that distinction —
+ * only the click path passes it true; the server enforces the actual rule.
  */
-async function ingestChat(conversationId, title, issueId, epicId) {
-  const key = `${conversationId}:${title ?? ""}:${issueId ?? ""}:${epicId ?? ""}`;
+async function ingestChat(conversationId, title, issueId, epicId, force) {
+  const key = `${conversationId}:${title ?? ""}:${issueId ?? ""}:${epicId ?? ""}:${force ?? ""}`;
   const now = Date.now();
   const last = recentSends.get(key);
   if (last && now - last < RECENT_SEND_TTL_MS) return { ok: true, deduped: true };
@@ -76,6 +77,7 @@ async function ingestChat(conversationId, title, issueId, epicId) {
         title: title || undefined,
         issueId: typeof issueId === "number" ? issueId : undefined,
         epicId: typeof epicId === "number" ? epicId : undefined,
+        force: force || undefined,
       }),
     });
 
@@ -425,7 +427,7 @@ async function getFileContent(path) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
-    void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
+    void ingestChat(message.conversationId, message.title, message.issueId, message.epicId, message.force).then(sendResponse);
     return true; // keep the channel open for the async sendResponse above
   }
   if (message?.type === "build-tracker-get-board") {
