@@ -320,6 +320,29 @@ function reopenIssue(issueId) {
   return setIssueStatus(issueId, "done");
 }
 
+/** POSTs /extension/set-issue-state — the hover card's Close/Reopen button, acting by GitHub number directly (works even for a number Build Tracker has never tracked). */
+async function setIssueState(number, state) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/set-issue-state`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ingestToken}` },
+      body: JSON.stringify({ number, state }),
+    });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /** GETs /extension/issue-lookup — powers the hover card for any #N the content script finds in a claude.ai message. */
 async function lookupIssue(number) {
   const { apiBaseUrl, ingestToken } = await getConfig();
@@ -382,6 +405,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-lookup-issue") {
     void lookupIssue(message.number).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-set-issue-state") {
+    void setIssueState(message.number, message.state).then(sendResponse);
     return true;
   }
   return false;

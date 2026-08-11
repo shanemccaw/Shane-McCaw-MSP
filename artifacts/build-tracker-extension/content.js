@@ -302,12 +302,19 @@ function buildPanel() {
       position: fixed; z-index: 2147483647; max-width: 300px;
       background: #1f1f1f; border: 1px solid #3b3b3b; border-radius: 8px;
       box-shadow: 0 10px 30px rgba(0,0,0,.5); padding: 9px 11px;
-      font-size: 12px; color: #d6d4d2; line-height: 1.4; pointer-events: none;
+      font-size: 12px; color: #d6d4d2; line-height: 1.4;
     }
     .issue-tooltip[hidden] { display: none; }
     .issue-tooltip .tt-title { font-weight: 700; color: #fff; margin-bottom: 3px; }
     .issue-tooltip .tt-meta { font-size: 10.5px; color: #8f8c88; text-transform: uppercase; letter-spacing: .03em; }
     .issue-tooltip .tt-meta.closed { color: #7fae91; }
+    .issue-tooltip .tt-actions { display: flex; gap: 6px; margin-top: 7px; }
+    .issue-tooltip .tt-btn {
+      flex: 1; padding: 4px 8px; border-radius: 5px; border: 1px solid #3b3b3b;
+      background: #292929; color: #f3f2f1; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .issue-tooltip .tt-btn:hover { background: #333; }
+    .issue-tooltip .tt-btn:disabled { opacity: .5; cursor: default; }
 
     /* Git #702 — SQL Runner / Deploy Console. Wider than the details dialog
        since query text and command output both need real room. */
@@ -487,6 +494,11 @@ function buildPanel() {
   const issueTooltip = document.createElement("div");
   issueTooltip.className = "issue-tooltip";
   issueTooltip.hidden = true;
+  // Now interactive (Close/Reopen + Ask Claude buttons) — moving the
+  // pointer from the underlined span onto the card itself must not
+  // dismiss it, same debounced-hide dance as everywhere else in this file.
+  issueTooltip.addEventListener("mouseenter", () => clearTimeout(tooltipHideTimer));
+  issueTooltip.addEventListener("mouseleave", onIssueRefUnhover);
   shadow.appendChild(issueTooltip);
 
   const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
@@ -1762,6 +1774,13 @@ async function onIssueRefHover(e) {
   positionTooltipNear(span); // title text just changed height — reposition
 }
 
+/**
+ * Git #720 follow-up — Shane: "I should be able to close it right there, or
+ * push a button to ask claude about that one item." Two independent
+ * actions, deliberately not combined the way the panel's complete-row click
+ * bundles close+announce — the tooltip works for ANY #N, not just
+ * complete-labeled rows, so Shane picks whichever (or both) fits.
+ */
 function renderIssueTooltip(info, num) {
   const { issueTooltip } = panelEls;
   if (info?.error) {
@@ -1772,7 +1791,42 @@ function renderIssueTooltip(info, num) {
   issueTooltip.innerHTML = `
     <div class="tt-title">#${num} ${escapeHtml(info.title)}</div>
     <div class="tt-meta${closed ? " closed" : ""}">${closed ? "closed" : "open"}${info.isEpic ? " · epic" : ""}${info.labels?.length ? " · " + info.labels.map(escapeHtml).join(", ") : ""}</div>
+    <div class="tt-actions">
+      <button type="button" class="tt-btn" data-action="tt-toggle">${closed ? "Reopen" : "Close"}</button>
+      <button type="button" class="tt-btn" data-action="tt-ask">Ask Claude</button>
+    </div>
   `;
+  issueTooltip.querySelector('[data-action="tt-toggle"]').addEventListener("click", () => void toggleIssueStateFromTooltip(info, num));
+  issueTooltip.querySelector('[data-action="tt-ask"]').addEventListener("click", () => {
+    insertTextIntoComposer(tooltipPromptText(info, num));
+  });
+}
+
+/** Mirrors issuePromptText()'s own logic (complete → "landed", else → "let's look at") against the lookup's raw GitHub labels, since this isn't a board `issue` object. */
+function tooltipPromptText(info, num) {
+  if ((info.labels ?? []).includes("complete")) return `${num} landed`;
+  return `Let's look at Git #${num}...`;
+}
+
+async function toggleIssueStateFromTooltip(info, num) {
+  const { issueTooltip } = panelEls;
+  const btn = issueTooltip.querySelector('[data-action="tt-toggle"]');
+  const wasClosed = info.state === "closed";
+  const newState = wasClosed ? "open" : "closed";
+  btn.disabled = true;
+  btn.textContent = "…";
+  const res = await chrome.runtime.sendMessage({ type: "build-tracker-set-issue-state", number: Number(num), state: newState });
+  if (!res?.ok) {
+    btn.disabled = false;
+    btn.textContent = wasClosed ? "Reopen" : "Close";
+    window.alert(`Couldn't update #${num}: ${res?.error ?? "unknown error"}`);
+    return;
+  }
+  info.state = newState;
+  issueRefCache.set(num, info);
+  renderIssueTooltip(info, num);
+  // Quiet — in case this number is also tracked/visible in the panel itself.
+  if (boardCache) await loadBoard(true, true);
 }
 
 function onIssueRefUnhover() {

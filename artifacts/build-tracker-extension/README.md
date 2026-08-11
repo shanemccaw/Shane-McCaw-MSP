@@ -83,7 +83,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
    message gets a dotted underline; hover it to see the real title, open/
    closed state, and labels, fetched straight from GitHub (not just
    whatever Build Tracker already has synced locally — works for anything
-   on GitHub, tracked here or not). No more remembering what #716 was.
+   on GitHub, tracked here or not). No more remembering what #716 was. The
+   card itself is interactive: a **Close/Reopen** button flips the real
+   GitHub state right there, and an **Ask Claude** button inserts a starter
+   prompt for that issue into the composer — both act on whatever number
+   you're hovering, independent of the panel's own lists.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

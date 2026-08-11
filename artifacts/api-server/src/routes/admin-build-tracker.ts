@@ -1065,6 +1065,54 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
   }
 });
 
+/**
+ * POST /admin/build-tracker/extension/set-issue-state
+ *
+ * Git #720 follow-up — Shane: "I should be able to close it right there" —
+ * the hover card's Close/Reopen button. Acts by GitHub number directly
+ * (like the lookup it's paired with), NOT Build Tracker's internal id —
+ * a number Claude mentions may not even be tracked locally yet, and this
+ * needs to work either way. Pushes the real state to GitHub first; the
+ * local bt_issues row (if one happens to exist) is updated best-effort
+ * afterward so the panel doesn't go stale, but isn't required to exist.
+ *
+ * Body: { number: number, state: "open" | "closed" }
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.post("/admin/build-tracker/extension/set-issue-state", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const { number, state } = req.body as { number?: number; state?: string };
+  if (!Number.isInteger(number) || (state !== "open" && state !== "closed")) {
+    res.status(400).json({ error: "number and state ('open'|'closed') are required" });
+    return;
+  }
+  try {
+    const ghRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}`, {
+      method: "PATCH",
+      body: JSON.stringify({ state }),
+    });
+    if (!ghRes.ok) {
+      res.status(502).json({ error: `GitHub rejected the update for #${number}` });
+      return;
+    }
+    // Best-effort — reopening maps to "done" locally, not "backlog": if it's
+    // tracked here at all it's almost certainly because it was complete-
+    // labeled (Git #714/#715's own reasoning), and reopening shouldn't
+    // silently forget that.
+    await db
+      .update(btIssuesTable)
+      .set({ status: state === "closed" ? "closed" : "done", updatedAt: new Date() })
+      .where(eq(btIssuesTable.githubNumber, number));
+    res.json({ number, state });
+  } catch (err) {
+    log.error({ err, number, state }, "POST /extension/set-issue-state failed");
+    res.status(500).json({ error: "Failed to update issue state" });
+  }
+});
+
 router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: Request, res: Response) => {
   if (!process.env.GITHUB_TOKEN) {
     res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
