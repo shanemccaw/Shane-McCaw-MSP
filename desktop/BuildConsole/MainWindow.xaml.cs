@@ -46,7 +46,16 @@ namespace BuildConsole
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
             ClaudeWebView.SourceChanged       += WebView_SourceChanged;
 
+            // Build Queue selection -> Build Log
+            BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
+
             UpdateZoomDisplay();
+        }
+
+        private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
+        {
+            BuildLogView.LoadTaskLog(e.Epic, e.Task, e.Status, e.StatusDetails);
+            SetBottomPanel(true, tabIndex: 0);
         }
 
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
@@ -175,18 +184,18 @@ namespace BuildConsole
 
         // ── Menu: Terminal ────────────────────────────────────────────────────
         private void OpenTerminal_Click(object sender, RoutedEventArgs e)
-            => SetBottomPanel(true, tabIndex: 0);
+            => SetBottomPanel(true, tabIndex: 1);
 
         private void GitChip_Click(object sender, RoutedEventArgs e)
         {
-            SetBottomPanel(true, tabIndex: 0);
+            SetBottomPanel(true, tabIndex: 1);
             if (sender is MenuItem mi)
                 TerminalView.SetCommand(mi.Tag?.ToString() ?? string.Empty);
         }
 
         // ── Menu: SQL ─────────────────────────────────────────────────────────
         private void OpenSql_Click(object sender, RoutedEventArgs e)
-            => SetBottomPanel(true, tabIndex: 1);
+            => SetBottomPanel(true, tabIndex: 2);
 
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)

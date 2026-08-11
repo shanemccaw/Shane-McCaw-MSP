@@ -71,14 +71,18 @@
                                   Padding="0,4">
                         <TreeView x:Name="ChatsTree" BorderThickness="0">
 
-                            <!-- Today -->
+                            <!-- ══ EPIC: Platform Build ══ In Progress -->
                             <TreeViewItem IsExpanded="True">
                                 <TreeViewItem.Header>
-                                    <TextBlock Text="TODAY"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               Foreground="{StaticResource Subtext1Brush}"
-                                               Margin="0,4,0,2"/>
+                                    <DockPanel>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource BlueBrush}"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <Border DockPanel.Dock="Right" Background="#1A89B4FA" CornerRadius="3"
+                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="In Progress" FontSize="10" Foreground="{StaticResource BlueBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="Platform Build" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </DockPanel>
                                 </TreeViewItem.Header>
                                 <TreeViewItem>
                                     <TreeViewItem.Header>
@@ -89,88 +93,105 @@
                                         </StackPanel>
                                     </TreeViewItem.Header>
                                 </TreeViewItem>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Office Ribbon + dark mode" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
                             </TreeViewItem>
 
-                            <!-- Yesterday -->
-                            <TreeViewItem IsExpanded="True">
+                            <!-- ══ EPIC: MSP Platform ══ In Progress -->
+                            <TreeViewItem IsExpanded="True" Margin="0,4,0,0">
                                 <TreeViewItem.Header>
-                                    <TextBlock Text="YESTERDAY"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               Foreground="{StaticResource Subtext1Brush}"
-                                               Margin="0,8,0,2"/>
+                                    <DockPanel>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource MauveBrush}"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <Border DockPanel.Dock="Right" Background="#1ACBA6F7" CornerRadius="3"
+                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="In Progress" FontSize="10" Foreground="{StaticResource MauveBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="MSP Platform" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </DockPanel>
                                 </TreeViewItem.Header>
                                 <TreeViewItem>
                                     <TreeViewItem.Header>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                                        Foreground="{StaticResource MauveBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Create WPF skeleton + WebView2" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource MauveBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Build queue API design" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                            <!-- Last week -->
-                            <TreeViewItem IsExpanded="False">
-                                <TreeViewItem.Header>
-                                    <TextBlock Text="LAST WEEK"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               Foreground="{StaticResource Subtext1Brush}"
-                                               Margin="0,8,0,2"/>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="MSP Platform database schema" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="Stripe integration for resellers" FontSize="13" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </TreeViewItem.Header>
                                 </TreeViewItem>
+                            </TreeViewItem>
+
+                            <!-- ══ EPIC: Alert Engine ══ Blocked -->
+                            <TreeViewItem IsExpanded="True" Margin="0,4,0,0">
+                                <TreeViewItem.Header>
+                                    <DockPanel>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource RedBrush}"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <Border DockPanel.Dock="Right" Background="#1AF38BA8" CornerRadius="3"
+                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Blocked" FontSize="10" Foreground="{StaticResource RedBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="Alert Engine" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                </TreeViewItem.Header>
                                 <TreeViewItem>
                                     <TreeViewItem.Header>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                       Foreground="{StaticResource RedBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="Alert engine migration planning" FontSize="13" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </TreeViewItem.Header>
                                 </TreeViewItem>
+                            </TreeViewItem>
+
+                            <!-- ══ EPIC: Eyecons Admin ══ Pending -->
+                            <TreeViewItem IsExpanded="False" Margin="0,4,0,0">
+                                <TreeViewItem.Header>
+                                    <DockPanel>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource Subtext1Brush}"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <Border DockPanel.Dock="Right" Background="#15585B70" CornerRadius="3"
+                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Pending" FontSize="10" Foreground="{StaticResource Subtext1Brush}"/>
+                                        </Border>
+                                        <TextBlock Text="Eyecons Admin" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                </TreeViewItem.Header>
                                 <TreeViewItem>
                                     <TreeViewItem.Header>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                                        Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Admin panel layout fixes" FontSize="13" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Admin panel layout fixes" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TreeViewItem.Header>
+                                </TreeViewItem>
+                            </TreeViewItem>
+
+                            <!-- ══ EPIC: MSP Database Schema ══ Done -->
+                            <TreeViewItem IsExpanded="False" Margin="0,4,0,0">
+                                <TreeViewItem.Header>
+                                    <DockPanel>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <Border DockPanel.Dock="Right" Background="#15A6E3A1" CornerRadius="3"
+                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Done" FontSize="10" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="MSP Database Schema" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Subtext1Brush}"
+                                                   TextDecorations="Strikethrough" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                </TreeViewItem.Header>
+                                <TreeViewItem>
+                                    <TreeViewItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="{StaticResource GreenBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="MSP Platform database schema" FontSize="13"
+                                                       Foreground="{StaticResource Subtext1Brush}"
+                                                       TextDecorations="Strikethrough" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </TreeViewItem.Header>
                                 </TreeViewItem>

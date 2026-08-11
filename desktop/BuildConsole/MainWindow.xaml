@@ -207,11 +207,15 @@
                               ShowsPreview="False"
                               Visibility="Collapsed"/>
 
-                <!-- ── Bottom panel (Terminal / SQL / Output) ── -->
+                <!-- ── Bottom panel (Build Log / Terminal / SQL / Output) ── -->
                 <TabControl x:Name="BottomTabs"
                             Grid.Row="2"
                             BorderThickness="0,1,0,0"
                             Visibility="Collapsed">
+
+                    <TabItem Header="Build Log">
+                        <ctrl:BuildLogView x:Name="BuildLogView"/>
+                    </TabItem>
 
                     <TabItem Header="Terminal">
                         <ctrl:TerminalView x:Name="TerminalView"/>
