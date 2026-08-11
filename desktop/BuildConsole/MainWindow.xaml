@@ -15,52 +15,27 @@
         <!-- ══════════════════════════════════════════════════════
              RIBBON
              ══════════════════════════════════════════════════════ -->
-        <ribbon:Ribbon DockPanel.Dock="Top"
-                       Title="BuildConsole">
+        <ribbon:Ribbon DockPanel.Dock="Top" Title="BuildConsole">
 
             <!-- ── Application Menu (File button) ── -->
             <ribbon:Ribbon.ApplicationMenu>
-                <ribbon:RibbonApplicationMenu SmallImageSource="{x:Null}"
-                                              KeyTip="F">
-                    <ribbon:RibbonApplicationMenuItem Header="New Session"
-                                                      KeyTip="N"
-                                                      ImageSource="{x:Null}" />
-                    <ribbon:RibbonApplicationMenuItem Header="Open Project…"
-                                                      KeyTip="O"
-                                                      ImageSource="{x:Null}" />
-                    <ribbon:RibbonSeparator />
-                    <ribbon:RibbonApplicationMenuItem Header="Settings"
-                                                      KeyTip="S"
-                                                      ImageSource="{x:Null}" />
-                    <ribbon:RibbonSeparator />
-                    <ribbon:RibbonApplicationMenuItem Header="Exit"
-                                                      KeyTip="X"
-                                                      ImageSource="{x:Null}"
-                                                      Click="MenuExit_Click" />
+                <ribbon:RibbonApplicationMenu SmallImageSource="{x:Null}" KeyTip="F">
+                    <ribbon:RibbonApplicationMenuItem Header="New Session"   KeyTip="N" ImageSource="{x:Null}"/>
+                    <ribbon:RibbonApplicationMenuItem Header="Open Project…" KeyTip="O" ImageSource="{x:Null}"/>
+                    <ribbon:RibbonSeparator/>
+                    <ribbon:RibbonApplicationMenuItem Header="Settings"      KeyTip="S" ImageSource="{x:Null}"/>
+                    <ribbon:RibbonSeparator/>
+                    <ribbon:RibbonApplicationMenuItem Header="Exit"          KeyTip="X" ImageSource="{x:Null}"
+                                                      Click="MenuExit_Click"/>
                 </ribbon:RibbonApplicationMenu>
             </ribbon:Ribbon.ApplicationMenu>
 
             <!-- ── Quick Access Toolbar ── -->
             <ribbon:Ribbon.QuickAccessToolBar>
                 <ribbon:RibbonQuickAccessToolBar>
-                    <ribbon:RibbonButton x:Name="QatNavBack"
-                                         Label="Back"
-                                         KeyTip="B"
-                                         Click="NavBack_Click"
-                                         SmallImageSource="{x:Null}"
-                                         ToolTip="Navigate Back" />
-                    <ribbon:RibbonButton x:Name="QatNavForward"
-                                         Label="Forward"
-                                         KeyTip="F"
-                                         Click="NavForward_Click"
-                                         SmallImageSource="{x:Null}"
-                                         ToolTip="Navigate Forward" />
-                    <ribbon:RibbonButton x:Name="QatRefresh"
-                                         Label="Refresh"
-                                         KeyTip="R"
-                                         Click="NavRefresh_Click"
-                                         SmallImageSource="{x:Null}"
-                                         ToolTip="Reload Page" />
+                    <ribbon:RibbonButton x:Name="QatNavBack"    Label="Back"    KeyTip="B" Click="NavBack_Click"    SmallImageSource="{x:Null}" ToolTip="Navigate Back"/>
+                    <ribbon:RibbonButton x:Name="QatNavForward" Label="Forward" KeyTip="F" Click="NavForward_Click" SmallImageSource="{x:Null}" ToolTip="Navigate Forward"/>
+                    <ribbon:RibbonButton x:Name="QatRefresh"    Label="Refresh" KeyTip="R" Click="NavRefresh_Click" SmallImageSource="{x:Null}" ToolTip="Reload Page"/>
                 </ribbon:RibbonQuickAccessToolBar>
             </ribbon:Ribbon.QuickAccessToolBar>
 
@@ -69,67 +44,21 @@
                  ════════════════════════════════ -->
             <ribbon:RibbonTab Header="Home" KeyTip="H">
 
-                <!-- Group: Navigation -->
                 <ribbon:RibbonGroup Header="Navigation">
-                    <ribbon:RibbonButton x:Name="BtnBack"
-                                         Label="Back"
-                                         KeyTip="B"
-                                         Click="NavBack_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Navigate back in Claude" />
-                    <ribbon:RibbonButton x:Name="BtnForward"
-                                         Label="Forward"
-                                         KeyTip="F"
-                                         Click="NavForward_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Navigate forward in Claude" />
-                    <ribbon:RibbonButton x:Name="BtnRefresh"
-                                         Label="Refresh"
-                                         KeyTip="R"
-                                         Click="NavRefresh_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Reload page" />
+                    <ribbon:RibbonButton x:Name="BtnBack"    Label="Back"    KeyTip="B" Click="NavBack_Click"    SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Navigate back in Claude"/>
+                    <ribbon:RibbonButton x:Name="BtnForward" Label="Forward" KeyTip="F" Click="NavForward_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Navigate forward in Claude"/>
+                    <ribbon:RibbonButton x:Name="BtnRefresh" Label="Refresh" KeyTip="R" Click="NavRefresh_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Reload page"/>
                 </ribbon:RibbonGroup>
 
-                <!-- Group: Claude -->
                 <ribbon:RibbonGroup Header="Claude">
-                    <ribbon:RibbonButton x:Name="BtnNewChat"
-                                         Label="New Chat"
-                                         KeyTip="N"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Open a new Claude conversation" />
-                    <ribbon:RibbonButton x:Name="BtnProjects"
-                                         Label="Projects"
-                                         KeyTip="P"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Browse Claude Projects" />
+                    <ribbon:RibbonButton x:Name="BtnNewChat"  Label="New Chat" KeyTip="N" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Open a new Claude conversation"/>
+                    <ribbon:RibbonButton x:Name="BtnProjects" Label="Projects" KeyTip="P" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Browse Claude Projects"/>
                 </ribbon:RibbonGroup>
 
-                <!-- Group: Build Queue -->
                 <ribbon:RibbonGroup Header="Build Queue">
-                    <ribbon:RibbonButton x:Name="BtnQueueRun"
-                                         Label="Run"
-                                         KeyTip="U"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Start the build watcher" />
-                    <ribbon:RibbonButton x:Name="BtnQueueStop"
-                                         Label="Stop"
-                                         KeyTip="S"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Stop the build watcher" />
-                    <ribbon:RibbonButton x:Name="BtnQueueClear"
-                                         Label="Clear"
-                                         KeyTip="C"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Clear the build queue" />
+                    <ribbon:RibbonButton x:Name="BtnQueueRun"   Label="Run"   KeyTip="U" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Start the build watcher"/>
+                    <ribbon:RibbonButton x:Name="BtnQueueStop"  Label="Stop"  KeyTip="S" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Stop the build watcher"/>
+                    <ribbon:RibbonButton x:Name="BtnQueueClear" Label="Clear" KeyTip="C" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Clear the build queue"/>
                 </ribbon:RibbonGroup>
 
             </ribbon:RibbonTab>
@@ -139,60 +68,19 @@
                  ════════════════════════════════ -->
             <ribbon:RibbonTab Header="View" KeyTip="V">
 
-                <!-- Group: Panels -->
                 <ribbon:RibbonGroup Header="Panels">
-                    <ribbon:RibbonToggleButton x:Name="BtnToggleLeft"
-                                               Label="Boards Panel"
-                                               KeyTip="L"
-                                               IsChecked="True"
-                                               Click="ToggleLeftPanel_Click"
-                                               SmallImageSource="{x:Null}"
-                                               LargeImageSource="{x:Null}"
-                                               ToolTip="Show / hide the boards &amp; chats panel" />
-                    <ribbon:RibbonToggleButton x:Name="BtnToggleRight"
-                                               Label="Queue Panel"
-                                               KeyTip="R"
-                                               IsChecked="True"
-                                               Click="ToggleRightPanel_Click"
-                                               SmallImageSource="{x:Null}"
-                                               LargeImageSource="{x:Null}"
-                                               ToolTip="Show / hide the build queue panel" />
+                    <ribbon:RibbonToggleButton x:Name="BtnToggleLeft"  Label="Boards Panel" KeyTip="L" IsChecked="True" Click="ToggleLeftPanel_Click"  SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Show / hide the boards &amp; chats panel"/>
+                    <ribbon:RibbonToggleButton x:Name="BtnToggleRight" Label="Queue Panel"  KeyTip="R" IsChecked="True" Click="ToggleRightPanel_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Show / hide the build queue panel"/>
                 </ribbon:RibbonGroup>
 
-                <!-- Group: Layout -->
                 <ribbon:RibbonGroup Header="Layout">
-                    <ribbon:RibbonButton x:Name="BtnResetLayout"
-                                         Label="Reset Layout"
-                                         KeyTip="E"
-                                         Click="ResetLayout_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Reset all pane widths to defaults" />
+                    <ribbon:RibbonButton x:Name="BtnResetLayout" Label="Reset Layout" KeyTip="E" Click="ResetLayout_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Reset all pane widths to defaults"/>
                 </ribbon:RibbonGroup>
 
-                <!-- Group: Zoom -->
                 <ribbon:RibbonGroup Header="Zoom">
-                    <ribbon:RibbonButton x:Name="BtnZoomIn"
-                                         Label="Zoom In"
-                                         KeyTip="I"
-                                         Click="ZoomIn_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Zoom the WebView in" />
-                    <ribbon:RibbonButton x:Name="BtnZoomOut"
-                                         Label="Zoom Out"
-                                         KeyTip="O"
-                                         Click="ZoomOut_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Zoom the WebView out" />
-                    <ribbon:RibbonButton x:Name="BtnZoomReset"
-                                         Label="100%"
-                                         KeyTip="Z"
-                                         Click="ZoomReset_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Reset zoom to 100%" />
+                    <ribbon:RibbonButton x:Name="BtnZoomIn"    Label="Zoom In"  KeyTip="I" Click="ZoomIn_Click"    SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Zoom the WebView in"/>
+                    <ribbon:RibbonButton x:Name="BtnZoomOut"   Label="Zoom Out" KeyTip="O" Click="ZoomOut_Click"   SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Zoom the WebView out"/>
+                    <ribbon:RibbonButton x:Name="BtnZoomReset" Label="100%"     KeyTip="Z" Click="ZoomReset_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Reset zoom to 100%"/>
                 </ribbon:RibbonGroup>
 
             </ribbon:RibbonTab>
@@ -202,31 +90,13 @@
                  ════════════════════════════════ -->
             <ribbon:RibbonTab Header="Tools" KeyTip="T">
 
-                <!-- Group: Developer -->
                 <ribbon:RibbonGroup Header="Developer">
-                    <ribbon:RibbonButton x:Name="BtnDevTools"
-                                         Label="DevTools"
-                                         KeyTip="D"
-                                         Click="OpenDevTools_Click"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Open WebView2 developer tools" />
+                    <ribbon:RibbonButton x:Name="BtnDevTools" Label="DevTools" KeyTip="D" Click="OpenDevTools_Click" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Open WebView2 developer tools"/>
                 </ribbon:RibbonGroup>
 
-                <!-- Group: Connection -->
                 <ribbon:RibbonGroup Header="Connection">
-                    <ribbon:RibbonButton x:Name="BtnTestApi"
-                                         Label="Test API"
-                                         KeyTip="A"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Ping the build-queue API endpoint" />
-                    <ribbon:RibbonButton x:Name="BtnConnSettings"
-                                         Label="Endpoints"
-                                         KeyTip="E"
-                                         SmallImageSource="{x:Null}"
-                                         LargeImageSource="{x:Null}"
-                                         ToolTip="Configure API endpoints" />
+                    <ribbon:RibbonButton x:Name="BtnTestApi"     Label="Test API"  KeyTip="A" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Ping the build-queue API endpoint"/>
+                    <ribbon:RibbonButton x:Name="BtnConnSettings" Label="Endpoints" KeyTip="E" SmallImageSource="{x:Null}" LargeImageSource="{x:Null}" ToolTip="Configure API endpoints"/>
                 </ribbon:RibbonGroup>
 
             </ribbon:RibbonTab>
@@ -236,74 +106,150 @@
 
 
         <!-- ══════════════════════════════════════════════════════
+             STATUS BAR
+             ══════════════════════════════════════════════════════ -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <!--
+                Custom ItemsPanel: Grid with fixed/auto/star/auto/auto columns
+                so right-side items are always flush to the right edge.
+            -->
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>  <!-- status dot + text -->
+                            <ColumnDefinition Width="Auto"/>  <!-- separator -->
+                            <ColumnDefinition Width="Auto"/>  <!-- URL -->
+                            <ColumnDefinition Width="*"/>     <!-- spring -->
+                            <ColumnDefinition Width="Auto"/>  <!-- zoom -->
+                            <ColumnDefinition Width="Auto"/>  <!-- separator -->
+                            <ColumnDefinition Width="Auto"/>  <!-- build status -->
+                            <ColumnDefinition Width="Auto"/>  <!-- separator -->
+                            <ColumnDefinition Width="Auto"/>  <!-- clock -->
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+
+            <!-- ── Left: nav status indicator ── -->
+            <StatusBarItem Grid.Column="0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="StatusDot"
+                             Width="8" Height="8"
+                             Fill="#A6E3A1"
+                             Margin="2,0,6,0"
+                             VerticalAlignment="Center"/>
+                    <TextBlock x:Name="NavStatusText"
+                               Text="Ready"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </StatusBarItem>
+
+            <Separator Grid.Column="1"/>
+
+            <!-- ── URL display ── -->
+            <StatusBarItem Grid.Column="2">
+                <TextBlock x:Name="UrlStatusText"
+                           Text="https://claude.ai"
+                           Foreground="{StaticResource Subtext1Brush}"
+                           MaxWidth="500"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"/>
+            </StatusBarItem>
+
+            <!-- Column 3 is the * spring — no item needed -->
+
+            <!-- ── Zoom level ── -->
+            <StatusBarItem Grid.Column="4">
+                <TextBlock x:Name="ZoomText"
+                           Text="100%"
+                           VerticalAlignment="Center"/>
+            </StatusBarItem>
+
+            <Separator Grid.Column="5"/>
+
+            <!-- ── Build-queue status ── -->
+            <StatusBarItem Grid.Column="6">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="QueueDot"
+                             Width="8" Height="8"
+                             Fill="{StaticResource Surface2Brush}"
+                             Margin="0,0,6,0"
+                             VerticalAlignment="Center"/>
+                    <TextBlock x:Name="QueueStatusText"
+                               Text="Queue: idle"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </StatusBarItem>
+
+            <Separator Grid.Column="7"/>
+
+            <!-- ── Clock ── -->
+            <StatusBarItem Grid.Column="8" Padding="6,0,10,0">
+                <TextBlock x:Name="ClockText"
+                           Text="00:00:00"
+                           VerticalAlignment="Center"/>
+            </StatusBarItem>
+
+        </StatusBar>
+        <!-- ══ END STATUS BAR ══ -->
+
+
+        <!-- ══════════════════════════════════════════════════════
              THREE-PANE CONTENT AREA
              ══════════════════════════════════════════════════════ -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <!-- Left: chats / board list (placeholder) -->
-                <ColumnDefinition x:Name="ColLeft" Width="220" MinWidth="0" />
-                <!-- Splitter -->
-                <ColumnDefinition Width="4" />
-                <!-- Middle: Claude.ai WebView2 -->
-                <ColumnDefinition Width="*" />
-                <!-- Splitter -->
-                <ColumnDefinition Width="4" />
-                <!-- Right: build queue panel (placeholder) -->
-                <ColumnDefinition x:Name="ColRight" Width="300" MinWidth="0" />
+                <ColumnDefinition x:Name="ColLeft"  Width="220" MinWidth="0"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition x:Name="ColRight" Width="300" MinWidth="0"/>
             </Grid.ColumnDefinitions>
 
             <!-- ── LEFT PANEL: chats / board list placeholder ── -->
             <Border x:Name="LeftPanel"
                     Grid.Column="0"
-                    Background="#1E1E2E"
-                    BorderBrush="#313244"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
                     BorderThickness="0,0,1,0">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
-                    <TextBlock Text="📋"
-                               FontSize="32"
-                               HorizontalAlignment="Center" />
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.5">
+                    <TextBlock Text="📋" FontSize="32" HorizontalAlignment="Center"/>
                     <TextBlock Text="Boards / Chats"
                                FontSize="12"
-                               Foreground="#CDD6F4"
+                               Foreground="{StaticResource Subtext1Brush}"
                                HorizontalAlignment="Center"
-                               Margin="0,6,0,0" />
+                               Margin="0,8,0,0"/>
                 </StackPanel>
             </Border>
 
-            <!-- Draggable splitter between Left and Middle -->
-            <GridSplitter Grid.Column="1"
-                          HorizontalAlignment="Stretch"
-                          Background="#313244"
-                          ShowsPreview="False" />
+            <!-- Draggable splitter -->
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" ShowsPreview="False"/>
 
             <!-- ── MIDDLE PANEL: Claude.ai ── -->
             <wv2:WebView2 x:Name="ClaudeWebView"
                           Grid.Column="2"
-                          Source="https://claude.ai" />
+                          Source="https://claude.ai"/>
 
-            <!-- Draggable splitter between Middle and Right -->
-            <GridSplitter Grid.Column="3"
-                          HorizontalAlignment="Stretch"
-                          Background="#313244"
-                          ShowsPreview="False" />
+            <!-- Draggable splitter -->
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" ShowsPreview="False"/>
 
             <!-- ── RIGHT PANEL: build queue placeholder ── -->
             <Border x:Name="RightPanel"
                     Grid.Column="4"
-                    Background="#1E1E2E"
-                    BorderBrush="#313244"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
                     BorderThickness="1,0,0,0">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
-                    <TextBlock Text="⚙️"
-                               FontSize="32"
-                               HorizontalAlignment="Center" />
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.5">
+                    <TextBlock Text="⚙️" FontSize="32" HorizontalAlignment="Center"/>
                     <TextBlock Text="Build Queue"
                                FontSize="12"
-                               Foreground="#CDD6F4"
+                               Foreground="{StaticResource Subtext1Brush}"
                                HorizontalAlignment="Center"
-                               Margin="0,6,0,0" />
+                               Margin="0,8,0,0"/>
                 </StackPanel>
             </Border>
+
         </Grid>
 
     </DockPanel>
