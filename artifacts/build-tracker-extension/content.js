@@ -1767,6 +1767,23 @@ function buildIssueRow(issue, onClick) {
   });
   actions.appendChild(detailsBtn);
 
+  // Git #728 follow-up — "I only know their Issue number... how do I get
+  // back to their chat." Same lookup the hover card uses; only shown when a
+  // chat is actually linked (most issues aren't linked to any one chat).
+  const linkedChat = issue.githubNumber != null ? findChatForIssueNumber(issue.githubNumber) : null;
+  if (linkedChat) {
+    const gotoBtn = document.createElement("button");
+    gotoBtn.type = "button";
+    gotoBtn.className = "ibtn";
+    gotoBtn.title = `Go to the chat this issue is linked to: "${linkedChat.title}"`;
+    gotoBtn.textContent = "💬";
+    gotoBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      location.href = linkedChat.claudeUrl;
+    });
+    actions.appendChild(gotoBtn);
+  }
+
   if (issue.githubNumber) {
     const promptBtn = document.createElement("button");
     promptBtn.type = "button";
@@ -1942,22 +1959,47 @@ async function onIssueRefHover(e) {
  * bundles close+announce — the tooltip works for ANY #N, not just
  * complete-labeled rows, so Shane picks whichever (or both) fits.
  */
+/**
+ * Git #728 follow-up — Shane: "I do something and while builds are going I
+ * go to a new chat... now I have builds done... I only know their Issue
+ * number... how do I get back to their chat." Finds the chat directly
+ * linked to that GitHub number (board's `chats[].issueGithubNumber`, not
+ * just an epic match) — works even after the issue's since closed, since
+ * the server resolves that against every issue, not just open ones.
+ */
+function findChatForIssueNumber(num) {
+  const n = Number(num);
+  return (boardCache?.data?.chats ?? []).find((c) => c.issueGithubNumber === n) ?? null;
+}
+
+function goToChatButtonHtml(chat) {
+  return chat ? `<button type="button" class="tt-btn" data-action="tt-goto">Go to Chat</button>` : "";
+}
+
+function wireGoToChatButton(container, chat) {
+  const btn = container.querySelector('[data-action="tt-goto"]');
+  if (btn) btn.addEventListener("click", () => { location.href = chat.claudeUrl; });
+}
+
 function renderIssueTooltip(info, num) {
   const { issueTooltip } = panelEls;
+  const chat = findChatForIssueNumber(num);
   if (info?.error) {
-    // A failed lookup still shouldn't be a dead end — "Ask Claude" doesn't
-    // need any of the fetched data (Close/Reopen does, so it's the one
-    // button that's genuinely unavailable here).
+    // A failed lookup still shouldn't be a dead end — "Ask Claude"/"Go to
+    // Chat" don't need any of the fetched data (Close/Reopen does, so
+    // that's the one button that's genuinely unavailable here).
     issueTooltip.innerHTML = `
       <div class="tt-title">#${num}</div>
       <div class="tt-meta">${escapeHtml(info.error)}</div>
       <div class="tt-actions">
         <button type="button" class="tt-btn" data-action="tt-ask">Ask Claude</button>
+        ${goToChatButtonHtml(chat)}
       </div>
     `;
     issueTooltip.querySelector('[data-action="tt-ask"]').addEventListener("click", () => {
       insertTextIntoComposer(`Let's look at Git #${num}...`);
     });
+    wireGoToChatButton(issueTooltip, chat);
     return;
   }
   const closed = info.state === "closed";
@@ -1967,12 +2009,14 @@ function renderIssueTooltip(info, num) {
     <div class="tt-actions">
       <button type="button" class="tt-btn" data-action="tt-toggle">${closed ? "Reopen" : "Close"}</button>
       <button type="button" class="tt-btn" data-action="tt-ask">Ask Claude</button>
+      ${goToChatButtonHtml(chat)}
     </div>
   `;
   issueTooltip.querySelector('[data-action="tt-toggle"]').addEventListener("click", () => void toggleIssueStateFromTooltip(info, num));
   issueTooltip.querySelector('[data-action="tt-ask"]').addEventListener("click", () => {
     insertTextIntoComposer(tooltipPromptText(info, num));
   });
+  wireGoToChatButton(issueTooltip, chat);
 }
 
 /** Mirrors issuePromptText()'s own logic (complete → "landed", else → "let's look at") against the lookup's raw GitHub labels, since this isn't a board `issue` object. */

@@ -826,15 +826,24 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
     // open-only `epics`/`issues` above, so a chat pointing at an already-
     // closed epic/issue still resolves — the navigator should still be able
     // to find it, same reasoning as focusEpic's own resolution above.
+    // Git #728 follow-up — Shane: "I only know their issue number... how do
+    // I get back to their chat." Needs the chat linked to a SPECIFIC issue,
+    // by GitHub number (what he actually has in hand), not just an epic —
+    // issueGithubNumber resolved against allIssues (unfiltered) so a chat
+    // pointing at an issue that's since closed/done still resolves.
     const chats = allChats.map((c) => {
       let epicId = c.epicId;
-      if (!epicId && c.issueId) {
-        epicId = allIssues.find((i) => i.id === c.issueId)?.epicId ?? null;
+      let issueGithubNumber: number | null = null;
+      if (c.issueId) {
+        const linkedIssue = allIssues.find((i) => i.id === c.issueId);
+        issueGithubNumber = linkedIssue?.githubNumber ?? null;
+        if (!epicId) epicId = linkedIssue?.epicId ?? null;
       }
       return {
         conversationId: c.conversationId,
         title: c.title,
         epicId,
+        issueGithubNumber,
         claudeUrl: claudeUrl(c.conversationId),
         updatedAt: c.updatedAt,
       };

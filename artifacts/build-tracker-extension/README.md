@@ -101,7 +101,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
    Claude's other common format — a markdown table with a bare `#` header
    column (numbers with no literal `#` character) — by detecting the table
    structure itself rather than text-matching, since a bare number can't be
-   told apart from any other number in prose.
+   told apart from any other number in prose. If that number is linked to a
+   chat, a **Go to Chat** button jumps straight there — for when a build
+   finishes in a chat you've since navigated away from and all you have is
+   the issue number. The same button shows up (💬) on any issue row
+   anywhere in the panel that has a linked chat.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
