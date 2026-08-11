@@ -62,6 +62,7 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -161,7 +162,14 @@ router.get(
       // Rows for ids the guide no longer holds are dropped rather than served:
       // the write path can only ever store a known id, so this is belt-and-
       // braces against a step being renumbered out of the guide later.
-      res.json({ steps: rows.filter((r) => STEP_ID_SET.has(r.stepId)).map(toWire) });
+      const knownRows = rows.filter((r) => STEP_ID_SET.has(r.stepId));
+
+      // Phase-gated live pricing (#734, Phase E) — computed from the same
+      // known rows, not a second query. Additive field; the `steps` shape
+      // above is unchanged.
+      const pricing = computeRemediationTrackerPricing(knownRows);
+
+      res.json({ steps: knownRows.map(toWire), pricing });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/remediation-tracker failed");
       res.status(500).json({ error: "Failed to load remediation tracker" });

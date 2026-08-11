@@ -274,6 +274,12 @@ export default defineConfig({
       // coverage to certify `verified` while ANY real adverse finding is
       // enough to certify `drift`, even on partial coverage.
       "src/lib/remediation-tracker-verification.test.ts",
+      // #734 — the Remediation Tracker's phase-gated live pricing: a phase's
+      // fee stays flat until every one of its steps is resolved AND at least
+      // one has been verified by a real rescan; deferred counts toward that
+      // readiness gate and shane_handles deliberately does not (see the
+      // module's own header for why, straight from the design file's code).
+      "src/lib/remediation-tracker-pricing.test.ts",
     ],
     coverage: {
       provider: "v8",

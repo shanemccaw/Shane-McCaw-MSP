@@ -203,11 +203,14 @@ describe("GET /api/portal/remediation-tracker", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns an empty list for a customer who has never ticked anything", async () => {
+  it("returns an empty list for a customer who has never ticked anything, plus the full flat price (#734)", async () => {
     mockSelectResultsQueue = [[]];
     const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ steps: [] });
+    expect(res.body.steps).toEqual([]);
+    expect(res.body.pricing.phases).toHaveLength(3);
+    expect(res.body.pricing.phases.every((p: { ready: boolean }) => p.ready === false)).toBe(true);
+    expect(res.body.pricing.hire).toMatchObject({ price: "$36,200", saved: "$0", cta: "Hire Shane McCaw" });
   });
 
   it("serves stored rows and drops any id the guide no longer holds", async () => {
@@ -254,6 +257,28 @@ describe("GET /api/portal/remediation-tracker", () => {
     expect(res.status).toBe(200);
     expect(res.body.steps[0].verificationState).toBe("drift");
     expect(res.body.steps[0].verifiedAt).toBe(when.toISOString());
+  });
+});
+
+describe("GET /api/portal/remediation-tracker pricing (#734)", () => {
+  it("only reduces a phase's fee once every one of its steps is completed and verified", async () => {
+    const when = new Date("2026-08-11T09:00:00.000Z");
+    const allThirtyVerified = REMEDIATION_TRACKER_STEP_IDS.map((stepId) => ({
+      stepId,
+      status: "completed",
+      completedAt: when,
+      updatedAt: when,
+      verificationState: "verified",
+      verifiedAt: when,
+    }));
+    mockSelectResultsQueue = [allThirtyVerified];
+
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker");
+    expect(res.status).toBe(200);
+    expect(res.body.pricing.phases.every((p: { ready: boolean; fee: number }) => p.ready === true && p.fee === 0)).toBe(
+      true,
+    );
+    expect(res.body.pricing.hire).toMatchObject({ price: "$0", saved: "$36,200", cta: "Book your gate validation" });
   });
 });
 
