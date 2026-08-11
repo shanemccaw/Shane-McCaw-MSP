@@ -45,6 +45,16 @@ param(
   [string]$Uri
 )
 
+# Git #763 fix - Shane: a real prompt (full of embedded double quotes, e.g.
+# quoted step names like "Move one real recurring workflow...") came through
+# as just the single word "one". PowerShell's LEGACY native-command argument
+# passing is a well-known source of exactly this failure mode - it mangles
+# long strings containing embedded quotes when handing them to a native exe
+# like claude.exe, while quote-free tokens (model/effort/title/cwd) are
+# unaffected, matching what Shane saw. 'Standard' mode implements correct
+# Win32 argv escaping instead. No-op (silently ignored) on PowerShell < 7.3.
+$PSNativeCommandArgumentPassing = 'Standard'
+
 Add-Type -AssemblyName System.Web
 
 $queryString = ($Uri -split '\?', 2)[1]
@@ -87,6 +97,13 @@ if ($title) { $Host.UI.RawUI.WindowTitle = $title }
 $claudeArgs = @("--prefill", $prompt)
 if ($model)  { $claudeArgs += @("--model", $model) }
 if ($effort) { $claudeArgs += @("--effort", $effort) }
+
+# Overwritten every run - so if the prompt still doesn't land right after
+# the Git #763 quoting fix, this shows exactly what PowerShell thought the
+# prompt was (length + preview) without digging through claude.exe's own
+# output for it.
+"[$(Get-Date -Format o)] prompt length=$($prompt.Length) preview=$($prompt.Substring(0, [Math]::Min(120, $prompt.Length)))" |
+  Set-Content -Path (Join-Path $env:TEMP "mybuilder-last-run.log") -Encoding utf8
 
 & $claudeExe @claudeArgs
 '@
