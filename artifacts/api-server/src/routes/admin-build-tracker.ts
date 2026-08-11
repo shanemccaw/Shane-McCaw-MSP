@@ -1414,6 +1414,32 @@ async function effectiveBlockedByNumber(item: { githubNumber: number | null; blo
 }
 
 /**
+ * Git #800 — Shane: "when a build is done, and its blocking something
+ * else, the build under it should just go... I will clean Git after."
+ * Closing the real GitHub issue is a manual step he's slow to get to, and
+ * requiring it would stall the whole queue behind his own cleanup backlog.
+ * The queue's own confirmed completion (a `done` row for that same
+ * githubNumber, real exit code 0) is a genuine, automatic, no-manual-step
+ * signal that the work actually happened — checked FIRST, before ever
+ * asking GitHub. GitHub's real closed/complete state still clears it too,
+ * for a blocker that was never run through this queue at all.
+ */
+async function isBlockerCleared(blockerNum: number): Promise<boolean> {
+  const [doneRow] = await db
+    .select({ id: btBuildQueueTable.id })
+    .from(btBuildQueueTable)
+    .where(and(
+      eq(btBuildQueueTable.githubNumber, blockerNum),
+      eq(btBuildQueueTable.status, "done"),
+      eq(btBuildQueueTable.exitCode, 0),
+    ))
+    .limit(1);
+  if (doneRow) return true;
+  const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(blockerNum) : null;
+  return !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
+}
+
+/**
  * GET /admin/build-tracker/extension/queue
  *
  * Every non-terminal-for-long queue row, for the extension's own panel
@@ -1472,9 +1498,7 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
       // from an explicit --blocked-by flag at queue time.
       const blockerNum = await effectiveBlockedByNumber(item);
       if (blockerNum == null) { ready.push(item); continue; }
-      const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(blockerNum) : null;
-      const blockerCleared = !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
-      if (blockerCleared) ready.push(item);
+      if (await isBlockerCleared(blockerNum)) ready.push(item);
     }
     if (ready.length === 0) { res.json({ items: [] }); return; }
 

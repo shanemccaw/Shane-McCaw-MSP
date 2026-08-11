@@ -118,11 +118,19 @@ while ($true) {
     try {
       $next = Invoke-RestMethod -Method Get -Uri "$apiBaseUrl/api/admin/build-tracker/extension/queue/next?limit=$freeSlots" -Headers $headers
       foreach ($item in $next.items) {
+        # Git #800 — Shane: "exit code 0 wont work because right now at
+        # least I have to close the window myself... thats just as bad as
+        # closing the task." Interactive mode never exits on its own by
+        # design (it's a chat session waiting for more input) - --print
+        # runs the task to completion and exits for real, with a real exit
+        # code, no manual close needed. That's the ACTUAL fix; queued
+        # builds were never meant to be interactive in the first place.
         $claudeArgs = @()
         if ($item.title)  { $claudeArgs += @("--name", $item.title) }
         if ($item.model)  { $claudeArgs += @("--model", $item.model) }
         if ($item.effort) { $claudeArgs += @("--effort", $item.effort) }
         $claudeArgs += @("--permission-mode", "auto")
+        $claudeArgs += "--print"
         $claudeArgs += $item.prompt
         $escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgument $_ }) -join ' '
 
