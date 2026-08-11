@@ -1485,23 +1485,23 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             actionType: "sql_query",
             label: "Get Live-Frequency Assignments",
             query: `
-SELECT json_agg(row_to_json(t)) AS "assignments"
+SELECT json_agg(row_to_json(row)) AS "assignments"
 FROM (
   SELECT
-    tc.tenant_id             AS "tenantId",
+    tn.tenant_id             AS "tenantId",
     mc.key                   AS "checkKey",
     mc.label                 AS "label",
     mc.endpoint              AS "contentType",
     mc.mapping::text         AS "mapping",
     mc.severity_rules::text  AS "severityRules"
-  FROM tenant_consent tc
+  FROM tenants tn
   CROSS JOIN monitor_checks mc
-  WHERE tc.consent_status = 'granted'
+  WHERE tn.consent->'graph'->>'status' = 'granted'
     AND mc.frequency       = 'live'
     AND mc.status          = 'active'
-  ORDER BY tc.tenant_id, mc.key
+  ORDER BY tn.tenant_id, mc.key
   LIMIT 500
-) t
+) row
 `.trim(),
           },
         },

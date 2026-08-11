@@ -2134,8 +2134,8 @@ router.delete("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async
 // ── GET /api/admin/signal-rules/clients-with-runs ─────────────────────────────
 //
 // Lists the real customers this platform can pull a live tenant profile from:
-// msp_customers rows that have a GRANTED Microsoft Graph consent record in
-// tenant_consent. This replaces the pre-wipe model (users role='client' joined
+// `tenants` rows holding a GRANTED Microsoft Graph consent in their
+// `consent` jsonb. This replaces the pre-wipe model (users role='client' joined
 // to script_run_results.profile_updates), which the manual PowerShell-script
 // system populated and which is now empty. Route name kept for compatibility
 // with existing consumers (TenantSignals.tsx, SimulationProfilesManager.tsx);
@@ -2147,12 +2147,12 @@ router.delete("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async
 router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const result = await db.execute(sql`
-      SELECT mc.id, mc.name, mc.tenant_id AS "tenantId", mc.is_testbed AS "isTestbed",
-             tc.consent_status AS "consentStatus", tc.consented_at AS "consentedAt"
-      FROM msp_customers mc
-      JOIN tenant_consent tc ON tc.customer_id = mc.id
-      WHERE tc.consent_status = 'granted'
-      ORDER BY mc.is_testbed DESC, tc.consented_at DESC NULLS LAST
+      SELECT t.id, t.customer_name AS "name", t.tenant_id AS "tenantId", t.is_testbed AS "isTestbed",
+             t.consent->'graph'->>'status' AS "consentStatus",
+             (t.consent->'graph'->>'consentedAt')::timestamptz AS "consentedAt"
+      FROM tenants t
+      WHERE t.consent->'graph'->>'status' = 'granted'
+      ORDER BY t.is_testbed DESC, (t.consent->'graph'->>'consentedAt')::timestamptz DESC NULLS LAST
     `);
     res.json(result.rows.map((r: Record<string, unknown>) => ({
       id: r.id,
@@ -2172,7 +2172,7 @@ router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: R
 
 router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin, async (req: Request, res: Response) => {
   try {
-    // The identifier is now an msp_customers.id (a consented tenant), not a
+    // The identifier is now a tenants.id (a consented tenant), not a
     // users.id. Accept the historical `clientUserId` body field for
     // compatibility with existing callers, and a clearer `customerId` alias.
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -2188,10 +2188,9 @@ router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin,
     // — this is the same gate the picker query uses, re-checked server-side so
     // a stale/forged id can't seed a profile from a non-consented tenant.
     const customerResult = await db.execute(sql`
-      SELECT mc.id, mc.name, mc.tenant_id AS "tenantId", mc.is_testbed AS "isTestbed"
-      FROM msp_customers mc
-      JOIN tenant_consent tc ON tc.customer_id = mc.id
-      WHERE mc.id = ${customerId} AND tc.consent_status = 'granted'
+      SELECT t.id, t.customer_name AS "name", t.tenant_id AS "tenantId", t.is_testbed AS "isTestbed"
+      FROM tenants t
+      WHERE t.id = ${customerId} AND t.consent->'graph'->>'status' = 'granted'
       LIMIT 1
     `);
     if (customerResult.rows.length === 0) {
