@@ -54,9 +54,11 @@
  *   - Anything else (some ran clean, but not all N) → no verdict this run.
  *
  * Steps with no mapped check at all — the two platform-wide gaps (18, 28) and
- * the four process-only steps (24, 25, 27, 30) — are never eligible: there is
- * no real evidence that could ever verify or drift them, the same absence
+ * the two process-only steps (27, 30) — are never eligible: there is no real
+ * evidence that could ever verify or drift them, the same absence
  * `STEP_CHECK_GAPS` and `PROCESS_ONLY_STEP_IDS` already state in the guide.
+ * (Steps 24 and 25 were process-only too until #757 removed them from the
+ * catalogue entirely.)
  */
 
 import { and, eq, inArray } from "drizzle-orm";

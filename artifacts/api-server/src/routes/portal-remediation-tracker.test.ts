@@ -263,7 +263,7 @@ describe("GET /api/portal/remediation-tracker", () => {
 describe("GET /api/portal/remediation-tracker pricing (#734)", () => {
   it("only reduces a phase's fee once every one of its steps is completed and verified", async () => {
     const when = new Date("2026-08-11T09:00:00.000Z");
-    const allThirtyVerified = REMEDIATION_TRACKER_STEP_IDS.map((stepId) => ({
+    const allStepsVerified = REMEDIATION_TRACKER_STEP_IDS.map((stepId) => ({
       stepId,
       status: "completed",
       completedAt: when,
@@ -271,7 +271,7 @@ describe("GET /api/portal/remediation-tracker pricing (#734)", () => {
       verificationState: "verified",
       verifiedAt: when,
     }));
-    mockSelectResultsQueue = [allThirtyVerified];
+    mockSelectResultsQueue = [allStepsVerified];
 
     const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker");
     expect(res.status).toBe(200);

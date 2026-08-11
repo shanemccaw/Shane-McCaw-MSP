@@ -5,7 +5,7 @@
  * Same discipline as `sowLiveContract.test.ts`. Four things matter here, and
  * they are the four ways this document could lie to a paying customer:
  *
- *   1. Every one of the thirty steps is accounted for — mapped to a real check,
+ *   1. Every one of the twenty-eight steps is accounted for — mapped to a real check,
  *      declared a platform-wide gap, or declared process-only. A step that falls
  *      through all three would render with no evidence at all and read as
  *      unremarkable, which is precisely how #441 reached a customer.
@@ -147,8 +147,8 @@ function liveText(v: JourneyView): string {
  * ------------------------------------------------------------------ */
 
 describe("step coverage", () => {
-  it("classifies all thirty steps exactly once", () => {
-    assert.equal(REMEDIATION_STEPS.length, 30);
+  it("classifies all twenty-eight steps exactly once", () => {
+    assert.equal(REMEDIATION_STEPS.length, 28);
     for (const step of REMEDIATION_STEPS) {
       const mapped = step.id in STEP_CHECK_KEYS;
       const gap = step.id in STEP_CHECK_GAPS;
@@ -158,19 +158,20 @@ describe("step coverage", () => {
     }
   });
 
-  it("maps exactly #472's confirmed steps, 2 gaps and 4 process steps", () => {
+  it("maps exactly #472's confirmed steps, 2 gaps and 2 process steps", () => {
     // TWENTY-FOUR, not the 23 #472's closing summary states. Its own final table
-    // lists steps 1–17, 19–23, 26 and 29 — that is 24 rows, and 24 + 2 gaps + 4
-    // process steps is exactly the 30 the guide holds. The "23" is an arithmetic
-    // slip in the issue's prose; the table it summarises is the mapping, and this
-    // assertion is what stops the slip being copied into the code.
+    // lists steps 1–17, 19–23, 26 and 29 — that is 24 rows, and 24 + 2 gaps + 2
+    // process steps is exactly the 28 the guide now holds (Steps 24 and 25, the
+    // two adoption/rollout process steps, were removed in #757). The "23" is an
+    // arithmetic slip in the issue's prose; the table it summarises is the
+    // mapping, and this assertion is what stops the slip being copied into the code.
     assert.equal(Object.keys(STEP_CHECK_KEYS).length, 24);
     assert.equal(
       Object.keys(STEP_CHECK_KEYS).length + Object.keys(STEP_CHECK_GAPS).length + PROCESS_ONLY_STEP_IDS.length,
       REMEDIATION_STEPS.length,
     );
     assert.deepEqual(Object.keys(STEP_CHECK_GAPS).sort(), ["s18", "s28"]);
-    assert.deepEqual([...PROCESS_ONLY_STEP_IDS].sort(), ["s24", "s25", "s27", "s30"]);
+    assert.deepEqual([...PROCESS_ONLY_STEP_IDS].sort(), ["s27", "s30"]);
   });
 
   it("names only real check keys, in <domain>:<name> shape", () => {
@@ -366,7 +367,7 @@ describe("liveBlastRadius (#731)", () => {
     }
   });
 
-  it("every one of the thirty steps carries a Blast Radius card either way", () => {
+  it("every one of the twenty-eight steps carries a Blast Radius card either way", () => {
     const live = buildLiveRemediationSteps(THIN);
     for (const s of live) {
       assert.ok(s.blastRadius.goesRight.length > 0, `${s.id} has no goesRight`);
@@ -528,7 +529,7 @@ describe("stepEvidence", () => {
     assert.ok(STEP_CHECK_GAPS.s28.includes("unmeasured by this assessment rather than found wanting"));
   });
 
-  it("returns process for the four decision steps, and renders no evidence line", () => {
+  it("returns process for the two decision steps, and renders no evidence line", () => {
     for (const id of PROCESS_ONLY_STEP_IDS) {
       assert.equal(stepEvidence(id, withFinding).kind, "process");
     }
@@ -560,12 +561,17 @@ describe("stepEvidence", () => {
 
 describe("guide-level figures", () => {
   it("derives the step and scripted counts rather than restating them", () => {
-    const live = resolveStandfirst(false, 30, 28);
-    assert.ok(live.includes("30 steps, 28 of them scripted"));
+    // Every remaining step is scripted (28 of 28 since #757 dropped the only two
+    // unscripted steps), so the clause reads "every one of them scripted" rather
+    // than the clumsy "28 steps, 28 of them scripted".
+    const live = resolveStandfirst(false, 28, 28);
+    assert.ok(live.includes("28 steps, every one of them scripted"));
     assert.ok(!live.includes("twenty-two"));
-    const closing = resolveClosing(false, 30, 28);
-    assert.ok(closing[0].includes("30 steps, 28 of them scripted"));
-    assert.ok(resolveHandoffBlurb(false, 30).includes("same 30 steps"));
+    const closing = resolveClosing(false, 28, 28);
+    assert.ok(closing[0].includes("28 steps, every one of them scripted"));
+    assert.ok(resolveHandoffBlurb(false, 28).includes("same 28 steps"));
+    // The proportional branch still reads "N of M" when some steps are unscripted.
+    assert.ok(resolveStandfirst(false, 28, 26).includes("28 steps, 26 of them scripted"));
   });
 
   it("counts real findings off findingCounts, not the findings array's own length", () => {
@@ -634,7 +640,7 @@ describe("guide-level figures", () => {
   });
 
   it("scope headline drops the blocker clause when there are none", () => {
-    assert.equal(resolveScopeHeadline(false, 30, THIN.pillars), "30 steps. 14 weeks.");
+    assert.equal(resolveScopeHeadline(false, 28, THIN.pillars), "28 steps. 14 weeks.");
   });
 });
 
@@ -644,13 +650,13 @@ describe("guide-level figures", () => {
 
 describe("preview branches reproduce the design verbatim", () => {
   it("for every guide-level resolver", () => {
-    assert.equal(resolveStandfirst(true, 30, 28), REMEDIATION_GUIDE.standfirst);
-    assert.equal(resolveScopeHeadline(true, 30, THIN.pillars), REMEDIATION_GUIDE.scope.headline);
+    assert.equal(resolveStandfirst(true, 28, 28), REMEDIATION_GUIDE.standfirst);
+    assert.equal(resolveScopeHeadline(true, 28, THIN.pillars), REMEDIATION_GUIDE.scope.headline);
     assert.equal(resolveTotalFindings(true, THIN.pillars), "41 across six pillars");
     assert.equal(resolveBlockers(true, THIN.pillars), "6 — Governance 2 · Security 2 · Compliance 2");
     assert.equal(resolveExpectedImprovement(true, null), "41 to 68 (+27) on the scoped programme");
-    assert.deepEqual(resolveClosing(true, 30, 28), REMEDIATION_GUIDE.closing);
-    assert.equal(resolveHandoffBlurb(true, 30), REMEDIATION_GUIDE.handoff.blurb);
+    assert.deepEqual(resolveClosing(true, 28, 28), REMEDIATION_GUIDE.closing);
+    assert.equal(resolveHandoffBlurb(true, 28), REMEDIATION_GUIDE.handoff.blurb);
     assert.deepEqual(resolveChecklistRows(true, THIN), REMEDIATION_GUIDE.checklist.rows);
     assert.equal(resolveChecklistNote(true, THIN), REMEDIATION_GUIDE.checklist.note);
   });

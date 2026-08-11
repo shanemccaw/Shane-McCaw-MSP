@@ -18,17 +18,22 @@
  *
  * `STEP_CHECK_KEYS` is Shane's own final mapping table, closed on 2026-08-06
  * after a live query pass over the 101 real check keys in
- * `assess:copilot-readiness`. TWENTY-FOUR of the thirty steps map to a real
- * `monitor_checks.key`; two are genuine platform-wide gaps; four are process
+ * `assess:copilot-readiness`. TWENTY-FOUR of the twenty-eight steps map to a
+ * real `monitor_checks.key`; two are genuine platform-wide gaps; two are process
  * steps that expect no check. Nothing here was re-derived and nothing was
  * guessed — a wrong check key in a paying customer's runbook is exactly the
  * #441 failure this journey is now built to make impossible.
  *
+ * (Steps 24 and 25 — the two adoption/rollout process steps — were removed
+ * entirely in #757, since they belong to White-Glove Copilot Adoption
+ * (#350/#668) rather than this remediation runbook. The remaining ids are NOT
+ * renumbered: s26–s30 keep their own numbers, leaving a deliberate gap.)
+ *
  * (#472's closing summary says "23/30 real". Its own final table lists steps
- * 1–17, 19–23, 26 and 29 — 24 rows — and 24 + 2 + 4 is the 30 the guide holds,
- * where 23 + 2 + 4 is 29. The table is the mapping; the 23 is an arithmetic slip
- * in the prose, and `remediationLiveGuide.test.ts` asserts the three sets add up
- * so it cannot be copied back in.)
+ * 1–17, 19–23, 26 and 29 — 24 rows — and 24 + 2 + 2 is the 28 the guide now
+ * holds. The table is the mapping; the 23 is an arithmetic slip in the prose,
+ * and `remediationLiveGuide.test.ts` asserts the three sets add up so it cannot
+ * be copied back in.)
  *
  * WHERE THIS MAPPING DELIBERATELY DOES *NOT* LIVE: `config_pack_templates`.
  * #472's proposal named that table plus `baseline_action_templates` as the
@@ -143,7 +148,7 @@ import {
  * order #472 lists them; the first key that produces evidence wins, and the
  * rest are still named so the reader can see the whole basis.
  *
- * ABSENT BY DESIGN: s18 and s28 (see `STEP_CHECK_GAPS`) and s24, s25, s27, s30
+ * ABSENT BY DESIGN: s18 and s28 (see `STEP_CHECK_GAPS`) and s27, s30
  * (see `PROCESS_ONLY_STEP_IDS`). A step id missing from all three maps is a
  * mistake, and `remediationLiveGuide.test.ts` fails on it.
  */
@@ -202,11 +207,15 @@ export const STEP_CHECK_GAPS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The four steps that are decisions or process rather than configuration, and so
+ * The two steps that are decisions or process rather than configuration, and so
  * expect no check mapping. Listed rather than inferred from "has no `code`",
  * because Steps 27 and 30 do carry a script and are still meta.
+ *
+ * (Steps 24 and 25 used to be here too; #757 removed them from the catalogue
+ * entirely — they were adoption/rollout guidance for White-Glove Copilot
+ * Adoption (#350/#668), not remediation.)
  */
-export const PROCESS_ONLY_STEP_IDS: readonly string[] = ["s24", "s25", "s27", "s30"];
+export const PROCESS_ONLY_STEP_IDS: readonly string[] = ["s27", "s30"];
 
 /* ------------------------------------------------------------------ *
  * 2 · Evidence
@@ -223,7 +232,7 @@ export type StepEvidence =
     }
   /** Steps 18 and 28 — see `STEP_CHECK_GAPS`. */
   | { readonly kind: "gap"; readonly detail: string }
-  /** Steps 24, 25, 27 and 30 — a decision, not a measurement. */
+  /** Steps 27 and 30 — a decision, not a measurement. */
   | { readonly kind: "process" }
   /**
    * Mapped to real checks, but nothing about them reached this document. NEVER
@@ -462,12 +471,12 @@ export function liveTitle(stepId: string, view: JourneyView): string | null {
 }
 
 /** A step's live `where` line, where the design's names Halden-specific detail. */
-export function liveWhere(stepId: string): string | null {
-  // Step 25's "Finance Analyst · Legal Counsel · Executive Assistant" is the
-  // design's persona data, which #292 dropped from this journey and which #472
-  // is explicit should stay dropped. It is replaced with what the step actually
-  // asks the reader to decide, not with three invented roles.
-  if (stepId === "s25") return "Not a setting — pick three roles with the clearest repeatable document work";
+export function liveWhere(_stepId: string): string | null {
+  // Step 25 (the only step that ever needed a live `where` override — its
+  // design copy named Halden's three personas) was removed in #757, so no
+  // remaining step carries fixture data in its `where` line. Kept as the fourth
+  // member of the live-override family (liveTitle/liveCaution/liveVerify) so a
+  // future step needing one has an obvious home.
   return null;
 }
 
@@ -548,8 +557,6 @@ export function liveVerify(stepId: string, view: JourneyView): string | null {
       return "Billing → Licenses shows the reclaimed Copilot seats as available.";
     case "s23":
       return "The three exports give you a per-user activity baseline to plan training against.";
-    case "s24":
-      return "Channel post share rises toward parity with chat over one quarter.";
     default:
       return null;
   }
@@ -695,20 +702,6 @@ export function liveBlastRadius(stepId: string, view: JourneyView): RemediationB
         goesWrong: "Downgrade someone from E5 to E3 without checking and they lose the very Purview or CA features another task just relied on.",
         tradeOff: "Reconciliation takes a couple of hours of real judgement. Not a script you run unattended.",
       };
-    case "s24":
-      return {
-        goesRight: "Work moves where Copilot can see it, and your dormant Teams users have a reason to be in Teams.",
-        goesWrong:
-          "Mandate Teams adoption without moving anything real and usage spikes for a week then returns to email " +
-          "— with the credibility of the programme spent.",
-        tradeOff: "Slower than a communications campaign. It is the only approach that holds.",
-      };
-    case "s25":
-      return {
-        goesRight: "Your first internal Copilot examples are successes, told by people their colleagues believe.",
-        goesWrong: "Train the least-ready personas first and your first examples are failures. That impression is very hard to reverse.",
-        tradeOff: "Everyone else waits a few weeks longer. Worth it for the proof.",
-      };
     case "s26":
       return {
         goesRight: "Document traffic becomes visible to Copilot and gains real version control.",
@@ -759,10 +752,11 @@ export interface LiveRemediationStep extends RemediationStep {
  * Every step, in the design's own order, resolved against this tenant.
  *
  * The array is `REMEDIATION_STEPS` mapped one-to-one: same ids, same labels,
- * same pillars, same count. Nothing is added, dropped, reordered or renumbered —
+ * same pillars, same count. Nothing is added, reordered or renumbered here —
  * the guide's phase structure and its own "Steps 1–13 / 14–22 / 23–30" sequence
- * table depend on all thirty existing at their own numbers, and #472 is explicit
- * that the two gap steps stay in place.
+ * table are expressed as endpoints, so removing the interior Steps 24 and 25 in
+ * #757 left every range endpoint (and every "Step N" cross-reference) valid.
+ * s26–s30 keep their own numbers; #472's two gap steps (18, 28) stay in place.
  */
 export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemediationStep[] {
   return REMEDIATION_STEPS.map((step) => {
@@ -858,11 +852,24 @@ export function resolveScopeHeadline(isPreview: boolean, stepCount: number, pill
 }
 
 /**
+ * "N steps, M of them scripted" — or, once every remaining step carries a
+ * command (which is the case since #757 removed Steps 24 and 25, the only two
+ * unscripted steps), "N steps, every one of them scripted" rather than the
+ * clumsy "28 steps, 28 of them scripted". Derived, shared by the standfirst and
+ * the closing so the two halves of the page cannot disagree.
+ */
+function scriptedClause(stepCount: number, scriptedCount: number): string {
+  return scriptedCount >= stepCount
+    ? `${stepCount} steps, every one of them scripted`
+    : `${stepCount} steps, ${scriptedCount} of them scripted`;
+}
+
+/**
  * The standfirst. The design's reads "Thirty steps, twenty-two of them
- * scripted" while the guide beneath it holds thirty steps of which twenty-eight
- * carry a command — a contradiction the overview row already refuses to
- * reproduce by deriving its own figure. The live standfirst derives too, so the
- * two halves of the same page cannot disagree.
+ * scripted" while the guide beneath it now holds twenty-eight steps, every one
+ * of them scripted — a mismatch the overview row already refuses to reproduce
+ * by deriving its own figure. The live standfirst derives too, so the two
+ * halves of the same page cannot disagree.
  *
  * THE CLOSING PROMISE CHANGED IN #730. It used to say progress was "kept while
  * this page is open", which was the literal truth of ticks held in React state.
@@ -875,7 +882,7 @@ export function resolveScopeHeadline(isPreview: boolean, stepCount: number, pill
 export function resolveStandfirst(isPreview: boolean, stepCount: number, scriptedCount: number): string {
   if (isPreview) return REMEDIATION_GUIDE.standfirst;
   return (
-    `This is a runbook. ${stepCount} steps, ${scriptedCount} of them scripted, with the exact console path, the ` +
+    `This is a runbook. ${scriptedClause(stepCount, scriptedCount)}, with the exact console path, the ` +
     "PowerShell to run, what to watch for, and how to confirm each one worked. Tick them off as you go — your " +
     "progress is saved to your account and is here when you come back. A tick records what you say you have done; " +
     "confirming it landed is what a re-scan is for."
@@ -891,7 +898,7 @@ export function resolveClosing(
   if (isPreview) return REMEDIATION_GUIDE.closing;
   return [
     "Clearing the Copilot Gate requires coordinated remediation across governance, security, compliance, licensing, " +
-      `adoption and health. This guide is the whole of it: ${stepCount} steps, ${scriptedCount} of them scripted, on a ` +
+      `adoption and health. This guide is the whole of it: ${scriptedClause(stepCount, scriptedCount)}, on a ` +
       "14-week critical path.",
     "Phase 1 is the identity and sharing work that must land before Copilot is enabled for anyone. Any licensing " +
       "waste your assessment identified funds a meaningful share of the programme. Drift telemetry in Step 30 is what " +

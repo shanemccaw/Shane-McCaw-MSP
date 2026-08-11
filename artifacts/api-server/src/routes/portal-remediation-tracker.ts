@@ -45,8 +45,8 @@
  * --------------------------------------
  * The step CATALOGUE lives in one place and it is not here: it is
  * `previewRemediationGuide.ts` / `remediationLiveGuide.ts` in msp-portal, the
- * tested `.ts` modules that already freeze the design's thirty steps and their
- * ids. This route holds those ids ONLY to reject writes for a step that does
+ * tested `.ts` modules that already freeze the guide's twenty-eight steps and
+ * their ids. This route holds those ids ONLY to reject writes for a step that does
  * not exist, and `portal-remediation-tracker-step-ids.test.ts` reads the
  * portal's own module to prove the two lists have not drifted. A `total` served
  * from here would be a second source of truth for "how many steps are there",
@@ -69,18 +69,24 @@ const log = logger.child({ channel: "engine.remediation-tracker" });
 const router: IRouter = Router();
 
 /**
- * The remediation guide's own step ids, "s1" … "s30".
+ * The remediation guide's own step ids: s1–s23 and s26–s30.
+ *
+ * Steps 24 and 25 were removed from the catalogue in #757 (adoption/rollout
+ * guidance that belongs to White-Glove Copilot Adoption #350/#668), and the
+ * remaining ids are deliberately NOT renumbered — s26–s30 keep their own
+ * numbers, so this list has a gap where 24/25 were.
  *
  * VALIDATION ONLY — never a count, never a catalogue (see the header). The real
- * catalogue is msp-portal's `previewRemediationGuide.ts`, and
- * `portal-remediation-tracker-step-ids.test.ts` reads that file directly and
- * fails if this list stops matching it, so a step added or renumbered there
- * cannot silently start 400ing here.
+ * catalogue is msp-portal's `previewRemediationGuide.ts`, and the drift test in
+ * `portal-remediation-tracker.test.ts` reads that file directly and fails if
+ * this list stops matching it, so a step added, removed or renumbered there
+ * cannot silently start 400ing here. Keeping s24/s25 out of this set is also
+ * what makes a stray write to a removed step return 400 rather than resurrect it.
  */
-export const REMEDIATION_TRACKER_STEP_IDS: readonly string[] = Array.from(
-  { length: 30 },
-  (_, i) => `s${i + 1}`,
-);
+export const REMEDIATION_TRACKER_STEP_IDS: readonly string[] = [
+  ...Array.from({ length: 23 }, (_, i) => `s${i + 1}`), // s1 … s23
+  ...Array.from({ length: 5 }, (_, i) => `s${i + 26}`), // s26 … s30
+];
 
 const STEP_ID_SET = new Set(REMEDIATION_TRACKER_STEP_IDS);
 

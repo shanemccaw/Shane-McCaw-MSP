@@ -1,10 +1,18 @@
 /**
  * previewRemediationGuide.ts — document 8 of 9, the Full Remediation Guide.
  *
- * This one is not a report. It is a runbook the customer works through: thirty
- * steps in dependency order, twenty-six of them carrying the exact PowerShell to
- * run, what to watch for, and how to confirm the step actually worked. The
- * viewer lets them tick each one off.
+ * This one is not a report. It is a runbook the customer works through:
+ * twenty-eight steps in dependency order, every one of them carrying the exact
+ * PowerShell to run, what to watch for, and how to confirm the step actually
+ * worked. The viewer lets them tick each one off.
+ *
+ * Steps 24 and 25 (workflow-per-department, persona training) were removed in
+ * #757: they are adoption/deployment rollout guidance that belongs to
+ * White-Glove Copilot Adoption (#350/#668), not this remediation runbook. The
+ * remaining step ids are deliberately NOT renumbered — s26–s30 keep their own
+ * numbers, leaving a gap where 24/25 were, so the tracker's stored ids, the
+ * pillar-based phase/pricing logic and every "Step N" cross-reference in the
+ * prose all stay valid untouched.
  *
  * WHY THE SCRIPTS ARE DATA AND NOT MARKUP
  * ---------------------------------------
@@ -335,26 +343,6 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     blastRadius: { goesRight: "You plan training against real usage rather than assumption.", goesWrong: "No risk. The only failure mode is not doing it and training the wrong departments.", tradeOff: "Twenty minutes of work before any enablement spend." },
   },
   {
-    id: "s24",
-    label: "Step 24",
-    pillar: "adoption",
-    meta: "Process · 4 weeks",
-    title: "Move one real recurring workflow per department into a channel",
-    where: "Not a setting — one decision per department",
-    verify: "Channel post share rises from 22% toward parity with chat over one quarter.",
-    blastRadius: { goesRight: "Work moves where Copilot can see it, and the 412 dormant users have a reason to be in Teams.", goesWrong: "Mandate Teams adoption without moving anything real and usage spikes for a week then returns to email — with the credibility of the programme spent.", tradeOff: "Slower than a communications campaign. It is the only approach that holds." },
-  },
-  {
-    id: "s25",
-    label: "Step 25",
-    pillar: "adoption",
-    meta: "Enablement · 3 weeks",
-    title: "Train the three ready personas first",
-    where: "Finance Analyst · Legal Counsel · Executive Assistant",
-    verify: "Each persona produces one documented before-and-after example within three weeks.",
-    blastRadius: { goesRight: "Your first internal Copilot examples are successes, told by people their colleagues believe.", goesWrong: "Train the least-ready personas first and your first examples are failures. That impression is very hard to reverse.", tradeOff: "516 users wait a few weeks longer. Worth it for the proof." },
-  },
-  {
     id: "s26",
     label: "Step 26",
     pillar: "adoption",
@@ -413,7 +401,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
   },
 ];
 
-/** How many of the thirty steps ship a command to run. Derived, never restated. */
+/** How many of the twenty-eight steps ship a command to run. Derived, never restated. */
 export const REMEDIATION_SCRIPTED_COUNT = REMEDIATION_STEPS.filter((s) => s.code !== undefined).length;
 
 /** The one-off module install and sign-in every scripted step assumes. */
@@ -443,10 +431,10 @@ export const REMEDIATION_GUIDE = {
   kicker: "Full remediation guide · Copilot Gate clearance plan",
   headline: "Every step required to clear the Copilot Gate",
   standfirst:
-    "This is a runbook. Thirty steps, twenty-two of them scripted, with the exact console path, the PowerShell to run, what to watch for, and how to confirm each one worked. Tick them off as you go — your progress is kept while this page is open.",
+    "This is a runbook. Twenty-eight steps, every one of them scripted, with the exact console path, the PowerShell to run, what to watch for, and how to confirm each one worked. Tick them off as you go — your progress is kept while this page is open.",
   scope: {
     eyebrow: "The scope",
-    headline: "30 steps. 14 weeks. 6 findings holding it below the threshold.",
+    headline: "28 steps. 14 weeks. 6 findings holding it below the threshold.",
     sub: "Everything below is yours to run, in dependency order, with the script and the verification for each.",
   },
 
@@ -459,10 +447,11 @@ export const REMEDIATION_GUIDE = {
       { label: "Not safe yets", tone: "critical", value: "6 — Governance 2 · Security 2 · Compliance 2" },
       /**
        * DELIBERATELY DERIVED, NOT VERBATIM. The design's own copy reads "26, of
-       * which 22 are scripted" while the guide beneath it holds thirty steps,
-       * twenty-eight scripted, and its header counts to 30. Reproducing a count
-       * that the page then contradicts two screens later is worse than
-       * correcting it, so this row is built from the array.
+       * which 22 are scripted" while the guide beneath it now holds twenty-eight
+       * steps, every one of them scripted (Steps 24 and 25, the only two
+       * unscripted steps, were removed in #757). Reproducing a hardcoded count
+       * that the page then contradicts two screens later is worse than deriving
+       * it, so this row is built from the array.
        */
       { label: "Steps in this guide", tone: "healthy", derived: "stepCount" },
       { label: "Critical path duration", tone: "attention", value: "14 weeks to certification · 12 weeks to enablement" },
@@ -507,18 +496,18 @@ export const REMEDIATION_GUIDE = {
       "Readiness score at or above 82 — currently 41, projected 68 on this scope",
     ],
     note:
-      "The 30 steps above take readiness to 68. The remaining 14 points to the 82 threshold come from adoption enablement — training moves Adoption from 46 to an estimated 61 on its own, which is what carries the tenant across rather than up to the line.",
+      "The 28 steps above take readiness to 68. The remaining 14 points to the 82 threshold come from adoption enablement — training moves Adoption from 46 to an estimated 61 on its own, which is what carries the tenant across rather than up to the line.",
   },
 
   closing: [
-    "Clearing the Copilot Gate requires coordinated remediation across governance, security, compliance, licensing, adoption and health. This guide is the whole of it: 30 steps, 22 of them scripted, on a 14-week critical path.",
+    "Clearing the Copilot Gate requires coordinated remediation across governance, security, compliance, licensing, adoption and health. This guide is the whole of it: 28 steps, every one of them scripted, on a 14-week critical path.",
     "Phase 1 is the identity and sharing work that must land before Copilot is enabled for anyone. The licensing waste already identified funds a meaningful share of the programme. Drift telemetry in Step 30 is what keeps the result once it is earned — without it, this guide is something you run again in two quarters.",
   ],
 
   handoff: {
     heading: "If you would rather not run this yourself",
     blurb:
-      "Every step here is yours to keep and run at your own pace. The proposal covers the same 30 steps delivered by Shane McCaw, with the gate validation and signed baseline included.",
+      "Every step here is yours to keep and run at your own pace. The proposal covers the same 28 steps delivered by Shane McCaw, with the gate validation and signed baseline included.",
     cta: "Open the statement of work",
   },
 } as const;

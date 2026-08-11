@@ -183,12 +183,12 @@ describe("reverifyRemediationTrackerSteps — the verdict rule", () => {
   });
 
   it("is never eligible for a step with no mapped check at all (gap or process-only)", async () => {
-    // s18 is a platform-wide measurement gap; s24 is process-only. Neither has
+    // s18 is a platform-wide measurement gap; s27 is process-only. Neither has
     // a STEP_CHECK_KEYS entry.
     mockSelectResultsQueue = [
       [
         { stepId: "s18", status: "completed" },
-        { stepId: "s24", status: "already_handled" },
+        { stepId: "s27", status: "already_handled" },
       ],
     ];
     await reverifyRemediationTrackerSteps({

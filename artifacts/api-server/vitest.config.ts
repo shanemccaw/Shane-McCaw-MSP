@@ -265,7 +265,7 @@ export default defineConfig({
       "src/routes/portal-remediation-tracker.test.ts",
       // #733 — the Remediation Tracker's CSV/PDF export catalogue has not
       // drifted from previewRemediationGuide.ts, and the export route serves
-      // real stored status/title data for all 30 steps.
+      // real stored status/title data for all 28 steps.
       "src/lib/remediation-tracker-catalogue.test.ts",
       "src/routes/portal-remediation-tracker-export.test.ts",
       // #732 — the Remediation Tracker's real re-verification against a

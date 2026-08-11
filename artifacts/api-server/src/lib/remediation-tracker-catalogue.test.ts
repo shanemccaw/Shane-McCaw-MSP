@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { REMEDIATION_TRACKER_CATALOGUE } from "./remediation-tracker-catalogue";
 
 describe("the export catalogue has not drifted from previewRemediationGuide.ts", () => {
-  it("matches id, label, pillar and title for all 30 steps, in order", () => {
+  it("matches id, label, pillar and title for all 28 steps, in order", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const guidePath = path.resolve(
       here,

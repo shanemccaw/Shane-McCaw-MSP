@@ -2,7 +2,7 @@
  * portal-remediation-tracker-export.test.ts — Git #733 (Phase D1 of Epic #647).
  *
  * Two things worth guarding:
- *   1. THE CSV LISTS ALL 30 STEPS with a real title/status, including steps
+ *   1. THE CSV LISTS ALL 28 STEPS with a real title/status, including steps
  *      the customer never touched (no row means `not_started`, same
  *      convention the GET route uses — an untouched tracker must still
  *      export a complete row set, not a partial one).
@@ -114,7 +114,7 @@ describe("GET /portal/remediation-tracker/export.csv", () => {
     expect(res.status).toBe(403);
   });
 
-  it("lists all 30 steps, defaulting untouched ones to not_started", async () => {
+  it("lists all 28 steps, defaulting untouched ones to not_started", async () => {
     mockSelectResultsQueue = [
       [{ stepId: "s2", status: "completed", completedAt: new Date("2026-08-01T00:00:00Z"), updatedAt: new Date("2026-08-01T00:00:00Z") }],
       [{ customerName: "Halden Materials" }],
@@ -127,8 +127,8 @@ describe("GET /portal/remediation-tracker/export.csv", () => {
     expect(res.headers["content-disposition"]).toContain("Halden-Materials-remediation-tracker.csv");
 
     const lines = res.text.trim().split("\r\n");
-    // header + 30 steps
-    expect(lines.length).toBe(31);
+    // header + 28 steps
+    expect(lines.length).toBe(29);
     expect(lines[0]).toBe('"Step","Title","Pillar","Status","Completed At","Last Updated"');
     // s1 was never touched -> not_started
     expect(lines[1]).toContain('"Step 1"');

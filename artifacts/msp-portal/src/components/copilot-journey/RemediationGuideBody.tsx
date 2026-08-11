@@ -2,8 +2,8 @@
  * RemediationGuideBody.tsx — document 8 of 9, the Full Remediation Guide.
  *
  * The only document in the set the customer *does* something to rather than
- * reads. Thirty steps, each with the console path, the command, the caution and
- * the verification; ticking one off is the whole interaction.
+ * reads. Twenty-eight steps, each with the console path, the command, the
+ * caution and the verification; ticking one off is the whole interaction.
  *
  * WHERE THE TICKS LIVE (#730)
  * ---------------------------

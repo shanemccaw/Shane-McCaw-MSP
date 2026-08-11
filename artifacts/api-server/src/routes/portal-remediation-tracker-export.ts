@@ -71,7 +71,7 @@ interface ExportRow {
 /**
  * Every catalogue step, joined against whatever the customer has stored —
  * same "no row means not_started" convention as the GET route, so an export
- * taken on an untouched tracker still lists all 30 with a real state instead
+ * taken on an untouched tracker still lists all 28 with a real state instead
  * of quietly omitting rows nobody has touched yet.
  */
 async function buildExportRows(customerId: number): Promise<ExportRow[]> {
@@ -223,7 +223,7 @@ async function buildEvidenceRows(customerId: number): Promise<EvidenceRow[]> {
   }
 
   // Catalogue order, not query order — the customer reads this top to bottom
-  // against the same 30-step guide they've been working through.
+  // against the same guide they've been working through.
   rows.sort((a, b) => Number(a.stepLabel.replace(/\D/g, "")) - Number(b.stepLabel.replace(/\D/g, "")));
   return rows;
 }

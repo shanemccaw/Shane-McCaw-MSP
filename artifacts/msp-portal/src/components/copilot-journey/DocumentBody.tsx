@@ -546,7 +546,7 @@ export function DocumentBody({
 
   // The Full Remediation Guide (#472): the same arrangement as the SOW above,
   // and for the same reason. It is not in `JOURNEY_LIVE_DOCUMENTS` because it is
-  // interactive (thirty tickable steps) rather than a rendered report, so it is
+  // interactive (twenty-eight tickable steps) rather than a rendered report, so it is
   // not the `(props: {view}) => ReactElement` the registry's `LIVE_BODY` shape
   // holds — but every figure it can honestly state comes from this tenant's own
   // scan, already on `view`, so it resolves live ahead of the old

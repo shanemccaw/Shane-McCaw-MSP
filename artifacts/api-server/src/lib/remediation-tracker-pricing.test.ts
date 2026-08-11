@@ -29,7 +29,8 @@ const GOVERNANCE_IDS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 const SECURITY_IDS = ["s7", "s8", "s9", "s10", "s11", "s12", "s13"];
 const COMPLIANCE_IDS = ["s14", "s15", "s16", "s17", "s18"];
 const LICENSING_IDS = ["s19", "s20", "s21", "s22"];
-const ADOPTION_IDS = ["s23", "s24", "s25", "s26"];
+// Steps 24 & 25 were removed from the catalogue in #757; adoption is s23 + s26.
+const ADOPTION_IDS = ["s23", "s26"];
 const HEALTH_IDS = ["s27", "s28", "s29", "s30"];
 
 function rows(overrides: Record<string, Partial<RemediationTrackerStepState>>): RemediationTrackerStepState[] {

@@ -1,8 +1,9 @@
 /**
  * remediation-tracker-catalogue.ts — Git #733 (Phase D1 of Epic #647).
  *
- * The CSV/PDF export needs a human title and pillar for each "s1".."s30" row
- * it prints, but the real catalogue lives in msp-portal's
+ * The CSV/PDF export needs a human title and pillar for each step row it
+ * prints (28 rows since #757 removed s24/s25; ids run s1–s23, s26–s30), but the
+ * real catalogue lives in msp-portal's
  * `previewRemediationGuide.ts` and api-server cannot import across app
  * boundaries (independent Vite/Node apps — see CLAUDE.md). This mirrors the
  * same duplication `portal-remediation-tracker.ts`'s `REMEDIATION_TRACKER_STEP_IDS`
@@ -46,8 +47,9 @@ export const REMEDIATION_TRACKER_CATALOGUE: readonly RemediationTrackerCatalogue
   { id: "s21", label: "Step 21", pillar: "licensing", title: "Reconcile the 47 mismatched SKU assignments" },
   { id: "s22", label: "Step 22", pillar: "licensing", title: "Move to group-based licensing and retire the three legacy groups" },
   { id: "s23", label: "Step 23", pillar: "adoption", title: "Pull the real usage baseline before planning any training" },
-  { id: "s24", label: "Step 24", pillar: "adoption", title: "Move one real recurring workflow per department into a channel" },
-  { id: "s25", label: "Step 25", pillar: "adoption", title: "Train the three ready personas first" },
+  // Steps 24 & 25 (workflow-per-department, persona training) removed in #757 —
+  // adoption/rollout guidance for White-Glove Copilot Adoption (#350/#668), not
+  // remediation. Ids are NOT renumbered: s26 keeps its own number.
   { id: "s26", label: "Step 26", pillar: "adoption", title: "Stop attaching documents to email by default" },
   { id: "s27", label: "Step 27", pillar: "health", title: "Capture a signed configuration baseline" },
   { id: "s28", label: "Step 28", pillar: "health", title: "Resolve the 214 OneDrive sync errors" },
