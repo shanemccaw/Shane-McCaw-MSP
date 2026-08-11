@@ -11,10 +11,20 @@ namespace BuildConsole.Controls
         private string _currentView = "Chats";
         private const string RootWorkspacePath = @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
 
+        public event EventHandler<string>? FileSelected;
+
         public LeftSidebar()
         {
             InitializeComponent();
             LoadWorkspaceExplorer(RootWorkspacePath);
+        }
+
+        private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is TreeViewItem item && item.Tag is string path && File.Exists(path))
+            {
+                FileSelected?.Invoke(this, path);
+            }
         }
 
         /// <summary>Returns the currently displayed view name.</summary>

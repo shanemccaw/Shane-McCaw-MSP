@@ -238,7 +238,9 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,4">
-                        <TreeView x:Name="ExplorerTree" BorderThickness="0"/>
+                        <TreeView x:Name="ExplorerTree"
+                                  BorderThickness="0"
+                                  SelectedItemChanged="ExplorerTree_SelectedItemChanged"/>
                     </ScrollViewer>
                 </DockPanel>
             </Grid>

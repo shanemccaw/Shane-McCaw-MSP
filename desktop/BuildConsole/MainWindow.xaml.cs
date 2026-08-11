@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -66,6 +67,9 @@ namespace BuildConsole
 
             // ActivityBar quick navigation
             ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
+
+            // LeftSidebar file clicks -> Open Viewer tabs
+            LeftSidebar.FileSelected += LeftSidebar_FileSelected;
 
             UpdateZoomDisplay();
         }
@@ -355,6 +359,275 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
+        }
+
+        private void LeftSidebar_FileSelected(object? sender, string filePath)
+        {
+            OpenFileTab(filePath);
+        }
+
+        public void OpenFileTab(string filePath)
+        {
+            if (!File.Exists(filePath)) return;
+
+            string fileName = Path.GetFileName(filePath);
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+            // Deduplicate if already open
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && string.Equals(tagPath, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    EditorTabs.SelectedItem = item;
+                    return;
+                }
+            }
+
+            string glyph = ext switch
+            {
+                ".json"               => "⚙",
+                ".sql"                => "🗄️",
+                ".md"                 => "📝",
+                ".cs"                 => "⚡",
+                ".xaml"               => "🎨",
+                ".ts" or ".tsx" or ".js" or ".jsx" => "⚛",
+                ".csproj"             => "📦",
+                _                     => "📄"
+            };
+
+            // Header panel
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var iconBlock = new TextBlock
+            {
+                Text = glyph,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            if (glyph.Length == 1 && glyph[0] >= 0xE000)
+            {
+                iconBlock.FontFamily = new FontFamily("Segoe MDL2 Assets");
+                iconBlock.Foreground = (Brush)FindResource("BlueBrush");
+            }
+
+            var titleBlock = new TextBlock
+            {
+                Text = fileName,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("TextBrush")
+            };
+
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 10,
+                Padding = new Thickness(3, 1, 3, 1),
+                Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = "Close Tab",
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            // Tab Content
+            UIElement tabContent;
+
+            if (ext == ".sql")
+            {
+                // SQL Viewer tab
+                var sqlViewer = new Controls.SqlRunnerView();
+                try
+                {
+                    string sqlText = File.ReadAllText(filePath);
+                    sqlViewer.SetSqlQuery(sqlText);
+                }
+                catch { }
+
+                tabContent = sqlViewer;
+            }
+            else
+            {
+                // Rich HTML Viewer in WebView2 for JSON, Markdown, Code
+                string fileText;
+                try
+                {
+                    fileText = File.ReadAllText(filePath);
+                }
+                catch (Exception ex)
+                {
+                    fileText = $"Error reading file: {ex.Message}";
+                }
+
+                string htmlContent = GenerateViewerHtml(filePath, fileText, ext);
+                var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+                wv.Loaded += async (s, e) =>
+                {
+                    try
+                    {
+                        await wv.EnsureCoreWebView2Async();
+                        wv.NavigateToString(htmlContent);
+                    }
+                    catch { }
+                };
+
+                tabContent = wv;
+            }
+
+            var newTab = new TabItem
+            {
+                Tag = filePath,
+                Header = headerPanel,
+                Content = tabContent
+            };
+
+            closeBtn.Click += (s, e) =>
+            {
+                EditorTabs.Items.Remove(newTab);
+                if (EditorTabs.Items.Count > 0)
+                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+            };
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+
+            ActiveDocTitleText.Text = $" - {fileName}";
+        }
+
+        private static string GenerateViewerHtml(string filePath, string fileText, string ext)
+        {
+            string safePath = System.Net.WebUtility.HtmlEncode(filePath);
+            string safeContent = System.Net.WebUtility.HtmlEncode(fileText);
+            long fileBytes = 0;
+            try { fileBytes = new FileInfo(filePath).Length; } catch {}
+            string sizeStr = fileBytes > 1024 * 1024 ? $"{fileBytes / (1024.0 * 1024.0):F2} MB" : fileBytes > 1024 ? $"{fileBytes / 1024.0:F1} KB" : $"{fileBytes} B";
+
+            if (ext == ".json")
+            {
+                return $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<style>
+  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: 'Segoe UI', Consolas, monospace; margin: 0; padding: 0; }}
+  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'Segoe UI', sans-serif; position: sticky; top: 0; z-index: 100; }}
+  .path {{ color: #89B4FA; font-weight: 600; }}
+  .badge {{ background-color: #313244; color: #A6E3A1; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
+  .container {{ padding: 16px; white-space: pre-wrap; font-family: Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.5; }}
+  .string {{ color: #A6E3A1; }}
+  .number {{ color: #FAB387; }}
+  .boolean {{ color: #CBA6F7; }}
+  .null {{ color: #F38BA8; }}
+  .key {{ color: #89B4FA; font-weight: 600; }}
+</style>
+</head>
+<body>
+  <div class=""toolbar"">
+    <span class=""path"">⚙ JSON Viewer — {safePath}</span>
+    <span class=""badge"">{sizeStr}</span>
+  </div>
+  <div class=""container"" id=""json-body""></div>
+  <script>
+    function syntaxHighlight(json) {{
+      if (typeof json !== 'string') {{ json = JSON.stringify(json, undefined, 2); }}
+      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return json.replace(/(""(\\u[a-zA-Z0-9]{{4}}|\\[^u]|[^\\""])*""(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {{
+        var cls = 'number';
+        if (/^""/.test(match)) {{
+          if (/:$/.test(match)) {{ cls = 'key'; }} else {{ cls = 'string'; }}
+        }} else if (/true|false/.test(match)) {{ cls = 'boolean'; }}
+        else if (/null/.test(match)) {{ cls = 'null'; }}
+        return '<span class=""' + cls + '"">' + match + '</span>';
+      }});
+    }}
+    try {{
+      var raw = `{fileText.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$").Replace("\r", "").Replace("\n", "\\n")}`;
+      var parsed = JSON.parse(raw);
+      document.getElementById('json-body').innerHTML = syntaxHighlight(JSON.stringify(parsed, null, 2));
+    }} catch (e) {{
+      document.getElementById('json-body').innerHTML = syntaxHighlight(`{safeContent.Replace("`", "\\`").Replace("\r", "").Replace("\n", "\\n")}`);
+    }}
+  </script>
+</body>
+</html>";
+            }
+            else if (ext == ".md")
+            {
+                return $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<script src=""https://cdn.jsdelivr.net/npm/marked/marked.min.js""></script>
+<style>
+  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; line-height: 1.6; }}
+  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; position: sticky; top: 0; z-index: 100; }}
+  .path {{ color: #94E2D5; font-weight: 600; }}
+  .badge {{ background-color: #313244; color: #89B4FA; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
+  .content {{ padding: 24px 32px; max-width: 960px; margin: 0 auto; }}
+  h1, h2, h3, h4, h5, h6 {{ color: #89B4FA; border-bottom: 1px solid #313244; padding-bottom: 6px; margin-top: 24px; }}
+  h1 {{ color: #CBA6F7; }}
+  a {{ color: #89B4FA; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  code {{ background-color: #181825; color: #A6E3A1; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 13px; }}
+  pre {{ background-color: #181825; border: 1px solid #313244; padding: 14px; border-radius: 6px; overflow-x: auto; }}
+  pre code {{ background: none; padding: 0; color: #CDD6F4; }}
+  blockquote {{ border-left: 4px solid #CBA6F7; margin: 12px 0; padding: 4px 16px; background-color: #181825; color: #BAC2DE; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
+  th, td {{ border: 1px solid #313244; padding: 8px 12px; text-align: left; }}
+  th {{ background-color: #181825; color: #89B4FA; }}
+  tr:nth-child(even) {{ background-color: #181825; }}
+  hr {{ border: none; border-top: 1px solid #313244; margin: 24px 0; }}
+</style>
+</head>
+<body>
+  <div class=""toolbar"">
+    <span class=""path"">📝 Markdown Preview — {safePath}</span>
+    <span class=""badge"">{sizeStr}</span>
+  </div>
+  <div class=""content"" id=""markdown-body""></div>
+  <script>
+    var rawMd = `{fileText.Replace("\\", "\\\\").Replace("`", "\\`").Replace("$", "\\$").Replace("\r", "").Replace("\n", "\\n")}`;
+    if (typeof marked !== 'undefined') {{
+      document.getElementById('markdown-body').innerHTML = marked.parse(rawMd);
+    }} else {{
+      document.getElementById('markdown-body').innerHTML = '<pre>' + rawMd.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+    }}
+  </script>
+</body>
+</html>";
+            }
+            else
+            {
+                return $@"<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<style>
+  body {{ background-color: #1E1E2E; color: #CDD6F4; font-family: Consolas, 'Courier New', monospace; margin: 0; padding: 0; font-size: 13px; line-height: 1.5; }}
+  .toolbar {{ background-color: #181825; border-bottom: 1px solid #313244; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'Segoe UI', sans-serif; position: sticky; top: 0; z-index: 100; }}
+  .path {{ color: #CBA6F7; font-weight: 600; }}
+  .badge {{ background-color: #313244; color: #89B4FA; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
+  .code-container {{ padding: 16px; white-space: pre; overflow-x: auto; }}
+</style>
+</head>
+<body>
+  <div class=""toolbar"">
+    <span class=""path"">📄 Code Viewer — {safePath}</span>
+    <span class=""badge"">{sizeStr}</span>
+  </div>
+  <div class=""code-container""><code>{safeContent}</code></div>
+</body>
+</html>";
+            }
         }
 
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)

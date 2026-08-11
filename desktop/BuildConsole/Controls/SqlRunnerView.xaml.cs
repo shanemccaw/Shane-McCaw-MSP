@@ -8,6 +8,11 @@ namespace BuildConsole.Controls
     {
         public SqlRunnerView() => InitializeComponent();
 
+        public void SetSqlQuery(string sql)
+        {
+            QueryEditor.Text = sql;
+        }
+
         private void Connect_Click(object sender, RoutedEventArgs e)
         {
             // UI-only toggle — real connection wired later
