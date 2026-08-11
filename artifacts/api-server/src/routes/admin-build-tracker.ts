@@ -939,12 +939,27 @@ async function ghFetchSubIssues(number: number): Promise<GitHubIssuePayload[]> {
 /** Upserts a GitHub issue as an EPIC row (used both for the epic being synced and any nested sub-epic found under it). */
 async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null): Promise<number> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
+  const [existing] = await db
+    .select({ status: btEpicsTable.status })
+    .from(btEpicsTable)
+    .where(eq(btEpicsTable.githubNumber, gh.number))
+    .limit(1);
+  const previousStatus = existing?.status;
+  // GitHub's own open/closed state is authoritative in both directions —
+  // closed always wins, but a REOPEN must be able to clear a stale local
+  // "closed" too. Git #759 (Shane): #658 was closed then reopened under
+  // #647 on GitHub, but stayed invisible through multiple re-syncs of the
+  // epic because the old code only ever set status TO "closed" and never
+  // set it back. Only "in_progress" is genuinely local-only (no GitHub
+  // signal) and worth carrying forward.
+  const status: "closed" | "in_progress" | "open" =
+    gh.state === "closed" ? "closed" : previousStatus === "in_progress" ? "in_progress" : "open";
   const [row] = await db
     .insert(btEpicsTable)
     .values({
       title: gh.title,
       description: gh.body,
-      status: gh.state === "closed" ? "closed" : "open",
+      status,
       githubNumber: gh.number,
       milestoneId,
       parentEpicId,
@@ -954,9 +969,7 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
       set: {
         title: gh.title,
         description: gh.body,
-        // "closed wins" one-way push, same rule quick-sync uses — never
-        // downgrades a locally-tracked "in_progress" back to "open" here.
-        ...(gh.state === "closed" ? { status: "closed" as const } : {}),
+        status,
         milestoneId,
         parentEpicId,
         updatedAt: new Date(),
@@ -969,19 +982,33 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
 async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<void> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
   const labels = gh.labels.map((l) => l.name);
+  const [existing] = await db
+    .select({ status: btIssuesTable.status })
+    .from(btIssuesTable)
+    .where(eq(btIssuesTable.githubNumber, gh.number))
+    .limit(1);
+  const previousStatus = existing?.status;
   // `complete` means done in code, not yet reviewed/closed by Shane himself
   // — see the full sync's matching comment above for the full story (Git
-  // #713 follow-up). Only ever WIDENS what counts as done locally; never
-  // touches the real GitHub state, and never downgrades an update back to
-  // "backlog" when neither signal applies (same as before this fix).
-  const derivedStatus: "closed" | "done" | null =
-    gh.state === "closed" ? "closed" : labels.includes("complete") ? "done" : null;
+  // #713 follow-up). GitHub's real state/labels are authoritative in both
+  // directions (Git #759 fix, same bug class as upsertEpicRow above): a
+  // reopened issue with no "complete" label must fall back to "backlog",
+  // not stick at a stale "closed"/"done" from before it was reopened. Only
+  // "in_progress" is genuinely local-only and safe to carry forward.
+  const status: "closed" | "done" | "in_progress" | "backlog" =
+    gh.state === "closed"
+      ? "closed"
+      : labels.includes("complete")
+        ? "done"
+        : previousStatus === "in_progress"
+          ? "in_progress"
+          : "backlog";
   await db
     .insert(btIssuesTable)
     .values({
       title: gh.title,
       description: gh.body,
-      status: derivedStatus ?? "backlog",
+      status,
       epicId,
       milestoneId,
       githubNumber: gh.number,
@@ -997,7 +1024,7 @@ async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<v
         milestoneId,
         githubUrl: gh.html_url,
         labels,
-        ...(derivedStatus ? { status: derivedStatus } : {}),
+        status,
         updatedAt: new Date(),
       },
     });
@@ -2033,14 +2060,15 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
     // GitHub only knows "open"/"closed" — "in_progress" and "done" are local-only
     // refinements this tool invented on top of that. Read them before the wipe
     // below so a re-sync doesn't silently discard work-in-progress tracking:
-    // an issue/epic keeps its local status as long as GitHub still shows it
-    // open; the moment GitHub shows it closed, "closed" wins regardless. The
-    // PATCH routes above now push a local "closed" out to the real GitHub
-    // issue when GITHUB_TOKEN is set, so this should be the normal path to
-    // "closed" reappearing here too — previousStatus also carries "closed"
-    // itself through as a fallback (belt-and-suspenders for a push that
-    // failed — no token, rate limit, network) rather than silently reverting
-    // a closed issue back to "backlog" on the next sync.
+    // an issue/epic keeps its local "in_progress" status as long as GitHub
+    // still shows it open; the moment GitHub shows it closed, "closed" wins
+    // regardless. Git #759 fix (Shane: #658 reopened under #647, stayed
+    // invisible through multiple re-syncs) — previousStatus no longer carries
+    // "closed"/"done" through when GitHub now shows the issue open again;
+    // only "in_progress" survives a re-sync, since that's the only local
+    // refinement with no GitHub-side signal to derive it from. Trusting
+    // GitHub's real open/closed state both ways means a genuine reopen is
+    // never stuck behind a stale local status.
     const previousEpicRows = await db
       .select({ githubNumber: btEpicsTable.githubNumber, status: btEpicsTable.status })
       .from(btEpicsTable)
@@ -2078,7 +2106,7 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
         ? "closed"
         : projectInProgress.has(pNum)
           ? "in_progress"
-          : (previousStatus === "in_progress" || previousStatus === "closed") ? previousStatus : "open";
+          : previousStatus === "in_progress" ? previousStatus : "open";
       
       let milestoneId = ghEpic?.milestone ? (ghEpic.milestone.number ?? ghEpic.milestone.id) : null;
       if (milestoneId === null) {
@@ -2159,7 +2187,7 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
           ? "done"
           : projectInProgress.has(gh.number)
             ? "in_progress"
-            : (previousStatus === "in_progress" || previousStatus === "done" || previousStatus === "closed")
+            : previousStatus === "in_progress"
               ? previousStatus
               : "backlog";
       const issueMilestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
