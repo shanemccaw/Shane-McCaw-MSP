@@ -3577,6 +3577,34 @@ export const REMEDIATION_TRACKER_STEP_STATUS = [
 ] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 
+// VERIFICATION (#732, Phase C). `status` above is the customer's CLAIM —
+// "I did this", "already handled another way", and so on. This is a
+// completely separate fact: whether a real re-scan has actually checked that
+// claim against the tenant, exactly the split Phase A's and Phase B's own
+// comments on `status` both already promised ("Phase C's verification state
+// will add is a SEPARATE field rather than another value of this one").
+//
+//   unverified — the default, and what every fresh claim starts as. Matches
+//     the design's own "Awaiting re-scan" / "Nothing verified yet" language:
+//     a tick is not evidence, only a re-scan is.
+//   verified   — the most recent re-scan that covered this step's mapped
+//     check(s) found no adverse finding on ALL of them. A real, positive
+//     result, not an absence of information.
+//   drift      — the most recent re-scan that covered this step's mapped
+//     check(s) found a real critical/warning finding on at least one of them,
+//     despite the customer's claim. The design's own label for this is
+//     "Drifted — verification withdrawn", and that is exactly the right frame:
+//     verification is WITHDRAWN, not merely "not yet granted" the way
+//     `unverified` is.
+//
+// A step whose mapped check(s) never ran in a given scan (wrong package,
+// execution error, no check exists at all — Steps 18/28's platform-wide gaps,
+// the four process-only steps) leaves this column exactly where it was: no
+// real evidence means no real verdict, the same "absence carries no
+// information" rule `stepEvidence()` already enforces for the guide itself.
+export const REMEDIATION_TRACKER_VERIFICATION_STATE = ["unverified", "verified", "drift"] as const;
+export type RemediationTrackerVerificationState = (typeof REMEDIATION_TRACKER_VERIFICATION_STATE)[number];
+
 export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps", {
   id: serial("id").primaryKey(),
   /**
@@ -3604,6 +3632,27 @@ export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps",
   completedAt: timestamp("completed_at", { withTimezone: true }),
   /** users.id of whoever last changed this row. Nullable for rows written by anything but a person. */
   updatedByUserId: integer("updated_by_user_id"),
+  /**
+   * See `REMEDIATION_TRACKER_VERIFICATION_STATE` above. Reset to `unverified`
+   * (with `verifiedAt`/`verifiedByRunId` cleared) on EVERY write to `status` —
+   * a changed claim invalidates whatever a previous scan confirmed or flagged
+   * about the old one. Only `reverifyRemediationTrackerSteps()`
+   * (`api-server/src/lib/remediation-tracker-verification.ts`), fired from
+   * inside `runDiagnostics()` once a real scan's findings exist, ever moves
+   * this to `verified` or `drift`.
+   */
+  verificationState: text("verification_state", { enum: REMEDIATION_TRACKER_VERIFICATION_STATE })
+    .notNull()
+    .default("unverified"),
+  /** When this row last became `verified` or `drift`. NULL while `unverified`. */
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /**
+   * `msp_diagnostic_runs.run_id` of the scan that produced the current
+   * verification state — no FK, matching every other cross-table reference on
+   * this table and on `msp_diagnostic_runs` itself. What Phase D's evidence
+   * pack will cite as "verified by this scan".
+   */
+  verifiedByRunId: uuid("verified_by_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

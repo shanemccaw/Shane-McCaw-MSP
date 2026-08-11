@@ -1,6 +1,7 @@
 /**
  * portal-remediation-tracker.ts — the Remediation Tracker's persistent state
- * (Git #730, Phase A of epic #647).
+ * (Git #730, Phase A of epic #647; widened #731, Phase B; verification #732,
+ * Phase C).
  *
  *   GET /api/portal/remediation-tracker
  *     — every stored step state for the calling customer.
@@ -20,9 +21,20 @@
  * change landed in their tenant, and nothing in this platform's scoring, gate
  * or readiness maths reads it — the honest answer to "did this really happen"
  * stays a re-scan. That is why the stored field is `status` and not `verified`,
- * and why Phase C (#732) will add its verification state as its OWN field
- * rather than another value of this one: a step a rescan re-verified and a step
- * somebody ticked are different facts and must never collapse together.
+ * and why #732 added its verification state as its OWN column
+ * (`verificationState`/`verifiedAt`/`verifiedByRunId`) rather than another
+ * value of `status`: a step a rescan re-verified and a step somebody ticked
+ * are different facts and must never collapse together.
+ *
+ * VERIFICATION IS SET ELSEWHERE, RESET HERE. Only
+ * `reverifyRemediationTrackerSteps()` (`../lib/remediation-tracker-
+ * verification.ts`), fired from inside a real scan in `diagnostics-runner.ts`,
+ * ever moves a row to `verified` or `drift`. This route's PUT handler does the
+ * other half: every write to `status` resets `verificationState` back to
+ * `unverified` and clears `verifiedAt`/`verifiedByRunId`, because a changed
+ * claim invalidates whatever the last scan confirmed or flagged about the OLD
+ * one. Without that reset, ticking a drifted step complete again would still
+ * show the stale "Drifted" badge until the next rescan happened to run.
  *
  * SCOPED TO THE CUSTOMER, NOT THE USER. Remediation is a shared engagement
  * record — a second admin on the account, and Shane looking at the same
@@ -81,6 +93,9 @@ interface WireTrackerStep {
   readonly status: string;
   readonly completedAt: string | null;
   readonly updatedAt: string | null;
+  /** "unverified" | "verified" | "drift" — see remediation-tracker-verification.ts. */
+  readonly verificationState: string;
+  readonly verifiedAt: string | null;
 }
 
 /**
@@ -97,6 +112,8 @@ function toWire(row: {
   status: string;
   completedAt: Date | string | null;
   updatedAt: Date | string | null;
+  verificationState: string;
+  verifiedAt: Date | string | null;
 }): WireTrackerStep {
   const iso = (v: Date | string | null): string | null =>
     v === null ? null : v instanceof Date ? v.toISOString() : String(v);
@@ -105,6 +122,8 @@ function toWire(row: {
     status: row.status,
     completedAt: iso(row.completedAt),
     updatedAt: iso(row.updatedAt),
+    verificationState: row.verificationState,
+    verifiedAt: iso(row.verifiedAt),
   };
 }
 
@@ -133,6 +152,8 @@ router.get(
           status: remediationTrackerStepsTable.status,
           completedAt: remediationTrackerStepsTable.completedAt,
           updatedAt: remediationTrackerStepsTable.updatedAt,
+          verificationState: remediationTrackerStepsTable.verificationState,
+          verifiedAt: remediationTrackerStepsTable.verifiedAt,
         })
         .from(remediationTrackerStepsTable)
         .where(eq(remediationTrackerStepsTable.customerId, customerId));
@@ -181,6 +202,12 @@ router.put(
     const completedAt = status === "completed" ? now : null;
     const userId = typeof req.user?.id === "number" ? req.user.id : null;
 
+    // A changed claim invalidates whatever the last rescan confirmed or
+    // flagged about the OLD one (see the header). Every write resets
+    // verification back to `unverified` — only reverifyRemediationTrackerSteps()
+    // (fired from a real scan) ever sets `verified` or `drift`.
+    const verificationState = "unverified" as const;
+
     try {
       await db
         .insert(remediationTrackerStepsTable)
@@ -190,11 +217,14 @@ router.put(
           status,
           completedAt,
           updatedByUserId: userId,
+          verificationState,
+          verifiedAt: null,
+          verifiedByRunId: null,
           updatedAt: now,
         })
         .onConflictDoUpdate({
           target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
-          set: { status, completedAt, updatedByUserId: userId, updatedAt: now },
+          set: { status, completedAt, updatedByUserId: userId, verificationState, verifiedAt: null, verifiedByRunId: null, updatedAt: now },
         });
 
       // Read back rather than trusting `.returning()`: the row is the record and
@@ -205,6 +235,8 @@ router.put(
           status: remediationTrackerStepsTable.status,
           completedAt: remediationTrackerStepsTable.completedAt,
           updatedAt: remediationTrackerStepsTable.updatedAt,
+          verificationState: remediationTrackerStepsTable.verificationState,
+          verifiedAt: remediationTrackerStepsTable.verifiedAt,
         })
         .from(remediationTrackerStepsTable)
         .where(
@@ -220,7 +252,14 @@ router.put(
       res.json({
         step: row
           ? toWire(row)
-          : { stepId, status, completedAt: completedAt?.toISOString() ?? null, updatedAt: now.toISOString() },
+          : {
+              stepId,
+              status,
+              completedAt: completedAt?.toISOString() ?? null,
+              updatedAt: now.toISOString(),
+              verificationState,
+              verifiedAt: null,
+            },
       });
     } catch (err) {
       log.error({ err, customerId, stepId, status }, "PUT /portal/remediation-tracker/steps failed");

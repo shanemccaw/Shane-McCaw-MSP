@@ -36,6 +36,7 @@ import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 import { resolveSeatFigures, type SeatFigures } from "./war-room-pillar-stats";
 import { DEFAULT_LICENSE_WASTE_CHECK_KEY } from "./license-waste-source";
+import { reverifyRemediationTrackerSteps } from "./remediation-tracker-verification";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -771,6 +772,20 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         .values(findingRows)
         .returning({ findingId: mspDiagnosticFindingsTable.findingId });
       findingsCount = inserted.length;
+    }
+
+    // Remediation Tracker re-verification (#732) — every rescan, not only
+    // assessment-tier ones: a customer's claimed step is exactly as real as
+    // the LAST scan that actually looked at it, and routine monitoring
+    // re-checks are real scans too. Reconciles against the findings just
+    // computed above rather than re-querying them. Best-effort and already
+    // internally non-fatal — must never fail the run it is riding on.
+    if (customerId != null) {
+      await reverifyRemediationTrackerSteps({
+        customerId,
+        runId,
+        findings: findingRows.map((f) => ({ checkKey: f.checkKey, severity: f.severity ?? "info" })),
+      });
     }
 
     // 5. Generate HTML report → Document Pipeline

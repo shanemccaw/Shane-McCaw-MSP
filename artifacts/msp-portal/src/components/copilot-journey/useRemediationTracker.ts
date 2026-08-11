@@ -1,6 +1,7 @@
 /**
  * useRemediationTracker.ts — the Full Remediation Guide's persistent tick state
- * (Git #730, Phase A of epic #647; widened in #731, Phase B).
+ * (Git #730, Phase A of epic #647; widened in #731, Phase B; verification in
+ * #732, Phase C).
  *
  *   GET /api/portal/remediation-tracker
  *   PUT /api/portal/remediation-tracker/steps/:stepId
@@ -18,6 +19,17 @@
  * per-step action set. `statuses` is therefore a map from step id to whichever
  * of those it holds, not a set of "done" ids; a step with no entry is
  * `not_started`, same absence convention Phase A established.
+ *
+ * VERIFICATION IS A SEPARATE FACT (#732). `verification` answers "has a real
+ * rescan actually checked this claim" — `unverified` (the default: a claim
+ * nobody has confirmed or contradicted yet, same as "nothing verified yet" in
+ * the design), `verified` (a rescan found no problem), or `drift` (a rescan
+ * found the underlying issue is still there despite the claim). Only the
+ * server ever sets `verified`/`drift` — this hook resets a step's entry to
+ * `unverified` OPTIMISTICALLY the instant `status` changes, matching exactly
+ * what `portal-remediation-tracker.ts`'s PUT handler does for real: a changed
+ * claim invalidates whatever the last scan said about the old one, and the
+ * badge must not keep showing a verdict about a claim that no longer exists.
  *
  * OPTIMISTIC, WITH A REAL ROLLBACK. A change paints immediately and the write
  * follows; a write that fails puts the step back where it was and says so,
@@ -65,12 +77,31 @@ export const REMEDIATION_TRACKER_STEP_STATUS = [
 ] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 
+/**
+ * Mirrors `REMEDIATION_TRACKER_VERIFICATION_STATE` in `lib/db/src/schema/msp.ts`
+ * (#732). Same reason as the status vocabulary above — no `@workspace/db`
+ * dependency here — and `remediation-tracker-verification.test.ts` reads this
+ * file to guard against drift the same way it guards `STEP_CHECK_KEYS`.
+ */
+export const REMEDIATION_TRACKER_VERIFICATION_STATE = ["unverified", "verified", "drift"] as const;
+export type RemediationTrackerVerificationState = (typeof REMEDIATION_TRACKER_VERIFICATION_STATE)[number];
+
+/** One step's verification, as of the last GET or the last optimistic reset. */
+export interface RemediationTrackerVerification {
+  readonly state: RemediationTrackerVerificationState;
+  readonly verifiedAt: string | null;
+}
+
+const UNVERIFIED: RemediationTrackerVerification = { state: "unverified", verifiedAt: null };
+
 /** One stored step, as the route serves it. */
 interface WireTrackerStep {
   readonly stepId: string;
   readonly status: string;
   readonly completedAt: string | null;
   readonly updatedAt: string | null;
+  readonly verificationState: string;
+  readonly verifiedAt: string | null;
 }
 
 interface WireTrackerPayload {
@@ -78,14 +109,25 @@ interface WireTrackerPayload {
 }
 
 const STATUS_SET: ReadonlySet<string> = new Set(REMEDIATION_TRACKER_STEP_STATUS);
+const VERIFICATION_STATE_SET: ReadonlySet<string> = new Set(REMEDIATION_TRACKER_VERIFICATION_STATE);
 
 function isKnownStatus(value: string): value is RemediationTrackerStepStatus {
   return STATUS_SET.has(value);
 }
 
+function isKnownVerificationState(value: string): value is RemediationTrackerVerificationState {
+  return VERIFICATION_STATE_SET.has(value);
+}
+
 export interface RemediationTrackerState {
   /** Every step currently holding a non-`not_started` status, keyed by step id. */
   readonly statuses: ReadonlyMap<string, RemediationTrackerStepStatus>;
+  /**
+   * Every step's verification, keyed by step id. A step with no entry is
+   * `unverified` — same absence convention `statuses` uses, and the honest
+   * default for a step nobody has claimed anything about yet.
+   */
+  readonly verification: ReadonlyMap<string, RemediationTrackerVerification>;
   /** True once a first payload has arrived — success or failure. */
   readonly loaded: boolean;
   /** True while at least one write is in flight. */
@@ -106,6 +148,9 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
   const { fetchWithAuth, accessToken } = useAuth();
 
   const [statuses, setStatuses] = useState<ReadonlyMap<string, RemediationTrackerStepStatus>>(() => new Map());
+  const [verification, setVerification] = useState<ReadonlyMap<string, RemediationTrackerVerification>>(
+    () => new Map(),
+  );
   const [loaded, setLoaded] = useState(false);
   const [inFlight, setInFlight] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +161,8 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
   // not this hook's, and are not something to build a rollback's correctness on.
   const statusesRef = useRef(statuses);
   statusesRef.current = statuses;
+  const verificationRef = useRef(verification);
+  verificationRef.current = verification;
 
   // `fetchWithAuth` is rebuilt on every access-token refresh; reading it through
   // a ref keeps a refresh from re-firing the load. Same discipline
@@ -146,11 +193,16 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
         if (!res.ok) throw new Error(`remediation tracker ${res.status}`);
         const body = (await res.json()) as WireTrackerPayload;
         if (cancelled) return;
-        const next = new Map<string, RemediationTrackerStepStatus>();
+        const nextStatuses = new Map<string, RemediationTrackerStepStatus>();
+        const nextVerification = new Map<string, RemediationTrackerVerification>();
         for (const step of body?.steps ?? []) {
-          if (step.status !== "not_started" && isKnownStatus(step.status)) next.set(step.stepId, step.status);
+          if (step.status !== "not_started" && isKnownStatus(step.status)) nextStatuses.set(step.stepId, step.status);
+          if (step.verificationState !== "unverified" && isKnownVerificationState(step.verificationState)) {
+            nextVerification.set(step.stepId, { state: step.verificationState, verifiedAt: step.verifiedAt });
+          }
         }
-        setStatuses(next);
+        setStatuses(nextStatuses);
+        setVerification(nextVerification);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -173,13 +225,26 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
       if (!enabled) return;
 
       // What this step held before the click, so a failed write has something
-      // real to roll back to rather than guessing `not_started`.
-      let previousStatus: RemediationTrackerStepStatus = "not_started";
+      // real to roll back to rather than guessing `not_started`. Read via the
+      // refs (not a functional updater) — the verification rollback has to
+      // restore the SAME snapshot the status rollback does, and reading both
+      // from one place is what keeps them from disagreeing.
+      const previousStatus: RemediationTrackerStepStatus = statusesRef.current.get(stepId) ?? "not_started";
+      const previousVerification: RemediationTrackerVerification = verificationRef.current.get(stepId) ?? UNVERIFIED;
+
       setStatuses((prev) => {
-        previousStatus = prev.get(stepId) ?? "not_started";
         const next = new Map(prev);
         if (nextStatus === "not_started") next.delete(stepId);
         else next.set(stepId, nextStatus);
+        return next;
+      });
+      // Optimistic reset (#732): a new claim has no verdict yet, exactly what
+      // the server's own PUT handler does for real. Painted immediately so the
+      // UI never shows a stale "Verified"/"Drifted" badge over a claim that
+      // just changed.
+      setVerification((prev) => {
+        const next = new Map(prev);
+        next.delete(stepId);
         return next;
       });
 
@@ -200,11 +265,19 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           // Roll back to what the server still holds. A status left standing
-          // over a failed write is a claim the platform never stored.
+          // over a failed write is a claim the platform never stored — and its
+          // verification never actually changed either, so that rolls back
+          // right along with it rather than staying reset to `unverified`.
           setStatuses((prev) => {
             const next = new Map(prev);
             if (previousStatus === "not_started") next.delete(stepId);
             else next.set(stepId, previousStatus);
+            return next;
+          });
+          setVerification((prev) => {
+            const next = new Map(prev);
+            if (previousVerification.state === "unverified") next.delete(stepId);
+            else next.set(stepId, previousVerification);
             return next;
           });
           setError(message);
@@ -238,5 +311,5 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
     [write],
   );
 
-  return { statuses, loaded, saving: inFlight > 0, error, toggleComplete, setAction };
+  return { statuses, verification, loaded, saving: inFlight > 0, error, toggleComplete, setAction };
 }

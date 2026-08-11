@@ -93,6 +93,7 @@ import {
   useRemediationTracker,
   type RemediationTrackerState,
   type RemediationTrackerStepStatus,
+  type RemediationTrackerVerificationState,
 } from "./useRemediationTracker.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
@@ -115,6 +116,10 @@ const BODY: React.CSSProperties = {
 };
 
 const MONO = "Menlo, Consolas, monospace";
+
+/** The design-preview fallback's verification: always empty, see its use below. */
+const EMPTY_VERIFICATION: ReadonlyMap<string, { readonly state: RemediationTrackerVerificationState; readonly verifiedAt: string | null }> =
+  new Map();
 
 /* ------------------------------------------------------------------ *
  * A copyable command block
@@ -405,12 +410,60 @@ function actionedLabel(status: RemediationTrackerStepStatus): string {
   return `Skipped — ${ACTION_LABELS[status as "already_handled" | "not_applicable" | "deferred"]}`;
 }
 
+/**
+ * The design's own real per-row status pill labels (#732): `status: counted
+ * ? "Verified" : complete ? "Awaiting re-scan" : …` in the design's own
+ * `row()` builder. `unverified` here covers both the design's "Awaiting
+ * re-scan" (a self-resolved claim) and its plain "Skipped" (any of the other
+ * four) — one label for "a claim exists and nothing has checked it yet",
+ * since this system flattens the design's own status/blocked split the same
+ * way `ACTION_LABELS` already does.
+ */
+function verificationLabel(state: RemediationTrackerVerificationState): string {
+  if (state === "verified") return "Verified";
+  if (state === "drift") return "Drifted — verification withdrawn";
+  return "Awaiting re-scan";
+}
+
+/** The pill's colours, reusing the same severity tokens the rest of this document already uses. */
+function verificationColours(state: RemediationTrackerVerificationState): { fg: string; brd: string; bg: string } {
+  if (state === "verified") return { fg: SEVERITY_ON_DARK.healthy, brd: "rgba(52,211,153,.4)", bg: "rgba(52,211,153,.1)" };
+  if (state === "drift") return { fg: SEVERITY_ON_DARK.critical, brd: "rgba(248,113,113,.4)", bg: "rgba(248,113,113,.08)" };
+  return { fg: "#5f7b95", brd: "rgba(100,116,139,.4)", bg: "transparent" };
+}
+
+function VerificationPill({ state }: { readonly state: RemediationTrackerVerificationState }) {
+  const c = verificationColours(state);
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        flex: "none",
+        padding: "2px 8px",
+        borderRadius: 999,
+        border: `1px solid ${c.brd}`,
+        background: c.bg,
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: c.fg, flex: "none" }} />
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: c.fg, whiteSpace: "nowrap" }}>
+        {verificationLabel(state)}
+      </span>
+    </span>
+  );
+}
+
 function ActionPicker({
   status,
+  verification,
   onPick,
   onUndo,
 }: {
   readonly status: RemediationTrackerStepStatus;
+  /** `unverified` (the default) when the caller has no entry for this step. */
+  readonly verification: RemediationTrackerVerificationState;
   readonly onPick: (status: RemediationTrackerStepStatus) => void;
   readonly onUndo: () => void;
 }) {
@@ -418,6 +471,7 @@ function ActionPicker({
 
   if (status !== "not_started") {
     const handed = status === "shane_handles";
+    const drifted = verification === "drift";
     return (
       <div
         style={{
@@ -426,16 +480,20 @@ function ActionPicker({
           gap: 8,
           padding: "8px 11px",
           borderRadius: 8,
-          border: `1px solid ${handed ? "rgba(52,211,153,.3)" : "rgba(51,65,85,.9)"}`,
-          background: handed ? "rgba(52,211,153,.06)" : "rgba(2,6,23,.4)",
+          // A drifted claim gets the same red treatment the design gives its
+          // own "Drifted — verification withdrawn" block — it is not just
+          // another flavour of the neutral "skipped" chip.
+          border: `1px solid ${drifted ? "rgba(248,113,113,.4)" : handed ? "rgba(52,211,153,.3)" : "rgba(51,65,85,.9)"}`,
+          background: drifted ? "rgba(248,113,113,.08)" : handed ? "rgba(52,211,153,.06)" : "rgba(2,6,23,.4)",
         }}
       >
-        {handed ? (
+        {handed && !drifted ? (
           <Check size={12} strokeWidth={2.6} color={SEVERITY_ON_DARK.healthy} aria-hidden="true" style={{ flex: "none" }} />
         ) : null}
-        <span style={{ fontSize: 11.5, fontWeight: 500, color: handed ? SEVERITY_ON_DARK.healthy : INK.micro }}>
+        <span style={{ fontSize: 11.5, fontWeight: 500, color: drifted ? SEVERITY_ON_DARK.critical : handed ? SEVERITY_ON_DARK.healthy : INK.micro }}>
           {actionedLabel(status)}
         </span>
+        <VerificationPill state={verification} />
         <button
           type="button"
           onClick={onUndo}
@@ -552,11 +610,13 @@ function ActionPicker({
 function Step({
   step,
   status,
+  verification,
   onToggleComplete,
   onSetAction,
 }: {
   readonly step: RemediationStep | LiveRemediationStep;
   readonly status: RemediationTrackerStepStatus;
+  readonly verification: RemediationTrackerVerificationState;
   readonly onToggleComplete: (id: string) => void;
   readonly onSetAction: (id: string, status: RemediationTrackerStepStatus) => void;
 }) {
@@ -684,6 +744,7 @@ function Step({
         ) : null}
         <ActionPicker
           status={status}
+          verification={verification}
           onPick={(next) => onSetAction(step.id, next)}
           onUndo={() => onSetAction(step.id, "not_started")}
         />
@@ -768,6 +829,16 @@ export function RemediationGuideBody({
   const toggleComplete = progress ? progress.toggleComplete : sessionToggleComplete;
   const setAction = progress ? progress.setAction : sessionSetAction;
   const statusOf = useCallback((id: string): RemediationTrackerStepStatus => statuses.get(id) ?? "not_started", [statuses]);
+
+  // The design preview has no real rescan pipeline behind it (#732 hooks into
+  // a real scan, `diagnostics-runner.ts`, for an account that exists) —
+  // `?preview=design` stays "nothing verified yet" on every step rather than
+  // simulating a rescan outcome nobody ran.
+  const verification = progress ? progress.verification : EMPTY_VERIFICATION;
+  const verificationOf = useCallback(
+    (id: string): RemediationTrackerVerificationState => verification.get(id)?.state ?? "unverified",
+    [verification],
+  );
 
   const view = !isPreview && live ? live.view : null;
   const tenant = view ? view.tenant : PREVIEW_TENANT;
@@ -1017,6 +1088,7 @@ export function RemediationGuideBody({
                   key={step.id}
                   step={step}
                   status={statusOf(step.id)}
+                  verification={verificationOf(step.id)}
                   onToggleComplete={toggleComplete}
                   onSetAction={setAction}
                 />

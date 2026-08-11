@@ -263,6 +263,12 @@ export default defineConfig({
       // `completed_at` is a server fact that un-ticking clears rather than a
       // client-supplied value that outlives the claim it recorded.
       "src/routes/portal-remediation-tracker.test.ts",
+      // #732 — the Remediation Tracker's real re-verification against a
+      // rescan: the step→check mapping mirrors remediationLiveGuide.ts's own
+      // (guarded against drift) and the verdict rule requires FULL mapped-check
+      // coverage to certify `verified` while ANY real adverse finding is
+      // enough to certify `drift`, even on partial coverage.
+      "src/lib/remediation-tracker-verification.test.ts",
     ],
     coverage: {
       provider: "v8",
