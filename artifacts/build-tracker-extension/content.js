@@ -2785,6 +2785,26 @@ function tryInsertPrefillFromUrl() {
   tryInsert();
 }
 
+/** Shared by both the above- and below-block bars (Git #777) so the two never drift apart in styling/behavior. */
+function buildCodeBlockButtonBar(kind, text, marginSide) {
+  const bar = document.createElement("div");
+  bar.style.cssText = `display: flex; justify-content: flex-end; margin-${marginSide}: 4px;`;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = kind === "sql" ? "🗄 Load into SQL Runner" : "🚀 Send to Builder";
+  btn.style.cssText =
+    "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
+    "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
+  btn.addEventListener("mouseenter", () => { btn.style.background = "#2e2e2e"; });
+  btn.addEventListener("mouseleave", () => { btn.style.background = "#242424"; });
+  btn.addEventListener("click", () => {
+    if (kind === "sql") loadTextIntoSqlRunner(text);
+    else void sendToBuilder(text);
+  });
+  bar.appendChild(btn);
+  return bar;
+}
+
 function scanForCodeBlockButtons(root) {
   const blocks = root.querySelectorAll ? root.querySelectorAll("pre") : [];
   for (const pre of blocks) {
@@ -2794,22 +2814,11 @@ function scanForCodeBlockButtons(root) {
     if (!text) continue;
 
     const kind = classifyCodeBlock(text);
-    const bar = document.createElement("div");
-    bar.style.cssText = "display: flex; justify-content: flex-end; margin-bottom: 4px;";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = kind === "sql" ? "🗄 Load into SQL Runner" : "🚀 Send to Builder";
-    btn.style.cssText =
-      "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
-      "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
-    btn.addEventListener("mouseenter", () => { btn.style.background = "#2e2e2e"; });
-    btn.addEventListener("mouseleave", () => { btn.style.background = "#242424"; });
-    btn.addEventListener("click", () => {
-      if (kind === "sql") loadTextIntoSqlRunner(text);
-      else void sendToBuilder(text);
-    });
-    bar.appendChild(btn);
-    pre.parentElement.insertBefore(bar, pre);
+    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "bottom"), pre);
+    // Git #777 — Shane: "can you put the Send to Builder at the bottom of
+    // the copy block too?" A long build prompt means scrolling all the way
+    // back up just to click the button he already read past.
+    pre.parentElement.insertBefore(buildCodeBlockButtonBar(kind, text, "top"), pre.nextSibling);
   }
 }
 
