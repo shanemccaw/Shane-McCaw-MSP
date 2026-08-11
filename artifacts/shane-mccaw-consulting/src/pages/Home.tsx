@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Footer } from "@/components/Footer";
+import { PersistentChatBubble } from "@/components/PersistentChatBubble";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
@@ -906,6 +907,7 @@ export default function Home() {
         </p>
       </div>
       <Footer />
+      <PersistentChatBubble />
     </>
   );
 }
