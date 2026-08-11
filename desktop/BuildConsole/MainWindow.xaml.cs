@@ -1093,16 +1093,23 @@ namespace BuildConsole
         {
             _allPaletteItems.Clear();
 
-            // 1. Files
+            // 1. Files - Safe non-blocking file search
             try
             {
                 string repoDir = @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
                 if (Directory.Exists(repoDir))
                 {
-                    foreach (var f in Directory.GetFiles(repoDir, "*.*", SearchOption.AllDirectories))
+                    var opt = new EnumerationOptions
+                    {
+                        IgnoreInaccessible = true,
+                        RecurseSubdirectories = true,
+                        MaxRecursionDepth = 6
+                    };
+
+                    foreach (var f in Directory.EnumerateFiles(repoDir, "*.*", opt))
                     {
                         string name = Path.GetFileName(f);
-                        if (name.StartsWith(".") || f.Contains("\\bin\\") || f.Contains("\\obj\\") || f.Contains("\\node_modules\\"))
+                        if (name.StartsWith(".") || f.Contains("\\bin\\") || f.Contains("\\obj\\") || f.Contains("\\node_modules\\") || f.Contains("\\.git\\"))
                             continue;
 
                         string ext = Path.GetExtension(f).ToLowerInvariant();
@@ -1126,11 +1133,14 @@ namespace BuildConsole
                             ExecuteAction = () => OpenFileTab(f)
                         });
 
-                        if (_allPaletteItems.Count > 150) break;
+                        if (_allPaletteItems.Count >= 100) break;
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Palette file scan error: {ex.Message}");
+            }
 
             // 2. Chats
             _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "Antigravity IDE layout & Catppuccin theme", Description = "Active pairing chat session", ExecuteAction = () => LeftSidebar.SwitchView("Chats") });
@@ -1154,13 +1164,15 @@ namespace BuildConsole
 
         private void PerformPaletteSearch()
         {
-            string query = PaletteSearchBox.Text.Trim().ToLowerInvariant();
+            if (PaletteSearchBox == null || PaletteResultsList == null) return;
+
+            string query = PaletteSearchBox.Text?.Trim().ToLowerInvariant() ?? string.Empty;
             string selectedCat = "All";
-            if (ChipFiles.IsChecked == true) selectedCat = "Files";
-            else if (ChipChats.IsChecked == true) selectedCat = "Chats";
-            else if (ChipBuilds.IsChecked == true) selectedCat = "Builds";
-            else if (ChipAutomation.IsChecked == true) selectedCat = "Automation";
-            else if (ChipGit.IsChecked == true) selectedCat = "Git";
+            if (ChipFiles?.IsChecked == true) selectedCat = "Files";
+            else if (ChipChats?.IsChecked == true) selectedCat = "Chats";
+            else if (ChipBuilds?.IsChecked == true) selectedCat = "Builds";
+            else if (ChipAutomation?.IsChecked == true) selectedCat = "Automation";
+            else if (ChipGit?.IsChecked == true) selectedCat = "Git";
 
             var filtered = _allPaletteItems.Where(item =>
             {
