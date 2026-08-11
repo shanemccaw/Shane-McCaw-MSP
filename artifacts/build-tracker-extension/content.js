@@ -96,6 +96,8 @@ let boardCache = null; // { data, fetchedAt }
 let panelEls = null; // { host, tab, panel, progress, current, list, search }
 /** True once the user explicitly asks to browse past a focused epic — reset on every new chat/link. */
 let showAllOverride = false;
+/** An epic manually opened via the 📚 Browse Epics button — reset on any real chat switch (onConversationChanged). Takes priority over the current chat's own linked epic while set. */
+let manualEpicView = null;
 
 /**
  * Rows Shane has clicked ✕ on — "complete" issues that are done with (he's
@@ -416,6 +418,7 @@ function buildPanel() {
       <div class="header-toolbar">
         <button class="iconbtn" data-action="copy-last" title="Copy Claude's last code block (the panel sits over its own copy button)">📋</button>
         <button class="iconbtn" data-action="navigate" title="Find another chat — browse Milestone → Epic → chat">🧭</button>
+        <button class="iconbtn" data-action="browse-epics" title="Browse all Epics — view one's details right here">📚</button>
         <button class="iconbtn" data-action="sql" title="SQL Runner (dev server)">🗄</button>
         <button class="iconbtn" data-action="console" title="Deploy Console (dev server)">💻</button>
         <button class="iconbtn" data-action="refresh" title="Sync — the whole epic when one's in focus, otherwise just the issues on screen">⟳</button>
@@ -482,6 +485,43 @@ function buildPanel() {
     navBackdrop.addEventListener(evt, (e) => {
       e.stopPropagation();
       if (evt === "keydown" && e.key === "Escape") closeNavigator();
+    });
+  }
+
+  // Shane: "we have a button... to show me the list of Milestones [🧭] —
+  // add me the same type of button to see the list of Epics. Then clicking
+  // an Epic loads it and its details into the right panel." A flat list,
+  // no milestone step first, and picking one shows its details in the MAIN
+  // panel (reusing the same layout the focused-on-a-linked-chat view
+  // already uses) instead of drilling toward a chat like the navigator
+  // does — a separate, simpler modal rather than overloading the
+  // navigator's own milestone/epic/chat state machine with a second
+  // purpose.
+  const epicsBackdrop = document.createElement("div");
+  epicsBackdrop.className = "dlg-backdrop";
+  epicsBackdrop.hidden = true;
+  epicsBackdrop.innerHTML = `
+    <div class="dlg" role="dialog" aria-label="Browse Epics">
+      <div class="dlg-header">
+        <span class="dlg-title">Browse Epics</span>
+        <button class="iconbtn" data-action="epics-close" title="Close">✕</button>
+      </div>
+      <input class="search" style="margin: 0 16px 8px;" placeholder="Search epics…" />
+      <div class="dlg-body epics-body" style="padding-top: 0;"></div>
+    </div>
+  `;
+  shadow.appendChild(epicsBackdrop);
+
+  const epicsSearch = epicsBackdrop.querySelector(".search");
+  const epicsBody = epicsBackdrop.querySelector(".epics-body");
+  const closeEpicsBrowser = () => { epicsBackdrop.hidden = true; };
+  epicsBackdrop.querySelector('[data-action="epics-close"]').addEventListener("click", closeEpicsBrowser);
+  epicsBackdrop.addEventListener("click", (e) => { if (e.target === epicsBackdrop) closeEpicsBrowser(); });
+  epicsSearch.addEventListener("input", () => renderEpicsBrowserList(epicsSearch.value));
+  for (const evt of ["keydown", "keyup", "keypress", "paste"]) {
+    epicsBackdrop.addEventListener(evt, (e) => {
+      e.stopPropagation();
+      if (evt === "keydown" && e.key === "Escape") closeEpicsBrowser();
     });
   }
 
@@ -616,6 +656,7 @@ function buildPanel() {
   panel.querySelector('[data-action="full-sync"]').addEventListener("click", () => void fullSyncFromGithub());
   panel.querySelector('[data-action="copy-last"]').addEventListener("click", () => void copyLastCodeBlock());
   panel.querySelector('[data-action="navigate"]').addEventListener("click", () => openNavigator());
+  panel.querySelector('[data-action="browse-epics"]').addEventListener("click", () => openEpicsBrowser());
   panel.querySelector('[data-action="sql"]').addEventListener("click", () => openSqlRunner());
   panel.querySelector('[data-action="console"]').addEventListener("click", () => openDeployConsole());
   // Git #700 — search now works in BOTH views (render() itself decides
@@ -646,6 +687,7 @@ function buildPanel() {
     sqlBackdrop, consoleBackdrop,
     issueTooltip,
     ipTab, ipPanel, ipList,
+    epicsBackdrop, epicsSearch, epicsBody,
   };
   wireSqlRunner();
   wireDeployConsole();
@@ -1386,11 +1428,38 @@ function renderAlerts() {
  * under one epic, "hard to find" applied just as much to the focused view
  * as the browse one.
  */
+/**
+ * Shane: "clicking an Epic loads it and its details into the right panel."
+ * Reuses the SAME layout a chat-linked epic already gets (renderFocused),
+ * computed client-side from boardCache.data (already fully loaded — no
+ * extra request) rather than the server's own focusEpic resolution, which
+ * only ever runs for the CURRENT chat.
+ */
+function buildManualFocusChat(epic) {
+  const openIssues = (boardCache.data.issues ?? []).filter((i) => i.epicId === epic.id);
+  const subEpics = (boardCache.data.epics ?? [])
+    .filter((e) => e.parentEpicId === epic.id)
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      githubNumber: e.githubNumber,
+      status: e.status,
+      openIssueCount: (boardCache.data.issues ?? []).filter((i) => i.epicId === e.id).length,
+    }));
+  const milestone = (boardCache.data.milestones ?? []).find((m) => m.githubNumber === epic.milestoneId) ?? null;
+  return { focusEpic: epic, focusEpicOpenIssues: openIssues, focusEpicSubEpics: subEpics, focusMilestone: milestone };
+}
+
 function render() {
   if (!boardCache) return;
   const { search } = panelEls;
   const currentChat = boardCache.data.currentChat;
-  const focusEpic = currentChat?.focusEpic ?? null;
+  // A manually browsed epic (Git #755 follow-up — the 📚 Browse Epics
+  // button) takes priority over whatever the current chat happens to be
+  // linked to — Shane explicitly asked to SEE that epic, not the chat's own.
+  const manualChat = manualEpicView ? buildManualFocusChat(manualEpicView) : null;
+  const effectiveChat = manualChat ?? currentChat;
+  const focusEpic = effectiveChat?.focusEpic ?? null;
 
   renderAlerts();
 
@@ -1404,8 +1473,8 @@ function render() {
     const siblingEpics = (boardCache.data.epics ?? []).filter(
       (e) => e.milestoneId === focusEpic.milestoneId && e.id !== focusEpic.id,
     );
-    renderProgress(currentChat.focusMilestone, siblingEpics);
-    renderFocused(currentChat, search.value);
+    renderProgress(effectiveChat.focusMilestone, siblingEpics);
+    renderFocused(effectiveChat, search.value, !!manualEpicView);
   } else {
     search.placeholder = "Search…";
     renderProgress(null, []);
@@ -1490,18 +1559,30 @@ function buildMarkInProgressButton(githubNumber) {
   return btn;
 }
 
-function renderFocused(currentChat, query) {
+function renderFocused(currentChat, query, isManual) {
   const { current, list } = panelEls;
   const epic = currentChat.focusEpic;
   const q = (query ?? "").trim().toLowerCase();
 
   current.className = "current linked";
-  current.innerHTML = `Linked to Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Show everything</a>`;
-  current.querySelector(".showall").addEventListener("click", (e) => {
-    e.preventDefault();
-    showAllOverride = true;
-    render();
-  });
+  if (isManual) {
+    // A manually browsed epic (Git #755 follow-up) isn't actually linked to
+    // this chat — "Show everything" would be misleading here since there's
+    // no real link to fall back past. "Close" just drops the manual view.
+    current.innerHTML = `Viewing Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Close</a>`;
+    current.querySelector(".showall").addEventListener("click", (e) => {
+      e.preventDefault();
+      manualEpicView = null;
+      render();
+    });
+  } else {
+    current.innerHTML = `Linked to Epic: ${escapeHtml(epic.title)}<a href="#" class="showall">Show everything</a>`;
+    current.querySelector(".showall").addEventListener("click", (e) => {
+      e.preventDefault();
+      showAllOverride = true;
+      render();
+    });
+  }
 
   list.innerHTML = "";
   const row = document.createElement("div");
@@ -1995,6 +2076,48 @@ function renderSearchLookupResult(num, info) {
   list.prepend(card);
 }
 
+// ── Browse Epics (Git #755 follow-up) ───────────────────────────────────────
+// A flat, searchable list of every open epic, independent of milestones —
+// clicking one shows its details right in the main panel via manualEpicView
+// (see render()/renderFocused()), not a chat-jump like the navigator does.
+
+function openEpicsBrowser() {
+  const { epicsBackdrop, epicsSearch } = buildPanel();
+  epicsBackdrop.hidden = false;
+  epicsSearch.value = "";
+  renderEpicsBrowserList("");
+  epicsSearch.focus();
+}
+
+function renderEpicsBrowserList(query) {
+  const { epicsBody } = panelEls;
+  const q = (query ?? "").trim().toLowerCase();
+  const epics = (boardCache?.data?.epics ?? [])
+    .filter((e) => textMatches(e.title, e.githubNumber, q))
+    .slice()
+    .sort((a, b) => a.title.localeCompare(b.title));
+
+  epicsBody.innerHTML = "";
+  if (epics.length === 0) {
+    epicsBody.innerHTML = `<div class="empty">${q ? "No matches." : "No open epics."}</div>`;
+    return;
+  }
+  for (const epic of epics) {
+    const row = document.createElement("div");
+    row.className = "epic-row";
+    row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
+    row.addEventListener("click", () => viewEpicDetails(epic));
+    epicsBody.appendChild(row);
+  }
+}
+
+function viewEpicDetails(epic) {
+  panelEls.epicsBackdrop.hidden = true;
+  manualEpicView = epic;
+  showAllOverride = false;
+  render();
+}
+
 async function linkTo(target, label) {
   const conversationId = conversationIdFromUrl();
   if (!conversationId) return;
@@ -2022,6 +2145,7 @@ async function linkTo(target, label) {
 
 function onConversationChanged() {
   showAllOverride = false;
+  manualEpicView = null;
   if (!panelEls || panelEls.panel.hidden) return;
   loadBoard(true);
 }

@@ -35,7 +35,13 @@ An unpacked Edge/Chrome extension with two parts, both running on
    The header's 🧭 button opens a **Milestone → Epic → chat** navigator for
    getting to a *different* chat's context — pick a milestone, then one of
    its epics, then click a chat linked to that epic to jump straight there
-   (a real tab navigation, not just a link-this-chat action).
+   (a real tab navigation, not just a link-this-chat action). The header's
+   📚 button is the more direct version — a flat, searchable list of every
+   open epic, no milestone step first — and clicking one shows its own
+   details (open issues, sub-epics, milestone progress) right in the main
+   panel, the same layout a chat-linked epic already gets, without actually
+   linking anything or leaving the chat you're on. Click **Close** to drop
+   back to whatever the chat's own state was.
 
    Issues under an epic can themselves have sub-issues — GitHub tracks that
    as its own nested epic, not a plain issue, so it would otherwise be
