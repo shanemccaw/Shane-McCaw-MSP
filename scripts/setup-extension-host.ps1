@@ -37,8 +37,8 @@ if (-not (Test-Path $runnerPath)) {
   with the decoded prompt.
 
 .PARAMETER Uri
-  The full mybuilder://open?q=...&model=...&effort=...&cwd=... string,
-  passed verbatim as %1 by the registered registry command.
+  The full mybuilder://open?q=...&title=...&model=...&effort=...&cwd=...
+  string, passed verbatim as %1 by the registered registry command.
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -55,6 +55,7 @@ if (-not $queryString) {
 $params = [System.Web.HttpUtility]::ParseQueryString($queryString)
 
 $prompt = $params["q"]
+$title  = $params["title"]
 $model  = $params["model"]
 $effort = $params["effort"]
 $cwd    = $params["cwd"]
@@ -75,6 +76,11 @@ if ($cwd -and (Test-Path $cwd)) {
 } elseif ($cwd) {
   Write-Warning "cwd '$cwd' does not exist - launching from the current directory instead."
 }
+
+# No confirmed claude.exe flag carries a session title, so this just labels
+# the window itself (e.g. "656") - lets Shane tell multiple builder windows
+# apart at a glance rather than guessing from generic terminal titles.
+if ($title) { $Host.UI.RawUI.WindowTitle = $title }
 
 # --model/--effort flag names are unconfirmed - adjust if `claude --help`
 # shows something different.

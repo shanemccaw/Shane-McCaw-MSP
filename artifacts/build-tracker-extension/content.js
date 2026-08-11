@@ -2573,13 +2573,15 @@ function extractLeadingFlags(text) {
 }
 
 /**
- * Receives the prompt text, builds mybuilder://open?q=...&model=...&effort=...&cwd=...
- * (URLSearchParams, matching Shane's own spec) and navigates to it — the
- * OS-registered mybuilder:// handler (scripts/setup-extension-host.ps1)
- * picks it up from there and launches a local Claude Code session with the
- * prompt pre-filled. A leading `--model ... --effort ...` line in the
- * prompt itself (Git #761) wins over the configured Options defaults, since
- * that's Shane saying THIS prompt needs a specific model/effort.
+ * Receives the prompt text, builds a mybuilder://open?... URI carrying the
+ * message payload `{ prompt, title, model, effort, cwd }` (URLSearchParams,
+ * matching Shane's own spec) and navigates to it — the OS-registered
+ * mybuilder:// handler (scripts/setup-extension-host.ps1) picks it up from
+ * there and launches a local Claude Code session with the prompt
+ * pre-filled. A leading `--model ... --effort ... --title ...` line in the
+ * prompt itself (Git #761/#762) wins over the configured Options defaults,
+ * since that's Shane saying THIS prompt needs specific parameters — title
+ * has no Options-page default, it only ever comes from that leading line.
  */
 async function sendToBuilder(prompt) {
   const { builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
@@ -2588,9 +2590,11 @@ async function sendToBuilder(prompt) {
   const { flags, rest } = extractLeadingFlags(prompt);
   const params = new URLSearchParams();
   params.set("q", rest);
+  const title = flags.title;
   const model = flags.model || builderModel;
   const effort = flags.effort || builderEffort;
   const cwd = flags.cwd || builderCwd;
+  if (title) params.set("title", title);
   if (model) params.set("model", model);
   if (effort) params.set("effort", effort);
   if (cwd) params.set("cwd", cwd);
