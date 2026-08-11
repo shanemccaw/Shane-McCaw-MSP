@@ -79,7 +79,14 @@ An unpacked Edge/Chrome extension with two parts, both running on
    anyone with the extension's bearer token gets full database and shell
    access to whatever it's configured against.
 
-3. **#N hover cards** — every `#123`-style reference Claude writes in a chat
+3. **A second "In Progress" panel, docked at the left edge** — a small green
+   tab, independent of the main panel (either can be open without the
+   other). Lists every `in-flight`-labeled issue Build Tracker knows about
+   GLOBALLY, not scoped to whichever epic the main panel is focused on —
+   for when you've collapsed claude.ai's own left sidebar and want that
+   space to show what's actively building, at a glance, without opening
+   anything else.
+4. **#N hover cards** — every `#123`-style reference Claude writes in a chat
    message gets a dotted underline; hover it to see the real title, open/
    closed state, and labels, fetched straight from GitHub (not just
    whatever Build Tracker already has synced locally — works for anything
@@ -87,7 +94,11 @@ An unpacked Edge/Chrome extension with two parts, both running on
    card itself is interactive: a **Close/Reopen** button flips the real
    GitHub state right there, and an **Ask Claude** button inserts a starter
    prompt for that issue into the composer — both act on whatever number
-   you're hovering, independent of the panel's own lists.
+   you're hovering, independent of the panel's own lists. Also catches
+   Claude's other common format — a markdown table with a bare `#` header
+   column (numbers with no literal `#` character) — by detecting the table
+   structure itself rather than text-matching, since a bare number can't be
+   told apart from any other number in prose.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

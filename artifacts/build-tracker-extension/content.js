@@ -133,6 +133,29 @@ function buildPanel() {
       display: flex; flex-direction: column; color: #f3f2f1;
     }
     .panel[hidden] { display: none; }
+    /* Git #722 follow-up — a SEPARATE floaty panel for in-flight work,
+       docked at the left edge: Shane collapses claude.ai's own left-side
+       chat list and wants that freed space filled with "what's actively
+       building right now" instead of having to open the main panel. */
+    .ip-tab {
+      position: fixed; top: 50%; left: 0; transform: translateY(-50%);
+      writing-mode: vertical-rl; padding: 10px 6px; border-radius: 0 8px 8px 0;
+      background: #3fb950; color: #0d1b0f; font-size: 11.5px; font-weight: 700;
+      letter-spacing: .04em; cursor: pointer; box-shadow: 2px 0 8px rgba(0,0,0,.3);
+      user-select: none;
+    }
+    .ip-panel {
+      position: fixed; top: 40px; left: 0; bottom: 40px; width: 260px;
+      background: #1f1f1f; border-right: 1px solid #3b3b3b; box-shadow: 4px 0 16px rgba(0,0,0,.4);
+      display: flex; flex-direction: column; color: #f3f2f1;
+    }
+    .ip-panel[hidden] { display: none; }
+    .ip-header {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+      border-bottom: 1px solid #2e2e2e; font-size: 12.5px; font-weight: 700; flex: none;
+    }
+    .ip-header .title { flex: 1; color: #7fdb8f; }
+    .ip-list { flex: 1; overflow-y: auto; padding: 8px; }
     .header {
       display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
       border-bottom: 1px solid #2e2e2e; font-size: 12.5px; font-weight: 700; flex: none;
@@ -501,6 +524,34 @@ function buildPanel() {
   issueTooltip.addEventListener("mouseleave", onIssueRefUnhover);
   shadow.appendChild(issueTooltip);
 
+  // Git #722 follow-up — a second, independent floaty panel for in-flight
+  // work, docked at the LEFT edge (Shane: "I collapse the Claude chat so
+  // that entire space is open"). Own toggle tab, own open/closed
+  // persistence, own render pass — deliberately not folded into the main
+  // right-docked panel, so both can be open side by side.
+  const ipTab = document.createElement("div");
+  ipTab.className = "ip-tab";
+  ipTab.textContent = "IN PROGRESS";
+  shadow.appendChild(ipTab);
+
+  const ipPanel = document.createElement("div");
+  ipPanel.className = "ip-panel";
+  ipPanel.hidden = true;
+  ipPanel.innerHTML = `
+    <div class="ip-header">
+      <span class="title">🟢 In Progress</span>
+      <button class="iconbtn" data-action="ip-close" title="Close">✕</button>
+    </div>
+    <div class="ip-list"></div>
+  `;
+  shadow.appendChild(ipPanel);
+  const ipList = ipPanel.querySelector(".ip-list");
+  ipTab.addEventListener("click", () => toggleInProgressPanel(true));
+  ipPanel.querySelector('[data-action="ip-close"]').addEventListener("click", () => toggleInProgressPanel(false));
+  for (const evt of ["keydown", "keyup", "keypress"]) {
+    ipPanel.addEventListener(evt, (e) => e.stopPropagation());
+  }
+
   const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
   const dlgStatus = dlgBackdrop.querySelector(".dlg-status");
   const dlgBody = dlgBackdrop.querySelector(".dlg-body");
@@ -557,6 +608,7 @@ function buildPanel() {
     navBackdrop, navTitle, navBody, navBackBtn,
     sqlBackdrop, consoleBackdrop,
     issueTooltip,
+    ipTab, ipPanel, ipList,
   };
   wireSqlRunner();
   wireDeployConsole();
@@ -786,17 +838,63 @@ function togglePanel(open) {
   panel.hidden = !open;
   tab.style.display = open ? "none" : "block";
   void chrome.storage.local.set({ panelOpen: open });
-  if (open) {
-    loadBoard(false);
-    startPolling();
-  } else {
-    stopPolling();
-  }
+  if (open) loadBoard(false);
+  syncPollingState();
 }
 
 async function initPanelVisibility() {
   const { panelOpen } = await chrome.storage.local.get("panelOpen");
   togglePanel(panelOpen !== false); // default OPEN unless Shane explicitly closed it last time
+}
+
+/**
+ * The left-docked In Progress panel — own open/closed persistence, same
+ * default-open reasoning as the main panel, and deliberately usable
+ * independently of it: Shane's whole point is freeing up screen space by
+ * collapsing things, so this shouldn't require the main (right-docked)
+ * panel to also be open just to see what's building.
+ */
+function toggleInProgressPanel(open) {
+  const { ipPanel, ipTab } = buildPanel();
+  ipPanel.hidden = !open;
+  ipTab.style.display = open ? "none" : "block";
+  void chrome.storage.local.set({ inProgressPanelOpen: open });
+  if (open) {
+    if (boardCache) renderInProgressPanel();
+    else loadBoard(false); // no board fetched yet at all (main panel never opened this session)
+  }
+  syncPollingState();
+}
+
+async function initInProgressVisibility() {
+  const { inProgressPanelOpen } = await chrome.storage.local.get("inProgressPanelOpen");
+  toggleInProgressPanel(inProgressPanelOpen !== false);
+}
+
+/** Either floaty panel being open is enough to justify background polling — see pollingBlocked(). */
+function anyPanelOpen() {
+  return !!panelEls && (!panelEls.panel.hidden || !panelEls.ipPanel.hidden);
+}
+
+function syncPollingState() {
+  if (anyPanelOpen()) startPolling();
+  else stopPolling();
+}
+
+/** Every `in-flight`-labeled issue Build Tracker currently knows about, GLOBAL — not scoped to whichever epic the main panel happens to be focused on. Reuses buildIssueRow() as-is (its in-flight dot + Details/prompt buttons already do the right thing). */
+function renderInProgressPanel() {
+  if (!panelEls || panelEls.ipPanel.hidden) return;
+  const { ipList } = panelEls;
+  const issues = (boardCache?.data?.issues ?? []).filter((i) => (i.labels ?? []).includes("in-flight"));
+
+  ipList.innerHTML = "";
+  if (issues.length === 0) {
+    ipList.innerHTML = `<div class="empty">Nothing in flight right now.</div>`;
+    return;
+  }
+  for (const issue of issues) {
+    ipList.appendChild(buildIssueRow(issue, null));
+  }
 }
 
 // ── Git #701: auto-poll instead of manual refresh ───────────────────────────
@@ -855,7 +953,7 @@ function setSyncing(active) {
 
 /** Don't yank content out from under Shane while a dialog's open, the tab's backgrounded, or the panel's closed. */
 function pollingBlocked() {
-  if (!panelEls || panelEls.panel.hidden) return true;
+  if (!anyPanelOpen()) return true;
   if (document.hidden) return true;
   if (!panelEls.dlgBackdrop.hidden || !panelEls.navBackdrop.hidden) return true;
   return false;
@@ -1087,6 +1185,7 @@ function render() {
   const focusEpic = currentChat?.focusEpic ?? null;
 
   renderAlerts();
+  renderInProgressPanel();
 
   if (focusEpic && !showAllOverride) {
     search.placeholder = "Search this epic's issues…";
@@ -1695,6 +1794,21 @@ const ISSUE_REF_RE = /#(\d{2,5})\b/g;
 const issueRefCache = new Map(); // number (string) -> lookup result | { error }
 let tooltipHideTimer = null;
 
+/** Shared by both scan modes — the inline `#N` regex match AND the bare-number table cell. `displayText` is what's shown ("#619" inline vs just "619" in a "#" column). */
+function makeIssueRefSpan(num, displayText) {
+  const span = document.createElement("span");
+  span.className = "bt-issue-ref";
+  span.dataset.num = num;
+  span.textContent = displayText;
+  // Inline styles, not a stylesheet — this span lives in claude.ai's own DOM
+  // (outside our shadow root), so nothing else here would isolate it from
+  // the page's own CSS.
+  span.style.cssText = "border-bottom: 1px dotted #7fb4d8; cursor: help;";
+  span.addEventListener("mouseenter", onIssueRefHover);
+  span.addEventListener("mouseleave", onIssueRefUnhover);
+  return span;
+}
+
 /** Splits a matching text node into text/span/text/… — spans wrap each #N. Idempotent by construction: once wrapped, the number lives inside a <span>, so a later re-walk of the same subtree just won't find it as plain text again. */
 function wrapIssueRefsInTextNode(textNode) {
   const text = textNode.nodeValue;
@@ -1707,21 +1821,41 @@ function wrapIssueRefsInTextNode(textNode) {
   let match;
   while ((match = ISSUE_REF_RE.exec(text))) {
     if (match.index > lastIndex) frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
-    const span = document.createElement("span");
-    span.className = "bt-issue-ref";
-    span.dataset.num = match[1];
-    span.textContent = match[0];
-    // Inline styles, not a stylesheet — this span lives in claude.ai's own
-    // DOM (outside our shadow root), so nothing else here would isolate it
-    // from the page's own CSS.
-    span.style.cssText = "border-bottom: 1px dotted #7fb4d8; cursor: help;";
-    span.addEventListener("mouseenter", onIssueRefHover);
-    span.addEventListener("mouseleave", onIssueRefUnhover);
-    frag.appendChild(span);
+    frag.appendChild(makeIssueRefSpan(match[1], match[0]));
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));
   textNode.parentNode.replaceChild(frag, textNode);
+}
+
+/**
+ * Shane: "Another way it sends me git numbers" — a markdown table with a
+ * bare "#" header column, e.g. "# | Title" then rows like "619 | ...", no
+ * literal `#` character on the number itself. Regex text-matching can't
+ * tell a bare "619" apart from any other 3-digit number in prose, so this
+ * is detected structurally instead: a <table> whose first header cell is
+ * literally "#" (or ends with one, e.g. "Git #") gets its first body-row
+ * cell in each row treated as an issue number if it's purely digits.
+ */
+function scanForBareNumberTableRefs(root) {
+  const tables = root.querySelectorAll ? root.querySelectorAll("table") : [];
+  for (const table of tables) {
+    const headerRow = table.querySelector("thead tr") ?? table.querySelector("tr");
+    const headerCell = headerRow?.querySelector("th, td");
+    const headerText = headerCell?.textContent.trim().toLowerCase() ?? "";
+    if (headerText !== "#" && !headerText.endsWith("#")) continue;
+
+    const bodyRows = table.querySelectorAll("tbody tr");
+    const rows = bodyRows.length > 0 ? Array.from(bodyRows) : Array.from(table.querySelectorAll("tr")).slice(1);
+    for (const row of rows) {
+      const firstCell = row.querySelector("td, th");
+      if (!firstCell || firstCell.querySelector(".bt-issue-ref")) continue; // already wrapped
+      const text = firstCell.textContent.trim();
+      if (!/^\d{2,5}$/.test(text)) continue;
+      firstCell.textContent = "";
+      firstCell.appendChild(makeIssueRefSpan(text, text));
+    }
+  }
 }
 
 /** Walks `root`'s light DOM for plain-text #N references — never descends into shadow roots (our own panel is naturally excluded), skips code/script/style so a real code snippet's "#123" never gets mangled. */
@@ -1839,7 +1973,10 @@ function onIssueRefUnhover() {
 let scanDebounceTimer = null;
 function scheduleIssueRefScan() {
   clearTimeout(scanDebounceTimer);
-  scanDebounceTimer = setTimeout(() => scanForIssueRefs(document.body), 600);
+  scanDebounceTimer = setTimeout(() => {
+    scanForIssueRefs(document.body);
+    scanForBareNumberTableRefs(document.body);
+  }, 600);
 }
 new MutationObserver(scheduleIssueRefScan).observe(document.body, { childList: true, subtree: true, characterData: true });
 scheduleIssueRefScan(); // catch whatever's already on the page (e.g. a hard reload mid-conversation)
@@ -1850,3 +1987,4 @@ scheduleIssueRefScan(); // catch whatever's already on the page (e.g. a hard rel
 // works if it's actually showing real data.
 buildPanel();
 void initPanelVisibility();
+void initInProgressVisibility();
