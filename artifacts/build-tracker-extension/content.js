@@ -2549,21 +2549,51 @@ function loadTextIntoSqlRunner(text) {
 }
 
 /**
+ * Shane's own prompts often start with a flags line like
+ * `--model claude-opus-4-8 --effort high` before the real prompt text — Git
+ * #761: "use that to set the proper parameters directly in the execute."
+ * Only treats the FIRST line as flags (and strips it from the prompt body)
+ * when that line is made up entirely of --flag value pairs, so a real
+ * prompt that merely happens to contain "--" somewhere isn't misread.
+ */
+function extractLeadingFlags(text) {
+  const newlineIdx = text.indexOf("\n");
+  const firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
+  const flagRe = /--(\w+)\s+(\S+)/g;
+  const flags = {};
+  let matched;
+  while ((matched = flagRe.exec(firstLine)) !== null) {
+    flags[matched[1]] = matched[2];
+  }
+  if (Object.keys(flags).length === 0 || firstLine.replace(/--(\w+)\s+(\S+)/g, "").trim() !== "") {
+    return { flags: {}, rest: text };
+  }
+  const rest = (newlineIdx === -1 ? "" : text.slice(newlineIdx + 1)).replace(/^\n+/, "");
+  return { flags, rest };
+}
+
+/**
  * Receives the prompt text, builds mybuilder://open?q=...&model=...&effort=...&cwd=...
- * (URLSearchParams, matching Shane's own spec) from his configured Options
- * defaults, and navigates to it — the OS-registered mybuilder:// handler
- * (scripts/setup-extension-host.ps1) picks it up from there and launches a
- * local Claude Code session with the prompt pre-filled.
+ * (URLSearchParams, matching Shane's own spec) and navigates to it — the
+ * OS-registered mybuilder:// handler (scripts/setup-extension-host.ps1)
+ * picks it up from there and launches a local Claude Code session with the
+ * prompt pre-filled. A leading `--model ... --effort ...` line in the
+ * prompt itself (Git #761) wins over the configured Options defaults, since
+ * that's Shane saying THIS prompt needs a specific model/effort.
  */
 async function sendToBuilder(prompt) {
   const { builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
     "builderModel", "builderEffort", "builderCwd",
   ]);
+  const { flags, rest } = extractLeadingFlags(prompt);
   const params = new URLSearchParams();
-  params.set("q", prompt);
-  if (builderModel) params.set("model", builderModel);
-  if (builderEffort) params.set("effort", builderEffort);
-  if (builderCwd) params.set("cwd", builderCwd);
+  params.set("q", rest);
+  const model = flags.model || builderModel;
+  const effort = flags.effort || builderEffort;
+  const cwd = flags.cwd || builderCwd;
+  if (model) params.set("model", model);
+  if (effort) params.set("effort", effort);
+  if (cwd) params.set("cwd", cwd);
   window.location.href = `mybuilder://open?${params.toString()}`;
 }
 
