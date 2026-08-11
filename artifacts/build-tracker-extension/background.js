@@ -320,6 +320,25 @@ function reopenIssue(issueId) {
   return setIssueStatus(issueId, "done");
 }
 
+/** GETs /extension/issue-lookup — powers the hover card for any #N the content script finds in a claude.ai message. */
+async function lookupIssue(number) {
+  const { apiBaseUrl, ingestToken } = await getConfig();
+  if (!apiBaseUrl || !ingestToken) {
+    return { ok: false, error: "Not configured — open the extension's Options page." };
+  }
+  const url = `${apiBaseUrl.replace(/\/$/, "")}/api/admin/build-tracker/extension/issue-lookup?number=${encodeURIComponent(number)}`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${ingestToken}` } });
+    const parsed = await readJson(res);
+    if (!res.ok || !parsed.ok) {
+      return { ok: false, error: !parsed.ok ? parsed.error : `HTTP ${res.status}: ${JSON.stringify(parsed.data)}` };
+    }
+    return { ok: true, result: parsed.data };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "build-tracker-ingest") {
     void ingestChat(message.conversationId, message.title, message.issueId, message.epicId).then(sendResponse);
@@ -359,6 +378,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "build-tracker-reopen-issue") {
     void reopenIssue(message.issueId).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "build-tracker-lookup-issue") {
+    void lookupIssue(message.number).then(sendResponse);
     return true;
   }
   return false;

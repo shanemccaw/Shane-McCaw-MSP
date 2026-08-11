@@ -295,6 +295,20 @@ function buildPanel() {
     }
     .dlg-expand[hidden] { display: none; }
 
+    /* Git #716 follow-up — the #N hover card. pointer-events: none so it
+       never itself becomes a hover target (no flicker fighting the
+       underlined span it's anchored to). */
+    .issue-tooltip {
+      position: fixed; z-index: 2147483647; max-width: 300px;
+      background: #1f1f1f; border: 1px solid #3b3b3b; border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5); padding: 9px 11px;
+      font-size: 12px; color: #d6d4d2; line-height: 1.4; pointer-events: none;
+    }
+    .issue-tooltip[hidden] { display: none; }
+    .issue-tooltip .tt-title { font-weight: 700; color: #fff; margin-bottom: 3px; }
+    .issue-tooltip .tt-meta { font-size: 10.5px; color: #8f8c88; text-transform: uppercase; letter-spacing: .03em; }
+    .issue-tooltip .tt-meta.closed { color: #7fae91; }
+
     /* Git #702 — SQL Runner / Deploy Console. Wider than the details dialog
        since query text and command output both need real room. */
     .dlg-wide { width: 640px; max-height: 80vh; }
@@ -465,6 +479,16 @@ function buildPanel() {
     }
   }
 
+  // Git #716 follow-up — hover card for any #N Claude mentions in a chat
+  // message. Lives in this same shadow root (isolated from claude.ai's own
+  // styles, consistent with every other floating element here), but the
+  // underlined #N spans themselves get injected directly into claude.ai's
+  // own message DOM (outside this shadow root) — see scanForIssueRefs().
+  const issueTooltip = document.createElement("div");
+  issueTooltip.className = "issue-tooltip";
+  issueTooltip.hidden = true;
+  shadow.appendChild(issueTooltip);
+
   const dlgTitle = dlgBackdrop.querySelector(".dlg-title");
   const dlgStatus = dlgBackdrop.querySelector(".dlg-status");
   const dlgBody = dlgBackdrop.querySelector(".dlg-body");
@@ -520,6 +544,7 @@ function buildPanel() {
     dlgBackdrop, dlgTitle, dlgStatus, dlgBody, dlgExpand,
     navBackdrop, navTitle, navBody, navBackBtn,
     sqlBackdrop, consoleBackdrop,
+    issueTooltip,
   };
   wireSqlRunner();
   wireDeployConsole();
@@ -1646,6 +1671,124 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+// ── 3. #N hover cards in claude.ai's own chat messages ──────────────────────
+// Shane: "Claude Chat spits out Git numbers like I remember what all 700+
+// are... underline it, hover over it, show me the Issue." Underlines every
+// #N found in the page's own text (outside this shadow root — claude.ai's
+// message DOM, not our own UI) and shows a small hover card fetched straight
+// from GitHub, so a number never has to be memorized.
+
+const ISSUE_REF_RE = /#(\d{2,5})\b/g;
+const issueRefCache = new Map(); // number (string) -> lookup result | { error }
+let tooltipHideTimer = null;
+
+/** Splits a matching text node into text/span/text/… — spans wrap each #N. Idempotent by construction: once wrapped, the number lives inside a <span>, so a later re-walk of the same subtree just won't find it as plain text again. */
+function wrapIssueRefsInTextNode(textNode) {
+  const text = textNode.nodeValue;
+  ISSUE_REF_RE.lastIndex = 0;
+  if (!ISSUE_REF_RE.test(text)) return;
+  ISSUE_REF_RE.lastIndex = 0;
+
+  const frag = document.createDocumentFragment();
+  let lastIndex = 0;
+  let match;
+  while ((match = ISSUE_REF_RE.exec(text))) {
+    if (match.index > lastIndex) frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    const span = document.createElement("span");
+    span.className = "bt-issue-ref";
+    span.dataset.num = match[1];
+    span.textContent = match[0];
+    // Inline styles, not a stylesheet — this span lives in claude.ai's own
+    // DOM (outside our shadow root), so nothing else here would isolate it
+    // from the page's own CSS.
+    span.style.cssText = "border-bottom: 1px dotted #7fb4d8; cursor: help;";
+    span.addEventListener("mouseenter", onIssueRefHover);
+    span.addEventListener("mouseleave", onIssueRefUnhover);
+    frag.appendChild(span);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+  textNode.parentNode.replaceChild(frag, textNode);
+}
+
+/** Walks `root`'s light DOM for plain-text #N references — never descends into shadow roots (our own panel is naturally excluded), skips code/script/style so a real code snippet's "#123" never gets mangled. */
+function scanForIssueRefs(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest("pre, code, script, style, textarea")) return NodeFilter.FILTER_REJECT;
+      if (parent.classList.contains("bt-issue-ref")) return NodeFilter.FILTER_REJECT;
+      return ISSUE_REF_RE.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  // Collect first, then mutate — replacing nodes mid-walk confuses the TreeWalker.
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  for (const node of nodes) wrapIssueRefsInTextNode(node);
+  ISSUE_REF_RE.lastIndex = 0;
+}
+
+function positionTooltipNear(span) {
+  const { issueTooltip } = buildPanel();
+  const rect = span.getBoundingClientRect();
+  issueTooltip.style.top = `${rect.bottom + 6}px`;
+  issueTooltip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 316))}px`;
+}
+
+async function onIssueRefHover(e) {
+  const span = e.currentTarget;
+  const num = span.dataset.num;
+  clearTimeout(tooltipHideTimer);
+
+  const { issueTooltip } = buildPanel();
+  issueTooltip.dataset.forNum = num;
+  issueTooltip.innerHTML = `<div class="tt-title">Loading #${num}…</div>`;
+  issueTooltip.hidden = false;
+  positionTooltipNear(span);
+
+  let info = issueRefCache.get(num);
+  if (!info) {
+    const res = await chrome.runtime.sendMessage({ type: "build-tracker-lookup-issue", number: Number(num) });
+    info = res?.ok ? res.result : { error: res?.error ?? "Not found" };
+    issueRefCache.set(num, info);
+  }
+  // The pointer may have moved to a different #N (or left entirely) while
+  // that lookup was in flight — only paint if this card is still the one showing.
+  if (issueTooltip.hidden || issueTooltip.dataset.forNum !== num) return;
+  renderIssueTooltip(info, num);
+  positionTooltipNear(span); // title text just changed height — reposition
+}
+
+function renderIssueTooltip(info, num) {
+  const { issueTooltip } = panelEls;
+  if (info?.error) {
+    issueTooltip.innerHTML = `<div class="tt-title">#${num}</div><div class="tt-meta">${escapeHtml(info.error)}</div>`;
+    return;
+  }
+  const closed = info.state === "closed";
+  issueTooltip.innerHTML = `
+    <div class="tt-title">#${num} ${escapeHtml(info.title)}</div>
+    <div class="tt-meta${closed ? " closed" : ""}">${closed ? "closed" : "open"}${info.isEpic ? " · epic" : ""}${info.labels?.length ? " · " + info.labels.map(escapeHtml).join(", ") : ""}</div>
+  `;
+}
+
+function onIssueRefUnhover() {
+  clearTimeout(tooltipHideTimer);
+  tooltipHideTimer = setTimeout(() => { panelEls.issueTooltip.hidden = true; }, 150);
+}
+
+// Debounced so a burst of DOM mutations (Claude streaming a response in)
+// triggers one rescan after things settle, not one per keystroke-sized chunk.
+let scanDebounceTimer = null;
+function scheduleIssueRefScan() {
+  clearTimeout(scanDebounceTimer);
+  scanDebounceTimer = setTimeout(() => scanForIssueRefs(document.body), 600);
+}
+new MutationObserver(scheduleIssueRefScan).observe(document.body, { childList: true, subtree: true, characterData: true });
+scheduleIssueRefScan(); // catch whatever's already on the page (e.g. a hard reload mid-conversation)
 
 // Build the panel shell once on load, then open it by default (see
 // togglePanel's doc comment) — unlike before, this now does hit the API

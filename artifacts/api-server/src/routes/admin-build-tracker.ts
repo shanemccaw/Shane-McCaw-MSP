@@ -1022,6 +1022,49 @@ async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<v
  * Body: { epicNumber: number }
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
+/**
+ * GET /admin/build-tracker/extension/issue-lookup?number=N
+ *
+ * Git #716 follow-up — Shane: "Claude Chat... spits out Git numbers like I
+ * remember what all 700+ are... hover over it it shows me the Issue."
+ * Powers a hover card the content script builds for any #N it finds in a
+ * claude.ai message. Deliberately reads straight from GitHub, not Build
+ * Tracker's own DB — a number in chat could be an issue, an epic, or
+ * something never synced/linked at all, and this needs to answer for all of
+ * them the same way, not just what's already tracked locally.
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const number = parseInt(String(req.query.number ?? ""), 10);
+  if (!Number.isInteger(number)) {
+    res.status(400).json({ error: "number is required" });
+    return;
+  }
+  try {
+    const gh = await ghFetchIssue(number);
+    if (!gh) {
+      res.status(404).json({ error: `#${number} not found on GitHub` });
+      return;
+    }
+    res.json({
+      number: gh.number,
+      title: gh.title,
+      state: gh.state,
+      labels: gh.labels.map((l) => l.name),
+      htmlUrl: gh.html_url,
+      isEpic: !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0),
+    });
+  } catch (err) {
+    log.error({ err, number }, "GET /extension/issue-lookup failed");
+    res.status(500).json({ error: "Lookup failed" });
+  }
+});
+
 router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: Request, res: Response) => {
   if (!process.env.GITHUB_TOKEN) {
     res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });

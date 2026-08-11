@@ -79,6 +79,12 @@ An unpacked Edge/Chrome extension with two parts, both running on
    anyone with the extension's bearer token gets full database and shell
    access to whatever it's configured against.
 
+3. **#N hover cards** — every `#123`-style reference Claude writes in a chat
+   message gets a dotted underline; hover it to see the real title, open/
+   closed state, and labels, fetched straight from GitHub (not just
+   whatever Build Tracker already has synced locally — works for anything
+   on GitHub, tracked here or not). No more remembering what #716 was.
+
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
 cookie, and even with one, claude.ai is a client-rendered SPA so the raw
