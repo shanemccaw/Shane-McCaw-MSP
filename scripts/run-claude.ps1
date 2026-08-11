@@ -73,18 +73,23 @@ if ($cwd -and (Test-Path $cwd)) {
 # Shane tell multiple builder windows apart at a glance.
 if ($title) { $Host.UI.RawUI.WindowTitle = $title }
 
-# --name is a confirmed real claude.exe flag (Shane's own working reference
-# script used it) - --model/--effort are still a best guess, adjust if
-# `claude --help` shows something different.
-$claudeArgs = @("--prefill", $prompt)
+# Git #766 fix - Shane: "I seen the prompt fill the prompt thing... then it
+# went away and one was sent." `claude --help` confirms there IS NO
+# --prefill flag at all - `prompt` is a plain POSITIONAL argument
+# (`claude [options] [prompt]`), and --model/--effort/--name (-n) are all
+# real documented flags. Passing the prompt via a nonexistent --prefill flag
+# was being mishandled by claude.exe's own arg parser this whole time -
+# that's the real root cause, not (only) the PowerShell quoting bug #763
+# fixed. Options must come BEFORE the positional prompt.
+$claudeArgs = @()
 if ($title)  { $claudeArgs += @("--name", $title) }
 if ($model)  { $claudeArgs += @("--model", $model) }
 if ($effort) { $claudeArgs += @("--effort", $effort) }
+$claudeArgs += $prompt
 
-# Overwritten every run - so if the prompt still doesn't land right after
-# the Git #763 quoting fix, this shows exactly what PowerShell thought the
-# prompt was (length + preview) without digging through claude.exe's own
-# output for it.
+# Overwritten every run - so if the prompt still doesn't land right, this
+# shows exactly what PowerShell thought the prompt was (length + preview)
+# without digging through claude.exe's own output for it.
 "[$(Get-Date -Format o)] prompt length=$($prompt.Length) preview=$($prompt.Substring(0, [Math]::Min(120, $prompt.Length)))" |
   Set-Content -Path (Join-Path $env:TEMP "mybuilder-last-run.log") -Encoding utf8
 

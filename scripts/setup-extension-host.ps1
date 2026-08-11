@@ -23,9 +23,9 @@
   Safe to re-run: the registry key is overwritten idempotently.
 
 .NOTES
-  claude.exe's actual CLI flags for --model/--effort are a best guess
-  (--prefill is the one flag Shane specified directly) - check
-  `claude --help` and adjust run-claude.ps1 if these aren't right.
+  claude.exe's real CLI flags (confirmed via `claude --help`, Git #766):
+  the prompt is a positional argument, not a --prefill flag; --model,
+  --effort, and --name (-n, session display name) are all real options.
 #>
 
 $ErrorActionPreference = "Stop"

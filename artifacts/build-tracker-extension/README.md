@@ -145,12 +145,15 @@ An unpacked Edge/Chrome extension with two parts, both running on
    copy button). A SQL-looking block gets **🗄 Load into SQL Runner**
    (opens the floaty SQL Runner with that text already in it). Anything
    else gets **🚀 Send to Builder**, which opens
-   `mybuilder://open?q=<prompt>&model=<model>&effort=<effort>&cwd=<cwd>` —
-   model/effort/cwd come from the Options page's Builder defaults (blank =
-   omitted). That custom protocol needs a one-time local registration —
-   run `scripts/setup-extension-host.ps1` once (Windows, no admin needed)
-   to create `C:\Source\run-claude.ps1` and register the `mybuilder://`
-   handler that launches `claude.exe --prefill` with the decoded prompt.
+   `mybuilder://open?q=<prompt>&title=<title>&model=<model>&effort=<effort>&cwd=<cwd>`
+   — a leading `--model X --effort Y --title Z` line on the prompt itself
+   wins over the Options page's Builder defaults (blank = omitted either
+   way). That custom protocol needs a one-time local registration — run
+   `scripts/setup-extension-host.ps1` once (Windows, no admin needed) to
+   register the `mybuilder://` handler, which points straight at this
+   repo's own `scripts/run-claude.ps1` (so a `git pull` keeps it current —
+   no separate copy to fall out of date). It launches `claude.exe` with the
+   decoded prompt as a positional argument plus `--name`/`--model`/`--effort`.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
