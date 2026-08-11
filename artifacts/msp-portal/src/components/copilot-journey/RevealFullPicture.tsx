@@ -154,7 +154,6 @@ export function RevealFullPicture({
   vw,
   vh,
   reduced,
-  discussHref,
   documentsHref,
   onOpenDocuments,
   payloadState,
@@ -165,9 +164,6 @@ export function RevealFullPicture({
   vw: number;
   vh: number;
   reduced: boolean;
-  /** Where "Discuss my results with Shane McCaw" goes. Bare path — the tenant
-   *  slug is applied by the router's base. */
-  discussHref: string;
   /** Where the unconditional "See your documents" link goes (#421) — always
    *  rendered regardless of `payloadState`/`gen.known`/document scope, unlike
    *  the gated `onOpenDocuments` button above. */
@@ -831,19 +827,6 @@ export function RevealFullPicture({
                     detail="Which reports get written is set by the assessment service on your account. Until that scope exists there is no set to count, and a number here would be one nobody had measured."
                   />
                 )}
-
-                {/* Outside the gate: neither line depends on the document set. */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
-                  <Link
-                    href={discussHref}
-                    style={{ fontSize: 13, fontWeight: 600, color: INK.link }}
-                  >
-                    Discuss my results with Shane McCaw →
-                  </Link>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: INK.deemphasised }}>
-                    30 minutes, direct with the architect.
-                  </span>
-                </div>
 
                 {/* #421: unconditional navigation to the Document Viewer,
                     independent of the gate above — payloadState/gen.known/

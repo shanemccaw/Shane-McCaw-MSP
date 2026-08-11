@@ -78,9 +78,6 @@ const SCENE_COUNT = 9;
 /** How long the `?preview=design&scan=1` simulated scan takes. */
 const PREVIEW_SCAN_MS = 22_000;
 
-/** Where "Discuss my results with Shane McCaw" goes — the portal's own chat. */
-const DISCUSS_HREF = "/support";
-
 /** The Document Viewer's index. It opens on whatever the set leads with. */
 const DOCUMENTS_HREF = "/copilot-readiness/documents";
 
@@ -805,7 +802,6 @@ export default function CopilotReadinessPage() {
             vw={metrics.vw}
             vh={metrics.vh}
             reduced={reduced}
-            discussHref={DISCUSS_HREF}
             documentsHref={DOCUMENTS_HREF}
             onOpenDocuments={() => navigate(DOCUMENTS_HREF)}
             payloadState={statusState}
