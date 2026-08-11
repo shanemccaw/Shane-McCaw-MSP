@@ -50,20 +50,34 @@ if (-not (Test-Path $claudeExe)) {
   exit 1
 }
 
+# Git #765 fix - Shane: "now the default folder when it launches is
+# C:\Windows\System32 instead of the repo." His previous hand-maintained
+# runner (the one #764 replaced) had a hardcoded
+# `Set-Location "C:\...\Shane-McCaw-MSP"` line that was never part of the
+# shared template, so it got dropped along with everything else when the
+# runner moved into the repo - and the cwd= URI param is apparently never
+# actually populated (no Options-page default configured), so nothing took
+# its place. Default to THIS repo's own root (computed from where this
+# script lives, so it isn't hardcoded to one machine's path) whenever no
+# usable cwd= was passed, instead of falling through to whatever directory
+# Windows happened to start cmd.exe in.
+$repoRoot = Split-Path $PSScriptRoot -Parent
 if ($cwd -and (Test-Path $cwd)) {
   Set-Location $cwd
-} elseif ($cwd) {
-  Write-Warning "cwd '$cwd' does not exist - launching from the current directory instead."
+} else {
+  if ($cwd) { Write-Warning "cwd '$cwd' does not exist - falling back to the repo root instead." }
+  Set-Location $repoRoot
 }
 
-# No confirmed claude.exe flag carries a session title, so this just labels
-# the window itself (e.g. "656") - lets Shane tell multiple builder windows
-# apart at a glance rather than guessing from generic terminal titles.
+# Also labels the terminal window itself, in addition to --name below - lets
+# Shane tell multiple builder windows apart at a glance.
 if ($title) { $Host.UI.RawUI.WindowTitle = $title }
 
-# --model/--effort flag names are unconfirmed - adjust if `claude --help`
-# shows something different.
+# --name is a confirmed real claude.exe flag (Shane's own working reference
+# script used it) - --model/--effort are still a best guess, adjust if
+# `claude --help` shows something different.
 $claudeArgs = @("--prefill", $prompt)
+if ($title)  { $claudeArgs += @("--name", $title) }
 if ($model)  { $claudeArgs += @("--model", $model) }
 if ($effort) { $claudeArgs += @("--effort", $effort) }
 
