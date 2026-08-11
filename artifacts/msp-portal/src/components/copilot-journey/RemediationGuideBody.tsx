@@ -102,6 +102,8 @@ import {
   type RemediationTrackerStepStatus,
   type RemediationTrackerVerificationState,
 } from "./useRemediationTracker.ts";
+import { useTenantCheckItems, type TenantCheckItemsState } from "./useTenantCheckItems.ts";
+import { applyLiveScriptParams } from "./remediationScriptParams.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
@@ -799,6 +801,7 @@ export function RemediationGuideBody({
   isPreview = true,
   live,
   progress,
+  checkItems,
 }: {
   readonly onOpenSow?: () => void;
   /** Default `true` so every existing (preview) call site is unchanged. */
@@ -811,6 +814,12 @@ export function RemediationGuideBody({
    * below — there is no account to save a fictional tenant's progress to.
    */
   readonly progress?: RemediationTrackerState;
+  /**
+   * The five fillable scripts' real per-item data (#776/#782), supplied by
+   * `LiveRemediationGuideBody`. Absent on the design preview, which keeps the
+   * Halden Materials fixture's own placeholders unchanged.
+   */
+  readonly checkItems?: TenantCheckItemsState;
 }) {
   // The session-only fallback. Still the real state on `?preview=design`, and
   // still declared unconditionally because hooks cannot be called behind a
@@ -862,10 +871,27 @@ export function RemediationGuideBody({
   // count-bearing resolver below are all derived off this array and reflect the
   // REAL rendered step count for this tenant, never a hardcoded 28. The preview
   // path renders the full `REMEDIATION_STEPS` catalogue unchanged.
-  const steps = useMemo<readonly (RemediationStep | LiveRemediationStep)[]>(
+  const liveSteps = useMemo<readonly (RemediationStep | LiveRemediationStep)[]>(
     () => (view ? buildLiveRemediationSteps(view) : REMEDIATION_STEPS),
     [view],
   );
+
+  // #782: the five fillable steps' scripts, with real per-tenant values
+  // substituted in place of `<placeholder>` where #776's data has them. Layered
+  // on AFTER `buildLiveRemediationSteps` rather than inside it, so
+  // remediationLiveGuide.ts stays synchronous and free of the async fetch this
+  // needs — `applyLiveScriptParams` itself is a pure function and returns
+  // `null` (render unchanged) for every step outside the fillable five, and for
+  // a fillable one when nothing usable was collected. Never runs on preview:
+  // `checkItems` is only ever supplied by `LiveRemediationGuideBody`.
+  const steps = useMemo<readonly (RemediationStep | LiveRemediationStep)[]>(() => {
+    if (!checkItems || !view) return liveSteps;
+    return liveSteps.map((step) => {
+      if (!step.code) return step;
+      const parametrized = applyLiveScriptParams(step.id, step.code, checkItems.items);
+      return parametrized ? { ...step, code: parametrized } : step;
+    });
+  }, [liveSteps, checkItems, view]);
 
   // The explicit never-scanned / no-mapped-finding state (#658): only when the
   // live guide collapsed to the two always-on process steps. Null on preview and
@@ -1297,6 +1323,12 @@ export function RemediationGuideBody({
  * The one fetch this component does make is for what the customer WRITES: the
  * tracker state (#730), which is theirs rather than the scan's and so cannot be
  * on a payload computed from their last run.
+ *
+ * #782 adds a second, read-only fetch: the raw per-item detail behind the five
+ * fillable scripts' placeholders (#776). That genuinely is not on the
+ * journey's view — `war-room-pillars` and friends carry stats and findings,
+ * never raw item lists (see remediationScriptParams.ts's own header) — so it
+ * is fetched here rather than threaded through the view's own payload.
  */
 export function LiveRemediationGuideBody({
   view,
@@ -1309,5 +1341,12 @@ export function LiveRemediationGuideBody({
   // customer's, not the scan's, so it is the only thing on this document the
   // journey's view cannot already be holding.
   const progress = useRemediationTracker();
-  return <RemediationGuideBody isPreview={false} live={{ view }} onOpenSow={onOpenSow} progress={progress} />;
+  // #782: the five fillable scripts' real per-item data. A slow or failed load
+  // simply leaves every script at its honest placeholder — see
+  // applyLiveScriptParams's own null-on-nothing-usable contract — so there is
+  // no loading/error branch to gate the guide's render on here.
+  const checkItems = useTenantCheckItems();
+  return (
+    <RemediationGuideBody isPreview={false} live={{ view }} onOpenSow={onOpenSow} progress={progress} checkItems={checkItems} />
+  );
 }
