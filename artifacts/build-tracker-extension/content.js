@@ -799,8 +799,11 @@ function findComposer() {
  * "come look at this" starter instead.
  */
 function issuePromptText(issue) {
-  if (issueLabelState(issue) === "complete") return `${issue.githubNumber} landed`;
-  return `Let's look at Git #${issue.githubNumber}...`;
+  // Trailing space (Git #760, Shane) — so clicking several of these buttons
+  // in a row in the left In Progress panel lands as "759 landed 758 landed"
+  // instead of them running together with no separator.
+  if (issueLabelState(issue) === "complete") return `${issue.githubNumber} landed `;
+  return `Let's look at Git #${issue.githubNumber}... `;
 }
 
 /**
