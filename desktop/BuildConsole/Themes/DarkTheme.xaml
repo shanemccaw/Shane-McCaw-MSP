@@ -523,18 +523,6 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         TREE VIEW / TREE VIEW ITEM — VS Code look
-         ══════════════════════════════════════════════════════════════════ -->
-    <Style TargetType="{x:Type TreeView}">
-        <Setter Property="Background"      Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
-        <Setter Property="Padding"         Value="0"/>
-        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
-        <Setter Property="ScrollViewer.VerticalScrollBarVisibility"   Value="Auto"/>
-    </Style>
-
-    <!-- ══════════════════════════════════════════════════════════════════
          TAB CONTROL / TAB ITEM — VS Code style
          ══════════════════════════════════════════════════════════════════ -->
     <Style TargetType="{x:Type TabControl}">
