@@ -89,14 +89,27 @@ namespace BuildConsole
             catch { }
         }
 
-        // ── Window Preview Key Handlers for Ctrl+Tab ─────────────────────────
+        // ── Window Preview Key Handlers for Ctrl+K and Ctrl+Tab ─────────────────
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                ToggleCommandPalette();
+            }
+            else if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 e.Handled = true;
                 bool isReverse = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
                 ShowTabSwitcher(isReverse);
+            }
+            else if (CommandPaletteOverlay.Visibility == Visibility.Visible)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                }
             }
             else if (TabSwitcherOverlay.Visibility == Visibility.Visible)
             {
@@ -1001,5 +1014,186 @@ namespace BuildConsole
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
             => GetActiveWebView().CoreWebView2?.OpenDevToolsWindow();
+
+        // ── Command Palette (Ctrl+K) logic ──────────────────────────────────
+        private readonly List<PaletteItem> _allPaletteItems = new();
+
+        private void ToggleCommandPalette()
+        {
+            if (CommandPaletteOverlay.Visibility == Visibility.Visible)
+            {
+                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                BuildPaletteItems();
+                CommandPaletteOverlay.Visibility = Visibility.Visible;
+                PaletteSearchBox.Text = string.Empty;
+                PerformPaletteSearch();
+
+                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                {
+                    PaletteSearchBox.Focus();
+                }));
+            }
+        }
+
+        private void CommandPaletteOverlay_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource == CommandPaletteOverlay)
+            {
+                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void BuildPaletteItems()
+        {
+            _allPaletteItems.Clear();
+
+            // 1. Files
+            try
+            {
+                string repoDir = @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
+                if (Directory.Exists(repoDir))
+                {
+                    foreach (var f in Directory.GetFiles(repoDir, "*.*", SearchOption.AllDirectories))
+                    {
+                        string name = Path.GetFileName(f);
+                        if (name.StartsWith(".") || f.Contains("\\bin\\") || f.Contains("\\obj\\") || f.Contains("\\node_modules\\"))
+                            continue;
+
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        string icon = ext switch
+                        {
+                            ".cs" => "⚡",
+                            ".xaml" => "🎨",
+                            ".ts" or ".tsx" or ".js" or ".jsx" => "⚛",
+                            ".json" => "⚙",
+                            ".sql" => "🗄️",
+                            ".md" => "📝",
+                            _ => "📄"
+                        };
+
+                        _allPaletteItems.Add(new PaletteItem
+                        {
+                            Category = "Files",
+                            Icon = icon,
+                            Title = name,
+                            Description = f,
+                            ExecuteAction = () => OpenFileTab(f)
+                        });
+
+                        if (_allPaletteItems.Count > 150) break;
+                    }
+                }
+            }
+            catch { }
+
+            // 2. Chats
+            _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "Antigravity IDE layout & Catppuccin theme", Description = "Active pairing chat session", ExecuteAction = () => LeftSidebar.SwitchView("Chats") });
+            _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "TreeViewUsability & Mouse Wheel Fix", Description = "File Explorer smooth scroll discussion", ExecuteAction = () => LeftSidebar.SwitchView("Chats") });
+            _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "UI Automation & Web Recorder Test", Description = "Recorded Web UI Test suite", ExecuteAction = () => LeftSidebar.SwitchView("Automation") });
+
+            // 3. Builds
+            _allPaletteItems.Add(new PaletteItem { Category = "Builds", Icon = "📦", Title = "dotnet build --configuration Release", Description = "Build desktop console application", ExecuteAction = () => SetBottomPanel(true, 0) });
+            _allPaletteItems.Add(new PaletteItem { Category = "Builds", Icon = "📦", Title = "Compile MSP Backend & Portal Services", Description = "Full solution build queue", ExecuteAction = () => SetBottomPanel(true, 0) });
+
+            // 4. Automation Tests
+            _allPaletteItems.Add(new PaletteItem { Category = "Automation", Icon = "⚡", Title = "Public Facing Website Smoke Test", Description = "Target: https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/", ExecuteAction = () => LeftSidebar.SwitchView("Automation") });
+            _allPaletteItems.Add(new PaletteItem { Category = "Automation", Icon = "⚡", Title = "Admin Panel v2 Navigation Test", Description = "Target: https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/admin-panel/adminv2", ExecuteAction = () => OpenWebTab("https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/admin-panel/adminv2", "Admin Center", "\uE7EF") });
+
+            // 5. Git
+            _allPaletteItems.Add(new PaletteItem { Category = "Git", Icon = "🔀", Title = "git status", Description = "Check working tree status", ExecuteAction = () => { SetBottomPanel(true, 1); TerminalView.SetCommand("git status"); } });
+            _allPaletteItems.Add(new PaletteItem { Category = "Git", Icon = "🔀", Title = "git pull", Description = "Fetch and merge changes", ExecuteAction = () => { SetBottomPanel(true, 1); TerminalView.SetCommand("git pull"); } });
+            _allPaletteItems.Add(new PaletteItem { Category = "Git", Icon = "🔀", Title = "git push", Description = "Push local commits", ExecuteAction = () => { SetBottomPanel(true, 1); TerminalView.SetCommand("git push"); } });
+            _allPaletteItems.Add(new PaletteItem { Category = "Git", Icon = "🔀", Title = "git log", Description = "View commit history log", ExecuteAction = () => { SetBottomPanel(true, 1); TerminalView.SetCommand("git log --oneline -20"); } });
+        }
+
+        private void PerformPaletteSearch()
+        {
+            string query = PaletteSearchBox.Text.Trim().ToLowerInvariant();
+            string selectedCat = "All";
+            if (ChipFiles.IsChecked == true) selectedCat = "Files";
+            else if (ChipChats.IsChecked == true) selectedCat = "Chats";
+            else if (ChipBuilds.IsChecked == true) selectedCat = "Builds";
+            else if (ChipAutomation.IsChecked == true) selectedCat = "Automation";
+            else if (ChipGit.IsChecked == true) selectedCat = "Git";
+
+            var filtered = _allPaletteItems.Where(item =>
+            {
+                if (selectedCat != "All" && !item.Category.Equals(selectedCat, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                if (string.IsNullOrEmpty(query)) return true;
+
+                return item.Title.ToLowerInvariant().Contains(query) ||
+                       item.Description.ToLowerInvariant().Contains(query) ||
+                       item.Category.ToLowerInvariant().Contains(query);
+            }).ToList();
+
+            PaletteResultsList.ItemsSource = filtered;
+            if (filtered.Count > 0)
+                PaletteResultsList.SelectedIndex = 0;
+        }
+
+        private void PaletteSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            PerformPaletteSearch();
+        }
+
+        private void PaletteChip_Click(object sender, RoutedEventArgs e)
+        {
+            PerformPaletteSearch();
+        }
+
+        private void PaletteSearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Down)
+            {
+                e.Handled = true;
+                if (PaletteResultsList.Items.Count > 0)
+                    PaletteResultsList.SelectedIndex = Math.Min(PaletteResultsList.SelectedIndex + 1, PaletteResultsList.Items.Count - 1);
+            }
+            else if (e.Key == Key.Up)
+            {
+                e.Handled = true;
+                if (PaletteResultsList.Items.Count > 0)
+                    PaletteResultsList.SelectedIndex = Math.Max(PaletteResultsList.SelectedIndex - 1, 0);
+            }
+            else if (e.Key == Key.Return)
+            {
+                e.Handled = true;
+                ExecuteSelectedPaletteItem();
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void PaletteResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            ExecuteSelectedPaletteItem();
+        }
+
+        private void ExecuteSelectedPaletteItem()
+        {
+            if (PaletteResultsList.SelectedItem is PaletteItem item)
+            {
+                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                item.ExecuteAction?.Invoke();
+            }
+        }
+    }
+
+    public class PaletteItem
+    {
+        public string Category { get; set; } = "Files";
+        public string CategoryUpper => Category.ToUpper();
+        public string Icon { get; set; } = "📁";
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public Action? ExecuteAction { get; set; }
     }
 }
