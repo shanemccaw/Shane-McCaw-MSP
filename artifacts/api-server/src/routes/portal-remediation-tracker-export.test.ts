@@ -38,10 +38,32 @@ vi.mock("@workspace/db", () => {
       status: "status",
       completedAt: "completed_at",
       updatedAt: "updated_at",
+      verificationState: "verification_state",
+      verifiedAt: "verified_at",
+      verifiedByRunId: "verified_by_run_id",
+      updatedByUserId: "updated_by_user_id",
     },
     tenantsTable: {
       id: "id",
       customerName: "customer_name",
+    },
+    usersTable: {
+      id: "id",
+      name: "name",
+      mspRole: "msp_role",
+      mspId: "msp_id",
+    },
+    mspsTable: {
+      id: "id",
+      name: "name",
+    },
+    mspDiagnosticFindingsTable: {
+      runId: "run_id",
+      customerId: "customer_id",
+      checkKey: "check_key",
+      title: "title",
+      checkLabel: "check_label",
+      severity: "severity",
     },
   };
 });
@@ -144,5 +166,63 @@ describe("GET /portal/remediation-tracker/export.pdf", () => {
     expect(htmlToPdfCalls.length).toBe(1);
     expect(htmlToPdfCalls[0]).toContain("Remediation Tracker");
     expect(htmlToPdfCalls[0]).toContain("Halden Materials");
+  });
+});
+
+describe("GET /portal/remediation-tracker/evidence-pack.pdf", () => {
+  it("rejects a token with no customer identity", async () => {
+    const res = await request(makeApp({ id: 7, role: "client" })).get(
+      "/api/portal/remediation-tracker/evidence-pack.pdf",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("renders the design's own 'nothing verified yet' copy when no step is verified", async () => {
+    mockSelectResultsQueue = [[], [{ customerName: "Halden Materials" }]];
+
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/evidence-pack.pdf");
+
+    expect(res.status).toBe(200);
+    expect(htmlToPdfCalls.length).toBe(1);
+    expect(htmlToPdfCalls[0]).toContain("nothing verified yet");
+    expect(htmlToPdfCalls[0]).toContain("A tick on its own is not evidence.");
+  });
+
+  it("cites the real finding, verified date and verifier for a verified step, gated on verificationState", async () => {
+    mockSelectResultsQueue = [
+      [
+        {
+          stepId: "s7",
+          status: "completed",
+          verifiedAt: new Date("2026-08-05T00:00:00Z"),
+          verifiedByRunId: "11111111-1111-1111-1111-111111111111",
+          updatedByUserId: 3,
+        },
+      ],
+      [{ customerName: "Halden Materials" }],
+      [
+        {
+          runId: "11111111-1111-1111-1111-111111111111",
+          checkKey: "identity:mfa-registration",
+          title: "MFA now enforced for all 11 admin accounts",
+          checkLabel: "MFA registration",
+          severity: "ok",
+        },
+      ],
+      [{ id: 3, name: "Jamie Ops", mspRole: "MSPAdmin", mspId: 9 }],
+      [{ id: 9, name: "Shane McCaw Consulting" }],
+    ];
+
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/evidence-pack.pdf");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(res.headers["content-disposition"]).toContain("Halden-Materials-remediation-evidence-pack.pdf");
+    expect(htmlToPdfCalls.length).toBe(1);
+    const html = htmlToPdfCalls[0];
+    expect(html).toContain("Step 7");
+    expect(html).toContain("MFA now enforced for all 11 admin accounts");
+    expect(html).toContain("Shane McCaw Consulting");
+    expect(html).toContain("August 5, 2026");
   });
 });
