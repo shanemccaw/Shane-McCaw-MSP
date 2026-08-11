@@ -14,15 +14,42 @@ param(
   [string]$Uri
 )
 
-# Git #763 fix - Shane: a real prompt (full of embedded double quotes, e.g.
-# quoted step names like "Move one real recurring workflow...") came through
-# as just the single word "one". PowerShell's LEGACY native-command argument
-# passing is a well-known source of exactly this failure mode - it mangles
-# long strings containing embedded quotes when handing them to a native exe
-# like claude.exe, while quote-free tokens (model/effort/title/cwd) are
-# unaffected, matching what Shane saw. 'Standard' mode implements correct
-# Win32 argv escaping instead. No-op (silently ignored) on PowerShell < 7.3.
-$PSNativeCommandArgumentPassing = 'Standard'
+# Git #767 fix - Shane: even after #766's --prefill fix, a prompt with an
+# embedded quote still truncated exactly at that quote character ("Steps 24
+# (\"Move..." cut off right after "(Move"). #763's $PSNativeCommandArgumentPassing
+# = 'Standard' fix never actually took effect - that setting only exists in
+# PowerShell 7.3+ (pwsh.exe), but the registered mybuilder:// command
+# launches plain `powershell.exe` (Windows PowerShell 5.1), which silently
+# ignores it, exactly as #763's own comment warned it might. Rather than bet
+# on pwsh.exe being installed, this now does the Win32 argv escaping itself
+# (the standard C-runtime quoting algorithm - double backslashes before a
+# quote, escape the quote, wrap the whole argument in quotes) and hands
+# Start-Process a single pre-escaped command-line string via -ArgumentList,
+# bypassing PowerShell's own (version-dependent, unreliable here) automatic
+# argument conversion entirely.
+function ConvertTo-Win32EscapedArgument {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+  if ($Value -eq '') { return '""' }
+  if ($Value -notmatch '[\s"]') { return $Value }
+  $sb = [System.Text.StringBuilder]::new()
+  [void]$sb.Append('"')
+  $backslashes = 0
+  foreach ($ch in $Value.ToCharArray()) {
+    if ($ch -eq '\') {
+      $backslashes++
+    } elseif ($ch -eq '"') {
+      [void]$sb.Append('\' * (($backslashes * 2) + 1))
+      [void]$sb.Append('"')
+      $backslashes = 0
+    } else {
+      if ($backslashes -gt 0) { [void]$sb.Append('\' * $backslashes); $backslashes = 0 }
+      [void]$sb.Append($ch)
+    }
+  }
+  if ($backslashes -gt 0) { [void]$sb.Append('\' * ($backslashes * 2)) }
+  [void]$sb.Append('"')
+  return $sb.ToString()
+}
 
 Add-Type -AssemblyName System.Web
 
@@ -93,4 +120,5 @@ $claudeArgs += $prompt
 "[$(Get-Date -Format o)] prompt length=$($prompt.Length) preview=$($prompt.Substring(0, [Math]::Min(120, $prompt.Length)))" |
   Set-Content -Path (Join-Path $env:TEMP "mybuilder-last-run.log") -Encoding utf8
 
-& $claudeExe @claudeArgs
+$escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgument $_ }) -join ' '
+Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -NoNewWindow -Wait
