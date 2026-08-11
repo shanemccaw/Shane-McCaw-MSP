@@ -347,6 +347,10 @@ function buildPanel() {
     .queue-item-row.queue-status-done    { border-left: 3px solid #7fae91; opacity: .75; }
     .queue-item-row.queue-status-failed  { border-left: 3px solid #e57a7a; }
     .queue-item-row.queue-status-canceled { border-left: 3px solid #5a5856; opacity: .6; }
+    /* Git #798 — a queued item nested under the queued item that blocks it.
+       .issue-row's own base margin-left is 16px; this needs to visibly
+       clear that, not just tie with it. */
+    .queue-item-row.nested-queue-item { margin-left: 34px; }
     .issue-row .check { color: #7fae91; font-weight: 800; flex: none; margin-top: 1px; }
     .issue-row .issue-actions { display: flex; gap: 4px; flex: none; }
     .issue-row .ibtn {
@@ -1290,6 +1294,41 @@ function buildQueueItemRow(item) {
   return row;
 }
 
+/**
+ * Git #798 — Shane: "if 797 is blocked by 796 it should be nested under
+ * 796." Matches a queued item's `blockedByNumber` against another queue
+ * item's own `githubNumber` (the issue that OTHER build is for) — when the
+ * blocker is also sitting in the queue, indent the blocked one directly
+ * under it instead of leaving them as two unrelated flat rows. A blocker
+ * that isn't itself queued still shows via buildQueueItemRow's own
+ * "waiting on #N" line, just not nested — same scoping choice
+ * renderSectionWithBlocking() made for the Epics/Issues sections.
+ */
+function renderQueueSection(container, queueItems) {
+  const byGithubNumber = new Map();
+  for (const item of queueItems) {
+    if (item.githubNumber != null) byGithubNumber.set(item.githubNumber, item);
+  }
+  const childrenOf = new Map(); // blocker githubNumber -> queue item[]
+  const topLevel = [];
+  for (const item of queueItems) {
+    const blockerNum = item.blockedByNumber;
+    if (blockerNum != null && blockerNum !== item.githubNumber && byGithubNumber.has(blockerNum)) {
+      if (!childrenOf.has(blockerNum)) childrenOf.set(blockerNum, []);
+      childrenOf.get(blockerNum).push(item);
+    } else {
+      topLevel.push(item);
+    }
+  }
+  const renderOne = (item, nested) => {
+    const row = buildQueueItemRow(item);
+    if (nested) row.classList.add("nested-queue-item");
+    container.appendChild(row);
+    for (const child of childrenOf.get(item.githubNumber) ?? []) renderOne(child, true);
+  };
+  for (const item of topLevel) renderOne(item, false);
+}
+
 function renderInProgressList() {
   if (!panelEls || panelEls.ipPanel.hidden) return;
   const { ipList } = panelEls;
@@ -1310,7 +1349,7 @@ function renderInProgressList() {
     h.className = "milestone";
     h.textContent = `📋 Queued Builds (${queueItems.length})`;
     ipList.appendChild(h);
-    for (const item of queueItems) ipList.appendChild(buildQueueItemRow(item));
+    renderQueueSection(ipList, queueItems);
   }
 
   // Git #744 follow-up — Shane: "add a new label 'Shane To-Do'... In our
