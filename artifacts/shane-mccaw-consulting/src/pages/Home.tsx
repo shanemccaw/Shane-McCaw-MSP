@@ -827,7 +827,7 @@ export default function Home() {
                 </div>
                 <h2 style={{ fontSize: "clamp(30px,5.8vw,46px)", lineHeight: 1.08, letterSpacing: "-.03em", fontWeight: 800, color: "#f8fafc", margin: "0 0 18px" }}>
                   Want your actual number,{" "}
-                  <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>not an estimate?</span>
+                  <span style={{ background: "linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#9B7CFF)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>not an estimate?</span>
                 </h2>
                 <p style={{ fontSize: 17, lineHeight: 1.65, color: "#94a3b8", margin: "0 0 20px" }}>
                   {closingLine} The Copilot Readiness Assessment connects to your tenant through the Microsoft Graph API and scores all six pillars on what is actually there — every site, every policy, every
