@@ -1067,13 +1067,22 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
     // depend on our local sync having run recently) rather than trusting a
     // possibly-stale bt_issues.epic_id — then matched against bt_epics
     // (best-effort: null if that epic isn't tracked here at all yet).
+    //
+    // Git #752 follow-up — Shane searched #704 (itself a nested epic under
+    // #647), clicked it, and landed on #647's chat instead: this only ever
+    // resolved the PARENT epic via parent_issue_url, never checked whether
+    // the searched number itself IS an epic. Same unification
+    // /extension/in-progress already uses — the epic whose chat this
+    // should resolve to is the number itself if it's an epic, its parent
+    // otherwise.
+    const isEpic = !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0);
+    const epicLookupNum = isEpic ? gh.number : getParentNumber(gh.parent_issue_url);
     let epic: { id: number; title: string; githubNumber: number | null } | null = null;
-    const parentNum = getParentNumber(gh.parent_issue_url);
-    if (parentNum !== null) {
+    if (epicLookupNum !== null) {
       const [epicRow] = await db
         .select({ id: btEpicsTable.id, title: btEpicsTable.title, githubNumber: btEpicsTable.githubNumber })
         .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, parentNum))
+        .where(eq(btEpicsTable.githubNumber, epicLookupNum))
         .limit(1);
       epic = epicRow ?? null;
     }
@@ -1084,7 +1093,7 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
       state: gh.state,
       labels: gh.labels.map((l) => l.name),
       htmlUrl: gh.html_url,
-      isEpic: !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0),
+      isEpic,
       epic,
     });
   } catch (err) {
