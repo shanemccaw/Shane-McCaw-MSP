@@ -82,6 +82,20 @@ interface AuthContextValue extends AuthState {
   ) => Promise<Response>;
   /** true while impersonating another user */
   isImpersonating: boolean;
+  /**
+   * Git #796 — swap the live session to an impersonated tenant in place (no
+   * new tab, no reload). Before the FIRST call, the real admin's session is
+   * stashed in memory so returnToAdmin() can restore it later. `targetSlug`
+   * is optional: pass it to also land on that tenant's landing route (same
+   * behavior as the URL-token boot flow); omit it to swap identity only and
+   * let the current route re-render as the new tenant.
+   */
+  switchToTenant: (token: string, targetSlug?: string) => Promise<void>;
+  /**
+   * Git #796 — restore the real admin's stashed session in place. No-op if
+   * there is nothing stashed (i.e. switchToTenant was never called).
+   */
+  returnToAdmin: () => Promise<void>;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -117,6 +131,29 @@ function msUntilRefreshExpiry(): number {
   return new Date(stored).getTime() - Date.now();
 }
 
+/**
+ * Git #796 — the actual token exchange, shared by the URL-token boot flow
+ * (mount-only useEffect below) and the callable switchToTenant(). Deliberately
+ * does NOT touch React state or navigate; callers own that so each keeps its
+ * own branching (the boot flow's missing-target-slug toast vs. switchToTenant's
+ * simpler in-place swap).
+ */
+async function exchangeImpersonationToken(
+  token: string,
+): Promise<{ accessToken: string; user: AuthUser } | null> {
+  try {
+    const res = await fetch("/api/auth/impersonate-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { accessToken: string; user: AuthUser };
+  } catch {
+    return null;
+  }
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -149,6 +186,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Ref to track impersonation flag for timer decisions
   const isImpersonatingRef = useRef(false);
   const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
+  /**
+   * Git #796 — the real admin's session, stashed in memory on the FIRST
+   * switchToTenant() call so returnToAdmin() can restore it in place. Deliberately
+   * NOT sessionStorage: impersonation sessions must not carry a refresh token
+   * (see doRefresh's impersonation skip below), so the stash has to live
+   * somewhere sessionStorage-clearing during impersonation can't touch.
+   */
+  const adminSessionStashRef = useRef<{
+    accessToken: string;
+    refreshToken: string | null;
+    refreshExpiresAt: string | null;
+  } | null>(null);
 
   // ── Timer management ─────────────────────────────────────────────────────
 
@@ -263,75 +312,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionStorage.removeItem(REFRESH_TOKEN_KEY);
       sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
 
-      fetch("/api/auth/impersonate-exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: impersonationToken }),
-      })
-        .then(async (res) => {
-          if (res.ok) {
-            const data = (await res.json()) as { accessToken: string; user: AuthUser };
-            // Set state directly — do NOT call applyTokens(), which schedules
-            // a refresh-expiry warning and would start the periodic silent-
-            // refresh interval. An impersonation session has no refresh
-            // token and must expire naturally when its 30-min JWT expires.
-            setState({
-              user: data.user,
-              accessToken: data.accessToken,
-              isLoading: false,
-              isRefreshing: false,
-              isExpiringSoon: false,
-              isImpersonating: true,
-            });
+      exchangeImpersonationToken(impersonationToken).then((data) => {
+        if (data) {
+          // Set state directly — do NOT call applyTokens(), which schedules
+          // a refresh-expiry warning and would start the periodic silent-
+          // refresh interval. An impersonation session has no refresh
+          // token and must expire naturally when its 30-min JWT expires.
+          setState({
+            user: data.user,
+            accessToken: data.accessToken,
+            isLoading: false,
+            isRefreshing: false,
+            isExpiringSoon: false,
+            isImpersonating: true,
+          });
 
-            // Own the FULL redirect here. RootRedirect early-returns whenever
-            // an impersonation_token is present (see App.tsx), so this is the
-            // only code that decides where the impersonated tab lands. A hard
-            // navigation would wipe the in-memory access token (impersonation
-            // sessions have no refresh token), so we navigate client-side by
-            // pushing the target URL and letting wouter re-render.
-            if (targetSlug) {
-              // Assessment lands on the assessment shell; CustomerUser lands on
-              // M365 Health; MSP-side roles land on the dashboard. mspRole is
-              // the impersonated identity's role.
-              const landing =
-                data.user.mspRole === "Assessment"
-                  ? "copilot-readiness"
-                  : data.user.mspRole === "CustomerUser"
-                    ? "m365-health"
-                    : "dashboard";
-              const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-              const target = `${base}/${targetSlug}/${landing}`;
-              window.history.pushState({}, "", target);
-              // wouter's browser location hook patches pushState to emit its
-              // own event, so this push triggers a client-side route change
-              // without a full reload.
-            } else {
-              // Defensive: post-fix every impersonation URL carries target_slug.
-              // If it's missing we cannot safely pick a tenant, so surface it
-              // and just strip the token from the URL.
-              toast.error(
-                "Impersonation started but the target tenant was missing — please navigate manually.",
-              );
-              reportClientEvent(
-                data.accessToken,
-                "ImpersonationMissingTargetSlug",
-                "Impersonation exchange succeeded but target_slug was missing from the URL",
-                "client.frontend",
-                { mspRole: data.user.mspRole, isImpersonating: true },
-              );
-              const url = new URL(window.location.href);
-              url.searchParams.delete("impersonation_token");
-              url.searchParams.delete("target_slug");
-              window.history.replaceState({}, "", url.toString());
-            }
+          // Own the FULL redirect here. RootRedirect early-returns whenever
+          // an impersonation_token is present (see App.tsx), so this is the
+          // only code that decides where the impersonated tab lands. A hard
+          // navigation would wipe the in-memory access token (impersonation
+          // sessions have no refresh token), so we navigate client-side by
+          // pushing the target URL and letting wouter re-render.
+          if (targetSlug) {
+            // Assessment lands on the assessment shell; CustomerUser lands on
+            // M365 Health; MSP-side roles land on the dashboard. mspRole is
+            // the impersonated identity's role.
+            const landing =
+              data.user.mspRole === "Assessment"
+                ? "copilot-readiness"
+                : data.user.mspRole === "CustomerUser"
+                  ? "m365-health"
+                  : "dashboard";
+            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+            const target = `${base}/${targetSlug}/${landing}`;
+            window.history.pushState({}, "", target);
+            // wouter's browser location hook patches pushState to emit its
+            // own event, so this push triggers a client-side route change
+            // without a full reload.
           } else {
-            setState((s) => ({ ...s, isLoading: false }));
+            // Defensive: post-fix every impersonation URL carries target_slug.
+            // If it's missing we cannot safely pick a tenant, so surface it
+            // and just strip the token from the URL.
+            toast.error(
+              "Impersonation started but the target tenant was missing — please navigate manually.",
+            );
+            reportClientEvent(
+              data.accessToken,
+              "ImpersonationMissingTargetSlug",
+              "Impersonation exchange succeeded but target_slug was missing from the URL",
+              "client.frontend",
+              { mspRole: data.user.mspRole, isImpersonating: true },
+            );
+            const url = new URL(window.location.href);
+            url.searchParams.delete("impersonation_token");
+            url.searchParams.delete("target_slug");
+            window.history.replaceState({}, "", url.toString());
           }
-        })
-        .catch(() => {
+        } else {
           setState((s) => ({ ...s, isLoading: false }));
-        });
+        }
+      });
       return;
     }
 
@@ -455,6 +495,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await doRefresh();
   }, [doRefresh]);
 
+  // ── Git #796: in-place tenant switching ──────────────────────────────────
+
+  const switchToTenant = useCallback(
+    async (token: string, targetSlug?: string): Promise<void> => {
+      // Stash the real admin's session on the FIRST switch only. A later
+      // tenant-to-tenant switch (calling this again without returning to
+      // admin first) must not clobber the stash with impersonated tokens.
+      if (!adminSessionStashRef.current && state.accessToken) {
+        adminSessionStashRef.current = {
+          accessToken: state.accessToken,
+          refreshToken: sessionStorage.getItem(REFRESH_TOKEN_KEY),
+          refreshExpiresAt: sessionStorage.getItem(REFRESH_EXPIRES_AT_KEY),
+        };
+      }
+
+      // Same invariant as the URL-token boot flow: an impersonation session
+      // has no refresh token and must expire naturally at its own 30-min JWT
+      // lifetime, so stop the admin's silent-refresh loop before swapping.
+      clearTimers();
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
+
+      const data = await exchangeImpersonationToken(token);
+      if (!data) {
+        setState((s) => ({ ...s, isLoading: false }));
+        reportClientEvent(
+          state.accessToken,
+          "TenantSwitchFailed",
+          "switchToTenant: impersonate-exchange call failed",
+          "auth.impersonation",
+          { targetSlug: targetSlug ?? null },
+        );
+        return;
+      }
+
+      // Set state directly — do NOT call applyTokens(), for the same reason
+      // as the boot flow: no refresh-expiry warning, no silent-refresh interval.
+      setState({
+        user: data.user,
+        accessToken: data.accessToken,
+        isLoading: false,
+        isRefreshing: false,
+        isExpiringSoon: false,
+        isImpersonating: true,
+      });
+
+      if (targetSlug) {
+        const landing =
+          data.user.mspRole === "Assessment"
+            ? "copilot-readiness"
+            : data.user.mspRole === "CustomerUser"
+              ? "m365-health"
+              : "dashboard";
+        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+        window.history.pushState({}, "", `${base}/${targetSlug}/${landing}`);
+      }
+      // When targetSlug is omitted, the caller (e.g. the Phase 2 tenant
+      // switcher floaty) wants an identity swap only — the current route
+      // re-renders as the new tenant rather than navigating away.
+
+      reportClientEvent(
+        data.accessToken,
+        "TenantSwitchApplied",
+        `Switched in place to mspRole=${data.user.mspRole ?? "unknown"}`,
+        "auth.impersonation",
+        { mspRole: data.user.mspRole, targetSlug: targetSlug ?? null },
+      );
+    },
+    [state.accessToken, clearTimers],
+  );
+
+  const returnToAdmin = useCallback(async (): Promise<void> => {
+    const stash = adminSessionStashRef.current;
+    if (!stash) return;
+    adminSessionStashRef.current = null;
+
+    applyTokens(stash.accessToken, stash.refreshToken ?? undefined, stash.refreshExpiresAt ?? undefined);
+
+    // applyTokens() only schedules the refresh-expiry warning — it doesn't
+    // restart the periodic silent-refresh interval (login/completeMfaLogin
+    // do that explicitly for the same reason), so resume it here.
+    if (silentRefreshTimerRef.current) clearInterval(silentRefreshTimerRef.current);
+    silentRefreshTimerRef.current = setInterval(() => {
+      void doRefresh();
+    }, SILENT_REFRESH_INTERVAL_MS);
+
+    reportClientEvent(
+      stash.accessToken,
+      "TenantSwitchReturnToAdmin",
+      "Returned to admin session in place",
+      "auth.impersonation",
+    );
+  }, [applyTokens, doRefresh]);
+
   const fetchWithAuth = useCallback(
     async (
       input: RequestInfo | URL,
@@ -542,6 +676,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     extendSession,
     fetchWithAuth,
     isImpersonating: state.isImpersonating,
+    switchToTenant,
+    returnToAdmin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
