@@ -1,0 +1,77 @@
+<Window x:Class="BuildConsole.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:BuildConsole"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="BuildConsole" Height="900" Width="1600"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!-- Left: chats / board list (placeholder) -->
+            <ColumnDefinition Width="220" MinWidth="160" />
+            <!-- Splitter -->
+            <ColumnDefinition Width="4" />
+            <!-- Middle: Claude.ai WebView2 -->
+            <ColumnDefinition Width="*" />
+            <!-- Splitter -->
+            <ColumnDefinition Width="4" />
+            <!-- Right: build queue panel (placeholder) -->
+            <ColumnDefinition Width="300" MinWidth="200" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ── LEFT PANEL: chats / board list placeholder ── -->
+        <Border Grid.Column="0"
+                Background="#1E1E2E"
+                BorderBrush="#313244"
+                BorderThickness="0,0,1,0">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
+                <TextBlock Text="📋"
+                           FontSize="32"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Boards / Chats"
+                           FontSize="12"
+                           Foreground="#CDD6F4"
+                           HorizontalAlignment="Center"
+                           Margin="0,6,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- Draggable splitter between Left and Middle -->
+        <GridSplitter Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      Background="#313244"
+                      ShowsPreview="False" />
+
+        <!-- ── MIDDLE PANEL: Claude.ai ── -->
+        <wv2:WebView2 x:Name="ClaudeWebView"
+                      Grid.Column="2"
+                      Source="https://claude.ai" />
+
+        <!-- Draggable splitter between Middle and Right -->
+        <GridSplitter Grid.Column="3"
+                      HorizontalAlignment="Stretch"
+                      Background="#313244"
+                      ShowsPreview="False" />
+
+        <!-- ── RIGHT PANEL: build queue placeholder ── -->
+        <Border Grid.Column="4"
+                Background="#1E1E2E"
+                BorderBrush="#313244"
+                BorderThickness="1,0,0,0">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.4">
+                <TextBlock Text="⚙️"
+                           FontSize="32"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Build Queue"
+                           FontSize="12"
+                           Foreground="#CDD6F4"
+                           HorizontalAlignment="Center"
+                           Margin="0,6,0,0" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
