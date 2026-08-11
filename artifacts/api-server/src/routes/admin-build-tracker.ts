@@ -1381,6 +1381,39 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
 });
 
 /**
+ * Git #799 — Shane: real issue #797 already carries a real GitHub
+ * "blocked by #796" dependency (set via CLAUDE.md's #784 workflow), but the
+ * queue only ever looked at `blockedByNumber` — the column set from an
+ * explicit `--blocked-by` flag typed at queue time, which Shane never set
+ * for #797. GitHub's real dependency is the actual source of truth (same
+ * one /extension/in-progress already reads for the Epics/Issues sections),
+ * so it wins whenever the queued build IS a real tracked issue; the stored
+ * column only matters as a manual override for a queued prompt that isn't
+ * tied to a real issue at all.
+ */
+async function fetchRealBlockedByNumber(issueNumber: number): Promise<number | null> {
+  if (!process.env.GITHUB_TOKEN) return null;
+  try {
+    const depRes = await ghFetch(
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/dependencies/blocked_by`,
+    );
+    if (!depRes.ok) return null;
+    const deps = (await depRes.json()) as Array<{ number: number }>;
+    return deps[0]?.number ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function effectiveBlockedByNumber(item: { githubNumber: number | null; blockedByNumber: number | null }): Promise<number | null> {
+  if (item.githubNumber != null) {
+    const real = await fetchRealBlockedByNumber(item.githubNumber);
+    if (real != null) return real;
+  }
+  return item.blockedByNumber;
+}
+
+/**
  * GET /admin/build-tracker/extension/queue
  *
  * Every non-terminal-for-long queue row, for the extension's own panel
@@ -1397,7 +1430,12 @@ router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Requ
       .from(btBuildQueueTable)
       .where(sql`status IN ('queued','running') OR updated_at > ${cutoff}`)
       .orderBy(asc(btBuildQueueTable.createdAt));
-    res.json({ items: rows });
+    // Git #799 — real GitHub dependency overrides the stored column for
+    // display too, so nesting in the panel matches what's actually true.
+    const items = await Promise.all(
+      rows.map(async (row) => ({ ...row, blockedByNumber: await effectiveBlockedByNumber(row) })),
+    );
+    res.json({ items });
   } catch (err) {
     log.error({ err }, "GET /extension/queue failed");
     res.status(500).json({ error: "Failed to list queue" });
@@ -1429,8 +1467,12 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
     const ready: typeof queued = [];
     for (const item of queued) {
       if (ready.length >= limit) break;
-      if (item.blockedByNumber == null) { ready.push(item); continue; }
-      const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(item.blockedByNumber) : null;
+      // Git #799 — checks the item's REAL GitHub blocked-by dependency
+      // (when it's tied to a real issue), not just the stored column set
+      // from an explicit --blocked-by flag at queue time.
+      const blockerNum = await effectiveBlockedByNumber(item);
+      if (blockerNum == null) { ready.push(item); continue; }
+      const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(blockerNum) : null;
       const blockerCleared = !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
       if (blockerCleared) ready.push(item);
     }
