@@ -959,17 +959,22 @@ function pollingBlocked() {
   return false;
 }
 
-/** Whichever issue list is actually on screen right now — focused epic's open issues, or the full browse list. */
-function currentIssueList() {
-  const focusEpic = boardCache?.data?.currentChat?.focusEpic;
-  if (focusEpic && !showAllOverride) return boardCache.data.currentChat.focusEpicOpenIssues ?? [];
-  return boardCache?.data?.issues ?? [];
-}
-
-/** Every 15s: quiet quick-sync of just the in-flight-labeled issues on screen — the ones actually likely to change soon. */
+/**
+ * Every 15s: quiet quick-sync of every in-flight-labeled issue Build
+ * Tracker currently knows about — GLOBAL, not just currentIssueList()'s
+ * scope (whatever the main panel's current view happens to be showing).
+ * Git #723 follow-up — Shane: "things are moving I have to manually
+ * refresh it." Root cause: the left In Progress panel shows in-flight work
+ * across every epic, but this poll only ever checked issues tied to
+ * whichever epic the CURRENT claude.ai chat happens to be linked to — an
+ * issue moving in a totally different epic (the normal case when running
+ * several parallel sessions) was invisible to it no matter how long you
+ * waited. boardCache.data.issues is already every OPEN issue site-wide, so
+ * filtering that instead covers both panels with the same one poll.
+ */
 async function pollInFlightIssues() {
   if (pollingBlocked() || !boardCache) return;
-  const numbers = currentIssueList()
+  const numbers = (boardCache.data.issues ?? [])
     .filter((i) => (i.labels ?? []).includes("in-flight") && typeof i.githubNumber === "number")
     .map((i) => i.githubNumber);
   if (numbers.length === 0) return;
@@ -1918,7 +1923,19 @@ async function onIssueRefHover(e) {
 function renderIssueTooltip(info, num) {
   const { issueTooltip } = panelEls;
   if (info?.error) {
-    issueTooltip.innerHTML = `<div class="tt-title">#${num}</div><div class="tt-meta">${escapeHtml(info.error)}</div>`;
+    // A failed lookup still shouldn't be a dead end — "Ask Claude" doesn't
+    // need any of the fetched data (Close/Reopen does, so it's the one
+    // button that's genuinely unavailable here).
+    issueTooltip.innerHTML = `
+      <div class="tt-title">#${num}</div>
+      <div class="tt-meta">${escapeHtml(info.error)}</div>
+      <div class="tt-actions">
+        <button type="button" class="tt-btn" data-action="tt-ask">Ask Claude</button>
+      </div>
+    `;
+    issueTooltip.querySelector('[data-action="tt-ask"]').addEventListener("click", () => {
+      insertTextIntoComposer(`Let's look at Git #${num}...`);
+    });
     return;
   }
   const closed = info.state === "closed";
