@@ -64,6 +64,8 @@ namespace BuildConsole
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
             ClaudeWebView.SourceChanged       += WebView_SourceChanged;
 
+            InitializeClaudeWebView();
+
             // Build Queue selection -> Build Log
             BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
 
@@ -378,14 +380,19 @@ namespace BuildConsole
             headerPanel.Children.Add(closeBtn);
 
             // WebView2 content
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
-            {
-                Source = new Uri(url)
-            };
-
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
+
+            wv.Loaded += async (s, e) =>
+            {
+                bool ready = await EnsureWebViewInitializedAsync(wv);
+                if (ready)
+                {
+                    wv.CoreWebView2.Navigate(url);
+                }
+            };
 
             // Browser navigation toolbar bar
             var navBar = new Grid
@@ -655,13 +662,11 @@ namespace BuildConsole
                 var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
                 wv.Loaded += async (s, e) =>
                 {
-                    try
+                    bool ready = await EnsureWebViewInitializedAsync(wv);
+                    if (ready)
                     {
-                        await wv.EnsureCoreWebView2Async();
-                        wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-                        wv.NavigateToString(htmlContent);
+                        wv.CoreWebView2.NavigateToString(htmlContent);
                     }
-                    catch { }
                 };
 
                 tabContent = wv;
@@ -1010,6 +1015,44 @@ namespace BuildConsole
         // ── Menu: SQL ─────────────────────────────────────────────────────────
         private void OpenSql_Click(object sender, RoutedEventArgs e)
             => SetBottomPanel(true, tabIndex: 2);
+
+        private static Microsoft.Web.WebView2.Core.CoreWebView2Environment? _sharedWv2Env;
+
+        private static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            try
+            {
+                if (wv.CoreWebView2 != null) return true;
+
+                if (_sharedWv2Env == null)
+                {
+                    string userDataDir = Path.Combine(Path.GetTempPath(), "BuildConsole_WebView2");
+                    Directory.CreateDirectory(userDataDir);
+                    _sharedWv2Env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataDir);
+                }
+
+                await wv.EnsureCoreWebView2Async(_sharedWv2Env);
+                if (wv.CoreWebView2 != null)
+                {
+                    wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"WebView2 init error: {ex.Message}");
+            }
+            return false;
+        }
+
+        private async void InitializeClaudeWebView()
+        {
+            try
+            {
+                await EnsureWebViewInitializedAsync(ClaudeWebView);
+            }
+            catch { }
+        }
 
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
