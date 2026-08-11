@@ -44,6 +44,34 @@
                     <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
 
+                <!-- Separator -->
+                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+
+                <!-- ── Quick Nav Icons ── -->
+                <Button Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Admin Center"
+                        Click="QuickNav_Click"
+                        Tag="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/admin-panel/adminv2">
+                    <TextBlock Text="&#xE7EF;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PeachBrush}"/>
+                </Button>
+
+                <Button Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Customer Portal"
+                        Click="QuickNav_Click"
+                        Tag="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/portal/">
+                    <TextBlock Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource MauveBrush}"/>
+                </Button>
+
+                <Button Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Marketing Site"
+                        Click="QuickNav_Click"
+                        Tag="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/">
+                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource GreenBrush}"/>
+                </Button>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

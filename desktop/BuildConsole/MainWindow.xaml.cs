@@ -1,6 +1,8 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -8,6 +10,9 @@ namespace BuildConsole
 {
     public partial class MainWindow : Window
     {
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
         // ── Layout constants ───────────────────────────────────────────────────
         private const double DefaultSidebarWidth  = 260;
         private const double DefaultQueueWidth    = 300;
@@ -49,7 +54,31 @@ namespace BuildConsole
             // Build Queue selection -> Build Log
             BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
 
+            // ActivityBar quick navigation
+            ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
+
             UpdateZoomDisplay();
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                int darkMode = 1;
+                DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
+                DwmSetWindowAttribute(hwnd, 19, ref darkMode, sizeof(int)); // Fallback for older Win10 builds
+            }
+            catch { }
+        }
+
+        private void ActivityBar_QuickNavRequested(object? sender, string url)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                ClaudeWebView.Source = uri;
+            }
         }
 
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
