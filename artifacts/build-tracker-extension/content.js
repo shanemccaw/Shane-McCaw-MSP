@@ -952,6 +952,41 @@ async function loadInProgress(force) {
  * buildIssueRow() as-is (its in-flight dot + Details/prompt buttons
  * already do the right thing).
  */
+/** Opens the SQL Runner and loads a migration file's real text straight into it — Shane: "if that thing is for me to run a SQL script, a link should be shown to load the SQL file into the floaty SQL panel so I can run it directly there." */
+async function loadSqlIntoRunner(sqlPath) {
+  openSqlRunner();
+  const input = panelEls.sqlBackdrop.querySelector(".tool-input");
+  input.value = "Loading…";
+  const res = await sendMessageSafe({ type: "build-tracker-get-file-content", path: sqlPath });
+  if (!res?.ok) {
+    input.value = "";
+    window.alert(`Couldn't load ${sqlPath}: ${res?.error ?? "unknown error"}`);
+    return;
+  }
+  input.value = res.result?.content ?? "";
+  input.focus();
+}
+
+/** "Shane To-Do" row's own Mark Done — Shane: "a button on this issue that allows me to mark it as done. Remove the Shane To-Do label, and close the issue in Git." Two real GitHub actions, both already-built endpoints, just chained. */
+async function markTodoDone(item, btn) {
+  btn.disabled = true;
+  btn.textContent = "…";
+  const labelRes = await sendMessageSafe({ type: "build-tracker-toggle-label", number: item.githubNumber, label: "Shane To-Do", add: false });
+  if (!labelRes?.ok) {
+    btn.disabled = false;
+    btn.textContent = "✓ Done";
+    window.alert(`Couldn't remove the Shane To-Do label from #${item.githubNumber}: ${labelRes?.error ?? "unknown error"}`);
+    return;
+  }
+  const closeRes = await sendMessageSafe({ type: "build-tracker-set-issue-state", number: item.githubNumber, state: "closed" });
+  if (!closeRes?.ok) {
+    window.alert(`Label removed, but couldn't close #${item.githubNumber}: ${closeRes?.error ?? "unknown error"}`);
+    await loadInProgress(true);
+    return;
+  }
+  await loadInProgress(true);
+}
+
 function renderInProgressList() {
   if (!panelEls || panelEls.ipPanel.hidden) return;
   const { ipList } = panelEls;
@@ -963,8 +998,49 @@ function renderInProgressList() {
     return;
   }
 
-  const epicItems = items.filter((i) => i.isEpic);
-  const issueItems = items.filter((i) => !i.isEpic);
+  // Git #744 follow-up — Shane: "add a new label 'Shane To-Do'... In our
+  // left In Progress panel, if there is a task with the label Shane To-Do
+  // add it to its own area." Pulled out first — an action-for-Shane item
+  // is a different KIND of thing than "Claude is building this," it
+  // deserves top billing, not mixed into the epic/issue lists below.
+  const todoItems = items.filter((i) => i.isTodo);
+  const epicItems = items.filter((i) => i.isEpic && !i.isTodo);
+  const issueItems = items.filter((i) => !i.isEpic && !i.isTodo);
+
+  if (todoItems.length > 0) {
+    const h = document.createElement("div");
+    h.className = "milestone";
+    h.textContent = `⚠ Shane To-Do (${todoItems.length})`;
+    ipList.appendChild(h);
+    for (const item of todoItems) {
+      const row = document.createElement("div");
+      row.className = "issue-row";
+      row.innerHTML = `<div class="issue-top"><span class="issue-text">#${item.githubNumber} ${escapeHtml(item.title)}</span></div>`;
+      const actions = document.createElement("div");
+      actions.className = "issue-actions";
+
+      if (item.sqlPath) {
+        const sqlBtn = document.createElement("button");
+        sqlBtn.type = "button";
+        sqlBtn.className = "ibtn";
+        sqlBtn.title = `Load ${item.sqlPath} into the SQL Runner`;
+        sqlBtn.textContent = "🗄";
+        sqlBtn.addEventListener("click", () => void loadSqlIntoRunner(item.sqlPath));
+        actions.appendChild(sqlBtn);
+      }
+
+      const doneBtn = document.createElement("button");
+      doneBtn.type = "button";
+      doneBtn.className = "ibtn";
+      doneBtn.title = "Mark done — removes Shane To-Do and closes the issue";
+      doneBtn.textContent = "✓ Done";
+      doneBtn.addEventListener("click", () => void markTodoDone(item, doneBtn));
+      actions.appendChild(doneBtn);
+
+      row.appendChild(actions);
+      ipList.appendChild(row);
+    }
+  }
 
   if (epicItems.length > 0) {
     const h = document.createElement("div");
@@ -2301,6 +2377,74 @@ function onIssueRefUnhover() {
   tooltipHideTimer = setTimeout(() => { panelEls.issueTooltip.hidden = true; }, 150);
 }
 
+// ── "Send to Builder" / "Load into SQL Runner" on Claude's own copy blocks ──
+// Shane: "this button gets put on a copy block. If the copy block is a
+// build prompt... execute [mybuilder://open?q=...&model=...&effort=...].
+// If the button is a SQL script it should load in our SQL Floaty window."
+// A small button bar goes ABOVE the block (not overlaid on it) specifically
+// so it never fights claude.ai's own per-block copy button for the same
+// corner.
+
+const SQL_BLOCK_RE = /^\s*(--.*\n)*\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|BEGIN|GRANT|REVOKE)\b/i;
+
+function classifyCodeBlock(text) {
+  return SQL_BLOCK_RE.test(text) ? "sql" : "prompt";
+}
+
+function loadTextIntoSqlRunner(text) {
+  openSqlRunner();
+  const input = panelEls.sqlBackdrop.querySelector(".tool-input");
+  input.value = text;
+  input.focus();
+}
+
+/**
+ * Receives the prompt text, builds mybuilder://open?q=...&model=...&effort=...&cwd=...
+ * (URLSearchParams, matching Shane's own spec) from his configured Options
+ * defaults, and navigates to it — the OS-registered mybuilder:// handler
+ * (scripts/setup-extension-host.ps1) picks it up from there and launches a
+ * local Claude Code session with the prompt pre-filled.
+ */
+async function sendToBuilder(prompt) {
+  const { builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
+    "builderModel", "builderEffort", "builderCwd",
+  ]);
+  const params = new URLSearchParams();
+  params.set("q", prompt);
+  if (builderModel) params.set("model", builderModel);
+  if (builderEffort) params.set("effort", builderEffort);
+  if (builderCwd) params.set("cwd", builderCwd);
+  window.location.href = `mybuilder://open?${params.toString()}`;
+}
+
+function scanForCodeBlockButtons(root) {
+  const blocks = root.querySelectorAll ? root.querySelectorAll("pre") : [];
+  for (const pre of blocks) {
+    if (pre.dataset.btScanned || !pre.parentElement) continue;
+    pre.dataset.btScanned = "1";
+    const text = (pre.innerText ?? pre.textContent ?? "").trim();
+    if (!text) continue;
+
+    const kind = classifyCodeBlock(text);
+    const bar = document.createElement("div");
+    bar.style.cssText = "display: flex; justify-content: flex-end; margin-bottom: 4px;";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = kind === "sql" ? "🗄 Load into SQL Runner" : "🚀 Send to Builder";
+    btn.style.cssText =
+      "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
+      "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
+    btn.addEventListener("mouseenter", () => { btn.style.background = "#2e2e2e"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "#242424"; });
+    btn.addEventListener("click", () => {
+      if (kind === "sql") loadTextIntoSqlRunner(text);
+      else void sendToBuilder(text);
+    });
+    bar.appendChild(btn);
+    pre.parentElement.insertBefore(bar, pre);
+  }
+}
+
 // Debounced so a burst of DOM mutations (Claude streaming a response in)
 // triggers one rescan after things settle, not one per keystroke-sized chunk.
 let scanDebounceTimer = null;
@@ -2309,6 +2453,7 @@ function scheduleIssueRefScan() {
   scanDebounceTimer = setTimeout(() => {
     scanForIssueRefs(document.body);
     scanForBareNumberTableRefs(document.body);
+    scanForCodeBlockButtons(document.body);
   }, 600);
 }
 new MutationObserver(scheduleIssueRefScan).observe(document.body, { childList: true, subtree: true, characterData: true });

@@ -1094,6 +1094,50 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
 });
 
 /**
+ * GET /admin/build-tracker/extension/file-content?path=<repo-relative path>
+ *
+ * Shane: "if that thing is for me to run a SQL script, a link should be
+ * shown to load the SQL file into the floaty SQL panel." Reads straight
+ * from GitHub's Contents API (not the local filesystem — the api-server
+ * process running this route isn't guaranteed to be the same checkout as
+ * what's on GitHub, and this avoids ever needing that assumption) so it
+ * works from wherever this server happens to be running.
+ *
+ * `path` is restricted to `lib/db/migrations/manual/*.sql` — the one
+ * concrete use case asked for. Not a general file-read endpoint.
+ *
+ * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
+ */
+router.get("/admin/build-tracker/extension/file-content", ingestAuth, async (req: Request, res: Response) => {
+  if (!process.env.GITHUB_TOKEN) {
+    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
+    return;
+  }
+  const path = typeof req.query.path === "string" ? req.query.path : "";
+  if (!/^lib\/db\/migrations\/manual\/[\w.-]+\.sql$/.test(path)) {
+    res.status(400).json({ error: "path must be a lib/db/migrations/manual/*.sql file" });
+    return;
+  }
+  try {
+    const ghRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/contents/${path}`);
+    if (!ghRes.ok) {
+      res.status(404).json({ error: `${path} not found on GitHub` });
+      return;
+    }
+    const data = (await ghRes.json()) as { content?: string; encoding?: string };
+    if (!data.content || data.encoding !== "base64") {
+      res.status(502).json({ error: "Unexpected response from GitHub Contents API" });
+      return;
+    }
+    const content = Buffer.from(data.content, "base64").toString("utf-8");
+    res.json({ path, content });
+  } catch (err) {
+    log.error({ err, path }, "GET /extension/file-content failed");
+    res.status(500).json({ error: "Failed to read file" });
+  }
+});
+
+/**
  * GET /admin/build-tracker/extension/in-progress
  *
  * Git #723 follow-up — Shane: "The In Progress panel should show me
@@ -1129,12 +1173,16 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
     // already knows how to render a complete-labeled row green
     // (buildIssueRow's own isComplete styling), it just needs the row to
     // still be IN the list.
+    // "Shane To-Do" (Git #744 follow-up) rides along in this same merged
+    // fetch — an action-for-Shane issue shows up in its own section below,
+    // same "ask GitHub directly, not the local DB" reasoning as the rest of
+    // this endpoint.
     const collectedByNumber = new Map<number, GitHubIssuePayload>();
-    for (const label of ["in-flight", "complete"]) {
+    for (const label of ["in-flight", "complete", "Shane To-Do"]) {
       let page = 1;
       while (page <= 5) {
         const ghRes = await ghFetch(
-          `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues?state=open&labels=${label}&per_page=100&page=${page}`,
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100&page=${page}`,
         );
         if (!ghRes.ok) break;
         const pageIssues = (await ghRes.json()) as GitHubIssuePayload[];
@@ -1144,6 +1192,14 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
       }
     }
     const collected = Array.from(collectedByNumber.values());
+
+    // Shane: "If that thing is for me to run a SQL script, a link should
+    // be shown to load the SQL file into the floaty SQL panel." CLAUDE.md's
+    // own "Shane To-Do" convention says to reference the migration file's
+    // real repo-relative path somewhere in the issue body — pull that out
+    // here so the client can offer a one-click load.
+    const SQL_PATH_RE = /lib\/db\/migrations\/manual\/[\w.-]+\.sql/;
+    const sqlPathFor = (gh: GitHubIssuePayload) => gh.body?.match(SQL_PATH_RE)?.[0] ?? null;
 
     // Git #723 follow-up (2) — Shane: "I tend to work 2-3 epics at a time...
     // I should be able to mark those Epics as in progress [and see them
@@ -1170,13 +1226,16 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
     const issues = collected.map((gh) => {
       const lookupNum = lookupNumberFor(gh);
       const epic = lookupNum !== null ? (epicByNumber.get(lookupNum) ?? null) : null;
+      const labels = gh.labels.map((l) => l.name);
       return {
         githubNumber: gh.number,
         title: gh.title,
-        labels: gh.labels.map((l) => l.name),
+        labels,
         githubUrl: gh.html_url,
         isEpic: isEpicRow(gh),
         epic,
+        isTodo: labels.includes("Shane To-Do"),
+        sqlPath: sqlPathFor(gh),
       };
     });
 

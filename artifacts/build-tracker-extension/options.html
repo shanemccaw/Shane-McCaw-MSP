@@ -65,6 +65,27 @@
   <button id="save">Save &amp; grant access</button>
   <div id="status"></div>
 
+  <p class="hint" style="margin-top: 24px;">
+    "Send to Builder" — the button that shows up on a build-prompt copy
+    block in claude.ai, launching a local Claude Code session for it via
+    the <code>mybuilder://</code> protocol
+    (<code>scripts/setup-extension-host.ps1</code> registers the local
+    handler). These defaults get passed along every time; leave any of
+    them blank to skip that parameter.
+  </p>
+
+  <label for="builderModel">Default model</label>
+  <input id="builderModel" type="text" placeholder="claude-sonnet-5" />
+
+  <label for="builderEffort">Default effort</label>
+  <input id="builderEffort" type="text" placeholder="high" />
+
+  <label for="builderCwd">Default working directory</label>
+  <input id="builderCwd" type="text" placeholder="C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP" />
+
+  <button id="saveBuilder">Save builder defaults</button>
+  <div id="builderStatus"></div>
+
   <script src="options.js"></script>
 </body>
 </html>

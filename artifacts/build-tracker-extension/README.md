@@ -100,6 +100,14 @@ An unpacked Edge/Chrome extension with two parts, both running on
    you've collapsed claude.ai's own left sidebar and want that space
    showing what's actively building, at a glance, without opening anything
    else.
+
+   A **"Shane To-Do"** section sits above everything else in this panel —
+   for work that's done in code but leaves a real action only Shane can
+   take (a manual SQL migration, a restart, a secret to set). If the
+   issue body references a `lib/db/migrations/manual/*.sql` file, a 🗄
+   button loads that file's real text straight into the SQL Runner, ready
+   to run. A **✓ Done** button removes the label and closes the issue on
+   GitHub in one click, once the action's actually been taken.
 4. **#N hover cards** — every `#123`-style reference Claude writes in a chat
    message gets a dotted underline; hover it to see the real title, open/
    closed state, and labels, fetched straight from GitHub (not just
@@ -125,6 +133,18 @@ An unpacked Edge/Chrome extension with two parts, both running on
    (resolved from GitHub's own parent link, not a possibly-stale local
    sync), and a **Go to Chat** button if that epic has one, above the
    normal filtered results.
+5. **"Send to Builder" / "Load into SQL Runner" on Claude's own copy
+   blocks** — every code block in a claude.ai message gets a small button
+   above it (not overlaid, so it never fights claude.ai's own per-block
+   copy button). A SQL-looking block gets **🗄 Load into SQL Runner**
+   (opens the floaty SQL Runner with that text already in it). Anything
+   else gets **🚀 Send to Builder**, which opens
+   `mybuilder://open?q=<prompt>&model=<model>&effort=<effort>&cwd=<cwd>` —
+   model/effort/cwd come from the Options page's Builder defaults (blank =
+   omitted). That custom protocol needs a one-time local registration —
+   run `scripts/setup-extension-host.ps1` once (Windows, no admin needed)
+   to create `C:\Source\run-claude.ps1` and register the `mybuilder://`
+   handler that launches `claude.exe --prefill` with the decoded prompt.
 
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session

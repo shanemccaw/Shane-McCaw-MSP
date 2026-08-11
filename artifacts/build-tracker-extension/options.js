@@ -3,10 +3,21 @@ const ingestTokenEl = document.getElementById("ingestToken");
 const statusEl = document.getElementById("status");
 const saveBtn = document.getElementById("save");
 
+const builderModelEl = document.getElementById("builderModel");
+const builderEffortEl = document.getElementById("builderEffort");
+const builderCwdEl = document.getElementById("builderCwd");
+const builderStatusEl = document.getElementById("builderStatus");
+const saveBuilderBtn = document.getElementById("saveBuilder");
+
 async function load() {
-  const { apiBaseUrl, ingestToken } = await chrome.storage.local.get(["apiBaseUrl", "ingestToken"]);
+  const { apiBaseUrl, ingestToken, builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
+    "apiBaseUrl", "ingestToken", "builderModel", "builderEffort", "builderCwd",
+  ]);
   if (apiBaseUrl) apiBaseUrlEl.value = apiBaseUrl;
   if (ingestToken) ingestTokenEl.value = ingestToken;
+  if (builderModel) builderModelEl.value = builderModel;
+  if (builderEffort) builderEffortEl.value = builderEffort;
+  if (builderCwd) builderCwdEl.value = builderCwd;
 }
 
 function setStatus(text, tone) {
@@ -51,6 +62,16 @@ saveBtn.addEventListener("click", async () => {
 
   await chrome.storage.local.set({ apiBaseUrl: origin, ingestToken });
   setStatus(`Saved as ${origin}. Open a Claude chat to test it.`, "ok");
+});
+
+saveBuilderBtn.addEventListener("click", async () => {
+  await chrome.storage.local.set({
+    builderModel: builderModelEl.value.trim(),
+    builderEffort: builderEffortEl.value.trim(),
+    builderCwd: builderCwdEl.value.trim(),
+  });
+  builderStatusEl.textContent = "Saved.";
+  builderStatusEl.className = "ok";
 });
 
 load();
