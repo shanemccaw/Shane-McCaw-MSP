@@ -929,8 +929,15 @@ function syncPollingState() {
 let inProgressCache = null; // { issues, fetchedAt }
 const IN_PROGRESS_STALE_MS = 20_000; // roughly matches the 15s poll cadence below
 
+/**
+ * Deliberately does NOT bail out when the ip panel is hidden — a "Mark in
+ * progress" click on an epic anywhere (the main panel, browse view) needs
+ * to refresh this cache so the ▶/✓ button state is correct THE NEXT time
+ * either panel renders, even if the left panel isn't open right now.
+ * renderInProgressList() itself still no-ops while hidden, so this stays a
+ * quiet background cache refresh in that case, not a wasted render.
+ */
 async function loadInProgress(force) {
-  if (!panelEls || panelEls.ipPanel.hidden) return;
   const fresh = inProgressCache && Date.now() - inProgressCache.fetchedAt < IN_PROGRESS_STALE_MS;
   if (!force && fresh) {
     renderInProgressList();
@@ -938,7 +945,9 @@ async function loadInProgress(force) {
   }
   const res = await sendMessageSafe({ type: "build-tracker-list-in-progress" });
   if (!res?.ok) {
-    panelEls.ipList.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load")}</div>`;
+    if (panelEls && !panelEls.ipPanel.hidden) {
+      panelEls.ipList.innerHTML = `<div class="empty">${escapeHtml(res?.error ?? "Couldn't load")}</div>`;
+    }
     return;
   }
   inProgressCache = { issues: res.result?.issues ?? [], fetchedAt: Date.now() };
@@ -1445,12 +1454,21 @@ function renderProgress(milestone, siblingEpics) {
  * Shared by every place an epic shows up (focused view's own header,
  * browse view's epic rows).
  */
+/** Epics carry no `labels` field locally (bt_epics has no such column — only issues do), so the ✓/▶ state has to come from whatever the left panel's own GitHub-sourced cache already knows, not from board data. Defaults to ▶ if that cache hasn't loaded yet — same as before, not a regression. */
+function isEpicMarkedInProgress(githubNumber) {
+  const item = (inProgressCache?.issues ?? []).find((i) => i.isEpic && i.githubNumber === githubNumber);
+  return !!item && (item.labels ?? []).includes("in-flight");
+}
+
 function buildMarkInProgressButton(githubNumber) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "ibtn";
-  btn.title = "Mark in progress — shows up in the left In Progress panel";
-  btn.textContent = "▶";
+  const setState = (marked) => {
+    btn.textContent = marked ? "✓" : "▶";
+    btn.title = marked ? "Marked in progress" : "Mark in progress — shows up in the left In Progress panel";
+  };
+  setState(isEpicMarkedInProgress(githubNumber));
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
     btn.disabled = true;
@@ -1460,9 +1478,14 @@ function buildMarkInProgressButton(githubNumber) {
       window.alert(`Couldn't mark #${githubNumber} in progress: ${res?.error ?? "unknown error"}`);
       return;
     }
-    btn.textContent = "✓";
-    btn.title = "Marked in progress";
-    if (panelEls?.ipPanel && !panelEls.ipPanel.hidden) void loadInProgress(true);
+    setState(true);
+    // Refresh regardless of whether the left panel is open right now — see
+    // loadInProgress()'s own doc comment. Without this, marking an epic
+    // in-progress from the MAIN panel while the left one was closed left
+    // its cache stale, so the button (and the left panel, once opened)
+    // both still showed the old ▶ state — Shane: "doesn't show up in the
+    // left In Progress window anymore even after clicking all the syncs."
+    void loadInProgress(true);
   });
   return btn;
 }

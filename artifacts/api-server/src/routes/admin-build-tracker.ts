@@ -1468,6 +1468,18 @@ async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
+      // Shane: mark-epic-in-progress "sets the checkbox... but then doesn't
+      // show up... After I click the sync the checkbox button changes back
+      // to a play button." Root cause: every write call in this file (this
+      // one included) builds its own JSON body via JSON.stringify() but
+      // NONE of them ever set Content-Type — including calls that appeared
+      // to work before, since GitHub tolerates a missing Content-Type on
+      // some endpoints but not others (labels-add being one that doesn't).
+      // Fixed centrally here rather than patching every call site
+      // individually, and rather than assuming any prior "working" call was
+      // actually verified — most of this file's writes were never
+      // browser-tested this session.
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers || {}),
     },
   });
