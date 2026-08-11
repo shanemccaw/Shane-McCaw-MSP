@@ -2,8 +2,14 @@
  * RemediationGuideBody.tsx — document 8 of 9, the Full Remediation Guide.
  *
  * The only document in the set the customer *does* something to rather than
- * reads. Twenty-eight steps, each with the console path, the command, the
- * caution and the verification; ticking one off is the whole interaction.
+ * reads. Each step has the console path, the command, the caution and the
+ * verification; ticking one off is the whole interaction.
+ *
+ * On a LIVE tenant the step list is now DYNAMIC (#658): it holds only the steps
+ * a real finding put on this tenant's list, plus the two always-on process
+ * steps (s27, s30). A never-scanned tenant sees just those two, under an
+ * explicit notice. The design PREVIEW still renders all twenty-eight steps of
+ * the Halden worked example unchanged.
  *
  * WHERE THE TICKS LIVE (#730)
  * ---------------------------
@@ -80,6 +86,7 @@ import {
   resolveChecklistNote,
   resolveChecklistRows,
   resolveClosing,
+  resolveDynamicSelectionNotice,
   resolveExpectedImprovement,
   resolveHandoffBlurb,
   resolveScopeHeadline,
@@ -285,9 +292,15 @@ function Note({
  * The evidence line under a live step.
  *
  * Four shapes, and the distinction between the last two is the one that must
- * never blur: `gap` is "we do not measure this at all", `unconfirmed` is "your
- * scan reports only its three worst findings per pillar, so this says nothing
- * either way". Neither is a pass, and neither is styled as a failure.
+ * never blur: `gap` is "we do not measure this at all", `unconfirmed` is "no
+ * finding matched, so this says nothing either way" (NOT a display cap — see
+ * `UNCONFIRMED_EVIDENCE_DETAIL`). Neither is a pass, and neither is styled as a
+ * failure.
+ *
+ * On a live tenant the dynamic guide (#658) no longer renders `unconfirmed` or
+ * `gap` steps at all, so in practice a live evidence line is `finding` or
+ * `process`; the other two branches remain for the preview/type contract and in
+ * case the inclusion rules widen.
  */
 function Evidence({ evidence }: { readonly evidence: StepEvidence }) {
   if (evidence.kind === "process") return null;
@@ -843,12 +856,23 @@ export function RemediationGuideBody({
   const view = !isPreview && live ? live.view : null;
   const tenant = view ? view.tenant : PREVIEW_TENANT;
 
-  // The live steps are `REMEDIATION_STEPS` resolved one-to-one against this
-  // tenant — same ids, same order, same count — so every count, group and phase
-  // reference below is identical in both paths by construction.
+  // The live steps are `REMEDIATION_STEPS` resolved against this tenant and then
+  // FILTERED to the ones that belong on their list (#658) — so `total`,
+  // `scripted`, `resolvedCount`, the progress bar, the pillar groups and every
+  // count-bearing resolver below are all derived off this array and reflect the
+  // REAL rendered step count for this tenant, never a hardcoded 28. The preview
+  // path renders the full `REMEDIATION_STEPS` catalogue unchanged.
   const steps = useMemo<readonly (RemediationStep | LiveRemediationStep)[]>(
     () => (view ? buildLiveRemediationSteps(view) : REMEDIATION_STEPS),
     [view],
+  );
+
+  // The explicit never-scanned / no-mapped-finding state (#658): only when the
+  // live guide collapsed to the two always-on process steps. Null on preview and
+  // on any tenant with at least one finding-driven step.
+  const selectionNotice = useMemo(
+    () => (view ? resolveDynamicSelectionNotice(steps as readonly LiveRemediationStep[], view.pillars) : null),
+    [view, steps],
   );
 
   const total = steps.length;
@@ -1074,6 +1098,34 @@ export function RemediationGuideBody({
           {prelude.footnote}
         </p>
       </div>
+
+      {/*
+        The explicit no-findings-drove-selection state (#658). Shown only when
+        the live guide collapsed to the two always-on process steps — a
+        never-scanned tenant, or one whose findings map to no step here. This is
+        the state that must look visibly different from a real personalised
+        runbook rather than silently reading as a two-step plan.
+      */}
+      {selectionNotice ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 11,
+            alignItems: "flex-start",
+            padding: "14px 16px",
+            borderRadius: 10,
+            border: `1px solid ${hexAlpha(BRAND.teal, 0.33)}`,
+            background: hexAlpha(BRAND.teal, 0.07),
+          }}
+        >
+          <span aria-hidden="true" style={{ flex: "none", marginTop: 1, color: BRAND.teal, display: "flex" }}>
+            <Info size={16} strokeWidth={2.2} />
+          </span>
+          <span style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.6, color: INK.bodyDarkStrong }}>
+            {selectionNotice}
+          </span>
+        </div>
+      ) : null}
 
       {/* The steps, grouped by pillar */}
       {REMEDIATION_GUIDE.groups.map((group) => {

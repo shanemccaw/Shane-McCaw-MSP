@@ -12,10 +12,15 @@
  *   2. No fixture value survives into a live render. A thin tenant (no findings,
  *      no stats, no seats, no score) must get honest absences, never Halden
  *      Materials' 208 sites or 11 admins.
- *   3. An empty findings join never reads as a pass. The wire caps findings at
- *      the three worst per pillar, so absence is uninformative and must say so.
+ *   3. An empty findings join never reads as a pass. `pillar.findings` is
+ *      UNCAPPED, so a miss means "no matching critical/warning finding", not
+ *      "only the worst three were shown" — absence is uninformative and must
+ *      say so, and on a live tenant the step is dropped rather than shown (#658).
  *   4. `?preview=design` is provably unchanged: every resolver's preview branch
- *      reproduces the design's own text verbatim.
+ *      reproduces the design's own text verbatim, and the preview still renders
+ *      all twenty-eight steps.
+ *   5. Dynamic selection (#658): a live guide holds only finding-driven steps
+ *      plus the two always-on process steps; gap steps (18, 28) never render.
  */
 
 import assert from "node:assert/strict";
@@ -35,10 +40,12 @@ import {
   liveCaution,
   liveTitle,
   liveVerify,
+  rendersInLiveGuide,
   resolveBlockers,
   resolveChecklistNote,
   resolveChecklistRows,
   resolveClosing,
+  resolveDynamicSelectionNotice,
   resolveExpectedImprovement,
   resolveHandoffBlurb,
   resolveScopeHeadline,
@@ -107,6 +114,28 @@ function view(overrides: Partial<JourneyView> = {}): JourneyView {
 
 /** The thinnest possible real tenant: scanned, nothing measured, nothing found. */
 const THIN = view();
+
+/**
+ * The opposite pole: a tenant carrying one real finding on the first mapped
+ * check of every one of the 24 mapped steps, so the dynamic guide (#658) renders
+ * all 24 mapped steps plus the two process steps (s27, s30) — 26 in total, with
+ * the two gap steps (s18, s28) still excluded. Every finding lives in one pillar
+ * because `stepEvidence` matches on `checkKey` across all pillars regardless of
+ * where the finding sits.
+ */
+const ALL_MAPPED_FIRST_KEYS = Object.values(STEP_CHECK_KEYS).map((keys) => keys[0]);
+const ALL_FINDINGS = view({
+  readinessScore: 41,
+  pillars: PILLAR_KEYS.map((k) =>
+    k === "governance"
+      ? pillar(k, {
+          score: 40,
+          criticalCount: ALL_MAPPED_FIRST_KEYS.length,
+          findings: ALL_MAPPED_FIRST_KEYS.map((ck, i) => finding({ title: `Recorded finding ${i}`, checkKey: ck })),
+        })
+      : pillar(k),
+  ),
+});
 
 /** Every string a live render can put on screen, flattened. */
 function liveText(v: JourneyView): string {
@@ -206,37 +235,117 @@ describe("step coverage", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * 2 · Structure is preserved — no renumbering, no dropping
+ * 2 · Dynamic step selection (#658)
  * ------------------------------------------------------------------ */
 
+describe("rendersInLiveGuide", () => {
+  it("renders finding and process; drops unconfirmed and gap", () => {
+    assert.equal(
+      rendersInLiveGuide({ kind: "finding", checkKey: "x:y", title: "t", severity: "critical", pillar: "governance" }),
+      true,
+    );
+    assert.equal(rendersInLiveGuide({ kind: "process" }), true);
+    assert.equal(rendersInLiveGuide({ kind: "unconfirmed", checkKeys: ["x:y"] }), false);
+    assert.equal(rendersInLiveGuide({ kind: "gap", detail: "d" }), false);
+  });
+});
+
 describe("buildLiveRemediationSteps", () => {
-  it("preserves id, label, pillar and order one-to-one", () => {
+  it("renders only the two process steps for a never-scanned / no-finding tenant", () => {
     const live = buildLiveRemediationSteps(THIN);
-    assert.equal(live.length, REMEDIATION_STEPS.length);
-    live.forEach((s, i) => {
-      assert.equal(s.id, REMEDIATION_STEPS[i].id);
-      assert.equal(s.label, REMEDIATION_STEPS[i].label);
-      assert.equal(s.pillar, REMEDIATION_STEPS[i].pillar);
-      assert.equal(s.meta, REMEDIATION_STEPS[i].meta);
+    assert.deepEqual(live.map((s) => s.id), ["s27", "s30"]);
+    for (const s of live) assert.equal(s.evidence.kind, "process");
+  });
+
+  it("brings a step onto the list only when a real finding maps to its check", () => {
+    const v = view({
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "governance"
+          ? pillar(k, {
+              score: 40,
+              criticalCount: 1,
+              findings: [finding({ title: "Org-wide sharing open on 4 sites", checkKey: "sharepoint:orgwide-links" })],
+            })
+          : pillar(k),
+      ),
     });
+    // s1 and s2 both map to sharepoint:orgwide-links, so both appear; every
+    // other mapped step is unconfirmed and dropped. The two process steps stay.
+    assert.deepEqual(buildLiveRemediationSteps(v).map((s) => s.id), ["s1", "s2", "s27", "s30"]);
   });
 
-  it("keeps Steps 18 and 28 in place, with their scripts intact", () => {
-    const live = buildLiveRemediationSteps(THIN);
-    const s18 = live.find((s) => s.id === "s18");
-    const s28 = live.find((s) => s.id === "s28");
-    assert.ok(s18 && s28);
-    assert.equal(s18.label, "Step 18");
-    assert.equal(s28.label, "Step 28");
-    assert.ok(s18.code?.script.includes("New-UnifiedAuditLogRetentionPolicy"));
-    assert.ok(s28.code?.script.includes("Get-MgReportOneDriveUsageAccountDetail"));
-    assert.equal(s18.evidence.kind, "gap");
-    assert.equal(s28.evidence.kind, "gap");
+  it("renders all 24 mapped steps plus the 2 process steps when every mapped check has a finding", () => {
+    const live = buildLiveRemediationSteps(ALL_FINDINGS);
+    assert.equal(live.length, Object.keys(STEP_CHECK_KEYS).length + PROCESS_ONLY_STEP_IDS.length);
+    assert.equal(live.length, 26);
   });
 
-  it("keeps the scripted count derivable and equal to the preview's", () => {
-    const live = buildLiveRemediationSteps(THIN);
-    assert.equal(live.filter((s) => s.code !== undefined).length, REMEDIATION_SCRIPTED_COUNT);
+  it("preserves id, label, pillar, meta and catalogue order for the steps it renders", () => {
+    const live = buildLiveRemediationSteps(ALL_FINDINGS);
+    // The rendered steps are a strict subsequence of REMEDIATION_STEPS, in order.
+    const catalogue = REMEDIATION_STEPS.map((s) => s.id);
+    let cursor = -1;
+    for (const s of live) {
+      const at = catalogue.indexOf(s.id, cursor + 1);
+      assert.ok(at > cursor, `${s.id} is out of catalogue order or duplicated`);
+      cursor = at;
+      const original = REMEDIATION_STEPS.find((o) => o.id === s.id);
+      assert.equal(s.label, original?.label);
+      assert.equal(s.pillar, original?.pillar);
+      assert.equal(s.meta, original?.meta);
+    }
+  });
+
+  it("never renders the two gap steps (18, 28) on any tenant — excluded until #753/#754", () => {
+    for (const v of [THIN, ALL_FINDINGS]) {
+      const ids = buildLiveRemediationSteps(v).map((s) => s.id);
+      assert.ok(!ids.includes("s18"), "s18 must not render (gap, #754)");
+      assert.ok(!ids.includes("s28"), "s28 must not render (gap, #753)");
+    }
+    // Their gap wording and scripts are kept intact for when they can return —
+    // stepEvidence still classifies them as gaps.
+    assert.equal(stepEvidence("s18", ALL_FINDINGS.pillars).kind, "gap");
+    assert.equal(stepEvidence("s28", ALL_FINDINGS.pillars).kind, "gap");
+    const preview = REMEDIATION_STEPS.find((s) => s.id === "s18");
+    assert.ok(preview?.code?.script.includes("New-UnifiedAuditLogRetentionPolicy"));
+  });
+
+  it("keeps the scripted count derivable off the rendered steps", () => {
+    // Every catalogue step is scripted (#757 removed the only two that weren't),
+    // so on the all-findings tenant every rendered step carries a script and the
+    // two counts coincide.
+    assert.equal(REMEDIATION_SCRIPTED_COUNT, REMEDIATION_STEPS.length);
+    const live = buildLiveRemediationSteps(ALL_FINDINGS);
+    assert.equal(live.filter((s) => s.code !== undefined).length, live.length);
+  });
+});
+
+describe("resolveDynamicSelectionNotice (#658)", () => {
+  it("gives a never-scanned notice when no pillar has an evaluated score", () => {
+    const steps = buildLiveRemediationSteps(THIN);
+    const notice = resolveDynamicSelectionNotice(steps, THIN.pillars);
+    assert.ok(notice);
+    assert.ok(notice.includes("No scan has recorded findings for this tenant yet"));
+  });
+
+  it("gives a scanned-but-unmapped notice when findings map to no step here", () => {
+    const v = view({
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "governance"
+          ? pillar(k, { score: 70, criticalCount: 1, findings: [finding({ title: "x", checkKey: "some:unmapped-check" })] })
+          : pillar(k, { score: 80 }),
+      ),
+    });
+    const steps = buildLiveRemediationSteps(v);
+    assert.deepEqual(steps.map((s) => s.id), ["s27", "s30"]);
+    const notice = resolveDynamicSelectionNotice(steps, v.pillars);
+    assert.ok(notice);
+    assert.ok(notice.includes("no finding on any check this guide maps a step to"));
+  });
+
+  it("returns null the moment any finding-driven step is present", () => {
+    const steps = buildLiveRemediationSteps(ALL_FINDINGS);
+    assert.equal(resolveDynamicSelectionNotice(steps, ALL_FINDINGS.pillars), null);
   });
 });
 
@@ -266,6 +375,16 @@ describe("no Halden Materials data reaches a live tenant", () => {
     const text = liveText(THIN);
     for (const marker of FIXTURE_MARKERS) {
       assert.ok(!text.includes(marker), `live render still contains fixture marker "${marker}"`);
+    }
+  });
+
+  it("and on an all-findings tenant, where every mapped step renders", () => {
+    // THIN renders only s27/s30, so the thin-tenant check alone no longer
+    // exercises the 24 mapped steps' prose. This runs the same fixture-marker
+    // sweep over a tenant where all of them are on screen.
+    const text = liveText(ALL_FINDINGS);
+    for (const marker of FIXTURE_MARKERS) {
+      assert.ok(!text.includes(marker), `all-findings render still contains fixture marker "${marker}"`);
     }
   });
 
@@ -331,8 +450,10 @@ describe("liveBlastRadius (#731)", () => {
     // s6 ("Put Teams creation behind a request"): every BR sentence in the
     // design is already tenant-neutral wisdom, so there is nothing to rewrite.
     assert.equal(liveBlastRadius("s6", THIN), null);
-    const live = buildLiveRemediationSteps(THIN).find((s) => s.id === "s6");
+    // s6 maps to teams:inventory-count, so it renders on the all-findings tenant.
+    const live = buildLiveRemediationSteps(ALL_FINDINGS).find((s) => s.id === "s6");
     const preview = REMEDIATION_STEPS.find((s) => s.id === "s6");
+    assert.ok(live, "s6 should render on the all-findings tenant");
     assert.deepEqual(live?.blastRadius, preview?.blastRadius);
   });
 
@@ -367,8 +488,9 @@ describe("liveBlastRadius (#731)", () => {
     }
   });
 
-  it("every one of the twenty-eight steps carries a Blast Radius card either way", () => {
-    const live = buildLiveRemediationSteps(THIN);
+  it("every rendered step carries a Blast Radius card either way", () => {
+    const live = buildLiveRemediationSteps(ALL_FINDINGS);
+    assert.equal(live.length, 26);
     for (const s of live) {
       assert.ok(s.blastRadius.goesRight.length > 0, `${s.id} has no goesRight`);
       assert.ok(s.blastRadius.goesWrong.length > 0, `${s.id} has no goesWrong`);

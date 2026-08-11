@@ -112,16 +112,21 @@
  * words. Rendering a miss as "clean" would turn silence into a clean bill of
  * health.
  *
- * ══ 5. STEPS 18 AND 28 ARE ABSENCES, NOT FAILURES ════════════════════════════
+ * ══ 5. STEPS 18 AND 28 ARE ABSENCES, AND ARE EXCLUDED FOR NOW (#658) ══════════
  *
  * Audit log retention above 90 days, and OneDrive sync errors. #472 confirmed
  * against live data that no check anywhere in this platform reads either one —
  * not unscanned for this tenant, not gated behind a licence, simply not built.
- * Both steps stay in the guide at their own numbers, in dependency order, with
- * their real generic action intact, and each carries a `gap` evidence line
- * saying the platform has no measurement of its own here. The bar is #472's own,
- * set for the pillar reports: this must not read as a check that looked and
- * disapproved.
+ *
+ * Because the guide is now built DYNAMICALLY from the tenant's real findings
+ * (#658), a step with no check backing it cannot be honestly confirmed OR ruled
+ * out per tenant, so both are HARD-EXCLUDED from the live guide for now — they
+ * render for no tenant. This is TEMPORARY: #754 builds the audit-log-retention
+ * check (s18) and #753 the OneDrive-sync check (s28); once either lands, that
+ * step rejoins as an ordinary mapped step and this exclusion comes out. Their
+ * `gap` evidence and honest "the platform measures nothing here" wording
+ * (`STEP_CHECK_GAPS`) are kept intact so the moment they can be shown again,
+ * they read as an absence rather than a check that looked and disapproved.
  */
 
 import { COPILOT_GATE_TARGET, PILLARS, PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
@@ -191,8 +196,13 @@ export const STEP_CHECK_KEYS: Readonly<Record<string, readonly string[]>> = {
  * The wording is the load-bearing part. It states an absence in our own
  * measurement and says explicitly that nothing has been judged, because the one
  * way this can go wrong is reading as a silent fail. It does not apologise, and
- * it does not imply the step is optional: the action itself is real, standard
- * guidance and stays in the runbook.
+ * it does not imply the step is optional.
+ *
+ * NOTE (#658): these two steps are currently EXCLUDED from the live guide
+ * entirely (see `rendersInLiveGuide`) — a dynamic guide cannot honestly
+ * include a step it can neither confirm nor rule out. This wording is kept
+ * ready for the moment #754 (s18) / #753 (s28) land a real check and they can
+ * be shown again.
  */
 export const STEP_CHECK_GAPS: Readonly<Record<string, string>> = {
   s18:
@@ -235,16 +245,33 @@ export type StepEvidence =
   /** Steps 27 and 30 — a decision, not a measurement. */
   | { readonly kind: "process" }
   /**
-   * Mapped to real checks, but nothing about them reached this document. NEVER
-   * a pass: the wire's findings are the worst-first head of each pillar, capped
-   * server-side at three, so this is genuinely uninformative.
+   * Mapped to real checks, but no matching finding reached this document. NEVER
+   * a pass. `pillar.findings` is UNCAPPED — journeyModel's own contract is
+   * "every real critical/warning finding, worst-first, no cap, here or
+   * server-side" — so a miss does NOT mean "only the worst three were shown and
+   * this fell off the list". It means this tenant has no recorded critical or
+   * warning finding on any of these checks, which is genuinely uninformative:
+   * the wire only ever carries critical/warning findings, so a check that came
+   * back with nothing to report, one never scanned, and one scanned but not yet
+   * in the results all look identical from here.
+   *
+   * (The old "capped at three" wording confused this `unconfirmed` state with a
+   * SEPARATE, unrelated `findingChips` list, which IS sliced to three for the
+   * dashboard summary cards — #534. That cap never touched `pillar.findings`.)
+   *
+   * On a live tenant this state now means the step is DROPPED from the dynamic
+   * guide (#658) rather than rendered — see `rendersInLiveGuide`. The constant
+   * below is retained as the canonical, non-softenable explanation of what an
+   * unconfirmed step is, for the type's contract and its tests.
    */
   | { readonly kind: "unconfirmed"; readonly checkKeys: readonly string[] };
 
 /** The sentence an `unconfirmed` step shows. One constant, so no render site can soften it. */
 export const UNCONFIRMED_EVIDENCE_DETAIL =
-  "Your scan reports only the three most severe findings per pillar, so this step is neither confirmed nor ruled " +
-  "out for your tenant from this document alone. It stays in the sequence because the steps around it depend on it.";
+  "No finding from your last scan matched this step's checks, so it is neither confirmed nor ruled out for your " +
+  "tenant — you may or may not have this issue. This document only ever shows a real match as evidence, and the " +
+  "absence of one carries no verdict either way: a check with nothing to report, one never scanned, and one simply " +
+  "not in your results all look identical from here.";
 
 /**
  * The real finding behind a step, if this tenant has one on record for it.
@@ -749,17 +776,52 @@ export interface LiveRemediationStep extends RemediationStep {
 }
 
 /**
- * Every step, in the design's own order, resolved against this tenant.
+ * Whether a resolved step is rendered in the DYNAMIC live guide (#658).
  *
- * The array is `REMEDIATION_STEPS` mapped one-to-one: same ids, same labels,
- * same pillars, same count. Nothing is added, reordered or renumbered here —
- * the guide's phase structure and its own "Steps 1–13 / 14–22 / 23–30" sequence
- * table are expressed as endpoints, so removing the interior Steps 24 and 25 in
- * #757 left every range endpoint (and every "Step N" cross-reference) valid.
- * s26–s30 keep their own numbers; #472's two gap steps (18, 28) stay in place.
+ * The guide is built from this tenant's own findings, not a fixed catalogue:
+ *   • `finding`     — a real match on one of the step's mapped checks. RENDERS.
+ *   • `process`     — s27 and s30, the two baseline/drift steps. ALWAYS render,
+ *                     regardless of findings (Shane's explicit decision,
+ *                     2026-08-11: "always show, for now… I may change my mind
+ *                     once the document is working properly").
+ *   • `unconfirmed` — mapped, but no matching finding reached this document.
+ *                     Does NOT render: the whole point of the rebuild is that a
+ *                     step appears only when a real finding puts it on the list.
+ *   • `gap`         — s18 and s28. HARD-EXCLUDED for now. No check exists to
+ *                     confirm or rule these out per tenant, so they cannot be
+ *                     selected honestly either way. TEMPORARY until #754 (audit
+ *                     log retention, s18) and #753 (OneDrive sync, s28) land a
+ *                     real check — at which point they resolve to `finding` /
+ *                     `unconfirmed` like any mapped step and this line's `gap`
+ *                     exclusion becomes dead. Explicitly excluded here rather
+ *                     than left to `gap` rendering logic so the temporary nature
+ *                     is visible at the selection site.
+ */
+export function rendersInLiveGuide(evidence: StepEvidence): boolean {
+  return evidence.kind === "finding" || evidence.kind === "process";
+}
+
+/**
+ * The steps this tenant actually sees, in the design's own order, resolved
+ * against this tenant and then FILTERED to the ones that belong on their list
+ * (#658). This is no longer a one-to-one map of `REMEDIATION_STEPS`: a mapped
+ * step with no matching finding is dropped, and the two gap steps (18, 28) are
+ * dropped unconditionally for now. Only the two process steps (27, 30) and the
+ * steps a real finding put on the list survive, so on a never-scanned tenant
+ * this returns just s27 and s30 — see `resolveDynamicSelectionNotice`.
+ *
+ * Order and ids are otherwise untouched: nothing is reordered or renumbered,
+ * and the guide's "Steps 1–13 / 14–22 / 23–30" sequence table stays valid
+ * because its endpoints are fixed programme structure, not a per-tenant count.
+ * The one-to-one PREVIEW path is unaffected — it renders `REMEDIATION_STEPS`
+ * directly and never calls this.
  */
 export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemediationStep[] {
-  return REMEDIATION_STEPS.map((step) => {
+  const steps: LiveRemediationStep[] = [];
+  for (const step of REMEDIATION_STEPS) {
+    const evidence = stepEvidence(step.id, view.pillars);
+    if (!rendersInLiveGuide(evidence)) continue;
+
     const title = liveTitle(step.id, view);
     const where = liveWhere(step.id);
     const caution = liveCaution(step.id, view);
@@ -768,7 +830,7 @@ export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemed
     const code = LIVE_STEP_SCRIPTS[step.id];
     const fillIn = STEP_FILL_INS[step.id];
 
-    return {
+    steps.push({
       ...step,
       title: title ?? step.title,
       ...(where ? { where } : {}),
@@ -777,9 +839,41 @@ export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemed
       ...(verify ? { verify } : {}),
       ...(blastRadius ? { blastRadius } : {}),
       ...(fillIn ? { fillIn } : {}),
-      evidence: stepEvidence(step.id, view.pillars),
-    };
-  });
+      evidence,
+    });
+  }
+  return steps;
+}
+
+/**
+ * The explicit notice a live guide shows when NO finding drove step selection —
+ * i.e. the only steps left standing are the two always-on process steps (s27,
+ * s30). Returns `null` the moment even one finding-driven step is present, so a
+ * normal tenant sees no banner.
+ *
+ * This is the original bug Shane reported (#658): a never-scanned tenant used to
+ * get the full generic 28-step list as if it were their personalised runbook.
+ * Now they get s27/s30 only — and this notice so that state reads as "we have
+ * nothing to build your list from yet", not as "your entire remediation plan is
+ * these two steps". The two branches distinguish a tenant that has never been
+ * scanned (no pillar has an evaluated score) from one that was scanned but
+ * whose findings simply don't map to any guide step, because the honest thing
+ * to say differs between them.
+ */
+export function resolveDynamicSelectionNotice(
+  steps: readonly LiveRemediationStep[],
+  pillars: readonly JourneyPillarView[],
+): string | null {
+  if (steps.some((s) => s.evidence.kind === "finding")) return null;
+  const everScored = pillars.some((p) => p.score !== null);
+  return everScored
+    ? "Your last scan recorded no finding on any check this guide maps a step to, so only the two standing steps " +
+        "below — capturing a signed configuration baseline and putting drift telemetry on the tenant — appear. Every " +
+        "other step is added here automatically the moment a scan surfaces a real finding on its check. Re-scan to refresh this."
+    : "No scan has recorded findings for this tenant yet, so this guide has nothing to build your step list from. " +
+        "The two standing steps below — capturing a signed configuration baseline and putting drift telemetry on the " +
+        "tenant — always apply; every other step is added here automatically once a scan surfaces a real finding on its " +
+        "check. Run a scan to populate the rest.";
 }
 
 /* ------------------------------------------------------------------ *
