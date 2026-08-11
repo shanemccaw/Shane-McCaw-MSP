@@ -138,6 +138,7 @@ import mspAuditLogRouter from "./msp-audit-log";
 import portalThemePreferenceRouter from "./portal-theme-preference";
 import portalRemediationTrackerRouter from "./portal-remediation-tracker";
 import portalRemediationTrackerExportRouter from "./portal-remediation-tracker-export";
+import portalTenantCheckItemsRouter from "./portal-tenant-check-items";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
 import adminMonitorCheckRunsRouter from "./admin-monitor-check-runs";
@@ -370,6 +371,7 @@ router.use(mspAuditLogRouter);
 router.use(portalThemePreferenceRouter);
 router.use(portalRemediationTrackerRouter);
 router.use(portalRemediationTrackerExportRouter);
+router.use(portalTenantCheckItemsRouter);
 router.use(adminNavPinsRouter);
 router.use(supportChatRouter);
 // Mounted before adminMonitorChecksRouter so the single-endpoint execution

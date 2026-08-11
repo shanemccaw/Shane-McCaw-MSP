@@ -280,6 +280,12 @@ export default defineConfig({
       // readiness gate and shane_handles deliberately does not (see the
       // module's own header for why, straight from the design file's code).
       "src/lib/remediation-tracker-pricing.test.ts",
+      // #776 (Phase 1 of epic #647): real GET endpoint for
+      // tenant_check_item_details — tenantId resolution stays scoped to the
+      // caller's own customerId, a requested checkKey with no collection is
+      // absent rather than an error, and a batch call returns exactly one
+      // (the most recent) row per key.
+      "src/routes/portal-tenant-check-items.test.ts",
     ],
     coverage: {
       provider: "v8",
