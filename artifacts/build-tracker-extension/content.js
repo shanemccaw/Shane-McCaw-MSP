@@ -849,6 +849,47 @@ function insertTextIntoComposer(text) {
   return true;
 }
 
+/**
+ * Git #772 — Shane: "can the add-on manipulate the name of the chat? I
+ * currently manually rename them to the Git ID of the Epic they are
+ * working on." Clicking claude.ai's own title button (`aria-label`
+ * ends in ", rename chat" — confirmed from Shane's own inspected HTML)
+ * swaps it for an editable text box; unlike the composer, we don't have the
+ * HTML of THAT box, so this looks for whatever input/contenteditable
+ * appears afterward rather than a guessed selector, and commits with Enter
+ * the same way a real user would. Best-effort — Shane needs to confirm this
+ * actually works, since the input-appears-after-click step is unverified.
+ */
+async function renameCurrentChat(newTitle) {
+  const container = document.querySelector('[data-testid="chat-title-split"]');
+  const renameBtn = container?.querySelector('button[aria-label$=", rename chat"]');
+  if (!renameBtn) return false;
+  renameBtn.click();
+
+  let field = null;
+  for (let i = 0; i < 10 && !field; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    field = container.querySelector('input, textarea, [contenteditable="true"]');
+  }
+  if (!field) return false;
+
+  if (field.tagName === "INPUT" || field.tagName === "TEXTAREA") {
+    // Native setter, not field.value = ... — React tracks its own value via
+    // the prototype setter, so a plain assignment doesn't trigger its change
+    // handler (same reasoning as insertTextIntoComposer's execCommand use).
+    const proto = field.tagName === "INPUT" ? window.HTMLInputElement.prototype : window.HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+    setter.call(field, newTitle);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  } else {
+    field.focus();
+    document.execCommand("selectAll", false);
+    document.execCommand("insertText", false, newTitle);
+  }
+  field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+  return true;
+}
+
 function insertPrompt(issue) {
   insertTextIntoComposer(issuePromptText(issue));
 }
@@ -1576,6 +1617,29 @@ function buildMarkInProgressButton(githubNumber) {
   return btn;
 }
 
+/**
+ * Git #772 — Shane: "I currently manually rename them to the Git ID of the
+ * Epic they are working on." For a chat that's ALREADY linked (not the
+ * Browse Epics manual view — renaming the current chat to some unrelated
+ * epic you're just browsing would be wrong), a one-click way to sync its
+ * title without leaving the chat.
+ */
+function buildRenameChatButton(githubNumber) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ibtn";
+  btn.textContent = "✎";
+  btn.title = `Rename this chat to "Epic #${githubNumber}"`;
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    btn.disabled = true;
+    const ok = await renameCurrentChat(`Epic #${githubNumber}`);
+    btn.disabled = false;
+    if (!ok) window.alert("Couldn't find claude.ai's rename control — its layout may have changed.");
+  });
+  return btn;
+}
+
 function renderFocused(currentChat, query, isManual) {
   const { current, list } = panelEls;
   const epic = currentChat.focusEpic;
@@ -1622,7 +1686,10 @@ function renderFocused(currentChat, query, isManual) {
   row.className = "epic-row";
   row.style.cursor = "default";
   row.innerHTML = `<span>${escapeHtml(epic.title)}</span>${epic.githubNumber ? `<span class="pill">#${epic.githubNumber}</span>` : ""}`;
-  if (epic.githubNumber) row.appendChild(buildMarkInProgressButton(epic.githubNumber));
+  if (epic.githubNumber) {
+    row.appendChild(buildMarkInProgressButton(epic.githubNumber));
+    if (!isManual) row.appendChild(buildRenameChatButton(epic.githubNumber));
+  }
   list.appendChild(row);
 
   // Sub-epics (Git #699) — an issue under this epic that itself has
@@ -2702,6 +2769,11 @@ function tryInsertPrefillFromUrl() {
       const url = new URL(window.location.href);
       url.searchParams.delete(EPIC_CHAT_PREFILL_PARAM);
       history.replaceState(null, "", url.toString());
+      // Git #772 — the prefill's first line is always the "Epic #N" label
+      // (see openNewEpicChat) - reuse it as the chat's own title too, so
+      // Shane doesn't have to rename it by hand right after.
+      const label = text.split("\r\n")[0];
+      if (label) void renameCurrentChat(label);
       return;
     }
     if (attempts < maxAttempts) setTimeout(tryInsert, 500);
