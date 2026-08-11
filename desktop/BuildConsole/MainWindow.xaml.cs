@@ -159,14 +159,18 @@ namespace BuildConsole
             int currentIdx = Math.Max(0, EditorTabs.SelectedIndex);
             int nextIdx = (currentIdx + (isReverse ? -1 : 1) + count) % count;
 
-            if (TabSwitcherOverlay.Visibility != Visibility.Visible)
-            {
-                TabSwitcherOverlay.Visibility = Visibility.Visible;
-            }
-
+            TabSwitcherOverlay.Visibility = Visibility.Visible;
             TabSwitcherList.SelectedIndex = nextIdx;
+
             if (TabSwitcherList.SelectedItem != null)
                 TabSwitcherList.ScrollIntoView(TabSwitcherList.SelectedItem);
+
+            // Transfer keyboard focus from WebView2 native HWND to WPF ListBox
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                TabSwitcherList.Focus();
+                Keyboard.Focus(TabSwitcherList);
+            }));
         }
 
         private void CycleTabSwitcher(bool forward)
@@ -188,6 +192,12 @@ namespace BuildConsole
             }
 
             TabSwitcherOverlay.Visibility = Visibility.Collapsed;
+
+            // Return focus to active WebView2
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                GetActiveWebView()?.Focus();
+            }));
         }
 
         private void OpenTabSwitcher_Click(object sender, RoutedEventArgs e)
@@ -212,9 +222,13 @@ namespace BuildConsole
             {
                 foreach (var child in sp.Children)
                 {
-                    if (child is TextBlock tb && tb.FontFamily?.Source != "Segoe MDL2 Assets")
+                    if (child is TextBlock tb)
                     {
-                        return tb.Text;
+                        if (tb.FontFamily != null && tb.FontFamily.Source.Contains("Segoe MDL2", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        if (!string.IsNullOrWhiteSpace(tb.Text) && tb.Text != "✕")
+                            return tb.Text;
                     }
                 }
             }

@@ -266,8 +266,8 @@
               Background="#95000000"
               Panel.ZIndex="2000"
               MouseDown="TabSwitcherOverlay_MouseDown">
-            <Border Width="560"
-                    MaxHeight="480"
+            <Border Width="580"
+                    Height="360"
                     Background="{StaticResource MantleBrush}"
                     BorderBrush="{StaticResource Surface1Brush}"
                     BorderThickness="1"
@@ -307,11 +307,40 @@
                              Background="Transparent"
                              BorderThickness="0"
                              Margin="0"
-                             Padding="0">
+                             Padding="0"
+                             Focusable="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemContainerStyle>
-                            <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                <Setter Property="Padding" Value="10,8"/>
+                            <Style TargetType="{x:Type ListBoxItem}">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
                                 <Setter Property="Margin" Value="0,2"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                            <Border x:Name="Bd"
+                                                    Background="Transparent"
+                                                    BorderBrush="Transparent"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6"
+                                                    Padding="12,8">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
