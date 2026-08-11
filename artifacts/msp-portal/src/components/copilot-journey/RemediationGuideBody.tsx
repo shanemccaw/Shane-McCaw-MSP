@@ -68,6 +68,7 @@ import {
   REMEDIATION_PRELUDE,
   REMEDIATION_SCRIPTED_COUNT,
   REMEDIATION_STEPS,
+  type RemediationBlastRadius,
   type RemediationCode,
   type RemediationStep,
 } from "./previewRemediationGuide.ts";
@@ -88,7 +89,11 @@ import {
   type StepEvidence,
 } from "./remediationLiveGuide.ts";
 import { buildProvenance, checkDomainLabel } from "./liveReportBlocks.ts";
-import { useRemediationTracker, type RemediationTrackerState } from "./useRemediationTracker.ts";
+import {
+  useRemediationTracker,
+  type RemediationTrackerState,
+  type RemediationTrackerStepStatus,
+} from "./useRemediationTracker.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
@@ -315,21 +320,254 @@ function Evidence({ evidence }: { readonly evidence: StepEvidence }) {
 }
 
 /* ------------------------------------------------------------------ *
+ * The Blast Radius card (#731, Phase B)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The design's own three-row risk card, styled off its own accent (a violet
+ * lifted from `PILLARS.security` rather than a new one-off literal) with the
+ * same three severity colours the rest of this document already uses for
+ * critical/attention/healthy.
+ */
+function BlastRadius({ blastRadius }: { readonly blastRadius: RemediationBlastRadius }) {
+  const accent = PILLARS.security.primary;
+  const rows: readonly [string, string, string][] = [
+    ["If it goes right", blastRadius.goesRight, SEVERITY_ON_DARK.healthy],
+    ["If it goes wrong", blastRadius.goesWrong, SEVERITY_ON_DARK.critical],
+    ["Trade-off", blastRadius.tradeOff, SEVERITY_ON_DARK.attention],
+  ];
+  return (
+    <div
+      style={{
+        border: `1px solid ${hexAlpha(accent, 0.34)}`,
+        borderLeft: `2px solid ${accent}`,
+        borderRadius: 9,
+        background: `linear-gradient(135deg,${hexAlpha(accent, 0.09)},rgba(2,6,23,.4))`,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: accent }}>
+        Blast radius
+      </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {rows.map(([label, text, colour]) => (
+          <span key={label} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: colour,
+                flex: "none",
+                width: 78,
+                paddingTop: 2,
+              }}
+            >
+              {label}
+            </span>
+            <span style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.55, color: "#cbd5e1" }}>{text}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * The per-step action picker (#731, Phase B)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The design's real "Why are you skipping this?" reason chips, plus its real
+ * "Have Shane do this one" button — flattened here into one action per status
+ * value (see the schema's own comment on why this column stays one flat enum
+ * rather than the design's separate status/reason/blocked/by fields).
+ *
+ * Real copy, all four labels, straight out of `Design/Remediation Tracker.dc.html`.
+ */
+const ACTION_LABELS: Readonly<Record<Exclude<RemediationTrackerStepStatus, "not_started" | "completed">, string>> = {
+  already_handled: "Already handled another way",
+  not_applicable: "Not applicable to this tenant",
+  deferred: "Deferring to a later phase",
+  shane_handles: "Have Shane do this one",
+};
+
+/** The confirmation line shown once a step carries one of the four actioned statuses. */
+function actionedLabel(status: RemediationTrackerStepStatus): string {
+  if (status === "shane_handles") {
+    // Real copy from the design's own "handed" confirmation state.
+    return "Handed to Shane — you will be contacted to confirm.";
+  }
+  return `Skipped — ${ACTION_LABELS[status as "already_handled" | "not_applicable" | "deferred"]}`;
+}
+
+function ActionPicker({
+  status,
+  onPick,
+  onUndo,
+}: {
+  readonly status: RemediationTrackerStepStatus;
+  readonly onPick: (status: RemediationTrackerStepStatus) => void;
+  readonly onUndo: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+
+  if (status !== "not_started") {
+    const handed = status === "shane_handles";
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 11px",
+          borderRadius: 8,
+          border: `1px solid ${handed ? "rgba(52,211,153,.3)" : "rgba(51,65,85,.9)"}`,
+          background: handed ? "rgba(52,211,153,.06)" : "rgba(2,6,23,.4)",
+        }}
+      >
+        {handed ? (
+          <Check size={12} strokeWidth={2.6} color={SEVERITY_ON_DARK.healthy} aria-hidden="true" style={{ flex: "none" }} />
+        ) : null}
+        <span style={{ fontSize: 11.5, fontWeight: 500, color: handed ? SEVERITY_ON_DARK.healthy : INK.micro }}>
+          {actionedLabel(status)}
+        </span>
+        <button
+          type="button"
+          onClick={onUndo}
+          style={{
+            marginLeft: "auto",
+            flex: "none",
+            border: 0,
+            background: "transparent",
+            padding: 0,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: ".1em",
+            textTransform: "uppercase",
+            color: INK.micro,
+          }}
+        >
+          Undo
+        </button>
+      </div>
+    );
+  }
+
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAsking(true)}
+        style={{
+          alignSelf: "flex-start",
+          border: 0,
+          background: "transparent",
+          padding: 0,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          fontSize: 11,
+          fontWeight: 600,
+          color: INK.micro,
+          textDecoration: "underline",
+          textDecorationColor: "rgba(100,116,139,.5)",
+        }}
+      >
+        Can&rsquo;t self-resolve this one?
+      </button>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 9,
+        padding: "11px 12px",
+        borderRadius: 9,
+        border: "1px solid rgba(251,191,36,.3)",
+        background: "rgba(251,191,36,.06)",
+      }}
+    >
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#e8d9a8" }}>Why are you skipping this?</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {(Object.keys(ACTION_LABELS) as (keyof typeof ACTION_LABELS)[]).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              setAsking(false);
+              onPick(key);
+            }}
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: "#cbd5e1",
+              padding: "6px 11px",
+              borderRadius: 999,
+              border: "1px solid rgba(100,116,139,.7)",
+              background: "transparent",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {ACTION_LABELS[key]}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => setAsking(false)}
+        style={{
+          alignSelf: "flex-start",
+          border: 0,
+          background: "transparent",
+          padding: 0,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: ".1em",
+          textTransform: "uppercase",
+          color: INK.micro,
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * One step
  * ------------------------------------------------------------------ */
 
 function Step({
   step,
-  done,
-  onToggle,
+  status,
+  onToggleComplete,
+  onSetAction,
 }: {
   readonly step: RemediationStep | LiveRemediationStep;
-  readonly done: boolean;
-  readonly onToggle: (id: string) => void;
+  readonly status: RemediationTrackerStepStatus;
+  readonly onToggleComplete: (id: string) => void;
+  readonly onSetAction: (id: string, status: RemediationTrackerStepStatus) => void;
 }) {
   const fillIn = "fillIn" in step ? step.fillIn : undefined;
   const evidence = "evidence" in step ? step.evidence : undefined;
   const colour = PILLARS[step.pillar].primary;
+  const complete = status === "completed";
+  // Dimmed the moment a decision has been made about the step, whichever of
+  // the five it was — not only literal completion. An "already handled
+  // another way" row sitting at full opacity would read as still outstanding.
+  const resolved = status !== "not_started";
   return (
     <div
       style={{
@@ -341,21 +579,21 @@ function Step({
         borderRadius: 10,
         background: "rgba(2,6,23,.34)",
         transition: "opacity 220ms ease",
-        opacity: done ? 0.62 : 1,
+        opacity: resolved ? 0.62 : 1,
       }}
     >
       <button
         type="button"
         role="checkbox"
-        aria-checked={done}
+        aria-checked={complete}
         aria-label={`Mark ${step.label} complete: ${step.title}`}
-        onClick={() => onToggle(step.id)}
+        onClick={() => onToggleComplete(step.id)}
         style={{
           width: 18,
           height: 18,
           borderRadius: 5,
-          border: `1px solid ${done ? SEVERITY_ON_DARK.healthy : "rgba(100,116,139,.9)"}`,
-          background: done ? SEVERITY_ON_DARK.healthy : "transparent",
+          border: `1px solid ${complete ? SEVERITY_ON_DARK.healthy : "rgba(100,116,139,.9)"}`,
+          background: complete ? SEVERITY_ON_DARK.healthy : "transparent",
           flex: "none",
           marginTop: 2,
           display: "flex",
@@ -371,7 +609,7 @@ function Step({
           strokeWidth={3.4}
           color="#0b1220"
           aria-hidden="true"
-          style={{ opacity: done ? 1 : 0, transition: "opacity 180ms" }}
+          style={{ opacity: complete ? 1 : 0, transition: "opacity 180ms" }}
         />
       </button>
 
@@ -397,11 +635,11 @@ function Step({
               fontWeight: 700,
               letterSpacing: "-0.01em",
               lineHeight: 1.35,
-              color: done ? INK.micro : INK.headingDark,
+              color: resolved ? INK.micro : INK.headingDark,
               // One shorthand rather than `textDecoration` + `textDecorationColor`:
               // React warns when a shorthand and its longhand are both set and
               // one of them changes between renders, which is exactly this case.
-              textDecoration: done ? "line-through rgba(100,116,139,.6)" : "none",
+              textDecoration: resolved ? "line-through rgba(100,116,139,.6)" : "none",
               transition: "color 180ms",
             }}
           >
@@ -431,6 +669,7 @@ function Step({
 
         {/* Evidence leads: why this step is here comes before what to run. */}
         {evidence ? <Evidence evidence={evidence} /> : null}
+        <BlastRadius blastRadius={step.blastRadius} />
         {step.code ? <CodeBlock code={step.code} /> : null}
         {fillIn ? (
           <Note kind="context">
@@ -443,6 +682,11 @@ function Step({
             <span style={{ fontWeight: 700 }}>Verify:</span> {step.verify}
           </Note>
         ) : null}
+        <ActionPicker
+          status={status}
+          onPick={(next) => onSetAction(step.id, next)}
+          onUndo={() => onSetAction(step.id, "not_started")}
+        />
       </div>
     </div>
   );
@@ -496,19 +740,34 @@ export function RemediationGuideBody({
 }) {
   // The session-only fallback. Still the real state on `?preview=design`, and
   // still declared unconditionally because hooks cannot be called behind a
-  // branch; `progress` simply wins when it is there.
-  const [sessionDoneIds, setSessionDoneIds] = useState<ReadonlySet<string>>(() => new Set());
-  const sessionToggle = useCallback((id: string) => {
-    setSessionDoneIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  // branch; `progress` simply wins when it is there. A `Map` rather than a
+  // `Set` since #731 widened the vocabulary past a plain done/not-done boolean
+  // — the design preview gets the same real action picker the live tracker
+  // does, it just never leaves this tab.
+  const [sessionStatuses, setSessionStatuses] = useState<ReadonlyMap<string, RemediationTrackerStepStatus>>(
+    () => new Map(),
+  );
+  const sessionToggleComplete = useCallback((id: string) => {
+    setSessionStatuses((prev) => {
+      const next = new Map(prev);
+      if (next.get(id) === "completed") next.delete(id);
+      else next.set(id, "completed");
+      return next;
+    });
+  }, []);
+  const sessionSetAction = useCallback((id: string, status: RemediationTrackerStepStatus) => {
+    setSessionStatuses((prev) => {
+      const next = new Map(prev);
+      if (status === "not_started") next.delete(id);
+      else next.set(id, status);
       return next;
     });
   }, []);
 
-  const doneIds = progress ? progress.doneIds : sessionDoneIds;
-  const toggle = progress ? progress.toggle : sessionToggle;
+  const statuses = progress ? progress.statuses : sessionStatuses;
+  const toggleComplete = progress ? progress.toggleComplete : sessionToggleComplete;
+  const setAction = progress ? progress.setAction : sessionSetAction;
+  const statusOf = useCallback((id: string): RemediationTrackerStepStatus => statuses.get(id) ?? "not_started", [statuses]);
 
   const view = !isPreview && live ? live.view : null;
   const tenant = view ? view.tenant : PREVIEW_TENANT;
@@ -526,11 +785,19 @@ export function RemediationGuideBody({
     () => (view ? steps.filter((s) => s.code !== undefined).length : REMEDIATION_SCRIPTED_COUNT),
     [view, steps],
   );
-  // Counted over the steps actually on screen rather than off `doneIds.size`:
+  // Counted over the steps actually on screen rather than off `statuses.size`:
   // the stored state is keyed by step id and the rendered guide is the only
   // authority on which ids exist, so an id the guide no longer holds must not
-  // inflate "N of 30 complete".
-  const done = useMemo(() => steps.reduce((n, s) => (doneIds.has(s.id) ? n + 1 : n), 0), [steps, doneIds]);
+  // inflate "N of 30 resolved".
+  //
+  // Counts every actioned status, not only `completed` (#731): "already
+  // handled another way" or "handed to Shane" is still a decision made about
+  // the step, and a bar that only advanced on literal self-resolve would make
+  // the other four actions look like they hadn't registered.
+  const resolvedCount = useMemo(
+    () => steps.reduce((n, s) => (statusOf(s.id) !== "not_started" ? n + 1 : n), 0),
+    [steps, statusOf],
+  );
   const accent = reportAccent(null);
   const scannedOn = tenant.scannedOn ?? "";
   const prelude = view ? LIVE_PRELUDE : REMEDIATION_PRELUDE;
@@ -619,12 +886,19 @@ export function RemediationGuideBody({
                 borderRadius: 999,
                 background: accent.band,
                 transition: "width 260ms ease",
-                width: `${Math.round((done / total) * 100)}%`,
+                width: `${Math.round((resolvedCount / total) * 100)}%`,
               }}
             />
           </span>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: done === total ? SEVERITY_ON_DARK.healthy : BRAND.teal, ...TABULAR }}>
-            {`${done} of ${total} steps complete`}
+          <span
+            style={{
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: resolvedCount === total ? SEVERITY_ON_DARK.healthy : BRAND.teal,
+              ...TABULAR,
+            }}
+          >
+            {`${resolvedCount} of ${total} steps resolved`}
           </span>
         </div>
         {/*
@@ -739,7 +1013,13 @@ export function RemediationGuideBody({
             <h2 style={H2}>{group.heading}</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {steps.map((step) => (
-                <Step key={step.id} step={step} done={doneIds.has(step.id)} onToggle={toggle} />
+                <Step
+                  key={step.id}
+                  step={step}
+                  status={statusOf(step.id)}
+                  onToggleComplete={toggleComplete}
+                  onSetAction={setAction}
+                />
               ))}
             </div>
           </div>

@@ -1,6 +1,6 @@
 /**
  * useRemediationTracker.ts — the Full Remediation Guide's persistent tick state
- * (Git #730, Phase A of epic #647).
+ * (Git #730, Phase A of epic #647; widened in #731, Phase B).
  *
  *   GET /api/portal/remediation-tracker
  *   PUT /api/portal/remediation-tracker/steps/:stepId
@@ -12,22 +12,28 @@
  * a reload, a re-login, a second admin on the account and Shane all see one
  * tracker.
  *
- * OPTIMISTIC, WITH A REAL ROLLBACK. A tick paints immediately and the write
- * follows; a write that fails puts the tick back where it was and says so,
- * rather than leaving the box ticked over a server that never stored it. That
- * is the whole reason `error` exists on this hook: silently keeping a tick the
- * platform did not persist is exactly the "unverified record of remediation"
- * the guide's own header warns about.
+ * THE VOCABULARY (#731). A step is no longer just done or not: it can be
+ * `completed` (the reader did it themselves), `already_handled`,
+ * `not_applicable`, `deferred`, or `shane_handles` — the design's own real
+ * per-step action set. `statuses` is therefore a map from step id to whichever
+ * of those it holds, not a set of "done" ids; a step with no entry is
+ * `not_started`, same absence convention Phase A established.
+ *
+ * OPTIMISTIC, WITH A REAL ROLLBACK. A change paints immediately and the write
+ * follows; a write that fails puts the step back where it was and says so,
+ * rather than leaving a status showing over a server that never stored it.
+ * That is the whole reason `error` exists on this hook: silently keeping a
+ * status the platform did not persist is exactly the "unverified record of
+ * remediation" the guide's own header warns about.
  *
  * THE STEP CATALOGUE IS NOT HERE AND NEVER COMES FROM THE SERVER. This hook
  * holds STATE, keyed by step id; the steps themselves stay
  * `previewRemediationGuide.ts` / `remediationLiveGuide.ts`, and the caller
- * counts what it renders. A step with no stored row is simply not in `doneIds`,
- * which is what an untouched step is.
+ * counts what it renders.
  *
  * PREVIEW IS UNTOUCHED. `?preview=design` renders the design's Halden Materials
- * fixture against a tenant that does not exist; it keeps the old session-only
- * ticks and never calls this hook.
+ * fixture against a tenant that does not exist; it keeps its own session-only
+ * state and never calls this hook.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -39,6 +45,25 @@ const TRACKER_URL = "/api/portal/remediation-tracker";
 
 /** Same channel the rest of the journey beacons on (see useCopilotJourney.ts). */
 const JOURNEY_CHANNEL = "engine.dashboard";
+
+/**
+ * Mirrors `REMEDIATION_TRACKER_STEP_STATUS` in `lib/db/src/schema/msp.ts`.
+ * Duplicated rather than imported because msp-portal carries no dependency on
+ * `@workspace/db` (a frontend app, not a server) — the same reason
+ * `portal-remediation-tracker.ts` keeps its own copy of the step id list
+ * rather than importing the guide. `portal-remediation-tracker.test.ts` reads
+ * this file directly to guard the two vocabularies from drifting apart, the
+ * same way it already guards the step-id list against the guide.
+ */
+export const REMEDIATION_TRACKER_STEP_STATUS = [
+  "not_started",
+  "completed",
+  "already_handled",
+  "not_applicable",
+  "deferred",
+  "shane_handles",
+] as const;
+export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 
 /** One stored step, as the route serves it. */
 interface WireTrackerStep {
@@ -52,9 +77,15 @@ interface WireTrackerPayload {
   readonly steps?: readonly WireTrackerStep[];
 }
 
+const STATUS_SET: ReadonlySet<string> = new Set(REMEDIATION_TRACKER_STEP_STATUS);
+
+function isKnownStatus(value: string): value is RemediationTrackerStepStatus {
+  return STATUS_SET.has(value);
+}
+
 export interface RemediationTrackerState {
-  /** Step ids currently stored as `completed`. */
-  readonly doneIds: ReadonlySet<string>;
+  /** Every step currently holding a non-`not_started` status, keyed by step id. */
+  readonly statuses: ReadonlyMap<string, RemediationTrackerStepStatus>;
   /** True once a first payload has arrived — success or failure. */
   readonly loaded: boolean;
   /** True while at least one write is in flight. */
@@ -64,17 +95,27 @@ export interface RemediationTrackerState {
    * progress is not being saved rather than imply it is.
    */
   readonly error: string | null;
-  readonly toggle: (stepId: string) => void;
+  /** The checkbox: toggles between `completed` and `not_started`. */
+  readonly toggleComplete: (stepId: string) => void;
+  /** The action picker and its Undo: sets any status directly, including back to `not_started`. */
+  readonly setAction: (stepId: string, status: RemediationTrackerStepStatus) => void;
 }
 
 export function useRemediationTracker(options?: { readonly enabled?: boolean }): RemediationTrackerState {
   const enabled = options?.enabled !== false;
   const { fetchWithAuth, accessToken } = useAuth();
 
-  const [doneIds, setDoneIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [statuses, setStatuses] = useState<ReadonlyMap<string, RemediationTrackerStepStatus>>(() => new Map());
   const [loaded, setLoaded] = useState(false);
   const [inFlight, setInFlight] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // A passive mirror of `statuses`, kept current on every render. `toggleComplete`
+  // reads it rather than nesting a second `setStatuses` call inside `write`'s own
+  // functional updater — nested updater calls run under React's own scheduling,
+  // not this hook's, and are not something to build a rollback's correctness on.
+  const statusesRef = useRef(statuses);
+  statusesRef.current = statuses;
 
   // `fetchWithAuth` is rebuilt on every access-token refresh; reading it through
   // a ref keeps a refresh from re-firing the load. Same discipline
@@ -105,11 +146,11 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
         if (!res.ok) throw new Error(`remediation tracker ${res.status}`);
         const body = (await res.json()) as WireTrackerPayload;
         if (cancelled) return;
-        const next = new Set<string>();
+        const next = new Map<string, RemediationTrackerStepStatus>();
         for (const step of body?.steps ?? []) {
-          if (step.status === "completed") next.add(step.stepId);
+          if (step.status !== "not_started" && isKnownStatus(step.status)) next.set(step.stepId, step.status);
         }
-        setDoneIds(next);
+        setStatuses(next);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -126,22 +167,19 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
     };
   }, [enabled]);
 
-  const toggle = useCallback(
-    (stepId: string) => {
+  /** Shared by the checkbox and the action picker: optimistic write, real rollback on failure. */
+  const write = useCallback(
+    (stepId: string, nextStatus: RemediationTrackerStepStatus) => {
       if (!enabled) return;
 
-      // The value this click is asking for, decided against the state the user
-      // is actually looking at rather than a stale closure.
-      let nextStatus: "completed" | "not_started" = "completed";
-      setDoneIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(stepId)) {
-          next.delete(stepId);
-          nextStatus = "not_started";
-        } else {
-          next.add(stepId);
-          nextStatus = "completed";
-        }
+      // What this step held before the click, so a failed write has something
+      // real to roll back to rather than guessing `not_started`.
+      let previousStatus: RemediationTrackerStepStatus = "not_started";
+      setStatuses((prev) => {
+        previousStatus = prev.get(stepId) ?? "not_started";
+        const next = new Map(prev);
+        if (nextStatus === "not_started") next.delete(stepId);
+        else next.set(stepId, nextStatus);
         return next;
       });
 
@@ -161,12 +199,12 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
           setError(null);
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          // Roll the tick back to what the server still holds. A tick left
-          // standing over a failed write is a claim the platform never stored.
-          setDoneIds((prev) => {
-            const next = new Set(prev);
-            if (nextStatus === "completed") next.delete(stepId);
-            else next.add(stepId);
+          // Roll back to what the server still holds. A status left standing
+          // over a failed write is a claim the platform never stored.
+          setStatuses((prev) => {
+            const next = new Map(prev);
+            if (previousStatus === "not_started") next.delete(stepId);
+            else next.set(stepId, previousStatus);
             return next;
           });
           setError(message);
@@ -182,5 +220,23 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
     [enabled],
   );
 
-  return { doneIds, loaded, saving: inFlight > 0, error, toggle };
+  const toggleComplete = useCallback(
+    (stepId: string) => {
+      // Mirrors the design's own toggle: clicking the checkbox from ANY
+      // non-complete state — including one of the other four actions — marks
+      // it complete; clicking it again resets to not started. The action
+      // picker never offers `completed` itself for the same reason: there is
+      // exactly one control for "I did this", and it is the checkbox.
+      const current = statusesRef.current.get(stepId) ?? "not_started";
+      write(stepId, current === "completed" ? "not_started" : "completed");
+    },
+    [write],
+  );
+
+  const setAction = useCallback(
+    (stepId: string, status: RemediationTrackerStepStatus) => write(stepId, status),
+    [write],
+  );
+
+  return { statuses, loaded, saving: inFlight > 0, error, toggleComplete, setAction };
 }

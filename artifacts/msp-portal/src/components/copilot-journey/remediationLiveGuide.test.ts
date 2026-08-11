@@ -31,6 +31,7 @@ import {
   UNCONFIRMED_EVIDENCE_DETAIL,
   buildLiveRemediationSteps,
   criticalsByPillar,
+  liveBlastRadius,
   liveCaution,
   liveTitle,
   liveVerify,
@@ -112,7 +113,17 @@ function liveText(v: JourneyView): string {
   const steps = buildLiveRemediationSteps(v);
   const parts: string[] = [];
   for (const s of steps) {
-    parts.push(s.title, s.where ?? "", s.caution ?? "", s.verify ?? "", s.code?.script ?? "", s.fillIn ?? "");
+    parts.push(
+      s.title,
+      s.where ?? "",
+      s.caution ?? "",
+      s.verify ?? "",
+      s.code?.script ?? "",
+      s.fillIn ?? "",
+      s.blastRadius.goesRight,
+      s.blastRadius.goesWrong,
+      s.blastRadius.tradeOff,
+    );
     if (s.evidence.kind === "gap") parts.push(s.evidence.detail);
   }
   parts.push(
@@ -311,6 +322,83 @@ describe("no Halden Materials data reaches a live tenant", () => {
     });
     assert.ok(!liveVerify("s11", two)?.includes("0 eligible"));
     assert.ok(liveVerify("s11", two)?.includes("2 permanent"));
+  });
+});
+
+describe("liveBlastRadius (#731)", () => {
+  it("returns null, and reuses the design's own copy, for a step with no fixture data", () => {
+    // s6 ("Put Teams creation behind a request"): every BR sentence in the
+    // design is already tenant-neutral wisdom, so there is nothing to rewrite.
+    assert.equal(liveBlastRadius("s6", THIN), null);
+    const live = buildLiveRemediationSteps(THIN).find((s) => s.id === "s6");
+    const preview = REMEDIATION_STEPS.find((s) => s.id === "s6");
+    assert.deepEqual(live?.blastRadius, preview?.blastRadius);
+  });
+
+  it("substitutes the tenant's own real stat where the design named Halden's", () => {
+    const v = view({
+      tenant: { name: "Contoso", seatCount: 640, scannedOn: "3 August 2026" },
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "security"
+          ? pillar(k, { score: 44, stats: [stat("security.globalAdmins", 9), stat("security.legacyAuth", 305)] })
+          : k === "health"
+            ? pillar(k, { score: 60, stats: [stat("health.nonCompliantDevices", 31)] })
+            : pillar(k),
+      ),
+    });
+    assert.ok(liveBlastRadius("s7", v)?.goesRight.includes("9 administrators"));
+    assert.ok(liveBlastRadius("s10", v)?.goesRight.startsWith("305 legacy sign-ins"));
+    assert.ok(liveBlastRadius("s11", v)?.goesRight.includes("9 accounts to two"));
+    assert.ok(liveBlastRadius("s13", v)?.goesRight.includes("31 devices"));
+    assert.ok(liveBlastRadius("s13", v)?.goesWrong.includes("31 users"));
+    assert.ok(liveBlastRadius("s15", v)?.goesRight.includes("640 people"));
+    assert.ok(liveBlastRadius("s1", v)?.goesRight.includes("640 people"));
+  });
+
+  it("drops the clause rather than printing a zero or a fixture figure when a stat is absent", () => {
+    // Only `goesRight` carries a real-stat substitution for these six steps;
+    // `goesWrong` is static design copy either way (s11's "at 2am" is a literal
+    // time of day, not a stat, so it is not asserted digit-free here).
+    for (const stepId of ["s1", "s7", "s10", "s11", "s13", "s15"]) {
+      const br = liveBlastRadius(stepId, THIN);
+      assert.ok(br, `expected an override for ${stepId}`);
+      assert.ok(!br.goesRight.match(/\d/), `${stepId} goesRight still carries a digit on a thin tenant`);
+    }
+  });
+
+  it("every one of the thirty steps carries a Blast Radius card either way", () => {
+    const live = buildLiveRemediationSteps(THIN);
+    for (const s of live) {
+      assert.ok(s.blastRadius.goesRight.length > 0, `${s.id} has no goesRight`);
+      assert.ok(s.blastRadius.goesWrong.length > 0, `${s.id} has no goesWrong`);
+      assert.ok(s.blastRadius.tradeOff.length > 0, `${s.id} has no tradeOff`);
+    }
+  });
+});
+
+describe("the design's own Blast Radius copy is transcribed, not invented", () => {
+  it("s1's card matches Design/Remediation Tracker.dc.html verbatim", () => {
+    const s1 = REMEDIATION_STEPS.find((s) => s.id === "s1");
+    assert.equal(
+      s1?.blastRadius.goesRight,
+      "Four sensitive sites stop being readable by 1,240 people. The single largest exposure in the assessment closes in fifteen minutes.",
+    );
+    assert.equal(
+      s1?.blastRadius.goesWrong,
+      'Close the wrong site and a live project loses access mid-week. Set them to "Only people in your organisation" instead of "Specific people" and they stay exposed to everyone internally — which is the actual finding.',
+    );
+    assert.equal(
+      s1?.blastRadius.tradeOff,
+      "Four teams need re-granting individually. Accept a day of access requests to close a tenant-wide exposure.",
+    );
+  });
+
+  it("every step carries a Blast Radius card in the preview", () => {
+    for (const s of REMEDIATION_STEPS) {
+      assert.ok(s.blastRadius.goesRight.length > 0, `${s.id} has no goesRight`);
+      assert.ok(s.blastRadius.goesWrong.length > 0, `${s.id} has no goesWrong`);
+      assert.ok(s.blastRadius.tradeOff.length > 0, `${s.id} has no tradeOff`);
+    }
   });
 });
 

@@ -36,6 +36,13 @@ export interface RemediationCode {
   readonly script: string;
 }
 
+/** The design's "Blast radius" card: what happens if this step goes right, wrong, or is done the slow safe way instead. */
+export interface RemediationBlastRadius {
+  readonly goesRight: string;
+  readonly goesWrong: string;
+  readonly tradeOff: string;
+}
+
 export interface RemediationStep {
   /** "s1" … "s30" — the design's own ids, and the key progress is stored under. */
   readonly id: string;
@@ -53,6 +60,8 @@ export interface RemediationStep {
   readonly caution?: string;
   /** The green note: how to prove it worked. */
   readonly verify?: string;
+  /** #731 (Phase B): the design's real per-step risk guidance. Every step has one. */
+  readonly blastRadius: RemediationBlastRadius;
 }
 
 
@@ -66,6 +75,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "SharePoint admin center → Sites → Active sites → [site] → Sharing",
     code: { language: "PowerShell · SharePoint Online", script: "$sites = @(\n  \"https://haldenmaterials.sharepoint.com/sites/CompRev2026\",\n  \"https://haldenmaterials.sharepoint.com/sites/RedundancyPlanning\",\n  \"https://haldenmaterials.sharepoint.com/sites/BoardPackQ2\",\n  \"https://haldenmaterials.sharepoint.com/sites/PayrollRecon\"\n)\n\nforeach ($s in $sites) {\n    Set-SPOSite -Identity $s -SharingCapability Disabled\n    Write-Host \"Closed: $s\" -ForegroundColor Green\n}" },
     verify: "Get-SPOSite -Identity $s | Select Url,SharingCapability returns Disabled for all four.",
+    blastRadius: { goesRight: "Four sensitive sites stop being readable by 1,240 people. The single largest exposure in the assessment closes in fifteen minutes.", goesWrong: "Close the wrong site and a live project loses access mid-week. Set them to \"Only people in your organisation\" instead of \"Specific people\" and they stay exposed to everyone internally — which is the actual finding.", tradeOff: "Four teams need re-granting individually. Accept a day of access requests to close a tenant-wide exposure." },
   },
   {
     id: "s2",
@@ -77,6 +87,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · SharePoint Online", script: "Get-SPOSite -Limit All -IncludePersonalSite:$false |\n    Where-Object { $_.SharingCapability -ne \"Disabled\" } |\n    Select-Object Url, Owner, SharingCapability, LastContentModifiedDate |\n    Sort-Object LastContentModifiedDate |\n    Export-Csv .\\orgwide-sites.csv -NoTypeInformation" },
     caution: "Do not bulk-close these. 208 sites closed without warning generates 208 access tickets in one morning. Send the CSV to owners with a 10-working-day attestation deadline, then close whatever comes back unclaimed.",
     verify: "The CSV holds 208 rows once the four from Step 1 are excluded.",
+    blastRadius: { goesRight: "You get a real inventory and owners make informed decisions about their own content.", goesWrong: "Bulk-closing all 208 generates 208 access tickets in one morning and turns the whole programme into the thing that broke SharePoint.", tradeOff: "Three weeks of attestation instead of one afternoon of scripting. Slower, and the only version that survives contact with users." },
   },
   {
     id: "s3",
@@ -88,6 +99,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · SharePoint Online", script: "Set-SPOTenant -RequireAnonymousLinksExpireInDays 30 -DefaultSharingLinkType Internal\nSet-SPOTenant -FileAnonymousLinkType View -FolderAnonymousLinkType View" },
     caution: "This governs links created from now on. The 2,940 existing links keep working until Step 4 revokes them.",
     verify: "Get-SPOTenant | Select RequireAnonymousLinksExpireInDays returns 30.",
+    blastRadius: { goesRight: "Every link created from today expires in 30 days. Exposure stops growing while you work through the backlog.", goesWrong: "Nothing breaks. This is the safest task in the guide.", tradeOff: "Genuinely long-lived supplier links now need re-issuing every 30 days. Real friction, small." },
   },
   {
     id: "s4",
@@ -99,6 +111,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · PnP.PowerShell", script: "foreach ($site in (Get-SPOSite -Limit All).Url) {\n    Connect-PnPOnline -Url $site -Interactive\n    Get-PnPFileSharingLink -Identity * -ErrorAction SilentlyContinue |\n        Where-Object { $_.Scope -eq \"Anonymous\" } |\n        ForEach-Object { Remove-PnPFileSharingLink -Identity $_.Id -Force }\n}" },
     caution: "Pilot this on one site first. Anonymous links are often embedded in supplier email threads — revoking all 2,940 is correct, but Communications should know the day it happens.",
     verify: "Re-run the loop with the Remove line commented out. It should return nothing.",
+    blastRadius: { goesRight: "2,940 live links stop working, including the one from 2021 nobody remembers creating.", goesWrong: "Supplier and client links embedded in old email threads die without warning. Expect inbound calls the same day.", tradeOff: "Pilot on one site first and warn Communications. Unannounced, this is the task most likely to reach your CEO." },
   },
   {
     id: "s5",
@@ -109,6 +122,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Entra admin center → Groups → Expiration",
     code: { language: "PowerShell · Microsoft Graph", script: "New-MgGroupLifecyclePolicy -GroupLifetimeInDays 365 -ManagedGroupTypes All\n    -AlternateNotificationEmails \"m365-governance@haldenmaterials.com\"" },
     verify: "Owners of the 148 inactive sites receive a renewal notice within 24 hours.",
+    blastRadius: { goesRight: "Dormant containers get an owner or get disposed of. 148 stale sites stop appearing in Copilot answers as current content.", goesWrong: "Auto-deleting on inactivity destroys archived project records someone still needs. Renewal notices to unmonitored mailboxes silently expire real content.", tradeOff: "Owners get renewal emails they will ignore at first. Chase, do not automate the deletion." },
   },
   {
     id: "s6",
@@ -120,6 +134,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "$tpl = Get-MgBetaDirectorySettingTemplate |\n    Where-Object { $_.DisplayName -eq \"Group.Unified\" }\n\n$setting = @{ templateId = $tpl.Id; values = @(\n    @{ name = \"EnableGroupCreation\";        value = \"false\" },\n    @{ name = \"GroupCreationAllowedGroupId\"; value = \"<sg-team-requesters-id>\" }\n) }\n\nNew-MgBetaDirectorySetting -BodyParameter $setting" },
     caution: "Create and populate the requesters group before running this, or you lock out legitimate team creation on a Friday afternoon.",
     verify: "A user outside the group sees \"Contact your admin\" when creating a team.",
+    blastRadius: { goesRight: "Sprawl stops at the source. Every new team arrives with a stated purpose and a named owner.", goesWrong: "Skip creating the requesters group first and legitimate team creation is locked out tenant-wide — usually discovered on a Friday afternoon.", tradeOff: "A request step where there was none. Unpopular for a fortnight, then invisible." },
   },
   {
     id: "s7",
@@ -130,6 +145,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Entra admin center → Users → [user] → Authentication methods",
     code: { language: "PowerShell · Microsoft Graph", script: "$ga = Get-MgDirectoryRole | Where-Object { $_.DisplayName -eq \"Global Administrator\" }\n\nGet-MgDirectoryRoleMember -DirectoryRoleId $ga.Id | ForEach-Object {\n    $u = Get-MgUser -UserId $_.Id -Property DisplayName,UserPrincipalName,SignInActivity\n    [PSCustomObject]@{\n        Name       = $u.DisplayName\n        UPN        = $u.UserPrincipalName\n        LastSignIn = $u.SignInActivity.LastSignInDateTime\n        Methods    = (Get-MgUserAuthenticationMethod -UserId $u.Id).\n                       AdditionalProperties[\"@odata.type\"] -join \", \"\n    }\n} | Sort-Object LastSignIn | Format-Table -AutoSize" },
     verify: "Every row shows a method beyond password, or the account has been removed.",
+    blastRadius: { goesRight: "Four privileged accounts get a second factor, and two dormant admin accounts disappear entirely.", goesWrong: "Enforce MFA on an account with no registered method and its owner is locked out. Register first, enforce second.", tradeOff: "A short window of admin inconvenience. Nothing else in the guide reduces risk this much this fast." },
   },
   {
     id: "s8",
@@ -141,6 +157,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "$params = @{\n    displayName = \"CA04 - Require MFA for privileged roles\"\n    state       = \"enabledForReportingButNotEnforced\"\n    conditions  = @{\n        users = @{ includeRoles = @(\n            \"62e90394-69f5-4237-9190-012177145e10\",   # Global Administrator\n            \"194ae4cb-b126-40b2-bd5b-6091b380977d\",   # Security Administrator\n            \"729827e3-9c14-49f7-bb1b-9608f156bbb8\"    # Helpdesk Administrator\n        ) }\n        applications = @{ includeApplications = @(\"All\") }\n    }\n    grantControls = @{ operator = \"OR\"; builtInControls = @(\"mfa\") }\n}\n\nNew-MgIdentityConditionalAccessPolicy -BodyParameter $params" },
     caution: "Create it in report-only, watch the sign-in logs for 48 hours, then enable. Never create an admin-scoped CA policy already enabled — you can lock every administrator out of the tenant, including yourself.",
     verify: "Sign-in logs, filtered to CA04, show \"Report-only: success\" for admin sign-ins. Then set State to enabled.",
+    blastRadius: { goesRight: "Privileged access requires MFA. The clearest gate blocker in the assessment closes.", goesWrong: "Create it enabled rather than report-only and you can lock every administrator out of the tenant, including yourself. This is the single highest-risk action in the guide.", tradeOff: "48 hours in report-only before enforcement. Do not shortcut it — break-glass accounts exist precisely because people do." },
   },
   {
     id: "s9",
@@ -151,6 +168,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Entra admin center → Protection → Conditional Access",
     code: { language: "PowerShell · Microsoft Graph", script: "Get-MgIdentityConditionalAccessPolicy |\n    Select-Object DisplayName, State,\n        @{ N=\"Excluded\"; E={ $_.Conditions.Users.ExcludeGroups -join \",\" } } |\n    Format-Table -AutoSize\n\n# on the policy holding the 44-member exclusion:\nUpdate-MgIdentityConditionalAccessPolicy -ConditionalAccessPolicyId <id>\n    -Conditions @{ users = @{ excludeGroups = @() } }" },
     verify: "No policy excludes any group other than your two break-glass accounts.",
+    blastRadius: { goesRight: "The baseline holds again and the 44-member exclusion stops quietly bypassing policy.", goesWrong: "Removing the exclusion without knowing why it was added can break a legitimate service account or an unmanaged-device workflow.", tradeOff: "Find out who added it on 14 June and why, before you remove it." },
   },
   {
     id: "s10",
@@ -162,6 +180,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Graph, then Exchange Online", script: "# 1. what is actually using legacy auth\nGet-MgAuditLogSignIn -Top 999 |\n    Where-Object { $_.ClientAppUsed -notin @(\"Browser\",\n                     \"Mobile Apps and Desktop clients\") } |\n    Group-Object ClientAppUsed, AppDisplayName |\n    Sort-Object Count -Descending | Format-Table Count, Name\n\n# 2. once migrated, disable per protocol\nSet-TransportConfig -SmtpClientAuthenticationDisabled $true\nGet-CASMailboxPlan -Filter { ImapEnabled -eq $true -or PopEnabled -eq $true } |\n    Set-CASMailboxPlan -ImapEnabled $false -PopEnabled $false" },
     caution: "1,106 legacy sign-ins in 30 days means something real still uses it. Find and migrate those two line-of-business clients first — disabling this cold will break them.",
     verify: "Legacy sign-in count reaches zero across a 7-day window.",
+    blastRadius: { goesRight: "1,106 legacy sign-ins a month stop. The oldest identity gap in the tenant closes.", goesWrong: "Disable it before migrating the two line-of-business mail clients and both break immediately, with no graceful failure.", tradeOff: "A week of coordination with those application owners. Not optional — legacy auth bypasses Conditional Access entirely." },
   },
   {
     id: "s11",
@@ -173,6 +192,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "$params = @{\n    action           = \"adminUpdate\"\n    principalId      = \"<user-object-id>\"\n    roleDefinitionId = \"62e90394-69f5-4237-9190-012177145e10\"\n    directoryScopeId = \"/\"\n    scheduleInfo     = @{\n        startDateTime = Get-Date\n        expiration    = @{ type = \"noExpiration\" }\n    }\n}\n\nNew-MgRoleManagementDirectoryRoleEligibilityScheduleRequest -BodyParameter $params" },
     caution: "Keep exactly two break-glass accounts: cloud-only, excluded from Conditional Access, hardware-key MFA, credentials sealed. Document them before removing anything else.",
     verify: "PIM → Global Administrator shows 2 permanent and 9 eligible.",
+    blastRadius: { goesRight: "Standing privilege drops from eleven accounts to two. Blast radius shrinks from 1,847 sites to a documented pair of emergency accounts.", goesWrong: "Remove standing access without configuring PIM and your administrators cannot elevate when something breaks at 2am. Lose both break-glass accounts and nobody can get in at all.", tradeOff: "Administrators activate a role instead of holding it. Mildly irritating daily, decisive in a breach." },
   },
   {
     id: "s12",
@@ -183,6 +203,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Defender portal → Policies & rules → Threat policies → Safe Links",
     code: { language: "PowerShell · Exchange Online", script: "Get-SafeLinksPolicy | Select-Object Name, IsEnabled, WhenChangedUTC\n\nSet-SafeLinksPolicy -Identity \"Finance - Safe Links\" -IsEnabled $true\nGet-SafeLinksRule  -Identity \"Finance - Safe Links\" | Enable-SafeLinksRule" },
     verify: "IsEnabled reads True.",
+    blastRadius: { goesRight: "Safe Links protection returns to the group most targeted by phishing.", goesWrong: "No downside. It was disabled on 14 June and nothing depended on it being off.", tradeOff: "A handful of legitimate links get rewritten and take an extra moment to resolve." },
   },
   {
     id: "s13",
@@ -194,6 +215,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "Get-MgDeviceManagementManagedDevice -All |\n    Where-Object { $_.ComplianceState -ne \"compliant\" } |\n    Select-Object DeviceName, UserPrincipalName, ComplianceState,\n                  OperatingSystem, OSVersion |\n    Export-Csv .\\noncompliant-devices.csv -NoTypeInformation" },
     caution: "88 devices currently fail the baseline. Promote the policy and those 88 users lose access. Triage first — 61 need disk encryption, 34 need an OS update, and most overlap.",
     verify: "The CSV falls below 10 rows before you add device compliance as a CA grant control.",
+    blastRadius: { goesRight: "Non-compliant devices stop reaching corporate data. 88 devices come up to baseline.", goesWrong: "Promote the policy before triaging and 88 users lose access at once — with encryption and OS updates being the fixes, some take hours.", tradeOff: "Three days of device remediation before enforcement. Enforce first and you own a helpdesk queue instead." },
   },
   {
     id: "s14",
@@ -205,6 +227,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Purview (Connect-IPPSSession)", script: "New-Label -Name \"Internal\" -DisplayName \"Internal\"\n    -Tooltip \"Standard business content. Not for external sharing.\"\n\nNew-Label -Name \"Confidential\" -DisplayName \"Confidential\"\n    -Tooltip \"Financial, HR or contractual content.\"\n    -EncryptionEnabled $true -EncryptionProtectionType Template\n    -EncryptionRightsDefinitions \"AllStaff@haldenmaterials.com:VIEW,EDIT,PRINT\"\n\nNew-LabelPolicy -Name \"Baseline\" -Labels \"Internal\",\"Confidential\"\n    -ExchangeLocation All -SharePointLocation All -OneDriveLocation All\n    -AdvancedSettings @{ MandatoryLabel = \"true\"; DefaultLabelId = \"Internal\" }" },
     caution: "Encryption on Confidential means external recipients lose access to anything carrying it. Confirm with Legal which external parties receive contract documents before publishing.",
     verify: "A new Word document prompts for a label before it can be saved.",
+    blastRadius: { goesRight: "Nothing can be saved unlabelled. Copilot finally has an instruction it obeys.", goesWrong: "Encryption on the Confidential label removes external access to anything carrying it — including contracts already shared with clients.", tradeOff: "Users see a label prompt on every new document. Confirm the external-access consequence with Legal before publishing." },
   },
   {
     id: "s15",
@@ -215,6 +238,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Microsoft Purview → Information protection → Auto-labeling",
     code: { language: "PowerShell · Purview", script: "New-AutoSensitivityLabelPolicy -Name \"Auto - Confidential\"\n    -ApplySensitivityLabel \"Confidential\"\n    -SharePointLocation All -OneDriveLocation All -ExchangeLocation All\n    -Mode TestWithoutNotifications          # simulation only\n\nNew-AutoSensitivityLabelRule -Name \"Financial and HR identifiers\"\n    -Policy \"Auto - Confidential\"\n    -ContentContainsSensitiveInformation @(\n        @{ Name = \"Credit Card Number\";             mincount = \"1\" },\n        @{ Name = \"U.K. National Insurance Number\"; mincount = \"1\" },\n        @{ Name = \"International Banking Account Number (IBAN)\"; mincount = \"1\" }\n    )" },
     verify: "Simulation results after 48 hours show a plausible match count, then switch Mode to Enable.",
+    blastRadius: { goesRight: "61% of content gets labelled without asking 1,240 people to do it manually.", goesWrong: "Enable it live and mislabelled content gets encrypted at scale. Reversing that across an estate is days of work.", tradeOff: "Run simulation for a full cycle first. Slower to start, and the only safe way to do this." },
   },
   {
     id: "s16",
@@ -226,6 +250,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Purview", script: "New-DlpCompliancePolicy -Name \"DLP - Teams and OneDrive\"\n    -TeamsLocation All -OneDriveLocation All -SharePointLocation All\n    -Mode TestWithNotifications     # review mode: alerts, does not block\n\nNew-DlpComplianceRule -Name \"Regulated identifiers\"\n    -Policy \"DLP - Teams and OneDrive\"\n    -ContentContainsSensitiveInformation @(\n        @{ Name = \"U.K. National Insurance Number\"; mincount = \"1\" },\n        @{ Name = \"Credit Card Number\";             mincount = \"1\" }\n    )\n    -NotifyUser Owner, LastModifier\n    -GenerateIncidentReport SiteAdmin -IncidentReportContent All" },
     caution: "Leave it in TestWithNotifications for two weeks minimum. Read the incident reports, tune against real false positives, then move to Enable. Blocking on day one is how DLP gets switched off permanently.",
     verify: "Purview → DLP → Alerts shows matches within 24 hours and no user is blocked.",
+    blastRadius: { goesRight: "Regulated data moving through Teams chat becomes visible. The DLP gap that blocks the gate closes.", goesWrong: "Enforce on day one and false positives block real work within hours. That is how DLP gets switched off permanently and never reinstated.", tradeOff: "Two weeks in review mode reading incident reports. Alerts without blocking, then tune, then enforce." },
   },
   {
     id: "s17",
@@ -237,6 +262,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Purview", script: "New-RetentionCompliancePolicy -Name \"Retention - Full workload coverage\"\n    -TeamsChatLocation All -TeamsChannelLocation All\n    -OneDriveLocation All -ModernGroupLocation All\n\nNew-RetentionComplianceRule -Name \"Seven year retain\"\n    -Policy \"Retention - Full workload coverage\"\n    -RetentionDuration 2555 -RetentionComplianceAction Keep" },
     caution: "Retention on Teams chat is irreversible for content already captured. Confirm the duration with Legal — 2,555 days is a placeholder, not a recommendation.",
     verify: "Policy status reads On across all six previously uncovered locations.",
+    blastRadius: { goesRight: "Six uncovered workloads come under retention. Teams chat, OneDrive and Planner stop being a records gap.", goesWrong: "Retention on Teams chat cannot be undone for content already captured. Set the wrong duration and you have created a discovery liability.", tradeOff: "Storage grows and deletion becomes harder. Confirm the duration with Legal — 2,555 days is a placeholder." },
   },
   {
     id: "s18",
@@ -248,6 +274,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Purview", script: "New-UnifiedAuditLogRetentionPolicy -Name \"Extended - privileged activity\"\n    -RecordTypes AzureActiveDirectory, ExchangeAdmin, SharePointSharingOperation\n    -RetentionDuration TenYears -Priority 100" },
     caution: "Ten-year retention across all record types needs E5 or an add-on. Scope it to privileged and sharing activity first — that is what an investigation actually needs.",
     verify: "Get-UnifiedAuditLogRetentionPolicy lists the policy as enabled.",
+    blastRadius: { goesRight: "Investigations reaching back beyond 90 days become possible for the first time.", goesWrong: "Nothing breaks. The only risk is scoping it so broadly that the licensing cost surprises you.", tradeOff: "Ten-year retention across all record types needs E5 or an add-on. Scope to privileged and sharing activity first." },
   },
   {
     id: "s19",
@@ -259,6 +286,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "$copilot = \"639dec6b-bb19-468b-871c-c5c441c4b0cb\"   # Copilot for M365\n\nGet-MgUser -All -Property DisplayName,UserPrincipalName,AssignedLicenses,SignInActivity |\n    Where-Object { $_.AssignedLicenses.SkuId -contains $copilot } |\n    Select-Object DisplayName, UserPrincipalName,\n        @{ N=\"LastSignIn\"; E={ $_.SignInActivity.LastSignInDateTime } } |\n    Sort-Object LastSignIn |\n    Export-Csv .\\copilot-dormant.csv -NoTypeInformation" },
     caution: "Sign-in activity is not Copilot usage. Cross-check against the Copilot usage report in the M365 admin center before reclaiming anyone.",
     verify: "The CSV shows 22 users with no Copilot activity in 30 days.",
+    blastRadius: { goesRight: "You find out which 22 of the 60 Copilot seats are genuinely unused.", goesWrong: "Reading sign-in activity as Copilot usage reclaims a seat from someone who uses Copilot weekly but signs in rarely.", tradeOff: "Cross-check against the Copilot usage report. One extra step, avoids one very awkward conversation." },
   },
   {
     id: "s20",
@@ -270,6 +298,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "Import-Csv .\\copilot-dormant-confirmed.csv | ForEach-Object {\n    Set-MgUserLicense -UserId $_.UserPrincipalName\n        -RemoveLicenses @(\"639dec6b-bb19-468b-871c-c5c441c4b0cb\")\n        -AddLicenses @()\n    Write-Host \"Reclaimed: $($_.UserPrincipalName)\"\n}" },
     caution: "Send the notice first. Reclaiming a licence someone was about to start using is the fastest way to lose goodwill for the whole programme.",
     verify: "Billing → Licenses shows 22 Copilot seats available.",
+    blastRadius: { goesRight: "$7,920 a year returns immediately, with no purchase and no negotiation.", goesWrong: "Reclaim without notice and you take a licence from someone who was about to start. That story travels further than the saving.", tradeOff: "A 14-day notice delays the saving by two weeks and protects goodwill for the whole programme." },
   },
   {
     id: "s21",
@@ -280,6 +309,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Entra admin center → Groups → Licenses",
     code: { language: "PowerShell · Microsoft Graph", script: "$skus = Get-MgSubscribedSku\n\nGet-MgUser -All -Property DisplayName,Department,JobTitle,AssignedLicenses |\n    Select-Object DisplayName, Department, JobTitle,\n        @{ N=\"SKUs\"; E={ ($_.AssignedLicenses.SkuId | ForEach-Object {\n            ($skus | Where-Object SkuId -eq $_).SkuPartNumber }) -join \",\" } } |\n    Sort-Object Department, SKUs |\n    Export-Csv .\\sku-by-department.csv -NoTypeInformation" },
     verify: "Every row matches a defined role template, or sits on a documented exception list.",
+    blastRadius: { goesRight: "47 mismatched assignments come onto a defined role pattern. Licensing becomes predictable.", goesWrong: "Downgrade someone from E5 to E3 without checking and they lose the very Purview or CA features another task just relied on.", tradeOff: "Reconciliation takes a couple of hours of real judgement. Not a script you run unattended." },
   },
   {
     id: "s22",
@@ -291,6 +321,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "New-MgGroup -DisplayName \"LIC-E5-Finance\" -MailEnabled:$false\n    -SecurityEnabled -MailNickname \"lic-e5-finance\"\n    -GroupTypes \"DynamicMembership\" -MembershipRuleProcessingState \"On\"\n    -MembershipRule (\n        \"(user.department -eq \" + [char]34 + \"Finance\" + [char]34 + \")\" +\n        \" -and (user.accountEnabled -eq true)\"\n    )" },
     caution: "Assign the licence to the new group and confirm membership resolves before removing the legacy group. Overlapping assignment is safe; a gap is not.",
     verify: "A new Finance starter receives E5 within 24 hours of their HR record appearing.",
+    blastRadius: { goesRight: "New starters land on the right SKU automatically. Seat drift stops recurring.", goesWrong: "Remove the legacy group before the dynamic group resolves and users briefly hold no licence at all — mailboxes go into a 30-day grace state.", tradeOff: "Overlap the two assignments deliberately. Paying twice for a day beats a licensing gap." },
   },
   {
     id: "s23",
@@ -301,6 +332,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "M365 admin center → Reports → Usage",
     code: { language: "PowerShell · Microsoft Graph", script: "Get-MgReportTeamUserActivityUserDetail    -Period D30 -OutFile .\\teams-d30.csv\nGet-MgReportOneDriveUsageAccountDetail    -Period D30 -OutFile .\\onedrive-d30.csv\nGet-MgReportSharePointSiteUsageDetail     -Period D30 -OutFile .\\spo-d30.csv" },
     verify: "The Teams export shows 412 users with zero activity, matching the assessment.",
+    blastRadius: { goesRight: "You plan training against real usage rather than assumption.", goesWrong: "No risk. The only failure mode is not doing it and training the wrong departments.", tradeOff: "Twenty minutes of work before any enablement spend." },
   },
   {
     id: "s24",
@@ -310,6 +342,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     title: "Move one real recurring workflow per department into a channel",
     where: "Not a setting — one decision per department",
     verify: "Channel post share rises from 22% toward parity with chat over one quarter.",
+    blastRadius: { goesRight: "Work moves where Copilot can see it, and the 412 dormant users have a reason to be in Teams.", goesWrong: "Mandate Teams adoption without moving anything real and usage spikes for a week then returns to email — with the credibility of the programme spent.", tradeOff: "Slower than a communications campaign. It is the only approach that holds." },
   },
   {
     id: "s25",
@@ -319,6 +352,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     title: "Train the three ready personas first",
     where: "Finance Analyst · Legal Counsel · Executive Assistant",
     verify: "Each persona produces one documented before-and-after example within three weeks.",
+    blastRadius: { goesRight: "Your first internal Copilot examples are successes, told by people their colleagues believe.", goesWrong: "Train the least-ready personas first and your first examples are failures. That impression is very hard to reverse.", tradeOff: "516 users wait a few weeks longer. Worth it for the proof." },
   },
   {
     id: "s26",
@@ -329,6 +363,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "SharePoint admin center → Policies → Sharing → Default link type",
     code: { language: "PowerShell · SharePoint Online", script: "Set-SPOTenant -DefaultSharingLinkType Internal -DefaultLinkPermission Edit" },
     verify: "Attachment share of document traffic falls below 20% over two quarters.",
+    blastRadius: { goesRight: "44% of document traffic becomes visible to Copilot and gains real version control.", goesWrong: "Nothing breaks technically. People who prefer attachments will route around it if nobody explains why.", tradeOff: "Users lose the habit of sending copies. Some will need telling twice." },
   },
   {
     id: "s27",
@@ -339,6 +374,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "PowerShell — run this before Phase 1 begins, not after",
     code: { language: "PowerShell · multi-module", script: "$stamp = Get-Date -Format \"yyyy-MM-dd\"\n$dir   = \".\\baseline-$stamp\"\nNew-Item -ItemType Directory -Path $dir -Force | Out-Null\n\nGet-MgIdentityConditionalAccessPolicy | ConvertTo-Json -Depth 10 |\n    Out-File \"$dir\\conditional-access.json\"\nGet-SPOTenant           | ConvertTo-Json | Out-File \"$dir\\spo-tenant.json\"\nGet-OrganizationConfig  | ConvertTo-Json | Out-File \"$dir\\exo-org.json\"\nGet-DlpCompliancePolicy | ConvertTo-Json -Depth 6 | Out-File \"$dir\\dlp.json\"\n\nGet-FileHash \"$dir\\*\" | Export-Csv \"$dir\\hashes.csv\" -NoTypeInformation" },
     verify: "The folder holds four JSON files and a hash manifest. Store a copy outside the tenant.",
+    blastRadius: { goesRight: "You gain something to measure drift against. Every later change becomes visible.", goesWrong: "Skip it and the 37-unreviewed-changes problem simply continues, invisibly, on top of freshly remediated configuration.", tradeOff: "An hour before Phase 1 begins. Run it after remediation and you have baselined the fix, not the starting point." },
   },
   {
     id: "s28",
@@ -350,6 +386,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "Get-MgReportOneDriveUsageAccountDetail -Period D30 -OutFile .\\od.csv\n\nImport-Csv .\\od.csv |\n    Where-Object { $_.\"Last Activity Date\" -eq \"\" -and $_.\"Is Deleted\" -eq \"False\" } |\n    Select-Object \"Owner Principal Name\", \"Site URL\"" },
     caution: "Most sync errors are a stale client rather than a service fault. Push the current OneDrive build to the 34 out-of-date devices before investigating individually.",
     verify: "Sync error count falls below 20 in the admin center health report.",
+    blastRadius: { goesRight: "214 users get reliable file sync, and OneDrive becomes dependable enough for Copilot to ground on.", goesWrong: "Little risk. Chasing 214 users individually instead of pushing the client update wastes a week.", tradeOff: "Most resolve with a single client update. Investigate only what remains." },
   },
   {
     id: "s29",
@@ -361,6 +398,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     code: { language: "PowerShell · Microsoft Graph", script: "Get-MgGroup -All -Property DisplayName,Id,CreatedDateTime | ForEach-Object {\n    $owners = Get-MgGroupOwner -GroupId $_.Id -ErrorAction SilentlyContinue\n    if (-not $owners) {\n        [PSCustomObject]@{ Group = $_.DisplayName; Created = $_.CreatedDateTime }\n    }\n} | Export-Csv .\\orphaned-groups.csv -NoTypeInformation" },
     caution: "Never delete on inactivity alone. Assign an owner, ask them to confirm, and dispose only of what comes back unclaimed after the notice period.",
     verify: "Orphaned group count reaches zero and every remaining site has a named owner.",
+    blastRadius: { goesRight: "Stale content stops surfacing in Copilot answers as current. Ownership is restored across the estate.", goesWrong: "Delete on inactivity alone and you destroy archived records with real retention obligations attached.", tradeOff: "Three weeks of attestation. Assign an owner, ask, then dispose of what comes back unclaimed." },
   },
   {
     id: "s30",
@@ -371,6 +409,7 @@ export const REMEDIATION_STEPS: readonly RemediationStep[] = [
     where: "Schedule this against the baseline captured in Step 27",
     code: { language: "PowerShell · scheduled monthly", script: "$all  = Get-ChildItem .\\baseline-* -Directory | Sort-Object Name\n$prev = $all[-2].FullName\n$cur  = $all[-1].FullName\n\nCompare-Object (Get-Content \"$prev\\conditional-access.json\") `\n               (Get-Content \"$cur\\conditional-access.json\") |\n    Where-Object { $_.SideIndicator -ne \"==\" } |\n    Export-Csv \".\\drift-$(Get-Date -Format yyyy-MM).csv\" -NoTypeInformation" },
     verify: "The first monthly run produces a drift report with zero unexplained differences.",
+    blastRadius: { goesRight: "The 27 points you just earned stay earned. Drift becomes visible the month it happens.", goesWrong: "Skip it and remediation quietly undoes itself inside two quarters — the same 37 unreviewed changes, on better configuration.", tradeOff: "A monthly review that someone has to actually read. This is the task that protects the other twenty-nine." },
   },
 ];
 

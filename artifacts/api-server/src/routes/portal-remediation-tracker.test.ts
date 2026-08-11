@@ -1,8 +1,9 @@
 /**
- * portal-remediation-tracker.test.ts — Git #730, Phase A of epic #647.
+ * portal-remediation-tracker.test.ts — Git #730 (Phase A), widened in #731
+ * (Phase B) for the real per-step action vocabulary.
  *
- * Two things are worth guarding here and they are both correctness rather than
- * plumbing:
+ * Three things are worth guarding here and they are all correctness rather
+ * than plumbing:
  *
  *   1. THE STEP-ID CATALOGUE HAS NOT DRIFTED. The route holds "s1".."s30" only
  *      to reject writes for steps that do not exist; the real catalogue is
@@ -12,6 +13,11 @@
  *   2. `completed_at` IS DERIVED, NEVER TAKEN FROM THE CLIENT, and un-ticking
  *      CLEARS it. A stale completion timestamp left behind by a withdrawn tick
  *      would be the platform quietly holding a claim the customer retracted.
+ *   3. THE STATUS VOCABULARY HAS NOT DRIFTED EITHER. `lib/db`'s schema and
+ *      msp-portal's `useRemediationTracker.ts` each hold their own copy of
+ *      `REMEDIATION_TRACKER_STEP_STATUS` (msp-portal carries no dependency on
+ *      `@workspace/db`), and this test reads both real files directly so the
+ *      two cannot silently disagree about what a valid status is.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -64,7 +70,14 @@ vi.mock("@workspace/db", () => {
       updatedByUserId: "updated_by_user_id",
       updatedAt: "updated_at",
     },
-    REMEDIATION_TRACKER_STEP_STATUS: ["not_started", "completed"] as const,
+    REMEDIATION_TRACKER_STEP_STATUS: [
+      "not_started",
+      "completed",
+      "already_handled",
+      "not_applicable",
+      "deferred",
+      "shane_handles",
+    ] as const,
   };
 });
 
@@ -81,6 +94,7 @@ vi.mock("../lib/logger", () => {
 });
 
 import router, { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker";
+import { REMEDIATION_TRACKER_STEP_STATUS } from "@workspace/db";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();
@@ -115,6 +129,37 @@ describe("the route's step ids still match the guide's own catalogue", () => {
     // would silently pass on an empty list.
     expect(catalogueIds.length).toBeGreaterThan(0);
     expect(catalogueIds).toEqual([...REMEDIATION_TRACKER_STEP_IDS]);
+  });
+});
+
+describe("the status vocabulary has not drifted between lib/db and msp-portal", () => {
+  it("useRemediationTracker.ts's mirror is exactly lib/db's real REMEDIATION_TRACKER_STEP_STATUS", () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+
+    const schemaPath = path.resolve(here, "../../../../lib/db/src/schema/msp.ts");
+    const schemaSource = readFileSync(schemaPath, "utf8");
+    const schemaMatch = schemaSource.match(
+      /export const REMEDIATION_TRACKER_STEP_STATUS = \[([\s\S]*?)\] as const;/,
+    );
+    expect(schemaMatch).not.toBeNull();
+    const schemaValues = [...(schemaMatch?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
+
+    const hookPath = path.resolve(
+      here,
+      "../../../msp-portal/src/components/copilot-journey/useRemediationTracker.ts",
+    );
+    const hookSource = readFileSync(hookPath, "utf8");
+    const hookMatch = hookSource.match(/export const REMEDIATION_TRACKER_STEP_STATUS = \[([\s\S]*?)\] as const;/);
+    expect(hookMatch).not.toBeNull();
+    const hookValues = [...(hookMatch?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
+
+    // Guards the guard: an empty extraction on either side would pass a
+    // vacuous comparison.
+    expect(schemaValues.length).toBeGreaterThan(0);
+    expect(hookValues).toEqual(schemaValues);
+    // And the route's own validation is fed from the same (mocked-here) export,
+    // so pins it to the same list rather than trusting the mock in isolation.
+    expect([...REMEDIATION_TRACKER_STEP_STATUS]).toEqual(schemaValues);
   });
 });
 
@@ -198,4 +243,19 @@ describe("PUT /api/portal/remediation-tracker/steps/:stepId", () => {
     expect(mockConflictSets[0].completedAt).toBeNull();
     expect(res.body.step.completedAt).toBeNull();
   });
+
+  it.each(["already_handled", "not_applicable", "deferred", "shane_handles"] as const)(
+    "accepts the #731 action status %s and stores no completed_at for it",
+    async (status) => {
+      mockSelectResultsQueue = [[{ stepId: "s5", status, completedAt: null, updatedAt: new Date() }]];
+      const res = await request(makeApp(CUSTOMER)).put("/api/portal/remediation-tracker/steps/s5").send({ status });
+
+      expect(res.status).toBe(200);
+      expect(mockInsertValues[0].status).toBe(status);
+      // None of the four actioned statuses is a self-resolve: `completed_at`
+      // stays null the same as `not_started`'s.
+      expect(mockInsertValues[0].completedAt).toBeNull();
+      expect(mockConflictSets[0].completedAt).toBeNull();
+    },
+  );
 });

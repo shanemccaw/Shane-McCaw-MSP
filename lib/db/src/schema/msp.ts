@@ -3535,7 +3535,46 @@ export type InsertRemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseT
 // customer; a step with no row is `not_started`, which is what an untouched
 // tracker is. The API resolves the absence, so a customer who has never opened
 // the guide costs nothing.
-export const REMEDIATION_TRACKER_STEP_STATUS = ["not_started", "completed"] as const;
+//
+// THE VOCABULARY (#731, Phase B). Phase A shipped only `not_started` /
+// `completed` and said this column would widen in code with no second
+// migration — it does, here, to the design's own real per-step action set
+// (Design/Remediation Tracker.dc.html's `REASONS` array plus its "Have Shane
+// do this one" button, the four things a reader can decide about a step
+// besides doing it themselves):
+//
+//   already_handled — "Already handled another way"
+//   not_applicable  — "Not applicable to this tenant"
+//   deferred        — "Deferring to a later phase"
+//   shane_handles   — "Have Shane do this one"
+//
+// `completed` KEEPS ITS NAME rather than being renamed to a literal
+// "self_resolve": Phase A's own contract for it — "a tick is the customer's
+// own claim that they did it themselves" — already IS self-resolve, and
+// renaming a value already live in a customer's row for a naming preference
+// would be exactly the kind of unforced migration this column was built to
+// avoid. `not_started` also stays: none of the four new values means "I
+// haven't decided", and collapsing "haven't looked at this" into one of them
+// would misrepresent every existing untouched row the moment it renders.
+//
+// WHAT THE DESIGN'S OWN STATE MACHINE FLATTENS AWAY. The design tracks
+// `status` (open/complete/skipped), a separate `reasons` map, a separate
+// `blocked` flag for "Not safe yet — needs a decision" (raised, then
+// optionally handed to Shane's team) and a separate `by` (you/team) — four
+// pieces of state for one decision. This column is deliberately ONE flat
+// enum: from the reader's side, "I'm handing this to Shane" and "this is
+// already handled another way" are the same shape of fact — a decision made
+// about the step — and splitting them across parallel boolean/reason fields
+// bolted onto `completed_at`'s neighbours is exactly what Phase A's own
+// comment on this column warned against.
+export const REMEDIATION_TRACKER_STEP_STATUS = [
+  "not_started",
+  "completed",
+  "already_handled",
+  "not_applicable",
+  "deferred",
+  "shane_handles",
+] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 
 export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps", {
@@ -3549,14 +3588,19 @@ export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps",
   /** "s1" … "s30" — the remediation guide's own step ids. */
   stepId: text("step_id").notNull(),
   /**
-   * Phase A's whole vocabulary. Phase B (#731) widens it with the design's real
-   * action set (self-resolve, defer, Shane-handles, already-handled,
-   * not-applicable) — deliberately a plain text column with no CHECK, the same
-   * convention `content_posts.status` follows, so that widening is a code
-   * change rather than another migration Shane has to run.
+   * See `REMEDIATION_TRACKER_STEP_STATUS` above for the real vocabulary.
+   * Deliberately a plain text column with no CHECK, the same convention
+   * `content_posts.status` follows — Phase B (#731) already widened this once
+   * in code alone, no migration, and Phase C's verification/drift state stays
+   * its OWN column rather than growing this enum further.
    */
   status: text("status", { enum: REMEDIATION_TRACKER_STEP_STATUS }).notNull().default("not_started"),
-  /** When this step last became `completed`. NULL whenever it is not. */
+  /**
+   * When this step last became `completed` — literal self-resolve, not any of
+   * the other four actioned states. NULL whenever the status is anything else,
+   * including the other four: none of them is evidence of a completed change,
+   * only of a decision made about the step.
+   */
   completedAt: timestamp("completed_at", { withTimezone: true }),
   /** users.id of whoever last changed this row. Nullable for rows written by anything but a person. */
   updatedByUserId: integer("updated_by_user_id"),

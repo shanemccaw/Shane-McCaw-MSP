@@ -125,6 +125,7 @@ import {
   REMEDIATION_GUIDE,
   REMEDIATION_PRELUDE,
   REMEDIATION_STEPS,
+  type RemediationBlastRadius,
   type RemediationCode,
   type RemediationStep,
 } from "./previewRemediationGuide.ts";
@@ -554,6 +555,195 @@ export function liveVerify(stepId: string, view: JourneyView): string | null {
   }
 }
 
+/**
+ * A step's live Blast Radius card (#731, Phase B) — "if it goes right", "if it
+ * goes wrong", "trade-off". `null` keeps the design's own copy, which is the
+ * majority of steps: the design's guidance is mostly tenant-neutral wisdom
+ * ("Enforce MFA on an account with no registered method and its owner is
+ * locked out") that says something true regardless of which tenant is reading
+ * it, and #472's own rule for this journey is to touch nothing that already
+ * carries no fixture data.
+ *
+ * Where a sentence states one of Halden's own counts as fact — "1,240 people",
+ * "$7,920 a year", "the 44-member exclusion" — it is rewritten the same way
+ * `liveCaution`/`liveVerify` already rewrite theirs: the real stat substitutes
+ * in wherever this journey's wire carries the exact figure the sentence names
+ * (the same `statValue()` calls `liveTitle`/`liveCaution` already make for
+ * these same steps, reused rather than re-derived), and everywhere else the
+ * count is dropped and the sentence generalised. Nothing here is invented —
+ * every word besides a dropped or substituted number is the design's own.
+ */
+export function liveBlastRadius(stepId: string, view: JourneyView): RemediationBlastRadius | null {
+  const admins = statValue(view.pillars, "security", "security.globalAdmins");
+  const legacy = statValue(view.pillars, "security", "security.legacyAuth");
+  const failing = statValue(view.pillars, "health", "health.nonCompliantDevices");
+  const seats = view.tenant.seatCount;
+
+  switch (stepId) {
+    case "s1":
+      return {
+        goesRight:
+          (seats !== null
+            ? `Your most sensitive sites stop being readable by all ${num(seats)} people on the tenant.`
+            : "Your most sensitive sites stop being readable by everyone on the tenant.") +
+          " The single largest exposure this guide addresses closes in fifteen minutes.",
+        goesWrong:
+          'Close the wrong site and a live project loses access mid-week. Set them to "Only people in your ' +
+          'organisation" instead of "Specific people" and they stay exposed to everyone internally — which is the ' +
+          "actual finding.",
+        tradeOff: "Affected teams need re-granting individually. Accept a day of access requests to close a tenant-wide exposure.",
+      };
+    case "s2":
+      return {
+        goesRight: "You get a real inventory and owners make informed decisions about their own content.",
+        goesWrong:
+          "Bulk-closing all of them generates one access ticket per site, all in the same morning, and turns the " +
+          "whole programme into the thing that broke SharePoint.",
+        tradeOff: "Three weeks of attestation instead of one afternoon of scripting. Slower, and the only version that survives contact with users.",
+      };
+    case "s4":
+      return {
+        goesRight: "Every live anonymous link stops working, including the oldest one nobody remembers creating.",
+        goesWrong: "Supplier and client links embedded in old email threads die without warning. Expect inbound calls the same day.",
+        tradeOff: "Pilot on one site first and warn Communications. Unannounced, this is the task most likely to reach your CEO.",
+      };
+    case "s5":
+      return {
+        goesRight: "Dormant containers get an owner or get disposed of. Stale sites stop appearing in Copilot answers as current content.",
+        goesWrong:
+          "Auto-deleting on inactivity destroys archived project records someone still needs. Renewal notices to " +
+          "unmonitored mailboxes silently expire real content.",
+        tradeOff: "Owners get renewal emails they will ignore at first. Chase, do not automate the deletion.",
+      };
+    case "s7":
+      return {
+        goesRight:
+          admins !== null
+            ? `Privileged accounts among your ${num(admins)} administrators get a second factor, and any dormant admin accounts disappear entirely.`
+            : "Privileged accounts get a second factor, and any dormant admin accounts disappear entirely.",
+        goesWrong: "Enforce MFA on an account with no registered method and its owner is locked out. Register first, enforce second.",
+        tradeOff: "A short window of admin inconvenience. Nothing else in this guide reduces risk this much this fast.",
+      };
+    case "s9":
+      return {
+        goesRight: "The baseline holds again and the exclusion group stops quietly bypassing policy.",
+        goesWrong: "Removing the exclusion without knowing why it was added can break a legitimate service account or an unmanaged-device workflow.",
+        tradeOff: "Find out who added it and why, before you remove it.",
+      };
+    case "s10":
+      return {
+        goesRight:
+          legacy !== null
+            ? `${num(legacy)} legacy sign-ins a month stop. The oldest identity gap in the tenant closes.`
+            : "Legacy sign-ins stop. The oldest identity gap in the tenant closes.",
+        goesWrong: "Disable it before migrating the line-of-business mail clients that still use it and they break immediately, with no graceful failure.",
+        tradeOff: "A week of coordination with those application owners. Not optional — legacy auth bypasses Conditional Access entirely.",
+      };
+    case "s11":
+      return {
+        goesRight:
+          admins !== null && admins > 2
+            ? `Standing privilege drops from ${num(admins)} accounts to two documented emergency accounts.`
+            : "Standing privilege drops to two documented emergency accounts.",
+        goesWrong:
+          "Remove standing access without configuring PIM and your administrators cannot elevate when something " +
+          "breaks at 2am. Lose both break-glass accounts and nobody can get in at all.",
+        tradeOff: "Administrators activate a role instead of holding it. Mildly irritating daily, decisive in a breach.",
+      };
+    case "s12":
+      return {
+        goesRight: "Safe Links protection returns to the group most targeted by phishing.",
+        goesWrong: "No downside — nothing currently depends on it being off.",
+        tradeOff: "A handful of legitimate links get rewritten and take an extra moment to resolve.",
+      };
+    case "s13":
+      return {
+        goesRight:
+          failing !== null
+            ? `Non-compliant devices stop reaching corporate data. ${num(failing)} devices come up to baseline.`
+            : "Non-compliant devices stop reaching corporate data.",
+        goesWrong:
+          failing !== null
+            ? `Promote the policy before triaging and ${num(failing)} users lose access at once — with encryption and OS updates being the fixes, some take hours.`
+            : "Promote the policy before triaging and every currently non-compliant user loses access at once.",
+        tradeOff: "A few days of device remediation before enforcement. Enforce first and you own a helpdesk queue instead.",
+      };
+    case "s15":
+      return {
+        goesRight:
+          seats !== null
+            ? `Content gets labelled without asking all ${num(seats)} people to do it manually.`
+            : "Content gets labelled without asking everyone to do it manually.",
+        goesWrong: "Enable it live and mislabelled content gets encrypted at scale. Reversing that across an estate is days of work.",
+        tradeOff: "Run simulation for a full cycle first. Slower to start, and the only safe way to do this.",
+      };
+    case "s19":
+      return {
+        goesRight: "You find out which of your Copilot seats are genuinely unused.",
+        goesWrong: "Reading sign-in activity as Copilot usage reclaims a seat from someone who uses Copilot weekly but signs in rarely.",
+        tradeOff: "Cross-check against the Copilot usage report. One extra step, avoids one very awkward conversation.",
+      };
+    case "s20":
+      return {
+        goesRight: "The reclaimed seats' licence cost returns immediately, with no purchase and no negotiation.",
+        goesWrong: "Reclaim without notice and you take a licence from someone who was about to start. That story travels further than the saving.",
+        tradeOff: "A 14-day notice delays the saving by two weeks and protects goodwill for the whole programme.",
+      };
+    case "s21":
+      return {
+        goesRight: "Mismatched assignments come onto a defined role pattern. Licensing becomes predictable.",
+        goesWrong: "Downgrade someone from E5 to E3 without checking and they lose the very Purview or CA features another task just relied on.",
+        tradeOff: "Reconciliation takes a couple of hours of real judgement. Not a script you run unattended.",
+      };
+    case "s24":
+      return {
+        goesRight: "Work moves where Copilot can see it, and your dormant Teams users have a reason to be in Teams.",
+        goesWrong:
+          "Mandate Teams adoption without moving anything real and usage spikes for a week then returns to email " +
+          "— with the credibility of the programme spent.",
+        tradeOff: "Slower than a communications campaign. It is the only approach that holds.",
+      };
+    case "s25":
+      return {
+        goesRight: "Your first internal Copilot examples are successes, told by people their colleagues believe.",
+        goesWrong: "Train the least-ready personas first and your first examples are failures. That impression is very hard to reverse.",
+        tradeOff: "Everyone else waits a few weeks longer. Worth it for the proof.",
+      };
+    case "s26":
+      return {
+        goesRight: "Document traffic becomes visible to Copilot and gains real version control.",
+        goesWrong: "Nothing breaks technically. People who prefer attachments will route around it if nobody explains why.",
+        tradeOff: "Users lose the habit of sending copies. Some will need telling twice.",
+      };
+    case "s27":
+      return {
+        goesRight: "You gain something to measure drift against. Every later change becomes visible.",
+        goesWrong: "Skip it and unreviewed configuration drift simply continues, invisibly, on top of freshly remediated configuration.",
+        tradeOff: "An hour before Phase 1 begins. Run it after remediation and you have baselined the fix, not the starting point.",
+      };
+    case "s28":
+      return {
+        goesRight: "Affected users get reliable file sync, and OneDrive becomes dependable enough for Copilot to ground on.",
+        goesWrong: "Little risk. Chasing users individually instead of pushing the client update wastes a week.",
+        tradeOff: "Most resolve with a single client update. Investigate only what remains.",
+      };
+    case "s29":
+      return {
+        goesRight: "Stale content stops surfacing in Copilot answers as current. Ownership is restored across the estate.",
+        goesWrong: "Delete on inactivity alone and you destroy archived records with real retention obligations attached.",
+        tradeOff: "Three weeks of attestation. Assign an owner, ask, then dispose of what comes back unclaimed.",
+      };
+    case "s30":
+      return {
+        goesRight: "The points you just earned stay earned. Drift becomes visible the month it happens.",
+        goesWrong: "Skip it and remediation quietly undoes itself inside two quarters, on better configuration.",
+        tradeOff: "A monthly review that someone has to actually read. This is the task that protects the other twenty-nine.",
+      };
+    default:
+      return null;
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * 6 · The assembled live steps
  * ------------------------------------------------------------------ */
@@ -580,6 +770,7 @@ export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemed
     const where = liveWhere(step.id);
     const caution = liveCaution(step.id, view);
     const verify = liveVerify(step.id, view);
+    const blastRadius = liveBlastRadius(step.id, view);
     const code = LIVE_STEP_SCRIPTS[step.id];
     const fillIn = STEP_FILL_INS[step.id];
 
@@ -590,6 +781,7 @@ export function buildLiveRemediationSteps(view: JourneyView): readonly LiveRemed
       ...(code ? { code } : {}),
       ...(caution ? { caution } : {}),
       ...(verify ? { verify } : {}),
+      ...(blastRadius ? { blastRadius } : {}),
       ...(fillIn ? { fillIn } : {}),
       evidence: stepEvidence(step.id, view.pillars),
     };
