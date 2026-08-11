@@ -107,6 +107,14 @@ An unpacked Edge/Chrome extension with two parts, both running on
    the issue number. The same button shows up (💬) on any issue row
    anywhere in the panel that has a linked chat.
 
+   The browse view's **search box** also falls back to a live GitHub lookup
+   for a bare number query — the normal list only ever shows OPEN issues,
+   so a landed/closed one like `686` would otherwise be invisible to search
+   entirely. A numeric search shows the issue's real title/state, its epic
+   (resolved from GitHub's own parent link, not a possibly-stale local
+   sync), and a **Go to Chat** button if that epic has one, above the
+   normal filtered results.
+
 There's no server-side way to fetch a claude.ai conversation's title or
 content — a plain HTTP GET on the chat URL 403s without your session
 cookie, and even with one, claude.ai is a client-rendered SPA so the raw

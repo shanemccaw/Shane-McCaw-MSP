@@ -1060,6 +1060,24 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
       res.status(404).json({ error: `#${number} not found on GitHub` });
       return;
     }
+
+    // Git #737 follow-up — Shane: "if I search for a Issue number 686 it
+    // should bring back the epic too so I can get to the chat." Resolved
+    // straight from GitHub's own parent_issue_url (authoritative, doesn't
+    // depend on our local sync having run recently) rather than trusting a
+    // possibly-stale bt_issues.epic_id — then matched against bt_epics
+    // (best-effort: null if that epic isn't tracked here at all yet).
+    let epic: { id: number; title: string; githubNumber: number | null } | null = null;
+    const parentNum = getParentNumber(gh.parent_issue_url);
+    if (parentNum !== null) {
+      const [epicRow] = await db
+        .select({ id: btEpicsTable.id, title: btEpicsTable.title, githubNumber: btEpicsTable.githubNumber })
+        .from(btEpicsTable)
+        .where(eq(btEpicsTable.githubNumber, parentNum))
+        .limit(1);
+      epic = epicRow ?? null;
+    }
+
     res.json({
       number: gh.number,
       title: gh.title,
@@ -1067,6 +1085,7 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
       labels: gh.labels.map((l) => l.name),
       htmlUrl: gh.html_url,
       isEpic: !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0),
+      epic,
     });
   } catch (err) {
     log.error({ err, number }, "GET /extension/issue-lookup failed");

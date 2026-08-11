@@ -1361,6 +1361,7 @@ function renderList(query) {
   if (!boardCache) return;
   const { milestones, epics, issues } = boardCache.data;
   const q = (query ?? "").trim().toLowerCase();
+  scheduleSearchIssueLookup(q);
 
   const matches = (title, num) =>
     !q || title.toLowerCase().includes(q) || (num != null && String(num).includes(q.replace(/^#/, "")));
@@ -1689,6 +1690,80 @@ function wireDeployConsole() {
     if (!command) return;
     void runDeployAction({ freeCommand: command, label: command });
   });
+}
+
+/**
+ * Git #737 follow-up — Shane: "if I search for a Issue number 686 it should
+ * bring back the epic too so I can get to the chat." The browse view's
+ * search only ever looked at the OPEN issue list — a landed/closed issue
+ * like #686 is invisible to it entirely, no matter how exactly you type its
+ * number. For a numeric query, this fetches straight from GitHub (same
+ * lookup the hover cards use, same cache) and shows the issue's real title/
+ * state/epic — plus a Go to Chat button if that epic has a linked chat —
+ * regardless of whether it's still in the open list above.
+ */
+let searchLookupTimer = null;
+let searchLookupToken = 0; // guards a slow lookup from overwriting a newer query's results
+
+function scheduleSearchIssueLookup(q) {
+  clearTimeout(searchLookupTimer);
+  const bareNum = q.replace(/^#/, "");
+  if (!/^\d{2,5}$/.test(bareNum)) return;
+  const myToken = ++searchLookupToken;
+  searchLookupTimer = setTimeout(() => {
+    void (async () => {
+      let info = issueRefCache.get(bareNum);
+      if (!info) {
+        const res = await sendMessageSafe({ type: "build-tracker-lookup-issue", number: Number(bareNum) });
+        info = res?.ok ? res.result : { error: res?.error ?? "Not found" };
+        issueRefCache.set(bareNum, info);
+      }
+      if (myToken !== searchLookupToken) return; // superseded by a newer keystroke
+      renderSearchLookupResult(bareNum, info);
+    })();
+  }, 400);
+}
+
+function renderSearchLookupResult(num, info) {
+  if (!panelEls || panelEls.panel.hidden || panelEls.search.style.display === "none") return;
+  if (panelEls.search.value.trim().replace(/^#/, "") !== num) return; // query changed since this fired
+
+  const { list } = panelEls;
+  const card = document.createElement("div");
+
+  if (info?.error) {
+    card.innerHTML = `<div class="milestone">From GitHub</div><div class="empty">${escapeHtml(info.error)}</div>`;
+    list.prepend(card);
+    return;
+  }
+
+  const closed = info.state === "closed";
+  const epicChat = info.epic
+    ? (boardCache?.data?.chats ?? [])
+        .filter((c) => c.epicId === info.epic.id)
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0] ?? null
+    : null;
+
+  card.innerHTML = `
+    <div class="milestone">From GitHub — not necessarily in the list below</div>
+    <div class="epic-row" style="cursor:default;">
+      <span>#${num} ${escapeHtml(info.title)}</span>
+      <span class="pill">${closed ? "closed" : "open"}</span>
+    </div>
+    ${info.epic
+      ? `<div class="epic-row" style="padding-left:16px; cursor:default;"><span>Epic: ${escapeHtml(info.epic.title)}</span>${info.epic.githubNumber ? `<span class="pill">#${info.epic.githubNumber}</span>` : ""}</div>`
+      : `<div class="empty">No epic tracked locally for this issue yet.</div>`}
+  `;
+  if (epicChat) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tool-op-btn";
+    btn.style.cssText = "margin: 4px 0 8px 16px;";
+    btn.textContent = `Go to Chat: ${epicChat.title}`;
+    btn.addEventListener("click", () => { location.href = epicChat.claudeUrl; });
+    card.appendChild(btn);
+  }
+  list.prepend(card);
 }
 
 async function linkTo(target, label) {
