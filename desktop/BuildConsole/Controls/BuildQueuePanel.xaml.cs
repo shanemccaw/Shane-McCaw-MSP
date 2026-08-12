@@ -64,13 +64,25 @@ namespace BuildConsole.Controls
             // Git #848 — same reasoning: real GitHub state via the local
             // `gh` CLI directly, not bt_build_queue/the server at all, so it
             // polls unconditionally too.
-            _inFlightPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            // Git #876 (reopened) — Shane: still crossing GitHub's 5,000/hour
+            // rate limit. This timer and _waitingOnMePollTimer below both ran
+            // unconditionally at 20s regardless of which tab/view is focused
+            // or whether the panel is even visible — two real `gh` CLI calls
+            // every 20s, all day, every time the app is open (~360 calls/hour
+            // combined, on top of the Git Board's own traffic). Neither
+            // fetch's own content changes anywhere near that fast (labels
+            // don't flip in-flight/Shane-To-Do multiple times a minute), so
+            // both moved to 60s — a real 3x cut to this panel's steady-state
+            // GitHub traffic with no loss of correctness (the content-
+            // signature guard already in RenderIssueList/RenderInFlightGrouped
+            // still skips a no-op re-render either way).
+            _inFlightPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             _inFlightPollTimer.Tick += async (_, _) => await RefreshInFlightIssuesAsync();
             _inFlightPollTimer.Start();
             _ = RefreshInFlightIssuesAsync();
 
             // Git #850 — same direct-gh-CLI reasoning, "Shane To-Do" label.
-            _waitingOnMePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            _waitingOnMePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             _waitingOnMePollTimer.Tick += async (_, _) => await RefreshWaitingOnMeAsync();
             _waitingOnMePollTimer.Start();
             _ = RefreshWaitingOnMeAsync();

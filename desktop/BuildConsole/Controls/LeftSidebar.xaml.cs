@@ -583,6 +583,39 @@ namespace BuildConsole.Controls
         private string? _lastInProgressSignature;
         private string? _lastBoardSignature;
 
+        /// <summary>
+        /// Git #876 (reopened) — Shane: still crossing GitHub's 5,000/hour
+        /// rate limit despite the earlier `EnrichBlockedStatusAsync` throttle.
+        /// Second source found: #875's `GetMilestonesAsync()` (a real REST
+        /// call) fired unconditionally on EVERY 20s `PopulateGitTrackerBoard`
+        /// poll, right alongside `ListBoardIssuesAsync` — the existing
+        /// `_lastInProgressSignature` guard only skips the tree REPAINT, not
+        /// the network call itself, so this doubled the Git Board's real
+        /// GitHub traffic to ~360 calls/hour whenever the Issues tab was
+        /// open. Milestones (title/open/closed counts) change far less often
+        /// than issue state, so a real GitHub fetch is now cached and reused
+        /// for up to `MilestonesCacheTtl`, same wall-clock-throttle shape as
+        /// `BlockedEnrichMinInterval` below. The explicit 🟢 Done chip click
+        /// (`IssueFilter_Click`) intentionally bypasses this cache and always
+        /// fetches fresh — it's a rare, deliberate user action, not a
+        /// background poll.
+        /// </summary>
+        private List<GitHubApiClient.GitHubMilestoneInfo>? _cachedMilestoneInfos;
+        private DateTime _lastMilestonesFetchUtc = DateTime.MinValue;
+        private static readonly TimeSpan MilestonesCacheTtl = TimeSpan.FromMinutes(5);
+
+        private async System.Threading.Tasks.Task<List<GitHubApiClient.GitHubMilestoneInfo>> GetMilestonesThrottledAsync(GitHubApiClient client)
+        {
+            if (_cachedMilestoneInfos != null && DateTime.UtcNow - _lastMilestonesFetchUtc < MilestonesCacheTtl)
+            {
+                return _cachedMilestoneInfos;
+            }
+
+            _cachedMilestoneInfos = await client.GetMilestonesAsync();
+            _lastMilestonesFetchUtc = DateTime.UtcNow;
+            return _cachedMilestoneInfos;
+        }
+
         public async void PopulateGitTrackerBoard()
         {
             // Git #839 — the 🟢 Done view is a manual CLOSED snapshot; let a
@@ -613,7 +646,8 @@ namespace BuildConsole.Controls
                 // Git #875 — real open/closed counts per milestone; the issue
                 // list above is OPEN-only, so it can never supply a real
                 // "closed" count on its own (see GitMilestone.HasRealCounts).
-                milestoneInfos = await client.GetMilestonesAsync();
+                // Git #876 (reopened) — throttled/cached, see GetMilestonesThrottledAsync.
+                milestoneInfos = await GetMilestonesThrottledAsync(client);
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
