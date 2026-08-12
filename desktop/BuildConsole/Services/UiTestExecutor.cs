@@ -341,8 +341,26 @@ namespace BuildConsole.Services
 }})();";
 
             string resJson = await _webView.ExecuteScriptAsync(script) ?? string.Empty;
-            bool passed = resJson.Contains("\"success\":true");
-            string detail = passed ? $"Executed {actionType} on {selector}" : $"Element execution warning: {resJson}";
+            bool passed = false;
+            string? error = null;
+            try
+            {
+                // ExecuteScriptAsync JSON-encodes whatever the script returns; since the script itself
+                // returns a JSON.stringify'd string, the raw result is a JSON string LITERAL whose
+                // deserialized value is the actual { success, error } object as text.
+                using var outerDoc = JsonDocument.Parse(resJson);
+                using var innerDoc = JsonDocument.Parse(outerDoc.RootElement.GetString() ?? "{}");
+                var root = innerDoc.RootElement;
+                if (root.TryGetProperty("success", out var s) && (s.ValueKind == JsonValueKind.True || s.ValueKind == JsonValueKind.False))
+                    passed = s.GetBoolean();
+                if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String)
+                    error = e.GetString();
+            }
+            catch (JsonException)
+            {
+                error = $"unparseable script result: {resJson}";
+            }
+            string detail = passed ? $"Executed {actionType} on {selector}" : $"Element execution warning: {error ?? resJson}";
             return (passed, detail);
         }
 
@@ -360,8 +378,24 @@ namespace BuildConsole.Services
 }})();";
 
             string resJson = await _webView.ExecuteScriptAsync(script) ?? string.Empty;
-            bool found = resJson.Contains("\"found\":true");
-            bool visible = resJson.Contains("\"visible\":true");
+            bool found = false;
+            bool visible = false;
+            try
+            {
+                // Same double-encoding as ExecuteClickOrInputAsync: outer layer is ExecuteScriptAsync's
+                // own JSON encoding of the JS's JSON.stringify string return value.
+                using var outerDoc = JsonDocument.Parse(resJson);
+                using var innerDoc = JsonDocument.Parse(outerDoc.RootElement.GetString() ?? "{}");
+                var root = innerDoc.RootElement;
+                if (root.TryGetProperty("found", out var f) && (f.ValueKind == JsonValueKind.True || f.ValueKind == JsonValueKind.False))
+                    found = f.GetBoolean();
+                if (root.TryGetProperty("visible", out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                    visible = v.GetBoolean();
+            }
+            catch (JsonException)
+            {
+                // found/visible stay false — surfaced via the detail/actual strings below.
+            }
 
             bool passed = expectedState.ToLowerInvariant() switch
             {
