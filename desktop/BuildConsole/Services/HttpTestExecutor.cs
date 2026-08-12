@@ -181,10 +181,116 @@ namespace BuildConsole.Services
                 }
             }
 
+            // Git #892 — content assertions (containsAny/containsNone) on what the response actually SAYS,
+            // folded in alongside status/jsonPath so every declared assertion must pass for the step to pass.
+            EvaluateContentAssertions(expect, responseBody, problems, expectedParts, actualParts);
+
             string expected = string.Join("; ", expectedParts);
             string actual = string.Join("; ", actualParts);
             return (problems.Count == 0, problems.Count == 0 ? "ok" : string.Join("; ", problems), expected, actual);
         }
+
+        /// <summary>
+        /// Git #892 — the single shared evaluator for expect.containsAny / expect.containsNone, called by
+        /// every executor that asserts on a response body: HttpTestExecutor.EvaluateExpectation (apiTests +
+        /// graphTests via delegation + zohoTests) and UiTestExecutor's captureResponse builder — the
+        /// substring-matching semantics live in exactly one place, never copied three times.
+        ///
+        /// Both fields operate on the SAME field the jsonPath check targets — the resolved value as a string
+        /// (a string node's value, or the raw JSON text of a non-string/array/object node) — or the raw
+        /// response body when no jsonPath is declared. Matching is case-insensitive substring, not exact.
+        /// containsAny fails when NONE of its phrases appear; containsNone fails when ANY appears. Each is
+        /// independently optional. Appends to the caller's problems/expected/actual lists so it composes with
+        /// the status/jsonPath assertions already recorded. A miss records a truncated, whitespace-collapsed
+        /// preview of what the field ACTUALLY contained next to the phrase list, so the failure is
+        /// diagnosable straight from the log line without re-running the test.
+        /// </summary>
+        internal static void EvaluateContentAssertions(JsonElement expect, string responseBody,
+            List<string> problems, List<string> expectedParts, List<string> actualParts)
+        {
+            if (expect.ValueKind != JsonValueKind.Object) return;
+            bool hasAny = expect.TryGetProperty("containsAny", out var anyEl) && anyEl.ValueKind == JsonValueKind.Array;
+            bool hasNone = expect.TryGetProperty("containsNone", out var noneEl) && noneEl.ValueKind == JsonValueKind.Array;
+            if (!hasAny && !hasNone) return;
+
+            string fieldText = ResolveContentField(expect, responseBody, out string fieldLabel);
+            string preview = Truncate(CollapseWhitespace(fieldText), 200);
+
+            if (hasAny)
+            {
+                var phrases = ReadStringArray(anyEl);
+                expectedParts.Add($"{fieldLabel} containsAny [{JoinQuoted(phrases)}]");
+                string? hit = FirstContained(fieldText, phrases);
+                actualParts.Add(hit != null ? $"{fieldLabel} contained \"{hit}\"" : $"{fieldLabel} contained none of them");
+                if (phrases.Count > 0 && hit == null)
+                    problems.Add($"containsAny: none of [{JoinQuoted(phrases)}] found in {fieldLabel} (actual: \"{preview}\")");
+            }
+
+            if (hasNone)
+            {
+                var phrases = ReadStringArray(noneEl);
+                expectedParts.Add($"{fieldLabel} containsNone [{JoinQuoted(phrases)}]");
+                var hits = AllContained(fieldText, phrases);
+                actualParts.Add(hits.Count > 0 ? $"{fieldLabel} contained forbidden [{JoinQuoted(hits)}]" : $"{fieldLabel} contained none of the forbidden phrases");
+                if (hits.Count > 0)
+                    problems.Add($"containsNone: forbidden phrase(s) [{JoinQuoted(hits)}] found in {fieldLabel} (actual: \"{preview}\")");
+            }
+        }
+
+        /// <summary>Resolve the field that containsAny/containsNone match against — the jsonPath target
+        /// (a string node's value, or raw JSON for any other node), or the whole response body when no
+        /// jsonPath is declared. A declared-but-unresolved jsonPath yields an empty field (so containsAny
+        /// fails and containsNone passes). <paramref name="label"/> is a human name used in messages.</summary>
+        private static string ResolveContentField(JsonElement expect, string responseBody, out string label)
+        {
+            if (expect.TryGetProperty("jsonPath", out var jpEl) && jpEl.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(jpEl.GetString()))
+            {
+                string jsonPath = jpEl.GetString()!;
+                label = jsonPath;
+                try
+                {
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(responseBody) ? "null" : responseBody);
+                    if (TryResolveJsonPath(doc.RootElement, jsonPath, out var found))
+                        return found.ValueKind == JsonValueKind.String ? (found.GetString() ?? "") : found.GetRawText();
+                }
+                catch (JsonException) { /* non-JSON body — a declared jsonPath can't resolve; empty field */ }
+                return "";
+            }
+            label = "response body";
+            return responseBody ?? "";
+        }
+
+        private static List<string> ReadStringArray(JsonElement arr)
+        {
+            var list = new List<string>();
+            foreach (var el in arr.EnumerateArray())
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    string? s = el.GetString();
+                    if (!string.IsNullOrEmpty(s)) list.Add(s);
+                }
+            return list;
+        }
+
+        private static string? FirstContained(string haystack, List<string> phrases)
+        {
+            foreach (var p in phrases)
+                if (haystack.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0) return p;
+            return null;
+        }
+
+        private static List<string> AllContained(string haystack, List<string> phrases)
+        {
+            var hits = new List<string>();
+            foreach (var p in phrases)
+                if (haystack.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0) hits.Add(p);
+            return hits;
+        }
+
+        private static string JoinQuoted(List<string> items) => string.Join(", ", items.ConvertAll(s => $"\"{s}\""));
+
+        private static string CollapseWhitespace(string s) => string.IsNullOrEmpty(s) ? "" : Regex.Replace(s, @"\s+", " ").Trim();
 
         private static readonly Regex JsonPathTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]", RegexOptions.Compiled);
 

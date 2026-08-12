@@ -503,6 +503,12 @@ namespace BuildConsole.Services
             public string? ExpectJsonPath;
             public bool? ExpectExists;
             public bool? ExpectIsArray;
+            /// <summary>Git #892 — the raw `expect` block (cloned so it outlives the parse's JsonDocument),
+            /// handed to the shared HttpTestExecutor.EvaluateContentAssertions for containsAny/containsNone.</summary>
+            public JsonElement? Expect;
+            /// <summary>Git #892 — true when the expect block declares containsAny and/or containsNone, so the
+            /// captured response body is read (CaptureNeedsBody) even when there's no jsonPath exists/isArray check.</summary>
+            public bool HasContentAssertions;
         }
 
         private static CaptureResponseSpec? ParseCaptureResponse(string? json)
@@ -527,6 +533,14 @@ namespace BuildConsole.Services
                         spec.ExpectExists = ex.GetBoolean();
                     if (expect.TryGetProperty("isArray", out var ia) && (ia.ValueKind == JsonValueKind.True || ia.ValueKind == JsonValueKind.False))
                         spec.ExpectIsArray = ia.GetBoolean();
+
+                    // Git #892 — carry the raw expect block (cloned, so it survives this JsonDocument's
+                    // disposal) for the shared content-assertion evaluator, and note whether either
+                    // containsAny/containsNone is present so the body gets read below.
+                    spec.Expect = expect.Clone();
+                    spec.HasContentAssertions =
+                        (expect.TryGetProperty("containsAny", out var ca) && ca.ValueKind == JsonValueKind.Array)
+                        || (expect.TryGetProperty("containsNone", out var cn) && cn.ValueKind == JsonValueKind.Array);
                 }
 
                 return string.IsNullOrEmpty(spec.UrlPattern) ? null : spec;
@@ -538,9 +552,11 @@ namespace BuildConsole.Services
         }
 
         /// <summary>True when the captureResponse spec's assertions require reading the response body
-        /// (a jsonPath exists/isArray check) rather than just the status line.</summary>
+        /// (a jsonPath exists/isArray check, or a #892 containsAny/containsNone content assertion) rather
+        /// than just the status line.</summary>
         private static bool CaptureNeedsBody(CaptureResponseSpec spec) =>
-            !string.IsNullOrEmpty(spec.ExpectJsonPath) && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue);
+            (!string.IsNullOrEmpty(spec.ExpectJsonPath) && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue))
+            || spec.HasContentAssertions;
 
         /// <summary>Read a matched response's body exactly once — the WebView2 content stream can't be
         /// re-read, so the caller reads it here and hands the string to both the captureResponse
@@ -603,39 +619,61 @@ namespace BuildConsole.Services
                     passed = false;
                     details.Add($"couldn't read response body: {bodyReadError}");
                 }
-                else if (!string.IsNullOrEmpty(preReadBody))
+                else
                 {
-                    try
+                    // jsonPath exists/isArray — only meaningful against a non-empty JSON body and only when a
+                    // jsonPath is actually declared (a #892 content-only assertion has no jsonPath to resolve).
+                    if (!string.IsNullOrEmpty(preReadBody) && !string.IsNullOrEmpty(spec.ExpectJsonPath)
+                        && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue))
                     {
-                        using var bodyDoc = JsonDocument.Parse(preReadBody);
-                        bool found = TryResolveJsonPath(bodyDoc.RootElement, spec.ExpectJsonPath!, out var resolved);
-
-                        if (spec.ExpectExists.HasValue)
+                        try
                         {
-                            bool existsOk = found == spec.ExpectExists.Value;
-                            passed &= existsOk;
-                            details.Add(existsOk ? $"{spec.ExpectJsonPath} exists={found}" : $"{spec.ExpectJsonPath} exists={found} (expected {spec.ExpectExists.Value})");
-                            actualParts.Add($"{spec.ExpectJsonPath} exists={found}");
+                            using var bodyDoc = JsonDocument.Parse(preReadBody);
+                            bool found = TryResolveJsonPath(bodyDoc.RootElement, spec.ExpectJsonPath!, out var resolved);
+
+                            if (spec.ExpectExists.HasValue)
+                            {
+                                bool existsOk = found == spec.ExpectExists.Value;
+                                passed &= existsOk;
+                                details.Add(existsOk ? $"{spec.ExpectJsonPath} exists={found}" : $"{spec.ExpectJsonPath} exists={found} (expected {spec.ExpectExists.Value})");
+                                actualParts.Add($"{spec.ExpectJsonPath} exists={found}");
+                            }
+
+                            if (spec.ExpectIsArray.HasValue)
+                            {
+                                bool isArray = found && resolved.ValueKind == JsonValueKind.Array;
+                                bool arrayOk = isArray == spec.ExpectIsArray.Value;
+                                passed &= arrayOk;
+                                details.Add(arrayOk ? $"{spec.ExpectJsonPath} isArray={isArray}" : $"{spec.ExpectJsonPath} isArray={isArray} (expected {spec.ExpectIsArray.Value})");
+                                actualParts.Add($"{spec.ExpectJsonPath} isArray={isArray}");
+                            }
                         }
-
-                        if (spec.ExpectIsArray.HasValue)
+                        catch (Exception ex)
                         {
-                            bool isArray = found && resolved.ValueKind == JsonValueKind.Array;
-                            bool arrayOk = isArray == spec.ExpectIsArray.Value;
-                            passed &= arrayOk;
-                            details.Add(arrayOk ? $"{spec.ExpectJsonPath} isArray={isArray}" : $"{spec.ExpectJsonPath} isArray={isArray} (expected {spec.ExpectIsArray.Value})");
-                            actualParts.Add($"{spec.ExpectJsonPath} isArray={isArray}");
+                            passed = false;
+                            details.Add($"couldn't parse response body as JSON: {ex.Message}");
                         }
                     }
-                    catch (Exception ex)
+
+                    // Git #892 — containsAny/containsNone via the SAME shared evaluator apiTests/graphTests use,
+                    // so the substring-matching semantics aren't a third copy living in the UI executor. Runs
+                    // even on an empty body (an empty field correctly fails containsAny, passes containsNone).
+                    if (spec.HasContentAssertions && spec.Expect.HasValue)
                     {
-                        passed = false;
-                        details.Add($"couldn't parse response body as JSON: {ex.Message}");
+                        var contentProblems = new List<string>();
+                        HttpTestExecutor.EvaluateContentAssertions(spec.Expect.Value, preReadBody ?? string.Empty, contentProblems, expectedParts, actualParts);
+                        if (contentProblems.Count > 0)
+                        {
+                            passed = false;
+                            details.AddRange(contentProblems);
+                        }
                     }
                 }
             }
 
             result.Passed = passed;
+            // #892 — re-join Expected now that content assertions may have appended containsAny/containsNone.
+            result.Expected = string.Join("; ", expectedParts);
             result.Detail = details.Count > 0
                 ? $"{spec.UrlPattern} — {string.Join(", ", details)}"
                 : $"{spec.UrlPattern} — captured (status {result.Status})";

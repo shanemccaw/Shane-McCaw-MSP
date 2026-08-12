@@ -35,7 +35,12 @@
       "selector": "[data-testid='chat-send']",
       "captureResponse": {
         "urlPattern": "/api/public-chat",
-        "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+        "expect": {
+          "status": 200,
+          "jsonPath": "$.reply",
+          "exists": true,
+          "containsNone": ["Monitoring", "MSP", "white-label"]
+        }
       }
     },
     { "action": "expect", "selector": "[data-testid='chat-input']", "state": "visible" }
